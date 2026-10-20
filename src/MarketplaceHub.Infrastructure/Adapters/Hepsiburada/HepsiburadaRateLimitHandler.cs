@@ -32,6 +32,8 @@ public sealed class HepsiburadaRateLimitHandler(
                 logger?.LogWarning(exception, "Shared Hepsiburada rate limiter unavailable; sending without the shared quota");
             }
         }
+        // The circuit's half-open probe is claimed only now that the token is held (G11).
+        if (MarketplaceCircuitBreakerHandler.PassProbeGate(request) is { } refused) return refused;
         if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
         return await base.SendAsync(request, cancellationToken);
     }
@@ -42,6 +44,9 @@ public sealed class HepsiburadaRateLimitHandler(
         if (host.StartsWith("oms-", StringComparison.OrdinalIgnoreCase)) return ("oms", 600);
         if (host.StartsWith("mpop", StringComparison.OrdinalIgnoreCase)) return ("catalog", 180);
         if (host.StartsWith("listing-", StringComparison.OrdinalIgnoreCase)) return ("listing", 100);
+        // C18: the ask-to-seller (questions) host had no bucket at all. Its quota is not documented, so a
+        // conservative 60 a minute is shared by the API and every worker.
+        if (host.StartsWith("api-asktoseller", StringComparison.OrdinalIgnoreCase)) return ("asktoseller", 60);
         return null;
     }
 

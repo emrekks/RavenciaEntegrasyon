@@ -31,7 +31,8 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         // An open circuit answers before the quota is touched: a request that is refused locally must not
         // spend a token of the seller's quota (or wait for one).
         var circuitKey = CircuitKeyFor(request);
-        if (!TryEnterCircuit(circuitKey, out var halfOpen, out var circuitRetryAfter, out var openedForQuota)) return CircuitOpenResponse(circuitRetryAfter, openedForQuota);
+        if (!TryEnterCircuit(circuitKey, out var probeCandidate, out var circuitRetryAfter, out var openedForQuota)) return CircuitOpenResponse(circuitRetryAfter, openedForQuota);
+        var halfOpen = false;
         var resultRecorded = false;
         var concurrencyHeld = false;
         try
@@ -39,6 +40,10 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             // Wait for the quota before taking a concurrency slot, so reads queued behind the order-read
             // spacing do not hold the slots that product and stock requests need.
             await WaitForQuotaAsync(request, cancellationToken);
+            // G11: the half-open probe is claimed only once the quota token is held; a probe waiting minutes for
+            // the order-read spacing no longer keeps every other request of the family out.
+            if (probeCandidate && !TryClaimHalfOpen(circuitKey, out halfOpen, out circuitRetryAfter, out openedForQuota))
+                return CircuitOpenResponse(circuitRetryAfter, openedForQuota);
             await state.Concurrency.WaitAsync(cancellationToken);
             concurrencyHeld = true;
             if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
@@ -74,7 +79,9 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         }
     }
 
-    private bool TryEnterCircuit(string circuitKey, out bool halfOpen, out TimeSpan? retryAfter, out bool openedForQuota)
+    // probeCandidate: the break is over and no probe is out, so this request may become the probe once it
+    // holds its quota token (TryClaimHalfOpen).
+    private bool TryEnterCircuit(string circuitKey, out bool probeCandidate, out TimeSpan? retryAfter, out bool openedForQuota)
     {
         lock (state.SyncRoot)
         {
@@ -82,9 +89,32 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             state.TrimIdleState(now, TimeSpan.FromMinutes(1));
             var circuit = state.CircuitFor(circuitKey);
             circuit.LastTouchedAt = now;
+            probeCandidate = false;
+            retryAfter = null;
+            openedForQuota = circuit.OpenedForQuota;
+            if (circuit.OpenUntil is null) return true;
+            if (now < circuit.OpenUntil)
+            {
+                retryAfter = circuit.OpenUntil.Value - now;
+                return false;
+            }
+            if (circuit.HalfOpenRequestActive) return false;
+            probeCandidate = true;
+            return true;
+        }
+    }
+
+    private bool TryClaimHalfOpen(string circuitKey, out bool halfOpen, out TimeSpan? retryAfter, out bool openedForQuota)
+    {
+        lock (state.SyncRoot)
+        {
+            var now = timeProvider.GetUtcNow();
+            var circuit = state.CircuitFor(circuitKey);
+            circuit.LastTouchedAt = now;
             halfOpen = false;
             retryAfter = null;
             openedForQuota = circuit.OpenedForQuota;
+            // Another probe closed the circuit meanwhile: this request goes as an ordinary one.
             if (circuit.OpenUntil is null) return true;
             if (now < circuit.OpenUntil)
             {
@@ -302,9 +332,13 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     internal static string GlobalRateBucketFor(HttpRequestMessage request)
     {
         var host = request.RequestUri?.Host ?? "unknown";
-        var identity = request.Headers.UserAgent.ToString();
+        var identity = UserAgentOf(request);
         return $"global:{host}:{(string.IsNullOrWhiteSpace(identity) ? "anonymous" : identity)}:{EndpointFamily(request)}";
     }
+
+    // The raw User-Agent: it is added without validation, so the typed collection may not hold it.
+    private static string UserAgentOf(HttpRequestMessage request) =>
+        request.Headers.NonValidated.TryGetValues("User-Agent", out var values) ? values.ToString() : string.Empty;
 
     // The endpoint without its ids: the seller-scoped family (see CircuitFamily), or the first path segments.
     internal static string EndpointFamily(HttpRequestMessage request)
@@ -340,7 +374,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             if (sellerEnd > sellerStart)
                 return $"{uri.Host}:seller:{path[sellerStart..sellerEnd]}:{CircuitFamily(request, path, markerStart, sellerEnd)}";
         }
-        var identity = request.Headers.UserAgent.ToString();
+        var identity = UserAgentOf(request);
         return string.IsNullOrWhiteSpace(identity) ? $"{uri.Host}:global" : $"{uri.Host}:client:{identity}";
     }
 

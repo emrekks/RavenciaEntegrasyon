@@ -343,8 +343,9 @@ internal static class HepsiburadaJsonMapper
         var normalized = rawStatus.Trim().Replace(' ', '_').Replace('-', '_').ToUpperInvariant();
         var status = normalized switch
         {
-            "PROCESSING" or "IN_PROGRESS" or "PENDING" or "QUEUED" => "IN_PROGRESS",
-            "COMPLETED" or "COMPLETE" or "SUCCESS" or "SUCCEEDED" or "FAILED" or "PARTIAL_SUCCESS" or "COMPLETED_WITH_ERRORS" => "COMPLETED",
+            // C4: the listing API answers Ready (queued), InProgress and Done (applied; per-SKU errors[] below).
+            "PROCESSING" or "IN_PROGRESS" or "INPROGRESS" or "READY" or "PENDING" or "QUEUED" => "IN_PROGRESS",
+            "DONE" or "COMPLETED" or "COMPLETE" or "SUCCESS" or "SUCCEEDED" or "FAILED" or "PARTIAL_SUCCESS" or "COMPLETED_WITH_ERRORS" => "COMPLETED",
             _ => throw new JsonException("Hepsiburada listing yükleme durumu tanınmıyor.")
         };
         if (status == "IN_PROGRESS") return new($"LISTING_INVENTORY:{uploadId}", status, []);

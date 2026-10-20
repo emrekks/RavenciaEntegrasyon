@@ -59,8 +59,13 @@ public sealed partial class N11HttpClient : IQuestionPort
     }
 
     // n11 accepts one answer per question; the save result is the only confirmation.
+    // C37: SaveProductAnswer takes at most 2,048 characters; a longer answer is refused here, before any call.
+    internal const int MaxAnswerLength = 2048;
+
     public async Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(answer) || answer.Trim().Length > MaxAnswerLength)
+            return Failure<RemoteQuestionAnswerResult>(AdapterErrorClass.Validation, "N11_ANSWER_LENGTH_INVALID", $"N11 cevabı boş olamaz ve en fazla {MaxAnswerLength} karakter olabilir.", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteQuestionAnswerResult>();
         if (WriteBlocked<RemoteQuestionAnswerResult>(account, "soru cevabı") is { } blocked) return blocked;

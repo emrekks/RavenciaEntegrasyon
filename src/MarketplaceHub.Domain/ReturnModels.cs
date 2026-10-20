@@ -30,6 +30,11 @@ public static class MarketplaceReturnStatus
             "UNRESOLVED" or "INDISPUTE" or "DISPUTED" => ReturnClaimStatus.Disputed,
             "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed,
             "CANCELLED" or "CANCELED" => ReturnClaimStatus.Cancelled,
+            // Shopify ReturnStatus (only Shopify reports these words for returns): OPEN is an approved return in progress,
+            // CLOSED a finished one, DECLINED a refused request. REQUESTED still waits for the seller (default below).
+            "OPEN" => ReturnClaimStatus.Approved,
+            "CLOSED" => ReturnClaimStatus.Completed,
+            "DECLINED" => ReturnClaimStatus.Rejected,
             _ => ReturnClaimStatus.ActionRequired
         };
     }

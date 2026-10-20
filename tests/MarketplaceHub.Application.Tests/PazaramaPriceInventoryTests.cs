@@ -159,7 +159,7 @@ public sealed class PazaramaPriceInventoryTests
 
     [Theory]
     [InlineData(0, PazaramaBatchMapper.BatchState.Succeeded)]
-    [InlineData(5, PazaramaBatchMapper.BatchState.Succeeded)]
+    [InlineData(5, PazaramaBatchMapper.BatchState.PendingApproval)]
     [InlineData(3, PazaramaBatchMapper.BatchState.Processing)]
     [InlineData(1, PazaramaBatchMapper.BatchState.Failed)]
     [InlineData(2, PazaramaBatchMapper.BatchState.Failed)]
@@ -172,7 +172,7 @@ public sealed class PazaramaPriceInventoryTests
 
     [Theory]
     [InlineData("Başarılı", PazaramaBatchMapper.BatchState.Succeeded)]
-    [InlineData("Onaya gönderildi", PazaramaBatchMapper.BatchState.Succeeded)]
+    [InlineData("Onaya gönderildi", PazaramaBatchMapper.BatchState.PendingApproval)]
     [InlineData("İşleniyor", PazaramaBatchMapper.BatchState.Processing)]
     [InlineData("Hata oluştu", PazaramaBatchMapper.BatchState.Failed)]
     [InlineData("Tamamlanamadı", PazaramaBatchMapper.BatchState.Failed)]
@@ -212,6 +212,22 @@ public sealed class PazaramaPriceInventoryTests
             Part("s", 1, ("B1", PazaramaBatchMapper.BatchState.Processing))]);
 
         Assert.Equal("IN_PROGRESS", status.Status);
+    }
+
+    // C39: status 5 "Onaya gönderildi" is accepted but reported as waiting for Pazarama's approval.
+    [Fact]
+    public void A_price_sent_to_approval_is_accepted_and_reported_as_pending()
+    {
+        var status = PazaramaBatchMapper.Merge("op", [
+            Part("p", 2, ("B1", PazaramaBatchMapper.BatchState.PendingApproval), ("B2", PazaramaBatchMapper.BatchState.Succeeded)),
+            Part("s", 2, ("B1", PazaramaBatchMapper.BatchState.Succeeded), ("B2", PazaramaBatchMapper.BatchState.Succeeded))]);
+
+        Assert.Equal("COMPLETED", status.Status);
+        var b1 = status.Lines.Single(x => x.ExternalKey == "B1");
+        Assert.True(b1.Succeeded);
+        Assert.Null(b1.ErrorCode);
+        Assert.Equal(PazaramaBatchMapper.PendingApprovalStatus, b1.Status);
+        Assert.NotEqual(PazaramaBatchMapper.PendingApprovalStatus, status.Lines.Single(x => x.ExternalKey == "B2").Status);
     }
 
     [Fact]

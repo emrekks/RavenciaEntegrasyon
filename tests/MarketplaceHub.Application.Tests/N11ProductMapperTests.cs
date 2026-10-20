@@ -96,7 +96,7 @@ public sealed class N11ProductMapperTests
     [Fact]
     public void ProductQueryCarriesPageSizeAndLookupFilters()
     {
-        Assert.Equal("ms/product-query?page=2&size=250", N11HttpClient.ProductPage(2, 250, new ProductReadFilter(null)));
-        Assert.Equal("ms/product-query?page=0&size=250&productMainId=MODEL%201", N11HttpClient.ProductPage(0, 250, new ProductReadFilter(null, ProductMainId: "MODEL 1")));
+        Assert.Equal("ms/product-query?page=2&size=250&sender=ALL", N11HttpClient.ProductPage(2, 250, new ProductReadFilter(null)));
+        Assert.Equal("ms/product-query?page=0&size=250&productMainId=MODEL%201&sender=ALL", N11HttpClient.ProductPage(0, 250, new ProductReadFilter(null, ProductMainId: "MODEL 1")));
     }
 }

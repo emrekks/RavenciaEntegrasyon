@@ -2541,6 +2541,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // completes, so the next incremental read starts before the gap the failure left.
         var storefrontCursor = await Cursor(tenantId, connectionId, TrendyolStorefrontPolicy.CursorResource, cancellationToken);
         var storefrontActivity = ReadStorefrontActivity(storefrontCursor);
+        var readStorefronts = await TrendyolReadStorefronts.ForConnectionAsync(db, tenantId, connectionId, cancellationToken);
         void NoteStorefront(string code, TrendyolStorefrontActivity seen)
         {
             storefrontActivity[code] = seen;
@@ -2548,8 +2549,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             storefrontCursor.Version++;
         }
         var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots),
-            activeStorefronts: TrendyolStorefrontPolicy.Active(TrendyolReadStorefronts.Codes, storefrontActivity, now),
-            readableStorefronts: TrendyolStorefrontPolicy.Readable(TrendyolReadStorefronts.Codes, storefrontActivity, now));
+            activeStorefronts: TrendyolStorefrontPolicy.Active(readStorefronts, storefrontActivity, now),
+            readableStorefronts: TrendyolStorefrontPolicy.Readable(readStorefronts, storefrontActivity, now));
         var resetExpiredCursor = false;
         var completed = false;
         var insertedBeforePoll = telemetryInsertedCount;
@@ -2660,7 +2661,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A full scan already read every storefront; an incremental run probes at most one
         // inactive storefront over the time since its last probe.
         if (completed && state.Mode == OrderSyncMode.Incremental && !cancellationToken.IsCancellationRequested
-            && TrendyolStorefrontPolicy.NextProbe(TrendyolReadStorefronts.Codes, storefrontActivity, now) is { } probe)
+            && TrendyolStorefrontPolicy.NextProbe(readStorefronts, storefrontActivity, now) is { } probe)
         {
             var previous = storefrontActivity.GetValueOrDefault(probe);
             var probeStart = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
@@ -10074,7 +10075,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
         db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
         TrackRequest();
-        var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson), cancellationToken);
+        var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson, await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken)), cancellationToken);
         if (!result.IsSuccess)
         {
             TrackResultFailure(result.Error);

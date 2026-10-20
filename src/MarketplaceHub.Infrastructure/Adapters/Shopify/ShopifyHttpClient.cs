@@ -31,10 +31,10 @@ public sealed partial class ShopifyHttpClient(
     // finally the order-only projection. A token with read_customers still
     // gets the full customer snapshot without any special configuration.
     private const string OrderIdentityFields = "id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus";
-    private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName email phone } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
+    private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
     private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
-    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcodes(first:1) { nodes { value } } } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
     private const string TaxonomyCategoryFields = "nodes { id name fullName parentId level isLeaf isArchived } pageInfo { hasNextPage endCursor }";
     private const string TaxonomyRootsQuery = "query($first:Int!, $after:String) { taxonomy { categories(first:$first, after:$after) { " + TaxonomyCategoryFields + " } } }";
     private const string TaxonomyDescendantsQuery = "query($first:Int!, $after:String, $rootId:ID!) { taxonomy { categories(first:$first, after:$after, descendantsOf:$rootId) { " + TaxonomyCategoryFields + " } } }";
@@ -236,7 +236,7 @@ public sealed partial class ShopifyHttpClient(
         // aggregate inventoryQuantity is retained here; per-location levels
         // are not requested in this product query because nesting them under
         // every variant can exceed Shopify's single-query cost limit.
-        const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } images(first:10) { nodes { url } } priceRange { minVariantPrice { currencyCode } } variants(first:250) { nodes { id sku barcode price compareAtPrice inventoryQuantity selectedOptions { name value } image { url } } } } } pageInfo { hasNextPage endCursor } } }";
+        const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } media(first:10) { nodes { ... on MediaImage { image { url } } } } priceRangeV2 { minVariantPrice { currencyCode } } variants(first:250) { nodes { id sku barcodes(first:1) { nodes { value } } price compareAtPrice inventoryQuantity selectedOptions { name value } image { url } } } } } pageInfo { hasNextPage endCursor } } }";
         var variables = new { first, after = page.Cursor, query };
         var result = await QueryAsync(shop, gql, variables, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
@@ -471,7 +471,7 @@ public sealed partial class ShopifyHttpClient(
                     results.Add(new(barcode ?? "", false, null, "SHOPIFY_PRICE_INVENTORY_LINE_INVALID", false, "REJECTED"));
                     continue;
                 }
-                var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{id barcode product{id} inventoryItem{id tracked inventoryLevels(first:250){nodes{location{id isActive} quantities(names:[\"available\"]){name quantity}} pageInfo{hasNextPage}}}}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
+                var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{id product{id} inventoryItem{id tracked inventoryLevels(first:250){nodes{location{id isActive} quantities(names:[\"available\"]){name quantity}} pageInfo{hasNextPage}}}}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
                 if (!lookup.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(lookup.Error!, lookup.RateLimit);
                 var variants = lookup.Value!.RootElement.GetProperty("productVariants").GetProperty("nodes");
                 if (variants.GetArrayLength() != 1)
@@ -614,12 +614,22 @@ public sealed partial class ShopifyHttpClient(
     }
 
     // Nested page sizes (20 returns per order, 50 lines per return) keep a page of orders nearer Shopify's 1,000-point
-    // single-query ceiling; past it the page shrinks below. An order with more returns or return lines is not read whole here.
-    internal const string ReturnPageQuery = "query($first:Int!,$after:String,$query:String){orders(first:$first,after:$after,query:$query,sortKey:UPDATED_AT,reverse:false){edges{node{id name createdAt returns(first:20){nodes{id status createdAt returnLineItems(first:50){nodes{id quantity returnReason returnReasonNote fulfillmentLineItem{id lineItem{id}}}}}}}} pageInfo{hasNextPage endCursor}}}";
+    // single-query ceiling; past it the page shrinks below. An order with more returns, or a return with more lines, is
+    // completed by the continuation queries below (G32).
+    // returnLineItems lists the ReturnLineItemType interface; fulfillmentLineItem exists only on the ReturnLineItem object,
+    // so it is asked through an inline fragment (C1). returnReason is deprecated: returnReasonDefinition replaces it (C26).
+    internal const string ReturnLineFields = "nodes{id quantity returnReasonNote returnReasonDefinition{handle name} ... on ReturnLineItem{fulfillmentLineItem{id lineItem{id}}}} pageInfo{hasNextPage endCursor}";
+    internal const string ReturnFields = "id status createdAt returnLineItems(first:50){" + ReturnLineFields + "}";
+    internal const string ReturnPageQuery = "query($first:Int!,$after:String,$query:String){orders(first:$first,after:$after,query:$query,sortKey:UPDATED_AT,reverse:false){edges{node{id name createdAt returns(first:20){nodes{" + ReturnFields + "} pageInfo{hasNextPage endCursor}}}} pageInfo{hasNextPage endCursor}}}";
+    internal const string OrderReturnsContinuationQuery = "query($id:ID!,$after:String){order(id:$id){id name createdAt returns(first:20,after:$after){nodes{" + ReturnFields + "} pageInfo{hasNextPage endCursor}}}}";
+    internal const string ReturnLinesContinuationQuery = "query($id:ID!,$after:String){return(id:$id){id returnLineItems(first:100,after:$after){" + ReturnLineFields + "}}}";
+    internal const string SingleReturnQuery = "query($id:ID!){return(id:$id){id status createdAt order{id name createdAt} returnLineItems(first:100){" + ReturnLineFields + "}}}";
+    // A runaway continuation (Shopify repeating a cursor) stops here; the return is then reported, never silently cut.
+    private const int ReturnContinuationPageLimit = 50;
 
     internal async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollReturnsAsync(ShopifyRequestContext shop, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
-        var search = window.ModifiedAfter is { } from ? $"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}" : null;
+        var search = window.ModifiedAfter is { } from ? $"updated_at:>='{from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}'" : null;
         var first = Math.Clamp(page.Limit, 1, 100);
         var result = await QueryAsync(shop, ReturnPageQuery, new { first, after = page.Cursor, query = search }, cancellationToken);
         // Over the cost ceiling: the same page is asked again with a quarter of the orders, down to one (as for orders).
@@ -632,14 +642,27 @@ public sealed partial class ShopifyHttpClient(
         try
         {
             var orders = result.Value!.RootElement.GetProperty("orders");
-            var items = orders.GetProperty("edges").EnumerateArray().SelectMany(edge =>
+            var items = new List<RemoteReturnClaim>();
+            var rateLimit = result.RateLimit;
+            foreach (var edge in orders.GetProperty("edges").EnumerateArray())
             {
                 var order = edge.GetProperty("node");
-                return order.GetProperty("returns").GetProperty("nodes").EnumerateArray().Select(item => MapShopifyReturn(item, order));
-            }).ToArray();
+                var returns = order.GetProperty("returns");
+                var returnNodes = returns.GetProperty("nodes").EnumerateArray().ToList();
+                // G32: an order with more than 20 returns is read on with the order's own returns cursor.
+                var continuation = await ContinueAsync(returns, after => QueryAsync(shop, OrderReturnsContinuationQuery, new { id = TextValue(order, "id"), after }, cancellationToken),
+                    root => root.GetProperty("order").GetProperty("returns"), returnNodes);
+                if (continuation is not null) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(continuation, rateLimit);
+                foreach (var item in returnNodes)
+                {
+                    var lines = await ReadAllReturnLinesAsync(shop, item, cancellationToken);
+                    if (!lines.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(lines.Error!, lines.RateLimit ?? rateLimit);
+                    items.Add(MapShopifyReturn(item, order, lines.Value!));
+                }
+            }
             var info = orders.GetProperty("pageInfo");
             var hasMore = info.GetProperty("hasNextPage").GetBoolean();
-            return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(items, hasMore ? info.GetProperty("endCursor").GetString() : null, hasMore, items.Length), result.RateLimit);
+            return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(items, hasMore ? info.GetProperty("endCursor").GetString() : null, hasMore, items.Count), rateLimit);
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
         {
@@ -647,16 +670,55 @@ public sealed partial class ShopifyHttpClient(
         }
     }
 
+    // G32: a return with more lines than the first page holds is read on through return(id).returnLineItems(after:).
+    private async Task<AdapterResult<IReadOnlyList<JsonElement>>> ReadAllReturnLinesAsync(ShopifyRequestContext shop, JsonElement item, CancellationToken cancellationToken)
+    {
+        var connection = item.GetProperty("returnLineItems");
+        var lines = connection.GetProperty("nodes").EnumerateArray().ToList();
+        var error = await ContinueAsync(connection, after => QueryAsync(shop, ReturnLinesContinuationQuery, new { id = TextValue(item, "id"), after }, cancellationToken),
+            root => root.GetProperty("return").GetProperty("returnLineItems"), lines);
+        return error is null ? AdapterResult<IReadOnlyList<JsonElement>>.Success(lines) : AdapterResult<IReadOnlyList<JsonElement>>.Failure(error);
+    }
+
+    // Follows a nested connection's pageInfo until it ends; nodes are cloned because each page owns its own document.
+    // Returns null when the connection was read whole, otherwise the error that stopped it.
+    private static async Task<AdapterError?> ContinueAsync(JsonElement connection, Func<string?, Task<AdapterResult<JsonDocument>>> next, Func<JsonElement, JsonElement> select, List<JsonElement> nodes)
+    {
+        var info = connection.TryGetProperty("pageInfo", out var pageInfo) && pageInfo.ValueKind == JsonValueKind.Object ? pageInfo : default;
+        var pages = 0;
+        while (info.ValueKind == JsonValueKind.Object && info.TryGetProperty("hasNextPage", out var hasNext) && hasNext.ValueKind == JsonValueKind.True)
+        {
+            var after = TextValue(info, "endCursor");
+            if (string.IsNullOrWhiteSpace(after) || ++pages > ReturnContinuationPageLimit)
+                return new(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CONTINUATION_INCOMPLETE", "Shopify iadesinin devam sayfaları okunamadı; iade eksik kaydedilmedi.", (int)HttpStatusCode.BadGateway, null, null);
+            var page = await next(after);
+            if (!page.IsSuccess) return page.Error;
+            var nested = select(page.Value!.RootElement);
+            nodes.AddRange(nested.GetProperty("nodes").EnumerateArray().Select(node => node.Clone()));
+            info = nested.TryGetProperty("pageInfo", out var nextInfo) && nextInfo.ValueKind == JsonValueKind.Object ? nextInfo.Clone() : default;
+        }
+        return null;
+    }
+
     async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return Fail<RemoteReturnClaim>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
         var id = externalReturnId.StartsWith("gid://", StringComparison.Ordinal) ? externalReturnId : $"gid://shopify/Return/{externalReturnId}";
-        var result = await QueryAsync(shop, "query($id:ID!){return(id:$id){id status createdAt order{id name createdAt} returnLineItems(first:100){nodes{id quantity returnReason returnReasonNote fulfillmentLineItem{id lineItem{id}}}}}}", new { id }, cancellationToken);
+        var result = await QueryAsync(shop, SingleReturnQuery, new { id }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(result.Error!, result.RateLimit);
         var item = result.Value!.RootElement.GetProperty("return");
-        return item.ValueKind == JsonValueKind.Null ? Fail<RemoteReturnClaim>(AdapterErrorClass.NotFound, "SHOPIFY_RETURN_NOT_FOUND", "Shopify iadesi bulunamadı.", HttpStatusCode.NotFound) : AdapterResult<RemoteReturnClaim>.Success(MapShopifyReturn(item), result.RateLimit);
+        if (item.ValueKind == JsonValueKind.Null) return Fail<RemoteReturnClaim>(AdapterErrorClass.NotFound, "SHOPIFY_RETURN_NOT_FOUND", "Shopify iadesi bulunamadı.", HttpStatusCode.NotFound);
+        var lines = await ReadAllReturnLinesAsync(shop, item, cancellationToken);
+        if (!lines.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(lines.Error!, lines.RateLimit ?? result.RateLimit);
+        return AdapterResult<RemoteReturnClaim>.Success(MapShopifyReturn(item, item.GetProperty("order"), lines.Value!), result.RateLimit);
     }
+
+    // C25: returnDeclineRequest only sends the decline note to the customer when notifyCustomer is true (default false).
+    internal static object ReturnActionVariables(string action, string id, string? explanation) =>
+        action == "APPROVE"
+            ? new { input = new { id } }
+            : new { input = new { id, declineReason = "OTHER", notifyCustomer = true, declineNote = explanation!.Trim()[..Math.Min(500, explanation.Trim().Length)] } };
 
     public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) =>
         Task.FromResult(AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success([new("OTHER", "Diğer", false)]));
@@ -677,7 +739,7 @@ public sealed partial class ShopifyHttpClient(
         };
         if (query is null) return Fail<ReturnActionResult>(AdapterErrorClass.NotSupported, "SHOPIFY_RETURN_ACTION_UNSUPPORTED", "Shopify iade işlemi APPROVE veya REJECT olmalıdır.", HttpStatusCode.NotImplemented);
         if (action == "REJECT" && string.IsNullOrWhiteSpace(command.Explanation)) return Fail<ReturnActionResult>(AdapterErrorClass.Validation, "SHOPIFY_RETURN_DECLINE_NOTE_REQUIRED", "İade reddi için müşteriye gönderilecek açıklama zorunludur.", HttpStatusCode.BadRequest);
-        object variables = action == "APPROVE" ? new { input = new { id } } : new { input = new { id, declineReason = "OTHER", declineNote = command.Explanation!.Trim()[..Math.Min(500, command.Explanation.Trim().Length)] } };
+        var variables = ReturnActionVariables(action, id, command.Explanation);
         var result = await QueryAsync(shop, query, variables, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<ReturnActionResult>.Failure(result.Error!, result.RateLimit);
         var field = action == "APPROVE" ? "returnApproveRequest" : "returnDeclineRequest";
@@ -1016,8 +1078,8 @@ public sealed partial class ShopifyHttpClient(
         var category = product.TryGetProperty("category", out var categoryElement) && categoryElement.ValueKind != JsonValueKind.Null ? categoryElement : default;
         var categoryId = category.ValueKind == JsonValueKind.Object && category.TryGetProperty("id", out var categoryIdElement) ? ShortId(categoryIdElement.GetString()) : null;
         var categoryName = category.ValueKind == JsonValueKind.Object && category.TryGetProperty("fullName", out var fullName) ? fullName.GetString() : product.GetProperty("productType").GetString();
-        var images = product.GetProperty("images").GetProperty("nodes").EnumerateArray().Select(x => x.GetProperty("url").GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).ToList();
-        var currency = product.TryGetProperty("priceRange", out var priceRange)
+        var images = ProductImageUrls(product);
+        var currency = (product.TryGetProperty("priceRangeV2", out var priceRange) || product.TryGetProperty("priceRange", out priceRange))
             && priceRange.ValueKind == JsonValueKind.Object
             && priceRange.TryGetProperty("minVariantPrice", out var minPrice)
             && minPrice.ValueKind == JsonValueKind.Object
@@ -1053,7 +1115,7 @@ public sealed partial class ShopifyHttpClient(
                 return new RemoteInventoryLevel(ShortId(location.GetProperty("id").GetString()), location.TryGetProperty("name", out var locationName) ? locationName.GetString() : null, quantity, level.GetRawText());
             }).ToList()
             : [];
-        var barcode = variant.GetProperty("barcode").ValueKind == JsonValueKind.Null ? null : variant.GetProperty("barcode").GetString();
+        var barcode = VariantBarcode(variant);
         // Shopify has no model-code field. SKU is the stock code and barcode
         // is the only identity used when an existing Ravencia product is
         // matched. Keep those values separate instead of mirroring barcode
@@ -1160,8 +1222,8 @@ public sealed partial class ShopifyHttpClient(
                 customerName = TextValue(customer, "displayName") ?? JoinName(TextValue(customer, "firstName"), TextValue(customer, "lastName")),
                 customerFirstName = TextValue(customer, "firstName"),
                 customerLastName = TextValue(customer, "lastName"),
-                email = TextValue(customer, "email") ?? orderEmail,
-                phone = TextValue(customer, "phone") ?? orderPhone
+                email = NestedText(customer, "defaultEmailAddress", "emailAddress") ?? TextValue(customer, "email") ?? orderEmail,
+                phone = NestedText(customer, "defaultPhoneNumber", "phoneNumber") ?? TextValue(customer, "phone") ?? orderPhone
             })
             : JsonSerializer.Serialize(new
             {
@@ -1194,25 +1256,54 @@ public sealed partial class ShopifyHttpClient(
             refunds);
     }
 
-    private static RemoteReturnClaim MapShopifyReturn(JsonElement item) => MapShopifyReturn(item, item.GetProperty("order"));
-
-    private static RemoteReturnClaim MapShopifyReturn(JsonElement item, JsonElement order)
+    internal static RemoteReturnClaim MapShopifyReturn(JsonElement item, JsonElement order, IReadOnlyList<JsonElement> lineNodes)
     {
-        var lines = item.GetProperty("returnLineItems").GetProperty("nodes").EnumerateArray().Select(line =>
+        var lines = lineNodes.Select(line =>
         {
             var fulfillment = line.TryGetProperty("fulfillmentLineItem", out var fulfillmentLine) && fulfillmentLine.ValueKind == JsonValueKind.Object ? fulfillmentLine : default;
             var orderLine = fulfillment.ValueKind == JsonValueKind.Object && fulfillment.TryGetProperty("lineItem", out var lineItem) && lineItem.ValueKind == JsonValueKind.Object ? lineItem : default;
             return new RemoteReturnLine(ShortId(TextValue(line, "id")), orderLine.ValueKind == JsonValueKind.Object ? ShortId(TextValue(orderLine, "id")) : string.Empty, DecimalOrNull(line, "quantity") ?? 0m);
         }).Where(line => !string.IsNullOrWhiteSpace(line.ExternalLineId) && !string.IsNullOrWhiteSpace(line.ExternalOrderLineId)).ToArray();
         var createdAt = item.GetProperty("createdAt").GetDateTimeOffset();
-        return new(ShortId(TextValue(item, "id")), ShortId(TextValue(order, "id")), TextValue(item, "status") ?? "UNKNOWN", TextValue(item, "returnReason"), TextValue(item, "returnReasonNote"), null, createdAt, lines, item.GetRawText(), OrderCreatedAt: order.GetProperty("createdAt").GetDateTimeOffset());
+        // Shopify keeps the reason on each line (returnReasonDefinition); the claim carries the first line's reason.
+        var reasonLine = lineNodes.FirstOrDefault(line => NestedText(line, "returnReasonDefinition", "handle") is not null || TextValue(line, "returnReasonNote") is not null);
+        var reasonCode = reasonLine.ValueKind == JsonValueKind.Object ? NestedText(reasonLine, "returnReasonDefinition", "handle") : null;
+        var reasonText = reasonLine.ValueKind == JsonValueKind.Object ? TextValue(reasonLine, "returnReasonNote") ?? NestedText(reasonLine, "returnReasonDefinition", "name") : null;
+        return new(ShortId(TextValue(item, "id")), ShortId(TextValue(order, "id")), TextValue(item, "status") ?? "UNKNOWN", reasonCode, reasonText, null, createdAt, lines, item.GetRawText(), OrderCreatedAt: order.GetProperty("createdAt").GetDateTimeOffset());
+    }
+
+    private static string? NestedText(JsonElement element, string objectName, string propertyName) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object
+            ? TextValue(nested, propertyName)
+            : null;
+
+    // C26: Product.images is deprecated; media nodes that are images (MediaImage) carry image.url. The legacy shape is
+    // still read so stored snapshots and older fixtures keep mapping.
+    private static List<string> ProductImageUrls(JsonElement product)
+    {
+        if (product.TryGetProperty("media", out var media) && media.ValueKind == JsonValueKind.Object)
+            return media.GetProperty("nodes").EnumerateArray()
+                .Select(node => NestedText(node, "image", "url"))
+                .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url!).ToList();
+        return product.TryGetProperty("images", out var images) && images.ValueKind == JsonValueKind.Object
+            ? images.GetProperty("nodes").EnumerateArray().Select(x => TextValue(x, "url")).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).ToList()
+            : [];
+    }
+
+    // C26: ProductVariant.barcode is deprecated in favour of the barcodes connection; the first barcode is the variant's.
+    internal static string? VariantBarcode(JsonElement variant)
+    {
+        if (variant.TryGetProperty("barcodes", out var barcodes) && barcodes.ValueKind == JsonValueKind.Object
+            && barcodes.TryGetProperty("nodes", out var nodes) && nodes.ValueKind == JsonValueKind.Array)
+            return nodes.EnumerateArray().Select(node => TextValue(node, "value")).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        return variant.TryGetProperty("barcode", out var barcode) && barcode.ValueKind == JsonValueKind.String ? barcode.GetString() : null;
     }
     private static RemoteOrderLine MapOrderLine(JsonElement line, string financialStatus)
     {
         var variant = line.TryGetProperty("variant", out var variantElement) && variantElement.ValueKind == JsonValueKind.Object ? variantElement : default;
         var lineSku = line.TryGetProperty("sku", out var skuElement) && skuElement.ValueKind == JsonValueKind.String ? skuElement.GetString() : null;
         var variantSku = variant.ValueKind == JsonValueKind.Object && variant.TryGetProperty("sku", out var variantSkuElement) && variantSkuElement.ValueKind == JsonValueKind.String ? variantSkuElement.GetString() : null;
-        var barcode = variant.ValueKind == JsonValueKind.Object && variant.TryGetProperty("barcode", out var barcodeElement) && barcodeElement.ValueKind == JsonValueKind.String ? barcodeElement.GetString() : null;
+        var barcode = variant.ValueKind == JsonValueKind.Object ? VariantBarcode(variant) : null;
         var sku = string.IsNullOrWhiteSpace(lineSku) ? variantSku : lineSku;
         var orderedQuantity = DecimalOrNull(line, "quantity") ?? DecimalOrNull(line, "currentQuantity") ?? 0m;
         var currentQuantity = DecimalOrNull(line, "currentQuantity") ?? orderedQuantity;
@@ -1385,7 +1476,7 @@ public sealed partial class ShopifyHttpClient(
     {
         var parts = new List<string>();
         error = null;
-        if (filter.ModifiedAfter is { } modified) parts.Add($"updated_at:>={modified.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}");
+        if (filter.ModifiedAfter is { } modified) parts.Add($"updated_at:>='{modified.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}'");
         if (!string.IsNullOrWhiteSpace(filter.Barcode)) parts.Add($"barcode:{EscapeSearch(filter.Barcode)}");
         if (!string.IsNullOrWhiteSpace(filter.ProductUrl))
         {
@@ -1480,8 +1571,8 @@ public sealed partial class ShopifyHttpClient(
     internal static string? BuildOrderQuery(OrderPollWindow window)
     {
         var terms = new List<string>(2);
-        if (window.ModifiedAfter is { } from) terms.Add($"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}");
-        if (window.ModifiedBefore is { } until) terms.Add($"updated_at:<={until.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}");
+        if (window.ModifiedAfter is { } from) terms.Add($"updated_at:>='{from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}'");
+        if (window.ModifiedBefore is { } until) terms.Add($"updated_at:<='{until.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}'");
         return terms.Count == 0 ? null : string.Join(' ', terms);
     }
     internal static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) => status switch

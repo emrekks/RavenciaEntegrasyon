@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -277,7 +278,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 ["productMainId"] = modelCodes[0],
                 ["brandId"] = externalBrandId,
                 ["categoryId"] = externalCategoryId,
-                ["quantity"] = checked((int)Math.Min(int.MaxValue, Math.Floor(publishable))),
+                ["quantity"] = TrendyolStockRules.Quantity(publishable),
                 ["stockCode"] = variant.Sku.Trim(),
                 ["dimensionalWeight"] = variant.Desi ?? 1m,
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),

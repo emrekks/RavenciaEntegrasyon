@@ -133,7 +133,8 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             productVariants.Add(new()
             {
                 ["sku"] = sku,
-                ["barcode"] = string.IsNullOrWhiteSpace(barcode) ? null : barcode,
+                // ProductVariantSetInput.barcode is deprecated (2026-10); barcodes replaces the variant's whole barcode list.
+                ["barcodes"] = string.IsNullOrWhiteSpace(barcode) ? null : new[] { new { value = barcode } },
                 ["price"] = salePrice.ToString("0.00", CultureInfo.InvariantCulture),
                 ["compareAtPrice"] = listPrice > salePrice ? listPrice.ToString("0.00", CultureInfo.InvariantCulture) : null,
                 ["inventoryItem"] = new { tracked = true, requiresShipping = true },

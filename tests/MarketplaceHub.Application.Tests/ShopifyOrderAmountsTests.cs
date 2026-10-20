@@ -37,7 +37,7 @@ public sealed class ShopifyOrderAmountsTests
     public void TheOrderQueryCarriesBothEndsOfTheWindow()
     {
         var query = ShopifyHttpClient.BuildOrderQuery(new OrderPollWindow(At.AddDays(-1), At));
-        Assert.Equal("updated_at:>=2026-10-18T12:00:00Z updated_at:<=2026-10-19T12:00:00Z", query);
+        Assert.Equal("updated_at:>='2026-10-18T12:00:00Z' updated_at:<='2026-10-19T12:00:00Z'", query);
     }
 
     [Fact]

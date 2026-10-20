@@ -1350,7 +1350,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         db.ExternalEffectRecords.Add(effect);
         await db.SaveChangesAsync(cancellationToken);
         AdapterResult<PackageActionResult> result;
-        using (TrendyolQuotaLane.Instant()) result = await orders.ExecutePackageActionAsync(new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)), new(package.ExternalPackageId, action, payload), cancellationToken);
+        using (TrendyolQuotaLane.Instant()) result = await orders.ExecutePackageActionAsync(new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)), new(package.ExternalPackageId, action, payload, order.StoreFrontCode), cancellationToken);
         if (!result.IsSuccess)
         {
             var error = result.Error;
@@ -1499,7 +1499,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         using (TrendyolQuotaLane.Instant())
             result = await orders.ExecutePackageActionAsync(
                 new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
-                new(package.ExternalPackageId, action, command.PayloadJson),
+                new(package.ExternalPackageId, action, command.PayloadJson, await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken)),
                 cancellationToken);
         if (!result.IsSuccess)
         {
@@ -2398,7 +2398,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 "PICKING" => StatusWithLinesAndParams(root, "Picking"),
                 "INVOICED" => StatusWithLinesAndParams(root, "Invoiced"),
                 "TRACKING_NUMBER" => Text(root, "cargoSenderNumber") && Text(root, "providerCode") && (!root.TryGetProperty("returnTrackingNumber", out var returnTracking) || returnTracking.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(returnTracking.GetString())),
-                "CANCEL_ITEMS" => NonEmptyArray(root, "lines"),
+                "CANCEL_ITEMS" => TrendyolPackageActionBodies.TryBuildUnsupplied(payloadJson, out _),
                 "SPLIT" => NonEmptyArray(root, "orderLineIds") && (!root.TryGetProperty("shouldKeepPreviousStatus", out var keep) || keep.ValueKind is JsonValueKind.True or JsonValueKind.False),
                 "MULTI_SPLIT" => NonEmptyArray(root, "splitGroups"),
                 "CHANGE_CARGO_PROVIDER" => Text(root, "cargoProvider"),

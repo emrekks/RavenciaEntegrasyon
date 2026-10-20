@@ -25,7 +25,7 @@ public sealed class TrendyolAdapterAuditTests
     }
 
     [Fact]
-    public void ALineWithoutAVatRateIsReportedInsteadOfTakingTheVatBaseAmountAsTheRate()
+    public void ALineWithoutAVatRateNeverTakesTheVatBaseAmountAsTheRate()
     {
         const string json = """
         {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[
@@ -36,11 +36,12 @@ public sealed class TrendyolAdapterAuditTests
 
         var page = TrendyolJsonMapper.Orders(json);
 
-        var line = Assert.Single(Assert.Single(page.Items).Lines);
-        Assert.Equal("line-2", line.ExternalLineId);
-        Assert.Equal(20m, line.VatRate);
+        // G30: the line is kept with the package's rate (20), never with vatBaseAmount (100).
+        var lines = Assert.Single(page.Items).Lines;
+        Assert.Equal(["line-1", "line-2"], lines.Select(line => line.ExternalLineId).ToArray());
+        Assert.All(lines, line => Assert.Equal(20m, line.VatRate));
         var issue = Assert.Single(page.Issues!);
-        Assert.Equal("ORDER_PACKAGE_LINE_INVALID", issue.Code);
+        Assert.Equal("ORDER_PACKAGE_LINE_VAT_RATE_INFERRED", issue.Code);
         Assert.Equal("pkg-1:line-1", issue.Identity);
     }
 
@@ -70,7 +71,8 @@ public sealed class TrendyolAdapterAuditTests
         var scan = await client.ScanPackageStreamAsync(account, "PKG-MISSING", null, null, end.AddDays(-12), end, "TR", CancellationToken.None);
 
         Assert.Null(scan.Result);
-        Assert.Null(scan.StreamError);
+        Assert.Equal(TrendyolHttpClient.PackageScanIncompleteCode, scan.StreamError?.Code);
+        Assert.Equal(AdapterErrorClass.TransientNetwork, scan.StreamError!.Class);
         Assert.Equal(TrendyolHttpClient.MaxPackageStreamPages, handler.Requests);
     }
 

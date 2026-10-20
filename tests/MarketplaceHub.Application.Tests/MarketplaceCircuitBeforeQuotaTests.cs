@@ -100,6 +100,131 @@ public sealed class MarketplaceCircuitBeforeQuotaTests
         Assert.Equal(1, downstream.Requests);
     }
 
+    // G11: the half-open probe is claimed only once the quota token is held, so a probe stuck in the quota queue
+    // does not answer every other request of the family with 503.
+    [Fact]
+    public async Task ATrendyolProbeWaitingForItsQuotaDoesNotBlockTheOthers()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 4, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1), CircuitFailureThreshold = 1, CircuitBreakDuration = TimeSpan.FromMilliseconds(1) });
+        var limiter = new HoldingLimiter();
+        using var downstream = new FailFirst(1);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), limiter) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+        using var opened = await client.GetAsync("https://unit.test/a");
+        Assert.Equal(HttpStatusCode.InternalServerError, opened.StatusCode);
+        await Task.Delay(50);
+
+        var hold = limiter.HoldNext();
+        var waiting = client.GetAsync("https://unit.test/a");
+        await limiter.Held.Task;
+        using var other = await client.GetAsync("https://unit.test/a");
+        hold.SetResult();
+        using var released = await waiting;
+
+        Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, released.StatusCode);
+        Assert.Equal(3, downstream.Requests);
+    }
+
+    [Fact]
+    public async Task ASharedCircuitProbeWaitingForItsQuotaDoesNotBlockTheOthers()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero));
+        var limiter = new HoldingLimiter();
+        using var downstream = new FailFirst(MarketplaceCircuitBreakerHandler.FailureThreshold);
+        using var quota = new HepsiburadaRateLimitHandler(clock, limiter) { InnerHandler = downstream };
+        using var circuit = new MarketplaceCircuitBreakerHandler(new MarketplaceCircuitBreakerState(), clock) { InnerHandler = quota };
+        using var client = new HttpClient(circuit);
+        for (var i = 0; i < MarketplaceCircuitBreakerHandler.FailureThreshold; i++)
+            (await client.SendAsync(QuotaRequest())).Dispose();
+        using var refused = await client.SendAsync(QuotaRequest());
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+        clock.Advance(MarketplaceCircuitBreakerHandler.BreakDuration + TimeSpan.FromSeconds(1));
+
+        var hold = limiter.HoldNext();
+        var waiting = client.SendAsync(QuotaRequest());
+        await limiter.Held.Task;
+        using var other = await client.SendAsync(QuotaRequest());
+        hold.SetResult();
+        using var released = await waiting;
+
+        Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, released.StatusCode);
+        Assert.Equal(MarketplaceCircuitBreakerHandler.FailureThreshold + 2, downstream.Requests);
+    }
+
+    [Fact]
+    public async Task ASharedCircuitProbeClaimedByAnotherRequestIsRefusedAtTheGateWithoutBeingSent()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero));
+        var limiter = new HoldingLimiter();
+        using var downstream = new FailFirst(MarketplaceCircuitBreakerHandler.FailureThreshold + 1);
+        using var quota = new HepsiburadaRateLimitHandler(clock, limiter) { InnerHandler = downstream };
+        using var circuit = new MarketplaceCircuitBreakerHandler(new MarketplaceCircuitBreakerState(), clock) { InnerHandler = quota };
+        using var client = new HttpClient(circuit);
+        for (var i = 0; i < MarketplaceCircuitBreakerHandler.FailureThreshold; i++)
+            (await client.SendAsync(QuotaRequest())).Dispose();
+        clock.Advance(MarketplaceCircuitBreakerHandler.BreakDuration + TimeSpan.FromSeconds(1));
+
+        var hold = limiter.HoldNext();
+        var waiting = client.SendAsync(QuotaRequest());
+        await limiter.Held.Task;
+        using var failedProbe = await client.SendAsync(QuotaRequest());
+        hold.SetResult();
+        using var refusedAtGate = await waiting;
+
+        Assert.Equal(HttpStatusCode.InternalServerError, failedProbe.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, refusedAtGate.StatusCode);
+        Assert.Equal(MarketplaceCircuitBreakerHandler.FailureThreshold + 1, downstream.Requests);
+    }
+
+    private static HttpRequestMessage QuotaRequest()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "https://oms-external.example/packages/merchantid/m-1");
+        request.Options.Set(HepsiburadaRateLimitHandler.QuotaAcquiredKey, () => { });
+        return request;
+    }
+
+    private sealed class HoldingLimiter : ISharedRateLimiter
+    {
+        private TaskCompletionSource? hold;
+        public TaskCompletionSource Held { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource HoldNext()
+        {
+            Held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            var next = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            hold = next;
+            return next;
+        }
+
+        public async ValueTask<TimeSpan> TryTakeAsync(string key, double capacity, double tokensPerSecond, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Exchange(ref hold, null) is { } waitFor)
+            {
+                Held.TrySetResult();
+                await waitFor.Task.WaitAsync(cancellationToken);
+            }
+            return TimeSpan.Zero;
+        }
+    }
+
+    private sealed class FailFirst(int failures) : HttpMessageHandler
+    {
+        private int requests;
+        public int Requests => requests;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(Interlocked.Increment(ref requests) <= failures ? HttpStatusCode.InternalServerError : HttpStatusCode.OK));
+    }
+
+    private sealed class ManualClock(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset now = start;
+        public override DateTimeOffset GetUtcNow() => now;
+        public void Advance(TimeSpan by) => now += by;
+    }
+
     private sealed class CountingLimiter : ISharedRateLimiter
     {
         private int taken;

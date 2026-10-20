@@ -49,6 +49,21 @@ public sealed class TrendyolInvoiceLinkRevocationTests
     }
 
     [Fact]
+    public async Task TheDeleteGoesToThePackagesOwnStorefront()
+    {
+        var handler = new Script(
+            Package("\"invoiceStatus\":\"Invoiced\",\"invoiceLink\":\"" + OurLink + "\""),
+            new HttpResponseMessage(HttpStatusCode.Accepted),
+            Package("\"invoiceStatus\":\"NotInvoiced\""));
+
+        var result = await Client(handler).RevokeLinkAsync(Account(), Context(), Command("DE"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+        Assert.All(handler.Requests, request => Assert.Equal("DE", request.StoreFront));
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
     public async Task APackageWithoutAnInvoiceIsReportedAsAlreadyClearWithoutADeleteRequest()
     {
         var handler = new Script(Package("\"invoiceStatus\":\"NotInvoiced\""));
@@ -170,9 +185,9 @@ public sealed class TrendyolInvoiceLinkRevocationTests
     private static AdapterContext Context(bool explicitInvoiceAction = true) =>
         new(Guid.CreateVersion7(), ConnectionId, "link-revocation-test", "link-revocation-test", Now.AddMinutes(2), IsExplicitManualInvoiceDelivery: explicitInvoiceAction);
 
-    private static InvoiceLinkRevocationCommand Command() => new(
+    private static InvoiceLinkRevocationCommand Command(string storeFront = "TR") => new(
         new ExternalInvoiceDeliveryReference(PackageId, "11476852228", null, "GIB2026000000001", OurLink,
-            new PackageLookup(Now.AddDays(-1), new OrderLookupHint(Now.AddDays(-3), Now.AddDays(-1), "TR"), InvoiceOnly: true)),
+            new PackageLookup(Now.AddDays(-1), new OrderLookupHint(Now.AddDays(-3), Now.AddDays(-1), storeFront), InvoiceOnly: true)),
         [OurLink, OurLink.Replace("/content", "/invoice.pdf", StringComparison.Ordinal)],
         "GIB2026000000001");
 
@@ -186,7 +201,7 @@ public sealed class TrendyolInvoiceLinkRevocationTests
             Encoding.UTF8, "application/json")
     };
 
-    private sealed record Recorded(HttpMethod Method, Uri Uri, string? ContentType, string? Body);
+    private sealed record Recorded(HttpMethod Method, Uri Uri, string? ContentType, string? Body, string? StoreFront = null);
 
     private sealed class Script(params HttpResponseMessage[] responses) : HttpMessageHandler
     {
@@ -196,7 +211,7 @@ public sealed class TrendyolInvoiceLinkRevocationTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            Requests.Add(new(request.Method, request.RequestUri!, request.Content?.Headers.ContentType?.MediaType, body));
+            Requests.Add(new(request.Method, request.RequestUri!, request.Content?.Headers.ContentType?.MediaType, body, request.Headers.TryGetValues("storeFrontCode", out var storeFront) ? storeFront.Single() : null));
             if (next >= responses.Length) throw new InvalidOperationException($"Unexpected request {request.Method} {request.RequestUri}");
             return responses[next++];
         }

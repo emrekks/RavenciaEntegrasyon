@@ -542,7 +542,8 @@ public interface IShopifyOrderCsvImportService
         string correlationId,
         CancellationToken cancellationToken);
 }
-public sealed record PackageActionCommand(string ExternalPackageId, string Action, string PayloadJson);
+// StoreFrontCode: the stored storefront of the package's order (Trendyol sends it as the storeFrontCode header; null = TR).
+public sealed record PackageActionCommand(string ExternalPackageId, string Action, string PayloadJson, string? StoreFrontCode = null);
 public sealed record ShipmentActionJobPayload(Guid JobId, Guid PackageId, string Action, string PayloadJson);
 public sealed record PackageActionResult(string ExternalPackageId, string Status, string? ExternalOperationId);
 public sealed record RemoteCargoCompany(string ShortName, string Name);

@@ -131,6 +131,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             var result = pending
                 ? TrendyolJsonMapper.PendingApprovalCatalogProducts(response.Value!)
                 : TrendyolJsonMapper.CatalogProducts(response.Value!);
+            // C15: contentId is not a documented filter of /products/approved; if Trendyol ignores it the page holds
+            // other products, so the page is narrowed here to the asked content.
+            if (!pending && !string.IsNullOrWhiteSpace(filter.ContentId))
+                result = FilterByContentId(result, filter.ContentId);
             return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(
                 TrendyolCatalogCursorPolicy.Advance(result, catalogPage.Pass, incremental, filter.IncludePendingApproval),
                 response.RateLimit);
@@ -263,7 +267,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Configuration());
         var normalizedOrderNumber = externalOrderId.Trim();
         var now = timeProvider.GetUtcNow();
-        var storefronts = TrendyolLookupPolicy.Storefronts(hint, TrendyolReadStorefronts.Codes);
+        var storefronts = await LookupStorefrontsAsync(authorized, hint, cancellationToken);
         AdapterPageIssue? firstPageIssue = null;
         RateLimitMetadata? rateLimit = null;
         if (TrendyolLookupPolicy.V2Window(hint, now) is { } window)
@@ -356,7 +360,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         var found = new List<RemoteOrder>();
         RateLimitMetadata? rateLimit = null;
         AdapterError? rejected = null;
-        foreach (var storeFrontCode in TrendyolLookupPolicy.Storefronts(hint, TrendyolReadStorefronts.Codes))
+        foreach (var storeFrontCode in await LookupStorefrontsAsync(authorized, hint, cancellationToken))
         {
             var query = $"?startDate={window.Start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={window.End.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&shipmentPackageIds={Uri.EscapeDataString(string.Join(',', missing))}&page=0&size=200";
             var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + query, null, cancellationToken, storeFrontCode: storeFrontCode);
@@ -414,7 +418,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         if (string.IsNullOrWhiteSpace(externalPackageId)) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract());
         var packageStatusOccurredAt = lookup.StatusOccurredAt;
         var stopAtV2Match = lookup.InvoiceOnly;
-        var storefronts = TrendyolLookupPolicy.Storefronts(lookup.Order, TrendyolReadStorefronts.Codes);
+        var storefronts = await LookupStorefrontsAsync(authorized, lookup.Order, cancellationToken);
 
         // Order V2 keeps a month of packages and accepts at most two weeks per request. A package
         // of an order older than a month is read from the stream below, around its status time.
@@ -532,6 +536,9 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     // A stream page is 200 packages and pages are spaced 5 s apart; twenty pages (4,000 packages, about two
     // minutes) cover the 12-day window of a busy seller without letting one package lookup hold the order quota.
     internal const int MaxPackageStreamPages = 20;
+    internal const string PackageScanIncompleteCode = "TRENDYOL_PACKAGE_SCAN_INCOMPLETE";
+    private static readonly AdapterError PackageScanIncomplete = new(AdapterErrorClass.TransientNetwork, PackageScanIncompleteCode,
+        "Trendyol paket akışı sayfa sınırına kadar okundu ama paket bulunamadı; okuma daha sonra yeniden denenecek.", 503, TimeSpan.FromMinutes(15), null);
 
     // The stream retains three months of history while the package endpoint is date-limited. Scan only the
     // window around the locally recorded status time, using cursor pagination; each page is parsed once.
@@ -544,8 +551,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         {
             if (page > MaxPackageStreamPages)
             {
+                // G10: the window was not read to its end, so "not found" is unknown, not a 404. A retryable error keeps
+                // readback and link revocation from being blocked for a package that lies beyond the cap.
                 logger.LogWarning("Trendyol package {PackageId} was not found in {Pages} historical stream pages; the scan stopped.", externalPackageId, MaxPackageStreamPages);
-                return (null, null);
+                return (null, PackageScanIncomplete);
             }
             var streamQuery = new List<string>
             {
@@ -600,7 +609,13 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
 
     public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
     {
-        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized, context)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Configuration());
+        return await ExecutePackageActionAsync(authorized, context, command, cancellationToken);
+    }
+
+    internal async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(TrendyolRequestContext authorized, AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
+    {
+        if (!CanWrite(authorized, context)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
         if (string.IsNullOrWhiteSpace(command.ExternalPackageId)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Contract());
         var action = command.Action.Trim().ToUpperInvariant();
         var seller = authorized.Connection.ExternalStoreId;
@@ -619,7 +634,14 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         };
         if (endpoint.Length == 0) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Unsupported("Paket aksiyonu resmî Trendyol sözleşmesinde tanımlı değil."));
         HttpContent? content = null;
-        if (action is not ("MANUAL_DELIVER" or "MANUAL_RETURN"))
+        if (action == "CANCEL_ITEMS")
+        {
+            // C14: the unsupplied body is rebuilt from validated values only (lines of lineId/quantity, reasonId 500-506).
+            if (!TrendyolPackageActionBodies.TryBuildUnsupplied(command.PayloadJson, out var unsupplied))
+                return AdapterResult<PackageActionResult>.Failure(new(AdapterErrorClass.Validation, "TRENDYOL_CANCEL_ITEMS_INVALID", TrendyolPackageActionBodies.UnsuppliedInvalidMessage, 422, null, null));
+            content = JsonContent.Create(unsupplied);
+        }
+        else if (action is not ("MANUAL_DELIVER" or "MANUAL_RETURN"))
         {
             JsonDocument payload; try { payload = JsonDocument.Parse(command.PayloadJson); } catch (JsonException) { return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Contract()); }
             content = JsonContent.Create(payload.RootElement.Clone()); payload.Dispose();
@@ -627,7 +649,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         var method = action is "SPLIT" or "MULTI_SPLIT" ? HttpMethod.Post : HttpMethod.Put;
         using (content)
         {
-            var response = await SendAsync(authorized, method, endpoint, content, cancellationToken); if (!response.IsSuccess) return AdapterResult<PackageActionResult>.Failure(response.Error!, response.RateLimit);
+            // C2: package writes go to the package's own storefront (micro-export / DE / AE packages are not TR).
+            var response = await SendAsync(authorized, method, endpoint, content, cancellationToken, storeFrontCode: WriteStoreFront(command.StoreFrontCode)); if (!response.IsSuccess) return AdapterResult<PackageActionResult>.Failure(response.Error!, response.RateLimit);
             return AdapterResult<PackageActionResult>.Success(new(command.ExternalPackageId, "ACCEPTED", response.Error?.RemoteRequestId), response.RateLimit);
         }
     }
@@ -711,7 +734,13 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
 
     public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
     {
-        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized, context)) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Configuration());
+        return await ExecuteReturnActionAsync(authorized, context, command, cancellationToken);
+    }
+
+    internal async Task<AdapterResult<ReturnActionResult>> ExecuteReturnActionAsync(TrendyolRequestContext authorized, AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
+    {
+        if (!CanWrite(authorized, context)) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
         if (string.IsNullOrWhiteSpace(command.ExternalClaimId) || command.ExternalLineItemIds.Count == 0) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Contract());
         var action = command.Action.Trim().ToUpperInvariant();
         if (action == "APPROVE")
@@ -722,10 +751,13 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         if (action != "REJECT" || string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Contract());
         var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
         if (!evidenceOptional && command.EvidenceFiles.Count == 0) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Unsupported("Bu ret nedeni için kanıt dosyası zorunludur."));
+        // C11: createClaimIssue accepts evidence files of at most 5 MB each; a bigger file is refused here, not by Trendyol.
+        if (command.EvidenceFiles.Any(file => file.Content.LongLength > MaxClaimEvidenceBytes))
+            return AdapterResult<ReturnActionResult>.Failure(new(AdapterErrorClass.Validation, "TRENDYOL_RETURN_EVIDENCE_TOO_LARGE", "Trendyol iade kanıtı dosya başına en fazla 5 MB olabilir; daha küçük bir dosya yükleyin.", 422, null, null));
         using var multipart = new MultipartFormDataContent();
         foreach (var file in command.EvidenceFiles)
         {
-            var part = new ByteArrayContent(file.Content); part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.MimeType); multipart.Add(part, "file", Path.GetFileName(file.FileName));
+            var part = new ByteArrayContent(file.Content); part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.MimeType); multipart.Add(part, "files", Path.GetFileName(file.FileName));
         }
         var endpoint = TrendyolEndpoints.RejectClaim(authorized.Connection.ExternalStoreId, command.ExternalClaimId, command.ReasonCode, command.ExternalLineItemIds, command.Explanation.Trim());
         var rejected = await SendAsync(authorized, HttpMethod.Post, endpoint, multipart, cancellationToken);
@@ -735,6 +767,11 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Configuration());
+        return await DeliverAsync(authorized, context, command, cancellationToken);
+    }
+
+    internal async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(TrendyolRequestContext authorized, AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
+    {
         var invoiceDeliveryWriteAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(
             authorized.Connection,
             context,
@@ -760,7 +797,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                     || !payload.RootElement.TryGetProperty("invoiceNumber", out var invoiceNumber) || invoiceNumber.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(invoiceNumber.GetString()))
                     return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Mikro ihracat delivery payloadında invoiceDateTime ve invoiceNumber zorunludur."));
             }
-            var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.InvoiceLinks(authorized.Connection.ExternalStoreId), JsonContent.Create(payload.RootElement), cancellationToken); if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
+            var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.InvoiceLinks(authorized.Connection.ExternalStoreId), JsonContent.Create(payload.RootElement), cancellationToken, storeFrontCode: WriteStoreFront(command.StoreFrontCode)); if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
             return AdapterResult<InvoiceDeliveryResult>.Success(new(command.ExternalPackageId, "SUBMITTED"), response.RateLimit);
         }
     }
@@ -819,7 +856,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 "Trendyol paketi müşteri numarasını (customerId) içermiyor; silme isteği gönderilmedi.", 502, null, null), before.RateLimit);
 
         var deleted = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.InvoiceLinkDelete(authorized.Connection.ExternalStoreId),
-            JsonContent.Create(new { serviceSourceId = shipmentPackageId, channelId = 1, customerId }), cancellationToken);
+            JsonContent.Create(new { serviceSourceId = shipmentPackageId, channelId = 1, customerId }), cancellationToken, storeFrontCode: WriteStoreFront(command.Reference.Lookup?.Order?.StoreFrontCode));
         // 404 is "no invoice link found": the read below decides whether the package is clear.
         if (!deleted.IsSuccess && deleted.Error!.HttpStatus != 404)
             return AdapterResult<InvoiceLinkRevocationResult>.Failure(deleted.Error, deleted.RateLimit);
@@ -1077,6 +1114,23 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     }
 
     private static readonly TimeSpan MaximumQuotaWait = TimeSpan.FromMinutes(10);
+
+    // Trendyol documents 5 MB per evidence file; the decimal megabyte is the safe reading.
+    internal const long MaxClaimEvidenceBytes = 5_000_000;
+
+    // A known order is read from its own storefront; an unknown one from the documented storefronts and any
+    // undocumented one the connection already has orders from (C28).
+    private async Task<IReadOnlyList<string>> LookupStorefrontsAsync(TrendyolRequestContext authorized, OrderLookupHint? hint, CancellationToken cancellationToken) =>
+        hint?.StoreFrontCode is { Length: > 0 }
+            ? TrendyolLookupPolicy.Storefronts(hint, [])
+            : await authentication.ReadStorefrontsAsync(authorized.Connection.TenantId, authorized.Connection.Id, cancellationToken);
+
+    internal static AdapterPageResult<RemoteCatalogProduct> FilterByContentId(AdapterPageResult<RemoteCatalogProduct> page, string contentId) =>
+        page with { Items = [.. page.Items.Where(product => string.Equals(product.ExternalProductId, contentId.Trim(), StringComparison.Ordinal))] };
+
+    // The stored storefront of the package's order; TR only when it is not known (older rows, non-Trendyol callers).
+    internal static string WriteStoreFront(string? storeFrontCode) =>
+        string.IsNullOrWhiteSpace(storeFrontCode) ? TrendyolLookupPolicy.HomeStoreFront : storeFrontCode.Trim().ToUpperInvariant();
 
     // Retry-After as seconds or as an HTTP date; a date in the past means no wait.
     internal static TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? header, DateTimeOffset now)

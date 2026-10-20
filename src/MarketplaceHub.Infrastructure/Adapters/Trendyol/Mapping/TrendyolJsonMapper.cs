@@ -23,7 +23,7 @@ public static class TrendyolJsonMapper
             }
             try
             {
-                var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>();
+                var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>(); var linesWithoutVat = new List<int>();
                 if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var line in lineArray.EnumerateArray())
@@ -40,8 +40,10 @@ public static class TrendyolJsonMapper
                                 throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
                             if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
                                 throw new JsonException($"Order line {externalLineId} has no valid unit price.");
-                            // vatBaseAmount is an amount, not a rate: a line without vatRate is reported, never taxed by a guess.
-                            if (!TryDecimal(line, out var vatRate, "vatRate") || vatRate is < 0 or > 100)
+                            // vatBaseAmount is an amount, not a rate. A line without vatRate is kept (G30); its rate is taken
+                            // from the package's other lines when they agree, otherwise it is reported below.
+                            var hasVatRate = TryDecimal(line, out var vatRate, "vatRate");
+                            if (hasVatRate && vatRate is < 0 or > 100)
                                 throw new JsonException($"Order line {externalLineId} has no valid VAT rate.");
                             var barcode = NullText(line, "barcode");
                             var sku = Text(line, "stockCode", "merchantSku");
@@ -50,6 +52,7 @@ public static class TrendyolJsonMapper
                             if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
                                 throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
                             var rawStatus = Text(line, "orderLineItemStatusName");
+                            if (!hasVatRate) linesWithoutVat.Add(lines.Count);
                             lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
                             allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
                         }
@@ -62,6 +65,7 @@ public static class TrendyolJsonMapper
                                 $"Sipariş paketi {externalPackageId} alındı ancak ürün satırı eşlenemedi: {exception.Message}"));
                         }
                     }
+                    ApplyPackageVatRate(lines, linesWithoutVat, externalPackageId, issues);
                 }
                 if (lines.Count == 0
                     && (!package.TryGetProperty("lines", out var rawLines)
@@ -113,6 +117,31 @@ public static class TrendyolJsonMapper
             }
         }
         return new(rows, next, hasMore, null, issues);
+    }
+
+    // G30: a line without vatRate keeps its place in the package. When every line that has a rate agrees, that is the
+    // package's rate and the line takes it (reported as inferred); otherwise the line carries 0 and is reported so the
+    // rate is checked before invoicing. Either way the order, its stock and the package allocation stay whole.
+    private static void ApplyPackageVatRate(List<RemoteOrderLine> lines, List<int> linesWithoutVat, string externalPackageId, List<AdapterPageIssue> issues)
+    {
+        if (linesWithoutVat.Count == 0) return;
+        var missing = linesWithoutVat.ToHashSet();
+        var known = lines.Where((_, index) => !missing.Contains(index)).Select(line => line.VatRate).Distinct().ToList();
+        foreach (var index in linesWithoutVat)
+        {
+            var line = lines[index];
+            if (known.Count == 1)
+            {
+                lines[index] = line with { VatRate = known[0] };
+                issues.Add(new("ORDER_PACKAGE_LINE_VAT_RATE_INFERRED", $"{externalPackageId}:{line.ExternalLineId}",
+                    $"Sipariş paketi {externalPackageId} satırında KDV oranı yoktu; paketin diğer satırlarındaki %{known[0].ToString("0.##", CultureInfo.InvariantCulture)} kullanıldı."));
+            }
+            else
+            {
+                issues.Add(new("ORDER_PACKAGE_LINE_VAT_RATE_MISSING", $"{externalPackageId}:{line.ExternalLineId}",
+                    $"Sipariş paketi {externalPackageId} satırında KDV oranı yok; satır alındı, faturalamadan önce KDV oranını kontrol edin."));
+            }
+        }
     }
 
     public static RemoteOrder? MergeOrderPackages(IEnumerable<RemoteOrder> candidates, string externalOrderId)
