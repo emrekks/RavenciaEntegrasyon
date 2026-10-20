@@ -1,35 +1,34 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { hubApi } from '../../shared/api'
+import { backgroundPollHeaders, hubApi } from '../../shared/api'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { dashboardOperationalLinks } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
-import { formatDate, formatIstanbul } from '../../shared/format-date'
+import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
+import { channelTotals, comparisonText, daySeries, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
-type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; uninvoicedInvoices: number; lowStockProducts: number; pendingByPlatform: Record<string, number>; lateByPlatform?: Record<string, number>; pendingReturnsByPlatform?: Record<string, number>; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
-type DashboardBootstrap = { metrics: DashboardMetrics; platforms: { name: string; status: string }[] }
-type RevenuePoint = { day: string; amount: number; orderCount: number; productQuantity: number; shipmentCount: number; currency: string }
+type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
+type DashboardBootstrap = { metrics: DashboardMetrics; channels?: DashboardChannel[] }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
 type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
 type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
-type Range = 'today' | '7' | '30' | '90' | 'custom'
 
 const PERIODS: Array<[Range, string]> = [['today', 'Bugün'], ['7', 'Son 7 Gün'], ['30', 'Son 30 Gün'], ['90', 'Son 90 Gün'], ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
 const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#f5b301'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8']]
-const platformCode = (name: string) => PLATFORMS.find(([code]) => name.toLocaleUpperCase('tr-TR').replace(/İ/g, 'I').includes(code))?.[0] ?? name.toUpperCase()
-const platformName = (name: string) => PLATFORMS.find(([code]) => code === platformCode(name))?.[1] ?? name
-const platformColor = (name: string, index: number) => PLATFORMS.find(([code]) => code === platformCode(name))?.[2] ?? ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a'][index % 4]
+const platformColor = (code: string, index: number) => PLATFORMS.find(([value]) => value === code.toUpperCase())?.[2] ?? ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a'][index % 4]
 const DATA_KEYS: Array<[string, string]> = [['orders', 'Sipariş'], ['products', 'Ürün'], ['stock', 'Stok'], ['price', 'Fiyat'], ['returns', 'İade'], ['invoices', 'Fatura']]
-const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Durdu', off: 'Son 7 günde işlem yok' }
-const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 30_000 } as const
+const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Hata var', off: 'Son 7 günde işlem yok' }
+// Refreshed while the page is on screen only; the polls say they are automatic so they do not keep an idle session alive.
+const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, staleTime: 30_000 } as const
+const poll = { headers: backgroundPollHeaders }
 
 const icon = (body: ReactNode, size = 18) => <svg className="rr-ico" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{body}</svg>
 const ICONS = {
@@ -43,30 +42,6 @@ const ICONS = {
   down: icon(<path d="M4 6l4 4 4-4" />, 12),
 }
 
-function dateKey(value: Date) {
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
-}
-export function rangeDates(range: Range, from: string, to: string, now: Date) {
-  if (range === 'custom') {
-    const start = new Date(`${from}T00:00:00`), end = new Date(`${to}T23:59:59.999`)
-    return start <= end ? { start, end } : { start: end, end: start }
-  }
-  const start = new Date(now)
-  start.setHours(0, 0, 0, 0)
-  if (range !== 'today') start.setDate(start.getDate() - (Number(range) - 1))
-  return { start, end: now }
-}
-// The series counts whole calendar days, so the previous period is the same number of days right before this one:
-// today is compared with yesterday, the last 7 days with the 7 days before them.
-export function previousRange(start: Date, end: Date) {
-  const midnight = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate())
-  const days = Math.round((midnight(end).getTime() - midnight(start).getTime()) / 86_400_000) + 1
-  const previousStart = midnight(start)
-  previousStart.setDate(previousStart.getDate() - days)
-  return { start: previousStart, end: new Date(midnight(start).getTime() - 1) }
-}
-const revenuePath = (from: Date, to: Date, platform = 'ALL') => `/dashboard/revenue-series?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&platform=${encodeURIComponent(platform)}`
 const money = (amount: number, currency = 'TRY') => formatMoney(amount, currency || 'TRY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const count = (value: number) => value.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
 function trend(current: number, previous: number): [string, boolean] {
@@ -82,9 +57,17 @@ function age(timestamp: string | null) {
   const hours = Math.floor(minutes / 60)
   return hours < 48 ? `${hours} sa önce` : `${Math.floor(hours / 24)} gün önce`
 }
-const dayLong = (day: string) => formatIstanbul(day, { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
-// Series days are Istanbul calendar days (YYYY-MM-DD): the day number is read from the key, not the browser clock.
-const dayShort = (day: string) => { const dayOfMonth = Number(day.slice(8, 10)); return dayOfMonth === 1 ? formatIstanbul(day, { day: 'numeric', month: 'short' }).replace(/\.$/, '') : String(dayOfMonth) }
+// What a matrix cell says: its own state first, the time of the last success after it.
+export function matrixCellText(cell: MatrixCell) {
+  const when = age(cell.lastSuccessAt)
+  if (cell.state === 'off') return 'İşlem Yok'
+  if (cell.state === 'bad') return 'Hata Var'
+  if (cell.state === 'warn') return when ? `Gecikiyor · ${when}` : 'Gecikiyor'
+  return when ?? 'Güncel'
+}
+// Series days are Istanbul calendar days (YYYY-MM-DD) and read as such; noon keeps the name of the day in any clock.
+const dayLong = (day: string) => formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
+const dayShort = (day: string) => { const dayOfMonth = Number(day.slice(8, 10)); return dayOfMonth === 1 ? formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'short' }).replace(/\.$/, '') : String(dayOfMonth) }
 function axisLabel(value: number) {
   if (!value) return '₺0'
   return value >= 1000 ? `₺${(value / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} B` : `₺${count(value)}`
@@ -95,16 +78,14 @@ function niceStep(max: number) {
   return Math.ceil(rough / magnitude) * magnitude
 }
 
-// One breakdown per marketplace, shown when the card is hovered.
-function Breakdown({ rows }: { rows: Array<[string, string]> }) {
-  return rows.length ? <div className="rr-tip rr-bd" role="tooltip">{rows.map(([platform, value]) => <div className="rr-bd-r" key={platform}><RrLogo code={platformCode(platform)} /><span>{platformName(platform)}</span><b className="rr-num">{value}</b></div>)}</div> : null
+// One breakdown per store, shown when the card is hovered.
+function Breakdown({ rows }: { rows: Array<{ key: string; code: string; name: string; value: string }> }) {
+  return rows.length ? <div className="rr-tip rr-bd" role="tooltip">{rows.map(row => <div className="rr-bd-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div> : null
 }
-const breakdownRows = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1]).map(([platform, value]) => [platform, `${count(value)} adet`] as [string, string])
-
 
 // Daily revenue: area and line for this period, dashed line for the previous one. The day tooltip follows the
 // pointer, above it when the page has room there, otherwise below.
-function RevenueChart({ points, previous, currency, value = point => point.amount, axis = axisLabel }: { points: RevenuePoint[]; previous: RevenuePoint[]; currency: string; value?: (point: RevenuePoint) => number; axis?: (value: number) => string }) {
+function RevenueChart({ points, previous, currency, value = point => point.amount, axis = axisLabel }: { points: DayPoint[]; previous: DayPoint[]; currency: string; value?: (point: DayPoint) => number; axis?: (value: number) => string }) {
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
@@ -112,7 +93,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
   const max = niceStep(Math.max(1, ...points.map(value), ...previous.map(value))) * 5
   const x = (index: number, length = points.length) => L + (length > 1 ? index / (length - 1) : 0) * (W - L - R)
   const y = (value: number) => T + (1 - value / max) * (H - T - B)
-  const line = (series: RevenuePoint[]) => series.map((point, index) => `${index ? 'L' : 'M'}${x(index, series.length).toFixed(1)} ${y(value(point)).toFixed(1)}`).join(' ')
+  const line = (series: DayPoint[]) => series.map((point, index) => `${index ? 'L' : 'M'}${x(index, series.length).toFixed(1)} ${y(value(point)).toFixed(1)}`).join(' ')
   const labelStep = Math.max(1, Math.round(points.length / 6))
   useLayoutEffect(() => {
     const tip = tipRef.current, chart = chartRef.current
@@ -136,7 +117,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
   return <div ref={chartRef} className="rr-chart" onMouseMove={move} onMouseLeave={() => setHover(null)}>
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Günlük ciro grafiği">
       <g className="rr-grid">{Array.from({ length: 6 }, (_, index) => { const value = max / 5 * index; return <g key={index}><line x1={L} x2={W - R} y1={y(value)} y2={y(value)} /><text x={L - 10} y={y(value) + 4} textAnchor="end">{axis(value)}</text></g> })}</g>
-      <g className="rr-xax">{points.map((item, index) => index % labelStep === 0 || new Date(item.day).getDate() === 1 ? <text key={item.day} x={x(index)} y={H - 8} textAnchor="middle">{dayShort(item.day)}</text> : null)}</g>
+      <g className="rr-xax">{points.map((item, index) => index % labelStep === 0 || Number(item.day.slice(8, 10)) === 1 ? <text key={item.day} x={x(index)} y={H - 8} textAnchor="middle">{dayShort(item.day)}</text> : null)}</g>
       <path className="rr-area" d={`${line(points)} L${x(points.length - 1)} ${y(0)} L${x(0)} ${y(0)} Z`} />
       {previous.length > 0 && <path className="rr-prev" d={line(previous)} />}
       <path className="rr-cur" d={line(points)} />
@@ -147,9 +128,10 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
     </svg>
     {hover && point && <div ref={tipRef} className="rr-ctip" style={{ visibility: 'hidden' }}><b>{dayLong(point.day)}</b><table><thead><tr><th /><th>Seçilen Gün</th><th>Önceki Gün</th></tr></thead><tbody>
       <tr><td>Sipariş</td><td className="rr-num">{count(point.orderCount)}</td><td className="rr-num">{before ? count(before.orderCount) : '—'}</td></tr>
-      <tr><td>Ürün (Adet)</td><td className="rr-num">{count(point.productQuantity ?? 0)}</td><td className="rr-num">{before ? count(before.productQuantity ?? 0) : '—'}</td></tr>
-      <tr><td>Kargo (Paket)</td><td className="rr-num">{count(point.shipmentCount ?? 0)}</td><td className="rr-num">{before ? count(before.shipmentCount ?? 0) : '—'}</td></tr>
+      <tr><td>Ürün (Adet)</td><td className="rr-num">{count(point.productQuantity)}</td><td className="rr-num">{before ? count(before.productQuantity) : '—'}</td></tr>
+      <tr><td>Kargo (Paket)</td><td className="rr-num">{count(point.packageCount)}</td><td className="rr-num">{before ? count(before.packageCount) : '—'}</td></tr>
       <tr><td>Ciro</td><td className="rr-num"><b>{money(point.amount, currency)}</b></td><td className="rr-num">{before ? money(before.amount, currency) : '—'}</td></tr>
+      {(point.returnedOrderCount > 0 || (before?.returnedOrderCount ?? 0) > 0) && <tr><td>İade</td><td className="rr-num">{money(point.returnedAmount, currency)}</td><td className="rr-num">{before ? money(before.returnedAmount, currency) : '—'}</td></tr>}
     </tbody></table></div>}
   </div>
 }
@@ -171,48 +153,51 @@ function dailyStats(values: number[], format: (value: number) => string, average
   return { avg: format(average), min: format(low), max: format(high), position: high > low ? (today - low) / (high - low) : 0.5 }
 }
 
+const sumOf = (points: DayPoint[], pick: (point: DayPoint) => number) => points.reduce((total, point) => total + pick(point), 0)
+
 export function DashboardPage() {
-  const today = dateKey(new Date())
+  // Periods are Istanbul calendar days, whatever the browser's clock says.
+  const today = istanbulDateKey()
   const [range, setRange] = useState<Range>('30')
-  const [from, setFrom] = useState(today)
-  const [to, setTo] = useState(today)
-  // The channel picked in the channel list filters the whole performance card; the metric picks what the chart draws.
-  const [platform, setPlatform] = useState('ALL')
+  const [custom, setCustom] = useState({ from: today, to: today })
+  // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
+  const [channel, setChannel] = useState('ALL')
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
-  const now = new Date()
-  const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), ...refresh })
-  const invoiceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), ...refresh })
-  const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), ...refresh })
-  const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix'), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
-  const platforms = Array.from(new Set((bootstrap.data?.platforms ?? []).map(platform => platform.name)))
-  const report = rangeDates(range, from, to, now)
-  const reportPrevious = previousRange(report.start, report.end)
-  const reportKey = `${range}:${from}:${to}`
-  const reportQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'revenue-series', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, platform)), ...refresh })
-  const reportPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'revenue-series-previous', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, platform)), ...refresh })
-  const channelQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'channel-revenue', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, name)) }))), enabled: platforms.length > 0, ...refresh })
-  const channelPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'channel-revenue-previous', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, name)) }))), enabled: platforms.length > 0, ...refresh })
+  const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap', poll), ...refresh })
+  const invoiceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', poll), ...refresh })
+  const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary', poll), ...refresh })
+  const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix', poll), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
+  // A custom range picked only halfway asks for nothing until its end is picked too.
+  const days = periodDays(range, custom, today)
+  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
 
   const metrics = bootstrap.data?.metrics
-  const series = reportQuery.data ?? []
-  const previousSeries = reportPreviousQuery.data ?? []
-  const currency = series.find(point => point.amount > 0)?.currency || 'TRY'
-  const total = series.reduce((sum, point) => sum + point.amount, 0)
-  const orders = series.reduce((sum, point) => sum + point.orderCount, 0)
-  const previousTotal = previousSeries.reduce((sum, point) => sum + point.amount, 0)
-  const previousOrders = previousSeries.reduce((sum, point) => sum + point.orderCount, 0)
+  const channels = new Map((bootstrap.data?.channels ?? performance.data?.channels ?? []).map(item => [item.connectionId, item]))
+  const data = performance.data
+  const loading = performance.isLoading
+  const currency = primaryCurrency(data?.current ?? [])
+  const series = data ? daySeries(data.current, data.from, data.to, channel, currency) : []
+  const previousSeries = data ? daySeries(data.previous, data.previousFrom, data.previousTo, channel, currency) : []
+  const total = sumOf(series, point => point.amount)
+  const orders = sumOf(series, point => point.orderCount)
+  const previousTotal = sumOf(previousSeries, point => point.amount)
+  const previousOrders = sumOf(previousSeries, point => point.orderCount)
+  const returnedAmount = sumOf(series, point => point.returnedAmount)
+  const returnedOrders = sumOf(series, point => point.returnedOrderCount)
+  const foreign = data ? otherCurrencies(data.current, channel, currency) : []
   const basket = orders ? total / orders : 0
   const previousBasket = previousOrders ? previousTotal / previousOrders : 0
-  const days = Math.max(1, series.length)
-  const channels = (channelQuery.data ?? []).map(channel => ({ platform: channel.platform, amount: channel.points.reduce((sum, point) => sum + point.amount, 0), orders: channel.points.reduce((sum, point) => sum + point.orderCount, 0) })).filter(channel => channel.amount > 0 || channel.orders > 0).sort((left, right) => right.amount - left.amount || right.orders - left.orders)
-  const channelAmount = channels.reduce((sum, channel) => sum + channel.amount, 0)
-  const channelOrders = channels.reduce((sum, channel) => sum + channel.orders, 0)
-  const channelShares = channels.map((channel, index) => ({ ...channel, color: platformColor(channel.platform, index), share: channelAmount > 0 ? channel.amount / channelAmount * 100 : channelOrders > 0 ? channel.orders / channelOrders * 100 : 0 }))
-  const previousByChannel = new Map((channelPreviousQuery.data ?? []).map(channel => [channel.platform, channel.points.reduce((sum, point) => sum + point.amount, 0)]))
+  const dayCount = Math.max(1, series.length)
+  const storeTotals = data ? channelTotals(data, currency) : []
+  const channelAmount = storeTotals.reduce((sum, item) => sum + item.amount, 0)
+  const channelOrders = storeTotals.reduce((sum, item) => sum + item.orders, 0)
+  const channelShares = storeTotals.map((item, index) => ({ ...item, color: platformColor(item.platformCode, index), share: channelAmount > 0 ? item.amount / channelAmount * 100 : channelOrders > 0 ? item.orders / channelOrders * 100 : 0 }))
+  const selected = channel === 'ALL' ? null : channels.get(channel) ?? null
+  const selectedName = selected?.displayName ?? storeTotals.find(item => item.connectionId === channel)?.name ?? ''
   const periodText = range === 'custom' ? 'Seçilen dönem' : periodLabel(range)
-  const chartValues: Array<[(point: RevenuePoint) => number, (value: number) => string, string]> = [
+  const chartValues: Array<[(point: DayPoint) => number, (value: number) => string, string]> = [
     [point => point.amount, axisLabel, 'Günlük Ciro'],
     [point => point.orderCount, value => count(value), 'Günlük Sipariş'],
     [point => point.orderCount ? point.amount / point.orderCount : 0, axisLabel, 'Günlük Ortalama Sepet'],
@@ -220,60 +205,69 @@ export function DashboardPage() {
   // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
   const rows = (matrix.data ?? []).filter(row => PLATFORMS.some(([code]) => code === row.platformCode.toUpperCase()))
   const attention = rows.filter(row => row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn')).length
-  const errors = [bootstrap.error, productSummary.error, reportQuery.error, reportPreviousQuery.error, channelQuery.error, channelPreviousQuery.error, matrix.error].filter(Boolean)
-  const loadingValue = (loading: boolean, value: number | undefined) => loading ? '—' : count(value ?? 0)
-  const revenueStats = dailyStats(series.map(point => point.amount), value => money(value, currency), total / days)
-  const orderStats = dailyStats(series.map(point => point.orderCount), count, orders / days)
+  const errors = [bootstrap.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
+  const loadingValue = (busy: boolean, value: number | undefined) => busy ? '—' : count(value ?? 0)
+  const revenueStats = dailyStats(series.map(point => point.amount), value => money(value, currency), total / dayCount)
+  const orderStats = dailyStats(series.map(point => point.orderCount), count, orders / dayCount)
   const basketStats = dailyStats(series.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
   const products = productSummary.data
+  const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
+    .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
   const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | undefined]> = [
-    ['cart', 'Bekleyen Siparişler', bootstrap.isLoading ? null : metrics?.pendingOrders ?? 0, 'warn', dashboardOperationalLinks.pendingOrders, metrics?.pendingByPlatform],
-    ['late', 'Geciken Siparişler', bootstrap.isLoading ? null : metrics?.lateOrders ?? 0, 'bad', '/orders', metrics?.lateByPlatform],
-    ['ret', 'Bekleyen İadeler', bootstrap.isLoading ? null : metrics?.pendingReturns ?? 0, 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByPlatform],
-    ['invoice', 'Bekleyen Faturalar', bootstrap.isLoading || invoiceSummary.isLoading ? null : invoiceSummary.data?.uninvoicedCount ?? metrics?.uninvoicedInvoices ?? 0, '', dashboardOperationalLinks.pendingInvoices, undefined],
+    ['cart', 'Bekleyen Siparişler', bootstrap.isLoading ? null : metrics?.pendingOrders ?? 0, 'warn', dashboardOperationalLinks.pendingOrders, metrics?.pendingByConnection],
+    ['late', 'Geciken Siparişler', bootstrap.isLoading ? null : metrics?.lateOrders ?? 0, 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
+    ['ret', 'Bekleyen İadeler', bootstrap.isLoading ? null : metrics?.pendingReturns ?? 0, 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
+    ['invoice', 'Bekleyen Faturalar', invoiceSummary.isLoading ? null : invoiceSummary.data?.uninvoicedCount ?? 0, '', dashboardOperationalLinks.pendingInvoices, undefined],
     ['due', 'Yaklaşan Faturalar', invoiceSummary.isLoading ? null : invoiceSummary.data?.dueSoonCount ?? 0, '', dashboardOperationalLinks.dueInvoices, undefined],
-    ['lowst', 'Düşük Stok', bootstrap.isLoading ? null : metrics?.lowStockProducts ?? 0, 'warn', '/products', undefined],
+    // The same count as the product list's low-stock filter it opens.
+    ['lowst', 'Düşük Stok', productSummary.isLoading ? null : products?.lowStockCount ?? 0, 'warn', dashboardOperationalLinks.lowStock, undefined],
   ]
+  // The file is made from the data on screen only once it belongs to the chosen period and store.
+  const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
   function downloadReport() {
-    const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
-    const csvRows = [['Tarih', 'Ciro', 'Sipariş', 'Para Birimi'], ...series.map(point => [formatDate(point.day), point.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 }), point.orderCount, point.currency])]
-    const url = URL.createObjectURL(new Blob([`\ufeff${csvRows.map(row => row.map(escape).join(';')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' }))
+    if (!reportReady || !data) return
+    const report = revenueReport(data, channel, selectedName)
+    const url = URL.createObjectURL(new Blob([report.content], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
-    const name = `ravencia-rapor-${dateKey(new Date())}.csv`
     link.href = url
-    link.download = name
+    link.download = report.name
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
-    setToast(`${name} indirildi (Tarih, Ciro, Sipariş, Para Birimi).`)
+    setToast(`${report.name} indirildi (${report.columns.join(', ')}).`)
   }
   const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) ? `Mağaza ${row.externalStoreId}` : row.externalStoreId.length > 24 ? `Mağaza ${row.externalStoreId.slice(0, 8)}…` : row.externalStoreId
 
   return <section className="content f3 rr rr-dashboard" aria-label="Genel Bakış">
     <div className="rr-ph"><div><div className="rr-crumb">Operasyon Merkezi</div><h1>Genel Bakış</h1><p>Siparişler, iadeler, faturalar ve stok için bugün ilgilenmeniz gerekenler ve satış performansınız.</p></div><div className="rr-acts">
-      <button type="button" className="rr-btn" onClick={downloadReport} disabled={reportQuery.isLoading}><RrIcon name="export" />Raporu İndir</button>
+      <button type="button" className="rr-btn" onClick={downloadReport} disabled={!reportReady} title={reportReady ? undefined : 'Rapor verisi hazırlanıyor'}><RrIcon name="export" />Raporu İndir</button>
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
-    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byPlatform]) => <Link key={kind} className={`rr-opcard${tone && value ? ` rr-${tone}` : ''}`} to={to}><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows(byPlatform)} /></Link>)}</div></section>
-    <section className="rr-panel rr-pf" style={platform === 'ALL' ? undefined : { ['--pf-accent' as string]: platformColor(platform, 0) }}>
-      <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {platform === 'ALL' ? 'Tüm Platformlar' : platformName(platform)} · {range === 'today' ? 'dünle karşılaştırma' : 'önceki eşit dönemle karşılaştırma'}</p></div><div className="rr-pf-tools">
-        {range === 'custom' && <DateRangePicker className="rr-date" from={from} to={to} onChange={value => { setFrom(value.from); setTo(value.to) }} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
+    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection]) => <Link key={kind} className={`rr-opcard${tone && value ? ` rr-${tone}` : ''}`} to={to}><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdown(byConnection)} /></Link>)}</div></section>
+    <section className="rr-panel rr-pf" style={selected ? { ['--pf-accent' as string]: platformColor(selected.platformCode, 0) } : undefined}>
+      <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {channel === 'ALL' ? 'Tüm Platformlar' : selectedName} · {comparisonText(range, data)}</p></div><div className="rr-pf-tools">
+        {range === 'custom' && <DateRangePicker className="rr-date" from={custom.from} to={custom.to} onChange={value => setCustom({ from: value.from, to: value.to })} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
         <div className="rr-seg" role="radiogroup" aria-label="Dönem">{PERIODS.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={range === value} className={range === value ? 'rr-on' : undefined} onClick={() => setRange(value)}>{value === 'custom' ? 'Özel' : label.replace('Son ', '')}</button>)}</div>
       </div></div>
+      {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell loading={reportQuery.isLoading || reportPreviousQuery.isLoading} label="Toplam Gelir" value={reportQuery.isLoading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
-        <KpiCell loading={reportQuery.isLoading || reportPreviousQuery.isLoading} label="Toplam Sipariş" value={loadingValue(reportQuery.isLoading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
-        <KpiCell loading={reportQuery.isLoading || reportPreviousQuery.isLoading} label="Ortalama Sepet" value={reportQuery.isLoading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
-        <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={platform === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
+        <KpiCell loading={loading} label="Toplam Gelir" value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell loading={loading} label="Toplam Sipariş" value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell loading={loading} label="Ortalama Sepet" value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
+        <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
+      {!loading && (returnedOrders > 0 || foreign.length > 0) && <p className="rr-pf-note">
+        {returnedOrders > 0 && <span>İade: <b className="rr-num">{money(returnedAmount, currency)}</b> · {count(returnedOrders)} sipariş (ciroya dahil değil)</span>}
+        {foreign.length > 0 && <span>Diğer para birimleri: {foreign.map(item => <b key={item.currency} className="rr-num">{money(item.amount, item.currency)} ({count(item.orders)} sipariş) </b>)}</span>}
+      </p>}
       <div className="rr-pf-body">
-        <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{platform === 'ALL' ? '' : ` · ${platformName(platform)}`}</b>
-          {reportQuery.isLoading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
+        <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{channel === 'ALL' ? '' : ` · ${selectedName}`}</b>
+          {loading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
           <div className="rr-legend"><span><i className="rr-lg-cur" />Bu Dönem</span><span><i className="rr-lg-prev" />Önceki Dönem</span></div></div>
         <div className="rr-pf-chan">
-          <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{platform !== 'ALL' && <span className="rr-ftag"><RrLogo code={platformCode(platform)} />{platformName(platform)}<button type="button" onClick={() => setPlatform('ALL')} aria-label="Platform süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>
+          <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{selected && <span className="rr-ftag"><RrLogo code={selected.platformCode} />{selectedName}<button type="button" onClick={() => setChannel('ALL')} aria-label="Mağaza süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>
           {channelShares.length ? <>
-            <span className="rr-stack" aria-hidden="true">{channelShares.map(channel => <i key={channel.platform} style={{ width: `${channel.share}%`, background: channel.color }} />)}</span>
-            <div className={`rr-crows${channelQuery.isLoading || channelPreviousQuery.isLoading ? ' rr-crows-wait' : ''}`}>{channelShares.map(channel => { const on = platform === channel.platform; const previousAmount = previousByChannel.get(channel.platform) ?? 0; const delta = trend(channel.amount, previousAmount); return <button key={channel.platform} type="button" className={`rr-crow${on ? ' rr-on' : platform !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setPlatform(on ? 'ALL' : channel.platform)}><RrLogo code={platformCode(channel.platform)} /><span className="rr-ct"><span><b>{platformName(channel.platform)}</b><small className="rr-num">{money(channel.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${channel.share}%`, background: channel.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b><small className={`rr-num ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? '+' : ''}{delta[0]}</small></span></button> })}</div>
+            <span className="rr-stack" aria-hidden="true">{channelShares.map(item => <i key={item.connectionId} style={{ width: `${item.share}%`, background: item.color }} />)}</span>
+            <div className={`rr-crows${performance.isFetching ? ' rr-crows-wait' : ''}`}>{channelShares.map(item => { const on = channel === item.connectionId; const delta = trend(item.amount, item.previousAmount); return <button key={item.connectionId} type="button" className={`rr-crow${on ? ' rr-on' : channel !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setChannel(on ? 'ALL' : item.connectionId)}><RrLogo code={item.platformCode} /><span className="rr-ct"><span><b>{item.name}</b><small className="rr-num">{money(item.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${item.share}%`, background: item.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{item.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b><small className={`rr-num ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? '+' : ''}{delta[0]}</small></span></button> })}</div>
           </> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Kanal Dağılımı Yok</b><span className="rr-lead">Bu dönem için kanal dağılımı bulunmuyor.</span></div>}
           <Link className="rr-btn rr-link" to="/integrations">Kanalları Yönet <RrIcon name="arrowR" /></Link>
         </div>
@@ -283,10 +277,10 @@ export function DashboardPage() {
       <div className="rr-mxwrap"><table className="rr-mxt"><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th /></tr></thead><tbody>
         {!rows.length && <tr><td colSpan={DATA_KEYS.length + 2}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
         {rows.map(row => <tr key={row.connectionId} className={row.issue ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small title={row.issue ?? undefined}>{row.issue ?? storeLabel(row)}</small></span></span></td>
-          {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; const when = age(cell.lastSuccessAt); return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{cell.state === 'off' ? 'İşlem Yok' : when ?? 'Durdu'}</span></td> })}
+          {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{matrixCellText(cell)}</span></td> })}
           <td className="rr-mx-act">{row.issue && <Link className="rr-btn rr-link" to="/jobs?durum=hata">İncele</Link>}</td></tr>)}
       </tbody></table></div>
-      <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{count(metrics?.recentJobCount ?? 0)}</b> istek · <b className="rr-num">{count(metrics?.deadJobCount ?? 0)}</b> tamamlanamayan iş · <b className="rr-num">{count(metrics?.manualReviewJobCount ?? 0)}</b> karar bekleyen iş</span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Durdu</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
+      <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{count(metrics?.recentJobCount ?? 0)}</b> istek · <b className="rr-num">{count(metrics?.deadJobCount ?? 0)}</b> tamamlanamayan iş · <b className="rr-num">{count(metrics?.manualReviewJobCount ?? 0)}</b> karar bekleyen iş</span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Hata Var</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
     </section>
     {toast && <NoticeToast kind="success" title="Rapor İndirildi" message={toast} onClose={() => setToast(null)} durationMs={6000} />}
   </section>
