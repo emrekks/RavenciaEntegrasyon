@@ -30,6 +30,12 @@ describe('Hepsiburada marketplace workspace support', () => {
     expect(isMarketplacePlatformSelected(['SHOPIFY'], 'hepsiburada')).toBe(false)
   })
 
+  it('takes no name from a passive store', () => {
+    const options = marketplacePlatformOptions([{ platformCode: 'HEPSIBURADA', displayName: 'Ravencia HB', status: 'ACTIVE' }, { platformCode: 'HEPSIBURADA', displayName: 'SIT Hepsiburada', status: 'DISABLED' }])
+    expect(options.find(option => option.value === 'HEPSIBURADA')?.label).toBe('Ravencia HB')
+    expect(options.some(option => option.label === 'SIT Hepsiburada')).toBe(false)
+  })
+
   it('shows every platform when no checkboxes are selected', () => {
     expect(isMarketplacePlatformSelected([], 'HEPSIBURADA')).toBe(true)
     expect(isMarketplacePlatformSelected(null, 'SHOPIFY')).toBe(true)

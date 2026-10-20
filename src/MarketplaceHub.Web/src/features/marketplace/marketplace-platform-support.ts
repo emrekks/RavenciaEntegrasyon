@@ -1,7 +1,7 @@
 export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'] as const
 
 export type MarketplacePlatformOption = { value: string; label: string }
-export type MarketplacePlatformOptionSource = { platformCode: string; displayName?: string | null }
+export type MarketplacePlatformOptionSource = { platformCode: string; displayName?: string | null; status?: string | null }
 
 const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number], string> = {
   TRENDYOL: 'Trendyol',
@@ -60,6 +60,10 @@ export function marketplacePlatformOptions(...sources: ReadonlyArray<readonly Ma
       if (!rawCode) continue
       const normalizedCode = normalizeMarketplacePlatformCode(rawCode)
       if (normalizedCode === 'TRENDYOL_EFATURAM') continue
+      // A passive (draft, disabled, hidden) store neither gets an option nor lends its name to one: a passive
+      // "SIT Hepsiburada" connection used to rename the Hepsiburada option.
+      const status = item.status?.trim().toUpperCase()
+      if (status && status !== 'ACTIVE' && status !== 'VERIFIED') continue
       const value = isOrderMarketplacePlatform(normalizedCode) ? normalizedCode : rawCode
       options.set(value, {
         value,
