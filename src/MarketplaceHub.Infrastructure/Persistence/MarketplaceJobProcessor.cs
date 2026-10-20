@@ -8828,8 +8828,26 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // the previous all-time cursor makes the next read start at three months.
     private const string ShopifyReturnSyncStateVersion = "shopify-returns-v1";
     private sealed record ShopifyReturnSyncState(string Version, string? Cursor, DateTimeOffset? ModifiedAfter, DateTimeOffset Anchor);
-    private const string ReturnSyncStateVersion = "returns-v10";
-    private sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null);
+    internal const string ReturnSyncStateVersion = "returns-v10";
+    // PageCursor is the adapter's NextCursor kept as it came (Trendyol: "s:Created=2,Accepted=5", one next page per
+    // claim status bucket that still has claims). Page counts the pages read and is the request cursor only when
+    // PageCursor is empty (first page, or a state written before PageCursor existed), so old states keep working.
+    internal sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null, string? PageCursor = null);
+    internal const int MaximumReturnPageCursorLength = 1_000;
+
+    internal static string ReturnPageCursor(ReturnSyncState state) =>
+        string.IsNullOrWhiteSpace(state.PageCursor) ? state.Page.ToString(System.Globalization.CultureInfo.InvariantCulture) : state.PageCursor;
+
+    // A numeric NextCursor is a plain page number; any other non-empty value is opaque and is sent back unchanged.
+    // Without a usable NextCursor the next page number is the only way on.
+    internal static ReturnSyncState NextReturnPage(ReturnSyncState state, string? nextCursor)
+    {
+        if (int.TryParse(nextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var page))
+            return state with { Page = page, PageCursor = null };
+        if (!string.IsNullOrWhiteSpace(nextCursor) && nextCursor.Length <= MaximumReturnPageCursorLength)
+            return state with { Page = state.Page + 1, PageCursor = nextCursor };
+        return state with { Page = state.Page + 1, PageCursor = null };
+    }
     private const string HepsiburadaReturnSyncStateVersion = "hepsiburada-returns-v2";
     private static readonly string[] HepsiburadaClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
     private sealed record HepsiburadaReturnSyncState(string Version, int StatusIndex, int Offset, bool Full, DateTimeOffset? StatusChangedAfter, DateTimeOffset AnchorEnd);
@@ -8874,12 +8892,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ? new ReturnPollWindow(null, null, storefront)
                 : new ReturnPollWindow(state.StartAt, state.EndAt, storefront);
             TrackRequest();
-            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{storefront}:{state.Page}"), window, new(state.Page.ToString(), 200), cancellationToken);
-            if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.Page == 0 && result.Error?.HttpStatus is 400 or 404)
+            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{storefront}:{state.Page}"), window, new(ReturnPageCursor(state), 200), cancellationToken);
+            if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.Page == 0 && state.PageCursor is null && result.Error?.HttpStatus is 400 or 404)
             {
                 if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.ReturnCodes.Length)
                 {
-                    state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0 };
+                    state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0, PageCursor = null };
                     cursor.OpaqueCursor = SerializeReturnSyncState(state);
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
@@ -8896,12 +8914,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
             if (result.Value.HasMore)
             {
-                var nextPage = int.TryParse(result.Value.NextCursor, out var parsedPage) ? parsedPage : state.Page + 1;
-                state = state with { Page = nextPage };
+                state = NextReturnPage(state, result.Value.NextCursor);
             }
             else if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.ReturnCodes.Length)
             {
-                state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0 };
+                state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0, PageCursor = null };
             }
             else
             {
@@ -9585,16 +9602,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return new(null, ProductMainId: value, IncludePendingApproval: includePendingApproval);
     }
 
-    private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceFull = false)
+    internal static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceFull = false)
     {
         if (forceFull) return InitialReturnWindow(now);
         if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
+            // The oldest cursors were a bare page number (a number is not a state object, so it is read first).
+            if (int.TryParse(cursor.OpaqueCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var oldPage))
+                return InitialReturnWindow(now) with { Page = oldPage };
             try
             {
                 var state = JsonSerializer.Deserialize<ReturnSyncState>(cursor.OpaqueCursor);
-                if (state is { Version: ReturnSyncStateVersion, StoreFrontIndex: >= 0, Page: >= 0 } && state.StoreFrontIndex < TrendyolReadStorefronts.ReturnCodes.Length) return state;
-                if (int.TryParse(cursor.OpaqueCursor, out var oldPage) && oldPage >= 0) return InitialReturnWindow(now) with { Page = oldPage };
+                if (state is { Version: ReturnSyncStateVersion, StoreFrontIndex: >= 0, Page: >= 0 } && state.StoreFrontIndex < TrendyolReadStorefronts.ReturnCodes.Length)
+                    return state.PageCursor is { } pageCursor && (string.IsNullOrWhiteSpace(pageCursor) || pageCursor.Length > MaximumReturnPageCursorLength)
+                        ? state with { PageCursor = null }
+                        : state;
             }
             catch (JsonException) { }
         }
@@ -9604,7 +9626,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : new(ReturnSyncStateVersion, 0, 0, false, watermark.Value.Subtract(overlap), now);
     }
 
-    private static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
+    internal static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
     private static ReturnSyncState InitialReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddMonths(-3), now);
 
     private async Task UpsertReturn(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim remote, Dictionary<string, string?> productSnapshots, CancellationToken cancellationToken)
