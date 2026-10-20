@@ -5,6 +5,7 @@ import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, totalUnits } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
+import { versionedIdempotencyKey } from '../../shared/idempotency'
 
 export type BulkDecisionLine = {
   id: string
@@ -105,12 +106,13 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     for (const [index, item] of items.entries()) {
       try {
         const stockLines = (allGroups[index] ?? []).filter(group => stockKeys.includes(group.key) && group.mapped).flatMap(group => allocateStock(group.lines, unitsFor(group)))
+        const body = JSON.stringify(approving
+          ? { action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], finalizedWith: item.platformCode.toUpperCase() === 'HEPSIBURADA' ? 'Refund' : null, stockLines }
+          : { action: 'REJECT', reasonCode: reasonId, explanation: explanation.trim(), evidenceAssetIds: [], finalizedWith: null })
         await hubApi(`/returns/${item.id}/actions`, {
           method: 'POST',
-          headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` },
-          body: JSON.stringify(approving
-            ? { action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], finalizedWith: item.platformCode.toUpperCase() === 'HEPSIBURADA' ? 'Refund' : null, stockLines }
-            : { action: 'REJECT', reasonCode: reasonId, explanation: explanation.trim(), evidenceAssetIds: [], finalizedWith: null })
+          headers: { 'Idempotency-Key': versionedIdempotencyKey('return-action', item.id, item.version, body), 'If-Match': `"v${item.version}"` },
+          body
         })
         results.push({ id: item.id, ok: true, message: approving ? 'Onaylandı' : 'Reddedildi' })
       } catch (reason) {

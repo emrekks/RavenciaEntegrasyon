@@ -4,7 +4,9 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
-import { UiIcon, type UiIconName } from '../../shared/components'
+import { UiIcon, usePromptDialog, type UiIconName } from '../../shared/components'
+import { newIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
+import { httpsUrlProblem } from '../../shared/safe-url'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, statusLabel } from '../../shared/status-labels'
@@ -195,7 +197,6 @@ type PublicationStatus = { productId: string; connectionId: string; profileId: s
 type PublicationJobDetail = { job: { id: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
 type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
 
-const key = () => crypto.randomUUID()
 const isProductImportConnection = productImportConnection
 const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
 const productPublicationMode = (item: MarketplaceConnection) => productPublicationChannelMode(item.platformCode, item.status, item.externalWritesEnabled)
@@ -617,13 +618,13 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           if (nextList < nextSale) throw new Error(`${variant.sku}: liste fiyatı satış fiyatından küçük olamaz.`)
           const body = { connectionId, variantId: variant.id, listPrice: nextList, salePrice: nextSale, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Toplu ürün fiyat düzenleme' }
           if (variant.offerId) { if (variant.offerVersion == null) throw new Error(`${variant.sku}: fiyat sürümü eksik.`); await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) }) }
-          else { if (!connectionId) throw new Error('İlk fiyat için aktif platform bağlantısı bulunamadı.'); await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(body) }) }
+          else { if (!connectionId) throw new Error('İlk fiyat için aktif platform bağlantısı bulunamadı.'); await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }) }
         }
         if (stockRequested && amount != null) {
           const target = stockAction === 'SET' ? amount : stockAction === 'ADD' ? variant.onHand + amount : variant.onHand - amount
           if (target < 0) throw new Error(`${variant.sku}: stok sıfırın altına inemez.`)
           const delta = target - variant.onHand
-          if (delta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Toplu ürün stok düzenleme', sourceEventId: key() }) })
+          if (delta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Toplu ürün stok düzenleme', sourceEventId: newIdempotencyKey() }) })
         }
       }
       await onChanged(); onResult?.(`${targetSelection.length} varyant başarıyla güncellendi.`, 'success'); onClose()
@@ -664,12 +665,12 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect, s
     if (!variant.offerId && !connectionId) return
     const body = { connectionId, variantId: variant.id, listPrice, salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Hızlı varyant fiyat düzenleme' }
     setSavingPrice(true)
-    try { if (variant.offerId) { if (variant.offerVersion == null) return; await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `\"v${variant.offerVersion}\"` }, body: JSON.stringify(body) }) } else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(body) }); await onChanged() } finally { setSavingPrice(false) }
+    try { if (variant.offerId) { if (variant.offerVersion == null) return; await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `\"v${variant.offerVersion}\"` }, body: JSON.stringify(body) }) } else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }); await onChanged() } finally { setSavingPrice(false) }
   }
   async function saveStock() {
     const target = Number(stock); const delta = target - variant.onHand; if (savingStock || !Number.isFinite(target) || target < 0 || delta === 0) return
     setSavingStock(true)
-    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Hızlı varyant stok düzenleme', sourceEventId: key() }) }); await onChanged() } finally { setSavingStock(false) }
+    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Hızlı varyant stok düzenleme', sourceEventId: newIdempotencyKey() }) }); await onChanged() } finally { setSavingStock(false) }
   }
   return <><label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label>{showPrice && <label className="rr-mini"><small>Fiyat</small><input className="rr-in rr-num" aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label>}</>
 }
@@ -999,7 +1000,7 @@ export function ProductsPage() {
         const updateExistingPricesAndStock = productImportMethod === 'BULK' && existingOnly && !isHepsiburada && productImportUpdateExistingPricesAndStock
         const query = new URLSearchParams({ full: String(productImportMethod === 'BULK' && full), newOnly: String(productImportMethod === 'BULK' && newOnly), existingOnly: String(productImportMethod === 'BULK' && existingOnly), mappingOnly: String(productImportMethod === 'BULK' && mappingOnly), optionsOnly: String(productImportMethod === 'BULK' && optionsOnly), includeArchived: String(productImportIncludeArchived), includeDrafts: String(productImportMethod === 'BULK' && productImportIncludeArchived && platformCode === 'SHOPIFY'), includePendingApproval: String(includePendingApproval && platformCode === 'TRENDYOL'), updateExistingProducts: String(updateExistingProducts), updateExistingPricesAndStock: String(updateExistingPricesAndStock) })
         if (productImportMethod === 'SINGLE') query.set('lookup', productImportLookup.trim())
-        return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })
+        return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
       }))
       setTrackedProductImportJobIds(queuedProductSyncJobs.map(job => job.jobId))
       const modeLabel = productImportMethod === 'SINGLE' ? 'tek ürün' : full ? 'tam katalog' : productImportMode === 'NEW_ONLY' ? 'yeni ürün' : productImportMode === 'MAPPING_ONLY' ? 'ürün eşleme' : 'mevcut ürün güncelleme'
@@ -1102,7 +1103,7 @@ export function ProductsPage() {
     try {
       for (let index = 0; index < targetIds.length; index += 500) {
         const productIds = targetIds.slice(index, index + 500)
-        await hubApi('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds, status: newStatus }) })
+        await hubApi('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, status: newStatus }) })
       }
       showProductToast(`${targetCount} ürün durumu “${productStatusLabel(newStatus)}” olarak güncellendi.`, 'success')
       setSelectedProductIds([])
@@ -1130,11 +1131,11 @@ export function ProductsPage() {
     setDeletingProducts(true)
     try {
       if (request.product && request.productIds.length === 1) {
-        await hubApi(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `\"v${request.product.version}\"`, 'Idempotency-Key': key() } })
+        await hubApi(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `\"v${request.product.version}\"`, 'Idempotency-Key': newIdempotencyKey() } })
       } else {
         for (let index = 0; index < request.productIds.length; index += 500) {
           const productIds = request.productIds.slice(index, index + 500)
-          await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds }) })
+          await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds }) })
         }
       }
       const targetIds = new Set(request.productIds)
@@ -1387,6 +1388,7 @@ function RichTextTool({ icon, label, onClick, disabled = false }: { icon: UiIcon
 }
 
 function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [promptAddress, addressDialog] = usePromptDialog()
   const visualEditor = useRef<HTMLDivElement>(null)
   const lastValue = useRef(value)
   const [htmlMode, setHtmlMode] = useState(false)
@@ -1415,22 +1417,31 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
     syncVisualValue()
   }
 
-  function insertLink() {
-    const url = window.prompt('Bağlantı adresi', 'https://')
-    if (url) runCommand('createLink', url)
+  // The address window takes focus away from the editor: the selection is kept and put back before the command runs.
+  function editorSelection() {
+    const selection = window.getSelection()
+    return selection && selection.rangeCount && visualEditor.current?.contains(selection.anchorNode) ? selection.getRangeAt(0).cloneRange() : null
   }
-
-  function insertImage() {
-    const url = window.prompt('Görsel adresi', 'https://')
-    if (url) runCommand('insertImage', url)
+  async function insertAddress(kind: 'link' | 'image') {
+    if (htmlMode || !visualEditor.current) return
+    const range = editorSelection()
+    const url = await promptAddress(kind === 'link'
+      ? { title: 'Bağlantı Ekle', label: 'Bağlantı adresi', initialValue: 'https://', inputType: 'url', confirmLabel: 'Ekle', validate: httpsUrlProblem }
+      : { title: 'Görsel Ekle', label: 'Görsel adresi', initialValue: 'https://', inputType: 'url', confirmLabel: 'Ekle', validate: httpsUrlProblem })
+    if (!url || !visualEditor.current) return
+    visualEditor.current.focus()
+    if (range) { const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range) }
+    runCommand(kind === 'link' ? 'createLink' : 'insertImage', url)
   }
+  const insertLink = () => void insertAddress('link')
+  const insertImage = () => void insertAddress('image')
 
   function clearFormatting() {
     runCommand('removeFormat')
     runCommand('formatBlock', 'p')
   }
 
-  return <div className="rich-text-editor rich-text-editor-pro">
+  return <div className="rich-text-editor rich-text-editor-pro">{addressDialog}
     <div className="rich-text-editor-head">
       <div><strong>Ürün Açıklaması</strong><span className="rich-text-mode-note">{htmlMode ? 'HTML kodu düzenleniyor' : 'Görsel düzenleyici'}</span></div>
       <div className="rich-text-editor-meta"><span>{plainTextLength} karakter</span><div className="rich-text-mode-switch" role="group" aria-label="Açıklama görünümü"><button type="button" className={!htmlMode ? 'active' : ''} aria-pressed={!htmlMode} onClick={() => setHtmlMode(false)}><UiIcon name="sparkle" /> Görsel</button><button type="button" className={htmlMode ? 'active' : ''} aria-pressed={htmlMode} onClick={() => setHtmlMode(true)}><UiIcon name="code" /> HTML</button></div></div>
@@ -1746,7 +1757,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       if (!productId) throw new Error('Ürün kaydı bulunamadı.')
       return hubApi<AcceptedJob>(`/products/${productId}/publication-status/${card.connection.id}/refresh`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': key() },
+        headers: { 'Idempotency-Key': newIdempotencyKey() },
         body: '{}'
       })
     },
@@ -1918,7 +1929,7 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
   const cancel = useMutation({
     mutationFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}/cancel`, {
       method: 'POST',
-      headers: { 'Idempotency-Key': key() },
+      headers: { 'Idempotency-Key': newIdempotencyKey() },
       body: '{}'
     }),
     onSuccess: async result => {
@@ -2422,7 +2433,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const product = productToEdit.data
       const result = await hubApi<{ deletedCount: number; version: number; productVersions: Record<string, number> }>('/files/product-media-item', {
         method: 'DELETE',
-        headers: { 'Idempotency-Key': key(), 'If-Match': `"v${product.version}"` },
+        headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${product.version}"` },
         body: JSON.stringify({ productId: product.id, url })
       })
       initialEditMediaUrl.current = savedMediaUrls.filter(item => mediaImageKey(item) !== targetKey).join('\n')
@@ -2468,7 +2479,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     try {
       await hubApi<{ deletedCount: number }>('/files/product-media-items', {
         method: 'DELETE',
-        headers: { 'Idempotency-Key': key() },
+        headers: { 'Idempotency-Key': newIdempotencyKey() },
         body: JSON.stringify({ mediaIds: item.mediaIds })
       })
       setFamilyMediaOrder(current => current.filter(url => mediaImageKey(url) !== mediaImageKey(item.url)))
@@ -2590,7 +2601,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         }
         const saved = platform.offerId && platform.offerVersion != null
           ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
-          : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: row.key, ...body }) })
+          : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: row.key, ...body }) })
         savedOffers.push({ rowKey: row.key, platform, saved })
       }
       if (!savedOffers.length) {
@@ -2645,7 +2656,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
       const saved = platform.offerId && platform.offerVersion != null
         ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
-        : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: targetRow.key, ...body }) })
+        : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: targetRow.key, ...body }) })
       setVariantRows(rows => rows.map(row => row.key !== targetRow.key ? row : { ...row, platformStatuses: row.platformStatuses?.map(item => item.connectionId === platform.connectionId ? { ...item, offerId: saved.id, listPrice: saved.listPrice, salePrice: saved.salePrice, currency: saved.currency, offerVersion: saved.version } : item) }))
       showFeedback(`${platformDisplayName(platform)} ${targetRow.optionSignature || targetRow.sku} fiyatı kaydedildi.`, 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
@@ -2716,7 +2727,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         }
         const saved = target.platform.offerId && target.platform.offerVersion != null
           ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${target.platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.platform.offerVersion}"` }, body: JSON.stringify(body) })
-          : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId: target.platform.connectionId, variantId: target.row.key, ...body }) })
+          : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: target.platform.connectionId, variantId: target.row.key, ...body }) })
         savedOffers.push({ rowKey: target.row.key, connectionId: target.platform.connectionId!, saved })
       }
       const savedByKey = new Map(savedOffers.map(item => [`${item.rowKey}:${item.connectionId}`, item]))
@@ -2731,53 +2742,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
     } catch (reason) {
       showFeedback(reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.', 'error')
-    } finally {
-      setVariantPlatformPricingSaving(false)
-    }
-  }
-  async function saveVariantPlatformPricing() {
-    if (!variantPlatformPricing) return
-    const row = variantRows.find(item => item.key === variantPlatformPricing.rowKey)
-    const platform = variantPlatformPricing.platform
-    if (!row || !platform.connectionId) {
-      showFeedback('Bu platform bağlantısının fiyat bilgisi alınamadı.', 'error')
-      return
-    }
-    const listPrice = Number(variantPlatformPricingDraft.listPrice)
-    const salePrice = Number(variantPlatformPricingDraft.salePrice)
-    if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) {
-      showFeedback('Liste fiyatı satış fiyatından küçük olamaz.', 'error')
-      return
-    }
-    setVariantPlatformPricingSaving(true)
-    try {
-      const body = {
-        listPrice,
-        salePrice,
-        currency: platform.currency ?? form.currency ?? 'TRY',
-        vatRate: platform.vatRate ?? Number(form.vatRate || 0),
-        vatInclusion: platform.vatInclusion ?? form.vatIncluded,
-        roundingMode: platform.roundingMode ?? 'HALF_EVEN',
-        safetyStock: platform.safetyStock ?? Number(form.safetyStock || 0),
-        status: 'ACTIVE',
-        reason: `${platformDisplayName(platform)} varyant fiyatı`
-      }
-      const saved = platform.offerId && platform.offerVersion != null
-        ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
-        : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: row.key, ...body }) })
-      const nextPlatform = { ...platform, offerId: saved.id, listPrice: saved.listPrice, salePrice: saved.salePrice, currency: saved.currency, offerVersion: saved.version }
-      setVariantRows(rows => rows.map(item => item.key !== row.key ? item : { ...item, platformStatuses: item.platformStatuses?.map(status => status.connectionId === platform.connectionId ? nextPlatform : status) }))
-      setVariantPlatformPricing(null)
-      const message = `${platformDisplayName(platform)} için varyant fiyatı kaydedildi.`
-      setNotice(message); showFeedback(message, 'success')
-      await client.invalidateQueries({ queryKey: ['products'] })
-      if (editProductId) {
-        await client.invalidateQueries({ queryKey: ['product', editProductId] })
-        await productToEdit.refetch()
-      }
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Pazaryeri fiyatı kaydedilemedi.'
-      showFeedback(message, 'error')
     } finally {
       setVariantPlatformPricingSaving(false)
     }
@@ -3200,33 +3164,33 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           }
         }
       } else {
-        product = await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), attributes: globalAttributes, variants: rows.map(variantPayload) }) })
+        product = await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), attributes: globalAttributes, variants: rows.map(variantPayload) }) })
       }
       productCreated = product; const completed = ['ürün']; const warnings: string[] = []
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
       const productMediaChanged = editProductId
         ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
         : mediaUrls.length > 0
-      if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
-      for (const [fileIndex, pendingMedia] of mediaFiles.entries()) { const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
+      if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
+      for (const [fileIndex, pendingMedia] of mediaFiles.entries()) { const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data }) }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
       for (const variant of product.variants) {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
         if (!row) continue
         const originalMediaRefs = initialEditVariantMediaRefs.current[variant.id]
         if (editProductId && originalMediaRefs && mediaRefsEqual(row.mediaRefs, originalMediaRefs)) continue
-        await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: variant.id, items: row.mediaRefs.flatMap((mediaRef, sortOrder) => mediaRef.startsWith('url|') ? [{ url: mediaRef.slice(4), sortOrder }] : []), altText: `${form.title} · ${row.optionSignature}` }) })
+        await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: variant.id, items: row.mediaRefs.flatMap((mediaRef, sortOrder) => mediaRef.startsWith('url|') ? [{ url: mediaRef.slice(4), sortOrder }] : []), altText: `${form.title} · ${row.optionSignature}` }) })
         for (const [mediaIndex, mediaRef] of row.mediaRefs.entries()) {
           if (mediaRef.startsWith('file|')) {
             const file = mediaFiles.find(item => item.id === mediaRef.slice(5))?.file
-            if (file) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('variantId', variant.id); data.set('mediaRole', mediaIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaIndex)); data.set('altText', `${form.title} · ${row.optionSignature}`); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
+            if (file) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('variantId', variant.id); data.set('mediaRole', mediaIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaIndex)); data.set('altText', `${form.title} · ${row.optionSignature}`); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data }) }
           }
         }
       }
       if (editProductId && familyMediaOrderDirty) {
         const result = await hubApi<{ changedProductCount: number }>('/files/product-media-family-reorder', {
           method: 'PUT',
-          headers: { 'Idempotency-Key': key() },
+          headers: { 'Idempotency-Key': newIdempotencyKey() },
           body: JSON.stringify({ productId: product.id, urlsInOrder: visibleMediaUrls })
         })
         familyMediaChanged = result.changedProductCount > 0
@@ -3240,7 +3204,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         if (!row) continue
         const currentStock = productToEdit.data?.variants.find(item => item.id === variant.id)?.onHand ?? 0
         const stockDelta = row.stock - currentStock
-        if (stockDelta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: stockDelta, reason: productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu', sourceEventId: key() }) })
+        if (stockDelta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: stockDelta, reason: productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu', sourceEventId: newIdempotencyKey() }) })
         for (const connectionId of targetConnectionIds) {
           const pricing = channelPriceDraft(connectionId)
           const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
@@ -3250,7 +3214,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
             await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
           } else {
-            await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(offerCommand) })
+            await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
           }
         }
       }
@@ -3260,10 +3224,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         try {
           if (platformUpdate) {
             if (platformUpdate.includeProductInformation) {
-              const acceptedUpdate = await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId }) })
+              const acceptedUpdate = await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               completed.push(`ürün bilgisi güncelleme işi ${acceptedUpdate.jobId}`)
             }
-            const acceptedPrices = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })
+            const acceptedPrices = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
             completed.push(`fiyat-stok güncelleme işi ${acceptedPrices.jobId}`)
             await client.invalidateQueries({ queryKey: ['publication-status', product.id, connectionId] })
             continue
@@ -3277,7 +3241,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           }
           await hubApi(`/products/${product.id}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfileVersion == null ? {} : { 'If-Match': `"v${listingProfileVersion}"` }, body: JSON.stringify({ titleOverride: null, descriptionOverride: null, externalCategoryId: null, externalBrandId: null, deliveryTimeDays: null, enabled: true }) })
           await client.invalidateQueries({ queryKey: ['listing-profile', product.id, connectionId] })
-          const accepted = await hubApi<AcceptedJob>(`/products/${product.id}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId }) })
+          const accepted = await hubApi<AcceptedJob>(`/products/${product.id}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
           await client.invalidateQueries({ queryKey: ['publication-status', product.id, connectionId] })
           completed.push(`yayın işi ${accepted.jobId}`)
         } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
@@ -3515,8 +3479,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
-    {/* @ts-ignore: legacy inline modal is disabled while the shared multi-platform modal is used above. */}
-    {false && variantPlatformPricing && selectedVariantPlatformRow && <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !variantPlatformPricingSaving && setVariantPlatformPricing(null)}><section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">VARYANT KANAL FİYATI</p><h2 id="variant-platform-pricing-title">{platformDisplayName(variantPlatformPricing.platform)} fiyatlandırması</h2><p>{selectedVariantPlatformRow.optionSignature} · {selectedVariantPlatformRow.barcode || selectedVariantPlatformRow.sku}</p></div><button type="button" className="modal-close" onClick={() => setVariantPlatformPricing(null)} disabled={variantPlatformPricingSaving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-platform-pricing-body"><div className="variant-platform-pricing-channel"><span className={`publish-platform-mark ${variantPlatformPricing.platform.platformCode.toLocaleLowerCase('tr-TR')}`}><img className={`publish-platform-logo ${platformLogoClass(variantPlatformPricing.platform.platformCode)}`} src={platformLogoSource(variantPlatformPricing.platform.platformCode) ?? '/platforms/trendyol.webp'} alt="" /></span><div><strong>{platformDisplayName(variantPlatformPricing.platform)}</strong><small>{variantPlatformPricing.platform.isLinked ? 'Bu varyant platforma bağlı.' : 'Bu varyant için bağlantı henüz eşleşmemiş.'}</small></div></div><div className="variant-platform-pricing-fields"><label>Liste fiyatı<input autoFocus={!touchScreen} type="number" min="0" step="0.01" value={variantPlatformPricingDraft.listPrice} onChange={event => setVariantPlatformPricingDraft(current => ({ ...current, listPrice: event.target.value }))} /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={variantPlatformPricingDraft.salePrice} onChange={event => setVariantPlatformPricingDraft(current => ({ ...current, salePrice: event.target.value }))} /></label></div><p className="variant-platform-pricing-help">Bu değer yalnızca seçtiğiniz varyantın {platformDisplayName(variantPlatformPricing.platform)} kanal teklifine kaydedilir; panel ana fiyatı değişmez.</p></div><footer><button type="button" className="secondary" onClick={() => setVariantPlatformPricing(null)} disabled={variantPlatformPricingSaving}>Vazgeç</button><button type="button" onClick={() => void saveVariantPlatformPricing()} disabled={variantPlatformPricingSaving || !variantPlatformPricing.platform.connectionId}>{variantPlatformPricingSaving ? 'Kaydediliyor…' : 'Fiyatı kaydet'}</button></footer></section></div>}
     <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
@@ -3923,35 +3885,35 @@ export function ProductDetailPage() {
 }
 
 export function CategoriesPage() {
-  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const query = useQuery({ queryKey: ['categories'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await hubApi('/catalog/categories', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ name: data.get('name'), parentId: data.get('parentId') || null }) }); event.currentTarget.reset(); await client.invalidateQueries({ queryKey: ['categories'] }) } catch (reason) { setError(reason) } }
-  return <Page title="Kategoriler" eyebrow="Katalog"><form className="panel inline-form" onSubmit={submit}><label>Kategori adı<input name="name" required /></label><label>Üst kategori kimliği<input name="parentId" /></label><button>Ekle</button><ErrorBox error={error} /></form><div className="tree-list">{query.data?.items.map(item => <article key={item.id} style={{ marginLeft: Math.min(item.depth, 6) * 18 }}><div><strong>{item.name}</strong><small>{item.path}</small></div><Tag>{item.isLeaf ? 'LEAF' : 'PARENT'}</Tag></article>)}</div><ErrorBox error={query.error} /></Page>
+  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const pending = useMutation({ mutationFn: (task: () => Promise<unknown>) => task(), onMutate: () => setError(undefined), onError: reason => setError(reason) }); const query = useQuery({ queryKey: ['categories'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
+  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (pending.isPending) return; const form = event.currentTarget; const data = new FormData(form); pending.mutate(async () => { await hubApi('/catalog/categories', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: data.get('name'), parentId: data.get('parentId') || null }) }); form.reset(); await client.invalidateQueries({ queryKey: ['categories'] }) }) }
+  return <Page title="Kategoriler" eyebrow="Katalog"><form className="panel inline-form" onSubmit={submit}><label>Kategori adı<input name="name" required /></label><label>Üst kategori kimliği<input name="parentId" /></label><button disabled={pending.isPending}>Ekle</button><ErrorBox error={error} /></form><div className="tree-list">{query.data?.items.map(item => <article key={item.id} style={{ marginLeft: Math.min(item.depth, 6) * 18 }}><div><strong>{item.name}</strong><small>{item.path}</small></div><Tag>{item.isLeaf ? 'LEAF' : 'PARENT'}</Tag></article>)}</div><ErrorBox error={query.error} /></Page>
 }
 
 export function BrandsPage() {
-  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const query = useQuery({ queryKey: ['brands'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await hubApi('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ name: data.get('name') }) }); event.currentTarget.reset(); await client.invalidateQueries({ queryKey: ['brands'] }) } catch (reason) { setError(reason) } }
-  return <Page title="Markalar" eyebrow="Katalog"><form className="panel inline-form" onSubmit={submit}><label>Marka adı<input name="name" required /></label><button>Ekle</button><ErrorBox error={error} /></form><div className="cards">{query.data?.items.map(item => <article className="panel" key={item.id}><strong>{item.name}</strong><Tag>{item.isActive ? 'ACTIVE' : 'DISABLED'}</Tag></article>)}</div><ErrorBox error={query.error} /></Page>
+  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const pending = useMutation({ mutationFn: (task: () => Promise<unknown>) => task(), onMutate: () => setError(undefined), onError: reason => setError(reason) }); const query = useQuery({ queryKey: ['brands'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
+  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (pending.isPending) return; const form = event.currentTarget; const data = new FormData(form); pending.mutate(async () => { await hubApi('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: data.get('name') }) }); form.reset(); await client.invalidateQueries({ queryKey: ['brands'] }) }) }
+  return <Page title="Markalar" eyebrow="Katalog"><form className="panel inline-form" onSubmit={submit}><label>Marka adı<input name="name" required /></label><button disabled={pending.isPending}>Ekle</button><ErrorBox error={error} /></form><div className="cards">{query.data?.items.map(item => <article className="panel" key={item.id}><strong>{item.name}</strong><Tag>{item.isActive ? 'ACTIVE' : 'DISABLED'}</Tag></article>)}</div><ErrorBox error={query.error} /></Page>
 }
 
 export function AttributesPage() {
-  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const query = useQuery({ queryKey: ['attributes'], queryFn: () => loadAllPages<Attribute>('/catalog/attributes') })
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); const values = String(data.get('values') || '').split(',').map(x => x.trim()).filter(Boolean).map((value, sortOrder) => ({ value, sortOrder })); try { await hubApi('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ code: data.get('code'), name: data.get('name'), dataType: data.get('dataType'), selectionMode: null, unit: null, values }) }); event.currentTarget.reset(); await client.invalidateQueries({ queryKey: ['attributes'] }) } catch (reason) { setError(reason) } }
-  return <Page title="Özellikler" eyebrow="Katalog"><form className="panel form-grid" onSubmit={submit}><label>Kod<input name="code" required /></label><label>Ad<input name="name" required /></label><label>Tip<select name="dataType"><option>TEXT</option><option>NUMBER</option><option>SINGLE_SELECT</option><option>MULTI_SELECT</option><option>BOOLEAN</option></select></label><label>Seçenekler (virgülle)<input name="values" /></label><ErrorBox error={error} /><button>Ekle</button></form><div className="cards">{query.data?.items.map(item => <article className="panel" key={item.id}><div><strong>{item.name}</strong><small>{item.code}</small></div><Tag>{item.dataType}</Tag></article>)}</div><ErrorBox error={query.error} /></Page>
+  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const pending = useMutation({ mutationFn: (task: () => Promise<unknown>) => task(), onMutate: () => setError(undefined), onError: reason => setError(reason) }); const query = useQuery({ queryKey: ['attributes'], queryFn: () => loadAllPages<Attribute>('/catalog/attributes') })
+  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (pending.isPending) return; const form = event.currentTarget; const data = new FormData(form); const values = String(data.get('values') || '').split(',').map(x => x.trim()).filter(Boolean).map((value, sortOrder) => ({ value, sortOrder })); pending.mutate(async () => { await hubApi('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ code: data.get('code'), name: data.get('name'), dataType: data.get('dataType'), selectionMode: null, unit: null, values }) }); form.reset(); await client.invalidateQueries({ queryKey: ['attributes'] }) }) }
+  return <Page title="Özellikler" eyebrow="Katalog"><form className="panel form-grid" onSubmit={submit}><label>Kod<input name="code" required /></label><label>Ad<input name="name" required /></label><label>Tip<select name="dataType"><option>TEXT</option><option>NUMBER</option><option>SINGLE_SELECT</option><option>MULTI_SELECT</option><option>BOOLEAN</option></select></label><label>Seçenekler (virgülle)<input name="values" /></label><ErrorBox error={error} /><button disabled={pending.isPending}>Ekle</button></form><div className="cards">{query.data?.items.map(item => <article className="panel" key={item.id}><div><strong>{item.name}</strong><small>{item.code}</small></div><Tag>{item.dataType}</Tag></article>)}</div><ErrorBox error={query.error} /></Page>
 }
 
 export function ImportsPage() {
-  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const query = useQuery({ queryKey: ['imports'], queryFn: () => loadAllPages<ImportSession>('/imports') })
-  async function create(sourceType: string) { try { await hubApi('/imports', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ sourceType, connectionId: null }) }); await client.invalidateQueries({ queryKey: ['imports'] }) } catch (reason) { setError(reason) } }
-  return <Page title="İçe aktarımlar" eyebrow="Katalog" action={<div className="actions"><button type="button" onClick={() => create('CSV')}>CSV başlat</button><button type="button" onClick={() => create('XLSX')}>XLSX başlat</button></div>}><ErrorBox error={error ?? query.error} />{!query.data?.items.length ? <div className="empty">Henüz import oturumu yok.</div> : <div className="table-wrap"><table><thead><tr><th>Kaynak</th><th>Durum</th><th>Satır</th><th></th></tr></thead><tbody>{query.data.items.map(item => <tr key={item.id}><td>{item.sourceType}</td><td><Tag>{statusLabel(item.status)}</Tag></td><td>{item.validRows}/{item.totalRows}</td><td><Link to={`/imports/${item.id}`}>İncele</Link></td></tr>)}</tbody></table></div>}</Page>
+  const client = useQueryClient(); const [error, setError] = useState<unknown>(); const pending = useMutation({ mutationFn: (task: () => Promise<unknown>) => task(), onMutate: () => setError(undefined), onError: reason => setError(reason) }); const query = useQuery({ queryKey: ['imports'], queryFn: () => loadAllPages<ImportSession>('/imports') })
+  function create(sourceType: string) { if (pending.isPending) return; pending.mutate(async () => { await hubApi('/imports', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ sourceType, connectionId: null }) }); await client.invalidateQueries({ queryKey: ['imports'] }) }) }
+  return <Page title="İçe aktarımlar" eyebrow="Katalog" action={<div className="actions"><button type="button" disabled={pending.isPending} onClick={() => create('CSV')}>CSV başlat</button><button type="button" disabled={pending.isPending} onClick={() => create('XLSX')}>XLSX başlat</button></div>}><ErrorBox error={error ?? query.error} />{!query.data?.items.length ? <div className="empty">Henüz import oturumu yok.</div> : <div className="table-wrap"><table><thead><tr><th>Kaynak</th><th>Durum</th><th>Satır</th><th></th></tr></thead><tbody>{query.data.items.map(item => <tr key={item.id}><td>{item.sourceType}</td><td><Tag>{statusLabel(item.status)}</Tag></td><td>{item.validRows}/{item.totalRows}</td><td><Link to={`/imports/${item.id}`}>İncele</Link></td></tr>)}</tbody></table></div>}</Page>
 }
 
 export function ImportDetailPage() {
-  const { id } = useParams(); const client = useQueryClient(); const [error, setError] = useState<unknown>(); const session = useQuery({ queryKey: ['import', id], queryFn: () => hubApi<ImportSession>(`/imports/${id}`), enabled: !!id, refetchInterval: 4000 }); const candidates = useQuery({ queryKey: ['candidates', id], queryFn: () => loadAllPages<Candidate>(`/imports/${id}/candidates`), enabled: session.data?.status === 'REVIEW_REQUIRED' })
-  async function upload(event: FormEvent<HTMLFormElement>) { event.preventDefault(); try { await hubApi(`/imports/${id}/source-file`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: new FormData(event.currentTarget) }); await client.invalidateQueries({ queryKey: ['import', id] }) } catch (reason) { setError(reason) } }
-  async function map(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!session.data) return; const data = new FormData(event.currentTarget); const headers = String(data.get('headers')).split(',').map(x => x.trim()); const fields = String(data.get('fields')).split(',').map(x => x.trim()); try { await hubApi(`/imports/${id}/column-mapping`, { method: 'PUT', headers: { 'If-Match': `"v${session.data.version}"` }, body: JSON.stringify({ profileName: 'Manuel eşleme', variantGroupKey: null, mappings: headers.map((sourceColumn, sortOrder) => ({ sourceColumn, targetField: fields[sortOrder], sortOrder })) }) }); await client.invalidateQueries({ queryKey: ['import', id] }) } catch (reason) { setError(reason) } }
-  async function job(kind: 'preview' | 'apply') { try { await hubApi(`/imports/${id}/${kind}-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() } }); await client.invalidateQueries({ queryKey: ['import', id] }) } catch (reason) { setError(reason) } }
-  async function decide(candidate: Candidate, decision: 'CREATE' | 'LINK' | 'SKIP') { try { await hubApi(`/imports/${id}/decisions/${candidate.id}`, { method: 'PUT', headers: { 'If-Match': `"v${candidate.version}"` }, body: JSON.stringify({ decision, productId: decision === 'LINK' ? candidate.productId : null, variantId: decision === 'LINK' ? candidate.variantId : null }) }); await client.invalidateQueries({ queryKey: ['candidates', id] }); await client.invalidateQueries({ queryKey: ['import', id] }) } catch (reason) { setError(reason) } }
+  const { id } = useParams(); const client = useQueryClient(); const [error, setError] = useState<unknown>(); const pending = useMutation({ mutationFn: (task: () => Promise<unknown>) => task(), onMutate: () => setError(undefined), onError: reason => setError(reason) }); const session = useQuery({ queryKey: ['import', id], queryFn: () => hubApi<ImportSession>(`/imports/${id}`), enabled: !!id, refetchInterval: 4000 }); const candidates = useQuery({ queryKey: ['candidates', id], queryFn: () => loadAllPages<Candidate>(`/imports/${id}/candidates`), enabled: session.data?.status === 'REVIEW_REQUIRED' })
+  function upload(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (pending.isPending) return; const form = event.currentTarget; pending.mutate(async () => { await hubApi(`/imports/${id}/source-file`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: new FormData(form) }); await client.invalidateQueries({ queryKey: ['import', id] }) }) }
+  function map(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (pending.isPending) return; const form = event.currentTarget; if (!session.data) return; const data = new FormData(form); const headers = String(data.get('headers')).split(',').map(x => x.trim()); const fields = String(data.get('fields')).split(',').map(x => x.trim()); pending.mutate(async () => { await hubApi(`/imports/${id}/column-mapping`, { method: 'PUT', headers: { 'If-Match': `"v${session.data.version}"` }, body: JSON.stringify({ profileName: 'Manuel eşleme', variantGroupKey: null, mappings: headers.map((sourceColumn, sortOrder) => ({ sourceColumn, targetField: fields[sortOrder], sortOrder })) }) }); await client.invalidateQueries({ queryKey: ['import', id] }) }) }
+  function job(kind: 'preview' | 'apply') { if (pending.isPending) return; pending.mutate(async () => { await hubApi(`/imports/${id}/${kind}-jobs`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey(`import-${kind}`, id ?? '', session.data?.version ?? 0) } }); await client.invalidateQueries({ queryKey: ['import', id] }) }) }
+  function decide(candidate: Candidate, decision: 'CREATE' | 'LINK' | 'SKIP') { if (pending.isPending) return; pending.mutate(async () => { await hubApi(`/imports/${id}/decisions/${candidate.id}`, { method: 'PUT', headers: { 'If-Match': `"v${candidate.version}"` }, body: JSON.stringify({ decision, productId: decision === 'LINK' ? candidate.productId : null, variantId: decision === 'LINK' ? candidate.variantId : null }) }); await client.invalidateQueries({ queryKey: ['candidates', id] }); await client.invalidateQueries({ queryKey: ['import', id] }) }) }
   if (!session.data) return <Page title="İçe aktarım" eyebrow="Katalog"><ErrorBox error={session.error} /><p>Yükleniyor…</p></Page>
-  return <Page title={`İçe aktarım ${session.data.id.slice(0, 8)}`} eyebrow="Katalog"><div className="metrics">{[['Durum', session.data.status], ['Toplam', session.data.totalRows], ['Geçerli', session.data.validRows], ['Hatalı', session.data.errorRows]].map(([label, value]) => <article key={label}><small>{label}</small><strong>{label === 'Durum' ? statusLabel(String(value)) : value}</strong></article>)}</div><ErrorBox error={error} />{session.data.status === 'CREATED' && <div className="detail-grid"><form className="panel" onSubmit={upload}><h2>1. Dosya</h2><input name="file" type="file" accept=".csv,.xlsx" required /><button>Yükle</button></form><form className="panel" onSubmit={map}><h2>2. Kolon eşleme</h2><label>Başlıklar<input name="headers" placeholder="Ürün,SKU,Barkod" required /></label><label>Hedefler<input name="fields" placeholder="title,sku,barcode" required /></label><button>Kaydet</button></form></div>}<div className="actions spaced">{session.data.status === 'CREATED' && session.data.sourceAssetId && <button type="button" onClick={() => job('preview')}>Preview oluştur</button>}{session.data.status === 'READY_TO_APPLY' && <button type="button" onClick={() => job('apply')}>Kararları uygula</button>}{session.data.errorRows > 0 && <a className="button-link secondary" href={`/api/v1/imports/${id}/errors.csv`}>Hataları indir</a>}</div>{candidates.data?.items.map(candidate => <article className="candidate" key={candidate.id}><div><Tag>{candidate.matchRule}</Tag><code>{candidate.safeSummary}</code></div><div className="actions"><button type="button" onClick={() => decide(candidate, 'CREATE')}>Yeni</button>{candidate.productId && <button type="button" onClick={() => decide(candidate, 'LINK')}>Eşle</button>}<button type="button" className="secondary" onClick={() => decide(candidate, 'SKIP')}>Atla</button></div></article>)}</Page>
+  return <Page title={`İçe aktarım ${session.data.id.slice(0, 8)}`} eyebrow="Katalog"><div className="metrics">{[['Durum', session.data.status], ['Toplam', session.data.totalRows], ['Geçerli', session.data.validRows], ['Hatalı', session.data.errorRows]].map(([label, value]) => <article key={label}><small>{label}</small><strong>{label === 'Durum' ? statusLabel(String(value)) : value}</strong></article>)}</div><ErrorBox error={error} />{session.data.status === 'CREATED' && <div className="detail-grid"><form className="panel" onSubmit={upload}><h2>1. Dosya</h2><input name="file" type="file" accept=".csv,.xlsx" required /><button disabled={pending.isPending}>Yükle</button></form><form className="panel" onSubmit={map}><h2>2. Kolon eşleme</h2><label>Başlıklar<input name="headers" placeholder="Ürün,SKU,Barkod" required /></label><label>Hedefler<input name="fields" placeholder="title,sku,barcode" required /></label><button disabled={pending.isPending}>Kaydet</button></form></div>}<div className="actions spaced">{session.data.status === 'CREATED' && session.data.sourceAssetId && <button type="button" disabled={pending.isPending} onClick={() => job('preview')}>Preview oluştur</button>}{session.data.status === 'READY_TO_APPLY' && <button type="button" disabled={pending.isPending} onClick={() => job('apply')}>Kararları uygula</button>}{session.data.errorRows > 0 && <a className="button-link secondary" href={`/api/v1/imports/${id}/errors.csv`}>Hataları indir</a>}</div>{candidates.data?.items.map(candidate => <article className="candidate" key={candidate.id}><div><Tag>{candidate.matchRule}</Tag><code>{candidate.safeSummary}</code></div><div className="actions"><button type="button" disabled={pending.isPending} onClick={() => decide(candidate, 'CREATE')}>Yeni</button>{candidate.productId && <button type="button" disabled={pending.isPending} onClick={() => decide(candidate, 'LINK')}>Eşle</button>}<button type="button" className="secondary" disabled={pending.isPending} onClick={() => decide(candidate, 'SKIP')}>Atla</button></div></article>)}</Page>
 }

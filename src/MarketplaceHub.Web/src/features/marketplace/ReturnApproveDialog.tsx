@@ -5,6 +5,7 @@ import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
+import { versionedIdempotencyKey } from '../../shared/idempotency'
 
 export type ReturnApproveRow = {
   id: string
@@ -91,11 +92,10 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const stockQuantity = stockEntries.reduce((sum, entry) => sum + entry.units, 0)
 
   const approve = useMutation({
-    mutationFn: () => hubApi<{ status: string }>(`/returns/${claimId}/actions`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${version}"` },
-      body: JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLines: stockRequests })
-    }),
+    mutationFn: () => {
+      const body = JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLines: stockRequests })
+      return hubApi<{ status: string }>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('return-action', claimId, version, body), 'If-Match': `"v${version}"` }, body })
+    },
     onSuccess: async () => {
       const stock = stockRequests.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
       onDone(`${order.orderNumber} siparişinin iade kabul kararı ${marketplaceName}’a iletildi.${stock}`, 'success', [

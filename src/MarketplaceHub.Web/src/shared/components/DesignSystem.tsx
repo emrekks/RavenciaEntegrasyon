@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type RefObject, type SelectHTMLAttributes } from 'react'
 import { useRememberedTabCounts } from '../tab-counts'
 import { UiIcon } from './UiIcon'
 import { lockPageScroll } from '../hooks/useScrollLock'
@@ -11,23 +11,37 @@ type DialogSurfaceProps = { open: boolean; title: ReactNode; onClose: () => void
 
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
-function useDialogSurface(open: boolean, onClose: () => void) {
-  const surfaceRef = useRef<HTMLElement>(null)
+// Windows open on top of each other (a confirmation over an edit window): only the top one answers Escape and Tab.
+const openSurfaces: object[] = []
+
+// Visible for focus purposes; a fixed-position control has no offsetParent but does have a box.
+const isShown = (element: HTMLElement) => element.offsetParent !== null || element.getClientRects().length > 0
+
+/**
+ * Makes an element a modal window: focus moves in (to the element marked `data-autofocus`, else the first control) and
+ * stays inside while Tab cycles, Escape closes, the page behind does not scroll, and focus returns to where it was.
+ * Attach the returned ref to the window element (give it tabIndex={-1}).
+ */
+export function useDialogSurface<T extends HTMLElement = HTMLElement>(open: boolean, onClose: () => void): RefObject<T | null> {
+  const surfaceRef = useRef<T>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
   useEffect(() => {
     if (!open) return
+    const entry = {}
+    openSurfaces.push(entry)
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const onKeyDown = (event: KeyboardEvent) => {
+      if (openSurfaces[openSurfaces.length - 1] !== entry || event.defaultPrevented) return
       if (event.key === 'Escape') {
         event.preventDefault()
         onCloseRef.current()
         return
       }
       if (event.key !== 'Tab') return
-      const focusable = Array.from(surfaceRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []).filter(element => element.offsetParent !== null)
+      const focusable = Array.from(surfaceRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []).filter(isShown)
       if (!focusable.length) {
         event.preventDefault()
         surfaceRef.current?.focus()
@@ -46,10 +60,14 @@ function useDialogSurface(open: boolean, onClose: () => void) {
     const unlockScroll = lockPageScroll()
     document.addEventListener('keydown', onKeyDown)
     window.requestAnimationFrame(() => {
-      const first = surfaceRef.current?.querySelector<HTMLElement>('[autofocus], ' + focusableSelector)
-      ;(first ?? surfaceRef.current)?.focus()
+      const surface = surfaceRef.current
+      if (!surface || surface.contains(document.activeElement)) return
+      const first = surface.querySelector<HTMLElement>('[data-autofocus]') ?? surface.querySelector<HTMLElement>(focusableSelector)
+      ;(first ?? surface).focus()
     })
     return () => {
+      const index = openSurfaces.indexOf(entry)
+      if (index >= 0) openSurfaces.splice(index, 1)
       unlockScroll()
       document.removeEventListener('keydown', onKeyDown)
       window.requestAnimationFrame(() => previousFocusRef.current?.focus())
@@ -57,6 +75,14 @@ function useDialogSurface(open: boolean, onClose: () => void) {
   }, [open])
 
   return surfaceRef
+}
+
+type DialogSurfaceElement = 'section' | 'div' | 'aside' | 'form'
+
+/** A hand-built window element (its own backdrop and layout) with the behaviour of `useDialogSurface`. */
+export function DialogSurface({ as = 'section', onClose, children, ...props }: HTMLAttributes<HTMLElement> & { as?: DialogSurfaceElement; onClose: () => void; children: ReactNode }) {
+  const ref = useDialogSurface<HTMLElement>(true, onClose)
+  return createElement(as, { role: 'dialog', 'aria-modal': true, tabIndex: -1, ...props, ref }, children)
 }
 
 export function Button({ variant = 'primary', size = 'md', loading = false, className, disabled, type = 'button', children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: ControlSize; loading?: boolean }) {

@@ -18,6 +18,7 @@ import { viewTabLabel } from '../../shared/view-tabs'
 import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { formatDateTime, formatIstanbul } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
+import { newIdempotencyKey } from '../../shared/idempotency'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -70,9 +71,6 @@ const statuses: Array<{ value: '' | JobStatus; label: string }> = [
   { value: 'CANCELLED', label: 'İptal edildi' }
 ]
 
-function idempotencyKey(action: string, jobId: string) {
-  return `${action}-${jobId}-${crypto.randomUUID()}`
-}
 
 function jobStatusLabel(status: JobStatus) {
   if (status === 'PENDING') return 'Bekliyor'
@@ -475,7 +473,7 @@ export function JobsPage({ me }: { me: Me }) {
     refetchInterval: selectedId ? 5000 : false
   })
   const action = useMutation({
-    mutationFn: ({ id, verb }: { id: string; verb: 'retry' | 'cancel' }) => hubApi<JobDetail>(`/jobs/${id}/${verb}`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey(verb, id) } }),
+    mutationFn: ({ id, verb }: { id: string; verb: 'retry' | 'cancel' }) => hubApi<JobDetail>(`/jobs/${id}/${verb}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(`${verb}-${id}`) } }),
     onSuccess: async (data, variables) => {
       setSelectedId(data.job.id)
       setFeedback({ message: variables.verb === 'retry' ? 'İşlem yeniden kuyruğa alındı.' : 'İşlem iptal edildi.', tone: variables.verb === 'retry' ? 'info' : 'success' })

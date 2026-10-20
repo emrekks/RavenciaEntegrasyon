@@ -4,6 +4,7 @@ import { Busy, CargoProviderIcon, ErrorBox, UiIcon } from '../../shared/componen
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { formatDate } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
+import { newIdempotencyKey } from '../../shared/idempotency'
 
 export type InvoicePreviewTarget = { orderId: string; packageId: string; providerConnectionId: string }
 type PreviewLine = { description: string; sku: string | null; quantity: number; unit: string; vatRate: number; unitPrice: number; discountAmount: number; vatAmount: number; total: number }
@@ -81,7 +82,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
     const labels = new Map(eligible.map(item => [item.packageId, `#${item.orderNumber}`]))
     onClose()
     onNotice(eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…` : `${eligible.length} siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…`, 'pending')
-    void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-confirm:${crypto.randomUUID()}` }, body })
+    void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('invoice-workspace-confirm') }, body })
       .then(response => {
         let succeeded = 0
         let failedCount = 0

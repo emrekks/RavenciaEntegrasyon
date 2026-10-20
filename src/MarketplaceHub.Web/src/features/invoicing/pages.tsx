@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
+import { newIdempotencyKey } from '../../shared/idempotency'
 import { Busy, CargoProviderIcon, ErrorBox, InvoiceStatusBadge, Modal, Tabs, UiIcon } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification } from '../../shared/notifications'
@@ -36,7 +37,6 @@ type Connection = { id: string; platformCode: string; displayName: string; statu
 type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'pending'
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 
-function idempotency() { return crypto.randomUUID() }
 function displayInvoiceOrderNumber(value: string) { return `#${value.trim().replace(/^#+/, '') || '—'}` }
 
 function InvoiceOrderNumber({ item }: { item: InvoiceWorkspace }) {
@@ -131,7 +131,7 @@ async function uploadManualInvoiceDocument(item: InvoiceWorkspace, file: File | 
   form.append('invoiceNumber', invoiceNumber.trim())
   form.append('issuedAt', fromDateTimeLocal(issuedAt))
   if (file) form.append('file', file)
-  await hubApi('/invoice-workspace/manual-documents', { method: 'POST', headers: { 'Idempotency-Key': `manual-invoice-document:${item.orderId}:${crypto.randomUUID()}` }, body: form })
+  await hubApi('/invoice-workspace/manual-documents', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(`manual-invoice-document:${item.orderId}`) }, body: form })
 }
 function requiresInvoiceAction(item: InvoiceWorkspace) { return item.canCreateInvoice || item.invoiceStatus === 'FATURA_REDDEDILDI' }
 function invoiceFailureReason(code: string | null) {
@@ -166,7 +166,7 @@ function invoiceFailureReason(code: string | null) {
 function invoiceFailureGuidance(code: string | null) {
   const labels: Record<string, string> = {
     EFATURAM_FISCAL_PAYLOAD_INVALID: 'Fatura detaylarını açıp satır, tutar, vergi ve adres bilgilerini kontrol edin.',
-    EFATURAM_REQUEST_REJECTED: 'Provider yanıtını kontrol edin; bilgiler düzeltildikten sonra Tekrar dene seçeneğini kullanın.',
+    EFATURAM_REQUEST_REJECTED: 'Fatura sağlayıcısının yanıtını kontrol edin; bilgiler düzeltildikten sonra Tekrar Dene seçeneğini kullanın.',
     EFATURAM_APPLICATION_NOT_ACTIVE: 'Entegrasyonlar ekranından E-Faturam uygulamasını etkinleştirip bağlantıyı yeniden test edin.',
     EFATURAM_AUTHENTICATION_FAILED: 'Entegrasyonlar ekranından E-Faturam kimlik bilgilerini yenileyip bağlantıyı test edin.',
     EFATURAM_ACCESS_TOKEN_REJECTED: 'E-Faturam bağlantısını yeniden yetkilendirin, ardından faturayı tekrar deneyin.',
@@ -174,9 +174,9 @@ function invoiceFailureGuidance(code: string | null) {
     EFATURAM_CARRIER_CATALOG_MISS: 'Faturayı tekrar deneyin; kargo taşıyıcı bilgisi doğrulamaya eklendi.',
     HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500: 'Platforma iletimi tekrar dene ile mevcut belgeyi kontrol edin. Yeni mali fatura oluşturulmaz.',
     INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'İletim önizlemesindeki ortam bilgisini kontrol edin. Canlı sipariş için canlı ortamda düzenlenmiş belge gereklidir.',
-    REMOTE_INVOICE_REJECTED: 'Provider veya pazaryeri ret nedenini kontrol edip gerekli bilgileri düzelttikten sonra tekrar deneyin.'
+    REMOTE_INVOICE_REJECTED: 'Fatura sağlayıcısının veya pazaryerinin ret nedenini kontrol edip gerekli bilgileri düzelttikten sonra tekrar deneyin.'
   }
-  return labels[code ?? ''] ?? 'Fatura detaylarını açıp son hata kodunu ve provider denemelerini kontrol edin.'
+  return labels[code ?? ''] ?? 'Fatura ayrıntılarını açıp son hata kodunu ve fatura sağlayıcısı denemelerini kontrol edin.'
 }
 function Badge({ value, tone, label }: { value: string; tone?: 'good' | 'warn' | 'neutral'; label?: string }) { const normalized = value.trim().toUpperCase(); const resolvedTone = tone ?? (['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS', 'CONFIRMED'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED', 'RETRYABLE_FAILURE', 'MARKETPLACE_FAILED'].includes(normalized) ? 'warn' : 'neutral'); return <span className={`badge ${resolvedTone}`}><InvoiceGlyph kind={badgeGlyphKind(value, resolvedTone)} />{label ?? statusLabel(value)}</span> }
 function isInvoiceFailureStatus(value: string | null | undefined) {
@@ -214,7 +214,7 @@ function invoiceDeliveryTone(status: string | null | undefined): 'good' | 'warn'
   if (status) return 'warn'
   return 'neutral'
 }
-function actionLabel(action: string) { return ({ SUBMIT: 'E-Faturam’a gönder', STAGE_CAPABILITY_PROBE: 'Stage mali canary çalıştır', RECONCILE: 'Durumu uzlaştır', DELIVER: 'Trendyol’a fatura linkini ilet', CANCEL: 'E-Arşiv iptal isteği', VALIDATE: 'Yerel doğrula' } as Record<string, string>)[action] ?? action }
+function actionLabel(action: string) { return ({ SUBMIT: 'E-Faturam’a gönder', STAGE_CAPABILITY_PROBE: 'Test Ortamında Mali Deneme Yap', RECONCILE: 'Durumu uzlaştır', DELIVER: 'Trendyol’a fatura linkini ilet', CANCEL: 'E-Arşiv iptal isteği', VALIDATE: 'Yerel doğrula' } as Record<string, string>)[action] ?? action }
 function normalizeAddressText(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/s+/g, ' ').trim() }
 function addressLines(value: string | null | undefined) {
   if (!value) return []
@@ -397,7 +397,7 @@ export function InvoicesPage() {
     refetchInterval: 30_000
   })
   const confirmDelivered = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası pazaryerinde doğrulandı ve tamamlandı olarak işaretlendi.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
@@ -405,7 +405,7 @@ export function InvoicesPage() {
     onError: error => setMessage(error instanceof Error ? error.message : 'Fatura tamamlandı olarak işaretlenemedi.', 'error')
   })
   const replaceInvoice = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin eski faturası iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
@@ -413,7 +413,7 @@ export function InvoicesPage() {
     onError: error => setMessage(error instanceof Error ? error.message : 'Eski fatura kapatılamadı.', 'error')
   })
   const noRemoteInvoice = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })])
@@ -421,7 +421,7 @@ export function InvoicesPage() {
     onError: error => setMessage(error instanceof Error ? error.message : 'Yeniden gönderim açılamadı.', 'error')
   })
   const visibility = useMutation({
-    mutationFn: async ({ packageIds, hidden }: { packageIds: string[]; hidden: boolean }) => hubApi<{ updatedCount: number }>('/invoice-workspace/hidden', { method: 'PUT', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ packageIds, hidden }) }),
+    mutationFn: async ({ packageIds, hidden }: { packageIds: string[]; hidden: boolean }) => hubApi<{ updatedCount: number }>('/invoice-workspace/hidden', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ packageIds, hidden }) }),
     onSuccess: async (_result, variables) => {
       setSelectedPackages(new Set())
       setSelectedItem(null)
@@ -434,7 +434,7 @@ export function InvoicesPage() {
   const manualInvoiceDelivery = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.manualInvoiceDocumentId) throw new Error('Siparişte güncel manuel fatura belgesi bulunamadı.')
-      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } })
+      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })
     },
     onSuccess: async result => {
       setMessage(result.inspectionOnlyPackageCount > 0
@@ -454,7 +454,7 @@ export function InvoicesPage() {
       const supportsPackageLookup = ['TRENDYOL', 'HEPSIBURADA'].includes(item.platformCode)
       return hubApi<{ jobId: string }>(`/connections/${connection.id}/order-sync-jobs`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': `invoice-order-refresh:${item.packageId}:${idempotency()}` },
+        headers: { 'Idempotency-Key': `invoice-order-refresh:${item.packageId}:${newIdempotencyKey()}` },
         body: JSON.stringify({ externalOrderId: item.externalOrderId, full: false, packageNumber: supportsPackageLookup ? item.externalPackageNumber : null })
       })
     },
@@ -465,7 +465,7 @@ export function InvoicesPage() {
     onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş durumu pazaryerinden yenilenemedi.', 'error')
   })
   const invoiceReconcile = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${idempotency()}` } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } }),
     onSuccess: async () => {
       setMessage('Pazaryerindeki güncel fatura bilgisi salt okunur kontrol kuyruğuna alındı.', 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
@@ -507,7 +507,7 @@ export function InvoicesPage() {
       if (!exactEnvironmentProvider) { missing.push(`#${item.orderNumber} (${item.environment})`); continue }
       targets.push({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: exactEnvironmentProvider.id })
     }
-    if (missing.length) setMessage(`Aynı ortamda etkin ve credential'ı olan E-Faturam bağlantısı bulunamadı: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` ve ${missing.length - 4} kayıt daha` : ''}.`, 'error')
+    if (missing.length) setMessage(`Aynı ortamda etkin ve API bilgileri kayıtlı E-Faturam bağlantısı bulunamadı: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` ve ${missing.length - 4} kayıt daha` : ''}.`, 'error')
     if (targets.length) setPreviewTargets(targets)
   }
   const pageData = query.data
@@ -614,7 +614,7 @@ export function InvoicesPage() {
         {Boolean(addressLines(selectedItem.shipmentAddressJson).length || addressLines(selectedItem.invoiceAddressJson).length) ? <section className="invoice-detail-addresses">{addressLines(selectedItem.shipmentAddressJson).length > 0 && <article><h3>Teslimat Adresi</h3>{addressLines(selectedItem.shipmentAddressJson).map(line => <span key={`${line.label}:${line.value}`}><strong>{line.label}:</strong> {line.value}</span>)}</article>}{addressLines(selectedItem.invoiceAddressJson).length > 0 && <article><h3>Fatura Adresi</h3>{addressLines(selectedItem.invoiceAddressJson).map(line => <span key={`${line.label}:${line.value}`}><strong>{line.label}:</strong> {line.value}</span>)}</article>}</section> : <p className="invoice-detail-address-note">Pazaryeri sipariş kaydında adres bilgisi bulunmuyor.</p>}
       </div><footer className="invoice-detail-footer">{selectedItem.allowedActions?.includes('CHECK_PLATFORM') && <button type="button" className="secondary invoice-detail-platform-refresh" onClick={() => invoiceReconcile.mutate(selectedItem)} disabled={invoiceReconcile.isPending} title="Pazaryeri fatura bilgisini platformdan yeniden okur">{invoiceReconcile.isPending ? 'Güncelleniyor…' : 'Platformdan Bilgileri Güncelle'}</button>}<span className="invoice-detail-footer-gap" /><button type="button" className="secondary" onClick={() => setSelectedItem(null)}>Kapat</button><button type="button" className="secondary" onClick={() => visibility.mutate({ packageIds: [selectedItem.packageId], hidden: tab !== 'HIDDEN' })} disabled={visibility.isPending}>{tab === 'HIDDEN' ? 'Görünür Yap' : 'Siparişi Gizle'}</button>{selectedItem.invoiceId && <Link className="button-link invoice-detail-open-record" to={`/invoices/${selectedItem.invoiceId}`}>Fatura Kaydını Aç <UiIcon name="externalLink" /></Link>}</footer>
     </section></div>}
-    {!provider?.hasCredential && Boolean(pageData?.hasPendingMarketplaceInvoices) && <div className="unknown invoice-provider-notice"><strong>E-Faturam provider hazır değil</strong><p>Fatura oluşturmak için sipariş bağlantısıyla aynı ortamda (Stage veya Canlı) etkin ve credential’ı olan E-Faturam bağlantısı gerekir. Shopify mali fatura oluşturma sağlayıcı sözleşmesi doğrulanana kadar kapalıdır.</p><Link className="button-link" to="/integrations">Bağlantıyı yönet</Link></div>}
+    {!provider?.hasCredential && Boolean(pageData?.hasPendingMarketplaceInvoices) && <div className="unknown invoice-provider-notice"><strong>E-Faturam bağlantısı hazır değil</strong><p>Fatura oluşturmak için sipariş bağlantısıyla aynı ortamda (test veya canlı) etkin ve API bilgileri kayıtlı bir E-Faturam bağlantısı gerekir. Shopify için mali fatura oluşturma, sağlayıcı sözleşmesi doğrulanana kadar kapalıdır.</p><Link className="button-link" to="/integrations">Bağlantıyı yönet</Link></div>}
     {shopifyStatusItem && <ShopifyInvoiceStatusModal item={shopifyStatusItem} onClose={() => setShopifyStatusItem(null)} onFeedback={setMessage} />}
     {manualUploadItem && <InvoiceWorkspaceUploadModal item={manualUploadItem} onClose={() => setManualUploadItem(null)} onFeedback={setMessage} />}
     {manualStatusBatch && <InvoiceWorkspaceBulkStatusModal items={manualStatusBatch} onClose={() => setManualStatusBatch(null)} onFeedback={setMessage} />}
@@ -683,7 +683,7 @@ function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Invoic
   const invoice = useQuery({ queryKey: ['invoice', item.invoiceId], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`), enabled: Boolean(item.invoiceId) })
   const hasUploadedDocument = item.invoiceDocumentAvailable || Boolean(invoice.data?.documents.length)
   const update = useMutation({
-    mutationFn: () => hubApi('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `invoice-workspace-status:${status}:${idempotency()}` }, body: JSON.stringify({ packageIds: [item.packageId], status }) }),
+    mutationFn: () => hubApi('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `invoice-workspace-status:${status}:${newIdempotencyKey()}` }, body: JSON.stringify({ packageIds: [item.packageId], status }) }),
     onSuccess: async () => {
       const message = status === 'UPLOADED' ? 'Shopify fatura durumu “Faturası yüklendi” olarak kaydedildi.' : 'Shopify fatura durumu “Fatura bekliyor” olarak kaydedildi.'
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
@@ -699,7 +699,7 @@ function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items
   const client = useQueryClient()
   const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>('PENDING')
   const update = useMutation({
-    mutationFn: () => hubApi<{ updatedCount: number }>('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `invoice-workspace-status:${status}:${idempotency()}` }, body: JSON.stringify({ packageIds: items.map(item => item.packageId), status }) }),
+    mutationFn: () => hubApi<{ updatedCount: number }>('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `invoice-workspace-status:${status}:${newIdempotencyKey()}` }, body: JSON.stringify({ packageIds: items.map(item => item.packageId), status }) }),
     onSuccess: async result => {
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
       const label = status === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor'
@@ -759,11 +759,11 @@ export function InvoiceDetailPage() {
   const operation = useMutation({
     mutationFn: async ({ action, invoice }: { action: string; invoice: InvoiceDetail }) => {
       if (action === 'VALIDATE') return hubApi<InvoiceDetail>(`/invoices/${id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } })
-      if (action === 'RECONCILE') return hubApi(`/invoices/${id}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } })
+      if (action === 'RECONCILE') return hubApi(`/invoices/${id}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })
       const endpoint = action === 'SUBMIT' ? 'submit-jobs' : action === 'STAGE_CAPABILITY_PROBE' ? 'stage-capability-probe-jobs' : action === 'DELIVER' ? 'marketplace-delivery-jobs' : 'cancellation-jobs'
-      return hubApi(`/invoices/${id}/${endpoint}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), ...(action !== 'DELIVER' ? { 'If-Match': `"v${invoice.version}"` } : {}) }, ...(action === 'STAGE_CAPABILITY_PROBE' ? {} : { body: JSON.stringify({ password, confirmed }) }) })
+      return hubApi(`/invoices/${id}/${endpoint}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...(action !== 'DELIVER' ? { 'If-Match': `"v${invoice.version}"` } : {}) }, ...(action === 'STAGE_CAPABILITY_PROBE' ? {} : { body: JSON.stringify({ password, confirmed }) }) })
     },
-    onSuccess: (_value, variables) => { setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : 'İş güvenli kuyruğa alındı.', variables.action === 'VALIDATE' ? 'success' : 'info'); setPassword(''); setConfirmed(false); void client.invalidateQueries({ queryKey: ['invoice', id] }) },
+    onSuccess: (_value, variables) => { setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : 'İşlem sıraya alındı.', variables.action === 'VALIDATE' ? 'success' : 'info'); setPassword(''); setConfirmed(false); void client.invalidateQueries({ queryKey: ['invoice', id] }) },
     onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.', 'error')
   })
   const upload = useMutation({
@@ -777,9 +777,9 @@ export function InvoiceDetailPage() {
     {notice && <NoticeToast key={`${noticeKind}:${notice}`} kind={noticeKind} message={notice} onClose={() => setNoticeState('')} durationMs={noticeKind === 'info' ? 7000 : 5500} />}
     <div className="grid"><article><small>Ödenecek</small><strong>{formatMoney(invoice.payableTotal, invoice.currency)}</strong><p>Vergi: {invoice.taxTotal.toLocaleString('tr-TR')}</p></article><article><small>ETTN / UUID</small><strong>{invoice.ettnUuid ?? 'Henüz atanmadı'}</strong><p>{invoice.sequencePurpose} · {invoice.issuedAt ? formatDateTime(invoice.issuedAt) : 'Henüz düzenlenmedi'}</p></article><article><small>Son hata</small><strong>{invoice.lastErrorCode ?? 'Yok'}</strong><p>Bilinmeyen sonuç otomatik başarı sayılmaz.</p></article></div>
      <div className="panel"><h2>Satırlar</h2><div className="data-table compact" role="table">{invoice.lines.map(line => <div role="row" key={line.id}><span><strong>{line.description}</strong><small><code className="technical-text sku-value">{line.sku ?? 'SKU yok'}</code> · indirim {line.discountAmount.toLocaleString('tr-TR')}</small></span><span>{line.quantity} {line.unit}</span><span>%{line.vatRate}</span><span>{formatMoney(line.lineTotal, invoice.currency)}</span></div>)}</div></div>
-    <div className="split"><div className="panel"><h2>Provider denemeleri</h2>{invoice.attempts.length ? <div className="card-list">{invoice.attempts.map(item => <div className="record-card" key={item.attemptNumber}><span><strong>Deneme #{item.attemptNumber}</strong><small>{item.errorCode ?? 'Hata yok'}</small></span><Badge value={item.outcome} /></div>)}</div> : <p>Henüz dış gönderim denemesi yok.</p>}</div><div className="panel"><h2>Trendyol teslimleri</h2><p className="invoice-detail-muted">Bu alan, faturanın Trendyol paketine gönderilip gönderilmediğini gösterir.</p>{invoice.deliveries.length ? <div className="card-list">{invoice.deliveries.map(item => <div className="record-card" key={item.id}><span><strong>{statusLabel(item.deliveryType)}</strong><small>{item.externalReference ?? item.errorCode ?? 'Referans bekleniyor'}</small></span><Badge value={item.status} /></div>)}</div> : <p>Platforma aktarım henüz başlatılmadı. Belge hazır olduğunda aşağıdaki işlemlerden fatura linkini iletebilirsiniz.</p>}</div></div>
-    <div className={`panel invoice-documents-panel ${searchParams.get('upload') === '1' ? 'invoice-upload-highlight' : ''}`}><div className="invoice-panel-heading"><div><h2>Belgeler</h2><p className="invoice-detail-muted">Provider’dan gelen fatura belgesi ve platforma iletilecek güvenli bağlantı.</p></div>{invoice.documents.length > 0 && <a className="invoice-document-link" href={`/api/v1/invoices/${invoice.id}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura linkini aç <UiIcon name="externalLink" /></a>}</div>{invoice.documents.length ? <div className="card-list">{invoice.documents.map(document => <a className="record-card" key={document.id} href={`/api/v1/invoices/${invoice.id}/documents/${document.id}/content`} target="_blank" rel="noreferrer"><span><strong>{statusLabel(document.documentType)}</strong><small>SHA-256 {document.sha256.slice(0, 16)}…</small></span><span>Güvenli aç <UiIcon name="externalLink" /></span></a>)}</div> : <p>Henüz belge eklenmedi. Provider belgesi alındığında ayrıca güvenli biçimde saklanır.</p>}<form className="invoice-document-upload" onSubmit={event => { event.preventDefault(); if (uploadFile) upload.mutate(uploadFile) }}><div><strong>Fatura belgesi yükle</strong><small>PDF, JPEG veya PNG · en fazla 10 MiB · sadece özel arşive kaydedilir</small></div><input type="file" accept="application/pdf,image/jpeg,image/png" onChange={event => setUploadFile(event.target.files?.[0] ?? null)} aria-label="Fatura belgesi seç" /><button type="submit" disabled={!uploadFile || upload.isPending}>{upload.isPending ? 'Yükleniyor…' : 'Belgeyi yükle'}</button></form></div>
-    {protectedActions.length > 0 && <form className="panel form-panel" onSubmit={event => event.preventDefault()}><h2>Dış mali işlem onayı</h2><p>Parola yalnız production mali işlemi için yeniden doğrulanır. Sunucu capability, bağlantı ve yazma kapılarını ayrıca denetler.</p><label>Hesap parolası<input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} /></label><label className="check"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> Bu dış mali işlemi açıkça onaylıyorum.</label></form>}
+    <div className="split"><div className="panel"><h2>Fatura Sağlayıcısı Denemeleri</h2>{invoice.attempts.length ? <div className="card-list">{invoice.attempts.map(item => <div className="record-card" key={item.attemptNumber}><span><strong>Deneme #{item.attemptNumber}</strong><small>{item.errorCode ?? 'Hata yok'}</small></span><Badge value={item.outcome} /></div>)}</div> : <p>Henüz dış gönderim denemesi yok.</p>}</div><div className="panel"><h2>Trendyol teslimleri</h2><p className="invoice-detail-muted">Bu alan, faturanın Trendyol paketine gönderilip gönderilmediğini gösterir.</p>{invoice.deliveries.length ? <div className="card-list">{invoice.deliveries.map(item => <div className="record-card" key={item.id}><span><strong>{statusLabel(item.deliveryType)}</strong><small>{item.externalReference ?? item.errorCode ?? 'Referans bekleniyor'}</small></span><Badge value={item.status} /></div>)}</div> : <p>Platforma aktarım henüz başlatılmadı. Belge hazır olduğunda aşağıdaki işlemlerden fatura linkini iletebilirsiniz.</p>}</div></div>
+    <div className={`panel invoice-documents-panel ${searchParams.get('upload') === '1' ? 'invoice-upload-highlight' : ''}`}><div className="invoice-panel-heading"><div><h2>Belgeler</h2><p className="invoice-detail-muted">Fatura sağlayıcısından gelen belge ve platforma iletilecek güvenli bağlantı.</p></div>{invoice.documents.length > 0 && <a className="invoice-document-link" href={`/api/v1/invoices/${invoice.id}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura linkini aç <UiIcon name="externalLink" /></a>}</div>{invoice.documents.length ? <div className="card-list">{invoice.documents.map(document => <a className="record-card" key={document.id} href={`/api/v1/invoices/${invoice.id}/documents/${document.id}/content`} target="_blank" rel="noreferrer"><span><strong>{statusLabel(document.documentType)}</strong><small>SHA-256 {document.sha256.slice(0, 16)}…</small></span><span>Güvenli aç <UiIcon name="externalLink" /></span></a>)}</div> : <p>Henüz belge eklenmedi. Fatura sağlayıcısının belgesi alındığında ayrıca güvenli biçimde saklanır.</p>}<form className="invoice-document-upload" onSubmit={event => { event.preventDefault(); if (uploadFile) upload.mutate(uploadFile) }}><div><strong>Fatura belgesi yükle</strong><small>PDF, JPEG veya PNG · en fazla 10 MiB · sadece özel arşive kaydedilir</small></div><input type="file" accept="application/pdf,image/jpeg,image/png" onChange={event => setUploadFile(event.target.files?.[0] ?? null)} aria-label="Fatura belgesi seç" /><button type="submit" disabled={!uploadFile || upload.isPending}>{upload.isPending ? 'Yükleniyor…' : 'Belgeyi yükle'}</button></form></div>
+    {protectedActions.length > 0 && <form className="panel form-panel" onSubmit={event => event.preventDefault()}><h2>Dış mali işlem onayı</h2><p>Parola yalnız canlı ortamdaki mali işlemler için yeniden sorulur. Sunucu, bağlantının ve yazma ayarlarının bu işleme izin verdiğini ayrıca denetler.</p><label>Hesap parolası<input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} /></label><label className="check"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> Bu dış mali işlemi açıkça onaylıyorum.</label></form>}
     <div className="panel"><h2>Kullanılabilir işlemler</h2>{invoice.allowedActions.length ? <><p className="invoice-detail-muted">Fatura belgesi hazırsa “Trendyol’a fatura linkini ilet” işlemi, güvenli bağlantıyı ilgili pakete gönderir.</p><div className="button-row">{invoice.allowedActions.map(action => <button key={action} type="button" onClick={() => operation.mutate({ action, invoice })} disabled={operation.isPending || (protectedActions.includes(action) && (!password || !confirmed))}>{actionLabel(action)}</button>)}</div></> : <div className="unknown"><strong>Dış işlemler kapalı</strong><p>Bağlantı, teknik doğrulama ve güvenli yazma koşulları işlem öncesi denetlenir.</p></div>}</div>
   </section>
 }

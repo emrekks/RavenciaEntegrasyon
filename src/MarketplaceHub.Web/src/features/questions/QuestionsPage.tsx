@@ -4,6 +4,7 @@ import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
+import { newIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { DataFreshnessNote } from '../../shared/data-freshness'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
@@ -183,7 +184,7 @@ export function QuestionsPage() {
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync-chips', syncStates.isLoading)
 
   const sync = useMutation({
-    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'X-Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(request) }),
+    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
     onSuccess: async () => { setNotice(''); await Promise.all([client.invalidateQueries({ queryKey: ['questions'] }), client.invalidateQueries({ queryKey: ['questions', 'sync-state'] })]) },
     onError: error => setNotice(error instanceof Error ? error.message : 'Senkronizasyon kuyruğa alınamadı.'),
   })
@@ -195,7 +196,7 @@ export function QuestionsPage() {
   const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(''); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => setNotice(error instanceof Error ? error.message : 'Hazır cevap silinemedi.') })
   const sendAnswer = useMutation({
     mutationFn: async ({ id, version, text }: { id: string; version: number; text: string }) => {
-      const post = (current: number) => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'X-Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ text, version: current }) })
+      const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('question-answer', id, current, body) }, body }) }
       try { return await post(version) }
       catch (error) {
         // The question was refreshed in the background since it was opened: it is read again and, while it
