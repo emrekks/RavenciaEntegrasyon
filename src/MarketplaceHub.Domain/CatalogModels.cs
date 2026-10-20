@@ -191,6 +191,9 @@ public sealed class PlatformConnection
     public DateTimeOffset? LastTestedAt { get; set; }
     public DateTimeOffset? LastSuccessAt { get; set; }
     public string? LastErrorCode { get; set; }
+    // When the connection was last disabled (or hidden); re-enabling it needs
+    // a successful connection test newer than this.
+    public DateTimeOffset? DisabledAt { get; set; }
     public long Version { get; set; } = 1;
 }
 

@@ -48,6 +48,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (hidden)
         {
             connection.Status = "HIDDEN";
+            connection.DisabledAt = timeProvider.GetUtcNow();
         }
         else if (connection.Status == "HIDDEN")
         {

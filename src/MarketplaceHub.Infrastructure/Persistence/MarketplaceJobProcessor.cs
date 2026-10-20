@@ -114,6 +114,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         if (directResult.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
                     }
                     if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, completedSlice, completedSlice ? null : directResult.ErrorCode, cancellationToken);
+                    if (!completedSlice) await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, directResult, cancellationToken);
                     return directResult;
                 }
                 var succeeded = jobType switch
@@ -152,6 +153,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (exception.Result.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
                 else telemetryFailedCount++;
                 if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, false, exception.Result.ErrorCode, cancellationToken);
+                await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, exception.Result, cancellationToken);
                 return exception.Result;
             }
             catch (Exception exception)
@@ -227,6 +229,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         or MarketplaceJobTypes.ReturnStatusSync
         or MarketplaceJobTypes.ReturnReconciliation
         or MarketplaceJobTypes.StockReconciliation;
+
+    // Only an Authentication-class adapter error is a blocked result that also
+    // backs the connection off (JobExecutionResult.FromAdapterError). The
+    // connection test records its own outcome.
+    internal static bool IsConnectionAuthenticationFailure(string jobType, JobExecutionResult result) =>
+        jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest)
+        && result.Kind == JobCompletionKind.Blocked
+        && result.BackOffConnection
+        && !string.IsNullOrWhiteSpace(result.ErrorCode);
+
+    // Refused credentials during a sync show on the connection, as a failed
+    // connection test does; the next successful test clears the code.
+    private async Task RecordConnectionAuthenticationFailureAsync(Guid tenantId, Guid connectionId, string jobType, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        if (!IsConnectionAuthenticationFailure(jobType, result)) return;
+        try
+        {
+            var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+            if (connection is null || string.Equals(connection.LastErrorCode, result.ErrorCode, StringComparison.Ordinal)) return;
+            connection.LastErrorCode = result.ErrorCode;
+            connection.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The connection was edited meanwhile; the next refused read records it.
+            db.ChangeTracker.Clear();
+        }
+    }
 
     private async Task RecordSyncAttempt(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
     {

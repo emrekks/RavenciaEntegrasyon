@@ -3214,6 +3214,95 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ConnectionActivation_RefusesDeletedHiddenAndStaleTestedConnections()
+    {
+        var tenant = NewTenant("connection-activation-rules");
+        var now = fixture.Now;
+        PlatformConnection Connection(string status, string store) { var connection = NewQuestionConnection(tenant); connection.Status = status; connection.ExternalStoreId = store; connection.LastSuccessAt = now.AddHours(-2); return connection; }
+        var disabled = Connection("DISABLED", "seller-disabled");
+        disabled.DisabledAt = now.AddHours(-1);
+        var hidden = Connection("HIDDEN", "seller-hidden");
+        var deleted = Connection("DELETED", "seller-deleted");
+        PlatformCapability Test(PlatformConnection connection) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, Code = MarketplaceCapabilities.ConnectionTest, SupportLevel = CapabilitySupportLevel.Supported, ApiVersion = connection.ApiVersion, Environment = connection.Environment, StoreScope = connection.ExternalStoreId, Version = 1 };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(disabled, hidden, deleted);
+            seedDb.PlatformCapabilities.AddRange(Test(disabled), Test(hidden), Test(deleted));
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var dataProtection = new EphemeralDataProtectionProvider();
+            var service = new MarketplaceConnectionService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, fixture.TokenHasher, new FixedTimeProvider(now), new ConfigurationBuilder().Build());
+
+            Assert.Equal("CONNECTION_TEST_REQUIRED", (await service.SetActiveAsync(tenant.Id, disabled.Id, disabled.Version, true, CancellationToken.None)).Error?.Code);
+            Assert.Equal("CONNECTION_HIDDEN", (await service.SetActiveAsync(tenant.Id, hidden.Id, hidden.Version, true, CancellationToken.None)).Error?.Code);
+            Assert.Equal("RESOURCE_NOT_FOUND", (await service.SetActiveAsync(tenant.Id, deleted.Id, deleted.Version, true, CancellationToken.None)).Error?.Code);
+            Assert.Equal("RESOURCE_NOT_FOUND", (await service.GetAsync(tenant.Id, deleted.Id, CancellationToken.None)).Error?.Code);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.PlatformCapabilities.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ConnectionEnvironmentChange_NeedsADataResetAndDropsTheOldCredentialsAndCursors()
+    {
+        var tenant = NewTenant("connection-environment-change");
+        var withData = NewQuestionConnection(tenant);
+        withData.ExternalStoreId = "seller-with-data";
+        withData.Status = "DRAFT";
+        var empty = NewQuestionConnection(tenant);
+        empty.ExternalStoreId = "seller-empty";
+        empty.Status = "DRAFT";
+        var order = NewInvoiceTestOrder(tenant.Id, withData.Id, Guid.CreateVersion7(), "environment-change-order", isReturnClaim: false, fixture.Now);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(withData, empty);
+            seedDb.Orders.Add(order);
+            seedDb.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = empty.Id, CredentialType = "BASIC", ProtectedPayload = "protected", MaskedHint = "***1", CreatedAt = fixture.Now, Version = 1 });
+            seedDb.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = empty.Id, ResourceType = "ORDERS", OpaqueCursor = "stage-cursor", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var dataProtection = new EphemeralDataProtectionProvider();
+            var service = new MarketplaceConnectionService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, fixture.TokenHasher, fixture.TimeProvider, new ConfigurationBuilder().Build());
+
+            var refused = await service.UpdateAsync(tenant.Id, withData.Id, withData.Version, new UpdateConnectionCommand(withData.DisplayName, null, Environment: "PRODUCTION"), CancellationToken.None);
+            Assert.Equal("CONNECTION_DATA_RESET_REQUIRED", refused.Error?.Code);
+
+            var moved = await service.UpdateAsync(tenant.Id, empty.Id, empty.Version, new UpdateConnectionCommand(empty.DisplayName, null, Environment: "PRODUCTION"), CancellationToken.None);
+            Assert.Null(moved.Error);
+            Assert.False(moved.Value!.HasCredential);
+            Assert.False(await db.SyncCursors.AnyAsync(row => row.TenantId == tenant.Id && row.ConnectionId == empty.Id));
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.PlatformCredentials.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.PlatformCapabilities.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task SyncCursorProgressAndOutboxTimes_FollowTheInjectedClock()
     {
         var tenant = NewTenant("sync-cursor-clock");
