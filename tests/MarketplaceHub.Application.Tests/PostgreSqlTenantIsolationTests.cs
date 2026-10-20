@@ -743,7 +743,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task ADraftConnectionWhoseTestFailedOnAPassingFaultIsRetestedOnceAQuarterHour()
+    public async Task ADraftConnectionIsRetestedAfterAPassingFaultOrARefusalOfUnchangedCredentials()
     {
         var tenant = NewTenant("connection-retest");
         var connection = NewQuestionConnection(tenant);
@@ -761,25 +761,47 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         refused.Status = "DRAFT";
         refused.LastTestedAt = fixture.Now.AddHours(-2);
         refused.LastErrorCode = "PAZARAMA_CREDENTIALS_REJECTED";
+        // The identity service refused credentials saved three hours ago (an outage on its side): retried hourly.
+        var refusedDuringOutage = NewQuestionConnection(tenant);
+        refusedDuringOutage.PlatformCode = "PAZARAMA";
+        refusedDuringOutage.Environment = "PRODUCTION";
+        refusedDuringOutage.ApiVersion = "V1";
+        refusedDuringOutage.ExternalStoreId = "seller-19";
+        refusedDuringOutage.Status = "DRAFT";
+        refusedDuringOutage.LastTestedAt = fixture.Now.AddHours(-2);
+        refusedDuringOutage.LastErrorCode = "PAZARAMA_CREDENTIALS_REJECTED";
+        // Refused for more than a day: the seller has to look at the credentials.
+        var refusedLongAgo = NewQuestionConnection(tenant);
+        refusedLongAgo.PlatformCode = "PAZARAMA";
+        refusedLongAgo.Environment = "PRODUCTION";
+        refusedLongAgo.ApiVersion = "V1";
+        refusedLongAgo.ExternalStoreId = "seller-20";
+        refusedLongAgo.Status = "DRAFT";
+        refusedLongAgo.LastTestedAt = fixture.Now.AddHours(-2);
+        refusedLongAgo.LastErrorCode = "PAZARAMA_CREDENTIALS_REJECTED";
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
-        db.PlatformConnections.AddRange(connection, refused);
+        db.PlatformConnections.AddRange(connection, refused, refusedDuringOutage, refusedLongAgo);
+        PlatformCredential Credential(PlatformConnection owner, DateTimeOffset savedAt) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = owner.Id, CredentialType = "PAZARAMA_CLIENT", ProtectedPayload = "protected", MaskedHint = "test", CreatedAt = savedAt, Version = 1 };
         db.PlatformCredentials.AddRange(
-            new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, CredentialType = "PAZARAMA_CLIENT", ProtectedPayload = "protected", MaskedHint = "test", CreatedAt = fixture.Now, Version = 1 },
-            new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = refused.Id, CredentialType = "PAZARAMA_CLIENT", ProtectedPayload = "protected", MaskedHint = "test", CreatedAt = fixture.Now, Version = 1 });
+            Credential(connection, fixture.Now),
+            // Saved after the refused test: the new credentials get their own test, not a retry.
+            Credential(refused, fixture.Now),
+            Credential(refusedDuringOutage, fixture.Now.AddHours(-3)),
+            Credential(refusedLongAgo, fixture.Now.AddHours(-30)));
         await db.SaveChangesAsync();
         var producer = new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build());
 
         var first = await producer.RetestTransientDraftsAsync(fixture.Now, CancellationToken.None);
         var second = await producer.RetestTransientDraftsAsync(fixture.Now, CancellationToken.None);
 
-        Assert.Equal(1, first);
+        Assert.Equal(2, first);
         Assert.Equal(0, second);
-        var job = Assert.Single(await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ToListAsync());
-        Assert.Equal(connection.Id, job.ConnectionId);
-        Assert.Equal(MarketplaceJobTypes.PazaramaConnectionTest, job.JobType);
-        Assert.StartsWith($"scheduled:connection-retest:{connection.Id:N}:", job.JobDedupKey);
+        var jobs = await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.Equal(new[] { connection.Id, refusedDuringOutage.Id }.Order(), jobs.Select(job => job.ConnectionId!.Value).Order());
+        Assert.All(jobs, job => Assert.Equal(MarketplaceJobTypes.PazaramaConnectionTest, job.JobType));
+        Assert.All(jobs, job => Assert.StartsWith($"scheduled:connection-retest:{job.ConnectionId:N}:", job.JobDedupKey));
         await transaction.RollbackAsync();
     }
 

@@ -651,8 +651,27 @@ public static class ConnectionRetestPolicy
             || errorCode.EndsWith("_NETWORK_ERROR", StringComparison.Ordinal)
             || errorCode is "REMOTE_TIMEOUT" or "REMOTE_UNAVAILABLE" or "REMOTE_RATE_LIMITED");
 
-    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now) =>
-        status == "DRAFT" && lastTestedAt is { } tested && IsTransient(lastErrorCode) && now - tested >= Interval;
+    // A marketplace's identity service can refuse good credentials while it is itself failing (Pazarama answered
+    // "Oturum bilgileriniz alınamadı" with HTTP 400 during a Cloudflare outage). Such a refusal is retried once an
+    // hour, but only while the credential the test used is still the active one and for at most a day after it was
+    // saved (the first refusal follows its save); after that the seller has to look at the credentials.
+    public static readonly TimeSpan AuthRefusalInterval = TimeSpan.FromHours(1);
+    public static readonly TimeSpan AuthRefusalWindow = TimeSpan.FromHours(24);
+
+    public static bool IsAuthRefusal(string? errorCode) =>
+        errorCode is not null && (errorCode.EndsWith("_CREDENTIALS_REJECTED", StringComparison.Ordinal)
+            || errorCode.EndsWith("_ACCESS_DENIED", StringComparison.Ordinal)
+            || errorCode is "CREDENTIALS_REJECTED" or "ACCESS_DENIED");
+
+    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now, DateTimeOffset? credentialSavedAt = null)
+    {
+        if (status != "DRAFT" || lastTestedAt is not { } tested) return false;
+        if (IsTransient(lastErrorCode)) return now - tested >= Interval;
+        return IsAuthRefusal(lastErrorCode)
+            && credentialSavedAt is { } saved && saved <= tested
+            && now - saved < AuthRefusalWindow
+            && now - tested >= AuthRefusalInterval;
+    }
 }
 
 public enum EffectVerdict { Applied, NotApplied, Unknown }

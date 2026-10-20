@@ -319,19 +319,29 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     }
 
     // A draft connection whose last test failed on a passing fault (gateway block, quota, marketplace fault, timeout)
-    // is tested again every quarter hour, so it verifies itself once the marketplace recovers; see ConnectionRetestPolicy.
+    // is tested again every quarter hour, so it verifies itself once the marketplace recovers. One whose credentials
+    // were refused is tested again hourly for a day while its credential stays unchanged; see ConnectionRetestPolicy.
     internal async Task<int> RetestTransientDraftsAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         var drafts = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.Status == "DRAFT" && x.LastTestedAt != null && x.LastErrorCode != null
                 && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
                 && db.PlatformCredentials.Any(credential => credential.ConnectionId == x.Id && credential.RevokedAt == null))
-            .Select(x => new { x.TenantId, x.Id, x.PlatformCode, x.Status, x.LastTestedAt, x.LastErrorCode })
+            .Select(x => new
+            {
+                x.TenantId,
+                x.Id,
+                x.PlatformCode,
+                x.Status,
+                x.LastTestedAt,
+                x.LastErrorCode,
+                CredentialSavedAt = db.PlatformCredentials.Where(credential => credential.ConnectionId == x.Id && credential.RevokedAt == null).Max(credential => (DateTimeOffset?)credential.CreatedAt)
+            })
             .ToListAsync(cancellationToken);
         var added = 0;
         foreach (var draft in drafts)
         {
-            if (!ConnectionRetestPolicy.ShouldRetest(draft.Status, draft.LastTestedAt, draft.LastErrorCode, now)) continue;
+            if (!ConnectionRetestPolicy.ShouldRetest(draft.Status, draft.LastTestedAt, draft.LastErrorCode, now, draft.CredentialSavedAt)) continue;
             var jobType = MarketplaceJobTypes.ForPlatform(draft.PlatformCode, MarketplaceJobTypes.ConnectionTest);
             var dedupPrefix = $"scheduled:connection-retest:{draft.Id:N}:";
             var pending = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == draft.TenantId && x.ConnectionId == draft.Id
