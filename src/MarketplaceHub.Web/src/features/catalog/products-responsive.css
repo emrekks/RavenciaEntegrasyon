@@ -523,12 +523,26 @@
 /* The variant filter's clear button keeps its label on one line. */
 .app-shell.stitch-shell main .product-add-page .variant-filter-clear { white-space: nowrap; }
 
-/* Picture order buttons: hidden on wider screens (pictures are dragged there); on phones a pair of arrows sits along the
-   bottom of every picture and moves it one place earlier or later. */
-.app-shell.stitch-shell main .product-add-page .media-move-buttons { display: none; }
+/* Picture order buttons: on phones a pair of arrows sits along the bottom of every picture and moves it one place
+   earlier or later. On wider screens pictures are dragged; the arrows stay out of sight but in the Tab order and show
+   while the picture has keyboard focus, so the order can be changed without a mouse too. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; display: flex; justify-content: space-between; gap: 4px; }
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button { display: grid; width: 34px; min-width: 0; height: 28px; min-height: 28px; padding: 0; place-items: center; color: #fff; background: rgb(15 16 22 / 72%); border: 1px solid rgb(255 255 255 / 18%); border-radius: 7px; box-shadow: none; }
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button:disabled { opacity: .35; }
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons .ui-icon { width: 16px; height: 16px; }
+}
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; display: flex; justify-content: space-between; gap: 4px; opacity: 0; pointer-events: none; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:has(:focus-visible) .media-move-buttons { opacity: 1; pointer-events: auto; }
+}
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button { display: grid; width: 34px; min-width: 0; height: 28px; min-height: 28px; padding: 0; place-items: center; color: #fff; background: rgb(15 16 22 / 72%); border: 1px solid rgb(255 255 255 / 18%); border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button:disabled { opacity: .35; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons .ui-icon { width: 16px; height: 16px; }
+
+/* The keyboard way to the picture zoom (MediaZoomButton): a small corner button, shown on hover and on keyboard focus;
+   a touch screen taps the picture itself. */
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn { position: absolute; top: 4px; left: 4px; z-index: 2; display: grid; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 0; place-items: center; color: #fff; background: rgb(9 20 39 / 86%); border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; opacity: 0; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:hover .image-zoom-btn, .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn:focus-visible { opacity: 1; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn .ui-icon { width: 12px; height: 12px; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn { width: 26px; min-width: 26px; height: 26px; min-height: 26px; border-radius: 7px; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn .ui-icon { width: 14px; height: 14px; }
 }
