@@ -407,7 +407,8 @@ public static class InvoicingEndpoints
             || !string.Equals(storedUri.AbsolutePath, expectedPath, StringComparison.Ordinal)
             || !string.IsNullOrEmpty(storedUri.Query)
             || !string.IsNullOrEmpty(storedUri.Fragment)) return Results.NotFound();
-        http.Response.Headers.CacheControl = "public, max-age=300";
+        // Invoices carry personal data: not kept by shared caches or the browser (A17).
+        http.Response.Headers.CacheControl = "private, no-store";
         return Results.File(await storage.OpenReadAsync(tenantId, row.RelativePath, http.RequestAborted), row.MimeType, row.OriginalNameSafe ?? $"invoice-{documentId:N}.pdf", enableRangeProcessing: false);
     }
 
@@ -606,7 +607,7 @@ public static class InvoicingEndpoints
         }
         if (!command.Confirmed) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Dış mali işlem için açık onay zorunludur.", 422));
         var user = await users.FindByIdAsync(tenant.UserId.ToString());
-        if (!await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(users, user, command.Password)) return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
+        if (!await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(http, users, user, command.Password)) return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
         long version = 0;
         if (requireVersion && !TryIfMatch(http, out version, out var failure)) return failure!;
         return Accepted(await enqueue(tenant.TenantId, version, http.Request.Headers["Idempotency-Key"].ToString()));
