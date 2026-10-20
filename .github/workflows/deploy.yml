@@ -5,10 +5,22 @@ on:
     workflows: [Validate]
     types: [completed]
     branches: [main]
+  # 06:20 UTC = 09:20 Istanbul, after the host starts at 09:00: a push validated
+  # while the host was stopped (00:30-09:00) is deployed the next morning. When
+  # production already runs it, ci-entrypoint.sh answers "already live" and exits 0.
+  schedule:
+    - cron: '20 6 * * *'
   workflow_dispatch:
+    inputs:
+      redeploy:
+        description: Rebuild and redeploy even if the latest green revision is already live
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  # Reading Validate runs to resolve the latest green revision.
+  actions: read
 
 concurrency:
   group: production-deploy
@@ -16,9 +28,11 @@ concurrency:
 
 jobs:
   deploy:
-    # Only a green Validate run of a main push, or a manual run on main, reaches production.
+    # Only a green Validate run of a main push, the morning catch-up, or a manual
+    # run on main reaches production; the last two deploy the latest green revision.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'schedule' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -27,12 +41,25 @@ jobs:
       - name: Resolve revision
         id: revision
         env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
           VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+          REDEPLOY: ${{ github.event_name == 'workflow_dispatch' && inputs.redeploy }}
         run: |
           set -Eeuo pipefail
-          sha="${VALIDATED_SHA:-$GITHUB_SHA}"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Unexpected revision: $sha" >&2; exit 1; }
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            sha="$VALIDATED_SHA"
+          else
+            # Latest Validate run of a push to main that concluded successfully.
+            sha="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // empty')"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Unexpected revision: '$sha'" >&2; exit 1; }
+          request="$sha"
+          [[ "$REDEPLOY" != "true" ]] || request="$sha redeploy"
+          echo "Deploying $request ($EVENT_NAME)."
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "request=$request" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to server
         env:
@@ -40,7 +67,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          REVISION: ${{ steps.revision.outputs.sha }}
+          REQUEST: ${{ steps.revision.outputs.request }}
         run: |
           set -Eeuo pipefail
           install -m 700 -d ~/.ssh
@@ -54,9 +81,33 @@ jobs:
             -o ConnectTimeout=20 \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=20 \
-            "$DEPLOY_USER@$DEPLOY_HOST" "$REVISION"
+            "$DEPLOY_USER@$DEPLOY_HOST" "$REQUEST"
 
+      # /health/ready and /health/queues answer only on the host (the server-side
+      # deploy already required readiness); the public liveness probe confirms the
+      # edge and API answer from outside.
       - name: Verify production
         run: |
           curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors \
-            --output /dev/null https://panel.ravencia.com/health/ready
+            --output /dev/null https://panel.ravencia.com/health/live
+
+      # Optional: repository secret ALERT_WEBHOOK_URL (same URL as the server's
+      # deploy/secrets/alert_webhook_url.txt). Without it the step does nothing.
+      - name: Notify failure
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          ALERT_TEXT: "[Ravencia CI] Deploy (${{ github.event_name }}) failed for ${{ steps.revision.outputs.sha || 'unresolved revision' }}: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$ALERT_WEBHOOK_URL" ]] || { echo "ALERT_WEBHOOK_URL is not configured; no notification sent."; exit 0; }
+          if [[ "$ALERT_WEBHOOK_URL" == https://api.telegram.org/* ]]; then
+            chat_id="$(sed -nE 's/.*[?&]chat_id=([^&]+).*/\1/p' <<<"$ALERT_WEBHOOK_URL")"
+            curl --silent --show-error --fail --max-time 15 --output /dev/null \
+              --data-urlencode "chat_id=$chat_id" --data-urlencode "text=$ALERT_TEXT" "${ALERT_WEBHOOK_URL%%\?*}" \
+              || echo "::warning::Failure notification could not be delivered."
+          else
+            curl --silent --show-error --fail --max-time 15 --output /dev/null -H 'Content-Type: application/json' \
+              --data "$(jq -n --arg text "$ALERT_TEXT" '{text: $text}')" "$ALERT_WEBHOOK_URL" \
+              || echo "::warning::Failure notification could not be delivered."
+          fi
