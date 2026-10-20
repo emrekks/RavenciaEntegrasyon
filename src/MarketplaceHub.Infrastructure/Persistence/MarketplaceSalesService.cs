@@ -2,6 +2,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
@@ -215,7 +216,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
-                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, MaskIdentityNumber(customer.TaxOrIdentityNumber),
+                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), MaskIdentityNumber(customer.TaxOrIdentityNumber),
                 ListAddress(order.ShipmentAddressSnapshotJson), order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, invoiceDocumentUrl,
                 connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null,
@@ -434,8 +435,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             // The customer snapshot holds identity, tax and phone numbers: a
             // term without letters (a number) is only matched against order,
             // product and barcode fields, never against the snapshot.
+            // Nor against its e-mail fields: the list no longer shows the e-mail.
             var searchCustomer = SearchesCustomerSnapshot(search);
-            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || (searchCustomer && x.CustomerSnapshotJson.Contains(search))
+            var customerPattern = CustomerSnapshotSearchPattern(search);
+            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || (searchCustomer && Regex.IsMatch(x.CustomerSnapshotJson, customerPattern))
                 || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
                     && (line.TitleSnapshot.Contains(search) || line.Sku.Contains(search) || (line.Barcode != null && line.Barcode.Contains(search)))));
         }
@@ -771,7 +774,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabelForPlatform(invoice, displayPackage?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
-            customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl));
+            customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson)));
     }
 
     public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null)
@@ -1838,19 +1841,23 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
         var search = options.Search?.Trim();
         var searchCustomer = search is not null && SearchesCustomerSnapshot(search);
+        var customerPattern = CustomerSnapshotSearchPattern(search ?? string.Empty);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(claim => claim.ExternalClaimId.Contains(search)
                 || (claim.ReasonCode != null && claim.ReasonCode.Contains(search))
                 || (claim.ReasonText != null && claim.ReasonText.Contains(search))
                 || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
-                    && (order.OrderNumber.Contains(search) || (searchCustomer && order.CustomerSnapshotJson.Contains(search))))
+                    && (order.OrderNumber.Contains(search) || (searchCustomer && Regex.IsMatch(order.CustomerSnapshotJson, customerPattern))))
                 || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
                     && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
                         && ((line.Barcode != null && line.Barcode.Contains(search)) || line.Sku.Contains(search)))));
 
         var customer = options.Customer?.Trim();
         if (!string.IsNullOrWhiteSpace(customer))
-            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && (order.CustomerSnapshotJson.Contains(customer) || order.OrderNumber.Contains(customer))));
+        {
+            var customerFilterPattern = CustomerSnapshotSearchPattern(customer);
+            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && (Regex.IsMatch(order.CustomerSnapshotJson, customerFilterPattern) || order.OrderNumber.Contains(customer))));
+        }
         var orderNumber = options.OrderNumber?.Trim();
         if (!string.IsNullOrWhiteSpace(orderNumber))
             query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderNumber.Contains(orderNumber)));
@@ -2947,6 +2954,20 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private sealed record SourceLineView(string? ImageUrl, string? ModelCode, string? OptionSignature);
 
     internal static bool SearchesCustomerSnapshot(string term) => term.Any(char.IsLetter);
+
+    // A PostgreSQL (and .NET) regular expression that finds the term in a customer snapshot value
+    // whose key is not an e-mail field ("email", "customerEmail", ...): a list search matches names
+    // and places, never e-mail addresses. Matching stays case-sensitive, as the plain search was.
+    internal static string CustomerSnapshotSearchPattern(string term)
+    {
+        var escaped = new StringBuilder(term.Length * 2);
+        foreach (var ch in term)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch == '_' || ch > 127) escaped.Append(ch);
+            else escaped.Append('\\').Append(ch);
+        }
+        return "\"(?![A-Za-z0-9_]*[Mm][Aa][Ii][Ll]\")[A-Za-z0-9_]*\"\\s*:\\s*\"[^\"]*" + escaped;
+    }
 
     internal static string? MaskIdentityNumber(string? value)
     {

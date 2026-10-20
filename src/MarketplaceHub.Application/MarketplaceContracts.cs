@@ -883,7 +883,7 @@ public sealed record OrderListView(
     string? CargoTrackingNumber = null,
     string? PrimaryImageUrl = null,
     decimal ProductQuantity = 0,
-    string? CustomerEmail = null,
+    // No e-mail here: the shipping label reads it from the order detail when it prints.
     // Masked (***1234): the full identity or tax number is only in the order detail.
     string? CustomerTaxOrIdentityNumber = null,
     // The delivery address fields a shipping label needs; the raw address
@@ -1000,7 +1000,9 @@ public sealed record OrderDetailView(
     string InvoiceStatus = "FATURA_BEKLIYOR",
     string? CustomerPhone = null,
     bool? IsEInvoiceAvailable = null,
-    string? InvoiceDocumentUrl = null);
+    string? InvoiceDocumentUrl = null,
+    // The delivery address in the list's shape, for the shipping label printed from the detail.
+    OrderAddressView? ShipmentAddress = null);
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents, string PlatformCode = "TRENDYOL");
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);
