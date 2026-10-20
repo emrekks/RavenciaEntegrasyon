@@ -41,7 +41,8 @@ public sealed class ApiTestHost(string connectionString) : WebApplicationFactory
         {
             // Background loops are not part of the request pipeline under test.
             foreach (var hosted in services.Where(descriptor => descriptor.ServiceType == typeof(IHostedService)
-                && (descriptor.ImplementationType == typeof(OperationsRealtimeBroadcaster) || descriptor.ImplementationType == typeof(ApiIdempotencyRetentionService))).ToList())
+                && (descriptor.ImplementationType == typeof(OperationsRealtimeBroadcaster) || descriptor.ImplementationType == typeof(ApiIdempotencyRetentionService)
+                    || descriptor.ImplementationType == typeof(MarketplaceHub.Api.Operations.PurgedFileRetentionService))).ToList())
                 services.Remove(hosted);
         });
     }
@@ -151,6 +152,48 @@ public sealed class ApiPipelineTests(ApiPipelineHost fixture) : IClassFixture<Ap
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(response)).GetProperty("code").GetString());
+    }
+
+    // Without a session an auth read is "signed out" (the panel shows the sign-in screen), not "forbidden".
+    [Fact]
+    public async Task AuthReadsWithoutASession_AnswerAuthenticationRequired()
+    {
+        using var client = fixture.Host.CreateClient();
+
+        using var response = await client.GetAsync("/api/v1/auth/security-status");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("AUTHENTICATION_REQUIRED", (await ApiTestHost.ProblemAsync(response)).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task SecondFactorAttempts_HaveTheirOwnLimit()
+    {
+        using var client = fixture.Host.CreateClient();
+        var csrf = await fixture.Host.CsrfAsync(client);
+        var statuses = new List<HttpStatusCode>();
+        for (var attempt = 0; attempt <= RateLimitPolicies.StepsPerMinute; attempt++)
+        {
+            using var response = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/mfa/challenge", csrf, new { code = "000000" }));
+            statuses.Add(response.StatusCode);
+        }
+
+        Assert.All(statuses.Take(RateLimitPolicies.StepsPerMinute), status => Assert.Equal(HttpStatusCode.Unauthorized, status));
+        Assert.Equal(HttpStatusCode.TooManyRequests, statuses[^1]);
+    }
+
+    [Theory]
+    [InlineData("client-op-123", true)]
+    [InlineData("bad value with spaces", false)]
+    public async Task ACorrelationIdIsKeptOnlyWhenItIsAPlainToken(string sent, bool kept)
+    {
+        using var client = fixture.Host.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
+        request.Headers.TryAddWithoutValidation("X-Correlation-ID", sent);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(kept, response.Headers.GetValues("X-Correlation-ID").Single() == sent);
     }
 
     [Fact]

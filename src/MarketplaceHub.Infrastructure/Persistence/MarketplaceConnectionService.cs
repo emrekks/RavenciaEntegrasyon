@@ -173,7 +173,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 TenantId = tenantId,
                 ConnectionId = connection.Id,
                 CredentialType = "SHOPIFY_ACCESS_TOKEN",
-                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new ShopifyCredentialPayload(accessToken))),
+                ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, connection.Id, JsonSerializer.Serialize(new ShopifyCredentialPayload(accessToken))),
                 MaskedHint = Mask(accessToken),
                 CreatedAt = now,
                 Version = 1
@@ -187,7 +187,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 TenantId = tenantId,
                 ConnectionId = connection.Id,
                 CredentialType = "BASIC",
-                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new CredentialPayload(command.HepsiburadaIntegratorUsername!.Trim(), command.HepsiburadaServiceKey!))),
+                ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, connection.Id, JsonSerializer.Serialize(new CredentialPayload(command.HepsiburadaIntegratorUsername!.Trim(), command.HepsiburadaServiceKey!))),
                 MaskedHint = Mask(externalStoreId!),
                 CreatedAt = now,
                 Version = 1
@@ -202,7 +202,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 TenantId = tenantId,
                 ConnectionId = connection.Id,
                 CredentialType = "APP_KEY_SECRET",
-                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new CredentialPayload(appKey, n11AppSecret!))),
+                ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, connection.Id, JsonSerializer.Serialize(new CredentialPayload(appKey, n11AppSecret!))),
                 MaskedHint = Mask(appKey),
                 CreatedAt = now,
                 Version = 1
@@ -217,7 +217,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 TenantId = tenantId,
                 ConnectionId = connection.Id,
                 CredentialType = "CLIENT_CREDENTIALS",
-                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new CredentialPayload(clientId, pazaramaClientSecret!))),
+                ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, connection.Id, JsonSerializer.Serialize(new CredentialPayload(clientId, pazaramaClientSecret!))),
                 MaskedHint = Mask(clientId),
                 CreatedAt = now,
                 Version = 1
@@ -431,7 +431,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             _ => MaskEmail(efaturamCredential!.Email!)
         };
         var credentialType = connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : connection.PlatformCode == "N11" ? "APP_KEY_SECRET" : connection.PlatformCode == "PAZARAMA" ? "CLIENT_CREDENTIALS" : "EMAIL_PASSWORD";
-        db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = _credentialProtector.Protect(payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
+        db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, id, payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
@@ -696,7 +696,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (type == "API_KEY" && !string.IsNullOrWhiteSpace(command.ApiKey)) payload = new(null, null, command.ApiKey, null);
         else if (type == "BASIC_AUTHENTICATION" && !string.IsNullOrWhiteSpace(command.Username) && !string.IsNullOrWhiteSpace(command.Password)) payload = new(command.Username, command.Password, null, null);
         else return Invalid<CreatedWebhookSubscription>("authenticationType", connection.PlatformCode == "SHOPIFY" ? "Shopify için API_KEY alanına webhook signing secret zorunludur." : "API_KEY için apiKey; BASIC_AUTHENTICATION için username ve password zorunludur.");
-        var routeToken = TokenHasher.NewToken(); var subscription = new WebhookSubscription { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, RouteTokenHash = tokenHasher.Hash(routeToken), AuthenticationType = type, ProtectedVerifierSecret = _webhookProtector.Protect(JsonSerializer.Serialize(payload)), Status = "ACTIVE", Version = 1 };
+        var routeToken = TokenHasher.NewToken(); var subscription = new WebhookSubscription { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, RouteTokenHash = tokenHasher.Hash(routeToken), AuthenticationType = type, ProtectedVerifierSecret = BoundSecret.ProtectForConnection(_webhookProtector, tenantId, id, JsonSerializer.Serialize(payload)), Status = "ACTIVE", Version = 1 };
         db.WebhookSubscriptions.Add(subscription); await db.SaveChangesAsync(cancellationToken); return ServiceResult<CreatedWebhookSubscription>.Ok(new(Map(subscription), connection.PublicId, routeToken));
     }
 

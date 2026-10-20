@@ -4,6 +4,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +17,7 @@ public sealed class TrendyolWebhookVerifier(AppDbContext db, IDataProtectionProv
     public async ValueTask<AdapterResult<VerifiedWebhookEnvelope>> VerifyAsync(ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, Guid connectionId, Guid subscriptionId, CancellationToken cancellationToken)
     {
         var subscription = await db.WebhookSubscriptions.AsNoTracking().SingleOrDefaultAsync(x => x.ConnectionId == connectionId && x.Id == subscriptionId && x.Status == "ACTIVE", cancellationToken); if (subscription is null) return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Unsupported("Aktif webhook subscription bulunamadı."));
-        VerifierPayload? payload; try { payload = JsonSerializer.Deserialize<VerifierPayload>(_protector.Unprotect(subscription.ProtectedVerifierSecret)); } catch (Exception exception) when (exception is CryptographicException or JsonException or ArgumentException) { return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Configuration()); }
+        VerifierPayload? payload; try { payload = JsonSerializer.Deserialize<VerifierPayload>(BoundSecret.UnprotectForConnection(_protector, subscription.TenantId, subscription.ConnectionId, subscription.ProtectedVerifierSecret)); } catch (Exception exception) when (exception is CryptographicException or JsonException or ArgumentException) { return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Configuration()); }
         if (payload is null || !Authorized(subscription.AuthenticationType, payload, headers)) return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Authentication, "WEBHOOK_AUTHENTICATION_FAILED", "Webhook kimlik doğrulaması başarısız.", 401, null, null));
         var identity = TrendyolWebhookIdentity.Create(rawBody);
         if (identity is null) return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Contract());

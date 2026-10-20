@@ -1,9 +1,9 @@
-using System.Security.Cryptography;
 using System.Text;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -13,7 +13,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
 {
     private const int MaximumRequestBytes = 10 * 1024 * 1024;
 
-    public async Task InvokeAsync(HttpContext context, AppDbContext db, ITenantContextAccessor tenants, TimeProvider timeProvider)
+    public async Task InvokeAsync(HttpContext context, AppDbContext db, ITenantContextAccessor tenants, TimeProvider timeProvider, TokenHasher hasher)
     {
         var isMutation = HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method);
         var isApiMutation = isMutation && context.Request.Path.StartsWithSegments("/api/v1") && !context.Request.Path.StartsWithSegments("/api/v1/auth");
@@ -49,17 +49,24 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         }
         context.Request.Body.Position = 0;
         var route = context.Request.Path.Value ?? string.Empty;
+        var secretResponse = SecretResponseRoutes.Matches(context.Request.Method, route);
         // The version the request was made against is part of it: the same key with another If-Match is a
-        // different request, not a replay. Requests without If-Match hash exactly as before.
+        // different request, not a replay.
         var ifMatch = context.Request.Headers.IfMatch.ToString();
         var versionLine = string.IsNullOrEmpty(ifMatch) ? string.Empty : $"if-match:{ifMatch}\n";
         var hashInput = Encoding.UTF8.GetBytes($"{context.Request.Method}\n{route}\n{context.Request.QueryString}\n{versionLine}");
         var combined = new byte[hashInput.Length + requestBytes.Length];
         hashInput.CopyTo(combined, 0); requestBytes.ToArray().CopyTo(combined, hashInput.Length);
-        var hash = Convert.ToHexString(SHA256.HashData(combined));
+        // Bodies can carry passwords (step-up confirmations) and credentials. A plain SHA-256 of them, kept
+        // for a day, would let anyone who reads the table test guesses offline; the digest is keyed with the
+        // server's key instead.
+        var hash = hasher.HashBytes(IdempotencyRequestDigest.Prefix(combined));
+        // Records belong to the user who made the request: another user of the tenant who happens to send
+        // the same key neither replays nor blocks it.
+        var storedKey = IdempotencyRequestDigest.StoredKey(tenant.UserId, key);
 
         var now = timeProvider.GetUtcNow();
-        var existing = await db.ApiIdempotencyRecords.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == key, context.RequestAborted);
+        var existing = await db.ApiIdempotencyRecords.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == storedKey, context.RequestAborted);
         // Expired rows are swept hourly (ApiIdempotencyRetentionService), not on every request; a row
         // the sweep has not reached yet is settled here, for this key only. A completed record is
         // disposable after its replay window. An unfinished one is evidence that the endpoint may
@@ -95,6 +102,12 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             }
             if (decision == ApiIdempotencyDecisionKind.Replay)
             {
+                // The first answer held a secret that is shown once and was not kept (SecretResponseRoutes).
+                if (secretResponse && existing.ResponseStatus is >= 200 and < 300)
+                {
+                    await ApiProblems.WriteAsync(context, new ServiceError("IDEMPOTENCY_RESPONSE_WITHHELD", "İşlem daha önce tamamlandı; içerdiği gizli bilgi yalnız ilk yanıtta gösterilir ve yeniden gönderilmez.", StatusCodes.Status409Conflict), earlier);
+                    return;
+                }
                 await IdempotentResponse.ReplayAsync(existing, context.Response, context.RequestAborted);
                 return;
             }
@@ -102,7 +115,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             return;
         }
 
-        var record = new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, RouteTemplate = route, IdempotencyKey = key, RequestHash = hash, State = "IN_PROGRESS", CreatedAt = now, ExpiresAt = now.AddHours(24) };
+        var record = new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, RouteTemplate = route, IdempotencyKey = storedKey, RequestHash = hash, State = "IN_PROGRESS", CreatedAt = now, ExpiresAt = now.AddHours(24) };
         db.ApiIdempotencyRecords.Add(record);
         try { await db.SaveChangesAsync(context.RequestAborted); }
         catch (DbUpdateException exception) when (IsExpectedIdempotencyRace(exception))
@@ -139,7 +152,8 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             {
                 record.State = "COMPLETED";
                 string? body = null;
-                if (IdempotentResponse.IsStorableBody(context.Response.ContentType, responseBuffer.Length))
+                var withhold = secretResponse && context.Response.StatusCode is >= 200 and < 300;
+                if (!withhold && IdempotentResponse.IsStorableBody(context.Response.ContentType, responseBuffer.Length))
                 {
                     responseBuffer.Position = 0;
                     using var reader = new StreamReader(responseBuffer, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);

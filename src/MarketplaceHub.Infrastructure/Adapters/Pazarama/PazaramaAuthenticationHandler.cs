@@ -3,6 +3,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public sealed class PazaramaAuthenticationHandler(
         if (credential is null) return null;
 
         CredentialPayload? payload;
-        try { payload = JsonSerializer.Deserialize<CredentialPayload>(protector.Unprotect(credential.ProtectedPayload)); }
+        try { payload = JsonSerializer.Deserialize<CredentialPayload>(BoundSecret.UnprotectForConnection(protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload)); }
         catch (Exception exception) when (exception is CryptographicException or JsonException)
         {
             logger.LogWarning(exception, "Pazarama credential çözülemedi. ConnectionId: {ConnectionId}", connectionId);

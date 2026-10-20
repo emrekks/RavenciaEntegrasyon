@@ -47,6 +47,10 @@ public sealed class RequestSecurityMiddleware(RequestDelegate next)
             ? PilotLocalCsrfCookie
             : ProductionCsrfCookie;
 
+    // Also used for SignalR connections (HubSessionFilter): a request without Origin is not a cross-site
+    // browser request; one with an Origin must name the panel itself.
+    internal static bool IsSameOrigin(HttpContext context) => SameOrigin(context);
+
     private static bool SameOrigin(HttpContext context)
     {
         if (!context.Request.Headers.TryGetValue("Origin", out var origin) || string.IsNullOrWhiteSpace(origin)) return true;

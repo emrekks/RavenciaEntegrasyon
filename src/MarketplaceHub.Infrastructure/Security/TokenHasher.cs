@@ -9,6 +9,9 @@ public sealed class TokenHasher(byte[] key)
 
     public string Hash(string value) => Convert.ToHexString(HMACSHA256.HashData(_key, Encoding.UTF8.GetBytes(value)));
 
+    // Keyed digest of raw bytes (request bodies): without the server key it cannot be used to test guesses.
+    public string HashBytes(ReadOnlySpan<byte> value) => Convert.ToHexString(HMACSHA256.HashData(_key, value));
+
     public bool Verify(string value, string expectedHex)
     {
         var actual = Convert.FromHexString(Hash(value));

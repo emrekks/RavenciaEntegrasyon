@@ -11,6 +11,8 @@ public interface IPrivateFileStorage
 {
     Task<string> SaveAsync(Guid tenantId, string relativeName, string mimeType, Stream content, long maximumBytes, CancellationToken cancellationToken);
     Task<Stream> OpenReadAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken);
+    // Removes a stored file of the tenant; false when it was already gone.
+    Task<bool> DeleteAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken);
 }
 
 public interface IJobLeaseService

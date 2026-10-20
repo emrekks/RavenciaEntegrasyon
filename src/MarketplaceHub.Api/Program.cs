@@ -1,4 +1,3 @@
-using System.Threading.RateLimiting;
 using MarketplaceHub.Api.Catalog;
 using MarketplaceHub.Api.Dashboard;
 using MarketplaceHub.Api.Invoicing;
@@ -12,6 +11,7 @@ using MarketplaceHub.Infrastructure;
 using MarketplaceHub.Infrastructure.Bootstrap;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Serilog.Events;
@@ -53,11 +53,15 @@ builder.Services.AddProblemDetails();
 // answer them with 400 in the panel's error shape.
 builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-builder.Services.AddSignalR();
+builder.Services.AddSingleton<HubSessionMonitor>();
+builder.Services.AddHostedService(services => services.GetRequiredService<HubSessionMonitor>());
+builder.Services.AddSignalR(options => options.AddFilter<HubSessionFilter>());
 builder.Services.AddHostedService<OperationsRealtimeBroadcaster>();
 builder.Services.AddSingleton<OperationsHubConnections>();
 builder.Services.AddHostedService<OperationsHubSessionWatcher>();
 builder.Services.AddHostedService<ApiIdempotencyRetentionService>();
+builder.Services.AddHostedService<PurgedFileRetentionService>();
+builder.Services.AddSingleton<SignInThrottle>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -74,16 +78,8 @@ builder.Services.AddHttpClient(PublicNetwork.ClientName, client =>
     client.Timeout = TimeSpan.FromSeconds(12);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; RavenciaMediaProxy/1.0)");
 }).ConfigurePrimaryHttpMessageHandler(PublicNetwork.Handler);
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = (context, _) => new ValueTask(ApiProblems.WriteAsync(context.HttpContext, "RATE_LIMITED", "Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.", StatusCodes.Status429TooManyRequests));
-    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    // Webhook deliveries: per sending address, then per connection (see WebhookRateLimits).
-    options.GlobalLimiter = WebhookRateLimits.Create();
-});
+// Sign-in, the steps after it, a per-network ceiling and the webhook limits (see RateLimitPolicies).
+builder.Services.AddRateLimiter(options => RateLimitPolicies.Configure(options, builder.Configuration));
 builder.Services.AddScoped<IWebhookRouteGate, WebhookRouteGate>();
 
 var app = builder.Build();
@@ -96,10 +92,19 @@ if (!isAdministrativeCommand && builder.Environment.IsDevelopment() && string.Eq
 if (args is ["migrate"]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(); return; }
 if (args is ["bootstrap"]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BootstrapService>().RunAsync(CancellationToken.None); return; }
 if (args is ["identity", "reset-mfa", var email, var reason]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BreakGlassService>().ResetMfaAsync(email, reason, CancellationToken.None); return; }
+// Prints the one-time password once; the owner must change it at the next sign-in.
+if (args is ["identity", "reset-password", var resetEmail, var resetReason])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var temporary = await scope.ServiceProvider.GetRequiredService<BreakGlassService>().ResetPasswordAsync(resetEmail, resetReason, CancellationToken.None);
+    Console.Out.WriteLine($"Temporary password (change it at the next sign-in): {temporary}");
+    return;
+}
 
 app.UseForwardedHeaders();
-// Queue monitoring is for the server's own network (see FetchMetadata.IsFromServerNetwork); /health/live
-// and /health/ready stay reachable because the deploy scripts probe /health/ready through the edge.
+// Queue monitoring is for the server's own network (see FetchMetadata.IsFromServerNetwork). At the edge,
+// Caddy answers every /health/* path except /health/live with 404 for public sources; the deploy scripts
+// probe /health/ready from the host itself.
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/health/queues") && !FetchMetadata.IsFromServerNetwork(context))
@@ -112,18 +117,19 @@ app.Use(async (context, next) =>
 app.UseExceptionHandler();
 app.Use(async (context, next) =>
 {
-    var correlation = context.Request.Headers["X-Correlation-ID"].FirstOrDefault();
-    if (string.IsNullOrWhiteSpace(correlation) || correlation.Length > 128) correlation = Guid.NewGuid().ToString("N");
+    var correlation = CorrelationId.FromRequest(context.Request.Headers["X-Correlation-ID"].FirstOrDefault());
     context.TraceIdentifier = correlation; context.Response.Headers["X-Correlation-ID"] = correlation;
     using (Serilog.Context.LogContext.PushProperty("CorrelationId", correlation)) await next();
 });
 app.UseMiddleware<RequestSecurityMiddleware>();
+// Before the session lookup and the idempotency body buffering: a refused request costs neither.
+app.UseRateLimiter();
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<SessionStateBoundaryMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
 app.UseMiddleware<ElevatedRoleMfaMiddleware>();
+app.UseMiddleware<StepUpMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
-app.UseRateLimiter();
 app.MapAuthEndpoints();
 app.MapCatalogEndpoints();
 app.MapDashboardEndpoints();

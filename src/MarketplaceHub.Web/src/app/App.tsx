@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazyPage } from '../shared/lazy-page'
-import { api, ApiRequestError, backgroundPollHeaders, hubApi, setUnauthorizedHandler, type Me, type TenantOption } from '../shared/api'
+import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
+import { StepUpPrompt } from './StepUpPrompt'
 import { Drawer, ErrorBoundary, ErrorBox, Modal, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
@@ -55,10 +56,10 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
-  // The menu counts poll only while the tab is on screen, and say they are automatic so the server does not count them as
-  // the person using the panel (otherwise an open tab would never reach the idle sign-out).
-  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary', { headers: backgroundPollHeaders }), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000 })
-  const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubApi<{ totalCount: number }>(questionWaitingSummaryPath, { headers: backgroundPollHeaders }), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
+  // The menu counts poll only while the tab is on screen, and say they are automatic (hubPoll) so the server does not count
+  // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
+  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000 })
+  const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -179,6 +180,7 @@ function Shell({ me }: { me: Me }) {
       {notificationsOpen && createPortal(<div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi" style={notificationHistoryPosition}><Suspense fallback={null}><NotificationPanel notifications={notifications} onNavigate={href => { setNotificationsOpen(false); navigate(href) }} onCleared={() => setNotifications([])} /></Suspense></div>, document.body)}
       <Modal open={quickSearchOpen} title="Hızlı arama" description="Bir sayfa veya işlem seçin." onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
       <Drawer open={mobileMenuOpen} className="rv-mobile-drawer" title={<img className="rv-drawer-logo" src="/pack/brand/ravencia-wordmark.webp" alt="Ravencia" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Oturumu kapat</button></nav></Drawer>
+      <StepUpPrompt />
       <ErrorBoundary resetKey={location.pathname}><Suspense fallback={<DelayedStatus title="Ekran hazırlanıyor" />}><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/mappings/product-matches" element={<Navigate to="/mappings/categories" replace />} /><Route path="/questions" element={<QuestionsPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=auth" replace />} /><Route path="/settings/appearance" element={<Navigate to="/settings?tab=read" replace />} /><Route path="/settings" element={<SystemSettingsPage />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense></ErrorBoundary>
     </main>
     </div>
@@ -199,6 +201,9 @@ export function App() {
     client.setQueryData<Me>(['me'], { ...current, state: 'REVOKED' })
   }), [client])
   useOperationsRealtime(me.data?.state === 'ACTIVE')
+  // Key presses, clicks and scrolling mark the person as present; polls made while nobody is (see hubPoll) leave the
+  // session's idle clock alone.
+  useEffect(() => trackUserActivity(), [])
   useEffect(() => {
     const blurNumberInputOnWheel = (event: WheelEvent) => {
       const target = event.target
@@ -340,7 +345,7 @@ function Login({ notice }: { notice?: string }) {
       if (location.pathname === '/' || location.pathname === '') navigate('/dashboard', { replace: true })
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError('Bir çalışma alanı seçip girişe devam edin.') }
-      else if (reason instanceof ApiRequestError && reason.status === 401) setError('E-posta veya parola hatalı. Art arda başarısız denemelerde hesap 15 dakika geçici olarak kilitlenir.')
+      else if (reason instanceof ApiRequestError && reason.status === 401) setError('E-posta veya parola hatalı. Art arda başarısız denemelerde bu ağdan giriş bir süre engellenir.')
       else if (reason instanceof ApiRequestError && reason.status === 429) setError('Çok fazla giriş denemesi yapıldı. Bir dakika bekleyip yeniden deneyin.')
       else if (reason instanceof ApiRequestError && reason.status === 400) setError('Güvenlik doğrulaması tamamlanamadı. Sayfayı yenileyip tekrar deneyin.')
       else setError('Giriş servisine ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.')
@@ -371,11 +376,16 @@ function ChangePassword() {
     setError('')
     setLoading(true)
     const data = new FormData(event.currentTarget)
+    if (data.get('next') !== data.get('confirm')) {
+      setError('Yeni parola ile tekrarı aynı değil.')
+      setLoading(false)
+      return
+    }
     try {
       await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) })
       await client.invalidateQueries({ queryKey: ['me'] })
-    } catch {
-      setError('Parola değiştirilemedi. Mevcut parolanızı ve güvenlik koşullarını kontrol edin.')
+    } catch (reason) {
+      setError(passwordChangeErrorMessage(reason))
     } finally {
       setLoading(false)
     }
@@ -383,11 +393,30 @@ function ChangePassword() {
   return <AuthPageFrame ariaLabel="Ravencia parola yenileme" accessLabel="Güvenlik adımı" accessMeta="2 / 3" cardTitle="Yeni parolanızı belirleyin" cardDescription="İlk giriş güvenlik adımını tamamlayın." progressStep={2} footerMeta="Parola politikası etkin">
     <form className="rv-auth-form" onSubmit={submit}>
       <div className="rv-auth-field"><label htmlFor="current-password">Geçerli parola</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="current-password" name="current" type="password" autoComplete="current-password" required ref={focusOnMount} placeholder="Geçerli parolanız" /></div></div>
-      <div className="rv-auth-field"><label htmlFor="new-password">Yeni parola</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="new-password" name="next" type="password" autoComplete="new-password" minLength={15} maxLength={64} required placeholder="En az 15 karakter" /></div><small className="rv-auth-hint">15–64 karakter; hesabınıza özel, tahmin edilmesi zor bir parola kullanın.</small></div>
+      <div className="rv-auth-field"><label htmlFor="new-password">Yeni parola</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="new-password" name="next" type="password" autoComplete="new-password" minLength={15} maxLength={64} required placeholder="En az 15 karakter" /></div><small className="rv-auth-hint">15–64 karakter; büyük ve küçük harf, rakam ve simge içeren, yaygın kelimelerden, adınızdan ve e-postanızdan oluşmayan bir parola kullanın.</small></div>
+      <div className="rv-auth-field"><label htmlFor="confirm-password">Yeni parola (tekrar)</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="confirm-password" name="confirm" type="password" autoComplete="new-password" minLength={15} maxLength={64} required placeholder="Yeni parolayı tekrar girin" /></div></div>
       {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
       <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Parola güncelleniyor…</> : <><span>Parolayı güncelle</span><UiIcon name="arrowRight" /></>}</button>
     </form>
   </AuthPageFrame>
+}
+
+// The server's reason, said plainly (W30): a wrong current password, a new password the rules refuse, too many tries.
+function passwordChangeErrorMessage(reason: unknown) {
+  if (!(reason instanceof ApiRequestError)) return 'Parola değiştirilemedi. Bağlantınızı kontrol edip yeniden deneyin.'
+  if (reason.code === 'CURRENT_PASSWORD_INVALID') return 'Mevcut parola doğrulanamadı. Art arda hatalı denemelerde bu ağdan giriş bir süre engellenir.'
+  if (reason.status === 429) return 'Çok fazla deneme yapıldı. Bir dakika bekleyip yeniden deneyin.'
+  if (reason.code === 'PASSWORD_POLICY_FAILED' || reason.code === 'PASSWORD_CHANGE_FAILED') return reason.message
+  return reason.message || 'Parola değiştirilemedi.'
+}
+
+function mfaChallengeErrorMessage(reason: unknown, mode: 'code' | 'recovery') {
+  if (reason instanceof ApiRequestError && reason.code === 'MFA_ATTEMPTS_EXCEEDED') return 'Çok fazla hatalı kod girildi; güvenliğiniz için oturum kapatıldı. Giriş ekranına dönüp yeniden giriş yapın.'
+  if (reason instanceof ApiRequestError && reason.status === 429) return 'Çok fazla deneme yapıldı. Bir dakika bekleyip yeniden deneyin.'
+  if (reason instanceof ApiRequestError && reason.code === 'TENANT_NOT_AVAILABLE') return 'Bu hesap için aktif bir çalışma alanı bulunamadı.'
+  if (reason instanceof ApiRequestError && reason.status >= 500) return 'Doğrulama servisine ulaşılamadı. Kısa süre sonra yeniden deneyin.'
+  if (!(reason instanceof ApiRequestError)) return 'Doğrulama servisine ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.'
+  return mode === 'code' ? 'Doğrulama kodu geçersiz veya süresi dolmuş.' : 'Kurtarma kodu geçersiz veya daha önce kullanılmış.'
 }
 
 function MfaChallenge() {
@@ -409,8 +438,7 @@ function MfaChallenge() {
       await api('/mfa/challenge', { method: 'POST', body: JSON.stringify({ code: mode === 'code' ? data.get('code') : null, recoveryCode: mode === 'recovery' ? data.get('recovery') : null }) })
       await client.invalidateQueries({ queryKey: ['me'] })
     } catch (reason) {
-      if (reason instanceof ApiRequestError && reason.code === 'MFA_ATTEMPTS_EXCEEDED') setError('Çok fazla hatalı kod girildi; güvenliğiniz için oturum kapatıldı. Giriş ekranına dönüp yeniden giriş yapın.')
-      else setError(mode === 'code' ? 'Doğrulama kodu geçersiz veya süresi dolmuş.' : 'Kurtarma kodu geçersiz veya daha önce kullanılmış.')
+      setError(mfaChallengeErrorMessage(reason, mode))
     } finally {
       setLoading(false)
     }

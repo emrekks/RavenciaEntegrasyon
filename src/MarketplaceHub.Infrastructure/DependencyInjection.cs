@@ -37,7 +37,9 @@ public static class DependencyInjection
             options.Password.RequiredLength = 15; options.Password.RequiredUniqueChars = 4;
             options.Password.RequireDigit = true; options.Password.RequireLowercase = true;
             options.Password.RequireUppercase = true; options.Password.RequireNonAlphanumeric = true;
-            options.Lockout.MaxFailedAccessAttempts = 5; options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+            // Account-wide ceiling for guesses spread over many networks; one network is stopped much earlier by the
+            // API's SignInThrottle (five wrong passwords), so one attacker cannot keep the account locked for everybody.
+            options.Lockout.MaxFailedAccessAttempts = 30; options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             options.User.RequireUniqueEmail = true;
         }).AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders();
         var dataProtection = services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysRoot)).SetApplicationName("MarketplaceHub");

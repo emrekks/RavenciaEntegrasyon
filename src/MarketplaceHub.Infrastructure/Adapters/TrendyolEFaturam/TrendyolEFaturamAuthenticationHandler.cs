@@ -4,6 +4,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -29,7 +30,7 @@ public sealed class TrendyolEFaturamAuthenticationHandler(AppDbContext db, IData
         TrendyolEFaturamConnectionSettings? settings;
         try
         {
-            payload = JsonSerializer.Deserialize<TrendyolEFaturamCredentialPayload>(_protector.Unprotect(credential.ProtectedPayload));
+            payload = JsonSerializer.Deserialize<TrendyolEFaturamCredentialPayload>(BoundSecret.UnprotectForConnection(_protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload));
             settings = JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(connection.SettingsJson);
         }
         catch (Exception exception) when (exception is CryptographicException or JsonException)

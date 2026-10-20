@@ -140,6 +140,19 @@ public sealed class RoleAuthorizationMiddlewareTests
     [InlineData("ACCOUNTING", "PUT", "/api/v1/invoice-workspace/manual-status", true)]
     [InlineData("READONLY", "POST", "/api/v1/invoice-workspace/confirm", false)]
     [InlineData("READONLY", "POST", "/api/v1/invoice-workspace/preview", false)]
+    // Fiscal overrides stay with administrators (G21).
+    [InlineData("OPERATIONS", "POST", "/api/v1/invoice-workspace/orders/11111111-1111-1111-1111-111111111111/replace-cancelled-invoice", false)]
+    [InlineData("ACCOUNTING", "POST", "/api/v1/invoice-workspace/orders/11111111-1111-1111-1111-111111111111/confirm-no-remote-invoice", false)]
+    [InlineData("OPERATIONS", "POST", "/api/v1/invoice-workspace/orders/11111111-1111-1111-1111-111111111111/confirm-marketplace-delivered/", false)]
+    [InlineData("ADMINISTRATOR", "POST", "/api/v1/invoice-workspace/orders/11111111-1111-1111-1111-111111111111/replace-cancelled-invoice", true)]
+    [InlineData("OWNER", "POST", "/api/v1/invoice-workspace/orders/11111111-1111-1111-1111-111111111111/confirm-no-remote-invoice", true)]
+    // Recording a printed label is open to every working role (G21).
+    [InlineData("ACCOUNTING", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/label-printed", true)]
+    [InlineData("OPERATIONS", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/label-printed", true)]
+    [InlineData("READONLY", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/label-printed", false)]
+    // Webhook subscriptions hold the verifier secret (A22).
+    [InlineData("OPERATIONS", "POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", false)]
+    [InlineData("ADMINISTRATOR", "POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", true)]
     public async Task OrderAndInvoiceWorkspaceWrites_FollowTheirWorkingRoles(string role, string method, string path, bool reachable)
     {
         var (called, status) = await Invoke(role, method, path);
@@ -164,6 +177,21 @@ public sealed class RoleAuthorizationMiddlewareTests
         var (called, _) = await Invoke(role, "GET", path);
 
         Assert.Equal(reachable, called);
+    }
+
+    // Only reads of public document links pass without a session (A23).
+    [Theory]
+    [InlineData("GET", true)]
+    [InlineData("HEAD", true)]
+    [InlineData("POST", false)]
+    [InlineData("PUT", false)]
+    [InlineData("DELETE", false)]
+    public async Task PublicLinksAreOpenForReadingOnly(string method, bool reachable)
+    {
+        var (called, status) = await Invoke("", method, "/api/v1/public/invoice-documents/token/content");
+
+        Assert.Equal(reachable, called);
+        if (!reachable) Assert.Equal(StatusCodes.Status403Forbidden, status);
     }
 
     [Fact]

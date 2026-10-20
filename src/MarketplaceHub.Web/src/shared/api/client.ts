@@ -24,8 +24,52 @@ export function isPermanentRequestError(error: unknown) {
   return error instanceof ApiRequestError && permanentStatuses.has(error.status)
 }
 
+// A 401 means "signed out" only when the server says so. A wrong password or code in a confirmation (REAUTHENTICATION_FAILED,
+// SECOND_FACTOR_FAILED) is a 401 too, but the session is still valid and the screen that asked shows the error.
+const signedOutCodes = new Set(['AUTHENTICATION_REQUIRED', 'MFA_ATTEMPTS_EXCEEDED'])
+export function isSignedOutProblem(status: number, code: string | undefined) {
+  return status === 401 && (code === undefined || signedOutCodes.has(code))
+}
+
+// Irreversible work (data reset, connection deletion, credential change) needs a fresh proof of identity: the server answers
+// 403 REAUTHENTICATION_REQUIRED. The app registers one handler that asks for the password (and code) and re-authenticates;
+// when it succeeds, the refused request is sent once more, unchanged.
+type StepUpHandler = () => Promise<boolean>
+let stepUpHandler: StepUpHandler | null = null
+export function setStepUpHandler(handler: StepUpHandler | null) {
+  stepUpHandler = handler
+  return () => { if (stepUpHandler === handler) stepUpHandler = null }
+}
+
 // Automatic polls that should not count as the person using the panel: the server can leave the session's idle clock alone.
 export const backgroundPollHeaders = { 'X-Background-Poll': '1' } as const
+
+// The last time the person pressed a key, clicked, touched or scrolled. A poll made right after (opening a page, the first
+// fetch of a list) counts as use; a poll on a timer while nobody touches the panel does not, so an open tab still reaches the
+// idle sign-out.
+const userActiveWindowMs = 60_000
+let lastUserActivityAt = 0
+export function noteUserActivity(at = Date.now()) { lastUserActivityAt = at }
+export function isUserRecentlyActive(now = Date.now()) { return now - lastUserActivityAt < userActiveWindowMs }
+export function trackUserActivity(target: Pick<Window, 'addEventListener' | 'removeEventListener'> = window) {
+  const note = () => noteUserActivity()
+  const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const
+  events.forEach(name => target.addEventListener(name, note, { capture: true, passive: true }))
+  return () => events.forEach(name => target.removeEventListener(name, note, { capture: true }))
+}
+
+/** Request options for a query that refetches on an interval: marked as a background poll unless the person was just active. */
+export function backgroundPollInit(init?: RequestInit): RequestInit | undefined {
+  if (isUserRecentlyActive()) return init
+  const headers = new Headers(init?.headers)
+  Object.entries(backgroundPollHeaders).forEach(([name, value]) => headers.set(name, value))
+  return { ...init, headers }
+}
+
+/** hubApi for queries with a refetchInterval (see backgroundPollInit). Every polling query should read through this. */
+export function hubPoll<T>(path: string, init?: RequestInit): Promise<T> {
+  return hubApi<T>(path, backgroundPollInit(init))
+}
 async function csrf(forceRefresh = false) {
   if (forceRefresh) csrfToken = null
   if (csrfToken) return csrfToken
@@ -76,11 +120,12 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
+export async function hubApi<T>(path: string, init?: RequestInit, steppedUp = false): Promise<T> {
   const response = await fetchWithCsrf(`/api/v1${path}`, init)
   if (!response.ok) {
-    if (response.status === 401) onUnauthorized()
     const problem = await response.json().catch(() => ({})) as ApiProblem
+    if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
+    if (response.status === 403 && problem.code === 'REAUTHENTICATION_REQUIRED' && !steppedUp && stepUpHandler && await stepUpHandler()) return hubApi<T>(path, init, true)
     throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }
   if (response.status === 204) return undefined as T

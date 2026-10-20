@@ -2032,7 +2032,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         try
         {
             db.Tenants.Add(tenant);
-            var record = NewIdempotencyRecord(tenant.Id, path, key);
+            var record = NewIdempotencyRecord(tenant.Id, path, IdempotencyRequestDigest.StoredKey(Guid.Empty, key));
             record.RequestHash = ComputeRequestHash("POST", path, string.Empty, requestBody);
             record.State = "COMPLETED";
             record.ResponseStatus = StatusCodes.Status201Created;
@@ -2049,7 +2049,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 return Task.CompletedTask;
             });
 
-            await middleware.InvokeAsync(context, db, new FixedTenantContextAccessor(tenant.Id), fixture.TimeProvider);
+            await middleware.InvokeAsync(context, db, new FixedTenantContextAccessor(tenant.Id), fixture.TimeProvider, IdempotencyTestHasher);
 
             Assert.False(nextCalled);
             Assert.Equal(StatusCodes.Status201Created, context.Response.StatusCode);
@@ -2084,10 +2084,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 context,
                 db,
                 new FixedTenantContextAccessor(tenant.Id),
-                fixture.TimeProvider));
+                fixture.TimeProvider,
+                IdempotencyTestHasher));
 
             db.ChangeTracker.Clear();
-            var persisted = await db.ApiIdempotencyRecords.SingleAsync(x => x.TenantId == tenant.Id && x.RouteTemplate == path && x.IdempotencyKey == key);
+            var persisted = await db.ApiIdempotencyRecords.SingleAsync(x => x.TenantId == tenant.Id && x.RouteTemplate == path && x.IdempotencyKey == IdempotencyRequestDigest.StoredKey(Guid.Empty, key));
             Assert.Equal("UNKNOWN", persisted.State);
             Assert.Null(persisted.ResponseStatus);
             Assert.Null(persisted.ResponseBody);
@@ -6316,6 +6317,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         return context;
     }
 
+    private static readonly MarketplaceHub.Infrastructure.Security.TokenHasher IdempotencyTestHasher = new(Enumerable.Repeat((byte)7, 32).ToArray());
+
     private static string ComputeRequestHash(string method, string path, string query, string body)
     {
         var prefix = Encoding.UTF8.GetBytes($"{method}\n{path}\n{query}\n");
@@ -6323,7 +6326,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var combined = new byte[prefix.Length + bodyBytes.Length];
         prefix.CopyTo(combined, 0);
         bodyBytes.CopyTo(combined, prefix.Length);
-        return Convert.ToHexString(SHA256.HashData(combined));
+        return IdempotencyTestHasher.HashBytes(IdempotencyRequestDigest.Prefix(combined));
     }
 
     private ServiceProvider CreateOutboxDispatcherServices() => new ServiceCollection()

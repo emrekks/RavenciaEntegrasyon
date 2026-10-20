@@ -33,10 +33,26 @@ public sealed class PrivateFileStorage(string root) : IPrivateFileStorage
 
     public Task<Stream> OpenReadAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken)
     {
-        var prefix = tenantId.ToString("N") + "/";
-        if (!storedPath.Replace('\\', '/').StartsWith(prefix, StringComparison.Ordinal)) throw new UnauthorizedAccessException("Tenant file boundary violation.");
-        Stream stream = new FileStream(Resolve(storedPath), FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
+        Stream stream = new FileStream(ResolveForTenant(tenantId, storedPath), FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
         return Task.FromResult(stream);
+    }
+
+    public Task<bool> DeleteAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken)
+    {
+        var full = ResolveForTenant(tenantId, storedPath);
+        if (!File.Exists(full)) return Task.FromResult(false);
+        File.Delete(full);
+        return Task.FromResult(true);
+    }
+
+    // The tenant boundary is checked on the normalised path: "{tenant}/../{other tenant}/file" starts with
+    // the right prefix as typed but resolves into another tenant's folder.
+    private string ResolveForTenant(Guid tenantId, string storedPath)
+    {
+        var full = Resolve(storedPath);
+        var tenantRoot = Path.Combine(_root, tenantId.ToString("N")) + Path.DirectorySeparatorChar;
+        if (!full.StartsWith(tenantRoot, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("Tenant file boundary violation.");
+        return full;
     }
 
     private string Resolve(string relative)

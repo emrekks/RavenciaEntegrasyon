@@ -15,6 +15,8 @@ public static class AuthAudit
     public const string MfaFailed = "AUTH_MFA_FAILED";
     public const string MfaEnabled = "AUTH_MFA_ENABLED";
     public const string MfaDisabled = "AUTH_MFA_DISABLED";
+    public const string MfaReplaced = "AUTH_MFA_REPLACED";
+    public const string MfaSetupStarted = "AUTH_MFA_SETUP_STARTED";
     public const string RecoveryCodesRegenerated = "AUTH_RECOVERY_CODES_REGENERATED";
     public const string ReauthenticationFailed = "AUTH_REAUTHENTICATION_FAILED";
     public const string PasswordChanged = "AUTH_PASSWORD_CHANGED";
@@ -41,7 +43,7 @@ public static class AuthAudit
         db.AuditLogs.Add(entry);
 
         var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MarketplaceHub.Auth");
-        var level = action is LoginSucceeded or MfaSucceeded or MfaEnabled or PasswordChanged or SessionRevoked or OtherSessionsRevoked or RecoveryCodesRegenerated
+        var level = action is LoginSucceeded or MfaSucceeded or MfaEnabled or MfaSetupStarted or PasswordChanged or SessionRevoked or OtherSessionsRevoked or RecoveryCodesRegenerated
             ? LogLevel.Information
             : LogLevel.Warning;
         logger?.Log(level, "Auth event {AuthAction} for user {UserId}, session {SessionId}, from {SourceIp}: {Reason} (correlation {CorrelationId}).",

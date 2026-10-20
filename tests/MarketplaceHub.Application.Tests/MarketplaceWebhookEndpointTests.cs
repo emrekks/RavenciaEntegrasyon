@@ -119,7 +119,7 @@ public sealed class MarketplaceWebhookEndpointTests
 
     private sealed class Gate(bool known) : IWebhookRouteGate
     {
-        public ValueTask<bool> IsKnownAsync(Guid connectionPublicId, CancellationToken cancellationToken) => ValueTask.FromResult(known);
+        public ValueTask<bool> IsKnownAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken) => ValueTask.FromResult(known);
     }
 
     private sealed class UnreadableStream : MemoryStream

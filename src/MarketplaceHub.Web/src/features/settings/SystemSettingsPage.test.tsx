@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null }))
 
 vi.mock('../../shared/api', async importOriginal => {
-  const respond = async (path: string, init?: RequestInit) => {
+  const respond = async (requestedPath: string, init?: RequestInit) => {
+    // Security calls go through hubApi under /auth; the fixture answers them by their auth path.
+    const path = requestedPath.replace(/^\/auth(?=\/)/, '')
     const method = init?.method ?? 'GET'
     const body = typeof init?.body === 'string' ? init.body : undefined
     apiState.calls.push({ path, method, body, headers: Object.fromEntries(new Headers(init?.headers).entries()) })
@@ -19,6 +21,8 @@ vi.mock('../../shared/api', async importOriginal => {
     ]
     if (path === '/sessions/revoke-others') return undefined
     if (path === '/settings/shipping-label' && method === 'PUT' && apiState.failShippingSave) throw new Error(apiState.failShippingSave)
+    if (path === '/mfa/setup') return { otpauthUri: 'otpauth://totp/MarketplaceHub:a?secret=JBSWY3DPEHPK3PXPJBSW&issuer=MarketplaceHub', qrSvg: '<svg xmlns="http://www.w3.org/2000/svg"/>', expiresAt: '2026-10-20T10:00:00Z' }
+    if (path === '/mfa/confirm') return { recoveryCodes: ['ABCD-EFGH-JKMN', 'PQRS-TVWX-YZ01'] }
     if (path === '/settings/shipping-label') return { settings: method === 'PUT' ? JSON.parse(body ?? 'null') : null, version: method === 'PUT' ? 4 : 3 }
     if (path === '/settings/appearance') return { settings: null, version: 0 }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
@@ -83,6 +87,30 @@ describe('SystemSettingsPage', () => {
     expect(container.querySelector('.ss-gtabs > button.is-on')?.textContent).toBe('Güvenlik ve Oturumlar')
     expect(Array.from(container.querySelectorAll('.ss-seg > button')).map(item => item.textContent)).toEqual(['Authenticator', 'Oturumlar3'])
     expect(button('Authenticator’ı Etkinleştir')).toBeTruthy()
+  })
+
+  it('sets up the authenticator with the password in the setup call, shows the base32 key and keeps the codes open on Escape (W31)', async () => {
+    await renderPage()
+    click(button('Authenticator’ı Etkinleştir'))
+    input(document.querySelector<HTMLInputElement>('#ss-mfa-password input[name="password"]')!, 'gizli-parola')
+    act(() => { document.querySelector<HTMLFormElement>('#ss-mfa-password')!.requestSubmit() })
+    await settle()
+    const setup = apiState.calls.find(call => call.path === '/mfa/setup')
+    expect(JSON.parse(setup?.body ?? '{}')).toEqual({ password: 'gizli-parola' })
+    expect(apiState.calls.some(call => call.path === '/reauthenticate')).toBe(false)
+    expect(document.querySelector('.ss-man code')?.textContent).toBe('JBSW Y3DP EHPK 3PXP JBSW')
+
+    const digits = Array.from(document.querySelectorAll<HTMLInputElement>('.ss-otp input'))
+    digits.forEach((digit, index) => input(digit, String(index + 1)))
+    act(() => { document.querySelector<HTMLFormElement>('#ss-mfa-verify')!.requestSubmit() })
+    await settle()
+    expect(document.querySelector('.ss-codes')?.textContent).toContain('ABCD-EFGH-JKMN')
+
+    act(() => { document.querySelector('.ss-mfa')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    await settle()
+    expect(document.querySelector('.ss-codes')).not.toBeNull()
+    click(button('Kodları Sakladım'))
+    expect(document.querySelector('.ss-codes')).toBeNull()
   })
 
   it('opens the first section of a former tab from an old link', async () => {

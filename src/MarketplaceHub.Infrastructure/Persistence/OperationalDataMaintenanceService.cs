@@ -15,8 +15,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Count == 0 || scopes.Any(scope => !AllowedScopes.Contains(scope))) return Invalid("Geçerli en az bir veri alanı seçin.");
         if (command.Confirmation?.Trim() is not ("Verileri sil" or "VERİLERİ SİL")) return Invalid("Onay alanına tam olarak Verileri sil yazın.");
 
+        if ((scopes.Contains("ORDERS") || scopes.Contains("INVOICES")) && await IssuedInvoicesAsync(tenantId, null, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
         var counts = await CountsAsync(tenantId, null, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await BeginFilePurgeAsync(cancellationToken);
         if (scopes.Contains("ORDERS"))
         {
             await DeleteReturnsAsync(tenantId, null, cancellationToken);
@@ -33,6 +35,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Contains("BRANDS")) await DeleteBrandsAsync(tenantId, cancellationToken);
         if (scopes.Contains("OPTIONS")) await DeleteOptionsAsync(tenantId, cancellationToken);
         if (scopes.Contains("PRODUCTS")) await DeleteProductsAsync(tenantId, null, cancellationToken);
+        await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "OPERATIONAL_DATA_RESET", "Tenant", tenantId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -68,14 +71,17 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (connection.Version != expectedVersion) return ServiceResult<OperationalDataResetView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
         if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
+        if (await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
         var scopes = new HashSet<string>(ConnectionDeleteScopes, StringComparer.Ordinal);
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await BeginFilePurgeAsync(cancellationToken);
         await DeleteReturnsAsync(tenantId, connectionId, cancellationToken);
         await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken);
         await DeleteOrdersAsync(tenantId, connectionId, cancellationToken);
         await DeleteProductsAsync(tenantId, connectionId, cancellationToken);
         await DeleteConnectionArtifactsAsync(tenantId, connectionId, cancellationToken);
+        await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         connection.Status = "DELETED";
         connection.LastErrorCode = null;
         connection.Version++;
@@ -97,8 +103,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Count == 0 || scopes.Any(scope => !supportedScopes.Contains(scope))) return Invalid("Bu bağlantı için geçerli en az bir veri alanı seçin.");
         if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
+        if ((scopes.Contains("ORDERS") || scopes.Contains("INVOICES")) && await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await BeginFilePurgeAsync(cancellationToken);
         if (scopes.Contains("ORDERS"))
         {
             await DeleteReturnsAsync(tenantId, connectionId, cancellationToken);
@@ -129,6 +137,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
             await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "PRODUCTS", cancellationToken);
         }
 
+        await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DATA_RESET", "PlatformConnection", connectionId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -189,6 +198,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         """, cancellationToken);
 
     private Task DeleteReturnsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        INSERT INTO purge_files SELECT e."FileAssetId" FROM sales.return_evidence e JOIN sales.return_claims c ON c."Id"=e."ClaimId" AND c."TenantId"={{tenantId}} WHERE e."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) ON CONFLICT DO NOTHING;
         DELETE FROM sales.return_evidence e USING sales.return_claims c WHERE e."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND e."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
         DELETE FROM sales.return_stock_dispositions d USING sales.return_claims c WHERE d."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND d."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
         DELETE FROM sales.return_decisions d USING sales.return_claims c WHERE d."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND d."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
@@ -200,6 +210,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         CREATE TEMP TABLE IF NOT EXISTS purge_invoices ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_invoices;
         INSERT INTO purge_invoices SELECT i."Id" FROM billing.invoices i LEFT JOIN sales.orders o ON o."TenantId"=i."TenantId" AND o."Id"=i."OrderId" WHERE i."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR i."ProviderConnectionId"={{connectionId}} OR o."ConnectionId"={{connectionId}});
+        INSERT INTO purge_files SELECT d."FileAssetId" FROM billing.invoice_documents d JOIN purge_invoices p ON p."Id"=d."InvoiceId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
         DELETE FROM billing.marketplace_deliveries d USING purge_invoices p WHERE d."TenantId"={{tenantId}} AND d."InvoiceId"=p."Id";
         DELETE FROM billing.invoice_submission_attempts a USING purge_invoices p WHERE a."TenantId"={{tenantId}} AND a."InvoiceId"=p."Id";
         DELETE FROM billing.invoice_documents d USING purge_invoices p WHERE d."TenantId"={{tenantId}} AND d."InvoiceId"=p."Id";
@@ -212,6 +223,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         CREATE TEMP TABLE IF NOT EXISTS purge_orders ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_orders;
         INSERT INTO purge_orders SELECT "Id" FROM sales.orders WHERE "TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR "ConnectionId"={{connectionId}});
+        INSERT INTO purge_files SELECT d."FileAssetId" FROM sales.shipment_documents d JOIN sales.shipment_packages p ON p."Id"=d."PackageId" JOIN purge_orders o ON o."Id"=p."OrderId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
         DELETE FROM sales.shipment_document_attempts a USING sales.shipment_packages p, purge_orders o WHERE a."TenantId"={{tenantId}} AND a."PackageId"=p."Id" AND p."OrderId"=o."Id";
         DELETE FROM sales.shipment_documents d USING sales.shipment_packages p, purge_orders o WHERE d."TenantId"={{tenantId}} AND d."PackageId"=p."Id" AND p."OrderId"=o."Id";
         DELETE FROM sales.order_status_history h USING purge_orders o WHERE h."TenantId"={{tenantId}} AND h."OrderId"=o."Id";
@@ -269,6 +281,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.marketplace_variant_links l USING catalog.product_variants v, purge_products p WHERE l."TenantId"={{tenantId}} AND l."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM catalog.channel_listing_profiles p USING purge_products targets WHERE p."TenantId"={{tenantId}} AND p."ProductId"=targets."Id";
         DELETE FROM catalog.marketplace_product_links l USING purge_products p WHERE l."TenantId"={{tenantId}} AND l."ProductId"=p."Id";
+        INSERT INTO purge_files SELECT m."FileAssetId" FROM catalog.product_media m JOIN purge_products p ON p."Id"=m."ProductId" WHERE m."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
         DELETE FROM catalog.product_media m USING purge_products p WHERE m."TenantId"={{tenantId}} AND m."ProductId"=p."Id";
         DELETE FROM catalog.product_attribute_assignments a USING purge_products p WHERE a."TenantId"={{tenantId}} AND a."ProductId"=p."Id";
         DELETE FROM catalog.variant_option_values x USING catalog.product_variants v, purge_products p WHERE x."TenantId"={{tenantId}} AND x."VariantId"=v."Id" AND v."ProductId"=p."Id";
@@ -308,6 +321,40 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM integration.platform_capabilities WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM integration.platform_credentials WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM billing.invoice_policies WHERE "TenantId"={{tenantId}} AND "ProviderConnectionId"={{connectionId}};
+        """, cancellationToken);
+
+    // Issued invoices are fiscal records the seller must keep: a reset or deletion that would remove one is
+    // refused. "Issued" is anything that left the draft stages, or got a number, an ETTN or an issue date.
+    private static readonly InvoiceStatus[] UnissuedInvoiceStatuses = [InvoiceStatus.Draft, InvoiceStatus.Validating, InvoiceStatus.ValidationFailed, InvoiceStatus.Ready, InvoiceStatus.Rejected, InvoiceStatus.CancelledLocal];
+
+    private Task<int> IssuedInvoicesAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) =>
+        db.Invoices.CountAsync(x => x.TenantId == tenantId
+            && (connectionId == null || x.ProviderConnectionId == connectionId || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connectionId))
+            && (!UnissuedInvoiceStatuses.Contains(x.Status) || x.IssuedAt != null || x.EttnUuid != null || x.InvoiceNumber != null), cancellationToken);
+
+    private static ServiceResult<OperationalDataResetView> IssuedInvoicesKept(int count) =>
+        ServiceResult<OperationalDataResetView>.Fail("ISSUED_INVOICES_KEPT", $"Seçilen kayıtlar {count} kesilmiş fatura içeriyor; mali kayıtlar silinemez. Faturaları ve bağlı siparişleri seçimden çıkarın.", 409);
+
+    // Stored files (invoice PDFs, labels, return evidence, product images) of the rows a reset removes are
+    // collected while the rows go, then archived for removal (Status PURGE_PENDING) when nothing else still
+    // points at them; PurgedFileRetention deletes the files from disk. A temporary table scoped to the
+    // transaction carries the ids from statement to statement.
+    public const string PurgePendingStatus = "PURGE_PENDING";
+
+    private Task BeginFilePurgeAsync(CancellationToken cancellationToken) => db.Database.ExecuteSqlRawAsync("""
+        CREATE TEMP TABLE IF NOT EXISTS purge_files ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
+        TRUNCATE purge_files;
+        """, cancellationToken);
+
+    private Task ArchivePurgedFilesAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE ops.file_assets f SET "Status"={{PurgePendingStatus}}, "ArchivedAt"={{timeProvider.GetUtcNow()}}
+        FROM purge_files p
+        WHERE f."TenantId"={{tenantId}} AND f."Id"=p."Id" AND f."Status"<>{{PurgePendingStatus}}
+          AND NOT EXISTS (SELECT 1 FROM catalog.product_media m WHERE m."TenantId"={{tenantId}} AND m."FileAssetId"=f."Id" AND m."Status"<>'ARCHIVED')
+          AND NOT EXISTS (SELECT 1 FROM billing.invoice_documents d WHERE d."TenantId"={{tenantId}} AND d."FileAssetId"=f."Id")
+          AND NOT EXISTS (SELECT 1 FROM billing.manual_order_invoice_documents d WHERE d."TenantId"={{tenantId}} AND d."FileAssetId"=f."Id")
+          AND NOT EXISTS (SELECT 1 FROM sales.return_evidence e WHERE e."TenantId"={{tenantId}} AND e."FileAssetId"=f."Id")
+          AND NOT EXISTS (SELECT 1 FROM sales.shipment_documents s WHERE s."TenantId"={{tenantId}} AND s."FileAssetId"=f."Id");
         """, cancellationToken);
 
     private AuditLog Audit(Guid tenantId, Guid actorUserId, string action, string targetType, string targetId, string reason, string correlationId) => new() { TenantId = tenantId, ActorUserId = actorUserId, Action = action, TargetType = targetType, TargetId = targetId, Reason = reason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() };

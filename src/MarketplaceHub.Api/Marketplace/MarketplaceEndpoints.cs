@@ -345,8 +345,8 @@ public static class MarketplaceEndpoints
     private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, string? eventPath)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        // The address is checked before anything is read: an unknown connection costs no body buffering.
-        if (!await gate.IsKnownAsync(connectionPublicId, http.RequestAborted))
+        // The address (connection and route token) is checked before anything is read: an unknown one costs no body buffering.
+        if (!await gate.IsKnownAsync(connectionPublicId, routeToken, http.RequestAborted))
             return Problem(http, new("WEBHOOK_ROUTE_NOT_FOUND", "Webhook route bulunamadı.", 404));
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = WebhookBodyReader.MaximumBytes;
