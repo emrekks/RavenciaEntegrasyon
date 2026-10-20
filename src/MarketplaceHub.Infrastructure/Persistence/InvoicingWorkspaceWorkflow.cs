@@ -103,13 +103,8 @@ public sealed partial class InvoicingBillingService
                     continue;
                 }
 
-                if (invoice is not null && invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending)
-                {
-                    await transaction.CommitAsync(cancellationToken);
-                    results.Add(new(confirmation.PackageId, invoice.Id, null, "IN_PROGRESS", "WAIT", "Fatura işlemi zaten sürüyor veya sonucu uzlaştırılıyor; yeni mali gönderim yapılmadı."));
-                    continue;
-                }
-
+                // Checked before the in-progress rule: a submission the provider refused before creating
+                // anything sits in Submitting with an error code and is retryable, not in progress.
                 if (invoice is not null && InvoicingBillingService.CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference))
                 {
                     invoice.IncludeInternetSalesInfo = request.IncludeInternetSalesInfo;
@@ -125,6 +120,13 @@ public sealed partial class InvoicingBillingService
                     }
                     await transaction.CommitAsync(cancellationToken);
                     results.Add(new(confirmation.PackageId, invoice.Id, queuedRetry.Value, "QUEUED", "SUBMIT_RETRY", "Sağlayıcıdan kesin ret alınmış mevcut fatura güvenli biçimde tekrar sıraya alındı."));
+                    continue;
+                }
+
+                if (invoice is not null && invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    results.Add(new(confirmation.PackageId, invoice.Id, null, "IN_PROGRESS", "WAIT", "Fatura işlemi zaten sürüyor veya sonucu uzlaştırılıyor; yeni mali gönderim yapılmadı."));
                     continue;
                 }
 
@@ -295,14 +297,8 @@ public sealed partial class InvoicingBillingService
             canCreate = false;
             blockedReason = issueRefusal.Message;
         }
-        var nextAction = manualDocument is not null ? "MANUAL_DOCUMENT_PRESENT" : existing is null ? "CREATE_AND_SUBMIT" : existing.Status switch
-        {
-            _ when InvoiceMarketplaceRetryPolicy.CanRetryDelivery(existing.Status, existing.LastErrorCode) => "DELIVERY_ONLY",
-            InvoiceStatus.Completed => "NONE",
-            InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending => "WAIT",
-            _ when CanRetryPreProviderFailure(existing.Status, existing.LastErrorCode, existing.ExternalReference) => "SUBMIT_RETRY",
-            _ => "REVIEW"
-        };
+        var nextAction = manualDocument is not null ? "MANUAL_DOCUMENT_PRESENT" : existing is null ? "CREATE_AND_SUBMIT"
+            : ExistingInvoiceNextAction(existing.Status, existing.LastErrorCode, existing.ExternalReference);
         if (remoteInvoicePresent || legacyInvoiceConflict) nextAction = "REVIEW";
         if (existing is not null && nextAction == "REVIEW")
         {
@@ -374,6 +370,16 @@ public sealed partial class InvoicingBillingService
             deliveryCarrierName, deliverySentAt, deliveryCarrierName is null ? null : package.ExternalPackageId);
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
+
+    // A pre-provider refusal is checked before the in-progress states: it sits in Submitting with an error code.
+    internal static string ExistingInvoiceNextAction(InvoiceStatus status, string? lastErrorCode, string? externalReference) => status switch
+    {
+        _ when InvoiceMarketplaceRetryPolicy.CanRetryDelivery(status, lastErrorCode) => "DELIVERY_ONLY",
+        InvoiceStatus.Completed => "NONE",
+        _ when CanRetryPreProviderFailure(status, lastErrorCode, externalReference) => "SUBMIT_RETRY",
+        InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending => "WAIT",
+        _ => "REVIEW"
+    };
 
     // The operator saw this invoice on the platform's own seller panel; the platform cannot report which invoice a package holds, so this is the proof.
     public async Task<ServiceResult<bool>> ConfirmMarketplaceDeliveredAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)

@@ -239,6 +239,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             }
             var hash = Hash(canonical); var started = timeProvider.GetUtcNow();
             var attempt = new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, AttemptNumber = await NextAttempt(tenantId, invoice.Id, cancellationToken), RequestHash = hash, Outcome = "STARTED", StartedAt = started };
+            // A Submitting invoice with an error code means "refused, nothing in flight" (retryable in the
+            // workspace); an automatic retry that reaches this point is in flight again, so the code goes.
+            invoice.LastErrorCode = null;
             db.InvoiceSubmissionAttempts.Add(attempt);
             await db.SaveChangesAsync(cancellationToken);
             var context = Context(tenantId, connectionId, correlationId, invoice.IdempotencyKey) with { IsStageCapabilityProbe = isStageCapabilityProbe };
