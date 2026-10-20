@@ -134,7 +134,7 @@ public sealed class DashboardPerformanceTests
         var day = new DateTime(2026, 10, 20);
         var store = Guid.NewGuid();
         var rows = DashboardReadService.MergePerformanceRows(
-            [new(day, store, "TRY", false, 900m, 3), new(day, store, "TRY", true, 150m, 1), new(day, store, "USD", false, 20m, 1)],
+            [new(day, store, "TRY", 900m, 3, 0m, 0), new(day, store, "TRY", 0m, 0, 150m, 1), new(day, store, "USD", 20m, 1, 0m, 0)],
             [new(day, store, "TRY", 5m)],
             [new(day, store, "TRY", 3)]);
 

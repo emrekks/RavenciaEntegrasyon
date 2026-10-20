@@ -174,7 +174,8 @@ export function DashboardPage() {
   const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
 
   const metrics = bootstrap.data?.metrics
-  const channels = new Map((bootstrap.data?.channels ?? performance.data?.channels ?? []).map(item => [item.connectionId, item]))
+  // The report also names stores that are switched off or wait for new credentials; the live list wins where both have one.
+  const channels = new Map([...(performance.data?.channels ?? []), ...(bootstrap.data?.channels ?? [])].map(item => [item.connectionId, item]))
   const data = performance.data
   const loading = performance.isLoading
   const currency = primaryCurrency(data?.current ?? [])
