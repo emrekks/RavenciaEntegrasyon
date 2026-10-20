@@ -349,3 +349,45 @@ ardından planlanan yapısal geçiş (işlemcinin handler'lara bölünmesi).
 - Teknik düzeltme raporu §7: API idempotency ile dış çağrı arasında exactly-once yok (bu raporda P1/S6 ile örtüşüyor); §15 dış yedek.
 - API denetimi: yapısal geçiş (`PlatformCapabilities`, handler'lar, `SyncRunner`, `ExternalWriteGuard`, işlemcinin silinmesi).
 - 0.9 Trendyol panel dışı fatura sayacı ~25 Ekim'de okunacak; HB Efsane Kasım kuralları Kasım'da kontrol edilecek.
+
+---
+
+## 9. Uygulama durumu (20 Ekim 2026)
+
+147 bulgunun tamamı ele alındı; sekiz paralel düzeltme kolu tek dalda birleştirildi, PostgreSQL dahil 2.309 backend ve
+451 web testi CI'da geçti, iki deploy ile canlıya alındı (`58a64202`, `8c86b6c6`). İki migration: `AuditFixesSchema20261020`
+(8 kolon, 2 indeks) ve `OrderLabelPrintedAt`.
+
+**Sahip kararları (19–20 Ekim):** e-Fatura mükellefi alıcılar TEMELFATURA okunabilene kadar 422 ile durur (son 90 günde
+etkilenen sipariş 0); düzeltme faturası ucu 422; UNPACKED üst paket iptal sayılır ve sayımlardan çıkar; OPERATIONS sipariş,
+ACCOUNTING fatura çalışma alanı yazabilir; faturalar İstanbul saatiyle kesilir (E-Faturam açık ofset kabul etmediği için
+İstanbul rakamları + `Z`); alarm için webhook URL dosyası.
+
+**Bilinçli olarak değiştirilmeyenler (doğrulama sonucu):**
+- **A2:** Shopify `inventorySetQuantities` özgün hâliyle kaldı; 2026-04'ten beri `@idempotent` zorunlu ve `changeFromQuantity` doğru alan.
+- **A13:** N11/Pazarama yazma kapısı korunur; canlı N11 bağlantısı VERIFIED ve 30 günde 397 yazma işini başarıyla çalıştırdı.
+- **K6:** Rezervasyon politikası alanları uygulanmaz (kodda not var); uygulanırsa canlıdaki 46 rezervasyon (49 adet) serbest kalıp çift satışa yol açardı.
+
+**Kısmi kalanlar:**
+| # | Kalan |
+|---|---|
+| F5 | Pazaryeri fatura linkinin kaldırılması elle (adaptörde silme ucu yok); gerçek İADE faturası akışı yok |
+| S5 | Kargo etiketi yazdırdığı için müşteri e-postası listede kalıyor |
+| S6 | API'deki anlık işlem yolunda "orders" danışma kilidi yok (effect kaydı ayrı kaydediliyor, çakışmada bir kez yeniden deneniyor) |
+| İ6 | Bağlantı ekranı kimlik hatasını henüz göstermiyor (backend `LastErrorCode` yazıyor) |
+| İ11 | HB ve Pazarama iade ret nedenleri adaptörde sabit liste |
+| İ13 | İade tutarı modelde yok |
+| A16 | Trendyol iade imleci kova başına hazır; işleyici imleci hâlâ sayı olarak saklıyor |
+| P17 | İş listesinde imleç sayfalaması yok (varsayılan 200, en çok 1.000) |
+| W4 | İadeler sayfası tüm listeyi çekiyor (sekme sayıları için sunucu ucu gerekli) |
+| W11–W15, W20 | Erişilebilirlik ve CSS katmanlamasının bir kısmı (sürükle-bırak medya ve etiket tasarımcısı klavye erişimi, 25 dosyalar arası tekrar seçici, `design-system.css` bölünmesi) |
+
+**Yazmalar açılmadan önce canlı doğrulama:** Shopify iade sorgusunun gerçek maliyeti (A9) ve başarısız gönderimin panelde görünüşü (A14).
+
+**Sunucuda bir kez elle yapılacaklar (salt-okunur kuralı nedeniyle sahibe bırakıldı):**
+```bash
+sudo sh -c 'printf ";Maximum Pool Size=25;Timeout=15;Command Timeout=120" >> deploy/secrets/app_db_connection.txt'
+bash deploy/scripts/install-ci-deploy.sh "<deploy key .pub satırı>"
+git rev-parse HEAD > ~/deploy-logs/.last-success
+```
+İsteğe bağlı: `deploy/secrets/alert_webhook_url.txt` (Telegram veya Slack webhook URL'si, 600 izin) ve GitHub `ALERT_WEBHOOK_URL` sırrı.
