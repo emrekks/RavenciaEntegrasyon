@@ -3773,6 +3773,172 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task HepsiburadaCancelledReturn_WithADecisionIsKeptAsCancelled()
+    {
+        var tenant = NewTenant("hepsiburada-cancelled-with-history");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        connection.ApiVersion = "V1.0";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "cancelled-history-order", isReturnClaim: false, fixture.Now);
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "cancelled-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.ActionRequired;
+        claim.RawStatus = "AwaitingAction";
+        claim.LastRemoteModifiedAt = fixture.Now.AddMinutes(-10);
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = $"cancelled-history:{Guid.NewGuid():N}", Status = "MANUAL_REVIEW", ErrorCode = "EXTERNAL_EFFECT_VERIFYING", ActorUserId = Guid.NewGuid(), CreatedAt = fixture.Now.AddMinutes(-5) };
+        var returnsPort = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "Cancelled", externalOrderId: order.ExternalOrderId, listedClaimId: "cancelled-claim");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnDecisions.Add(decision);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, null!, null!, null!, null!, null!, returnsPort, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnStatusSync, "{}", "hepsiburada-cancelled-with-history", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            var persistedClaim = await verificationDb.ReturnClaims.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == claim.Id);
+            Assert.Equal(ReturnClaimStatus.Cancelled, persistedClaim.Status);
+            var persistedDecision = await verificationDb.ReturnDecisions.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == decision.Id);
+            Assert.Equal("MANUAL_REVIEW", persistedDecision.Status);
+            Assert.Equal("RETURN_ACTION_READBACK_CONFLICT", persistedDecision.ErrorCode);
+            Assert.True(await verificationDb.OperationalIssues.AnyAsync(row => row.TenantId == tenant.Id && row.Code == "RETURN_CLAIM_CANCELLED_WITH_HISTORY"));
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+                await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task HepsiburadaClaimSentForReview_IsFollowedUpAndItsDecisionSettled()
+    {
+        var tenant = NewTenant("hepsiburada-preapproval-follow-up");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        connection.ApiVersion = "V1.0";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "preapproval-order", isReturnClaim: false, fixture.Now);
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "preapproval-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.AwaitingShipment;
+        claim.RawStatus = "PREAPPROVAL_CONFIRM_SUBMITTED";
+        claim.LastRemoteModifiedAt = fixture.Now.AddMinutes(-10);
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "PREAPPROVAL_CONFIRM", IdempotencyKey = $"preapproval:{Guid.NewGuid():N}", Status = "MANUAL_REVIEW", ErrorCode = "EXTERNAL_EFFECT_VERIFYING", ActorUserId = Guid.NewGuid(), CreatedAt = fixture.Now.AddMinutes(-5) };
+        var returnsPort = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "AwaitingAction", externalOrderId: order.ExternalOrderId, listedClaimId: "preapproval-claim");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnDecisions.Add(decision);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, null!, null!, null!, null!, null!, returnsPort, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnStatusSync, "{}", "hepsiburada-preapproval-follow-up", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            Assert.Equal("AwaitingAction", (await verificationDb.ReturnClaims.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == claim.Id)).RawStatus);
+            Assert.Equal("SUCCEEDED", (await verificationDb.ReturnDecisions.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == decision.Id)).Status);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+                await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task UnresolvedReturnEffect_FailsTheDecisionInsteadOfLeavingItInProgress()
+    {
+        var tenant = NewTenant("unresolved-return-effect");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        connection.ApiVersion = "V1.0";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "unresolved-effect-order", isReturnClaim: false, fixture.Now);
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "unresolved-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.ActionRequired;
+        claim.RawStatus = "AwaitingAction";
+        var key = $"unresolved-effect:{Guid.NewGuid():N}";
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = key, Status = "MANUAL_REVIEW", ErrorCode = "EXTERNAL_EFFECT_VERIFYING", ActorUserId = Guid.NewGuid(), CreatedAt = fixture.Now.AddMinutes(-31) };
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = "HEPSIBURADA_INSTANT_RETURN_ACTION", IdempotencyKey = key, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-31), ConnectionId = connection.Id, TargetId = claim.Id, Action = "RETURN_APPROVE" };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnDecisions.Add(decision);
+            seedDb.ExternalEffectRecords.Add(effect);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, null!, null!, null!, null!, null!, new UnreadableReturnTestPort(), null!, null!,
+                    new ConfigurationBuilder().Build(), TimeProvider.System);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ExternalEffectReconcile, $$"""{"effectId":"{{effect.Id}}"}""", "unresolved-return-effect", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            var persistedDecision = await verificationDb.ReturnDecisions.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == decision.Id);
+            Assert.Equal("FAILED", persistedDecision.Status);
+            Assert.Equal("EXTERNAL_EFFECT_UNRESOLVED", persistedDecision.ErrorCode);
+            Assert.Equal("UNRESOLVED", (await verificationDb.ExternalEffectRecords.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == effect.Id)).Outcome);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
+    private sealed class UnreadableReturnTestPort : IReturnPort
+    {
+        public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<RemoteReturnClaim>.Failure(new AdapterError(AdapterErrorClass.NotSupported, "RETURN_READ_UNSUPPORTED", "unsupported", null, null, null)));
+        public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    [PostgreSqlFact]
     public async Task ReturnsList_ShowsClaimsForTenantWhoseOnlyMarketplaceIsN11()
     {
         var tenant = NewTenant("n11-only-returns-list");

@@ -566,7 +566,8 @@ public sealed record ReturnPollWindow(
     DateTimeOffset? StatusModifiedAfter = null,
     DateTimeOffset? StatusModifiedBefore = null);
 public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null, string? RawStatus = null);
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null);
+// ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
@@ -1048,7 +1049,8 @@ public sealed record ReturnListView(
     string? ReasonCode = null,
     DateTimeOffset? ApprovedAt = null,
     string? CargoTrackingLink = null,
-    IReadOnlyDictionary<Guid, string>? LineStatuses = null);
+    IReadOnlyDictionary<Guid, string>? LineStatuses = null,
+    bool ActionDueAtEstimated = false);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1082,7 +1084,8 @@ public sealed record ReturnDetailView(
     bool ExternalWritesEnabled = false,
     bool DecisionPending = false,
     string? PlatformCode = null,
-    string? CargoTrackingLink = null);
+    string? CargoTrackingLink = null,
+    bool ActionDueAtEstimated = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);

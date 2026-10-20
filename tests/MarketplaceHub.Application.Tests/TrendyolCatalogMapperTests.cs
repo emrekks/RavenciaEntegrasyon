@@ -202,6 +202,7 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal(claim.LastModifiedAt.AddHours(48), claim.ActionDueAt);
+        Assert.True(claim.ActionDueAtEstimated);
     }
 
     [Fact]
@@ -225,6 +226,7 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1789980000000), claim.ActionDueAt);
+        Assert.False(claim.ActionDueAtEstimated);
     }
 
     [Fact]
@@ -248,6 +250,7 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1789980000000).AddDays(7), claim.ActionDueAt);
+        Assert.True(claim.ActionDueAtEstimated);
     }
 
     [Fact]

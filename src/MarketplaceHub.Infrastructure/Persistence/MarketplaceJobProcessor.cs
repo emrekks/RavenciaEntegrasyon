@@ -9071,7 +9071,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // listing the statuses a claim moves on to, over the claim creation dates of those open claims,
     // so a decision taken on Hepsiburada's own panel reaches the panel even when the status-change
     // filter of the regular scan misses it. Only claims open locally are updated here.
-    private static readonly string[] HepsiburadaOpenClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "AwaitingPreApproval"];
+    // PREAPPROVAL_CONFIRM_SUBMITTED is the local mark after "send for review": Hepsiburada has no single-claim
+    // read, so only this follow-up moves such a claim on.
+    internal static readonly string[] HepsiburadaOpenClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "AwaitingPreApproval", "PREAPPROVAL_CONFIRM_SUBMITTED"];
     private static readonly string[] HepsiburadaClaimFollowUpStatuses = ["Accepted", "Refunded", "Rejected", "Cancelled", "InDispute", "AwaitingPreApproval", "AwaitingAction"];
 
     private async Task<bool> SyncHepsiburadaOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -9501,8 +9503,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (lineStatusOverrides) remote = remote with { RawStatus = "WaitingInAction" };
         if (!ReturnClaimStoragePolicy.ShouldPersist(target))
         {
-            await RemoveCancelledReturnClaim(tenantId, connectionId, remote.ExternalClaimId, cancellationToken);
-            telemetrySkippedCount++;
+            if (!await RemoveCancelledReturnClaim(tenantId, connectionId, remote, cancellationToken)) telemetrySkippedCount++;
             return;
         }
 
@@ -9517,9 +9518,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(x => x.TenantId == tenantId && x.Id == connectionId)
                 .Select(x => x.PlatformCode)
                 .SingleOrDefaultAsync(cancellationToken);
-            var claimOrder = platformCode == "HEPSIBURADA"
-                ? HepsiburadaJsonMapper.OrderFromReturnClaim(remote.RawJson)
-                : TrendyolJsonMapper.OrderFromReturnClaim(remote.RawJson);
+            // Only Trendyol and Hepsiburada claims carry the order lines; an
+            // n11/Pazarama claim would build a Trendyol-shaped empty order that
+            // is never filled, so those are reported below and skipped.
+            var claimOrder = platformCode switch
+            {
+                "HEPSIBURADA" => HepsiburadaJsonMapper.OrderFromReturnClaim(remote.RawJson),
+                "TRENDYOL" => TrendyolJsonMapper.OrderFromReturnClaim(remote.RawJson),
+                _ => null
+            };
             if (claimOrder is not null)
             {
                 // The claim already contains the product snapshot. Avoid
@@ -9554,11 +9561,31 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 claim.LastRemoteModifiedAt = remote.LastModifiedAt;
                 claimChanged = true;
             }
+            else if (remoteIsFresh && !partialLineDecisionPending
+                && (claim.Status != target || !string.Equals(claim.RawStatus, remote.RawStatus, StringComparison.Ordinal) || claim.LastRemoteModifiedAt != remote.LastModifiedAt))
+            {
+                // A refused transition still records what the marketplace
+                // reports, so the claim is not re-read as unchanged forever;
+                // the marketplace's own outcome (approved, rejected, completed)
+                // is authoritative even where the local workflow would refuse it.
+                var authoritative = ReturnClaimStateMachine.IsAuthoritativeRemoteOutcome(claim.Status, target);
+                var previousStatus = claim.Status;
+                if (authoritative) claim.Status = target;
+                claim.RawStatus = remote.RawStatus;
+                claim.LastRemoteModifiedAt = remote.LastModifiedAt;
+                claimChanged = true;
+                if (previousStatus != target)
+                    await RecordIssue(tenantId, $"return-transition:{claim.Id:N}:{Wire(target)}", "RETURN_STATUS_TRANSITION_REFUSED",
+                        authoritative
+                            ? $"{claim.ExternalClaimId} numaralı iade pazaryerinde {remote.RawStatus} olarak sonuçlandı; paneldeki {Wire(previousStatus)} durumu pazaryerine göre güncellendi."
+                            : $"{claim.ExternalClaimId} numaralı iade için pazaryeri {remote.RawStatus} bildirdi ancak paneldeki {Wire(previousStatus)} durumundan bu geçiş yapılamıyor; ham durum güncellendi.",
+                        cancellationToken);
+            }
             if (remoteIsFresh)
             {
                 if (!string.Equals(claim.ReasonCode, remote.ReasonCode, StringComparison.Ordinal)) { claim.ReasonCode = remote.ReasonCode; claimChanged = true; }
                 if (!string.Equals(claim.ReasonText, remote.ReasonText, StringComparison.Ordinal)) { claim.ReasonText = remote.ReasonText; claimChanged = true; }
-                if (claim.ActionDueAt != remote.ActionDueAt) { claim.ActionDueAt = remote.ActionDueAt; claimChanged = true; }
+                if (claim.ActionDueAt != remote.ActionDueAt || claim.ActionDueAtEstimated != remote.ActionDueAtEstimated) { claim.ActionDueAt = remote.ActionDueAt; claim.ActionDueAtEstimated = remote.ActionDueAtEstimated; claimChanged = true; }
             }
 
             // Cargo may be returned by a historical/status replay with an old
@@ -9593,31 +9620,58 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
             if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; }
         }
-        var decision = await db.ReturnDecisions.Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "SUBMITTED")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (decision is not null)
-        {
-            var confirmed = decision.Action == "APPROVE" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || decision.Action == "REJECT" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
-                || decision.Action == "PREAPPROVAL_CONFIRM" && (target is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
-                    || target == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(remote.RawStatus));
-            var conflictingTerminal = decision.Action == "APPROVE" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
-                || decision.Action == "REJECT" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || decision.Action == "PREAPPROVAL_CONFIRM" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
-            if (confirmed) { decision.Status = "SUCCEEDED"; decision.ErrorCode = null; decision.CompletedAt = now; }
-            else if (conflictingTerminal) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = now; }
-            else decision.Status = "SUBMITTED";
-        }
+        await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task RemoveCancelledReturnClaim(Guid tenantId, Guid connectionId, string externalClaimId, CancellationToken cancellationToken)
+    // The latest decision whose outcome is still open: sent (PENDING/SUBMITTED),
+    // waiting on an unclear marketplace answer (MANUAL_REVIEW with an
+    // EXTERNAL_EFFECT_* code) or closed as unresolved, is settled by the
+    // claim status the marketplace reports.
+    private async Task ReconcileReturnDecisionAsync(Guid tenantId, Guid claimId, ReturnClaimStatus target, string remoteRawStatus, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var decision = await db.ReturnDecisions
+            .Where(x => x.TenantId == tenantId && x.ClaimId == claimId
+                && (x.Status == "PENDING" || x.Status == "SUBMITTED"
+                    || x.Status == "MANUAL_REVIEW" && x.ErrorCode != null && x.ErrorCode.StartsWith("EXTERNAL_EFFECT_")
+                    || x.Status == "FAILED" && x.ErrorCode == "EXTERNAL_EFFECT_UNRESOLVED"))
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (decision is null || ReconciledReturnDecision(decision.Action, decision.Status, target, remoteRawStatus) is not { } outcome) return;
+        decision.Status = outcome.Status;
+        decision.ErrorCode = outcome.ErrorCode;
+        if (outcome.Status != "SUBMITTED") decision.CompletedAt = now;
+    }
+
+    internal static (string Status, string? ErrorCode)? ReconciledReturnDecision(string action, string currentStatus, ReturnClaimStatus target, string remoteRawStatus)
+    {
+        var confirmed = action == "APPROVE" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            || action == "REJECT" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
+            || action == "PREAPPROVAL_CONFIRM" && (target is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
+                || target == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(remoteRawStatus));
+        var conflictingTerminal = action == "APPROVE" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
+            || action == "REJECT" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            || action == "PREAPPROVAL_CONFIRM" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
+        if (confirmed) return ("SUCCEEDED", null);
+        // An unresolved decision only ever moves on to a confirmed outcome.
+        if (currentStatus == "FAILED") return null;
+        if (conflictingTerminal) return ("MANUAL_REVIEW", "RETURN_ACTION_READBACK_CONFLICT");
+        return currentStatus is "PENDING" or "SUBMITTED" ? ("SUBMITTED", null) : null;
+    }
+
+    // Returns true when the claim was kept as Cancelled because it has history.
+    private async Task<bool> RemoveCancelledReturnClaim(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
         var claimId = await db.ReturnClaims.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == externalClaimId)
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId)
             .Select(x => (Guid?)x.Id)
             .SingleOrDefaultAsync(cancellationToken);
-        if (claimId is null) return;
-        await CancelledReturnClaimCleanup.RemoveAsync(db, tenantId, claimId.Value, cancellationToken);
+        if (claimId is null) return false;
+        var now = timeProvider.GetUtcNow();
+        if (!await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId.Value, remote.RawStatus, remote.LastModifiedAt, now, cancellationToken)) return false;
+        await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, now, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     internal static ReturnClaim NewReturnClaim(Guid tenantId, Guid connectionId, Guid orderId, RemoteReturnClaim remote, ReturnClaimStatus status, DateTimeOffset now) => new()
@@ -9635,6 +9689,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         ReasonCode = remote.ReasonCode,
         ReasonText = remote.ReasonText,
         ActionDueAt = remote.ActionDueAt,
+        ActionDueAtEstimated = remote.ActionDueAtEstimated,
         LastRemoteModifiedAt = remote.LastModifiedAt,
         CreatedAt = now,
         UpdatedAt = now,

@@ -1721,7 +1721,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
-                claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))));
+                claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))),
+                IsEstimatedReturnDueAt(platformCode, claim));
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -1731,6 +1732,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
         string.IsNullOrWhiteSpace(variant?.ModelCode) ? sourceModelCode : variant.ModelCode;
+
+    // The deadline is an estimate when the marketplace sent none: stored as
+    // derived, or derived here from the status.
+    internal static bool IsEstimatedReturnDueAt(string? platformCode, ReturnClaim claim) =>
+        claim.ActionDueAt is null
+            ? ReturnActionDueAt(platformCode, claim.RawStatus, null, claim.LastRemoteModifiedAt) is not null
+            : claim.ActionDueAtEstimated;
 
     internal static DateTimeOffset? ReturnActionDueAt(string? platformCode, string? rawStatus, DateTimeOffset? actionDueAt, DateTimeOffset lastRemoteModifiedAt)
     {
@@ -1900,7 +1908,31 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim)));
+    }
+
+    // Each marketplace says per rejection reason whether evidence is needed;
+    // the list changes rarely, so it is read at most once an hour per store.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (DateTimeOffset ReadAt, IReadOnlyList<ReturnIssueReason> Reasons)> IssueReasonCache = new();
+    private static readonly TimeSpan IssueReasonCacheLifetime = TimeSpan.FromHours(1);
+
+    private async Task<IReadOnlyList<ReturnIssueReason>?> CachedIssueReasonsAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (IssueReasonCache.TryGetValue(connectionId, out var cached) && now - cached.ReadAt < IssueReasonCacheLifetime) return cached.Reasons;
+        var result = await returns.IssueReasonsAsync(new AdapterContext(tenantId, connectionId, correlationId, $"return-issue-reasons:{connectionId:N}", now.AddSeconds(30)), cancellationToken);
+        if (!result.IsSuccess || result.Value is null) return null;
+        IssueReasonCache[connectionId] = (now, result.Value);
+        return result.Value;
+    }
+
+    internal static bool RejectEvidenceRequired(string? reasonCode, IReadOnlyList<ReturnIssueReason>? reasons, string? platformCode)
+    {
+        var code = reasonCode?.Trim();
+        if (reasons?.FirstOrDefault(reason => string.Equals(reason.Id, code, StringComparison.Ordinal)) is { } reason) return reason.EvidenceRequired;
+        // The list could not be read (or does not name the reason): Trendyol's
+        // documented no-evidence reasons stay optional, everything else needs evidence.
+        return !(string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && code is "1651" or "451" or "2101");
     }
 
     public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
@@ -1994,8 +2026,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW" || (x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey)))).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
-        var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
-        if (action == "REJECT" && !isHepsiburada && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
+        if (action == "REJECT" && !isHepsiburada && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)
+            && RejectEvidenceRequired(command.ReasonCode, await CachedIssueReasonsAsync(tenantId, claim.ConnectionId, correlationId, cancellationToken), platformCode))
+            return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
         if (preApprovalConfirm && (!string.IsNullOrWhiteSpace(command.FinalizedWith) || !string.IsNullOrWhiteSpace(command.ReasonCode) || !string.IsNullOrWhiteSpace(command.Explanation) || command.EvidenceAssetIds is { Count: > 0 })) return Invalid<ReturnDetailView>("action", "Hepsiburada ön onay incelemesi ek kabul, ret veya kanıt alanı almaz.");
 
         var stage = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
@@ -2080,7 +2113,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             decision.CompletedAt = timeProvider.GetUtcNow();
             if (error is null || IsAmbiguous(error))
             {
+                // The outcome is settled by the effect check or the next claim
+                // read; the code marks it as waiting for that, not as a conflict.
                 decision.Status = "MANUAL_REVIEW";
+                decision.ErrorCode = "EXTERNAL_EFFECT_VERIFYING";
                 await db.SaveChangesAsync(cancellationToken);
                 return await VerifyLaterAsync<ReturnDetailView>(effect, cancellationToken);
             }
@@ -2132,7 +2168,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var remoteStatus = MarketplaceReturnStatus.Canonicalize(readback.Value.RawStatus, readback.Value.CargoTrackingLink);
             if (!ReturnClaimStoragePolicy.ShouldPersist(remoteStatus))
             {
-                await CancelledReturnClaimCleanup.RemoveAsync(db, tenantId, claimId, cancellationToken);
+                // The decision just made is history: the claim is kept as
+                // cancelled with it instead of being deleted.
+                if (await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId, readback.Value.RawStatus, readback.Value.LastModifiedAt, timeProvider.GetUtcNow(), cancellationToken))
+                {
+                    decision.Status = "MANUAL_REVIEW";
+                    decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT";
+                    decision.CompletedAt = timeProvider.GetUtcNow();
+                    await db.SaveChangesAsync(cancellationToken);
+                    return ServiceResult<ReturnDetailView>.Fail("RETURN_CLAIM_CANCELLED", "Pazaryerindeki iade talebi iptal edilmiş; iade, verilen kararla birlikte iptal olarak saklandı.", 409);
+                }
                 db.ChangeTracker.Clear();
                 return ServiceResult<ReturnDetailView>.Fail("RETURN_CLAIM_CANCELLED", "Pazaryerindeki iade talebi iptal edilmiş; iptal kaydı saklanmadı.", 409);
             }
