@@ -48,7 +48,8 @@ export const backgroundPollHeaders = { 'X-Background-Poll': '1' } as const
 // fetch of a list) counts as use; a poll on a timer while nobody touches the panel does not, so an open tab still reaches the
 // idle sign-out.
 const userActiveWindowMs = 60_000
-let lastUserActivityAt = 0
+// Opening (or reloading) the panel is the person using it.
+let lastUserActivityAt = Date.now()
 export function noteUserActivity(at = Date.now()) { lastUserActivityAt = at }
 export function isUserRecentlyActive(now = Date.now()) { return now - lastUserActivityAt < userActiveWindowMs }
 export function trackUserActivity(target: Pick<Window, 'addEventListener' | 'removeEventListener'> = window) {
@@ -120,8 +121,18 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * A read made while nobody has touched the panel for a minute was not asked for by the person: a refetch interval, a
+ * realtime invalidation (useOperationsRealtime) or a refetch on focus. Every hubApi GET is marked as a background poll
+ * then, whichever helper made it, so no forgotten timer can keep an idle session alive (W1, O6). Writes never are.
+ */
+export function automaticReadInit(init?: RequestInit): RequestInit | undefined {
+  const method = init?.method?.toUpperCase() ?? 'GET'
+  return method === 'GET' || method === 'HEAD' ? backgroundPollInit(init) : init
+}
+
 export async function hubApi<T>(path: string, init?: RequestInit, steppedUp = false): Promise<T> {
-  const response = await fetchWithCsrf(`/api/v1${path}`, init)
+  const response = await fetchWithCsrf(`/api/v1${path}`, automaticReadInit(init))
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as ApiProblem
     if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
