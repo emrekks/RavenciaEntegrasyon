@@ -5,7 +5,8 @@ namespace MarketplaceHub.Api.Security;
 
 // The unit that rate limits and sign-in throttles count per sender. An IPv4 address is one sender; an
 // IPv6 address is not, because one connection usually owns a whole /64 and can pick any address in it,
-// so IPv6 senders are counted per /64.
+// so IPv6 senders are counted per /64. The address is Caddy's X-Forwarded-For (Program.cs trusts only the
+// backend network); see the note at the caddy service in deploy/compose/compose.yaml for IPv6 visitors.
 public static class ClientNetwork
 {
     public static string PartitionKey(HttpContext context) => PartitionKey(context.Connection.RemoteIpAddress);
