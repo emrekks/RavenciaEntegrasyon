@@ -1,0 +1,10 @@
+.invoice-link-revocations .record-card.invoice-link-revocation { align-items: flex-start; gap: 12px; }
+.invoice-link-revocation-body { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+.invoice-link-revocation-blocked { color: var(--rv-color-muted); }
+.invoice-link-revocation-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.invoice-link-revocation-actions .rv-button { min-height: 36px; }
+
+@media (max-width: 640px) {
+  .invoice-link-revocations .record-card.invoice-link-revocation { flex-direction: column; }
+  .invoice-link-revocation-actions { justify-content: flex-start; }
+}

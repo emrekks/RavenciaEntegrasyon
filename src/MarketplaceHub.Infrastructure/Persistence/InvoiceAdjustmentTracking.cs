@@ -1,3 +1,4 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,9 +13,10 @@ internal static class InvoiceAdjustmentTracking
 {
     public const string AdjustmentRequiredCode = "INVOICE_ADJUSTMENT_REQUIRED";
     public const string LinkRevocationRequiredCode = "INVOICE_MARKETPLACE_LINK_REVOCATION_REQUIRED";
-    // Delivery state of a link that a cancelled invoice left on the marketplace. No adapter can remove a
-    // Trendyol/Hepsiburada invoice link yet, so it is removed in the seller panel.
-    public const string RevocationRequiredStatus = "REVOCATION_REQUIRED";
+    // Delivery state of a link that a cancelled invoice left on the marketplace. Nothing removes it on its own:
+    // the operator removes a Trendyol link from the invoice detail ("Fatura Linkini Kaldır"), and removes the other
+    // marketplaces' links in their seller panels (MarketplaceInvoiceLinkRevocationPolicy).
+    public const string RevocationRequiredStatus = MarketplaceInvoiceLinkRevocationPolicy.Required;
 
     public static string AdjustmentIssueKey(Guid invoiceId) => $"invoice-adjustment:{invoiceId:N}";
     public static string LinkRevocationIssueKey(Guid invoiceId) => $"invoice-link-revocation:{invoiceId:N}";
@@ -62,9 +64,17 @@ internal static class InvoiceAdjustmentTracking
             AppendDeliveryHistory(db, state, RevocationRequiredStatus, state.ExternalReference, LinkRevocationRequiredCode, now);
         if (states.Count > 0)
             await UpsertIssueAsync(db, invoice.TenantId, LinkRevocationIssueKey(invoice.Id), LinkRevocationRequiredCode,
-                $"{invoice.InvoiceNumber ?? "Fatura"} sağlayıcıda iptal edildi ancak pazaryerine iletilen fatura bağlantısı duruyor. Bağlantıyı pazaryeri satıcı panelinden kaldırın; kaldırılmadan yeni fatura iletilemez.", now, cancellationToken);
+                $"{invoice.InvoiceNumber ?? "Fatura"} sağlayıcıda iptal edildi ancak pazaryerine iletilen fatura bağlantısı duruyor. Fatura detayındaki “Pazaryeri Fatura Linkleri” bölümünden kaldırın veya oradaki adımları izleyin; kaldırılmadan yeni fatura iletilemez.", now, cancellationToken);
         await ResolveIssueAsync(db, invoice.TenantId, AdjustmentIssueKey(invoice.Id), now, cancellationToken);
         return states.Count;
+    }
+
+    // Closes the link revocation issue once no link of the invoice is left to remove (tracked changes included).
+    public static async Task ResolveLinkRevocationIfDoneAsync(AppDbContext db, Guid tenantId, Guid invoiceId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var states = await db.MarketplaceDeliveryStates.Where(state => state.TenantId == tenantId && state.InvoiceId == invoiceId).ToListAsync(cancellationToken);
+        if (states.Any(state => MarketplaceInvoiceLinkRevocationPolicy.IsOpen(state.Status))) return;
+        await ResolveIssueAsync(db, tenantId, LinkRevocationIssueKey(invoiceId), now, cancellationToken);
     }
 
     public static MarketplaceDelivery AppendDeliveryHistory(AppDbContext db, MarketplaceDeliveryState state, string status, string? externalReference, string? errorCode, DateTimeOffset now)

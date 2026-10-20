@@ -130,6 +130,15 @@ public static class InvoicingEndpoints
         api.MapPost("/invoices/{id:guid}/stage-capability-probe-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueStageCapabilityProbeAsync(tenant.TenantId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : failure! : MissingContext(http));
         api.MapPost("/invoices/{id:guid}/reconcile-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReconcileAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
+        // Operator-only: removes (Trendyol) or confirms the removal of (Hepsiburada) the link a cancelled invoice left on one package.
+        api.MapPost("/invoices/{id:guid}/marketplace-link-revocations/{stateId:guid}", async (Guid id, Guid stateId, LinkRevocationRequest request, HttpContext http, IInvoicingBillingService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } missingKey) return missingKey;
+            if (request is not { Confirmed: true }) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Fatura linkini kaldırmak için açık onay gerekir.", 422));
+            var result = await service.RevokeMarketplaceLinkAsync(tenant.TenantId, id, stateId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
+        });
         api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
         api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery();
         api.MapPut("/invoices/{id:guid}/shopify-status", UpdateShopifyInvoiceStatusAsync);
@@ -571,6 +580,7 @@ public static class InvoicingEndpoints
     }
 
     private sealed record ShopifyInvoiceStatusCommand(string Status);
+    private sealed record LinkRevocationRequest(bool Confirmed);
     private sealed record InvoiceWorkspaceManualStatusCommand(IReadOnlyList<Guid> PackageIds, string Status);
     private sealed record InvoiceWorkspaceHiddenCommand(IReadOnlyList<Guid> PackageIds, bool Hidden);
 
