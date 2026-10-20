@@ -1495,7 +1495,7 @@ public sealed partial class InvoicingBillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
         if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
-        if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Trendyol iletimi için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
+        if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Pazaryerine iletim için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
                 ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
