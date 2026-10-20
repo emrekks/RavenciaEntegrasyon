@@ -17,6 +17,17 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     private static readonly string[] PazaramaStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED"];
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+    // The inbox filters. A sent answer waiting for the marketplace's confirmation or approval is no longer the
+    // seller's to do: it counts as answered. A rejected answer is the seller's to rewrite, so it waits again.
+    internal static string[] StatusesOf(string filter) => filter.Trim().ToUpperInvariant() switch
+    {
+        "WAITING" => ["WAITING_FOR_ANSWER", "REJECTED"],
+        "ANSWERED" => ["ANSWERED", "ANSWER_SUBMITTED", "WAITING_FOR_APPROVE"],
+        "EXPIRED" => ["EXPIRED", "UNANSWERED", "AUTOCLOSED"],
+        "OTHER" => ["REPORTED"],
+        var status => [status]
+    };
+
     public async Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken)
     {
         var rows = from question in db.MarketplaceQuestions.AsNoTracking()
@@ -28,15 +39,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         if (kind is "PRODUCT" or "ORDER") rows = rows.Where(row => row.Question.Kind == kind);
         if (!string.IsNullOrWhiteSpace(query.Status) && !query.Status.Equals("ALL", StringComparison.OrdinalIgnoreCase))
         {
-            var statuses = query.Status.Trim().ToUpperInvariant() switch
-            {
-                // A sent answer waiting for the marketplace's confirmation is no longer the seller's to do: it counts as answered.
-                "WAITING" => new[] { "WAITING_FOR_ANSWER" },
-                "ANSWERED" => new[] { "ANSWERED", "ANSWER_SUBMITTED" },
-                "EXPIRED" => new[] { "EXPIRED", "UNANSWERED", "AUTOCLOSED" },
-                "OTHER" => new[] { "REPORTED", "REJECTED" },
-                _ => [query.Status.Trim().ToUpperInvariant()]
-            };
+            var statuses = StatusesOf(query.Status);
             rows = rows.Where(row => statuses.Contains(row.Question.Status));
         }
         if (!string.IsNullOrWhiteSpace(query.PlatformCode)) rows = rows.Where(row => row.Connection.PlatformCode == query.PlatformCode.Trim().ToUpperInvariant());
@@ -215,7 +218,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             state.ProgressStatus = "FAILED"; state.Version++;
             await db.SaveChangesAsync(cancellationToken);
             logger.LogWarning("Soru eşitleme başarısız. TenantId: {TenantId}, ConnectionId: {ConnectionId}, Code: {Code}, HttpStatus: {HttpStatus}, Request: {Request}, RemoteRequestId: {RemoteRequestId}", tenantId, connectionId, exception.Error.Code, exception.Error.HttpStatus, failedRequestContext, exception.Error.RemoteRequestId);
-            return new(added, updated, now, exception.Error.SafeMessage);
+            return new(added, updated, now, exception.Error.SafeMessage, exception.Error);
         }
     }
 
@@ -236,12 +239,14 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         if (reconcilingPriorSubmission)
         {
             await UpsertAsync(tenantId, question.ConnectionId, current.Value!, timeProvider.GetUtcNow(), cancellationToken);
-            ReconcileAnswerSubmission(question, current.Value!);
+            ReconcileAnswerSubmission(question, current.Value!, timeProvider.GetUtcNow());
             if (question.Version == expectedVersion) question.Version++;
             await db.SaveChangesAsync(cancellationToken);
 
             if (question.AnswerSubmissionStatus == "REJECTED")
                 return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_REJECTED", "Önceki cevap pazaryerince reddedildi; cevabı düzenleyip yeniden gönderebilirsiniz.", 409);
+            if (question.AnswerSubmissionStatus == "NOT_DELIVERED")
+                return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_NOT_DELIVERED", "Önceki cevap pazaryerine ulaşmadı; taslağınız korundu, yeniden gönderebilirsiniz.", 409);
             var reconciled = question.AnswerSubmissionStatus is "SUBMITTED" or "CONFIRMED";
             return ServiceResult<MarketplaceQuestionView>.Fail(
                 reconciled ? "QUESTION_ANSWER_RECONCILED" : "QUESTION_ANSWER_RESULT_UNKNOWN",
@@ -256,13 +261,25 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             await UpsertAsync(tenantId, question.ConnectionId, current.Value, timeProvider.GetUtcNow(), cancellationToken); await db.SaveChangesAsync(cancellationToken);
             return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ALREADY_CLOSED", "Soru pazaryerinde artık cevap beklemiyor. Güncel durum alındı.", 409);
         }
-        question.AnswerSubmissionKey = idempotencyKey; question.PendingAnswerText = answer.Trim(); question.AnswerSubmissionStatus = "SUBMITTING"; question.Version++;
+        var before = (question.AnswerSubmissionKey, question.PendingAnswerText, question.AnswerSubmissionStatus, question.Status);
+        question.AnswerSubmissionKey = QuestionAnswerSubmission.Stamp(idempotencyKey, timeProvider.GetUtcNow()); question.PendingAnswerText = answer.Trim(); question.AnswerSubmissionStatus = "SUBMITTING"; question.Version++;
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_STALE", "Bu soru başka bir işlem tarafından güncellendi.", 409); }
         AdapterResult<RemoteQuestionAnswerResult> sent;
+        var handedToPort = false;
         try
         {
+            // Cancelled before anything left: nothing can have reached the marketplace, so nothing is left uncertain.
+            cancellationToken.ThrowIfCancellationRequested();
+            handedToPort = true;
             sent = await port.AnswerQuestionAsync(context, question.ExternalQuestionId, question.Kind, answer, cancellationToken);
+        }
+        catch (Exception exception) when (!handedToPort || NeverReachedMarketplace(exception))
+        {
+            (question.AnswerSubmissionKey, question.PendingAnswerText, question.AnswerSubmissionStatus, question.Status) = before;
+            question.Version++;
+            await db.SaveChangesAsync(CancellationToken.None);
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_NOT_SENT", "Cevap pazaryerine gönderilemedi; yeniden gönderebilirsiniz.", 503);
         }
         catch (Exception exception) when (exception is OperationCanceledException or HttpRequestException or TimeoutException)
         {
@@ -290,6 +307,11 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
     }
+
+    // True when the answer certainly did not leave: the connection to the marketplace could not even be opened
+    // (refused, name not resolved). A timeout or a dropped connection may have delivered it and stays uncertain.
+    internal static bool NeverReachedMarketplace(Exception exception) =>
+        exception is HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError or HttpRequestError.NameResolutionError };
 
     private async Task<int> ReconcilePendingAnswerSubmissionsAsync(Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -439,7 +461,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             var history = MergeHistory(row.HistoryJson, remote.Conversations);
             if (history != MergeHistory(row.HistoryJson, [])) row.HistoryJson = history;
             row.ExpiresAt = remote.ExpiresAt; row.LastRemoteModifiedAt = remote.LastModifiedAt;
-            ReconcileAnswerSubmission(row, remote);
+            ReconcileAnswerSubmission(row, remote, now);
             row.LastSyncedAt = now;
             // The version moves only when the question really changed. Re-reading an unchanged question every
             // few minutes used to move it too, so an answer typed in the meantime was refused as stale.
@@ -457,9 +479,10 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             && property.Metadata.Name is not (nameof(MarketplaceQuestion.LastSyncedAt) or nameof(MarketplaceQuestion.Version)));
     }
 
-    private static void ReconcileAnswerSubmission(MarketplaceQuestion row, RemoteMarketplaceQuestion remote)
+    internal static void ReconcileAnswerSubmission(MarketplaceQuestion row, RemoteMarketplaceQuestion remote, DateTimeOffset now)
     {
-        var resolution = MarketplaceQuestionAnswerReconciliationPolicy.Evaluate(remote, row.PendingAnswerText);
+        var submittedAt = QuestionAnswerSubmission.SubmittedAt(row.AnswerSubmissionKey);
+        var resolution = MarketplaceQuestionAnswerReconciliationPolicy.Evaluate(remote, row.PendingAnswerText, submittedAt);
         if (resolution == QuestionAnswerSubmissionReconciliation.Confirmed)
         {
             row.AnswerSubmissionStatus = "CONFIRMED";
@@ -483,12 +506,25 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         {
             row.AnswerSubmissionStatus = "SUBMITTED";
             row.PendingAnswerText = null;
-            row.Status = "ANSWER_SUBMITTED";
+            // An answer held for the marketplace's approval says so; otherwise it is sent and being confirmed.
+            row.Status = remote.Status.Equals("WAITING_FOR_APPROVE", StringComparison.OrdinalIgnoreCase) ? "WAITING_FOR_APPROVE" : "ANSWER_SUBMITTED";
             return;
         }
 
-        if (remote.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase)
-            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
+        var stillOpenRemotely = remote.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase)
+            || remote.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase);
+        // An answer whose request broke off and that the marketplace still does not show after a while did not
+        // arrive: the question is the seller's again (with the marketplace's status) and the draft is kept, instead
+        // of staying locked as "sent" and being re-read every five minutes forever.
+        if (stillOpenRemotely && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN"
+            && QuestionAnswerSubmission.NotDelivered(submittedAt, now))
+        {
+            row.AnswerSubmissionStatus = "NOT_DELIVERED";
+            row.Status = remote.Status.ToUpperInvariant();
+            return;
+        }
+
+        if (stillOpenRemotely && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
             row.Status = "ANSWER_SUBMITTED";
     }
 
@@ -502,7 +538,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         return history.Count == 0 ? null : JsonSerializer.Serialize(history.OrderBy(message => message.CreatedAt));
     }
     private static IReadOnlyList<RemoteQuestionConversation> ReadHistory(string? json) { try { return MarketplaceQuestionHistory.Deduplicate(json is null ? [] : JsonSerializer.Deserialize<RemoteQuestionConversation[]>(json, JsonOptions) ?? []); } catch (JsonException) { return []; } }
-    private static MarketplaceQuestionView Map(MarketplaceQuestion row, string platformCode, string storeName) => new(row.Id, row.ConnectionId, platformCode, storeName, row.ExternalQuestionId, row.Kind, row.Status, row.QuestionText, row.ProductName, row.ProductImageUrl, row.ProductSku, row.ProductBarcode, row.ProductModelCode, row.CustomerName, row.ExternalOrderNumber, ReadHistory(row.HistoryJson), row.CreatedAt, row.ExpiresAt, row.LastRemoteModifiedAt, row.LastSyncedAt, row.Version, row.ProductUrl);
+    private static MarketplaceQuestionView Map(MarketplaceQuestion row, string platformCode, string storeName) => new(row.Id, row.ConnectionId, platformCode, storeName, row.ExternalQuestionId, row.Kind, row.Status, row.QuestionText, row.ProductName, row.ProductImageUrl, row.ProductSku, row.ProductBarcode, row.ProductModelCode, row.CustomerName, row.ExternalOrderNumber, ReadHistory(row.HistoryJson), row.CreatedAt, row.ExpiresAt, row.LastRemoteModifiedAt, row.LastSyncedAt, row.Version, row.ProductUrl, row.AnswerSubmissionStatus, row.AnswerSubmissionStatus == "NOT_DELIVERED" ? row.PendingAnswerText : null);
     private static IEnumerable<(DateTimeOffset Start, DateTimeOffset End)> WindowsOldestFirst(DateTimeOffset start, DateTimeOffset end, TimeSpan maximum)
     {
         for (var cursor = start; cursor < end; cursor = cursor.Add(maximum)) yield return (cursor, cursor.Add(maximum) < end ? cursor.Add(maximum) : end);

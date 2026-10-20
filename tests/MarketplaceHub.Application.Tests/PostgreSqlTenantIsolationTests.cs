@@ -2219,6 +2219,35 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task SyncConnectionAsync_ReopensAnAnswerThatStillDidNotArriveAfterTwentyMinutes()
+    {
+        var tenant = NewTenant("q-nd");
+        var connection = NewQuestionConnection(tenant);
+        var question = NewUncertainQuestion(tenant.Id, connection.Id, fixture.Now);
+        question.AnswerSubmissionKey = QuestionAnswerSubmission.Stamp(Guid.NewGuid().ToString("N"), fixture.Now.AddMinutes(-25));
+        var port = new FixedQuestionPort(NewRemoteQuestion("WAITING_FOR_ANSWER", [], fixture.Now));
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.MarketplaceQuestions.Add(question);
+        db.MarketplaceQuestionSyncStates.Add(new MarketplaceQuestionSyncState { TenantId = tenant.Id, ConnectionId = connection.Id, HistoryImported = true, HistoryStartedAt = fixture.Now.AddYears(-1), ProgressStatus = "IDLE", LastSuccessAt = fixture.Now.AddMinutes(-1), Version = 1 });
+        await db.SaveChangesAsync();
+
+        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var sync = await service.SyncConnectionAsync(tenant.Id, connection.Id, null, CancellationToken.None);
+
+        Assert.Null(sync.Error);
+        Assert.Equal(0, port.AnswerCalls);
+        Assert.Equal("NOT_DELIVERED", question.AnswerSubmissionStatus);
+        Assert.Equal("WAITING_FOR_ANSWER", question.Status);
+        Assert.Equal("Önceki cevap", question.PendingAnswerText);
+        var view = await service.GetAsync(tenant.Id, question.Id, CancellationToken.None);
+        Assert.Equal("Önceki cevap", view!.PendingAnswerText);
+    }
+
+    [PostgreSqlFact]
     public async Task InvoiceReconciliation_WaitsWithoutReadingWhileAnOrderJobHoldsTheOrdersLock()
     {
         var tenant = NewTenant("invoice-return-lock-fairness");
@@ -5777,7 +5806,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         QuestionText = "Ürün sorusu",
         PendingAnswerText = "Önceki cevap",
         AnswerSubmissionStatus = "UNKNOWN",
-        AnswerSubmissionKey = Guid.NewGuid().ToString("N"),
+        // Sent five minutes ago: still inside the window in which an unconfirmed answer may yet show up.
+        AnswerSubmissionKey = QuestionAnswerSubmission.Stamp(Guid.NewGuid().ToString("N"), now.AddMinutes(-5)),
         CreatedAt = now.AddHours(-1),
         LastRemoteModifiedAt = now.AddMinutes(-1),
         LastSyncedAt = now.AddMinutes(-10),

@@ -22,15 +22,37 @@ public sealed class QuestionSyncJobHandlerTests
     }
 
     [Fact]
-    public async Task AFailedSyncKeepsTheProcessorsRejectedOutcome()
+    public async Task AFailedSyncKeepsTheMarketplaceErrorAndItsClass()
     {
-        var handler = new QuestionSyncJobHandler(new StubQuestions(new QuestionSyncView(0, 0, DateTimeOffset.UtcNow, "boom")));
+        var quota = new AdapterError(AdapterErrorClass.RateLimit, "TRENDYOL_RATE_LIMITED", "Kota doldu", 429, TimeSpan.FromSeconds(20), null);
+        var network = new AdapterError(AdapterErrorClass.TransientNetwork, "NETWORK", "Bağlantı koptu", null, null, null);
+        var contract = new AdapterError(AdapterErrorClass.ContractViolation, "PAZARAMA_QUESTION_CONTRACT_INVALID", "Yanıt beklenen yapıda değil", 502, null, null);
 
-        var failed = await handler.HandleAsync(new JobRequest(Tenant, Connection, MarketplaceJobTypes.QuestionSync, "{}", "c", null), CancellationToken.None);
+        var limited = await Run(new QuestionSyncView(0, 0, DateTimeOffset.UtcNow, quota.SafeMessage, quota));
+        var dropped = await Run(new QuestionSyncView(0, 0, DateTimeOffset.UtcNow, network.SafeMessage, network));
+        var changed = await Run(new QuestionSyncView(0, 0, DateTimeOffset.UtcNow, contract.SafeMessage, contract));
+        var missing = await Run(new QuestionSyncView(0, 0, DateTimeOffset.UtcNow, "Pazaryeri bağlantısı bulunamadı."));
+
+        Assert.Equal(JobCompletionKind.Retry, limited.Result.Kind);
+        Assert.True(limited.Result.RefundAttempt);
+        Assert.Equal("TRENDYOL_RATE_LIMITED", limited.Result.ErrorCode);
+        Assert.Equal(JobCompletionKind.Retry, dropped.Result.Kind);
+        Assert.Equal(JobCompletionKind.ManualReview, changed.Result.Kind);
+        Assert.Equal("Yanıt beklenen yapıda değil", changed.Result.ErrorSummary);
+        Assert.Equal("QUESTION_SYNC_CONNECTION_UNAVAILABLE", missing.Result.ErrorCode);
+        Assert.Equal(1, limited.Telemetry.Failed);
+
+        Task<JobOutcome> Run(QuestionSyncView view) => new QuestionSyncJobHandler(new StubQuestions(view))
+            .HandleAsync(new JobRequest(Tenant, Connection, MarketplaceJobTypes.QuestionSync, "{}", "c", null), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task AnUnreadablePayloadIsRejected()
+    {
+        var handler = new QuestionSyncJobHandler(new StubQuestions(new QuestionSyncView(0, 0, DateTimeOffset.UtcNow)));
+
         var unreadable = await handler.HandleAsync(new JobRequest(Tenant, Connection, MarketplaceJobTypes.QuestionSync, "not json", "c", null), CancellationToken.None);
 
-        Assert.Equal("F3_JOB_REJECTED", failed.Result.ErrorCode);
-        Assert.Equal(1, failed.Telemetry.Failed);
         Assert.Equal("F3_JOB_REJECTED", unreadable.Result.ErrorCode);
         Assert.True(handler.Handles(MarketplaceJobTypes.QuestionSync));
         Assert.False(handler.Handles(MarketplaceJobTypes.OrderSync));
