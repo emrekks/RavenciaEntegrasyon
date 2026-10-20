@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Me } from '../../shared/api'
 
-const apiState = vi.hoisted(() => ({ calls: [] as string[], failNextPage: false }))
+const apiState = vi.hoisted(() => ({ calls: [] as string[], failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }> }))
 
 function job(id: string, jobType: string, status: string, createdAt: string) {
   return {
@@ -28,7 +28,8 @@ vi.mock('../../shared/api', () => ({
     if (path.startsWith('/jobs/counts')) return [
       { status: 'SUCCEEDED', jobType: 'TRENDYOL_ORDER_SYNC', count: 2 },
       { status: 'DEAD', jobType: 'TRENDYOL_ORDER_SYNC', count: 1 },
-      { status: 'SUCCEEDED', jobType: 'PRICE_INVENTORY_SYNC', count: 1 }
+      { status: 'SUCCEEDED', jobType: 'PRICE_INVENTORY_SYNC', count: 1 },
+      ...apiState.extraCountRows
     ]
     if (path.startsWith('/jobs/metrics')) return []
     if (path.startsWith('/jobs/page?')) {
@@ -89,6 +90,7 @@ beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   apiState.calls = []
   apiState.failNextPage = false
+  apiState.extraCountRows = []
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -128,18 +130,62 @@ describe('JobsPage cursor paging', () => {
 
     await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent?.includes('Sipariş/Kargo'))!.click() })
     await settle()
-    expect(pageRequests().at(-1)!.get('jobTypes')).toBe('TRENDYOL_ORDER_SYNC')
+    const jobTypes = pageRequests().at(-1)!.get('jobTypes')!.split(',')
+    expect(jobTypes).toContain('TRENDYOL_ORDER_SYNC')
+    expect(jobTypes).toContain('SHIPMENT_ACTION')
+    expect(jobTypes).not.toContain('PRICE_INVENTORY_SYNC')
+    expect(currentSearch).toBe('?durum=hata&kategori=siparis')
   })
 
-  it('asks nothing for a tab without jobs in the range', async () => {
-    await renderPage()
-    const before = pageRequests().length
+  it('keeps the loaded pages when a count refresh brings a new job type (G22)', async () => {
+    await renderPage('/jobs?kategori=siparis')
+    await act(async () => { button('Daha Fazla Yükle')!.click() })
+    await settle()
+    expect(rowCount()).toBe(3)
+    const firstPageReads = pageRequests().filter(params => params.get('after') === null).length
 
-    await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent?.includes('Faturalar'))!.click() })
+    apiState.extraCountRows = [{ status: 'SUCCEEDED', jobType: 'SHIPMENT_ACTION', count: 5 }]
+    await act(async () => { await client.invalidateQueries({ queryKey: ['jobs', 'counts'] }) })
     await settle()
 
-    expect(pageRequests().length).toBe(before)
-    expect(container.textContent).toContain('Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.')
+    expect(rowCount()).toBe(3)
+    expect(pageRequests().filter(params => params.get('after') === null).length).toBe(firstPageReads)
+  })
+
+  it('polls the list only while its first page is loaded (W22, G24)', async () => {
+    await renderPage()
+    const listQuery = () => client.getQueryCache().findAll({ queryKey: ['jobs', 'page'] }).at(-1)!
+    const interval = () => ((listQuery().options as { refetchInterval: (query: unknown) => unknown }).refetchInterval)(listQuery())
+    expect(interval()).toBe(15_000)
+
+    await act(async () => { button('Daha Fazla Yükle')!.click() })
+    await settle()
+    expect(interval()).toBe(false)
+  })
+})
+
+describe('JobsPage address state (W16)', () => {
+  it('opens with the filters and page size from the address', async () => {
+    await renderPage('/jobs?durum=hata&adet=50&aralik=7g')
+
+    const request = pageRequests().at(-1)!
+    expect(request.get('status')).toBe('BLOCKED,MANUAL_REVIEW,DEAD')
+    expect(request.get('since')).not.toBeNull()
+    expect(container.querySelector('.jobs-reference-range')!.textContent).toContain('Son 7 Gün')
+    act(() => { container.querySelector<HTMLButtonElement>('.jobs-reference-filter-toggle')!.click() })
+    expect(container.querySelector<HTMLSelectElement>('select[aria-label="Sayfa başına işlem"]')!.value).toBe('50')
+  })
+
+  it('writes the search into the address and drops the page number on a filter change', async () => {
+    await renderPage('/jobs?sayfa=2')
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="Correlation ID ile işlem ara"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, 'corr-job-1')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await settle()
+    expect(currentSearch).toBe('?ara=corr-job-1')
+    expect(rowCount()).toBe(1)
   })
 
   it('keeps the loaded rows and says so when the next page fails', async () => {
