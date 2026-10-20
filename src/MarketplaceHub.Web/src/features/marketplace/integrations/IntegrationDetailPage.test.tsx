@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, version: 4 }))
@@ -22,7 +22,7 @@ vi.mock('../../../shared/api', async importOriginal => {
   return { ...original, hubApi: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [connection()], nextCursor: null, hasMore: false })) }
 })
 
-import { IntegrationDetailPage } from './IntegrationPages'
+import { IntegrationDetailPage, IntegrationsPage } from './IntegrationPages'
 
 let container: HTMLDivElement
 let root: Root
@@ -98,5 +98,33 @@ describe('IntegrationDetailPage credentials (W10)', () => {
     expect(container.textContent).not.toContain('Stage ·')
     openSection('Araçlar')
     expect(container.textContent).toContain('Test Siparişi Oluştur')
+  })
+})
+
+describe('IntegrationsPage filters (W16)', () => {
+  let currentSearch = ''
+  function LocationProbe() {
+    currentSearch = useLocation().search
+    return null
+  }
+
+  async function renderList(url: string) {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    root = createRoot(container)
+    await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><IntegrationsPage /><LocationProbe /></MemoryRouter></QueryClientProvider>) })
+    await settle()
+  }
+
+  it('opens with the platform filter from the address and writes a new choice back', async () => {
+    await renderList('/integrations?platform=n11')
+    expect(container.querySelector('.integration-filter-summary')!.textContent).toContain('N11')
+    expect(container.querySelector('.integration-filter-summary')!.textContent).toContain('0 bağlantı')
+
+    act(() => { container.querySelector<HTMLButtonElement>('.integration-filter-button')!.click() })
+    const trendyol = Array.from(container.querySelectorAll<HTMLButtonElement>('.integration-filter-menu button')).find(button => button.textContent === 'Trendyol')!
+    await act(async () => { trendyol.click() })
+    await settle()
+    expect(currentSearch).toBe('?platform=trendyol')
+    expect(container.querySelector('.integration-filter-summary')!.textContent).toContain('1 bağlantı')
   })
 })
