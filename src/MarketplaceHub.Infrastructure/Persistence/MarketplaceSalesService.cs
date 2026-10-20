@@ -1682,6 +1682,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 .Select(group => new { ClaimId = group.Key, ApprovedAt = group.Max(decision => decision.CompletedAt) })
                 .ToDictionaryAsync(x => x.ClaimId, x => x.ApprovedAt, cancellationToken);
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var lineGrossByOrder = await ActiveLineGrossAsync(tenantId, orders.Values.Where(x => x.GrossAmount <= 0).Select(x => x.Id).ToArray(), cancellationToken);
+        decimal RefundRatio(Order order) => ReturnRefundAmounts.DiscountRatio(order.GrossAmount, order.DiscountAmount, order.NetAmount, lineGrossByOrder.GetValueOrDefault(order.Id));
         var connectionIds = claims.Select(x => x.ConnectionId).Concat(orders.Values.Select(x => x.ConnectionId)).Distinct().ToArray();
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var returnLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId)).ToListAsync(cancellationToken);
@@ -1776,7 +1778,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 if (line is null) return null;
                 var source = SourceLine(line.SourceSnapshotJson);
                 var variant = ResolveReturnVariant(line);
-                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)));
+                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)),
+                    RefundAmount: order is null ? null : ReturnRefundAmounts.LineRefund(returnLine.Quantity, line.UnitPrice, RefundRatio(order)));
             }).Where(line => line is not null).Select(line => line!).ToList();
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
@@ -1785,7 +1788,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
                 claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))),
-                IsEstimatedReturnDueAt(platformCode, claim));
+                IsEstimatedReturnDueAt(platformCode, claim),
+                ReturnRefundAmounts.ClaimTotal(lineViews.Select(line => line.RefundAmount)));
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -1956,6 +1960,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var variantIds = resolvedVariants.Select(x => x.Id).Distinct().ToArray();
         var inventoryVariants = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").Select(x => x.VariantId).ToListAsync(cancellationToken);
         var imageUrls = await MediaUrls(tenantId, variantIds.Select(x => (Guid?)x), cancellationToken);
+        var refundRatio = ReturnRefundAmounts.DiscountRatio(order.GrossAmount, order.DiscountAmount, order.NetAmount,
+            order.GrossAmount > 0 ? 0 : (await ActiveLineGrossAsync(tenantId, [order.Id], cancellationToken)).GetValueOrDefault(order.Id));
         var lines = sourceLines.Select(line =>
         {
             var source = orderLines.GetValueOrDefault(line.OrderLineId);
@@ -1970,12 +1976,24 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 variant is not null && inventoryVariants.Contains(variant.Id),
                 variant?.OptionSignature ?? sourceSnapshot?.OptionSignature,
                 variant?.ModelCode ?? sourceSnapshot?.ModelCode,
-                string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)));
+                string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
+                source is null ? null : ReturnRefundAmounts.LineRefund(line.Quantity, source.UnitPrice, refundRatio));
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim)));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
+            ReturnRefundAmounts.ClaimTotal(lines.Select(line => line.RefundAmount))));
+    }
+
+    // The gross of each order's active lines (quantity × unit price): the refund's discount share
+    // falls back on it when an order carries no gross total.
+    private async Task<Dictionary<Guid, decimal>> ActiveLineGrossAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
+    {
+        if (orderIds.Length == 0) return [];
+        var rows = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId))
+            .Select(x => new { x.OrderId, x.OrderedQuantity, x.CancelledQuantity, x.UnitPrice }).ToListAsync(cancellationToken);
+        return rows.GroupBy(x => x.OrderId).ToDictionary(group => group.Key, group => group.Sum(x => Math.Max(0, x.OrderedQuantity - x.CancelledQuantity) * x.UnitPrice));
     }
 
     // Each marketplace says per rejection reason whether evidence is needed;

@@ -961,7 +961,9 @@ public sealed record OrderLineView(
     string? ModelCode = null,
     string? OptionSignature = null,
     string? ImageUrl = null,
-    decimal AllocatedQuantity = 0);
+    decimal AllocatedQuantity = 0,
+    // Return lists only: what the returned quantity is worth, calculated from the order (ReturnRefundAmounts).
+    decimal? RefundAmount = null);
 public sealed record ShipmentView(
     Guid Id,
     Guid OrderId,
@@ -1021,7 +1023,9 @@ public sealed record ReturnLineView(
     bool HasInventoryMapping,
     string? OptionSignature = null,
     string? ModelCode = null,
-    string? Status = null);
+    string? Status = null,
+    // Quantity × the order line's paid unit price; null without an order line.
+    decimal? RefundAmount = null);
 public sealed record ReturnListView(
     Guid Id,
     string ExternalClaimId,
@@ -1055,7 +1059,9 @@ public sealed record ReturnListView(
     DateTimeOffset? ApprovedAt = null,
     string? CargoTrackingLink = null,
     IReadOnlyDictionary<Guid, string>? LineStatuses = null,
-    bool ActionDueAtEstimated = false);
+    bool ActionDueAtEstimated = false,
+    // Calculated from the order (quantity × paid unit price), in Currency; null when no line matches its order line.
+    decimal? RefundAmount = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1090,7 +1096,9 @@ public sealed record ReturnDetailView(
     bool DecisionPending = false,
     string? PlatformCode = null,
     string? CargoTrackingLink = null,
-    bool ActionDueAtEstimated = false);
+    bool ActionDueAtEstimated = false,
+    // Calculated from the order (quantity × paid unit price), in Currency; null when no line matches its order line.
+    decimal? RefundAmount = null);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
