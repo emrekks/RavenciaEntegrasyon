@@ -10,7 +10,7 @@ import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { channelTotals, comparisonText, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
@@ -252,7 +252,7 @@ export function DashboardPage() {
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection]) => <Link key={kind} className={`rr-opcard${tone && value ? ` rr-${tone}` : ''}`} to={to}><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdown(byConnection)} /></Link>)}</div></section>
     <section className="rr-panel rr-pf" style={selected ? { ['--pf-accent' as string]: platformColor(selected.platformCode, 0) } : undefined}>
-      <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {channel === 'ALL' ? 'Tüm Platformlar' : selectedName} · {comparisonText(range, data)}</p></div><div className="rr-pf-tools">
+      <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {channel === 'ALL' ? 'Tüm Platformlar' : selectedName}</p></div><div className="rr-pf-tools">
         {range === 'custom' && <DateRangePicker className="rr-date" from={custom.from} to={custom.to} onChange={value => setCustom({ from: value.from, to: value.to })} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
         <div className="rr-seg" role="radiogroup" aria-label="Dönem">{PERIODS.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={range === value} className={range === value ? 'rr-on' : undefined} onClick={() => setRange(value)}>{value === 'custom' ? 'Özel' : label.replace('Son ', '')}</button>)}</div>
       </div></div>

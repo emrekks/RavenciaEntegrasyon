@@ -38,7 +38,10 @@ export function periodDays(range: Range, custom: { from: string; to: string }, t
     if (!dayPattern.test(custom.from) || !dayPattern.test(custom.to)) return null
     return custom.from <= custom.to ? { from: custom.from, to: custom.to } : { from: custom.to, to: custom.from }
   }
-  return { from: range === 'today' ? today : addDays(today, -(Number(range) - 1)), to: today }
+  // "Bugün" is today so far; 7/30/90 days are the whole Istanbul days that ended at today's 00:00 (today's unfinished
+  // day pulled the chart's last point to zero and the range bar's low end to 0).
+  if (range === 'today') return { from: today, to: today }
+  return { from: addDays(today, -Number(range)), to: addDays(today, -1) }
 }
 
 const inChannel = (row: { connectionId: string }, channel: string) => channel === 'ALL' || row.connectionId === channel

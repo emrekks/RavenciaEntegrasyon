@@ -14,10 +14,10 @@ const performance = (current: PerformanceRow[], previous: PerformanceRow[] = [],
 })
 
 describe('dashboard periods', () => {
-  it('asks for Istanbul calendar days, today included', () => {
+  it('asks for today so far, or for whole Istanbul days ending at today 00:00', () => {
     expect(periodDays('today', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-20', to: '2026-10-20' })
-    expect(periodDays('7', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-14', to: '2026-10-20' })
-    expect(periodDays('30', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-01-31', to: '2026-03-01' })
+    expect(periodDays('7', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-13', to: '2026-10-19' })
+    expect(periodDays('30', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-01-30', to: '2026-02-28' })
   })
 
   it('a half-picked custom range asks for nothing, a reversed one is put in order', () => {
