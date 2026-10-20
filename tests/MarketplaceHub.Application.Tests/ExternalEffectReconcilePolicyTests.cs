@@ -13,6 +13,9 @@ public sealed class ExternalEffectReconcilePolicyTests
     // The first unclear read after a night's stop: old, but barely verified.
     [InlineData(EffectVerdict.Unknown, 36_000, 1, 0, ExternalEffectOutcome.Wait)]
     [InlineData(EffectVerdict.Unknown, 36_000, 4, 2400, ExternalEffectOutcome.Wait)]
+    // Reads that always came more than five minutes apart: closed a day after the action, not never.
+    [InlineData(EffectVerdict.Unknown, 86_400, 5, 0, ExternalEffectOutcome.Unresolved)]
+    [InlineData(EffectVerdict.Unknown, 86_400, 4, 0, ExternalEffectOutcome.Wait)]
     public void AnUnclearActionIsSettledOnlyByWhatTheMarketplaceShows(EffectVerdict verdict, int ageSeconds, int unclearChecks, int verificationSeconds, ExternalEffectOutcome expected) =>
         Assert.Equal(expected, ExternalEffectReconcilePolicy.Decide(verdict, TimeSpan.FromSeconds(ageSeconds), unclearChecks, TimeSpan.FromSeconds(verificationSeconds)));
 
