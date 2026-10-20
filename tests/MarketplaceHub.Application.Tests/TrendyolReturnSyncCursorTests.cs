@@ -73,6 +73,21 @@ public sealed class TrendyolReturnSyncCursorTests
         Assert.Null(read.PageCursor);
         Assert.Equal("2", MarketplaceJobProcessor.ReturnPageCursor(read));
     }
+
+    [Fact]
+    public void OnlyPermanentRefusalsOfTheSavedPageCountTowardsARestart()
+    {
+        var state = MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15)) with { Page = 3, PageCursor = "s:Created=3" };
+        var refused = new AdapterError(AdapterErrorClass.Validation, "TRENDYOL_BAD_REQUEST", "Geçersiz sayfa.", 400, null, null);
+        var quota = new AdapterError(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Kota.", 429, TimeSpan.FromMinutes(1), null);
+
+        Assert.Equal((0, false), MarketplaceJobProcessor.ReturnPageRefusal(state, quota));
+        Assert.Equal((1, false), MarketplaceJobProcessor.ReturnPageRefusal(state, refused));
+        Assert.Equal((MarketplaceJobProcessor.ReturnPagePermanentFailureLimit, true),
+            MarketplaceJobProcessor.ReturnPageRefusal(state with { PermanentFailures = MarketplaceJobProcessor.ReturnPagePermanentFailureLimit - 1 }, refused));
+        // The count survives the stored state.
+        Assert.Equal(2, StoreAndRead(state with { PermanentFailures = 2 }).PermanentFailures);
+    }
 }
 
 [Collection("postgres-integration")]
@@ -152,6 +167,100 @@ public sealed class TrendyolReturnSyncCursorPostgreSqlTests(PostgreSqlTenantIsol
             await cleanup.PlatformConnections.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
         }
+    }
+
+    [PostgreSqlFact]
+    public async Task ReturnSync_RestartsFromItsBaselineWhenTheSavedPageIsRefusedForGood()
+    {
+        var tenant = new Tenant
+        {
+            Id = Guid.CreateVersion7(),
+            Code = $"trendyol-return-refused-{Guid.NewGuid():N}",
+            DisplayName = "trendyol-return-refused",
+            Status = RecordStatus.Active,
+            Timezone = "Europe/Istanbul",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Version = 1
+        };
+        var connection = new PlatformConnection
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            PublicId = Guid.CreateVersion7(),
+            PlatformCode = "TRENDYOL",
+            Environment = "PRODUCTION",
+            DisplayName = "Trendyol iade sayfa reddi testi",
+            ExternalStoreId = $"seller-{Guid.NewGuid():N}",
+            Status = "ACTIVE",
+            ApiVersion = "V2",
+            SettingsJson = "{}"
+        };
+        var saved = new MarketplaceJobProcessor.ReturnSyncState(MarketplaceJobProcessor.ReturnSyncStateVersion, 0, 4, false, fixture.Now.AddHours(-2), fixture.Now.AddHours(-1), "s:Created=4");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            seed.SyncCursors.Add(new SyncCursor
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ConnectionId = connection.Id,
+                ResourceType = "RETURNS",
+                OpaqueCursor = MarketplaceJobProcessor.SerializeReturnSyncState(saved),
+                LastModifiedWatermark = fixture.Now.AddHours(-2)
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<MarketplaceJobProcessor.ReturnSyncState?> RunAndReadAsync()
+            {
+                await using (var db = fixture.CreateContext())
+                {
+                    var processor = new MarketplaceJobProcessor(
+                        db, null!, null!, null!, null!, null!, null!, null!, new RefusingReturnPort(), null!, null!,
+                        new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                    var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnSync, "{}", "trendyol-return-refused", CancellationToken.None);
+                    Assert.False(result.Succeeded);
+                }
+                await using var check = fixture.CreateContext();
+                var stored = await check.SyncCursors.AsNoTracking()
+                    .Where(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.ResourceType == "RETURNS")
+                    .Select(x => x.OpaqueCursor).SingleAsync();
+                return stored is null ? null : JsonSerializer.Deserialize<MarketplaceJobProcessor.ReturnSyncState>(stored);
+            }
+
+            var afterOne = await RunAndReadAsync();
+            Assert.Equal(1, afterOne?.PermanentFailures);
+            Assert.Equal("s:Created=4", afterOne?.PageCursor);
+            Assert.Equal(2, (await RunAndReadAsync())?.PermanentFailures);
+            // The third refusal in a row drops the saved page: the next read starts from its baseline.
+            Assert.Null(await RunAndReadAsync());
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.OperationalIssues.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.SyncCursors.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.JobAttempts.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.PlatformConnections.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    // Every page read is refused with a permanent 400.
+    private sealed class RefusingReturnPort : IReturnPort
+    {
+        public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(new(AdapterErrorClass.Validation, "TRENDYOL_BAD_REQUEST", "Geçersiz sayfa.", 400, null, null)));
+
+        public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     // Three pages with no claims: the first two say which buckets still have more, the third ends the read.

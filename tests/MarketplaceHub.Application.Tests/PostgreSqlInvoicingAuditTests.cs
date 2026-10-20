@@ -231,7 +231,14 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         var otherInvoice = NewInvoice(seed, otherOrder.Id, InvoiceStatus.MarketplaceFailed);
         var stopped = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:{seed.Package.Id}:recovery:3:1", $$"""{"invoiceId":"{{invoice.Id}}","packageId":"{{seed.Package.Id}}"}""", JobStatus.ManualReview);
         var unsettled = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{otherInvoice.Id}:after-document", $$"""{"invoiceId":"{{otherInvoice.Id}}"}""", JobStatus.ManualReview);
-        await SeedAsync(seed, db => { db.Orders.Add(otherOrder); db.Invoices.AddRange(invoice, otherInvoice); db.MarketplaceDeliveryStates.Add(state); db.IntegrationJobs.AddRange(stopped, unsettled); });
+        // A backlog of older stopped jobs that stay unsettled must not keep the newer settled one open.
+        var backlog = Enumerable.Range(0, 250).Select(index =>
+        {
+            var job = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{otherInvoice.Id}:backlog-{index}", $$"""{"invoiceId":"{{otherInvoice.Id}}"}""", JobStatus.Dead);
+            job.CreatedAt = fixture.Now.AddDays(-2).AddMinutes(index);
+            return job;
+        }).ToList();
+        await SeedAsync(seed, db => { db.Orders.Add(otherOrder); db.Invoices.AddRange(invoice, otherInvoice); db.MarketplaceDeliveryStates.Add(state); db.IntegrationJobs.AddRange(stopped, unsettled); db.IntegrationJobs.AddRange(backlog); });
 
         try
         {
@@ -243,6 +250,9 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
             Assert.Equal(JobStatus.Cancelled, closed.Status);
             Assert.Equal(InvoicingJobProcessor.DeliverySettledElsewhereCode, closed.LastErrorCode);
             Assert.Equal(JobStatus.ManualReview, (await verification.IntegrationJobs.SingleAsync(job => job.Id == unsettled.Id)).Status);
+            // The job screens learn that the job closed.
+            Assert.True(await verification.IntegrationOutboxEvents.AnyAsync(outbox => outbox.TenantId == seed.Tenant.Id
+                && outbox.ResourceType == JobLeaseService.JobEventResource && outbox.AggregateId == stopped.Id && outbox.AggregateVersion == closed.Version));
         }
         finally
         {
@@ -385,6 +395,37 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
             await using var verification = fixture.CreateContext();
             Assert.False(await verification.Invoices.AnyAsync(invoice => invoice.TenantId == seed.Tenant.Id && invoice.OrderId == seed.Order.Id));
             Assert.Equal(1, await verification.Invoices.CountAsync(invoice => invoice.TenantId == seed.Tenant.Id && invoice.OrderId == secondOrder.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ALineWhoseVatRateTrendyolDidNotReportBlocksThePreviewAndTheDraft()
+    {
+        var seed = NewSeed("audit-vat-unknown");
+        var line = NewLine(seed.Tenant.Id, seed.Order.Id);
+        line.VatRate = 0m;
+        line.SourceSnapshotJson = "{\"lineId\":\"1\",\"stockCode\":\"AUDIT-SKU\",\"quantity\":1,\"lineItemPrice\":120}";
+        await SeedAsync(seed, db => db.OrderLines.Add(line));
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewBillingService(db);
+            var preview = await service.PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            var draft = await service.CreateDraftAsync(seed.Tenant.Id,
+                new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), "audit-vat-unknown", CancellationToken.None);
+
+            var item = Assert.Single(preview.Value ?? []);
+            Assert.False(item.CanConfirm);
+            Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknown.Message, item.BlockedReason);
+            Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknownCode, draft.Error?.Code);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Invoices.AnyAsync(invoice => invoice.TenantId == seed.Tenant.Id));
         }
         finally
         {

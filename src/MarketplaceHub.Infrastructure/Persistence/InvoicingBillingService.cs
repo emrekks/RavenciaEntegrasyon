@@ -1208,6 +1208,8 @@ public sealed partial class InvoicingBillingService(
             if (!TryResolveWholeOrderInvoiceLines(orderLines, allocations, activePackagesForOrder.Select(item => item.Id).ToArray(), out orderLines, out var allocationError))
                 return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
         }
+        if (orderLines.Any(line => InvoiceIssuePolicy.IsLineVatRateUnknown(orderPlatform, line.SourceSnapshotJson)))
+            return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.LineVatRateUnknown);
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
             Id = Guid.CreateVersion7(),
@@ -1361,6 +1363,15 @@ public sealed partial class InvoicingBillingService(
         if (lines.Count == 0 || lines.Any(x => x.Quantity <= 0 || x.LineTotal < 0)) failures.Add("INVOICE_LINES_INVALID");
         if (lines.Sum(x => x.LineTotal) != invoice.PayableTotal || invoice.TaxExclusiveTotal + invoice.TaxTotal != invoice.PayableTotal) failures.Add("INVOICE_TOTAL_MISMATCH");
         if (lines.Any(x => x.UnitSnapshot == "UNSPECIFIED" || x.VatRate != 0 && x.VatAmount <= 0)) failures.Add("FISCAL_CALCULATION_AUTHORITY_REQUIRED");
+        // A line whose VAT rate the marketplace did not report must not be issued at an inferred rate or at 0%.
+        var sourceLineIds = lines.Where(x => x.OrderLineId != null).Select(x => x.OrderLineId!.Value).ToList();
+        var sourcePlatform = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Join(db.PlatformConnections.AsNoTracking(), x => new { x.TenantId, x.ConnectionId }, x => new { x.TenantId, ConnectionId = x.Id }, (_, connection) => connection.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (sourceLineIds.Count > 0 && sourcePlatform == "TRENDYOL"
+            && (await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && sourceLineIds.Contains(x.Id)).Select(x => x.SourceSnapshotJson).ToListAsync(cancellationToken))
+                .Any(snapshot => InvoiceIssuePolicy.IsLineVatRateUnknown(sourcePlatform, snapshot)))
+            failures.Insert(0, InvoiceIssuePolicy.LineVatRateUnknownCode);
         if (invoice.Note != InvoiceAmounts.TurkishInvoiceNote(invoice.PayableTotal)) failures.Add("INVOICE_NOTE_MISMATCH");
         var providerConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
         if (providerConnection is null) failures.Add("ACTIVE_CONNECTION_REQUIRED");
@@ -1471,11 +1482,35 @@ public sealed partial class InvoicingBillingService(
         if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış iptal işlemi yapılamaz.", 422);
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
+        // The cancellation and the stop of the waiting deliveries are saved in one transaction.
+        await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
         var queued = await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired], InvoiceStatus.CancellationPending, cancellationToken);
+        if (!queued.Succeeded) return queued;
         // A delivery still waiting in the queue would send the link of an invoice that is being cancelled.
-        if (queued.Succeeded && await InvoiceAdjustmentTracking.CancelPendingDeliveryJobsAsync(db, tenantId, id, timeProvider.GetUtcNow(), cancellationToken) > 0)
-            await db.SaveChangesAsync(cancellationToken);
+        if (await InvoiceAdjustmentTracking.CancelPendingDeliveryJobsAsync(db, tenantId, id, timeProvider.GetUtcNow(), cancellationToken) > 0)
+            await SaveSkippingJobsTakenMeanwhileAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return queued;
+    }
+
+    // A waiting delivery job a worker leased (or an operator changed) between the read and this save keeps its new
+    // state: the delivery itself refuses an invoice in cancellation (InvoiceDeliveryGuardPolicy). The other changes are saved.
+    private async Task SaveSkippingJobsTakenMeanwhileAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException exception)
+            {
+                var jobs = exception.Entries.Where(entry => entry.Entity is IntegrationJob).ToList();
+                if (jobs.Count == 0 || jobs.Count != exception.Entries.Count) throw;
+                foreach (var entry in jobs) entry.State = EntityState.Detached;
+            }
+        }
     }
 
     public async Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)

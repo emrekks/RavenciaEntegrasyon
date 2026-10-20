@@ -23,10 +23,11 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         // takes the next job at once. Two slots leasing at the same instant can still collide; the processor's
         // advisory lock remains the final guard. A job's stored LockGroup wins over its type's group, so the
         // lease checks the same group the lock takes.
-        // Only the first CandidateLimit runnable rows in (Priority, AvailableAt) order are taken (a top-N sort
-        // instead of sorting every eligible row); the tenant fairness order is applied to those. The status,
-        // availability and attempt conditions are repeated on the locked row so a row another slot leased
-        // meanwhile is re-checked after its lock is taken.
+        // Each tenant with runnable jobs contributes only its first CandidateLimit runnable rows in (Priority,
+        // AvailableAt) order (a top-N sort per tenant instead of sorting every eligible row), and the tenant
+        // fairness order is applied to those: one tenant's hundreds of older jobs can no longer fill the whole
+        // candidate list and keep the other tenants out of it. The status, availability and attempt conditions
+        // are repeated on the locked row so a row another slot leased meanwhile is re-checked after its lock is taken.
         var job = await db.IntegrationJobs.FromSqlInterpolated($"""
             WITH busy AS (
                 SELECT DISTINCT running."ConnectionId", coalesce(running."LockGroup", running_group.lock_group) AS lock_group
@@ -36,12 +37,21 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                 WHERE running."Status" = 'LEASED'
                   AND running."LeaseExpiresAt" > {now}
                   AND running."ConnectionId" IS NOT NULL),
+            queued_tenants AS (
+                SELECT DISTINCT queued."TenantId"
+                FROM integration.jobs queued
+                WHERE queued."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+                  AND queued."AvailableAt" <= {now}),
             picks AS (
+                SELECT tenant_pick.*
+                FROM queued_tenants
+                CROSS JOIN LATERAL (
                 SELECT candidate."Id", candidate."TenantId", candidate."Priority", candidate."AvailableAt", candidate."CreatedAt"
                 FROM integration.jobs candidate
                 LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS candidate_group(job_type, lock_group)
                   ON candidate_group.job_type = candidate."JobType"
-                WHERE candidate."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+                WHERE candidate."TenantId" = queued_tenants."TenantId"
+                  AND candidate."Status" IN ('PENDING', 'RETRY_SCHEDULED')
                   AND candidate."AttemptCount" < candidate."MaxAttempts"
                   AND candidate."AvailableAt" <= {now}
                   AND ({minimumPriority}::int IS NULL OR candidate."Priority" >= {minimumPriority}::int)
@@ -62,7 +72,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                         AND backoff."LockGroup" = coalesce(candidate."LockGroup", candidate_group.lock_group)
                         AND backoff."Until" > {now})
                 ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
-                LIMIT {CandidateLimit})
+                LIMIT {CandidateLimit}) tenant_pick)
             SELECT job.* FROM integration.jobs job
             JOIN picks ON picks."Id" = job."Id"
             LEFT JOIN (
@@ -352,8 +362,16 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
 
     private IntegrationOutboxEvent AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
     {
+        var outboxEvent = NewJobEvent(job, now);
+        db.IntegrationOutboxEvents.Add(outboxEvent);
+        return outboxEvent;
+    }
+
+    // The "jobs" event for a job's state change, for every writer that changes a job outside this service too.
+    internal static IntegrationOutboxEvent NewJobEvent(IntegrationJob job, DateTimeOffset now)
+    {
         var metadata = IntegrationJobMetadataPolicy.Apply(job);
-        var outboxEvent = new IntegrationOutboxEvent
+        return new IntegrationOutboxEvent
         {
             Id = Guid.CreateVersion7(),
             TenantId = job.TenantId,
@@ -366,8 +384,6 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             CreatedAt = now,
             NextAttemptAt = now
         };
-        db.IntegrationOutboxEvents.Add(outboxEvent);
-        return outboxEvent;
     }
 
     private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();

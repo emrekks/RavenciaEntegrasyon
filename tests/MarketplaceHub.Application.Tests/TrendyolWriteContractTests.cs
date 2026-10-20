@@ -221,6 +221,23 @@ public sealed class TrendyolWriteContractTests
         var issue = Assert.Single(page.Issues!);
         Assert.Equal("ORDER_PACKAGE_LINE_VAT_RATE_MISSING", issue.Code);
         Assert.Equal("pkg-1:line-1", issue.Identity);
+        // The kept line's raw JSON marks its rate as unknown, so no invoice is issued at 0% (or at the inferred rate).
+        Assert.True(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", lines[0].SourceSnapshotJson));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", lines[1].SourceSnapshotJson));
+    }
+
+    [Fact]
+    public void OnlyATrendyolLineWithoutAReportedVatRateCountsAsUnknown()
+    {
+        Assert.True(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatBaseAmount":100}"""));
+        Assert.True(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatRate":null}"""));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatRate":0}"""));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatRate":"10"}"""));
+        // Lines stored without a raw snapshot, and other platforms' reported 0% lines, keep their rate.
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", null));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", "{}"));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("HEPSIBURADA", """{"lineId":"1"}"""));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("SHOPIFY", """{"id":"1"}"""));
     }
 
     [Fact]

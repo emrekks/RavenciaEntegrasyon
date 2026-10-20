@@ -779,12 +779,15 @@ public static class ExternalEffectReconcilePolicy
     public const int MinimumUnclearChecks = 5;
     // A longer pause between two reads means the worker (or the job) was not running; it is not counted.
     public static readonly TimeSpan MaximumCountedCheckGap = TimeSpan.FromMinutes(5);
+    // A wall-clock cap: when the reads keep arriving more than MaximumCountedCheckGap apart (a congested queue),
+    // the counted time never grows; a day after the action, the unclear reads alone close it as unresolved.
+    public static readonly TimeSpan UnresolvedAfterAge = TimeSpan.FromHours(24);
 
     public static ExternalEffectOutcome Decide(EffectVerdict verdict, TimeSpan age, int unclearChecks, TimeSpan verificationTime) => verdict switch
     {
         EffectVerdict.Applied => ExternalEffectOutcome.Applied,
         EffectVerdict.NotApplied when age >= MinimumAgeForNotApplied => ExternalEffectOutcome.NotApplied,
-        EffectVerdict.Unknown when unclearChecks >= MinimumUnclearChecks && verificationTime >= UnresolvedAfter => ExternalEffectOutcome.Unresolved,
+        EffectVerdict.Unknown when unclearChecks >= MinimumUnclearChecks && (verificationTime >= UnresolvedAfter || age >= UnresolvedAfterAge) => ExternalEffectOutcome.Unresolved,
         _ => ExternalEffectOutcome.Wait
     };
 

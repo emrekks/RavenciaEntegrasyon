@@ -799,18 +799,18 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             }
             if (InvoiceLinkBody(payload.RootElement) is not { } body)
                 return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.Validation, InvoiceLinkBodyInvalidCode,
-                    "Trendyol fatura linki gönderilmedi: paket numarası sayı değil veya fatura numarası GİB biçiminde (3 harf/rakam ve 13 rakam) değil.", null, null, null));
+                    "Trendyol fatura linki gönderilmedi: paket numarası sayı değil veya mikro ihracat faturasının numarası GİB biçiminde (3 harf/rakam ve 13 rakam) değil.", null, null, null));
             var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.InvoiceLinks(authorized.Connection.ExternalStoreId), JsonContent.Create(body), cancellationToken, storeFrontCode: WriteStoreFront(command.StoreFrontCode)); if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
             return AdapterResult<InvoiceDeliveryResult>.Success(new(command.ExternalPackageId, "SUBMITTED"), response.RateLimit);
         }
     }
 
     internal const string InvoiceLinkBodyInvalidCode = "TRENDYOL_INVOICE_LINK_BODY_INVALID";
-    private static readonly System.Text.RegularExpressions.Regex GibInvoiceNumber = new(@"^[A-Za-z0-9]{3}\d{13}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     // The documented "send-invoice-link" body: shipmentPackageId as a number (int64), invoiceLink, and the optional
     // invoiceDateTime and invoiceNumber (GİB format, three letters/digits and thirteen digits). The panel's own fields
-    // (micro, the other marketplaces' keys) are not sent. Null when the package number or invoice number does not fit.
+    // (micro, the other marketplaces' keys) are not sent. Null when the package number does not fit, or when a
+    // micro-export invoice number is not in GİB format.
     internal static Dictionary<string, object>? InvoiceLinkBody(JsonElement payload)
     {
         var packageText = payload.TryGetProperty("shipmentPackageId", out var packageValue)
@@ -824,11 +824,15 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         if (payload.TryGetProperty("invoiceNumber", out var number) && number.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(number.GetString()))
         {
             var invoiceNumber = number.GetString()!.Trim();
-            if (!GibInvoiceNumber.IsMatch(invoiceNumber)) return null;
-            body["invoiceNumber"] = invoiceNumber;
+            // The number is optional for a domestic package: one Trendyol would refuse (a manual upload numbered
+            // "2026/0045") is left out and the link is still sent. Micro-export requires a valid number.
+            if (InvoiceIssuePolicy.IsGibInvoiceNumber(invoiceNumber)) body["invoiceNumber"] = invoiceNumber;
+            else if (IsMicroExportPayload(payload)) return null;
         }
         return body;
     }
+
+    private static bool IsMicroExportPayload(JsonElement payload) => payload.TryGetProperty("micro", out var micro) && micro.ValueKind == JsonValueKind.True;
 
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)
     {

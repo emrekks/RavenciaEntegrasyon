@@ -98,12 +98,29 @@ public sealed class InvoicingDeepAuditTests
 
     [Theory]
     [InlineData("""{"shipmentPackageId":"pkg-1","invoiceLink":"https://x.test/a"}""")]
-    [InlineData("""{"shipmentPackageId":"1","invoiceLink":"https://x.test/a","invoiceNumber":"INV-1"}""")]
-    [InlineData("""{"shipmentPackageId":"1","invoiceLink":"https://x.test/a","invoiceNumber":"GIB20260000000"}""")]
-    public void Trendyol_invoice_link_body_refuses_a_package_or_invoice_number_that_does_not_fit(string payloadJson)
+    [InlineData("""{"shipmentPackageId":"1","invoiceLink":"https://x.test/a","invoiceNumber":"INV-1","micro":true}""")]
+    [InlineData("""{"shipmentPackageId":"1","invoiceLink":"https://x.test/a","invoiceNumber":"GIB20260000000","micro":true}""")]
+    public void Trendyol_invoice_link_body_refuses_a_package_or_micro_export_invoice_number_that_does_not_fit(string payloadJson)
     {
         using var payload = JsonDocument.Parse(payloadJson);
         Assert.Null(TrendyolHttpClient.InvoiceLinkBody(payload.RootElement));
+    }
+
+    // O5: the number is optional for a domestic package; one Trendyol would refuse is left out and the link still goes.
+    [Theory]
+    [InlineData("2026/0045")]
+    [InlineData("GIB20260000000")]
+    public void Trendyol_invoice_link_body_drops_a_non_gib_number_of_a_domestic_package(string invoiceNumber)
+    {
+        using var payload = JsonDocument.Parse($$"""{"shipmentPackageId":"1","invoiceLink":"https://x.test/a","invoiceNumber":"{{invoiceNumber}}","micro":false}""");
+
+        var body = TrendyolHttpClient.InvoiceLinkBody(payload.RootElement);
+
+        Assert.NotNull(body);
+        Assert.Equal("https://x.test/a", body["invoiceLink"]);
+        Assert.False(body.ContainsKey("invoiceNumber"));
+        Assert.True(InvoiceIssuePolicy.IsGibInvoiceNumber("GIB2026000000001"));
+        Assert.False(InvoiceIssuePolicy.IsGibInvoiceNumber(invoiceNumber));
     }
 
     // C22: recipientInfo fits the documented limits and never carries an empty district.

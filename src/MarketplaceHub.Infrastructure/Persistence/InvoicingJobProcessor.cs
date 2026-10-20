@@ -1622,16 +1622,33 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     // A delivery job that stopped for review (or gave up) while another job of the same invoice confirmed the
     // delivery has nothing left to do: it is closed here instead of waiting for an operator. Only targets whose
-    // delivery state is CONFIRMED count (the job's package, or every package of an invoice-level job).
+    // delivery state is CONFIRMED count (the job's package, or every package of an invoice-level job). The stopped
+    // jobs are read newest first, a page at a time, so a backlog of older unsettled ones cannot keep new ones open;
+    // each closed job raises its "jobs" event so the job screens show it closed.
     private async Task CloseDeliveryJobsSettledElsewhere(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var stopped = await db.IntegrationJobs
-            .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
-                && (job.Status == JobStatus.ManualReview || job.Status == JobStatus.Blocked || job.Status == JobStatus.Dead)
-                && job.CreatedAt >= now.AddDays(-30))
-            .OrderBy(job => job.CreatedAt).Take(200)
-            .ToListAsync(cancellationToken);
-        if (stopped.Count == 0) return;
+        const int pageSize = 200;
+        const int maximumPages = 10;
+        var since = now.AddDays(-30);
+        (DateTimeOffset CreatedAt, Guid Id)? before = null;
+        for (var page = 0; page < maximumPages; page++)
+        {
+            var query = db.IntegrationJobs
+                .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                    && (job.Status == JobStatus.ManualReview || job.Status == JobStatus.Blocked || job.Status == JobStatus.Dead)
+                    && job.CreatedAt >= since);
+            if (before is { } position)
+                query = query.Where(job => job.CreatedAt < position.CreatedAt || job.CreatedAt == position.CreatedAt && job.Id.CompareTo(position.Id) < 0);
+            var stopped = await query.OrderByDescending(job => job.CreatedAt).ThenByDescending(job => job.Id).Take(pageSize).ToListAsync(cancellationToken);
+            if (stopped.Count == 0) return;
+            await CloseSettledDeliveryJobs(tenantId, stopped, now, cancellationToken);
+            if (stopped.Count < pageSize) return;
+            before = (stopped[^1].CreatedAt, stopped[^1].Id);
+        }
+    }
+
+    private async Task CloseSettledDeliveryJobs(Guid tenantId, List<IntegrationJob> stopped, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         var targets = stopped.Select(job => (Job: job, Target: DeliveryJobTarget(job.PayloadJson))).Where(x => x.Target is not null).ToList();
         var invoiceIds = targets.Select(x => x.Target!.Value.InvoiceId).Distinct().ToArray();
         var states = (await db.MarketplaceDeliveryStates.AsNoTracking()
@@ -1650,8 +1667,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             job.LastErrorCode = DeliverySettledElsewhereCode;
             job.LastErrorSummary = "Fatura pazaryerine başka bir işle iletildi ve doğrulandı; bu iş otomatik kapatıldı.";
             job.Version++;
+            db.IntegrationOutboxEvents.Add(JobLeaseService.NewJobEvent(job, now));
         }
     }
+
+    internal static bool DeliveryJobCoversPackage(string payloadJson, Guid packageId) =>
+        DeliveryJobTarget(payloadJson) is not { } target || target.PackageId is null || target.PackageId == packageId;
 
     private static (Guid InvoiceId, Guid? PackageId)? DeliveryJobTarget(string payloadJson)
     {
@@ -1770,11 +1791,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         foreach (var candidate in candidates)
         {
             var payload = JsonSerializer.Serialize(new { invoiceId = candidate.Id, packageId = candidate.PackageId });
-            // Any running or waiting delivery job of the invoice (panel, automatic or recovery; with or without a
-            // package in its payload) settles this package itself. Comparing payloads missed an invoice-level job
-            // ({"invoiceId"} only), so a recovery job ran beside its retry and both took the same attempt number.
+            // A running or waiting delivery job that covers this package settles it itself: an invoice-level job
+            // ({"invoiceId"} only, every package) or a job of this very package. A job of another package of the
+            // same invoice does not, so it no longer holds this package's recovery back. A job whose payload
+            // cannot be read is taken as covering the whole invoice.
             var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{candidate.Id}:";
-            if (activeDeliveryJobs.Any(job => job.JobDedupKey.StartsWith(keyPrefix, StringComparison.Ordinal))) continue;
+            if (activeDeliveryJobs.Any(job => job.JobDedupKey.StartsWith(keyPrefix, StringComparison.Ordinal)
+                && DeliveryJobCoversPackage(job.PayloadJson, candidate.PackageId))) continue;
 
             var dedup = RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket);
             if (!queuedRecoveryKeys.Add(dedup)) continue;
