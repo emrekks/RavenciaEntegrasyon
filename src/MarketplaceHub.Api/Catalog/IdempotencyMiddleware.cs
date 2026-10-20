@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -11,7 +12,6 @@ namespace MarketplaceHub.Api.Catalog;
 public sealed class IdempotencyMiddleware(RequestDelegate next)
 {
     private const int MaximumRequestBytes = 10 * 1024 * 1024;
-    private const int MaximumStoredResponseBytes = 1024 * 1024;
 
     public async Task InvokeAsync(HttpContext context, AppDbContext db, ITenantContextAccessor tenants, TimeProvider timeProvider)
     {
@@ -25,8 +25,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         var hasIdempotencyKey = ApiIdempotencyHeaderPolicy.TryGetKey(context.Request.Headers, out var key, out var conflictingKeys);
         if (conflictingKeys)
         {
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsJsonAsync(new { code = "IDEMPOTENCY_KEY_CONFLICT", title = "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır." }, context.RequestAborted);
+            await ApiProblems.WriteAsync(context, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır.", StatusCodes.Status400BadRequest);
             return;
         }
         if (!hasIdempotencyKey)
@@ -37,8 +36,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         // A key too long to store was let through unprotected; it is refused instead.
         if (key.Length > 256)
         {
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsJsonAsync(new { code = "IDEMPOTENCY_KEY_INVALID", title = "Idempotency-Key en fazla 256 karakterdir.", status = 400, correlationId = context.TraceIdentifier, retryable = false }, context.RequestAborted);
+            await ApiProblems.WriteAsync(context, "IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", StatusCodes.Status400BadRequest);
             return;
         }
         context.Request.EnableBuffering(bufferThreshold: 64 * 1024, bufferLimit: MaximumRequestBytes);
@@ -46,8 +44,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         try { await context.Request.Body.CopyToAsync(requestBytes, context.RequestAborted); }
         catch (IOException)
         {
-            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-            await context.Response.WriteAsJsonAsync(new { title = "İstek gövdesi 10 MiB üst sınırını aşıyor.", status = 413, code = "UPLOAD_TOO_LARGE", correlationId = context.TraceIdentifier, retryable = false }, context.RequestAborted);
+            await ApiProblems.WriteAsync(context, "UPLOAD_TOO_LARGE", "İstek gövdesi 10 MiB üst sınırını aşıyor.", StatusCodes.Status413PayloadTooLarge);
             return;
         }
         context.Request.Body.Position = 0;
@@ -62,55 +59,46 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         var hash = Convert.ToHexString(SHA256.HashData(combined));
 
         var now = timeProvider.GetUtcNow();
-        // Completed records are disposable after their replay window. An
-        // unfinished record is evidence that the endpoint may have committed
-        // before the process or client failed, so it must become an explicit
-        // recovery state instead of being deleted and retried blindly.
-        await db.ApiIdempotencyRecords
-            .Where(x => x.TenantId == tenant.TenantId && x.ExpiresAt <= now && x.State == "COMPLETED")
-            .ExecuteDeleteAsync(context.RequestAborted);
-        await db.ApiIdempotencyRecords
-            .Where(x => x.TenantId == tenant.TenantId && x.ExpiresAt <= now && x.State != "COMPLETED")
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.State, "UNKNOWN")
-                .SetProperty(x => x.ExpiresAt, now.AddDays(7)), context.RequestAborted);
         var existing = await db.ApiIdempotencyRecords.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == key, context.RequestAborted);
+        // Expired rows are swept hourly (ApiIdempotencyRetentionService), not on every request; a row
+        // the sweep has not reached yet is settled here, for this key only. A completed record is
+        // disposable after its replay window. An unfinished one is evidence that the endpoint may
+        // have committed before the process or client failed, so it becomes an explicit recovery
+        // state instead of being deleted and retried blindly.
+        if (existing is not null && existing.ExpiresAt <= now)
+        {
+            if (existing.State == "COMPLETED")
+            {
+                await db.ApiIdempotencyRecords.Where(x => x.Id == existing.Id && x.State == "COMPLETED").ExecuteDeleteAsync(context.RequestAborted);
+                db.Entry(existing).State = EntityState.Detached;
+                existing = null;
+            }
+            else
+            {
+                await db.ApiIdempotencyRecords.Where(x => x.Id == existing.Id && x.State != "COMPLETED")
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "UNKNOWN").SetProperty(x => x.ExpiresAt, now.AddDays(7)), context.RequestAborted);
+                existing.State = "UNKNOWN";
+                existing.ExpiresAt = now.AddDays(7);
+            }
+        }
         if (existing is not null)
         {
             var decision = ApiIdempotencyPolicy.Resolve(existing.State, existing.RequestHash, hash);
+            var earlier = new Dictionary<string, object?> { ["responseStatus"] = existing.ResponseStatus, ["resourceId"] = existing.ResourceId, ["jobId"] = existing.JobId };
             if (decision is ApiIdempotencyDecisionKind.InProgress or ApiIdempotencyDecisionKind.Unknown)
             {
-                context.Response.StatusCode = StatusCodes.Status409Conflict;
-                context.Response.ContentType = "application/problem+json";
                 var inProgress = decision == ApiIdempotencyDecisionKind.InProgress;
-                await context.Response.WriteAsJsonAsync(new
-                {
-                    title = inProgress ? "Aynı idempotent istek eşzamanlı olarak işleniyor." : "İşlemin sonucu kesinleşmedi; aynı anahtarla körlemesine tekrar çalıştırılamaz.",
-                    status = 409,
-                    code = inProgress ? "IDEMPOTENCY_IN_PROGRESS" : "IDEMPOTENCY_RESULT_UNKNOWN",
-                    correlationId = context.TraceIdentifier,
-                    retryable = inProgress,
-                    existing.ResponseStatus,
-                    existing.ResourceId,
-                    existing.JobId
-                }, context.RequestAborted);
+                await ApiProblems.WriteAsync(context, inProgress
+                    ? new ServiceError("IDEMPOTENCY_IN_PROGRESS", "Aynı idempotent istek eşzamanlı olarak işleniyor.", StatusCodes.Status409Conflict)
+                    : new ServiceError("IDEMPOTENCY_RESULT_UNKNOWN", "İşlemin sonucu kesinleşmedi; aynı anahtarla körlemesine tekrar çalıştırılamaz.", StatusCodes.Status409Conflict), earlier);
                 return;
             }
             if (decision == ApiIdempotencyDecisionKind.Replay)
             {
-                context.Response.StatusCode = existing.ResponseStatus ?? StatusCodes.Status200OK;
-                context.Response.Headers["Idempotency-Replayed"] = "true";
-                if (!string.IsNullOrEmpty(existing.ResponseBody))
-                {
-                    context.Response.ContentType = "application/json; charset=utf-8";
-                    await context.Response.WriteAsync(existing.ResponseBody, context.RequestAborted);
-                }
+                await IdempotentResponse.ReplayAsync(existing, context.Response, context.RequestAborted);
                 return;
             }
-            const string code = "IDEMPOTENCY_KEY_REUSED";
-            context.Response.StatusCode = StatusCodes.Status409Conflict;
-            context.Response.ContentType = "application/problem+json";
-            await context.Response.WriteAsJsonAsync(new { type = $"https://marketplacehub.invalid/problems/{code.ToLowerInvariant().Replace('_', '-')}", title = "Aynı Idempotency-Key farklı bir istek için kullanılamaz.", status = 409, code, correlationId = context.TraceIdentifier, retryable = false, existing.ResponseStatus, existing.ResourceId, existing.JobId }, context.RequestAborted);
+            await ApiProblems.WriteAsync(context, new ServiceError("IDEMPOTENCY_KEY_REUSED", "Aynı Idempotency-Key farklı bir istek için kullanılamaz.", StatusCodes.Status409Conflict), earlier);
             return;
         }
 
@@ -120,8 +108,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         catch (DbUpdateException exception) when (IsExpectedIdempotencyRace(exception))
         {
             db.Entry(record).State = EntityState.Detached;
-            context.Response.StatusCode = StatusCodes.Status409Conflict;
-            await context.Response.WriteAsJsonAsync(new { title = "Aynı idempotent istek eşzamanlı olarak işleniyor.", status = 409, code = "IDEMPOTENCY_IN_PROGRESS", correlationId = context.TraceIdentifier, retryable = true }, context.RequestAborted);
+            await ApiProblems.WriteAsync(context, "IDEMPOTENCY_IN_PROGRESS", "Aynı idempotent istek eşzamanlı olarak işleniyor.", StatusCodes.Status409Conflict);
             return;
         }
 
@@ -151,13 +138,14 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             if (context.Response.StatusCode < 500)
             {
                 record.State = "COMPLETED";
-                record.ResponseStatus = context.Response.StatusCode;
-                if (responseBuffer.Length <= MaximumStoredResponseBytes && context.Response.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) == true)
+                string? body = null;
+                if (IdempotentResponse.IsStorableBody(context.Response.ContentType, responseBuffer.Length))
                 {
                     responseBuffer.Position = 0;
                     using var reader = new StreamReader(responseBuffer, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
-                    record.ResponseBody = await reader.ReadToEndAsync(context.RequestAborted);
+                    body = await reader.ReadToEndAsync(context.RequestAborted);
                 }
+                IdempotentResponse.Capture(record, context.Response, body);
                 await db.SaveChangesAsync(CancellationToken.None);
             }
             else
@@ -210,6 +198,9 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         record.State = "UNKNOWN";
         record.ResponseStatus = null;
         record.ResponseBody = null;
+        record.ResponseContentType = null;
+        record.ResponseETag = null;
+        record.ResponseLocation = null;
         record.ExpiresAt = now.AddDays(7);
         try
         {

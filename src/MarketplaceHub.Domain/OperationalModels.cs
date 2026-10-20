@@ -143,6 +143,11 @@ public sealed class ApiIdempotencyRecord
     public required string State { get; set; }
     public int? ResponseStatus { get; set; }
     public string? ResponseBody { get; set; }
+    // A replay answers with the same Content-Type, ETag and Location as the first response, so the
+    // client keeps the version it needs for its next If-Match and the address of what was created.
+    public string? ResponseContentType { get; set; }
+    public string? ResponseETag { get; set; }
+    public string? ResponseLocation { get; set; }
     public Guid? ResourceId { get; set; }
     public Guid? JobId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

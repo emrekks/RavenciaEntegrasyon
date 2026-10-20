@@ -55,6 +55,7 @@ builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(opt
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<OperationsRealtimeBroadcaster>();
+builder.Services.AddHostedService<ApiIdempotencyRetentionService>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
