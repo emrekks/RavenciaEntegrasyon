@@ -78,6 +78,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
             ActorUserId = userId,
             CorrelationId = correlationId
         });
+        // The new stock goes to every connection selling the variant, committed with the adjustment.
+        await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{command.SourceEventId.Trim()}")], now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var sku = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.Id == item.VariantId).Select(x => x.Sku).SingleAsync(cancellationToken);
@@ -195,6 +197,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         // automatic price/stock policies only govern sends the system starts on its own.
         var manual = connection.PlatformCode == "PAZARAMA";
         if (!manual && pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
+        // The request writes stock as well (Trendyol's too), so the stock policy must allow it.
+        if (!manual && !await StockWritePolicyAllowsAsync(tenantId, connectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
@@ -215,6 +219,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
         if (pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
+        if (!await StockWritePolicyAllowsAsync(tenantId, connectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, productId: productId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;
@@ -228,6 +233,13 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
+    }
+
+    // A missing policy row means the flow was never switched off, the same rule the worker applies.
+    private async Task<bool> StockWritePolicyAllowsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock, cancellationToken);
+        return policy is null || policy.Enabled;
     }
 
     private bool WritesEnabled(string settingsJson)
