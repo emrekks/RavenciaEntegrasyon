@@ -84,7 +84,7 @@ describe('ConnectionAuthAlert', () => {
 
   it('puts a card in the Hata state with the reason in its hover tip instead of a warning box', () => {
     act(() => root.render(<ConnectionAuthBadge item={{ ...base, lastErrorCode: 'PAZARAMA_CREDENTIALS_REJECTED', lastErrorAt: '2026-10-20T06:30:00Z' }} />))
-    const badge = container.querySelector<HTMLButtonElement>('.connection-auth-badge.is-danger')!
+    const badge = container.querySelector<HTMLElement>('.connection-auth-badge.is-danger')!
     const tip = container.querySelector('[role="tooltip"]')!
     expect(badge.firstChild?.nextSibling?.textContent).toBe('Hata')
     expect(badge.getAttribute('aria-describedby')).toBe(tip.id)

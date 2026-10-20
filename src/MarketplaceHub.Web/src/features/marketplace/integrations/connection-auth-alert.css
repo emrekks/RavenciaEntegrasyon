@@ -14,14 +14,16 @@
   .connection-auth-alert .connection-auth-alert-test { width: 100%; }
 }
 
-/* The card badge: same size as the "Pasif" state chip, the reason opens on hover or keyboard focus. */
-.connection-auth-badge { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border: 1px solid var(--rv-color-danger); border-radius: 6px; min-height: 22px; margin: 0; font: inherit; font-size: 12px; font-weight: 600; line-height: 1; box-shadow: none; cursor: help; outline: none; }
-.connection-auth-badge.is-warning { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: var(--rv-color-warning); }
-.connection-auth-badge.is-info { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
-.connection-auth-badge > i { width: 7px; height: 7px; flex: 0 0 7px; background: currentColor; border-radius: 50%; }
-.connection-auth-badge:focus-visible { box-shadow: 0 0 0 2px var(--rv-color-focus, var(--rv-color-accent)); }
-.connection-auth-tip { position: absolute; top: calc(100% + 8px); left: 0; z-index: 30; display: none; width: min(300px, 80vw); padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 28%); font-size: 12.5px; font-weight: 400; line-height: 1.45; white-space: normal; text-align: left; cursor: default; }
-.connection-auth-badge:is(:hover, :focus-visible) > .connection-auth-tip { display: grid; gap: 4px; }
-.connection-auth-tip strong { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
-.connection-auth-tip small { color: var(--rv-color-muted); font-size: 11.5px; overflow-wrap: anywhere; }
+
+/* The card's state chip for a refused connection: the "Pasif" chip's shape (integrations-sade.css) with a coloured dot,
+   and the reason in the same pop-up as the returns and invoices "why" tips (rr-reason-pop). */
+.integrations-reference-page .reference-connection-state.connection-auth-badge { position: relative; cursor: help; outline: none; }
+.integrations-reference-page .connection-auth-badge > i { width: 7px; height: 7px; flex: 0 0 7px; margin: 0 1px; background: currentColor; border-radius: 50%; }
+.integrations-reference-page .connection-auth-badge:focus-visible { box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+.integrations-reference-page .connection-auth-tip { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: none; width: 280px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12.5px; font-weight: 400; line-height: 1.45; text-align: left; text-transform: none; white-space: normal; cursor: default; }
+.integrations-reference-page .connection-auth-tip b { display: block; margin-bottom: 2px; color: var(--rv-color-danger); font-size: 13px; font-weight: 600; }
+.integrations-reference-page .connection-auth-badge.is-warning .connection-auth-tip b { color: var(--rv-color-warning); }
+.integrations-reference-page .connection-auth-badge.is-info .connection-auth-tip b { color: var(--rv-color-ink); }
+.integrations-reference-page .connection-auth-tip small { display: block; margin-top: 6px; color: var(--rv-color-subtle); font-size: 11.5px; overflow-wrap: anywhere; }
+.integrations-reference-page .connection-auth-badge:is(:hover, :focus-visible) .connection-auth-tip { display: block; }
 .reference-footer-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }

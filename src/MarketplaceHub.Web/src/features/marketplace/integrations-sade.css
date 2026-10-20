@@ -141,3 +141,7 @@
 }
 
 
+/* Refused connection chip (connection-auth-alert.tsx): only the dot and the word take the state colour. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connection-auth-badge.is-danger { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connection-auth-badge.is-warning { color: var(--rv-color-warning); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connection-auth-badge.is-info { color: var(--sade-text-2); }

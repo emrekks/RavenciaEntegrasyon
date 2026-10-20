@@ -60,14 +60,16 @@ export function ConnectionAuthBadge({ item }: { item: AuthAlertConnection }) {
   const summary = connectionAuthSummary(item)
   if (!summary) return null
   const label = summary.tone === 'danger' ? 'Hata' : summary.tone === 'warning' ? 'Uyarı' : 'Test gerekli'
-  return <button type="button" className={`connection-auth-badge is-${summary.tone}`} aria-describedby={tipId}>
+  // The same chip as "Pasif" / "Bağlı ve aktif"; focusable so a keyboard can read the reason too.
+  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger
+  return <span className={`reference-connection-state connection-auth-badge is-${summary.tone}`} tabIndex={0} aria-describedby={tipId}>
     <i aria-hidden="true" />{label}
     <span className="connection-auth-tip" role="tooltip" id={tipId}>
-      <strong>{summary.title}</strong>
-      <span>{summary.action}</span>
+      <b>{summary.title}</b>
+      {summary.action}
       {summary.meta && <small>{summary.meta}</small>}
     </span>
-  </button>
+  </span>
 }
 
 /** The settings warning for refused credentials or access, with when it was last seen. */
