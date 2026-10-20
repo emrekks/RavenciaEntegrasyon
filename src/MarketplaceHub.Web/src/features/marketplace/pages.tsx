@@ -8,8 +8,11 @@ import { ApiRequestError, hubApi, loadAllPages } from '../../shared/api'
 import { Busy, cargoCarrier, cargoCarriers, cargoLabel, cargoMatches, ErrorBox, Modal, Pagination, Tabs, UiIcon, useConfirmDialog } from '../../shared/components'
 import { newIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { safeExternalUrl } from '../../shared/safe-url'
+import { useMediaQuery } from '../../shared/hooks/useMediaQuery'
+import { ValueBadge } from '../../shared/components/ValueBadge'
+import { setManualInvoiceStatus, type ManualInvoiceStatus } from '../invoicing/manual-invoice-status'
 import { MessageToast, NoticeToast } from '../../shared/components/NoticeToast'
-import { invoiceStatusDisplayLabel, mappingStatusLabel, statusLabel, statusTone } from '../../shared/status-labels'
+import { invoiceStatusDisplayLabel, mappingStatusLabel, statusLabel } from '../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { MobileActionMenu } from '../../shared/MobileActionMenu'
@@ -66,13 +69,14 @@ import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from '../invo
 import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
 import { formatDate, formatDateTime, formatIstanbul, fromDateTimeLocal, istanbulDateKey, istanbulDayBoundary } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
+// supportedFilters: filters the endpoint applies itself (orders: 'labelPrinted' once the server keeps labelPrintedAt).
+type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null; supportedFilters?: string[] }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; invoiceCreationEnabled: boolean; n11ShipmentTemplate?: string | null; n11PreparingDay?: number | null; version: number }
 type Capability = { code: string; supportLevel: string; environment: string; storeScope: string; apiVersion: string; sourceUrl: string | null; requiredScope?: string | null; evidenceNote?: string | null; verifiedAt: string | null; verifiedForConnection: boolean }
 type SyncPolicy = { id: string; resourceType: string; intervalSeconds: number; overlapSeconds: number; jitterSeconds: number; enabled: boolean; version: number; lastSuccessAt: string | null; lastModifiedWatermark: string | null; lastCursorAdvancedAt?: string | null; cursorStagnantSince?: string | null; cursorProgressStatus?: string; healthStatus?: string; recoveryGapStatus?: string; recoveryGapDays?: number | null; lastAttemptAt?: string | null; lastDurationMs?: number | null; consecutiveFailureCount?: number; lastRequestCount?: number; lastReceivedCount?: number; lastChangedCount?: number; lastInsertedCount?: number; lastUpdatedCount?: number; lastSkippedCount?: number; lastFailedCount?: number; lastRetryCount?: number; lastRateLimitCount?: number; connectionBacklogCount?: number; connectionOldestBacklogAt?: string | null; connectionManualReviewCount?: number; connectionDeadJobCount24h?: number; requiresExternalWrites?: boolean }
 type OrderLine = { id: string; sku: string; barcode: string | null; title: string; quantity?: number; orderedQuantity: number; cancelledQuantity: number; shippedQuantity: number; allocatedQuantity?: number; deliveredQuantity: number; returnedQuantity: number; unitPrice: number; vatRate: number; rawStatus: string; variantId: string | null; modelCode: string | null; optionSignature: string | null; imageUrl: string | null }
 type OrderInfoItem = { label: string; value: string; url?: string | null }
-type Order = { id: string; orderNumber: string; derivedStatus: string; currency: string; grossAmount: number; discountAmount: number; netAmount: number; orderedAt: string; shippedAt?: string | null; lineCount: number; packageCount: number; version: number; connectionId: string | null; platformCode: string; platformDisplayName: string; customerName: string; customerEmail: string | null; customerTaxOrIdentityNumber: string | null; orderType: string; isMicroExport: boolean; shipmentAddressJson: string; invoiceAddressJson: string; shipmentDueAt: string | null; isDeadlineCritical: boolean; invoiceStatus: string; invoiceId: string | null; invoiceDocumentUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; primaryImageUrl: string | null; productQuantity: number; lines: OrderLine[] | null; packages: Shipment[] | null; invoiceCreationEnabled?: boolean; platformInfo?: OrderInfoItem[] | null }
+type Order = { id: string; labelPrintedAt?: string | null; orderNumber: string; derivedStatus: string; currency: string; grossAmount: number; discountAmount: number; netAmount: number; orderedAt: string; shippedAt?: string | null; lineCount: number; packageCount: number; version: number; connectionId: string | null; platformCode: string; platformDisplayName: string; customerName: string; customerEmail: string | null; customerTaxOrIdentityNumber: string | null; orderType: string; isMicroExport: boolean; shipmentAddressJson: string; invoiceAddressJson: string; shipmentDueAt: string | null; isDeadlineCritical: boolean; invoiceStatus: string; invoiceId: string | null; invoiceDocumentUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; primaryImageUrl: string | null; productQuantity: number; lines: OrderLine[] | null; packages: Shipment[] | null; invoiceCreationEnabled?: boolean; platformInfo?: OrderInfoItem[] | null }
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 type ProductImagePreview = { url: string; fallbackUrl?: string | null; fallbackUrls?: string[]; title: string; modelCode?: string | null; variant?: string | null }
 type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number; pending: number; unverified: number; paymentPending: number }
@@ -110,6 +114,7 @@ async function loadOrderPage(filters: OrderFilters, limit: number, after: string
   if (filters.invoice !== 'ALL') params.set('invoice', filters.invoice)
   if (filters.invoiceType !== 'ALL') params.set('invoiceType', filters.invoiceType)
   if (filters.invoiceRegion !== 'ALL') params.set('invoiceRegion', filters.invoiceRegion)
+  if (filters.label !== 'ALL') params.set('labelPrinted', filters.label === 'PRINTED' ? 'true' : 'false')
   if (filters.dateFrom) params.set('dateFrom', istanbulDayBoundary(filters.dateFrom))
   if (filters.dateTo) params.set('dateTo', istanbulDayBoundary(filters.dateTo, true))
   params.set('sort', filters.sort)
@@ -226,7 +231,7 @@ function IntegrationFeedbackToast({ feedback, onClose }: { feedback: Integration
   return <NoticeToast key={`${feedback.kind}:${feedback.message}`} kind={feedback.kind} message={feedback.message} onClose={onClose} durationMs={5000} />
 }
 function Empty({ children }: { children: string }) { return <div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>{children}</p></div> }
-function Badge({ value, tooltip }: { value: string; tooltip?: string }) { const normalized = value.trim().toUpperCase(); return <span className={`badge ${statusTone(value)} status-${normalized.toLowerCase()}`} title={tooltip ?? value}><i aria-hidden="true" />{statusLabel(value)}</span> }
+function Badge({ value, tooltip }: { value: string; tooltip?: string }) { return <ValueBadge value={value} title={tooltip ?? value} statusClass /> }
 function DateText({ value }: { value: string | null }) { return <>{value ? formatDateTime(value) : '—'}</> }
 
 function usableShipmentDueAt(value: string | null) { if (!value) return null; const timestamp = new Date(value).getTime(); return Number.isFinite(timestamp) && timestamp >= Date.UTC(2000, 0, 1) ? value : null }
@@ -391,7 +396,7 @@ function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Order;
       const packageId = orderDisplayShipment(detail.data)?.id
       if (!packageId) throw new Error('Fatura durumu için Shopify sipariş paketi bulunamadı.')
       if (status === 'UPLOADED' && !item.invoiceDocumentUrl) throw new Error('Faturası yüklendi durumuna geçmeden önce mevcut yerel fatura kaydına belge ekleyin.')
-      return hubApi('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `shopify-invoice-status:${packageId}:${status}:${newIdempotencyKey()}` }, body: JSON.stringify({ packageIds: [packageId], status }) })
+      return setManualInvoiceStatus([packageId], status)
     },
     onSuccess: async () => {
       const successMessage = status === 'UPLOADED' ? 'Fatura durumu “Faturası yüklendi” olarak güncellendi.' : 'Fatura durumu “Fatura bekliyor” olarak güncellendi.'
@@ -669,7 +674,9 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   }, [lines.length, noBuyer])
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailActionsOpen, setDetailActionsOpen] = useState(false)
-  useEffect(() => { if (!detailOpen) return; document.body.classList.add('mobile-filters-open'); return () => document.body.classList.remove('mobile-filters-open') }, [detailOpen])
+  // The order detail sheet covers the page on phones only; there the page behind it holds still.
+  const phone = useMediaQuery('(max-width: 760px)')
+  useScrollLock(detailOpen && phone)
   const packageNoText = shipment?.externalPackageId ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Paket bilgisi doğrulanmadı' : isHepsiburadaOrder ? 'Henüz paketlenmedi' : 'Bekleniyor')
   const deliveryNoText = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi bilgisi doğrulanmadı' : isHepsiburadaOrder ? shipment ? 'Kargoya verildiğinde gelir' : 'Paket oluşturulunca gelir' : 'Takip no bekleniyor')
   const closeDetailThen = (run: () => void) => () => { setDetailOpen(false); setDetailActionsOpen(false); run() }
@@ -1586,7 +1593,8 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
               const packageId = orderDisplayShipment(order)?.id
               if (!packageId) throw new Error('Fatura durumu için Shopify sipariş paketi bulunamadı.')
               if (status === 'UPLOADED' && !item.invoiceDocumentUrl) throw new Error('Faturası yüklendi durumuna geçmeden önce yerel fatura kaydına belge ekleyin.')
-              await hubApi('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `shopify-invoice-status:${packageId}:${status}:${newIdempotencyKey()}` }, body: JSON.stringify({ packageIds: [packageId], status }) })
+              // in the invoice mode the window offers only PENDING and UPLOADED
+              await setManualInvoiceStatus([packageId], status as ManualInvoiceStatus)
             } else {
               await hubApi(`/orders/${item.id}/shopify-status`, { method: 'PUT', headers: { 'Idempotency-Key': `shopify-order-status:${item.id}:${status}:${newIdempotencyKey()}` }, body: JSON.stringify({ status }) })
             }
@@ -1647,10 +1655,14 @@ export function OrdersPage() {
     return () => window.clearTimeout(timeout)
   }, [bulkNoticeVersion])
   const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
-  const hasLocalFilters = filters.label !== 'ALL'
+  // "Etiket Durumu" is filtered by the server once it reports the filter (labelPrintedAt kept per package); until then the
+  // whole order history is read and filtered here, with the print marks of this browser.
+  const [serverLabelFilter, setServerLabelFilter] = useState(false)
+  const hasLocalFilters = filters.label !== 'ALL' && !serverLabelFilter
   const orderCursor = pageCursors[page] ?? null
   const orderQueryFilters: OrderFilters = { ...filters, platform: 'ALL', platforms: selectedPlatforms ?? [] }
   const ordersQuery = useQuery({ queryKey: hasLocalFilters ? ['orders', 'filtered-all', orderQueryFilters] : ['orders', 'page', orderQueryFilters, pageSize, page, orderCursor], queryFn: () => hasLocalFilters ? loadAllOrderPages(orderQueryFilters) : loadOrderPage(orderQueryFilters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
+  useEffect(() => { if (ordersQuery.data?.supportedFilters?.includes('labelPrinted')) setServerLabelFilter(true) }, [ordersQuery.data])
   const summary = useQuery({ queryKey: ['orders', 'summary', selectedPlatforms], queryFn: async () => {
     const platforms = selectedPlatforms?.length ? selectedPlatforms : [null]
     const summaries = await Promise.all(platforms.map(platform => hubApi<OrderSummary>(platform ? `/orders/summary?platform=${encodeURIComponent(platform)}` : '/orders/summary')))
@@ -1671,7 +1683,7 @@ export function OrdersPage() {
   const cargos = Array.from(new Set(all.flatMap(item => [orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName].filter((value): value is string => !!value))))
   const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], allOrders.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName })))
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_IPTAL', 'Fatura İptal']] as const
-  const isLabelPrinted = (item: Order) => (['a4', 'sticker'] as ShippingLabelFormat[]).some(format => printedLabels.has(printedShippingLabelKey(item.id, format)))
+  const isLabelPrinted = (item: Order) => Boolean(item.labelPrintedAt) || (['a4', 'sticker'] as ShippingLabelFormat[]).some(format => printedLabels.has(printedShippingLabelKey(item.id, format)))
   const applyFilterValue = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => { const next = { ...filterForm, [key]: value }; setFilterForm(next); setFilters(next); setPage(1) }
   const resetFilters = () => { const next = { ...initialOrderFilters }; setFilterForm(next); setFilters(next); setSelectedPlatforms([]); setPage(1); setColumnFilterOpen(null); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('search'); params.delete('status'); return params }, { replace: true }) }
   const clearInvoiceFilters = () => { const next = { ...filterForm, invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL' }; setFilterForm(next); setFilters(next); setPage(1) }
@@ -1683,7 +1695,7 @@ export function OrdersPage() {
   }
   // Status, search, platform, cargo, listing, date range, sort and pagination
   // are applied by the API. Only local presentation filters remain here.
-  const items = all.filter(item => filters.label === 'ALL' || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item)) )
+  const items = all.filter(item => !hasLocalFilters || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item)))
   async function exportOrders() {
     setExporting(true)
     try {
@@ -1857,10 +1869,19 @@ export function OrdersPage() {
 }
 
 export function ShipmentsPage() {
-  const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1)
-  const query = useQuery({ queryKey: ['shipments'], queryFn: () => loadAllPages<Shipment>('/shipments') })
-  const items = query.data?.items ?? []; const totalPages = Math.max(1, Math.ceil(items.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageItems = items.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  return <ListPage eyebrow="Operasyon" title="Gönderiler" description="Paket durumu geriye alınmaz; desteklenmeyen aksiyon ve etiket biçimleri gösterilmez.">{query.isLoading ? <Busy /> : query.isError ? <ErrorBox error={query.error} onRetry={() => void query.refetch()} /> : !items.length ? <Empty>Siparişler alındıkça paketleri burada görünür.</Empty> : <><div className="data-table" role="table">{pageItems.map(item => <Link role="row" to={`/shipments/${item.id}`} key={item.id}><span><strong>{item.orderNumber}</strong><small>Paket {item.externalPackageId}</small></span><Badge value={item.status} /><span>{item.cargoTrackingNumber ?? '—'}</span><span><DateText value={item.statusOccurredAt} /></span></Link>)}</div><div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına gönderi" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPageNumber(1) }}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>Toplam {items.length.toLocaleString('tr-TR')} adet</span><Pagination className="pagination-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} disabled={query.isFetching} /></div></>}</ListPage>
+  // The server pages by cursor and does not count; the cursors seen so far let the person step back.
+  const [pageSize, setPageSize] = useState(20); const [cursors, setCursors] = useState<Array<string | null>>([null]); const [pageIndex, setPageIndex] = useState(0)
+  const cursor = cursors[pageIndex] ?? null
+  const query = useQuery({ queryKey: ['shipments', 'page', pageSize, cursor], queryFn: () => hubApi<Page<Shipment>>(`/shipments?${new URLSearchParams({ limit: String(pageSize), ...(cursor ? { after: cursor } : {}) }).toString()}`), placeholderData: keepPreviousData })
+  const items = query.data?.items ?? []; const nextCursor = query.data?.hasMore ? query.data.nextCursor : null
+  const pageNumber = pageIndex + 1; const knownPages = Math.max(cursors.length, pageNumber + (nextCursor ? 1 : 0))
+  function goToPage(target: number) {
+    const index = Math.max(0, target - 1)
+    if (index <= pageIndex || index < cursors.length) { setPageIndex(Math.min(index, cursors.length - 1)); return }
+    if (!nextCursor) return
+    setCursors(current => [...current.slice(0, pageIndex + 1), nextCursor]); setPageIndex(pageIndex + 1)
+  }
+  return <ListPage eyebrow="Operasyon" title="Gönderiler" description="Paket durumu geriye alınmaz; desteklenmeyen işlem ve etiket biçimleri gösterilmez.">{query.isLoading ? <Busy /> : query.isError ? <ErrorBox error={query.error} onRetry={() => void query.refetch()} /> : !items.length && pageIndex === 0 ? <Empty>Siparişler alındıkça paketleri burada görünür.</Empty> : <><div className="data-table" role="table">{items.map(item => <Link role="row" to={`/shipments/${item.id}`} key={item.id}><span><strong>{item.orderNumber}</strong><small>Paket {item.externalPackageId}</small></span><Badge value={item.status} /><span>{item.cargoTrackingNumber ?? '—'}</span><span><DateText value={item.statusOccurredAt} /></span></Link>)}</div><div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına gönderi" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setCursors([null]); setPageIndex(0) }}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>Bu sayfada {items.length.toLocaleString('tr-TR')} gönderi</span><Pagination className="pagination-controls" page={pageNumber} totalPages={knownPages} hasNext={Boolean(nextCursor)} onPageChange={goToPage} onPrevious={() => goToPage(pageNumber - 1)} onNext={() => goToPage(pageNumber + 1)} disabled={query.isFetching} /></div></>}</ListPage>
 }
 
 export function ShipmentDetailPage() {
@@ -2296,11 +2317,6 @@ function ReturnPlatformPop({ options, selected, onChange }: { options: Array<{ v
 const RETURN_NO_PLATFORM = '__NONE__'
 function ReturnHeadCell({ label, active, extra, pop }: { label: string; active?: boolean; extra?: ReactNode; pop?: (close: () => void) => ReactNode }) {
   return <th className={active ? 'rr-has-filter' : undefined}><span className="rr-hf">{extra}{label}{pop && <RrAnchor trigger={(_open, toggle) => <button type="button" className="rr-fbtn" onClick={toggle} aria-label={`${label} filtresini aç`}><RrIcon name="filter" /></button>}>{pop}</RrAnchor>}</span></th>
-}
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
-  useEffect(() => { const list = window.matchMedia(query); const update = () => setMatches(list.matches); update(); list.addEventListener('change', update); window.addEventListener('resize', update); return () => { list.removeEventListener('change', update); window.removeEventListener('resize', update) } }, [query])
-  return matches
 }
 
 export function ReturnsPage() {

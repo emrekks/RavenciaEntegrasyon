@@ -15,7 +15,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount())
   container.remove()
-  document.body.classList.remove('mobile-filters-open')
+  document.body.style.overflow = ''
 })
 
 const render = (props: { activeCount?: number; onClear?: () => void; onApply?: () => void } = {}) =>
@@ -46,7 +46,7 @@ describe('MobileFilterShell', () => {
     const shell = container.querySelector('.mfs')!
     expect(shell.classList.contains('is-open')).toBe(true)
     expect(shell.getAttribute('role')).toBe('dialog')
-    expect(document.body.classList.contains('mobile-filters-open')).toBe(true)
+    expect(document.body.style.overflow).toBe('hidden')
 
     const [clear, apply] = Array.from(container.querySelectorAll<HTMLButtonElement>('.mfs-footer button'))
     act(() => clear.click())
@@ -56,7 +56,7 @@ describe('MobileFilterShell', () => {
     act(() => apply.click())
     expect(onApply).toHaveBeenCalledTimes(1)
     expect(shell.classList.contains('is-open')).toBe(false)
-    expect(document.body.classList.contains('mobile-filters-open')).toBe(false)
+    expect(document.body.style.overflow).toBe('')
   })
 
   it('closes with Escape and the back button', () => {

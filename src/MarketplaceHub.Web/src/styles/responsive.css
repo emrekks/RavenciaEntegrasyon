@@ -139,7 +139,6 @@
    Desktop renders the original bar untouched. */
 .mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer { display: none; }
 @media (max-width: 760px) {
-  body.mobile-filters-open { overflow: hidden; }
 
   /* Closed: [search][filter button], optional kept action (bulk menu) on its own row. */
   html body .app-shell.stitch-shell main .mfs:not(.is-open) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px; }

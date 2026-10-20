@@ -19,6 +19,7 @@ import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { formatDateTime, formatIstanbul } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { newIdempotencyKey } from '../../shared/idempotency'
+import { jobAttemptDuration } from './job-duration'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -200,20 +201,6 @@ function formatOptionalJobTime(value: string | null) {
   if (!value) return '—'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '—' : formatDateTime(date)
-}
-function jobDuration(startedAt: string | null, completedAt: string | null) {
-  if (!startedAt) return 'Başlamadı'
-  const start = new Date(startedAt).getTime(); const end = completedAt ? new Date(completedAt).getTime() : Date.now()
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return '—'
-  const seconds = Math.max(0, Math.round((end - start) / 1000))
-  if (seconds < 60) return `${seconds} sn`
-  return `${Math.floor(seconds / 60)} dk ${seconds % 60} sn`
-}
-
-function jobAttemptDuration(job: JobSummary) {
-  const startedAt = job.lastAttemptStartedAt ?? job.startedAt
-  const completedAt = job.status === 'LEASED' ? null : job.completedAt ?? job.lastFailedAt
-  return jobDuration(startedAt, completedAt)
 }
 
 type JobTimeRange = JobListTimeRange

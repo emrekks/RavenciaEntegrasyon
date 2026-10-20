@@ -49,6 +49,17 @@ function release(lock: ScrollLock) {
   if (!activeLocks.size) document.body.style.overflow = previousBodyOverflow
 }
 
+/**
+ * The page is unlocked while no overlay holds the lock, even if a style was left behind (a browser that restored a
+ * page from its cache, a component that went away without its cleanup). Safe to call at any time.
+ */
+export function releaseOrphanedScrollLock() {
+  if (activeLocks.size) return
+  if (document.body.style.overflow === 'hidden') document.body.style.overflow = ''
+  const main = document.querySelector<HTMLElement>('.app-shell.stitch-shell > main')
+  if (main && main.style.overflow === 'hidden' && !mainLockStates.has(main)) main.style.overflow = ''
+}
+
 /** Locks the page for an overlay that is not a hook user; call the returned function when it closes. */
 export function lockPageScroll(lockMain = false) {
   return acquire(lockMain)

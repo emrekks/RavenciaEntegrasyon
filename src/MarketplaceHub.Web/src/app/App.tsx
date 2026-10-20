@@ -7,6 +7,7 @@ import { api, ApiRequestError, backgroundPollHeaders, hubApi, setUnauthorizedHan
 import { Drawer, ErrorBoundary, ErrorBox, Modal, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
+import { releaseOrphanedScrollLock } from '../shared/hooks/useScrollLock'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
 import { readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
@@ -16,17 +17,6 @@ import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeE
 const NotificationPanel = lazyPage(() => import('./NotificationPanel').then(module => ({ default: module.NotificationPanel })))
 const Dashboard = lazyPage(() => import('../features/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const SystemSettingsPage = lazyPage(() => import('../features/settings/SystemSettingsPage').then(module => ({ default: module.SystemSettingsPage })))
-
-// Unlocks the page when nothing that holds it is open: no dialog, backdrop, filter sheet or full-screen order sheet.
-function releaseStaleScrollLocks() {
-  if (document.querySelector('[aria-modal="true"], [class*="modal-backdrop"], .rr-fopen, .mfs.is-open, .rr-sheet-full')) return
-  document.body.style.overflow = ''
-  document.documentElement.style.overflow = ''
-  document.body.classList.remove('rr-sheet-lock', 'mobile-filters-open', 'rv-auth-lock')
-  document.documentElement.classList.remove('rv-auth-lock')
-  const main = document.querySelector<HTMLElement>('.app-shell.stitch-shell > main')
-  if (main) main.style.overflow = ''
-}
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
@@ -50,19 +40,15 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const location = useLocation()
   const navigate = useNavigate()
-  // A page or tab change with no window open clears any scroll lock a closing overlay may have left behind. The side
-  // menu closes a moment after the link is tapped, so the check runs again shortly after; it also runs when the
-  // browser tab comes back (iPhone browsers kept a stale lock until a reload).
+  // Every overlay holds the one counted page lock (shared/hooks/useScrollLock). After a page change, or when the browser
+  // brings the tab back from its cache (iPhone browsers kept a stale lock until a reload), a lock style that no overlay
+  // holds any more is cleared.
+  useEffect(() => { releaseOrphanedScrollLock() }, [location.pathname, location.search])
   useEffect(() => {
-    const timers = [0, 250, 800].map(delay => window.setTimeout(releaseStaleScrollLocks, delay))
-    return () => timers.forEach(timer => window.clearTimeout(timer))
-  }, [location.pathname, location.search])
-  useEffect(() => {
-    const onReturn = () => { if (document.visibilityState === 'visible') releaseStaleScrollLocks() }
+    const onReturn = () => { if (document.visibilityState === 'visible') releaseOrphanedScrollLock() }
     document.addEventListener('visibilitychange', onReturn)
     window.addEventListener('pageshow', onReturn)
-    window.addEventListener('focus', onReturn)
-    return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('pageshow', onReturn); window.removeEventListener('focus', onReturn) }
+    return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('pageshow', onReturn) }
   }, [])
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })

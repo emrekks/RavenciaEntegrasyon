@@ -5,6 +5,7 @@ import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-
 import { errorText, RetryRing } from '../../shared/components/AsyncState'
 import { autoRetryLine, useAutoRetry } from '../../shared/hooks/useAutoRetry'
 import './returns-sade.css'
+import { lockPageScroll } from '../../shared/hooks/useScrollLock'
 
 // Building blocks of the returns page, as drawn in docs/tasarim-onerileri/iadeler-yeni.html. Class names carry the
 // "rr-" prefix of returns-sade.css.
@@ -200,8 +201,8 @@ export function RrFilterCard({ active, children }: { active: number; children: R
     if (!open) return
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     document.addEventListener('keydown', key)
-    document.body.classList.add('rr-sheet-lock')
-    return () => { document.removeEventListener('keydown', key); document.body.classList.remove('rr-sheet-lock') }
+    const unlock = lockPageScroll()
+    return () => { document.removeEventListener('keydown', key); unlock() }
   }, [open])
   return <div className={`rr-fcard${open ? ' rr-fopen' : ''}`} onClick={event => { if (open && (event.target as Element).closest('.rr-fbtns button')) setOpen(false) }}>
     <button type="button" className="rr-btn rr-ftoggle" aria-expanded={open} onClick={() => setOpen(true)}><RrIcon name="filter" />Filtre{active > 0 && <span className="rr-fcount">{active}</span>}</button>

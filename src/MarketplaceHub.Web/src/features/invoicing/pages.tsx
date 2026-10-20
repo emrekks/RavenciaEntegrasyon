@@ -4,6 +4,8 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
+import { ValueBadge } from '../../shared/components/ValueBadge'
+import { setManualInvoiceStatus } from './manual-invoice-status'
 import { Busy, CargoProviderIcon, ErrorBox, InvoiceStatusBadge, Modal, Tabs, UiIcon } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification } from '../../shared/notifications'
@@ -178,7 +180,7 @@ function invoiceFailureGuidance(code: string | null) {
   }
   return labels[code ?? ''] ?? 'Fatura ayrıntılarını açıp son hata kodunu ve fatura sağlayıcısı denemelerini kontrol edin.'
 }
-function Badge({ value, tone, label }: { value: string; tone?: 'good' | 'warn' | 'neutral'; label?: string }) { const normalized = value.trim().toUpperCase(); const resolvedTone = tone ?? (['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS', 'CONFIRMED'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED', 'RETRYABLE_FAILURE', 'MARKETPLACE_FAILED'].includes(normalized) ? 'warn' : 'neutral'); return <span className={`badge ${resolvedTone}`}><InvoiceGlyph kind={badgeGlyphKind(value, resolvedTone)} />{label ?? statusLabel(value)}</span> }
+function Badge({ value, tone, label }: { value: string; tone?: 'good' | 'warn' | 'neutral'; label?: string }) { const normalized = value.trim().toUpperCase(); const resolvedTone = tone ?? (['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS', 'CONFIRMED'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED', 'RETRYABLE_FAILURE', 'MARKETPLACE_FAILED'].includes(normalized) ? 'warn' : 'neutral'); return <ValueBadge value={value} tone={resolvedTone} label={label} icon={<InvoiceGlyph kind={badgeGlyphKind(value, resolvedTone)} />} /> }
 function isInvoiceFailureStatus(value: string | null | undefined) {
   return ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(value?.trim().toUpperCase() ?? '')
 }
@@ -683,7 +685,7 @@ function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Invoic
   const invoice = useQuery({ queryKey: ['invoice', item.invoiceId], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`), enabled: Boolean(item.invoiceId) })
   const hasUploadedDocument = item.invoiceDocumentAvailable || Boolean(invoice.data?.documents.length)
   const update = useMutation({
-    mutationFn: () => hubApi('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `invoice-workspace-status:${status}:${newIdempotencyKey()}` }, body: JSON.stringify({ packageIds: [item.packageId], status }) }),
+    mutationFn: () => setManualInvoiceStatus([item.packageId], status),
     onSuccess: async () => {
       const message = status === 'UPLOADED' ? 'Shopify fatura durumu “Faturası yüklendi” olarak kaydedildi.' : 'Shopify fatura durumu “Fatura bekliyor” olarak kaydedildi.'
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
@@ -699,7 +701,7 @@ function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items
   const client = useQueryClient()
   const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>('PENDING')
   const update = useMutation({
-    mutationFn: () => hubApi<{ updatedCount: number }>('/invoice-workspace/manual-status', { method: 'PUT', headers: { 'Idempotency-Key': `invoice-workspace-status:${status}:${newIdempotencyKey()}` }, body: JSON.stringify({ packageIds: items.map(item => item.packageId), status }) }),
+    mutationFn: () => setManualInvoiceStatus(items.map(item => item.packageId), status),
     onSuccess: async result => {
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
       const label = status === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor'

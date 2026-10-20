@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { jobDuration } from './job-duration'
+import { jobAttemptDuration, jobDuration } from './job-duration'
 
 describe('jobDuration', () => {
   afterEach(() => vi.useRealTimers())
@@ -23,5 +23,11 @@ describe('jobDuration', () => {
       null,
       'SUCCEEDED'
     )).toBe('5 dk 30 sn')
+  })
+
+  it('measures the last attempt of a job that was retried', () => {
+    expect(jobAttemptDuration({ status: 'SUCCEEDED', startedAt: '2026-10-10T10:00:00.000Z', lastAttemptStartedAt: '2026-10-10T11:00:00.000Z', completedAt: '2026-10-10T11:00:42.000Z', lastFailedAt: '2026-10-10T10:59:00.000Z' })).toBe('42 sn')
+    expect(jobAttemptDuration({ status: 'RETRY_SCHEDULED', startedAt: '2026-10-10T10:00:00.000Z', lastAttemptStartedAt: '2026-10-10T10:58:00.000Z', completedAt: null, lastFailedAt: '2026-10-10T10:59:05.000Z' })).toBe('1 dk 5 sn')
+    expect(jobAttemptDuration({ status: 'PENDING', startedAt: null, lastAttemptStartedAt: null, completedAt: null, lastFailedAt: null })).toBe('Başlamadı')
   })
 })

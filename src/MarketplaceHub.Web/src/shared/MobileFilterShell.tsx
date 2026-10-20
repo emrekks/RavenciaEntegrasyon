@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ComponentPropsWithoutRef, type ElementType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
+import { useScrollLock } from './hooks/useScrollLock'
 
 type MobileFilterSort = {
   title?: string
@@ -33,15 +34,13 @@ export function MobileFilterShell({ as = 'div', className, children, activeCount
   const bar = useRef<HTMLElement>(null)
   const openSheet = () => { const element = bar.current; if (element) { const style = getComputedStyle(element); setSpacer(element.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)) } setOpen(true) }
   const Tag = as as ElementType
+  // The sheets open on phones only; while one is open the page behind it holds still.
+  useScrollLock(open || sortOpen)
   useEffect(() => {
     if (!open && !sortOpen) return
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); setSortOpen(false) } }
     document.addEventListener('keydown', closeOnEscape)
-    document.body.classList.add('mobile-filters-open')
-    return () => {
-      document.removeEventListener('keydown', closeOnEscape)
-      document.body.classList.remove('mobile-filters-open')
-    }
+    return () => document.removeEventListener('keydown', closeOnEscape)
   }, [open, sortOpen])
   return <>{open && spacer > 0 && <div className="mfs-spacer" aria-hidden="true" style={{ height: spacer }} />}<Tag ref={bar} className={`mfs${open ? ' is-open' : ''}${className ? ` ${className}` : ''}`} {...rest} {...(open ? { role: 'dialog', 'aria-modal': true, 'aria-label': title } : {})}>
     <div className="mfs-header"><button type="button" className="mfs-back" aria-label="Filtreleri kapat" onClick={() => setOpen(false)}><UiIcon name="arrowLeft" size={20} /></button><strong>{title}</strong></div>

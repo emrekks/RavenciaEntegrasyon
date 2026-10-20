@@ -1,5 +1,5 @@
-import { useEffect, useRef, type CSSProperties } from 'react'
-import { normalizeNotificationKind } from '../notifications'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { appendNotification, normalizeNotificationKind } from '../notifications'
 import { ToneIcon } from './ToneIcon'
 import { UiIcon } from './UiIcon'
 import './notice-toast.css'
@@ -56,4 +56,18 @@ export function MessageToast({ message, onClose }: { message: string; onClose: (
     return () => window.clearTimeout(timeout)
   }, [message, durationMs])
   return <NoticeToast key={`${kind}:${message}`} kind={kind} message={message} onClose={onClose} durationMs={durationMs} />
+}
+
+/** An action's error as a toast that also goes to the notification history; it hides itself after eight seconds. */
+export function ErrorToast({ error, onDismiss }: { error: unknown; onDismiss?: () => void }) {
+  const message = error ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
+  const [hiddenMessage, setHiddenMessage] = useState('')
+  useEffect(() => {
+    if (!message) return
+    appendNotification(message, 'error')
+    const timeout = window.setTimeout(() => setHiddenMessage(message), 8000)
+    return () => window.clearTimeout(timeout)
+  }, [message])
+  if (!message || hiddenMessage === message) return null
+  return <NoticeToast kind="error" message={message} durationMs={8000} onClose={() => { setHiddenMessage(message); onDismiss?.() }} />
 }
