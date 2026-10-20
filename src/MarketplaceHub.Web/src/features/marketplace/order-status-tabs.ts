@@ -20,10 +20,12 @@ export const orderStatusTabs = [
   // The warehouse queue the menu counter and the dashboard's "Bekleyen" card count (new, processing, ready to ship,
   // partially cancelled and manual review orders): their links open exactly that set.
   ['PENDING', 'Bekleyen İşler'],
+  // Pending orders past their ship-by time: the dashboard's "Geciken Siparişler" card opens this tab.
+  ['LATE', 'Geciken'],
 ] as const
 
 // The tabs that leave the tab row for its "Diğer" menu.
-export const orderStatusMoreTabs = ['PARTIALLY_CANCELLED', 'RESENT', 'ON_HOLD', 'UNDELIVERED', 'RETURN_IN_TRANSIT', 'RETURNED', 'MANUAL_REVIEW', 'PAYMENT_PENDING', 'UNVERIFIED', 'PENDING']
+export const orderStatusMoreTabs = ['PARTIALLY_CANCELLED', 'RESENT', 'ON_HOLD', 'UNDELIVERED', 'RETURN_IN_TRANSIT', 'RETURNED', 'MANUAL_REVIEW', 'PAYMENT_PENDING', 'UNVERIFIED', 'PENDING', 'LATE']
 
 const knownOrderStatusTabs = new Set<string>(orderStatusTabs.map(([value]) => value))
 

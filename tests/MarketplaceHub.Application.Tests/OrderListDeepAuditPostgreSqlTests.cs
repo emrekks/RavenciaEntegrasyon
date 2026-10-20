@@ -54,6 +54,34 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // The dashboard's "Geciken Siparişler" card links to /orders?status=LATE; the list had no such view and opened
+    // empty. It lists exactly the orders the card counts.
+    [PostgreSqlFact]
+    public async Task LateViewListsTheOrdersTheDashboardCountsAsLate()
+    {
+        var tenantId = await SeedAsync("ol-late");
+        try
+        {
+            await using (var seedDb = fixture.CreateContext())
+            {
+                var newOrder = await seedDb.Orders.Where(x => x.TenantId == tenantId && x.DerivedStatus == "NEW").OrderBy(x => x.Id).FirstAsync();
+                newOrder.ShipmentDueAt = fixture.Now.AddHours(-30);
+                await seedDb.SaveChangesAsync();
+            }
+
+            await using var db = fixture.CreateContext();
+            var late = await DashboardReadService.LateOrderMetricsQuery(db, tenantId, fixture.Now).Select(x => x.Id).OrderBy(x => x).ToListAsync();
+            var page = await NewService(db).OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "LATE"), CancellationToken.None);
+
+            Assert.NotEmpty(late);
+            Assert.Equal(late, page.Items.Select(x => x.Id).OrderBy(x => x).ToList());
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task SearchIgnoresCaseTheTurkishWayAndSplitOrderShowsItsLivePackage()
     {

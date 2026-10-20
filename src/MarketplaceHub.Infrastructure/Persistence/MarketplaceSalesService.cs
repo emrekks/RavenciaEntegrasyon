@@ -378,7 +378,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"micro\":true") && !x.CustomerSnapshotJson.Contains("\"micro\": true") && !x.CustomerSnapshotJson.Contains("\"microExport\":true") && !x.CustomerSnapshotJson.Contains("\"microExport\": true") && !x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") && !x.CustomerSnapshotJson.Contains("MICRO") && !x.CustomerSnapshotJson.Contains("İHRAC") && !x.CustomerSnapshotJson.Contains("IHRAC"));
 
         var status = options.Status?.Trim().ToUpperInvariant();
-        if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
+        // The dashboard's "Geciken Siparişler" card opens this view: exactly the orders that card counts.
+        if (status == "LATE")
+        {
+            var late = DashboardReadService.LateOrderMetricsQuery(db, tenantId, timeProvider.GetUtcNow());
+            query = query.Where(order => late.Any(lateOrder => lateOrder.Id == order.Id));
+        }
+        else if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
         {
             var derivedStatuses = DerivedStatusesForOrderTab(status);
             var packageStatuses = PackageStatusesForOrderTab(status);
