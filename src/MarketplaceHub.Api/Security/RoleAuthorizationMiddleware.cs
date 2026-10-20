@@ -86,8 +86,11 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         {
             case "billing":
                 return AccountingRoles;
-            case "invoices":
+            case "invoices" or "invoice-workspace":
                 return InvoiceRoles;
+            // Order work (picking, packages, Shopify status, CSV import) is daily operational work.
+            case "orders":
+                return OperationalRoles;
             case "questions" or "question-templates":
                 return OperationalRoles;
             case "connections":

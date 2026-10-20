@@ -311,7 +311,7 @@ public static class CatalogEndpoints
         if (form.ContainsKey("sortOrder") && (!int.TryParse(form["sortOrder"], out sortOrder) || sortOrder is < 0 or > 999))
             return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
         var isCustomProductGallery = variantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
-        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : string.IsNullOrWhiteSpace(form["mediaRole"]) ? "GALLERY" : form["mediaRole"].ToString().Trim();
+        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(form["mediaRole"].ToString());
         var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.SortOrder == sortOrder, http.RequestAborted);
         if (media is null) { media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(), Status = "ACTIVE" }; db.ProductMedia.Add(media); }
         else { media.FileAssetId = asset.Id; media.MediaRole = mediaRole; media.AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(); media.Status = "ACTIVE"; }
@@ -973,7 +973,7 @@ public static class CatalogEndpoints
         return true;
     }
 
-    private static string MediaRole(string? value)
+    internal static string MediaRole(string? value)
     {
         var role = string.IsNullOrWhiteSpace(value) ? "GALLERY" : value.Trim().ToUpperInvariant();
         return role[..Math.Min(role.Length, 32)];

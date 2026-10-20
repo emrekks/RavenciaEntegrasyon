@@ -129,6 +129,26 @@ public sealed class RoleAuthorizationMiddlewareTests
     }
 
     [Theory]
+    [InlineData("OPERATIONS", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/instant-process", true)]
+    [InlineData("OPERATIONS", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/packages", true)]
+    [InlineData("OPERATIONS", "PUT", "/api/v1/orders/11111111-1111-1111-1111-111111111111/shopify-status", true)]
+    [InlineData("OPERATIONS", "POST", "/api/v1/orders/shopify-csv-import", true)]
+    [InlineData("ACCOUNTING", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/instant-process", false)]
+    [InlineData("READONLY", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/instant-process", false)]
+    [InlineData("OPERATIONS", "POST", "/api/v1/invoice-workspace/confirm", true)]
+    [InlineData("ACCOUNTING", "POST", "/api/v1/invoice-workspace/confirm", true)]
+    [InlineData("ACCOUNTING", "PUT", "/api/v1/invoice-workspace/manual-status", true)]
+    [InlineData("READONLY", "POST", "/api/v1/invoice-workspace/confirm", false)]
+    [InlineData("READONLY", "POST", "/api/v1/invoice-workspace/preview", false)]
+    public async Task OrderAndInvoiceWorkspaceWrites_FollowTheirWorkingRoles(string role, string method, string path, bool reachable)
+    {
+        var (called, status) = await Invoke(role, method, path);
+
+        Assert.Equal(reachable, called);
+        if (!reachable) Assert.Equal(StatusCodes.Status403Forbidden, status);
+    }
+
+    [Theory]
     [InlineData("READONLY", "/api/v1/invoices/11111111-1111-1111-1111-111111111111/documents/latest/content", false)]
     [InlineData("ACCOUNTING", "/api/v1/invoices/11111111-1111-1111-1111-111111111111/documents/latest/content", true)]
     [InlineData("READONLY", "/api/v1/shipments/11111111-1111-1111-1111-111111111111/documents/22222222-2222-2222-2222-222222222222/content", false)]
