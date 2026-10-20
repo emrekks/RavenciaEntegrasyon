@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { hubApi, loadAllPages, type Me } from '../../shared/api'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -13,7 +13,7 @@ import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } fr
 import { catalogStructureImportChange, catalogStructureImportPresentation } from './catalog-structure-import'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { jobCountsQueryString, jobDetailPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, type JobListTimeRange } from './job-list-query'
+import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, readJobsViewState, writeJobsViewState, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import { pollHubApi } from '../../shared/background-poll'
@@ -472,6 +472,17 @@ export function JobsPage({ me }: { me: Me }) {
     placeholderData: keepPreviousData,
     refetchInterval: query => jobListPollInterval(query.state.data?.pages.length ?? 0)
   })
+  // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
+  const loadedServerPages = list.data?.pages.length ?? 0
+  const listHead = useQuery({
+    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, platform],
+    queryFn: context => pollHubApi<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`, context),
+    enabled: loadedServerPages > 1,
+    refetchInterval: jobListHeadPollInterval(loadedServerPages)
+  })
+  useEffect(() => {
+    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, platform], current => withFreshFirstPage(current, listHead.data))
+  }, [listHead.data, client, serverStatus, timeRange, category, platform])
   const detail = useQuery({
     queryKey: ['job', selectedId],
     queryFn: context => pollHubApi<JobDetail>(`/jobs/${selectedId}`, context),
@@ -535,6 +546,10 @@ export function JobsPage({ me }: { me: Me }) {
   const currentPage = Math.min(pageNumber, totalPages)
   const pageJobs = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   const moreOnServer = Boolean(list.hasNextPage)
+  // A ?sayfa=N link: read server pages until page N has rows (or the server has no more).
+  useEffect(() => {
+    if (shouldLoadTowardsPage(pageNumber, totalPages, moreOnServer, loadedServerPages, list.isFetching)) void list.fetchNextPage()
+  }, [pageNumber, totalPages, moreOnServer, loadedServerPages, list])
   // Reads the next server page; from the last screen page the view moves on to the newly loaded rows.
   const loadMoreJobs = async () => {
     if (!moreOnServer || list.isFetchingNextPage) return
