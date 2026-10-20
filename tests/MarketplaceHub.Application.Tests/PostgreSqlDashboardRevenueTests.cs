@@ -55,14 +55,30 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
         var sentBack = NewLine(order, "part-back", 200m, 1m);
         var claim = new ReturnClaim
         {
-            Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = store.Id, OrderId = order.Id, ExternalClaimId = "claim-part",
-            Status = ReturnClaimStatus.Completed, RawStatus = "Completed", LastRemoteModifiedAt = Now, CreatedAt = Now, UpdatedAt = Now
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = store.Id,
+            OrderId = order.Id,
+            ExternalClaimId = "claim-part",
+            Status = ReturnClaimStatus.Completed,
+            RawStatus = "Completed",
+            LastRemoteModifiedAt = Now,
+            CreatedAt = Now,
+            UpdatedAt = Now
         };
         // A rejected claim line does not take anything off.
         var rejected = new ReturnClaim
         {
-            Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = store.Id, OrderId = order.Id, ExternalClaimId = "claim-rejected",
-            Status = ReturnClaimStatus.Completed, RawStatus = "Completed", LastRemoteModifiedAt = Now, CreatedAt = Now, UpdatedAt = Now
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = store.Id,
+            OrderId = order.Id,
+            ExternalClaimId = "claim-rejected",
+            Status = ReturnClaimStatus.Completed,
+            RawStatus = "Completed",
+            LastRemoteModifiedAt = Now,
+            CreatedAt = Now,
+            UpdatedAt = Now
         };
         try
         {
@@ -146,8 +162,16 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
             {
                 db.ReturnClaims.Add(new ReturnClaim
                 {
-                    Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = store.Id, OrderId = order.Id, ExternalClaimId = "claim-ann",
-                    Status = ReturnClaimStatus.ActionRequired, RawStatus = "WaitingInAction", LastRemoteModifiedAt = Now, CreatedAt = Now, UpdatedAt = Now
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenant.Id,
+                    ConnectionId = store.Id,
+                    OrderId = order.Id,
+                    ExternalClaimId = "claim-ann",
+                    Status = ReturnClaimStatus.ActionRequired,
+                    RawStatus = "WaitingInAction",
+                    LastRemoteModifiedAt = Now,
+                    CreatedAt = Now,
+                    UpdatedAt = Now
                 });
                 await db.SaveChangesAsync();
             }
@@ -178,34 +202,80 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
 
     private static Tenant NewTenant(string code) => new()
     {
-        Id = Guid.CreateVersion7(), Code = $"{code}-{Guid.NewGuid():N}"[..20], DisplayName = code, Status = RecordStatus.Active,
-        Timezone = "Europe/Istanbul", CreatedAt = Now, UpdatedAt = Now, Version = 1
+        Id = Guid.CreateVersion7(),
+        Code = $"{code}-{Guid.NewGuid():N}"[..20],
+        DisplayName = code,
+        Status = RecordStatus.Active,
+        Timezone = "Europe/Istanbul",
+        CreatedAt = Now,
+        UpdatedAt = Now,
+        Version = 1
     };
 
     private static PlatformConnection NewConnection(Guid tenantId, string platformCode, string status) => new()
     {
-        Id = Guid.CreateVersion7(), TenantId = tenantId, PublicId = Guid.CreateVersion7(), PlatformCode = platformCode, Environment = "PRODUCTION",
-        DisplayName = $"{platformCode} {status}", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = status, ApiVersion = "V1"
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        PublicId = Guid.CreateVersion7(),
+        PlatformCode = platformCode,
+        Environment = "PRODUCTION",
+        DisplayName = $"{platformCode} {status}",
+        ExternalStoreId = $"store-{Guid.NewGuid():N}",
+        Status = status,
+        ApiVersion = "V1"
     };
 
     private static Order NewOrder(Guid tenantId, Guid connectionId, string code, DateTimeOffset orderedAt, decimal amount, string status) => new()
     {
-        Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = code, OrderNumber = code, Currency = "TRY",
-        GrossAmount = amount, NetAmount = amount, OrderedAt = orderedAt, LastRemoteModifiedAt = orderedAt, CustomerSnapshotJson = "{}",
-        ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = status, CreatedAt = Now, UpdatedAt = Now, Version = 1
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        ConnectionId = connectionId,
+        ExternalOrderId = code,
+        OrderNumber = code,
+        Currency = "TRY",
+        GrossAmount = amount,
+        NetAmount = amount,
+        OrderedAt = orderedAt,
+        LastRemoteModifiedAt = orderedAt,
+        CustomerSnapshotJson = "{}",
+        ShipmentAddressSnapshotJson = "{}",
+        InvoiceAddressSnapshotJson = "{}",
+        DerivedStatus = status,
+        CreatedAt = Now,
+        UpdatedAt = Now,
+        Version = 1
     };
 
     private static ShipmentPackage NewPackage(Order order, string externalId, decimal amount, ShipmentPackageStatus status) => new()
     {
-        Id = Guid.CreateVersion7(), TenantId = order.TenantId, ConnectionId = order.ConnectionId, OrderId = order.Id, ExternalPackageId = externalId,
-        GrossAmount = amount, NetAmount = amount, Status = status, RawStatus = status.ToString(), StatusOccurredAt = Now,
-        MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced, CreatedAt = Now, UpdatedAt = Now, Version = 1
+        Id = Guid.CreateVersion7(),
+        TenantId = order.TenantId,
+        ConnectionId = order.ConnectionId,
+        OrderId = order.Id,
+        ExternalPackageId = externalId,
+        GrossAmount = amount,
+        NetAmount = amount,
+        Status = status,
+        RawStatus = status.ToString(),
+        StatusOccurredAt = Now,
+        MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced,
+        CreatedAt = Now,
+        UpdatedAt = Now,
+        Version = 1
     };
 
     private static OrderLine NewLine(Order order, string externalId, decimal unitPrice, decimal quantity) => new()
     {
-        Id = Guid.CreateVersion7(), TenantId = order.TenantId, OrderId = order.Id, ExternalLineId = externalId, Sku = externalId,
-        TitleSnapshot = externalId, OrderedQuantity = quantity, UnitPrice = unitPrice, VatRate = 20m, RawStatus = "Delivered"
+        Id = Guid.CreateVersion7(),
+        TenantId = order.TenantId,
+        OrderId = order.Id,
+        ExternalLineId = externalId,
+        Sku = externalId,
+        TitleSnapshot = externalId,
+        OrderedQuantity = quantity,
+        UnitPrice = unitPrice,
+        VatRate = 20m,
+        RawStatus = "Delivered"
     };
 
     private async Task SeedAsync(Tenant tenant, PlatformConnection[] connections, Action<AppDbContext> extra)
