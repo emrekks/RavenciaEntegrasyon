@@ -400,7 +400,8 @@ describe('QuestionsPage workspace flows', () => {
   })
 
   it('lets a rejected answer be written again and shows why it was rejected', async () => {
-    apiState.detail = { ...createQuestion(), status: 'REJECTED' }
+    // Still inside its answer time: a rejection after the deadline is closed (isClosedRejection).
+    apiState.detail = { ...createQuestion(), status: 'REJECTED', expiresAt: new Date(Date.now() + 86_400_000).toISOString() }
     await renderPage()
 
     expect(container.querySelector('.qi-composer')).not.toBeNull()
