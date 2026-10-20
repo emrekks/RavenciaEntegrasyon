@@ -1,0 +1,29 @@
+import { describe, expect, it } from 'vitest'
+import { readJobsViewState, writeJobsViewState } from './jobs-url-state'
+
+describe('İşlem Takibi address state (W16)', () => {
+  it('reads the defaults from an empty address', () => {
+    expect(readJobsViewState(new URLSearchParams())).toEqual({ category: 'ALL', chips: [], status: '', timeRange: '24h', search: '', page: 1, pageSize: 20 })
+  })
+
+  it('reads every filter and the page back', () => {
+    const state = readJobsViewState(new URLSearchParams('kategori=siparis&durum=hata,bekliyor&statu=dead&aralik=7g&ara=corr-1&sayfa=3&adet=50&platform=trendyol'))
+    expect(state).toEqual({ category: 'ORDERS', chips: ['error', 'waiting'], status: 'DEAD', timeRange: '7d', search: 'corr-1', page: 3, pageSize: 50 })
+  })
+
+  it('keeps the overview link ?durum=hata working', () => {
+    expect(readJobsViewState(new URLSearchParams('durum=hata')).chips).toEqual(['error'])
+  })
+
+  it('ignores values it does not know', () => {
+    const state = readJobsViewState(new URLSearchParams('kategori=x&durum=y&statu=Z&aralik=1y&sayfa=-2&adet=7'))
+    expect(state).toEqual({ category: 'ALL', chips: [], status: '', timeRange: '24h', search: '', page: 1, pageSize: 20 })
+  })
+
+  it('writes only what differs from the default, keeps the platform and goes back to page 1 on a filter change', () => {
+    const current = new URLSearchParams('platform=n11&sayfa=4')
+    expect(writeJobsViewState(current, { category: 'INVOICES' }).toString()).toBe('platform=n11&kategori=fatura')
+    expect(writeJobsViewState(current, { page: 5 }).toString()).toBe('platform=n11&sayfa=5')
+    expect(writeJobsViewState(new URLSearchParams('kategori=fatura'), { category: 'ALL', pageSize: 100 }).toString()).toBe('adet=100')
+  })
+})

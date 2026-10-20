@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { hubApi } from '../../shared/api'
+import { pollHubApi } from '../../shared/background-poll'
 import './job-queue-metrics.css'
 
 export type JobTypeMetric = {
@@ -63,19 +63,19 @@ export function JobQueueMetrics({ hours, titleFor, platform = null }: { hours: n
   const [open, setOpen] = useState(false)
   const metrics = useQuery({
     queryKey: ['jobs', 'metrics', hours, platform],
-    queryFn: () => hubApi<JobTypeMetric[]>(`/jobs/metrics?hours=${hours}${platform ? `&platform=${encodeURIComponent(platform)}` : ''}`),
+    queryFn: context => pollHubApi<JobTypeMetric[]>(`/jobs/metrics?hours=${hours}${platform ? `&platform=${encodeURIComponent(platform)}` : ''}`, context),
     enabled: open,
     refetchInterval: open ? 30_000 : false
   })
   const lanes = useQuery({
     queryKey: ['jobs', 'metrics', 'lanes', hours],
-    queryFn: () => hubApi<LaneMetric[]>(`/jobs/metrics/lanes?hours=${hours}`),
+    queryFn: context => pollHubApi<LaneMetric[]>(`/jobs/metrics/lanes?hours=${hours}`, context),
     enabled: open,
     refetchInterval: open ? 30_000 : false
   })
   const quota = useQuery({
     queryKey: ['jobs', 'metrics', 'quota'],
-    queryFn: () => hubApi<QuotaUsage[]>('/jobs/metrics/quota'),
+    queryFn: context => pollHubApi<QuotaUsage[]>('/jobs/metrics/quota', context),
     enabled: open,
     refetchInterval: open ? 60_000 : false
   })

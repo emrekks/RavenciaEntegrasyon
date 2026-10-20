@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { NoticeToast } from '../../shared/components/NoticeToast'
-import { appendNotification, normalizeNotificationKind } from '../../shared/notifications'
+import { appendNotification } from '../../shared/notifications'
 
 const toastDurationMs = 5500
 
-// Result message of a settings page, shown as the panel's standard notification.
-export function SettingsNotice({ message, failed }: { message: string; failed?: boolean }) {
-  const kind = failed === undefined ? normalizeNotificationKind(message, 'success') : failed ? 'error' : 'success'
+export type SettingsNoticeKind = 'success' | 'error' | 'info'
+export type SettingsNoticeState = { message: string; kind: SettingsNoticeKind }
+
+// Result message of a settings page, shown as the panel's standard notification. The caller always says whether it
+// is a success, a failure or a note (W9): a server error text must never be guessed into a green success from its
+// wording.
+export function SettingsNotice({ message, kind }: SettingsNoticeState) {
   const [visible, setVisible] = useState(true)
   useEffect(() => {
     appendNotification(message, kind)

@@ -6,8 +6,9 @@ import { LoadingState, Modal } from '../../shared/components'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../shipping'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearancePalette, type AppearanceSettings } from './appearance-settings'
-import { SettingsNotice } from './SettingsNotifications'
+import { SettingsNotice, type SettingsNoticeState } from './SettingsNotifications'
 import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeEvent, type VisualTheme } from './visual-theme'
+import { shippingLabelBlockParts } from './shipping-label-preview'
 import { useRememberedTabCounts } from '../../shared/tab-counts'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
@@ -187,7 +188,9 @@ export function SystemSettingsPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [otp, setOtp] = useState<string[]>(emptyOtp)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
+  const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
+  const succeed = (message: string) => setNotice({ kind: 'success', message })
+  const fail = (message: string) => setNotice({ kind: 'error', message })
   const [mfaError, setMfaError] = useState('')
   const [sessionConfirmation, setSessionConfirmation] = useState<SessionConfirmation | null>(null)
   const [sessionActionBusy, setSessionActionBusy] = useState(false)
@@ -198,7 +201,7 @@ export function SystemSettingsPage() {
   const closedSessions = (sessions.data ?? []).filter(session => !session.current && session.state !== 'ACTIVE')
 
   function selectSection(next: SettingsSectionKey) {
-    setMessage('')
+    setNotice(null)
     setSearchParams(next === 'auth' ? {} : { tab: next })
   }
   function toggleResetScopes(scopes: string[], checked: boolean) {
@@ -206,17 +209,17 @@ export function SystemSettingsPage() {
   }
   async function resetOperationalData() {
     if (!resetScopes.length || resetConfirmation !== 'Verileri sil') return
-    setResetBusy(true); setMessage('')
+    setResetBusy(true); setNotice(null)
     try {
       const result = await hubApi<{ products: number; orders: number; returns: number; invoices: number; categories: number; categoryAttributes: number; brands: number; options: number }>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation }) })
-      setMessage(`Temizlik tamamlandı: ${result.products} ürün, ${result.categories} kategori, ${result.categoryAttributes} kategori özelliği, ${result.brands} marka, ${result.options} ürün seçeneği, ${result.orders} sipariş, ${result.returns} iade, ${result.invoices} fatura.`)
+      succeed(`Temizlik tamamlandı: ${result.products} ürün, ${result.categories} kategori, ${result.categoryAttributes} kategori özelliği, ${result.brands} marka, ${result.options} ürün seçeneği, ${result.orders} sipariş, ${result.returns} iade, ${result.invoices} fatura.`)
       setResetScopes([]); setResetConfirmation(''); setResetDialogOpen(false)
       await client.invalidateQueries()
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }
+    } catch (reason) { fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }
   }
 
   function openMfa() {
-    setMessage(''); setMfaError(''); setOtp(emptyOtp); setMfaStep('password')
+    setNotice(null); setMfaError(''); setOtp(emptyOtp); setMfaStep('password')
   }
   async function prepareMfa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setMfaError('')
@@ -243,42 +246,42 @@ export function SystemSettingsPage() {
   async function copyRecoveryCodes() {
     try {
       await navigator.clipboard.writeText(recoveryCodes.join('\n'))
-      setMessage('Kurtarma kodları panoya kopyalandı.')
-    } catch { setMessage('Kurtarma kodları kopyalanamadı; kodları elle not alın.') }
+      succeed('Kurtarma kodları panoya kopyalandı.')
+    } catch { fail('Kurtarma kodları kopyalanamadı; kodları elle not alın.') }
   }
   async function confirmSessionAction() {
     const confirmation = sessionConfirmation
     if (!confirmation || sessionActionBusy) return
-    setSessionActionBusy(true); setMessage('')
+    setSessionActionBusy(true); setNotice(null)
     try {
       if (confirmation.action === 'revoke' && confirmation.sessionId) {
         await api(`/sessions/${confirmation.sessionId}/revoke`, { method: 'POST' })
-        setMessage('Oturum sonlandırıldı.')
+        succeed('Oturum sonlandırıldı.')
       } else if (confirmation.action === 'revoke-others') {
         await api('/sessions/revoke-others', { method: 'POST' })
-        setMessage('Diğer aktif oturumlar sonlandırıldı.')
+        succeed('Diğer aktif oturumlar sonlandırıldı.')
       } else if (confirmation.action === 'delete' && confirmation.sessionId) {
         await api(`/sessions/${confirmation.sessionId}`, { method: 'DELETE' })
-        setMessage('Kapalı oturum silindi.')
+        succeed('Kapalı oturum silindi.')
       } else if (confirmation.action === 'delete-closed') {
         await api('/sessions/closed', { method: 'DELETE' })
-        setMessage('Kapalı oturumlar silindi.')
+        succeed('Kapalı oturumlar silindi.')
       }
       await client.invalidateQueries({ queryKey: ['sessions'] })
     } catch {
-      setMessage(confirmation.action.startsWith('delete') ? 'Kapalı oturum silinemedi.' : 'Oturumlar sonlandırılamadı.')
+      fail(confirmation.action.startsWith('delete') ? 'Kapalı oturum silinemedi.' : 'Oturumlar sonlandırılamadı.')
     } finally {
       setSessionActionBusy(false)
       setSessionConfirmation(null)
     }
   }
   async function saveLabelSettings() {
-    setLabelSaving(true); setMessage('')
+    setLabelSaving(true); setNotice(null)
     try {
       await shippingSettings.save(labelSettings)
-      setMessage('Kargo etiketi ayarları hesaba kaydedildi.')
+      succeed('Kargo etiketi ayarları hesaba kaydedildi.')
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : 'Kargo etiketi ayarları kaydedilemedi.')
+      fail(reason instanceof Error ? reason.message : 'Kargo etiketi ayarları kaydedilemedi.')
     } finally { setLabelSaving(false) }
   }
 
@@ -319,7 +322,7 @@ export function SystemSettingsPage() {
   const isAppearance = appearanceSections.includes(section)
 
   return <section className="content ss-page">
-    {message && <SettingsNotice message={message} />}
+    {notice && <SettingsNotice {...notice} />}
     <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></header>
     <div className="ss-gtabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on is-active' : undefined} onClick={() => selectSection(group.items[0].key)}><span className="rv-tab-label"><SettingsIcon name={group.icon} /><span className="rv-tab-text" data-text={group.label}>{group.label}</span></span></button>)}</div>
     <div className="ss-card">
@@ -386,7 +389,10 @@ export function SystemSettingsPage() {
 
 function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceSection | null; onStatus: (status: { dirty: boolean; themeCount: number }) => void }) {
   const appearance = useAppearanceSettings()
-  const [message, setMessage] = useState('')
+  const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
+  const succeed = (message: string) => setNotice({ kind: 'success', message })
+  const fail = (message: string) => setNotice({ kind: 'error', message })
+  const note = (message: string) => setNotice({ kind: 'info', message })
   const [busy, setBusy] = useState(false)
   const [newThemeName, setNewThemeName] = useState('')
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
@@ -442,12 +448,12 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
 
   async function save() {
     setBusy(true)
-    setMessage('')
+    setNotice(null)
     try {
       await appearance.save(appearance.draft)
-      setMessage('Görünüm ayarları hesabınıza kaydedildi.')
+      succeed('Görünüm ayarları hesabınıza kaydedildi.')
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : 'Görünüm ayarları kaydedilemedi.')
+      fail(reason instanceof Error ? reason.message : 'Görünüm ayarları kaydedilemedi.')
     } finally {
       setBusy(false)
     }
@@ -457,7 +463,7 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
     setVisualThemePreference('dark')
     setSelectedThemeId(theme.id)
     appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { ...appearance.draft.colors, dark: { ...theme.palette } } })
-    setMessage(`${theme.name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`)
+    note(`${theme.name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`)
   }
 
   function applyDefaultAppearance() {
@@ -469,38 +475,38 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
     setVisualThemePreference('dark')
     setSelectedThemeId(defaultAppearanceColorTheme.id)
     appearance.setDraft(defaults)
-    setMessage('Varsayılan görünüm önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.')
+    note('Varsayılan görünüm önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.')
   }
 
   function resetLightPalette() {
     appearance.setDraft({ ...appearance.draft, colors: { ...appearance.draft.colors, light: { ...defaultLightPalette } } })
-    setMessage('Açık tema renkleri varsayılana döndürüldü. Kalıcı yapmak için değişiklikleri kaydedin.')
+    note('Açık tema renkleri varsayılana döndürüldü. Kalıcı yapmak için değişiklikleri kaydedin.')
   }
 
   function applyLightTheme() {
     setSelectedThemeId('default-light')
     setVisualThemePreference('light')
-    setMessage('Ravencia — Aydınlık önizlemeye uygulandı.')
+    note('Ravencia — Aydınlık önizlemeye uygulandı.')
   }
 
   async function saveColorTheme() {
     const name = newThemeName.trim()
     if (!name) {
-      setMessage('Kaydetmek için bir tema adı yazın.')
+      fail('Kaydetmek için bir tema adı yazın.')
       return
     }
     const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const profile = { id, name: name.slice(0, 60), palette: { ...palette }, builtIn: false }
     const nextDraft = { ...appearance.draft, colorThemes: [...appearance.draft.colorThemes, profile] }
     setBusy(true)
-    setMessage('')
+    setNotice(null)
     try {
       await appearance.save(nextDraft)
       setSelectedThemeId(id)
       setNewThemeName('')
-      setMessage(`“${profile.name}” renk teması kaydedildi.`)
+      succeed(`“${profile.name}” renk teması kaydedildi.`)
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : 'Renk teması kaydedilemedi.')
+      fail(reason instanceof Error ? reason.message : 'Renk teması kaydedilemedi.')
     } finally {
       setBusy(false)
     }
@@ -516,12 +522,12 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
       nextDraft.colors = { ...nextDraft.colors, dark: { ...defaultAppearanceColorTheme.palette } }
     }
     setBusy(true)
-    setMessage('')
+    setNotice(null)
     try {
       await appearance.save(nextDraft)
-      setMessage(`“${theme.name}” renk teması silindi.`)
+      succeed(`“${theme.name}” renk teması silindi.`)
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : 'Renk teması silinemedi.')
+      fail(reason instanceof Error ? reason.message : 'Renk teması silinemedi.')
     } finally {
       setBusy(false)
       setThemeToDelete(null)
@@ -552,7 +558,7 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
   const loadError = appearance.isError ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</span></div> : null
 
   return <>
-    {message && <SettingsNotice message={message} />}
+    {notice && <SettingsNotice {...notice} />}
     {section === 'read' && <>
       <SettingsPaneHead section="read" description="Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin." />
       <div className="ss-body">
@@ -625,7 +631,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateNameDraft, setTemplateNameDraft] = useState('')
   const [templateNameOpen, setTemplateNameOpen] = useState(false)
-  const [templateMessage, setTemplateMessage] = useState('')
+  const [templateNotice, setTemplateNotice] = useState<SettingsNoticeState | null>(null)
   const [templateDeleteOpen, setTemplateDeleteOpen] = useState(false)
   const [layoutResetOpen, setLayoutResetOpen] = useState(false)
   const pointerDrag = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
@@ -779,7 +785,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   function saveTemplate(name: string) {
     const trimmed = name.trim()
     if (!trimmed) {
-      setTemplateMessage('Şablon adı gerekli.')
+      setTemplateNotice({ kind: 'error', message: 'Şablon adı gerekli.' })
       return
     }
     const template: ShippingLabelTemplate = { id: `template-${Date.now()}`, name: trimmed.slice(0, 80), savedAt: new Date().toISOString(), settings: JSON.parse(JSON.stringify(settings)) as ShippingLabelSettings }
@@ -789,9 +795,9 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
       setTemplates(next)
       setSelectedTemplateId(template.id)
       setTemplateNameOpen(false)
-      setTemplateMessage(`“${template.name}” şablonu kaydedildi.`)
+      setTemplateNotice({ kind: 'success', message: `“${template.name}” şablonu kaydedildi.` })
     } catch {
-      setTemplateMessage('Şablon kaydedilemedi. Tarayıcı depolamasına erişim izni verin.')
+      setTemplateNotice({ kind: 'error', message: 'Şablon kaydedilemedi. Tarayıcı depolamasına erişim izni verin.' })
     }
   }
   function applyTemplate(id: string) {
@@ -891,7 +897,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   const loadError = loadFailed ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap kargo ayarları alınamadı; geçici yerel ayarlar gösteriliyor.</span></div> : null
 
   return <>
-    {templateMessage && <SettingsNotice message={templateMessage} failed={templateMessage.includes('kaydedilemedi') || templateMessage.includes('gerekli')} />}
+    {templateNotice && <SettingsNotice {...templateNotice} />}
     {section === 'sender' && <>
       <SettingsPaneHead section="sender" description="Etiketin üzerinde görünen gönderici ve varsayılan çıktı." />
       <div className="ss-body">
@@ -919,7 +925,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
           <span className="ss-seg2 rv-tabs rv-view-tabs" role="tablist" aria-label="Kâğıt biçimi"><button type="button" role="tab" aria-selected={format === 'a4'} className={format === 'a4' ? 'is-on is-active' : undefined} onClick={() => setFormat('a4')}><span className="rv-tab-label"><SettingsIcon name="copy" /><span className="rv-tab-text" data-text="A4">A4</span> <small>{settings.a4LabelsPerPage} Etiket</small></span></button><button type="button" role="tab" aria-selected={format === 'sticker'} className={format === 'sticker' ? 'is-on is-active' : undefined} onClick={() => setFormat('sticker')}><span className="rv-tab-label"><SettingsIcon name="barcode" /><span className="rv-tab-text" data-text="Sticker">Sticker</span> <small>{settings.stickerWidthMm} × {settings.stickerHeightMm} mm</small></span></button></span>
           <span className="ss-grow" />
           <select className="ss-in is-sm ss-dz-template" aria-label="Kayıtlı şablon seçin" value={selectedTemplateId} onChange={event => applyTemplate(event.target.value)}><option value="">Şablon Seçin…</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
-          <button type="button" className="ss-btn" onClick={() => { setTemplateNameDraft(`${format === 'a4' ? 'A4' : 'Sticker'} şablonu`); setTemplateMessage(''); setTemplateNameOpen(true) }}><SettingsIcon name="save" />Şablon Kaydet</button>
+          <button type="button" className="ss-btn" onClick={() => { setTemplateNameDraft(`${format === 'a4' ? 'A4' : 'Sticker'} şablonu`); setTemplateNotice(null); setTemplateNameOpen(true) }}><SettingsIcon name="save" />Şablon Kaydet</button>
           <button type="button" className="ss-btn" disabled={!selectedTemplateId} onClick={() => setTemplateDeleteOpen(true)}><SettingsIcon name="trash" />Şablonu Sil</button>
           <button type="button" className="ss-btn is-quiet" onClick={() => setLayoutResetOpen(true)}><SettingsIcon name="reset" />Varsayılanı Yükle</button>
         </div>
@@ -932,7 +938,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
           <main className="ss-dz-stage">
             <div className="ss-dz-sbar"><b>{format === 'a4' ? 'A4 Çalışma Yüzeyi' : 'Sticker Çalışma Yüzeyi'}</b><span>{layout.length} blok yerleşti</span></div>
             {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- blocks inside the application area: pointer drags, and on the keyboard Tab focuses (selects) a block and the arrow keys move it (moveBlockByKey); the pointer-only resize/rotate handles stay out of the Tab order */}
-            <div className="ss-dz-canvas"><div className={`shipping-designer-paper is-${format}`} onDragOver={event => event.preventDefault()} onDrop={dropOnCanvas} style={{ aspectRatio: format === 'a4' ? '210 / 297' : `${settings.stickerWidthMm} / ${settings.stickerHeightMm}` }} role="application" aria-label={`${format === 'a4' ? 'A4' : 'Sticker'} etiket tasarım alanı`} aria-describedby="shipping-designer-help">{layout.map((block, index) => { const position = positionFor(block, index); return <article key={block.id} className={`shipping-designer-block${activeBlock?.id === block.id ? ' is-selected' : ''}`} tabIndex={0} aria-roledescription="etiket bloğu" aria-label={`${blockTitle(block)} · solda %${position.x}, üstte %${position.y}`} onFocus={() => setSelectedId(block.id)} onKeyDown={event => moveBlockByKey(event, block, index)} draggable onDragStart={event => dragStart(event, `block:${block.id}`)} onPointerDown={event => beginPointerDrag(event, block)} onPointerMove={movePointerDrag} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} onClick={() => setSelectedId(block.id)} style={{ left: `${position.x}%`, top: `${position.y}%`, width: `${position.width}%`, height: `${position.height}%`, textAlign: block.align, fontSize: `${block.fontSize ?? 14}px`, transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined, transformOrigin: 'center' }}>{activeBlock?.id === block.id && <>{shippingRotateDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle shipping-designer-rotate-handle handle-${direction}`} aria-label={`${shippingRotateDirectionLabels[direction]} tutamacını sağa veya sola sürükleyerek derece derece döndür`} title={`${shippingRotateDirectionLabels[direction]} tutamacını sürükleyerek derece derece döndür`} onPointerDown={event => beginPointerRotate(event, block)} onPointerMove={movePointerRotate} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}{shippingResizeDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle handle-${direction}`} aria-label={`${shippingResizeDirectionLabels[direction]} boyutlandır`} title={`${shippingResizeDirectionLabels[direction]} boyutlandır`} onPointerDown={event => beginPointerResize(event, block, direction)} onPointerMove={movePointerResize} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}</>}<div className="shipping-designer-block-preview"><ShippingPreviewBlock block={block} /></div></article> })}{layout.length === 0 && <div className="shipping-designer-drop-empty"><strong>İçerik Bırakın</strong><span>Kütüphaneden bir alanı buraya sürükleyin.</span></div>}</div></div>
+            <div className="ss-dz-canvas"><div className={`shipping-designer-paper is-${format}`} onDragOver={event => event.preventDefault()} onDrop={dropOnCanvas} style={{ aspectRatio: format === 'a4' ? '210 / 297' : `${settings.stickerWidthMm} / ${settings.stickerHeightMm}` }} role="application" aria-label={`${format === 'a4' ? 'A4' : 'Sticker'} etiket tasarım alanı`} aria-describedby="shipping-designer-help">{layout.map((block, index) => { const position = positionFor(block, index); return <article key={block.id} className={`shipping-designer-block${activeBlock?.id === block.id ? ' is-selected' : ''}`} tabIndex={0} aria-roledescription="etiket bloğu" aria-label={`${blockTitle(block)} · solda %${position.x}, üstte %${position.y}`} onFocus={() => setSelectedId(block.id)} onKeyDown={event => moveBlockByKey(event, block, index)} draggable onDragStart={event => dragStart(event, `block:${block.id}`)} onPointerDown={event => beginPointerDrag(event, block)} onPointerMove={movePointerDrag} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} onClick={() => setSelectedId(block.id)} style={{ left: `${position.x}%`, top: `${position.y}%`, width: `${position.width}%`, height: `${position.height}%`, textAlign: block.align, fontSize: `${block.fontSize ?? 14}px`, transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined, transformOrigin: 'center' }}>{activeBlock?.id === block.id && <>{shippingRotateDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle shipping-designer-rotate-handle handle-${direction}`} aria-label={`${shippingRotateDirectionLabels[direction]} tutamacını sağa veya sola sürükleyerek derece derece döndür`} title={`${shippingRotateDirectionLabels[direction]} tutamacını sürükleyerek derece derece döndür`} onPointerDown={event => beginPointerRotate(event, block)} onPointerMove={movePointerRotate} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}{shippingResizeDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle handle-${direction}`} aria-label={`${shippingResizeDirectionLabels[direction]} boyutlandır`} title={`${shippingResizeDirectionLabels[direction]} boyutlandır`} onPointerDown={event => beginPointerResize(event, block, direction)} onPointerMove={movePointerResize} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}</>}<div className="shipping-designer-block-preview"><ShippingPreviewBlock block={block} showCustomerPhone={settings.showCustomerPhone} /></div></article> })}{layout.length === 0 && <div className="shipping-designer-drop-empty"><strong>İçerik Bırakın</strong><span>Kütüphaneden bir alanı buraya sürükleyin.</span></div>}</div></div>
             <div className="ss-dz-help" id="shipping-designer-help">Bloğu sürükleyerek taşıyın · kenar tutamaçlarıyla boyutlandırın · köşe tutamaçlarıyla döndürün · yazıyı sağdaki panelden düzenleyin · klavyede Tab ile bloğu seçip ok tuşlarıyla taşıyın (Shift ile 5 kat).</div>
           </main>
           <aside className="ss-dz-insp">
@@ -980,12 +986,24 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   </>
 }
 
-function ShippingPreviewBlock({ block }: { block: ShippingLabelBlock }) {
-  if (block.kind === 'trackingBarcode' || block.kind === 'packageBarcode') {
-    const value = block.kind === 'trackingBarcode' ? '73300036563130080' : '9236253'
+const shippingPreviewValues: Record<ShippingLabelField, string> = { trackingNumber: '73300036563130080', packageNumber: '9236253', orderNumber: '#1972215187', customerName: 'FEHİME MAT', address: 'KARAKÖPRÜ / ŞANLIURFA', cargoProvider: 'Trendyol Express', senderName: 'RAVENCIA', senderAddress: '403.CAD.NO:24/2', customerEmail: 'musteri@example.com' }
+
+// Sample content of a block, laid out by the same rules as the printed label (shipping-label-preview.ts).
+function ShippingPreviewBlock({ block, showCustomerPhone }: { block: ShippingLabelBlock; showCustomerPhone: boolean }) {
+  const parts = shippingLabelBlockParts(block, { showCustomerPhone })
+  const fontSize = `${block.fontSize ?? 14}px`
+  const barcode = parts[0]?.type === 'barcode' ? parts[0] : null
+  const content = parts.map((part, index) => {
+    if (part.type === 'title') return <strong key={index} className="shipping-preview-title">{part.text}</strong>
+    if (part.type === 'text') return <strong key={index}>{part.text}</strong>
+    if (part.type === 'lines') return <span key={index}>{shippingPreviewValues[part.field]}</span>
+    if (part.type === 'field') return <span key={index}><b>{shippingLabelFields.find(option => option.id === part.field)?.label}</b>{shippingPreviewValues[part.field]}</span>
+    return null
+  })
+  if (barcode) {
+    const value = shippingPreviewValues[barcode.field]
     const bars = code128Bars(value)
-    return <div className="shipping-preview-barcode" style={{ fontSize: `${block.fontSize ?? 14}px` }} aria-label={`Barkod önizlemesi: ${value}`}><span className="shipping-preview-bars" style={{ '--barcode-module-count': bars.length } as CSSProperties} aria-hidden="true">{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</span><strong>{value}</strong></div>
+    return <div className="shipping-preview-barcode" style={{ fontSize }} aria-label={`Barkod önizlemesi: ${value}`}><span className="shipping-preview-bars" style={{ '--barcode-module-count': bars.length } as CSSProperties} aria-hidden="true">{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</span><strong>{value}</strong>{content}</div>
   }
-  const values: Record<ShippingLabelField, string> = { trackingNumber: '73300036563130080', packageNumber: '9236253', orderNumber: '#1972215187', customerName: 'FEHİME MAT', address: 'KARAKÖPRÜ / ŞANLIURFA', cargoProvider: 'Trendyol Express', senderName: 'RAVENCIA', senderAddress: '403.CAD.NO:24/2', customerEmail: 'musteri@example.com' }
-  return <div className={`shipping-preview-content preview-content-${block.kind}`} style={{ fontSize: `${block.fontSize ?? 14}px` }}>{block.kind === 'custom' && <strong className="shipping-preview-title">{block.title}</strong>}{block.text && <strong>{block.text}</strong>}{block.fields.map(field => <span key={field}><b>{shippingLabelFields.find(option => option.id === field)?.label}</b>{values[field]}</span>)}</div>
+  return <div className={`shipping-preview-content preview-content-${block.kind}`} style={{ fontSize }}>{content}</div>
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobCountsQueryString, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, jobTypesForCategory } from './job-list-query'
+import { jobCountsQueryString, jobDetailPollInterval, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -51,16 +51,17 @@ describe('platform helpers', () => {
   })
 })
 
-describe('jobTypesForCategory', () => {
-  const rows = [{ jobType: 'ORDER_SYNC' }, { jobType: 'PRICE_INVENTORY_SYNC' }, { jobType: 'ORDER_SYNC' }, { jobType: 'SHIPMENT_SYNC' }]
-
-  it('lists the distinct matching types in a stable order', () => {
-    expect(jobTypesForCategory(rows, type => /ORDER|SHIPMENT/.test(type), false)).toEqual(['ORDER_SYNC', 'SHIPMENT_SYNC'])
+describe('poll intervals (W22, G24)', () => {
+  it('polls the list every 15 s while only its first page is loaded and stops once older pages are read', () => {
+    expect(jobListPollInterval(0)).toBe(15_000)
+    expect(jobListPollInterval(1)).toBe(15_000)
+    expect(jobListPollInterval(2)).toBe(false)
   })
 
-  it('is unknown for all jobs or before the counts arrive, empty for a tab without jobs', () => {
-    expect(jobTypesForCategory(rows, () => true, true)).toBeNull()
-    expect(jobTypesForCategory(undefined, () => true, false)).toBeNull()
-    expect(jobTypesForCategory(rows, type => type.includes('INVOICE'), false)).toEqual([])
+  it('polls an open job until it finished', () => {
+    expect(jobDetailPollInterval(undefined)).toBe(10_000)
+    expect(jobDetailPollInterval('LEASED')).toBe(10_000)
+    expect(jobDetailPollInterval('SUCCEEDED')).toBe(false)
+    expect(jobDetailPollInterval('DEAD')).toBe(false)
   })
 })

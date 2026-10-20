@@ -54,9 +54,16 @@ export function jobPlatformOptions(connectionPlatforms: readonly string[], selec
   return [...codes].sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
 }
 
-// The job types of a tab, taken from the server's per-type counts for the selected range. Null while the counts are
-// unknown (the tab is then filtered in the browser only); an empty list means the tab has no job in the range.
-export function jobTypesForCategory(countRows: ReadonlyArray<{ jobType: string }> | undefined, matches: (jobType: string) => boolean, allJobs: boolean) {
-  if (allJobs || !countRows) return null
-  return [...new Set(countRows.map(row => row.jobType).filter(matches))].sort()
+// How often the page polls. The list polls every 15 s and only while just its first page is loaded: once older pages
+// are read it stops (refetching every loaded page every 5 s cost one request per page, W22/G24); Yenile and the
+// realtime events still refresh it. The counts follow the same 15 s. An open job detail polls until the job finished.
+export const jobListPollMs = 15_000
+const terminalJobStatuses: ReadonlySet<string> = new Set(['SUCCEEDED', 'DEAD', 'CANCELLED'])
+
+export function jobListPollInterval(loadedPages: number): number | false {
+  return loadedPages > 1 ? false : jobListPollMs
+}
+
+export function jobDetailPollInterval(status: string | undefined): number | false {
+  return status && terminalJobStatuses.has(status) ? false : 10_000
 }
