@@ -4974,9 +4974,9 @@ small,
   }
 
   .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-tool {
-    flex: 0 0 34px;
-    width: 34px;
-    min-height: 34px;
+    flex: 0 0 36px;
+    width: 36px;
+    min-height: 36px;
     justify-content: center;
     gap: 0;
     padding: 0;
