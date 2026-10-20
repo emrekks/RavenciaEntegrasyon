@@ -231,7 +231,14 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         var otherInvoice = NewInvoice(seed, otherOrder.Id, InvoiceStatus.MarketplaceFailed);
         var stopped = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:{seed.Package.Id}:recovery:3:1", $$"""{"invoiceId":"{{invoice.Id}}","packageId":"{{seed.Package.Id}}"}""", JobStatus.ManualReview);
         var unsettled = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{otherInvoice.Id}:after-document", $$"""{"invoiceId":"{{otherInvoice.Id}}"}""", JobStatus.ManualReview);
-        await SeedAsync(seed, db => { db.Orders.Add(otherOrder); db.Invoices.AddRange(invoice, otherInvoice); db.MarketplaceDeliveryStates.Add(state); db.IntegrationJobs.AddRange(stopped, unsettled); });
+        // A backlog of older stopped jobs that stay unsettled must not keep the newer settled one open.
+        var backlog = Enumerable.Range(0, 250).Select(index =>
+        {
+            var job = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{otherInvoice.Id}:backlog-{index}", $$"""{"invoiceId":"{{otherInvoice.Id}}"}""", JobStatus.Dead);
+            job.CreatedAt = fixture.Now.AddDays(-2).AddMinutes(index);
+            return job;
+        }).ToList();
+        await SeedAsync(seed, db => { db.Orders.Add(otherOrder); db.Invoices.AddRange(invoice, otherInvoice); db.MarketplaceDeliveryStates.Add(state); db.IntegrationJobs.AddRange(stopped, unsettled); db.IntegrationJobs.AddRange(backlog); });
 
         try
         {
@@ -243,6 +250,9 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
             Assert.Equal(JobStatus.Cancelled, closed.Status);
             Assert.Equal(InvoicingJobProcessor.DeliverySettledElsewhereCode, closed.LastErrorCode);
             Assert.Equal(JobStatus.ManualReview, (await verification.IntegrationJobs.SingleAsync(job => job.Id == unsettled.Id)).Status);
+            // The job screens learn that the job closed.
+            Assert.True(await verification.IntegrationOutboxEvents.AnyAsync(outbox => outbox.TenantId == seed.Tenant.Id
+                && outbox.ResourceType == JobLeaseService.JobEventResource && outbox.AggregateId == stopped.Id && outbox.AggregateVersion == closed.Version));
         }
         finally
         {

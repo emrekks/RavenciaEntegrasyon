@@ -362,8 +362,16 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
 
     private IntegrationOutboxEvent AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
     {
+        var outboxEvent = NewJobEvent(job, now);
+        db.IntegrationOutboxEvents.Add(outboxEvent);
+        return outboxEvent;
+    }
+
+    // The "jobs" event for a job's state change, for every writer that changes a job outside this service too.
+    internal static IntegrationOutboxEvent NewJobEvent(IntegrationJob job, DateTimeOffset now)
+    {
         var metadata = IntegrationJobMetadataPolicy.Apply(job);
-        var outboxEvent = new IntegrationOutboxEvent
+        return new IntegrationOutboxEvent
         {
             Id = Guid.CreateVersion7(),
             TenantId = job.TenantId,
@@ -376,8 +384,6 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             CreatedAt = now,
             NextAttemptAt = now
         };
-        db.IntegrationOutboxEvents.Add(outboxEvent);
-        return outboxEvent;
     }
 
     private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();

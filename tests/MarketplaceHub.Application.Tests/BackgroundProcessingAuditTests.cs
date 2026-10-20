@@ -14,6 +14,19 @@ public sealed class BackgroundProcessingAuditTests
     private static readonly DateTimeOffset Now = new(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void OnlyADeliveryJobOfTheWholeInvoiceOrOfThisPackageHoldsThisPackagesRecoveryBack()
+    {
+        var invoiceId = Guid.NewGuid();
+        var packageId = Guid.NewGuid();
+
+        Assert.True(InvoicingJobProcessor.DeliveryJobCoversPackage($$"""{"invoiceId":"{{invoiceId}}"}""", packageId));
+        Assert.True(InvoicingJobProcessor.DeliveryJobCoversPackage($$"""{"invoiceId":"{{invoiceId}}","packageId":"{{packageId}}"}""", packageId));
+        Assert.False(InvoicingJobProcessor.DeliveryJobCoversPackage($$"""{"invoiceId":"{{invoiceId}}","packageId":"{{Guid.NewGuid()}}"}""", packageId));
+        // An unreadable payload is taken as covering the whole invoice.
+        Assert.True(InvoicingJobProcessor.DeliveryJobCoversPackage("not json", packageId));
+    }
+
+    [Fact]
     public void OnlyTheFirstFewConsecutiveVersionConflictsGoWithoutAnAttempt()
     {
         var conflict = WorkerService.ExceptionResult(new DbUpdateConcurrencyException("expected to affect 1 row"));
