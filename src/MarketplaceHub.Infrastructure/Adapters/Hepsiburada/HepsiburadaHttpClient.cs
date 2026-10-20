@@ -992,21 +992,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (!string.Equals(before.Value!.RawStatus, "NOT_INVOICED", StringComparison.Ordinal))
             return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_INVOICE_ALREADY_PRESENT", "Hepsiburada paketi faturalı görünüyor; faturanın bu mali belgeyle eşleştiği kanıtlanmadan üzerine yazılmadı.", (int)HttpStatusCode.Conflict, null, null), before.RateLimit);
 
-        var body = JsonSerializer.Serialize(new
-        {
-            arrangementDate = invoice!.ArrangementDate,
-            invoiceLink = invoice.InvoiceLink.AbsoluteUri,
-            invoices = new[]
-            {
-                new
-                {
-                    arrangementDate = invoice.ArrangementDate,
-                    contentType = invoice.ContentType,
-                    invoiceLink = invoice.InvoiceLink.AbsoluteUri,
-                    orderNumber = invoice.OrderNumber
-                }
-            }
-        });
+        var body = HepsiburadaInvoiceDeliveryPolicy.Body(invoice!);
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
         var path = InvoiceLink(account, invoice.PackageNumber);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Put, path, content, cancellationToken);

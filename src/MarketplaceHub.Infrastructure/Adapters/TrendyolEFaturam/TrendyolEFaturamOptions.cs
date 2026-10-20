@@ -9,9 +9,6 @@ public sealed class TrendyolEFaturamOptions
     public Uri ProductionBaseAddress { get; init; } = new("https://apigateway.trendyolecozum.com/");
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public string[] DocumentAllowedHosts { get; init; } = [];
-    // Exact outgoing E-Invoice status/search path is provider endpoint configuration. It
-    // intentionally defaults to null so no environment guesses an undocumented endpoint.
-    public string? OutgoingInvoiceStatusPath { get; init; }
 }
 
 internal static class TrendyolEFaturamEndpoints
@@ -22,4 +19,6 @@ internal static class TrendyolEFaturamEndpoints
     public const string PermanentDocumentUrl = "api/invoice/documents/download/permanent-url";
     public const string CancelEArchive = "api/invoice/documents/earchive/cancel";
     public static string EArchiveStatus(string uuid) => $"api/invoice/documents/earchive/status/{Uri.EscapeDataString(uuid)}";
+    public static string OutgoingInvoiceStatus(string uuid) => $"api/invoice/documents/outgoing-einvoice/status/{Uri.EscapeDataString(uuid)}";
+    public static string Status(string? invoiceType, string uuid) => invoiceType == "EARSIVFATURA" ? EArchiveStatus(uuid) : OutgoingInvoiceStatus(uuid);
 }
