@@ -1,4 +1,4 @@
-import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type RefObject, type SelectHTMLAttributes } from 'react'
+import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ComponentPropsWithoutRef, type CSSProperties, type InputHTMLAttributes, type ReactNode, type RefObject, type SelectHTMLAttributes } from 'react'
 import { useRememberedTabCounts } from '../tab-counts'
 import { UiIcon } from './UiIcon'
 import { lockPageScroll } from '../hooks/useScrollLock'
@@ -57,7 +57,8 @@ export function useDialogSurface<T extends HTMLElement = HTMLElement>(open: bool
         first.focus()
       }
     }
-    const unlockScroll = lockPageScroll()
+    // body and the app's own scroller (main) hold still behind the window
+    const unlockScroll = lockPageScroll(true)
     document.addEventListener('keydown', onKeyDown)
     window.requestAnimationFrame(() => {
       const surface = surfaceRef.current
@@ -80,9 +81,9 @@ export function useDialogSurface<T extends HTMLElement = HTMLElement>(open: bool
 type DialogSurfaceElement = 'section' | 'div' | 'aside' | 'form'
 
 /** A hand-built window element (its own backdrop and layout) with the behaviour of `useDialogSurface`. */
-export function DialogSurface({ as = 'section', onClose, children, ...props }: HTMLAttributes<HTMLElement> & { as?: DialogSurfaceElement; onClose: () => void; children: ReactNode }) {
+export function DialogSurface<T extends DialogSurfaceElement = 'section'>({ as, onClose, children, ...props }: Omit<ComponentPropsWithoutRef<T>, 'children'> & { as?: T; onClose: () => void; children?: ReactNode }) {
   const ref = useDialogSurface<HTMLElement>(true, onClose)
-  return createElement(as, { role: 'dialog', 'aria-modal': true, tabIndex: -1, ...props, ref }, children)
+  return createElement(as ?? 'section', { role: 'dialog', 'aria-modal': true, tabIndex: -1, ...props, ref } as Record<string, unknown>, children)
 }
 
 export function Button({ variant = 'primary', size = 'md', loading = false, className, disabled, type = 'button', children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: ControlSize; loading?: boolean }) {

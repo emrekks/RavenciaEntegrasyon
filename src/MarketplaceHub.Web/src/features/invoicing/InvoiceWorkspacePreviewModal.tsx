@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { hubApi } from '../../shared/api'
-import { Busy, CargoProviderIcon, ErrorBox, UiIcon } from '../../shared/components'
+import { Busy, CargoProviderIcon, ErrorBox, UiIcon, DialogSurface } from '../../shared/components'
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { formatDate } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
@@ -102,7 +102,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
   const eligibleCount = previews.filter(item => item.canConfirm).length
   const internetSalesInfoLocked = previews.length > 0 && previews.every(item => item.existingInvoiceId !== null && item.nextAction !== 'SUBMIT_RETRY')
   return <div className="invoice-detail-backdrop invoice-workspace-preview-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="workspace-modal invoice-detail-modal invoice-workspace-preview-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-workspace-preview-title" onMouseDown={event => event.stopPropagation()}>
+    <DialogSurface as="section" onClose={onClose} className="workspace-modal invoice-detail-modal invoice-workspace-preview-modal" aria-labelledby="invoice-workspace-preview-title" onMouseDown={event => event.stopPropagation()}>
       <header className="invoice-detail-header"><div><p className="eyebrow">Salt okunur fatura kontrolü</p><h2 id="invoice-workspace-preview-title">Fatura oluşturma önizlemesi</h2><p>Bilgileri kontrol edin; onayladığınızda fatura hemen kesilir ve sonuç bildirim olarak gelir.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Önizlemeyi kapat"><UiIcon name="close" /></button></header>
       <div className="invoice-detail-body">
         {loading ? <Busy text="Sipariş ve fatura verileri okunuyor…" /> : error && !previews.length ? <ErrorBox error={error} /> : <>
@@ -122,6 +122,6 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
         </>}
       </div>
       <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.'}><input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || submitting || Boolean(results) || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>{results ? 'Kapat' : 'Vazgeç'}</button>{!results && <button type="button" disabled={loading || submitting || eligibleCount === 0} onClick={confirm}>{submitting ? 'İşlem kuyruğa alınıyor…' : eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button>}</footer>
-    </section>
+    </DialogSurface>
   </div>
 }

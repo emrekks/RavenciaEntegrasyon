@@ -8,7 +8,6 @@ import './app.css'
 import responsiveStylesheet from './styles/responsive.css?url'
 import phoneSpacingStylesheet from './styles/phone-spacing.css?url'
 import { installScrollbarVisibility } from './shared/scrollbar-visibility'
-import { installDialogScrollLock } from './shared/hooks/useScrollLock'
 import { reloadForNewBuild } from './shared/lazy-page'
 import { ApiRequestError } from './shared/api'
 import { installSheetSwipeClose } from './shared/sheet-swipe'
@@ -31,7 +30,6 @@ document.head.appendChild(phoneSpacingLink)
 window.addEventListener('vite:preloadError', event => { if (reloadForNewBuild()) event.preventDefault() })
 
 installScrollbarVisibility()
-installDialogScrollLock()
 installSheetSwipeClose()
 
 // One quick repeat for server and network failures; a client error (4xx) would answer the same way again.

@@ -29,8 +29,9 @@ export function MobileActionMenu({ children, label = 'Diğer işlemler', primary
     <div className="mam-primary">{primaryItems}</div>
     {iconItems.length > 0 && <div className="mam-icons">{iconItems}</div>}
     {moreItems.length > 0 && <>
-      <button type="button" className="mam-trigger" aria-haspopup="menu" aria-expanded={open} aria-label={label} onClick={() => setOpen(value => !value)}><UiIcon name="moreVertical" size={18} /></button>
-      <div className="mam-more" role="menu" onClick={closeAfterClick}>{moreItems}</div>
+      <button type="button" className="mam-trigger" aria-expanded={open} aria-label={label} onClick={() => setOpen(value => !value)}><UiIcon name="moreVertical" size={18} /></button>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- delegated: closes after one of its buttons or links ran, which keyboards trigger too */}
+      <div className="mam-more" onClick={closeAfterClick}>{moreItems}</div>
     </>}
   </div>
 }

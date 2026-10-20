@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { UiIcon } from '../../shared/components'
+import { UiIcon, DialogSurface } from '../../shared/components'
 import type { PublicationValueMappingFix } from './publication-attribute-readiness'
 import { filterValueCandidates, rankValueCandidates, type ValueCandidate } from './value-mapping-suggestions'
 import './missing-value-mapping-dialog.css'
@@ -72,7 +72,7 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
 
   const chosenCount = fixes.filter(fix => choices[keyOf(fix)]).length
   return createPortal(<div className="missing-value-mapping-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose() }}>
-    <section className="missing-value-mapping" role="dialog" aria-modal="true" aria-labelledby="missing-value-mapping-title">
+    <DialogSurface as="section" onClose={() => { if (!saving) onClose() }} className="missing-value-mapping" aria-labelledby="missing-value-mapping-title">
       <header>
         <div>
           <strong id="missing-value-mapping-title">Eksik değer eşlemeleri</strong>
@@ -112,6 +112,6 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
         <button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button>
         <button type="button" onClick={() => void save()} disabled={saving || chosenCount === 0}>{saving ? 'Kaydediliyor…' : `Eşlemeleri kaydet (${chosenCount})`}</button>
       </footer>
-    </section>
+    </DialogSurface>
   </div>, document.body)
 }

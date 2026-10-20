@@ -193,6 +193,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
         <header>
           <RrLogo code={item.platformCode} />
           <div><b>{item.orderNumber}</b><span className="rr-osfacts"><span>Müşteri: <b>{item.customerName}</b></span>{item.orderedAt && <span>Sipariş Tarihi: <b className="rr-num">{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</b></span>}{item.packageNumber && <span>Paket No: <b className="rr-num">{item.packageNumber}</b></span>}</span></div>
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read the failure */}
           {state ? <RrBadge label={state} /> : <span className="rr-reason-tip" tabIndex={0}><RrBadge label="İşlem Tamamlanamadı" tone="bad" /><span className="rr-reason-pop" role="tooltip"><b>İşlem Tamamlanamadı</b>{outcome?.message}</span></span>}
         </header>
         <section>

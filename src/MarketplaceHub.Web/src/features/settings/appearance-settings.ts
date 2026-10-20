@@ -33,13 +33,13 @@ export type AppearanceSettingsEnvelope = {
 }
 
 const defaultDarkPalette: AppearancePalette = {
-  bg: '#101014', sidebar: '#17171c', surface: '#17171c', surfaceRaised: '#1d1d23', surfaceSoft: '#22222a', border: '#2a2a32', borderStrong: '#383842', ink: '#ececf0', muted: '#a3a3b0', subtle: '#6f6f7c', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#272139', accent: '#46b98f', accentSoft: '#1e2e2c', warning: '#e2aa4b', warningSoft: '#332c23', danger: '#e4636f', dangerSoft: '#342228', info: '#83b4ff'
+  bg: '#101014', sidebar: '#17171c', surface: '#17171c', surfaceRaised: '#1d1d23', surfaceSoft: '#22222a', border: '#2a2a32', borderStrong: '#383842', ink: '#ececf0', muted: '#a3a3b0', subtle: '#8a8a99', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#272139', accent: '#46b98f', accentSoft: '#1e2e2c', warning: '#e2aa4b', warningSoft: '#332c23', danger: '#e4636f', dangerSoft: '#342228', info: '#83b4ff'
 }
 
 // Soft by design: no pure white anywhere, so large light areas stay easy on the eyes. It is only the starting
 // point; the palette is editable in Settings and saved with the account.
 export const defaultLightPalette: AppearancePalette = {
-  bg: '#e1e4eb', sidebar: '#eaedf2', surface: '#eaedf2', surfaceRaised: '#f0f2f6', surfaceSoft: '#dfe3ea', border: '#c9d0dc', borderStrong: '#a4aec0', ink: '#2f3a4f', muted: '#525e77', subtle: '#69758d', primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#e0dcf6', accent: '#0f7864', accentSoft: '#d3e8df', warning: '#8a560d', warningSoft: '#efe1c0', danger: '#a2344f', dangerSoft: '#efd5dc', info: '#2f5aa8'
+  bg: '#e1e4eb', sidebar: '#eaedf2', surface: '#eaedf2', surfaceRaised: '#f0f2f6', surfaceSoft: '#dfe3ea', border: '#c9d0dc', borderStrong: '#a4aec0', ink: '#2f3a4f', muted: '#525e77', subtle: '#59657d', primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#e0dcf6', accent: '#0f7864', accentSoft: '#d3e8df', warning: '#8a560d', warningSoft: '#efe1c0', danger: '#a2344f', dangerSoft: '#efd5dc', info: '#2f5aa8'
 }
 
 // Sade: darker, cooler surfaces with thin lines and a single violet accent. It is the default dark theme.
@@ -52,7 +52,7 @@ export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
 
 // The former default stays available as a built-in choice.
 const grafitDarkPalette: AppearancePalette = {
-  bg: '#101014', sidebar: '#18181f', surface: '#18181f', surfaceRaised: '#202028', surfaceSoft: '#272730', border: '#303039', borderStrong: '#41414d', ink: '#f4f4f7', muted: '#aaaab9', subtle: '#858595', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#302443', accent: '#4adea0', accentSoft: '#1c332c', warning: '#f6c16b', warningSoft: '#382f22', danger: '#fb858b', dangerSoft: '#3c252b', info: '#83b4ff'
+  bg: '#101014', sidebar: '#18181f', surface: '#18181f', surfaceRaised: '#202028', surfaceSoft: '#272730', border: '#303039', borderStrong: '#41414d', ink: '#f4f4f7', muted: '#aaaab9', subtle: '#8d8d9d', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#302443', accent: '#4adea0', accentSoft: '#1c332c', warning: '#f6c16b', warningSoft: '#382f22', danger: '#fb858b', dangerSoft: '#3c252b', info: '#83b4ff'
 }
 
 export const grafitAppearanceColorTheme: AppearanceColorThemeProfile = {
@@ -160,10 +160,14 @@ const themeModes = new Set<AppearanceThemeMode>(appearanceThemeModeOptions.map(o
 const colorTokens: AppearanceColorToken[] = appearanceColorTokenOptions.map(option => option.key)
 const hexColor = /^#[0-9a-f]{6}$/i
 
+// The former built-in "Soluk Metin" colours were below 4.5:1 on their surfaces; a palette that still carries one follows
+// the readable replacement (a colour the person picked by hand is kept).
+const formerSubtleColors: Record<string, string> = { '#6f6f7c': '#8a8a99', '#69758d': '#59657d', '#858595': '#8d8d9d' }
 function normalizePalette(value: unknown, fallback: AppearancePalette): AppearancePalette {
   if (!value || typeof value !== 'object') return { ...fallback }
   const candidate = value as Partial<AppearancePalette>
-  return Object.fromEntries(colorTokens.map(token => [token, typeof candidate[token] === 'string' && hexColor.test(candidate[token]) ? candidate[token] : fallback[token]])) as AppearancePalette
+  const palette = Object.fromEntries(colorTokens.map(token => [token, typeof candidate[token] === 'string' && hexColor.test(candidate[token]) ? candidate[token] : fallback[token]])) as AppearancePalette
+  return { ...palette, subtle: formerSubtleColors[palette.subtle.toLowerCase()] ?? palette.subtle }
 }
 
 // Settings saved before the Grafit theme existed carry no Grafit entry; only those move from the former default to Sade.

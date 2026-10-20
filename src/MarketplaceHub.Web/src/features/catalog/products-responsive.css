@@ -291,7 +291,7 @@
   }
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button > strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button > span { display: inline-grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center; font-size: 12px; font-weight: 700; color: inherit; background: color-mix(in srgb, var(--rv-color-ink) 10%, transparent); border-radius: 50%; }
-  .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active { color: #fff; background: var(--rv-color-primary); box-shadow: 0 2px 8px color-mix(in srgb, var(--rv-color-primary) 40%, transparent); }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active { color: #fff; background: var(--rv-color-primary-fill); box-shadow: 0 2px 8px color-mix(in srgb, var(--rv-color-primary) 40%, transparent); }
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active > span { background: rgb(255 255 255 / 22%); }
 }
 

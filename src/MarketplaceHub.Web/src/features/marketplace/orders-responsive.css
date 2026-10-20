@@ -349,7 +349,7 @@ html body .order-detail-empty { margin: 0; color: var(--rv-color-muted); font-si
 html body .order-detail-actions { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border); }
 html body .order-detail-actions > :only-child { grid-column: 1 / -1; }
 html body .order-detail-actions > .order-detail-primary, html body .order-detail-actions > .order-detail-secondary { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 8px; font-weight: 600; text-decoration: none; }
-html body .order-detail-actions > .order-detail-primary { grid-column: 2; color: #fff; background: var(--rv-color-primary); border: 0; border-radius: var(--rv-radius-md); }
+html body .order-detail-actions > .order-detail-primary { grid-column: 2; color: #fff; background: var(--rv-color-primary-fill); border: 0; border-radius: var(--rv-radius-md); }
 html body .order-detail-actions > .order-detail-secondary { grid-column: 1; color: var(--rv-color-ink); background: transparent; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
 html body .order-detail-actions-list { position: absolute; right: 16px; bottom: calc(100% + 6px); left: 16px; display: grid; gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
 html body .order-detail-actions-list > button { min-height: 44px; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
@@ -631,7 +631,7 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .orders-selection-bar > strong { grid-area: count; }
   .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-all { grid-area: all; padding: 0; justify-self: end; }
   .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-actions {
-    grid-area: actions; width: 100%; min-height: 46px; color: #fff; background: var(--rv-color-primary); border: 0; border-radius: var(--rv-radius-md); font-size: 15px; font-weight: 600;
+    grid-area: actions; width: 100%; min-height: 46px; color: #fff; background: var(--rv-color-primary-fill); border: 0; border-radius: var(--rv-radius-md); font-size: 15px; font-weight: 600;
   }
   .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-actions:disabled { opacity: .5; }
   .app-shell.stitch-shell main .orders-page .orders-selection-menu {

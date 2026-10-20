@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
-import { Pagination, Tabs, UiIcon, type UiIconName } from '../../shared/components'
+import { Pagination, Tabs, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification } from '../../shared/notifications'
@@ -362,7 +362,7 @@ type OneTimeInvoiceDeliveryActionState = { isPending: boolean; isError: boolean;
 function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, oneTimeInvoiceDelivery, onClose }: { selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; oneTimeInvoiceDelivery: OneTimeInvoiceDeliveryActionState; onClose: () => void }) {
   const [oneTimeDeliveryOpen, setOneTimeDeliveryOpen] = useState(false)
   const [oneTimeDeliveryConfirmed, setOneTimeDeliveryConfirmed] = useState(false)
-  return <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={onClose}><aside className="job-detail-drawer jobs-reference-drawer panel" role="dialog" aria-modal="true" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
+  return <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="aside" onClose={onClose} className="job-detail-drawer jobs-reference-drawer panel" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
     <div className="jobs-reference-drawer-header">
       <div>
         <h2 id="job-detail-title">{selected ? jobPresentation(selected.jobType).title : 'İşlem ayrıntısı'}</h2>
@@ -400,7 +400,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         <section className="jobs-reference-attempts-section" aria-labelledby="job-attempts-title"><div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Yürütme geçmişi</span><h3 id="job-attempts-title">Deneme Geçmişi</h3></div><span>{detail.data.attempts.length} kayıt</span></div><div className="table-wrap"><table><thead><tr><th>#</th><th>Başlangıç</th><th>Sonuç</th><th>Hata</th></tr></thead><tbody>{detail.data.attempts.map(attempt => <tr key={attempt.attemptNumber}><td>{attempt.attemptNumber}</td><td>{formatDateTime(attempt.startedAt)}</td><td>{attempt.completedAt ? (attempt.succeeded ? 'Başarılı' : 'Başarısız') : 'Çalışıyor'}</td><td>{attempt.errorCode ?? '—'}<small>{attempt.errorSummary ?? ''}</small></td></tr>)}{detail.data.attempts.length === 0 && <tr><td colSpan={4}>Henüz deneme yok.</td></tr>}</tbody></table></div></section>
       </div>
     })()}
-  </aside></div>
+  </DialogSurface></div>
 }
 
 export function JobsPage({ me }: { me: Me }) {

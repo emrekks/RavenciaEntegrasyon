@@ -72,21 +72,3 @@ export function useScrollLock(enabled: boolean, lockMain = false) {
     return acquire(lockMain)
   }, [enabled, lockMain])
 }
-
-// Any open dialog locks the page behind it, including the hand-built windows that do not call useScrollLock:
-// a modal dialog (aria-modal) or a modal backdrop in the document keeps body and the app's main scroller still.
-const DIALOG_SELECTOR = '[aria-modal="true"], [class*="modal-backdrop"]'
-
-export function installDialogScrollLock() {
-  let release: (() => void) | null = null
-  let scheduled = false
-  const sync = () => {
-    scheduled = false
-    const open = Boolean(document.querySelector(DIALOG_SELECTOR))
-    if (open && !release) release = acquire(true)
-    else if (!open && release) { release(); release = null }
-  }
-  const schedule = () => { if (!scheduled) { scheduled = true; requestAnimationFrame(sync) } }
-  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal', 'class'] })
-  schedule()
-}

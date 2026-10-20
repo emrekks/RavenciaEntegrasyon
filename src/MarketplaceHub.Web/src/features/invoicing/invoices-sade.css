@@ -234,7 +234,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer button.secondary { color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-platform-refresh { color: var(--rv-color-muted); background: none; border-color: transparent; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-platform-refresh:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-open-record { color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); text-decoration: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-open-record { color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-primary); text-decoration: none; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary { grid-template-columns: 1fr 1fr; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:nth-child(3) { border-left: 0; }

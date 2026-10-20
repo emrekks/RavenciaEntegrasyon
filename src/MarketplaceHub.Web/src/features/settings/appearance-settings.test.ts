@@ -29,3 +29,14 @@ describe('built-in colour themes', () => {
   })
 
 })
+
+describe('readable low-priority text', () => {
+  it('moves a palette that kept a former default "Soluk Metin" colour to the readable one, and keeps a picked one', () => {
+    const saved = { ...defaultAppearanceSettings, colors: { dark: { ...defaultAppearanceSettings.colors.dark, subtle: '#6f6f7c' }, light: { ...defaultLightPalette, subtle: '#69758d' } } }
+    const normalized = normalizeAppearanceSettings(saved)
+    expect(normalized.colors.dark.subtle).toBe('#8a8a99')
+    expect(normalized.colors.light.subtle).toBe('#59657d')
+    const picked = normalizeAppearanceSettings({ ...saved, colors: { ...saved.colors, dark: { ...saved.colors.dark, subtle: '#9999aa' } } })
+    expect(picked.colors.dark.subtle).toBe('#9999aa')
+  })
+})

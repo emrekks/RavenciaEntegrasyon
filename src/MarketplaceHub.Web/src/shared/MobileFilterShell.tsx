@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentPropsWithoutRef, type ElementType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { UiIcon } from './components'
+import { UiIcon, DialogSurface } from './components'
 import { useScrollLock } from './hooks/useScrollLock'
 
 type MobileFilterSort = {
@@ -35,7 +35,7 @@ export function MobileFilterShell({ as = 'div', className, children, activeCount
   const openSheet = () => { const element = bar.current; if (element) { const style = getComputedStyle(element); setSpacer(element.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)) } setOpen(true) }
   const Tag = as as ElementType
   // The sheets open on phones only; while one is open the page behind it holds still.
-  useScrollLock(open || sortOpen)
+  useScrollLock(open || sortOpen, true)
   useEffect(() => {
     if (!open && !sortOpen) return
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); setSortOpen(false) } }
@@ -49,10 +49,10 @@ export function MobileFilterShell({ as = 'div', className, children, activeCount
     <button type="button" className="mfs-open" aria-haspopup="dialog" aria-expanded={open} aria-label={activeCount > 0 ? `Filtreler, ${activeCount} etkin` : 'Filtreler'} onClick={openSheet}><UiIcon name="filter" size={18} />{activeCount > 0 && <b>{activeCount}</b>}</button>
     <div className="mfs-footer"><button type="button" className="secondary" onClick={() => onClear?.()}>Temizle</button><button type="button" onClick={() => { onApply?.(); setOpen(false) }}>Filtrele</button></div>
     {sort && sortOpen && createPortal(<div className="mfs-sort-backdrop" role="presentation" onMouseDown={() => setSortOpen(false)}>
-      <section className="mfs-sort-sheet" role="dialog" aria-modal="true" aria-label={sort.title ?? 'Sıralama'} onMouseDown={event => event.stopPropagation()}>
+      <DialogSurface as="section" onClose={() => setSortOpen(false)} className="mfs-sort-sheet" aria-label={sort.title ?? 'Sıralama'} onMouseDown={event => event.stopPropagation()}>
         <header><button type="button" onClick={() => setSortOpen(false)}>Kapat</button><strong>{sort.title ?? 'Sıralama'}</strong><span aria-hidden="true" /></header>
         <div role="listbox" aria-label={sort.title ?? 'Sıralama'}>{sort.options.map(option => <button type="button" role="option" aria-selected={option.value === sort.value} className={option.value === sort.value ? 'is-selected' : ''} key={option.value} onClick={() => { sort.onChange(option.value); setSortOpen(false) }}>{option.label}</button>)}</div>
-      </section>
+      </DialogSurface>
     </div>, document.body)}
   </Tag></>
 }

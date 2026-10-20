@@ -9,7 +9,7 @@
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-button { color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-button:hover { background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-button[aria-expanded="true"] { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
-.app-shell.stitch-shell main .integrations-reference-page .integration-add-button { color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-add-button { color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-primary); }
 .app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-button, .integration-add-button) .ui-icon { width: 15px; height: 15px; }
 
 /* View tabs: text tabs on a hairline, the active one underlined in violet. */

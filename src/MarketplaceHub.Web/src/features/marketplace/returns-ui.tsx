@@ -3,6 +3,7 @@ import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
 import { errorText, RetryRing } from '../../shared/components/AsyncState'
+import { useDialogSurface } from '../../shared/components/DesignSystem'
 import { autoRetryLine, useAutoRetry } from '../../shared/hooks/useAutoRetry'
 import './returns-sade.css'
 import { lockPageScroll } from '../../shared/hooks/useScrollLock'
@@ -204,6 +205,7 @@ export function RrFilterCard({ active, children }: { active: number; children: R
     const unlock = lockPageScroll()
     return () => { document.removeEventListener('keydown', key); unlock() }
   }, [open])
+  // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- delegated: closes the sheet after one of its buttons ran, which keyboards trigger too
   return <div className={`rr-fcard${open ? ' rr-fopen' : ''}`} onClick={event => { if (open && (event.target as Element).closest('.rr-fbtns button')) setOpen(false) }}>
     <button type="button" className="rr-btn rr-ftoggle" aria-expanded={open} onClick={() => setOpen(true)}><RrIcon name="filter" />Filtre{active > 0 && <span className="rr-fcount">{active}</span>}</button>
     {open && <div className="rr-fscrim" aria-hidden="true" onClick={() => setOpen(false)} />}
@@ -211,11 +213,9 @@ export function RrFilterCard({ active, children }: { active: number; children: R
   </div>
 }
 
-// Popups: overlay, framed window with head, body and footer. Only the top window answers Escape.
-const modalStack: number[] = []
-let modalSeed = 0
+// Popups: overlay, framed window with head, body and footer. The shared dialog surface traps focus, lets only the top
+// window answer Escape, holds the page still and gives focus back on close.
 export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean }) {
-  const id = useRef(0)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   // Closing from the window itself (the cross, a tap outside, Escape) first plays the closing motion, then closes.
@@ -230,15 +230,7 @@ export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, 
     setClosing(true)
     window.setTimeout(() => onCloseRef.current(), 180)
   }
-  const dialog = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    id.current = ++modalSeed
-    modalStack.push(id.current)
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && modalStack[modalStack.length - 1] === id.current) { event.stopPropagation(); close.current() } }
-    document.addEventListener('keydown', key)
-    dialog.current?.focus()
-    return () => { document.removeEventListener('keydown', key); const index = modalStack.indexOf(id.current); if (index >= 0) modalStack.splice(index, 1) }
-  }, [])
+  const dialog = useDialogSurface<HTMLDivElement>(true, () => close.current())
   return createPortal(<div className={['rr-layer', layerClass, closing ? 'rr-closing' : ''].filter(Boolean).join(' ')}>
     <div className="rr-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close.current() }}>
       <div ref={dialog} tabIndex={-1} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}>
