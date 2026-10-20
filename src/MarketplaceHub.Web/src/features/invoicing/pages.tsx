@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { copyText } from '../../shared/copy-text'
 import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -50,13 +51,9 @@ function displayInvoiceOrderNumber(value: string) { return `#${value.trim().repl
 function InvoiceOrderNumber({ item }: { item: InvoiceWorkspace }) {
   const [copied, setCopied] = useState(false)
   async function copyOrderNumber() {
-    try {
-      await navigator.clipboard.writeText(item.orderNumber)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1400)
-    } catch {
-      setCopied(false)
-    }
+    if (!await copyText(item.orderNumber)) { setCopied(false); return }
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1400)
   }
   const tooltipId = `invoice-order-copy-tooltip-${item.packageId}`
   // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- touch shortcut on phones (tap the number to copy); the row actions serve keyboards

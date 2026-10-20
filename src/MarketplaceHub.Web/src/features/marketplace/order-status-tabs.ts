@@ -8,24 +8,19 @@ export const orderStatusTabs = [
   ['RESENT', 'Yeniden Gönderimler'],
   ['ON_HOLD', 'Askıdaki'],
   ['PARTIALLY_CANCELLED', 'Kısmi İptal'],
-  // Every order status has a tab (audit 2026-10-20 S13); these open from the "Diğer" menu.
   ['UNDELIVERED', 'Teslim Edilemedi'],
-  ['RETURN_IN_TRANSIT', 'İade Yolunda'],
-  ['RETURNED', 'İade Edildi'],
   ['MANUAL_REVIEW', 'İnceleme Gerekli'],
-  // Orders waiting for the payment approval and Hepsiburada orders not yet verified have a place of their own, so
-  // every order of "Tümü" is in a tab.
-  ['PAYMENT_PENDING', 'Ödeme Bekleyen'],
-  ['UNVERIFIED', 'Doğrulanmadı'],
-  // The warehouse queue the menu counter and the dashboard's "Bekleyen" card count (new, processing, ready to ship,
-  // partially cancelled and manual review orders): their links open exactly that set.
+  // The warehouse queue the menu counter and the dashboard's "Bekleyen" card count: reached from those links only
+  // (orderLinkOnlyTabs), not listed in the tab row.
   ['PENDING', 'Bekleyen İşler'],
   // Pending orders past their ship-by time: the dashboard's "Geciken Siparişler" card opens this tab.
   ['LATE', 'Geciken'],
 ] as const
 
-// The tabs that leave the tab row for its "Diğer" menu.
-export const orderStatusMoreTabs = ['PARTIALLY_CANCELLED', 'RESENT', 'ON_HOLD', 'UNDELIVERED', 'RETURN_IN_TRANSIT', 'RETURNED', 'MANUAL_REVIEW', 'PAYMENT_PENDING', 'UNVERIFIED', 'PENDING', 'LATE']
+// The tab row shows what fits and moves the rest into "Diğer" by itself (ViewTabsWithMore); these always go there.
+export const orderStatusMoreTabs: string[] = []
+// Shown only while a link (the dashboard cards, the menu counter) has opened them.
+export const orderLinkOnlyTabs = ['PENDING']
 
 const knownOrderStatusTabs = new Set<string>(orderStatusTabs.map(([value]) => value))
 
