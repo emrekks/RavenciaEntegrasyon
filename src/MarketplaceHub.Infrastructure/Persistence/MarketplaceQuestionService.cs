@@ -21,7 +21,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     {
         var rows = from question in db.MarketplaceQuestions.AsNoTracking()
                    join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
-                   where question.TenantId == tenantId
+                   // Like orders and returns: a hidden, disabled or deleted store's questions are not listed.
+                   where question.TenantId == tenantId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                    select new { Question = question, Connection = connection };
         var kind = query.Kind.Trim().ToUpperInvariant();
         if (kind is "PRODUCT" or "ORDER") rows = rows.Where(row => row.Question.Kind == kind);
@@ -224,14 +225,11 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         if (question is null) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_NOT_FOUND", "Soru bulunamadı.", 404);
         if (question.Version != expectedVersion) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_STALE", "Soru yenilendi. Güncel kaydı açıp tekrar deneyin.", 412);
         var reconcilingPriorSubmission = question.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED";
-        if (!reconcilingPriorSubmission && question.Status != "WAITING_FOR_ANSWER" && question.Status != "ANSWER_SUBMITTED") return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_CLOSED", "Bu soru artık cevap beklemiyor.", 409);
+        // A rejected answer may be written again.
+        if (!reconcilingPriorSubmission && question.Status is not ("WAITING_FOR_ANSWER" or "ANSWER_SUBMITTED" or "REJECTED")) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_CLOSED", "Bu soru artık cevap beklemiyor.", 409);
         var connection = await db.PlatformConnections.AsNoTracking().SingleAsync(row => row.TenantId == tenantId && row.Id == question.ConnectionId, cancellationToken);
-        if (!reconcilingPriorSubmission)
-        {
-            var answerLimit = connection.PlatformCode == "TRENDYOL" ? (10, 2000) : (1, 2000);
-            if (answer.Trim().Length < answerLimit.Item1 || answer.Trim().Length > answerLimit.Item2)
-                return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_LENGTH", $"Cevap {answerLimit.Item1}–{answerLimit.Item2} karakter arasında olmalıdır.", 422);
-        }
+        if (!reconcilingPriorSubmission && QuestionAnswerPolicy.Validate(connection.PlatformCode, answer) is { } invalid)
+            return ServiceResult<MarketplaceQuestionView>.Fail(invalid.Code, invalid.Message, 422);
         var context = new AdapterContext(tenantId, question.ConnectionId, correlationId, idempotencyKey, timeProvider.GetUtcNow().AddMinutes(2), Operation: IntegrationOperation.Manual);
         var current = await port.GetQuestionAsync(context, question.ExternalQuestionId, question.Kind, cancellationToken);
         if (!current.IsSuccess) return ServiceResult<MarketplaceQuestionView>.Fail(current.Error!.Code, current.Error.SafeMessage, current.Error.HttpStatus ?? 502);
@@ -242,6 +240,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             if (question.Version == expectedVersion) question.Version++;
             await db.SaveChangesAsync(cancellationToken);
 
+            if (question.AnswerSubmissionStatus == "REJECTED")
+                return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_REJECTED", "Önceki cevap pazaryerince reddedildi; cevabı düzenleyip yeniden gönderebilirsiniz.", 409);
             var reconciled = question.AnswerSubmissionStatus is "SUBMITTED" or "CONFIRMED";
             return ServiceResult<MarketplaceQuestionView>.Fail(
                 reconciled ? "QUESTION_ANSWER_RECONCILED" : "QUESTION_ANSWER_RESULT_UNKNOWN",
@@ -250,7 +250,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                     : "Önceki cevap isteğinin sonucu hâlâ belirsiz. Yinelenen cevap oluşmaması için yeni gönderim yapılmadı.",
                 409);
         }
-        if (!current.Value!.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase))
+        if (!current.Value!.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase)
+            && !current.Value.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase))
         {
             await UpsertAsync(tenantId, question.ConnectionId, current.Value, timeProvider.GetUtcNow(), cancellationToken); await db.SaveChangesAsync(cancellationToken);
             return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ALREADY_CLOSED", "Soru pazaryerinde artık cevap beklemiyor. Güncel durum alındı.", 409);
@@ -467,6 +468,16 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             return;
         }
 
+        if (resolution == QuestionAnswerSubmissionReconciliation.Rejected
+            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
+        {
+            // The answer was refused: the submission ends and the seller can
+            // write a new one; the question keeps the marketplace's status.
+            row.AnswerSubmissionStatus = "REJECTED";
+            row.PendingAnswerText = null;
+            return;
+        }
+
         if (resolution == QuestionAnswerSubmissionReconciliation.Submitted
             && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
         {
@@ -497,4 +508,35 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         for (var cursor = start; cursor < end; cursor = cursor.Add(maximum)) yield return (cursor, cursor.Add(maximum) < end ? cursor.Add(maximum) : end);
     }
     private sealed class QuestionSyncException(AdapterError error) : Exception(error.SafeMessage) { public AdapterError Error { get; } = error; }
+}
+
+// What a marketplace accepts as an answer. Trendyol refuses answers shorter
+// than 10 characters; every marketplace refuses contact details (links,
+// e-mail addresses, phone numbers) in answers, so they are stopped here
+// instead of coming back as a rejected answer.
+internal static class QuestionAnswerPolicy
+{
+    private static readonly System.Text.RegularExpressions.Regex Url = new(@"(https?://|www\.)\S+", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly System.Text.RegularExpressions.Regex Email = new(@"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    // Turkish mobile numbers (5xx, with or without a 0/+90 prefix), landlines
+    // (2xx-4xx, only with the prefix, so order and package numbers are not
+    // taken for phones) and 444 numbers, with any separators.
+    private static readonly System.Text.RegularExpressions.Regex Phone = new(
+        @"(?<!\d)(?:(?:\+?90|0)[\s.\-]*\(?[2-5]\d{2}\)?|\(?5\d{2}\)?)[\s.\-]*\d{3}[\s.\-]*\d{2}[\s.\-]*\d{2}(?!\d)|(?<!\d)444[\s.\-]*\d[\s.\-]*\d{3}(?!\d)",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    public static (int Minimum, int Maximum) LengthLimits(string? platformCode) =>
+        string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) ? (10, 2000) : (1, 2000);
+
+    public static (string Code, string Message)? Validate(string? platformCode, string answer)
+    {
+        var text = answer.Trim();
+        var (minimum, maximum) = LengthLimits(platformCode);
+        if (text.Length < minimum || text.Length > maximum)
+            return ("QUESTION_ANSWER_LENGTH", $"Cevap {minimum}–{maximum} karakter arasında olmalıdır.");
+        if (Url.IsMatch(text)) return ("QUESTION_ANSWER_CONTENT", "Cevapta bağlantı (web adresi) paylaşılamaz.");
+        if (Email.IsMatch(text)) return ("QUESTION_ANSWER_CONTENT", "Cevapta e-posta adresi paylaşılamaz.");
+        if (Phone.IsMatch(text)) return ("QUESTION_ANSWER_CONTENT", "Cevapta telefon numarası paylaşılamaz.");
+        return null;
+    }
 }

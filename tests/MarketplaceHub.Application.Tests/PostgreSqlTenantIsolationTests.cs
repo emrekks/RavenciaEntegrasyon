@@ -2089,6 +2089,38 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task AnswerAsync_ReleasesASubmissionTheMarketplaceRejectedAndAcceptsANewAnswer()
+    {
+        var tenant = NewTenant("question-answer-rejected");
+        var connection = NewQuestionConnection(tenant);
+        var question = NewUncertainQuestion(tenant.Id, connection.Id, fixture.Now);
+        question.AnswerSubmissionStatus = "SUBMITTED";
+        var remote = NewRemoteQuestion("REJECTED", [new("Merchant", "Önceki cevap", fixture.Now, "Uygunsuz içerik")], fixture.Now);
+        var port = new FixedQuestionPort(remote);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.MarketplaceQuestions.Add(question);
+        await db.SaveChangesAsync();
+
+        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var first = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "yeni cevap metni", Guid.NewGuid().ToString("N"), "question-answer-rejected-1", CancellationToken.None);
+
+        Assert.Equal("QUESTION_ANSWER_REJECTED", first.Error?.Code);
+        Assert.Equal("REJECTED", question.AnswerSubmissionStatus);
+        Assert.Equal("REJECTED", question.Status);
+        Assert.Null(question.PendingAnswerText);
+
+        var second = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "Düzeltilmiş yeni cevap metni", Guid.NewGuid().ToString("N"), "question-answer-rejected-2", CancellationToken.None);
+
+        Assert.Null(second.Error);
+        Assert.Equal(1, port.AnswerCalls);
+        Assert.Equal("SUBMITTED", question.AnswerSubmissionStatus);
+    }
+
+    [PostgreSqlFact]
     public async Task AnswerAsync_LeavesUncertainSubmissionBlockedWhenRemoteHasNoMatchingMerchantMessage()
     {
         var tenant = NewTenant("question-answer-unresolved");
@@ -2969,6 +3001,12 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             using var sent = JsonDocument.Parse(port.Payload!);
             Assert.Equal(lineId, sent.RootElement.GetProperty("lines")[0].GetProperty("lineId").GetString());
             Assert.True(await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenant.Id && x.EffectType == "PAZARAMA_INSTANT_PICKING" && x.CompletedAt != null));
+            // The marketplace's own Picking event must stay newer than the
+            // stored status time, and the local step leaves a history row.
+            var picked = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == package.Id);
+            Assert.Equal(ShipmentPackageStatus.Processing, picked.Status);
+            Assert.Equal(package.StatusOccurredAt, picked.StatusOccurredAt);
+            Assert.True(await db.OrderStatusHistory.AnyAsync(x => x.TenantId == tenant.Id && x.PackageId == package.Id && x.CanonicalStatus == "PROCESSING"));
         }
         finally
         {
@@ -3066,6 +3104,109 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var persistedPackage = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == packageNumber);
             Assert.Equal(persistedOrder.Id, persistedPackage.OrderId);
             Assert.Equal("7330037500176178", persistedPackage.CargoTrackingNumber);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TrendyolOrderTotals_SumSiblingPackagesReadOnSeparatePages()
+    {
+        var tenant = NewTenant("trendyol-sibling-totals");
+        var connection = NewQuestionConnection(tenant);
+        connection.ApiVersion = "V2";
+        const string externalOrderId = "116483579001";
+        RemoteOrder Page(string packageNumber, string lineId, decimal amount, DateTimeOffset at) => new(
+            externalOrderId, externalOrderId, fixture.Now.AddDays(-1), at, "TRY", amount, 0m, amount, "{}", "{}", "{}",
+            [new RemoteOrderLine(lineId, $"SKU-{lineId}", $"BC-{lineId}", "Test ürün", 1m, amount, 10m, "Created")],
+            [new RemotePackage(packageNumber, null, "Created", at, null, null, [new RemotePackageAllocation(lineId, 1m, 0m, 0m, 0m, 0m)], amount, 0m, amount)],
+            "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            // Each stream page carries one sibling package of the same order.
+            foreach (var (page, key) in new[] { (Page("P-300", "line-1", 300m, fixture.Now.AddHours(-2)), "first"), (Page("P-200", "line-2", 200m, fixture.Now.AddHours(-1)), "second") })
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(page.Packages[0], page, externalOrderId, directOrderResult: page), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""",
+                    $"sibling-totals-{key}", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var order = await verifyDb.Orders.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalOrderId == externalOrderId);
+            Assert.Equal(500m, order.GrossAmount);
+            Assert.Equal(500m, order.NetAmount);
+            Assert.Equal(2, await verifyDb.ShipmentPackages.CountAsync(row => row.TenantId == tenant.Id && row.OrderId == order.Id));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task RefusedPackageTransition_KeepsCargoDetailsAndIsRecordedOnce()
+    {
+        var tenant = NewTenant("trendyol-refused-transition");
+        var connection = NewQuestionConnection(tenant);
+        connection.ApiVersion = "V2";
+        const string externalOrderId = "116483579002";
+        var shippedAt = fixture.Now.AddHours(-3);
+        var cancelledAt = fixture.Now.AddHours(-1);
+        RemoteOrder Read(string status, DateTimeOffset at, string? tracking) => new(
+            externalOrderId, externalOrderId, fixture.Now.AddDays(-1), at, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+            [new RemoteOrderLine("line-1", "SKU-1", "BC-1", "Test ürün", 1m, 100m, 10m, status)],
+            [new RemotePackage("P-1", null, status, at, "TRENDYOL_EXPRESS", tracking, [new RemotePackageAllocation("line-1", 1m, 0m, status == "Shipped" ? 1m : 0m, 0m, 0m)], 100m, 0m, 100m)],
+            "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task SyncAsync(RemoteOrder read, string key)
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(read.Packages[0], read, externalOrderId, directOrderResult: read), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""", key, CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await SyncAsync(Read("Shipped", shippedAt, null), "refused-1");
+            // Shipped -> Cancelled is refused; the newer tracking number is still taken.
+            await SyncAsync(Read("Cancelled", cancelledAt, "7330000000001"), "refused-2");
+            await SyncAsync(Read("Cancelled", cancelledAt, "7330000000001"), "refused-3");
+
+            await using var verifyDb = fixture.CreateContext();
+            var package = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == "P-1");
+            Assert.Equal("7330000000001", package.CargoTrackingNumber);
+            Assert.Equal(ShipmentPackageStatus.ManualReview, package.Status);
+            Assert.Equal(1, await verifyDb.OrderStatusHistory.CountAsync(row => row.TenantId == tenant.Id && row.SourceEventId.StartsWith("REJECTED:")));
+            Assert.True(await verifyDb.OperationalIssues.AnyAsync(row => row.TenantId == tenant.Id && row.Code == "PACKAGE_TERMINAL_STATUS_CONFLICT"));
         }
         finally
         {
@@ -3456,6 +3597,121 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await cleanupDb.SyncCursors.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ConnectionActivation_RefusesDeletedHiddenAndStaleTestedConnections()
+    {
+        var tenant = NewTenant("connection-activation-rules");
+        var now = fixture.Now;
+        PlatformConnection Connection(string status, string store) { var connection = NewQuestionConnection(tenant); connection.Status = status; connection.ExternalStoreId = store; connection.LastSuccessAt = now.AddHours(-2); return connection; }
+        var disabled = Connection("DISABLED", "seller-disabled");
+        disabled.DisabledAt = now.AddHours(-1);
+        var hidden = Connection("HIDDEN", "seller-hidden");
+        var deleted = Connection("DELETED", "seller-deleted");
+        PlatformCapability Test(PlatformConnection connection) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, Code = MarketplaceCapabilities.ConnectionTest, SupportLevel = CapabilitySupportLevel.Supported, ApiVersion = connection.ApiVersion, Environment = connection.Environment, StoreScope = connection.ExternalStoreId, Version = 1 };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(disabled, hidden, deleted);
+            seedDb.PlatformCapabilities.AddRange(Test(disabled), Test(hidden), Test(deleted));
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var dataProtection = new EphemeralDataProtectionProvider();
+            var service = new MarketplaceConnectionService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, fixture.TokenHasher, new FixedTimeProvider(now), new ConfigurationBuilder().Build());
+
+            Assert.Equal("CONNECTION_TEST_REQUIRED", (await service.SetActiveAsync(tenant.Id, disabled.Id, disabled.Version, true, CancellationToken.None)).Error?.Code);
+            Assert.Equal("CONNECTION_HIDDEN", (await service.SetActiveAsync(tenant.Id, hidden.Id, hidden.Version, true, CancellationToken.None)).Error?.Code);
+            Assert.Equal("RESOURCE_NOT_FOUND", (await service.SetActiveAsync(tenant.Id, deleted.Id, deleted.Version, true, CancellationToken.None)).Error?.Code);
+            Assert.Equal("RESOURCE_NOT_FOUND", (await service.GetAsync(tenant.Id, deleted.Id, CancellationToken.None)).Error?.Code);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.PlatformCapabilities.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ConnectionEnvironmentChange_NeedsADataResetAndDropsTheOldCredentialsAndCursors()
+    {
+        var tenant = NewTenant("connection-environment-change");
+        var withData = NewQuestionConnection(tenant);
+        withData.ExternalStoreId = "seller-with-data";
+        withData.Status = "DRAFT";
+        var empty = NewQuestionConnection(tenant);
+        empty.ExternalStoreId = "seller-empty";
+        empty.Status = "DRAFT";
+        var order = NewInvoiceTestOrder(tenant.Id, withData.Id, Guid.CreateVersion7(), "environment-change-order", isReturnClaim: false, fixture.Now);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(withData, empty);
+            seedDb.Orders.Add(order);
+            seedDb.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = empty.Id, CredentialType = "BASIC", ProtectedPayload = "protected", MaskedHint = "***1", CreatedAt = fixture.Now, Version = 1 });
+            seedDb.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = empty.Id, ResourceType = "ORDERS", OpaqueCursor = "stage-cursor", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var dataProtection = new EphemeralDataProtectionProvider();
+            var service = new MarketplaceConnectionService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, fixture.TokenHasher, fixture.TimeProvider, new ConfigurationBuilder().Build());
+
+            var refused = await service.UpdateAsync(tenant.Id, withData.Id, withData.Version, new UpdateConnectionCommand(withData.DisplayName, null, Environment: "PRODUCTION"), CancellationToken.None);
+            Assert.Equal("CONNECTION_DATA_RESET_REQUIRED", refused.Error?.Code);
+
+            var moved = await service.UpdateAsync(tenant.Id, empty.Id, empty.Version, new UpdateConnectionCommand(empty.DisplayName, null, Environment: "PRODUCTION"), CancellationToken.None);
+            Assert.Null(moved.Error);
+            Assert.False(moved.Value!.HasCredential);
+            Assert.False(await db.SyncCursors.AnyAsync(row => row.TenantId == tenant.Id && row.ConnectionId == empty.Id));
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.PlatformCredentials.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.PlatformCapabilities.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task SyncCursorProgressAndOutboxTimes_FollowTheInjectedClock()
+    {
+        var tenant = NewTenant("sync-cursor-clock");
+        var connection = NewQuestionConnection(tenant);
+        var clock = new SteppingTimeProvider(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero));
+        var cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "ORDERS", OpaqueCursor = "cursor-1", Version = 1 };
+
+        try
+        {
+            await using var db = fixture.CreateContext(clock);
+            db.Tenants.Add(tenant);
+            db.PlatformConnections.Add(connection);
+            db.SyncCursors.Add(cursor);
+            await db.SaveChangesAsync();
+
+            Assert.Equal(clock.GetUtcNow(), cursor.LastCursorAdvancedAt);
+            Assert.All(await db.IntegrationOutboxEvents.AsNoTracking().Where(row => row.TenantId == tenant.Id).ToListAsync(),
+                row => Assert.Equal(clock.GetUtcNow(), row.CreatedAt));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
         }
     }
 
@@ -4026,6 +4282,172 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
         }
+    }
+
+    [PostgreSqlFact]
+    public async Task HepsiburadaCancelledReturn_WithADecisionIsKeptAsCancelled()
+    {
+        var tenant = NewTenant("hepsiburada-cancelled-with-history");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        connection.ApiVersion = "V1.0";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "cancelled-history-order", isReturnClaim: false, fixture.Now);
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "cancelled-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.ActionRequired;
+        claim.RawStatus = "AwaitingAction";
+        claim.LastRemoteModifiedAt = fixture.Now.AddMinutes(-10);
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = $"cancelled-history:{Guid.NewGuid():N}", Status = "MANUAL_REVIEW", ErrorCode = "EXTERNAL_EFFECT_VERIFYING", ActorUserId = Guid.NewGuid(), CreatedAt = fixture.Now.AddMinutes(-5) };
+        var returnsPort = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "Cancelled", externalOrderId: order.ExternalOrderId, listedClaimId: "cancelled-claim");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnDecisions.Add(decision);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, null!, null!, null!, null!, null!, returnsPort, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnStatusSync, "{}", "hepsiburada-cancelled-with-history", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            var persistedClaim = await verificationDb.ReturnClaims.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == claim.Id);
+            Assert.Equal(ReturnClaimStatus.Cancelled, persistedClaim.Status);
+            var persistedDecision = await verificationDb.ReturnDecisions.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == decision.Id);
+            Assert.Equal("MANUAL_REVIEW", persistedDecision.Status);
+            Assert.Equal("RETURN_ACTION_READBACK_CONFLICT", persistedDecision.ErrorCode);
+            Assert.True(await verificationDb.OperationalIssues.AnyAsync(row => row.TenantId == tenant.Id && row.Code == "RETURN_CLAIM_CANCELLED_WITH_HISTORY"));
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+                await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task HepsiburadaClaimSentForReview_IsFollowedUpAndItsDecisionSettled()
+    {
+        var tenant = NewTenant("hepsiburada-preapproval-follow-up");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        connection.ApiVersion = "V1.0";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "preapproval-order", isReturnClaim: false, fixture.Now);
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "preapproval-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.AwaitingShipment;
+        claim.RawStatus = "PREAPPROVAL_CONFIRM_SUBMITTED";
+        claim.LastRemoteModifiedAt = fixture.Now.AddMinutes(-10);
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "PREAPPROVAL_CONFIRM", IdempotencyKey = $"preapproval:{Guid.NewGuid():N}", Status = "MANUAL_REVIEW", ErrorCode = "EXTERNAL_EFFECT_VERIFYING", ActorUserId = Guid.NewGuid(), CreatedAt = fixture.Now.AddMinutes(-5) };
+        var returnsPort = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "AwaitingAction", externalOrderId: order.ExternalOrderId, listedClaimId: "preapproval-claim");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnDecisions.Add(decision);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, null!, null!, null!, null!, null!, returnsPort, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnStatusSync, "{}", "hepsiburada-preapproval-follow-up", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            Assert.Equal("AwaitingAction", (await verificationDb.ReturnClaims.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == claim.Id)).RawStatus);
+            Assert.Equal("SUCCEEDED", (await verificationDb.ReturnDecisions.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == decision.Id)).Status);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+                await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task UnresolvedReturnEffect_FailsTheDecisionInsteadOfLeavingItInProgress()
+    {
+        var tenant = NewTenant("unresolved-return-effect");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        connection.ApiVersion = "V1.0";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "unresolved-effect-order", isReturnClaim: false, fixture.Now);
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "unresolved-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.ActionRequired;
+        claim.RawStatus = "AwaitingAction";
+        var key = $"unresolved-effect:{Guid.NewGuid():N}";
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = key, Status = "MANUAL_REVIEW", ErrorCode = "EXTERNAL_EFFECT_VERIFYING", ActorUserId = Guid.NewGuid(), CreatedAt = fixture.Now.AddMinutes(-31) };
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = "HEPSIBURADA_INSTANT_RETURN_ACTION", IdempotencyKey = key, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-31), ConnectionId = connection.Id, TargetId = claim.Id, Action = "RETURN_APPROVE" };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnDecisions.Add(decision);
+            seedDb.ExternalEffectRecords.Add(effect);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, null!, null!, null!, null!, null!, new UnreadableReturnTestPort(), null!, null!,
+                    new ConfigurationBuilder().Build(), TimeProvider.System);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ExternalEffectReconcile, $$"""{"effectId":"{{effect.Id}}"}""", "unresolved-return-effect", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            var persistedDecision = await verificationDb.ReturnDecisions.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == decision.Id);
+            Assert.Equal("FAILED", persistedDecision.Status);
+            Assert.Equal("EXTERNAL_EFFECT_UNRESOLVED", persistedDecision.ErrorCode);
+            Assert.Equal("UNRESOLVED", (await verificationDb.ExternalEffectRecords.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == effect.Id)).Outcome);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
+    private sealed class UnreadableReturnTestPort : IReturnPort
+    {
+        public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<RemoteReturnClaim>.Failure(new AdapterError(AdapterErrorClass.NotSupported, "RETURN_READ_UNSUPPORTED", "unsupported", null, null, null)));
+        public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     [PostgreSqlFact]
@@ -5981,6 +6403,8 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     }
 
     public AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options);
+
+    public AppDbContext CreateContext(TimeProvider clock) => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options, clock);
 
     public Task DisposeAsync() => Task.CompletedTask;
 }

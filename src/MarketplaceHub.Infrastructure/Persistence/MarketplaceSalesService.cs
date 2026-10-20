@@ -12,15 +12,21 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
 {
-    // A real Trendyol package supersedes the zero-ID payment placeholder.
-    // Retain its history without displaying or counting a second live package.
+    // A real Trendyol package supersedes the zero-ID payment placeholder, and a
+    // package another package names as its origin (a split UnPacked parent, a
+    // resent original) is superseded by it. Retain their history without
+    // displaying, counting or invoicing them as live packages.
     internal IQueryable<ShipmentPackage> CurrentShipmentPackages() => db.ShipmentPackages.AsNoTracking()
-        .Where(package => package.ExternalPackageId != "0"
+        .Where(package => (package.ExternalPackageId != "0"
             || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
                 && connection.Id == package.ConnectionId && connection.PlatformCode == "TRENDYOL")
             || !db.ShipmentPackages.Any(real => real.TenantId == package.TenantId
                 && real.ConnectionId == package.ConnectionId && real.OrderId == package.OrderId
-                && real.ExternalPackageId != "0" && real.ExternalPackageId != ""));
+                && real.ExternalPackageId != "0" && real.ExternalPackageId != ""))
+            && !db.ShipmentPackages.Any(child => child.TenantId == package.TenantId
+                && child.ConnectionId == package.ConnectionId && child.OrderId == package.OrderId
+                && child.OriginExternalPackageId == package.ExternalPackageId
+                && child.ExternalPackageId != package.ExternalPackageId));
 
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery queryOptions, CancellationToken cancellationToken)
     {
@@ -209,8 +215,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
-                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
-                order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
+                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, MaskIdentityNumber(customer.TaxOrIdentityNumber),
+                ListAddress(order.ShipmentAddressSnapshotJson), order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, invoiceDocumentUrl,
                 connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null,
                 shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null);
@@ -226,6 +232,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal void ApplyOrderFilters(ref IQueryable<Order> query, OrderListQuery options, Guid tenantId)
     {
+        // Superseded packages (split parents, resent originals, the zero-ID
+        // placeholder) neither match a tab nor count as invoice targets.
+        var currentPackages = CurrentShipmentPackages();
         var resendCreators = new[] { "transfer", "resend", "replacement" };
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
@@ -235,13 +244,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && candidate.SequencePurpose == "SALE" && candidate.Status == InvoiceStatus.Completed
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == candidate.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (candidate.PackageId.HasValue
-                        ? db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
+                        ? currentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
                             && package.Status != ShipmentPackageStatus.Cancelled
                             && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED")
                                 || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                     && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))
-                        : db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
-                            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
+                        : currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
+                            && !currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
                                 && !((db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED"))
                                     || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                         && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))))
@@ -251,13 +260,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && candidate.SequencePurpose == "SALE" && candidate.Status == InvoiceStatus.Completed
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == candidate.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (candidate.PackageId.HasValue
-                        ? !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
+                        ? !currentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
                             && package.Status != ShipmentPackageStatus.Cancelled
                             && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED")
                                 || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                     && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))
-                        : !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
-                            || db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
+                        : !currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
+                            || currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
                                 && !((db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED"))
                                     || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                         && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))))
@@ -268,7 +277,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 "FATURA_KONTROLDE" => query.Where(x =>
                     fullyDeliveredInvoiceOrderIds.Contains(x.Id)
                     || completedInvoiceOrderIdsMissingDelivery.Contains(x.Id)
-                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
+                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
                         && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced))),
                 "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -277,7 +286,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                         && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed || i.Status == InvoiceStatus.ManualReview))
-                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
+                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
                 // The provider may hold the invoice: neither rejected nor issued until it is checked.
                 "FATURA_BELIRSIZ" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -289,7 +298,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))),
                 "FATURA_BEKLIYOR" => query.Where(x =>
-                    db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
+                    currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
                     || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -330,7 +339,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         else if (invoiceRegion == "TR")
             query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"micro\":true") && !x.CustomerSnapshotJson.Contains("\"micro\": true") && !x.CustomerSnapshotJson.Contains("\"microExport\":true") && !x.CustomerSnapshotJson.Contains("\"microExport\": true") && !x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") && !x.CustomerSnapshotJson.Contains("MICRO") && !x.CustomerSnapshotJson.Contains("İHRAC") && !x.CustomerSnapshotJson.Contains("IHRAC"));
 
-        var currentPackages = CurrentShipmentPackages();
         var status = options.Status?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
         {
@@ -406,7 +414,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var search = options.Search?.Trim();
         if (!string.IsNullOrWhiteSpace(search))
         {
-            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || x.CustomerSnapshotJson.Contains(search)
+            // The customer snapshot holds identity, tax and phone numbers: a
+            // term without letters (a number) is only matched against order,
+            // product and barcode fields, never against the snapshot.
+            var searchCustomer = SearchesCustomerSnapshot(search);
+            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || (searchCustomer && x.CustomerSnapshotJson.Contains(search))
                 || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
                     && (line.TitleSnapshot.Contains(search) || line.Sku.Contains(search) || (line.Barcode != null && line.Barcode.Contains(search)))));
         }
@@ -424,7 +436,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
         var cargo = options.Cargo?.Trim();
         if (!string.IsNullOrWhiteSpace(cargo) && cargo != "ALL")
-            query = query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
+            query = query.Where(x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
 
         if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
         if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
@@ -1329,30 +1341,69 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return ServiceResult<ShipmentView>.Fail("PICKING_FAILED", error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
 
-        package.Status = ShipmentPackageStatus.Processing;
-        package.RawStatus = "Processing";
-        package.StatusOccurredAt = timeProvider.GetUtcNow();
-        package.UpdatedAt = package.StatusOccurredAt;
-        package.Version++;
-        // Orders are filtered by DerivedStatus while the counters are calculated
-        // from shipment packages. Keep both read models in sync before returning
-        // so the order moves between tabs in the same response.
-        var packageStatuses = await db.ShipmentPackages.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
-            .Select(x => new { x.Id, x.Status })
-            .ToListAsync(cancellationToken);
-        var acceptedStatuses = packageStatuses.ToDictionary(x => x.Id, x => x.Status);
-        acceptedStatuses[package.Id] = package.Status;
-        var derivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses.Values));
-        if (!string.Equals(order.DerivedStatus, derivedStatus, StringComparison.Ordinal))
-        {
-            order.DerivedStatus = derivedStatus;
-            order.UpdatedAt = package.UpdatedAt;
-            order.Version++;
-        }
-        effect.CompletedAt = package.StatusOccurredAt;
+        // The marketplace accepted the write: record that first and on its own,
+        // so a conflict while projecting it locally can never leave the effect
+        // open (and the same key answering "verifying" forever).
+        var appliedAt = timeProvider.GetUtcNow();
+        effect.CompletedAt = appliedAt;
+        effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+
+        for (var attempt = 0; ; attempt++)
+        {
+            if (package.Status == ShipmentPackageStatus.New)
+            {
+                package.Status = ShipmentPackageStatus.Processing;
+                package.RawStatus = "Processing";
+                // StatusOccurredAt stays the marketplace's own event time: a
+                // local clock here would make the marketplace's Picking event
+                // (with its cargo and invoice fields) look older and be dropped.
+                package.UpdatedAt = appliedAt;
+                package.Version++;
+                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "PROCESSING", RawStatus = "PICKING_REQUESTED", SourceEventId = $"instant-picking:{effect.Id:N}", OccurredAt = appliedAt, RecordedAt = appliedAt });
+            }
+            // Orders are filtered by DerivedStatus while the counters are calculated
+            // from shipment packages. Keep both read models in sync before returning
+            // so the order moves between tabs in the same response.
+            var orderPackages = await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
+                .ToListAsync(cancellationToken);
+            var current = orderPackages.Select(x => x.Id == package.Id ? package : x).ToList();
+            if (ShipmentPackageSupersession.StatusSources(current) is { } statusSources)
+            {
+                var derivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(statusSources));
+                if (!string.Equals(order.DerivedStatus, derivedStatus, StringComparison.Ordinal))
+                {
+                    order.DerivedStatus = derivedStatus;
+                    order.UpdatedAt = appliedAt;
+                    order.Version++;
+                }
+            }
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+            }
+            catch (DbUpdateConcurrencyException) when (attempt == 0)
+            {
+                // A sync read updated the package or order meanwhile; project
+                // the accepted action once more on the fresh rows.
+                db.ChangeTracker.Clear();
+                var freshPackage = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                var freshOrder = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.OrderId, cancellationToken);
+                if (freshPackage is null || freshOrder is null) return NotFound<ShipmentView>();
+                package = freshPackage;
+                order = freshOrder;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // The action is applied on the marketplace; the next order read
+                // brings the package into the same state.
+                db.ChangeTracker.Clear();
+                var latest = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(latest, orderNumber));
+            }
+        }
     }
 
     public async Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1426,11 +1477,27 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return ServiceResult<ShipmentView>.Fail("CARGO_PROVIDER_CHANGE_FAILED", error.SafeMessage, status);
         }
 
+        // Record the accepted write on its own first (see ProcessShipmentInstantAsync).
+        effect.CompletedAt = timeProvider.GetUtcNow();
+        effect.Outcome = "APPLIED";
+        await db.SaveChangesAsync(cancellationToken);
         package.CargoProviderExternalId = cargoProvider;
         package.UpdatedAt = timeProvider.GetUtcNow();
         package.Version++;
-        effect.CompletedAt = timeProvider.GetUtcNow();
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            var fresh = await db.ShipmentPackages.SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+            fresh.CargoProviderExternalId = cargoProvider;
+            fresh.UpdatedAt = timeProvider.GetUtcNow();
+            fresh.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<ShipmentView>.Ok(Map(fresh, orderNumber));
+        }
         return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
     }
 
@@ -1658,7 +1725,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
-                claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))));
+                claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))),
+                IsEstimatedReturnDueAt(platformCode, claim));
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -1668,6 +1736,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
         string.IsNullOrWhiteSpace(variant?.ModelCode) ? sourceModelCode : variant.ModelCode;
+
+    // The deadline is an estimate when the marketplace sent none: stored as
+    // derived, or derived here from the status.
+    internal static bool IsEstimatedReturnDueAt(string? platformCode, ReturnClaim claim) =>
+        claim.ActionDueAt is null
+            ? ReturnActionDueAt(platformCode, claim.RawStatus, null, claim.LastRemoteModifiedAt) is not null
+            : claim.ActionDueAtEstimated;
 
     internal static DateTimeOffset? ReturnActionDueAt(string? platformCode, string? rawStatus, DateTimeOffset? actionDueAt, DateTimeOffset lastRemoteModifiedAt)
     {
@@ -1706,12 +1781,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }
 
         var search = options.Search?.Trim();
+        var searchCustomer = search is not null && SearchesCustomerSnapshot(search);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(claim => claim.ExternalClaimId.Contains(search)
                 || (claim.ReasonCode != null && claim.ReasonCode.Contains(search))
                 || (claim.ReasonText != null && claim.ReasonText.Contains(search))
                 || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
-                    && (order.OrderNumber.Contains(search) || order.CustomerSnapshotJson.Contains(search)))
+                    && (order.OrderNumber.Contains(search) || (searchCustomer && order.CustomerSnapshotJson.Contains(search))))
                 || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
                     && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
                         && ((line.Barcode != null && line.Barcode.Contains(search)) || line.Sku.Contains(search)))));
@@ -1836,7 +1912,31 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim)));
+    }
+
+    // Each marketplace says per rejection reason whether evidence is needed;
+    // the list changes rarely, so it is read at most once an hour per store.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (DateTimeOffset ReadAt, IReadOnlyList<ReturnIssueReason> Reasons)> IssueReasonCache = new();
+    private static readonly TimeSpan IssueReasonCacheLifetime = TimeSpan.FromHours(1);
+
+    private async Task<IReadOnlyList<ReturnIssueReason>?> CachedIssueReasonsAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (IssueReasonCache.TryGetValue(connectionId, out var cached) && now - cached.ReadAt < IssueReasonCacheLifetime) return cached.Reasons;
+        var result = await returns.IssueReasonsAsync(new AdapterContext(tenantId, connectionId, correlationId, $"return-issue-reasons:{connectionId:N}", now.AddSeconds(30)), cancellationToken);
+        if (!result.IsSuccess || result.Value is null) return null;
+        IssueReasonCache[connectionId] = (now, result.Value);
+        return result.Value;
+    }
+
+    internal static bool RejectEvidenceRequired(string? reasonCode, IReadOnlyList<ReturnIssueReason>? reasons, string? platformCode)
+    {
+        var code = reasonCode?.Trim();
+        if (reasons?.FirstOrDefault(reason => string.Equals(reason.Id, code, StringComparison.Ordinal)) is { } reason) return reason.EvidenceRequired;
+        // The list could not be read (or does not name the reason): Trendyol's
+        // documented no-evidence reasons stay optional, everything else needs evidence.
+        return !(string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && code is "1651" or "451" or "2101");
     }
 
     public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
@@ -1930,8 +2030,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW" || (x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey)))).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
-        var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
-        if (action == "REJECT" && !isHepsiburada && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
+        if (action == "REJECT" && !isHepsiburada && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)
+            && RejectEvidenceRequired(command.ReasonCode, await CachedIssueReasonsAsync(tenantId, claim.ConnectionId, correlationId, cancellationToken), platformCode))
+            return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
         if (preApprovalConfirm && (!string.IsNullOrWhiteSpace(command.FinalizedWith) || !string.IsNullOrWhiteSpace(command.ReasonCode) || !string.IsNullOrWhiteSpace(command.Explanation) || command.EvidenceAssetIds is { Count: > 0 })) return Invalid<ReturnDetailView>("action", "Hepsiburada ön onay incelemesi ek kabul, ret veya kanıt alanı almaz.");
 
         var stage = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
@@ -2016,7 +2117,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             decision.CompletedAt = timeProvider.GetUtcNow();
             if (error is null || IsAmbiguous(error))
             {
+                // The outcome is settled by the effect check or the next claim
+                // read; the code marks it as waiting for that, not as a conflict.
                 decision.Status = "MANUAL_REVIEW";
+                decision.ErrorCode = "EXTERNAL_EFFECT_VERIFYING";
                 await db.SaveChangesAsync(cancellationToken);
                 return await VerifyLaterAsync<ReturnDetailView>(effect, cancellationToken);
             }
@@ -2072,7 +2176,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var remoteStatus = MarketplaceReturnStatus.Canonicalize(readback.Value.RawStatus, readback.Value.CargoTrackingLink);
             if (!ReturnClaimStoragePolicy.ShouldPersist(remoteStatus))
             {
-                await CancelledReturnClaimCleanup.RemoveAsync(db, tenantId, claimId, cancellationToken);
+                // The decision just made is history: the claim is kept as
+                // cancelled with it instead of being deleted.
+                if (await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId, readback.Value.RawStatus, readback.Value.LastModifiedAt, timeProvider.GetUtcNow(), cancellationToken))
+                {
+                    decision.Status = "MANUAL_REVIEW";
+                    decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT";
+                    decision.CompletedAt = timeProvider.GetUtcNow();
+                    await db.SaveChangesAsync(cancellationToken);
+                    return ServiceResult<ReturnDetailView>.Fail("RETURN_CLAIM_CANCELLED", "Pazaryerindeki iade talebi iptal edilmiş; iade, verilen kararla birlikte iptal olarak saklandı.", 409);
+                }
                 db.ChangeTracker.Clear();
                 return ServiceResult<ReturnDetailView>.Fail("RETURN_CLAIM_CANCELLED", "Pazaryerindeki iade talebi iptal edilmiş; iptal kaydı saklanmadı.", 409);
             }
@@ -2776,6 +2889,34 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     }
 
     private sealed record SourceLineView(string? ImageUrl, string? ModelCode, string? OptionSignature);
+
+    internal static bool SearchesCustomerSnapshot(string term) => term.Any(char.IsLetter);
+
+    internal static string? MaskIdentityNumber(string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return null;
+        return trimmed.Length > 4 ? $"***{trimmed[^4..]}" : "***";
+    }
+
+    // Only the delivery fields a label prints: no phone, e-mail, identity or tax number.
+    internal static OrderAddressView? ListAddress(string shipmentAddressJson)
+    {
+        var name = NameFrom(shipmentAddressJson, "firstName", "lastName", "shippingFirstName", "shippingLastName", "fullName", "name", "company", "companyName");
+        var address = new OrderAddressView(
+            IsMeaningfulText(name) ? name : null,
+            JsonText(shipmentAddressJson, "fullAddress"),
+            JsonText(shipmentAddressJson, "address1"),
+            JsonText(shipmentAddressJson, "address2"),
+            JsonText(shipmentAddressJson, "neighborhood"),
+            JsonText(shipmentAddressJson, "district", "countyName"),
+            JsonText(shipmentAddressJson, "city", "province"),
+            JsonText(shipmentAddressJson, "postalCode", "zip"),
+            JsonText(shipmentAddressJson, "countryCode", "country"),
+            JsonBool(shipmentAddressJson, "isDeliveryPoint"),
+            JsonText(shipmentAddressJson, "deliveryPointType"));
+        return address == new OrderAddressView(null, null, null, null, null, null, null, null, null) ? null : address;
+    }
 
     private static string? JsonText(string json, params string[] names)
     {

@@ -6,6 +6,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
+using MarketplaceHub.Infrastructure.Adapters.N11;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
@@ -113,6 +114,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         if (directResult.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
                     }
                     if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, completedSlice, completedSlice ? null : directResult.ErrorCode, cancellationToken);
+                    if (!completedSlice) await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, directResult, cancellationToken);
                     return directResult;
                 }
                 var succeeded = jobType switch
@@ -151,6 +153,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (exception.Result.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
                 else telemetryFailedCount++;
                 if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, exception.Result.ErrorCode, cancellationToken);
+                await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, exception.Result, cancellationToken);
                 return exception.Result;
             }
             catch (Exception exception)
@@ -226,6 +229,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         or MarketplaceJobTypes.ReturnStatusSync
         or MarketplaceJobTypes.ReturnReconciliation
         or MarketplaceJobTypes.StockReconciliation;
+
+    // Only an Authentication-class adapter error is a blocked result that also
+    // backs the connection off (JobExecutionResult.FromAdapterError). The
+    // connection test records its own outcome.
+    internal static bool IsConnectionAuthenticationFailure(string jobType, JobExecutionResult result) =>
+        jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest)
+        && result.Kind == JobCompletionKind.Blocked
+        && result.BackOffConnection
+        && !string.IsNullOrWhiteSpace(result.ErrorCode);
+
+    // Refused credentials during a sync show on the connection, as a failed
+    // connection test does; the next successful test clears the code.
+    private async Task RecordConnectionAuthenticationFailureAsync(Guid tenantId, Guid connectionId, string jobType, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        if (!IsConnectionAuthenticationFailure(jobType, result)) return;
+        try
+        {
+            var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+            if (connection is null || string.Equals(connection.LastErrorCode, result.ErrorCode, StringComparison.Ordinal)) return;
+            connection.LastErrorCode = result.ErrorCode;
+            connection.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The connection was edited meanwhile; the next refused read records it.
+            db.ChangeTracker.Clear();
+        }
+    }
 
     private async Task RecordSyncAttempt(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
     {
@@ -7632,6 +7664,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); telemetryInsertedCount++; }
         // An order never changes storefront; the first read that names it is kept for later targeted reads.
         if (order.StoreFrontCode is null && !string.IsNullOrWhiteSpace(remote.StoreFrontCode)) order.StoreFrontCode = remote.StoreFrontCode;
+        var isNewOrder = db.Entry(order).State == EntityState.Added;
+        var previousAmounts = (order.GrossAmount, order.DiscountAmount, order.NetAmount);
         if (orderIsFresh)
         {
             var customerSnapshot = remote.CustomerSnapshotJson;
@@ -7737,16 +7771,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             linesByExternalId[remoteLine.ExternalLineId] = line;
             if (!string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") linesBySnapshot[remoteLine.SourceSnapshotJson] = line;
         }
-        if (isHepsiburada)
-        {
-            var knownLineGross = lines.Values.Sum(line => line.UnitPrice * line.OrderedQuantity);
-            if (knownLineGross > 0)
-            {
-                order.GrossAmount = knownLineGross;
-                if (remote.DiscountAmount > 0 || order.DiscountAmount == 0) order.DiscountAmount = Math.Min(knownLineGross, remote.DiscountAmount);
-                order.NetAmount = Math.Max(0m, knownLineGross - order.DiscountAmount);
-            }
-        }
         var externalLineIdsById = lines.Values.ToDictionary(line => line.Id, line => line.ExternalLineId);
         foreach (var remotePackage in remote.Packages)
         {
@@ -7807,7 +7831,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                             target,
                             remotePackage.OccurredAt,
                             remotePackage.IsStatusObservation)
-                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt)))
+                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt, remotePackage.RawStatus)))
                     && package.Status != target;
                 var packageMetadataChanged = package is not null
                     && ((!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId)
@@ -7870,6 +7894,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; }
                 continue;
             }
+            var rejectedEventId = PackageIngestionSafety.RejectedEventId(eventId);
+            if (package is not null && knownEventIds.Contains(rejectedEventId))
+            {
+                // This exact event was refused before; it is not evaluated
+                // again, only cargo details it carries are still taken.
+                if (MergePackageCargoMetadata(package, remotePackage)) { package.UpdatedAt = now; package.Version++; telemetryUpdatedCount++; }
+                continue;
+            }
             var accept = package is null || legacyTrendyolHoldCorrection || (isHepsiburada
                 ? HepsiburadaPackageStatusReconciliationPolicy.ShouldAcceptStatusObservation(
                     package.Status,
@@ -7877,12 +7909,39 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     target,
                     remotePackage.OccurredAt,
                     remotePackage.IsStatusObservation)
-                : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt));
+                : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt, remotePackage.RawStatus));
             // A newer modification date with the same status is not a status change: no history row for it.
             var statusUnchanged = package is not null && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal);
             if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
-            else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
+            else if (remotePackage.IsStatusObservation && remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target)
+                // Status observations carry the read time, not an event time:
+                // recording each refusal would add a history row per read.
+                await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
+            else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target)
+            {
+                // The refused status is not applied, but the cargo details of
+                // the event still are, and the event is recorded once so it is
+                // not evaluated again on every read. When the marketplace
+                // reports an end state the panel refuses, the package waits
+                // for an operator instead of staying in an operational tab.
+                MergePackageCargoMetadata(package, remotePackage);
+                var terminalConflict = PackageIngestionSafety.IsTerminalConflict(target, remotePackage.RawStatus);
+                if (terminalConflict)
+                {
+                    package.Status = ShipmentPackageStatus.ManualReview;
+                    package.RawStatus = Short(PackageIngestionSafety.ConflictRawStatus(remotePackage.RawStatus), 96);
+                }
+                package.UpdatedAt = now;
+                package.Version++;
+                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "TRANSITION_REJECTED", RawStatus = Short(remotePackage.RawStatus, 96), SourceEventId = rejectedEventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now });
+                knownEventIds.Add(rejectedEventId);
+                await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}",
+                    terminalConflict ? "PACKAGE_TERMINAL_STATUS_CONFLICT" : "PACKAGE_TRANSITION_REJECTED",
+                    terminalConflict
+                        ? $"Pazaryeri paket {package.ExternalPackageId} için {remotePackage.RawStatus} bildirdi ancak paneldeki durumdan bu geçiş yapılamıyor; paket manuel incelemeye alındı."
+                        : "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
+            }
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
@@ -7908,6 +7967,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 telemetryUpdatedCount++;
             }
         }
+        // n11 does not name the origin of a split package and a stream page can
+        // hold the UnPacked parent without its children (or the reverse); the
+        // link is made on the stored packages so it survives across pages.
+        if (platformCode == "N11")
+            foreach (var linked in N11OrderMapper.LinkStoredSplitPackages(packagesByExternalId.Values.ToList()))
+            {
+                linked.UpdatedAt = now;
+                if (db.Entry(linked).State != EntityState.Added) linked.Version++;
+            }
         var projectedLineQuantities = PackageLineProjectionPolicy.Recalculate(packagesByExternalId.Values.ToList(), allocationsByKey.Values.ToList());
         foreach (var line in lines.Values)
         {
@@ -7917,30 +7985,60 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             line.DeliveredQuantity = projection.DeliveredQuantity;
             line.ReturnedQuantity = projection.ReturnedQuantity;
         }
-        var acceptedStatuses = packagesByExternalId.Values
+        if (isHepsiburada)
+        {
+            // Cancelled quantities are not part of the order value.
+            var knownLineGross = lines.Values.Sum(line => line.UnitPrice * OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity));
+            if (knownLineGross > 0)
+            {
+                order.GrossAmount = knownLineGross;
+                if (remote.DiscountAmount > 0 || order.DiscountAmount == 0) order.DiscountAmount = Math.Min(knownLineGross, remote.DiscountAmount);
+                order.NetAmount = Math.Max(0m, knownLineGross - order.DiscountAmount);
+            }
+        }
+        var orderPackages = packagesByExternalId.Values
             .Concat(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id))
             .GroupBy(package => package.Id)
-            .Select(group => group.First().Status)
+            .Select(group => group.First())
             .ToList();
-        var derivedStatus = isHepsiburada
-            ? HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages(acceptedStatuses)
-            : ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses);
-        var lifecycleBaseline = acceptedStatuses.Count == 0 ? order.DerivedStatus : Wire(derivedStatus);
-        var hasUndeliveredHepsiburadaPackage = isHepsiburada && acceptedStatuses.Contains(ShipmentPackageStatus.Undelivered);
-        if (isHepsiburada && !hasUndeliveredHepsiburadaPackage && HepsiburadaOrderLifecycleStatusPolicy.Reconcile(
-                lifecycleBaseline,
-                remote.LifecycleStatus,
-                lines.Values.Select(line => line.RawStatus)) is { } hepsiburadaStatus)
-            derivedStatus = hepsiburadaStatus;
-        order.DerivedStatus = Wire(derivedStatus);
-        if (orderIsFresh
-            && order.DerivedStatus.Trim().ToUpperInvariant() is not ("DELIVERED" or "CANCELLED" or "RETURNED")
-            && OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
-                platformCode,
-                acceptedStatuses.Count,
-                lines.Values.Select(line => line.RawStatus),
-                remote.LifecycleStatus))
-            order.DerivedStatus = "UNVERIFIED";
+        // Superseded packages (split parents, resent originals) do not decide
+        // the order status; while only a split parent is known the order keeps
+        // its last status until the child packages are read.
+        var statusSources = ShipmentPackageSupersession.StatusSources(orderPackages);
+        var acceptedStatuses = statusSources?.ToList() ?? [];
+        if (statusSources is not null)
+        {
+            var derivedStatus = isHepsiburada
+                ? HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages(acceptedStatuses)
+                : ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses);
+            var lifecycleBaseline = acceptedStatuses.Count == 0 ? order.DerivedStatus : Wire(derivedStatus);
+            var hasUndeliveredHepsiburadaPackage = isHepsiburada && acceptedStatuses.Contains(ShipmentPackageStatus.Undelivered);
+            if (isHepsiburada && !hasUndeliveredHepsiburadaPackage && HepsiburadaOrderLifecycleStatusPolicy.Reconcile(
+                    lifecycleBaseline,
+                    remote.LifecycleStatus,
+                    lines.Values.Select(line => line.RawStatus)) is { } hepsiburadaStatus)
+                derivedStatus = hepsiburadaStatus;
+            order.DerivedStatus = Wire(derivedStatus);
+            if (orderIsFresh
+                && order.DerivedStatus.Trim().ToUpperInvariant() is not ("DELIVERED" or "CANCELLED" or "RETURNED")
+                && OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+                    platformCode,
+                    acceptedStatuses.Count,
+                    lines.Values.Select(line => line.RawStatus),
+                    remote.LifecycleStatus))
+                order.DerivedStatus = "UNVERIFIED";
+        }
+        if (usesTrendyolPackageStatuses)
+        {
+            // A stream page carries one sibling package at a time: the totals
+            // are rebuilt from every stored live package, not from the page
+            // (also after an older page that still brought a newer package).
+            var packagesInRead = remote.Packages.Select(package => package.ExternalPackageId).ToHashSet(StringComparer.Ordinal);
+            if (OrderAmountProjectionPolicy.FromPackages(orderPackages, packagesInRead) is { } totals)
+                (order.GrossAmount, order.DiscountAmount, order.NetAmount) = totals;
+            else if (orderIsFresh && !isNewOrder)
+                (order.GrossAmount, order.DiscountAmount, order.NetAmount) = previousAmounts;
+        }
         if (isShopify)
         {
             var manualStatus = await db.OrderStatusHistory.AsNoTracking()
@@ -7957,6 +8055,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    // Cargo details are facts about the parcel, independent of whether the
+    // event's status could be applied; known values are never blanked.
+    private static bool MergePackageCargoMetadata(ShipmentPackage package, RemotePackage remotePackage)
+    {
+        var changed = false;
+        if (!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId) { package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; changed = true; }
+        if (!string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) && package.CargoTrackingNumber != remotePackage.CargoTrackingNumber) { package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; changed = true; }
+        if (!string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) && package.OriginExternalPackageId != remotePackage.OriginExternalPackageId) { package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; changed = true; }
+        return changed;
     }
 
     private async Task UpsertShopifyFinancialObservations(Guid tenantId, Guid orderId, RemoteOrder remote, CancellationToken cancellationToken)
@@ -9080,7 +9189,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // listing the statuses a claim moves on to, over the claim creation dates of those open claims,
     // so a decision taken on Hepsiburada's own panel reaches the panel even when the status-change
     // filter of the regular scan misses it. Only claims open locally are updated here.
-    private static readonly string[] HepsiburadaOpenClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "AwaitingPreApproval"];
+    // PREAPPROVAL_CONFIRM_SUBMITTED is the local mark after "send for review": Hepsiburada has no single-claim
+    // read, so only this follow-up moves such a claim on.
+    internal static readonly string[] HepsiburadaOpenClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "AwaitingPreApproval", "PREAPPROVAL_CONFIRM_SUBMITTED"];
     private static readonly string[] HepsiburadaClaimFollowUpStatuses = ["Accepted", "Refunded", "Rejected", "Cancelled", "InDispute", "AwaitingPreApproval", "AwaitingAction"];
 
     private async Task<bool> SyncHepsiburadaOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -9508,8 +9619,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (lineStatusOverrides) remote = remote with { RawStatus = "WaitingInAction" };
         if (!ReturnClaimStoragePolicy.ShouldPersist(target))
         {
-            await RemoveCancelledReturnClaim(tenantId, connectionId, remote.ExternalClaimId, cancellationToken);
-            telemetrySkippedCount++;
+            if (!await RemoveCancelledReturnClaim(tenantId, connectionId, remote, cancellationToken)) telemetrySkippedCount++;
             return;
         }
 
@@ -9524,9 +9634,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(x => x.TenantId == tenantId && x.Id == connectionId)
                 .Select(x => x.PlatformCode)
                 .SingleOrDefaultAsync(cancellationToken);
-            var claimOrder = platformCode == "HEPSIBURADA"
-                ? HepsiburadaJsonMapper.OrderFromReturnClaim(remote.RawJson)
-                : TrendyolJsonMapper.OrderFromReturnClaim(remote.RawJson);
+            // Only Trendyol and Hepsiburada claims carry the order lines; an
+            // n11/Pazarama claim would build a Trendyol-shaped empty order that
+            // is never filled, so those are reported below and skipped.
+            var claimOrder = platformCode switch
+            {
+                "HEPSIBURADA" => HepsiburadaJsonMapper.OrderFromReturnClaim(remote.RawJson),
+                "TRENDYOL" => TrendyolJsonMapper.OrderFromReturnClaim(remote.RawJson),
+                _ => null
+            };
             if (claimOrder is not null)
             {
                 // The claim already contains the product snapshot. Avoid
@@ -9561,11 +9677,31 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 claim.LastRemoteModifiedAt = remote.LastModifiedAt;
                 claimChanged = true;
             }
+            else if (remoteIsFresh && !partialLineDecisionPending
+                && (claim.Status != target || !string.Equals(claim.RawStatus, remote.RawStatus, StringComparison.Ordinal) || claim.LastRemoteModifiedAt != remote.LastModifiedAt))
+            {
+                // A refused transition still records what the marketplace
+                // reports, so the claim is not re-read as unchanged forever;
+                // the marketplace's own outcome (approved, rejected, completed)
+                // is authoritative even where the local workflow would refuse it.
+                var authoritative = ReturnClaimStateMachine.IsAuthoritativeRemoteOutcome(claim.Status, target);
+                var previousStatus = claim.Status;
+                if (authoritative) claim.Status = target;
+                claim.RawStatus = remote.RawStatus;
+                claim.LastRemoteModifiedAt = remote.LastModifiedAt;
+                claimChanged = true;
+                if (previousStatus != target)
+                    await RecordIssue(tenantId, $"return-transition:{claim.Id:N}:{Wire(target)}", "RETURN_STATUS_TRANSITION_REFUSED",
+                        authoritative
+                            ? $"{claim.ExternalClaimId} numaralı iade pazaryerinde {remote.RawStatus} olarak sonuçlandı; paneldeki {Wire(previousStatus)} durumu pazaryerine göre güncellendi."
+                            : $"{claim.ExternalClaimId} numaralı iade için pazaryeri {remote.RawStatus} bildirdi ancak paneldeki {Wire(previousStatus)} durumundan bu geçiş yapılamıyor; ham durum güncellendi.",
+                        cancellationToken);
+            }
             if (remoteIsFresh)
             {
                 if (!string.Equals(claim.ReasonCode, remote.ReasonCode, StringComparison.Ordinal)) { claim.ReasonCode = remote.ReasonCode; claimChanged = true; }
                 if (!string.Equals(claim.ReasonText, remote.ReasonText, StringComparison.Ordinal)) { claim.ReasonText = remote.ReasonText; claimChanged = true; }
-                if (claim.ActionDueAt != remote.ActionDueAt) { claim.ActionDueAt = remote.ActionDueAt; claimChanged = true; }
+                if (claim.ActionDueAt != remote.ActionDueAt || claim.ActionDueAtEstimated != remote.ActionDueAtEstimated) { claim.ActionDueAt = remote.ActionDueAt; claim.ActionDueAtEstimated = remote.ActionDueAtEstimated; claimChanged = true; }
             }
 
             // Cargo may be returned by a historical/status replay with an old
@@ -9600,31 +9736,58 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
             if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; }
         }
-        var decision = await db.ReturnDecisions.Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "SUBMITTED")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (decision is not null)
-        {
-            var confirmed = decision.Action == "APPROVE" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || decision.Action == "REJECT" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
-                || decision.Action == "PREAPPROVAL_CONFIRM" && (target is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
-                    || target == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(remote.RawStatus));
-            var conflictingTerminal = decision.Action == "APPROVE" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
-                || decision.Action == "REJECT" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || decision.Action == "PREAPPROVAL_CONFIRM" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
-            if (confirmed) { decision.Status = "SUCCEEDED"; decision.ErrorCode = null; decision.CompletedAt = now; }
-            else if (conflictingTerminal) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = now; }
-            else decision.Status = "SUBMITTED";
-        }
+        await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task RemoveCancelledReturnClaim(Guid tenantId, Guid connectionId, string externalClaimId, CancellationToken cancellationToken)
+    // The latest decision whose outcome is still open: sent (PENDING/SUBMITTED),
+    // waiting on an unclear marketplace answer (MANUAL_REVIEW with an
+    // EXTERNAL_EFFECT_* code) or closed as unresolved, is settled by the
+    // claim status the marketplace reports.
+    private async Task ReconcileReturnDecisionAsync(Guid tenantId, Guid claimId, ReturnClaimStatus target, string remoteRawStatus, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var decision = await db.ReturnDecisions
+            .Where(x => x.TenantId == tenantId && x.ClaimId == claimId
+                && (x.Status == "PENDING" || x.Status == "SUBMITTED"
+                    || x.Status == "MANUAL_REVIEW" && x.ErrorCode != null && x.ErrorCode.StartsWith("EXTERNAL_EFFECT_")
+                    || x.Status == "FAILED" && x.ErrorCode == "EXTERNAL_EFFECT_UNRESOLVED"))
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (decision is null || ReconciledReturnDecision(decision.Action, decision.Status, target, remoteRawStatus) is not { } outcome) return;
+        decision.Status = outcome.Status;
+        decision.ErrorCode = outcome.ErrorCode;
+        if (outcome.Status != "SUBMITTED") decision.CompletedAt = now;
+    }
+
+    internal static (string Status, string? ErrorCode)? ReconciledReturnDecision(string action, string currentStatus, ReturnClaimStatus target, string remoteRawStatus)
+    {
+        var confirmed = action == "APPROVE" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            || action == "REJECT" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
+            || action == "PREAPPROVAL_CONFIRM" && (target is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
+                || target == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(remoteRawStatus));
+        var conflictingTerminal = action == "APPROVE" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
+            || action == "REJECT" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            || action == "PREAPPROVAL_CONFIRM" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
+        if (confirmed) return ("SUCCEEDED", null);
+        // An unresolved decision only ever moves on to a confirmed outcome.
+        if (currentStatus == "FAILED") return null;
+        if (conflictingTerminal) return ("MANUAL_REVIEW", "RETURN_ACTION_READBACK_CONFLICT");
+        return currentStatus is "PENDING" or "SUBMITTED" ? ("SUBMITTED", null) : null;
+    }
+
+    // Returns true when the claim was kept as Cancelled because it has history.
+    private async Task<bool> RemoveCancelledReturnClaim(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
         var claimId = await db.ReturnClaims.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == externalClaimId)
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId)
             .Select(x => (Guid?)x.Id)
             .SingleOrDefaultAsync(cancellationToken);
-        if (claimId is null) return;
-        await CancelledReturnClaimCleanup.RemoveAsync(db, tenantId, claimId.Value, cancellationToken);
+        if (claimId is null) return false;
+        var now = timeProvider.GetUtcNow();
+        if (!await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId.Value, remote.RawStatus, remote.LastModifiedAt, now, cancellationToken)) return false;
+        await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, now, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     internal static ReturnClaim NewReturnClaim(Guid tenantId, Guid connectionId, Guid orderId, RemoteReturnClaim remote, ReturnClaimStatus status, DateTimeOffset now) => new()
@@ -9642,6 +9805,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         ReasonCode = remote.ReasonCode,
         ReasonText = remote.ReasonText,
         ActionDueAt = remote.ActionDueAt,
+        ActionDueAtEstimated = remote.ActionDueAtEstimated,
         LastRemoteModifiedAt = remote.LastModifiedAt,
         CreatedAt = now,
         UpdatedAt = now,

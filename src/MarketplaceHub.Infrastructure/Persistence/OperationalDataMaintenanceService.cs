@@ -48,6 +48,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (hidden)
         {
             connection.Status = "HIDDEN";
+            connection.DisabledAt = timeProvider.GetUtcNow();
         }
         else if (connection.Status == "HIDDEN")
         {
@@ -300,6 +301,8 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM inventory.connection_location_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM inventory.connection_inventory_policies WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM integration.webhook_subscriptions WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM sales.marketplace_questions WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM integration.marketplace_question_sync_states WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM integration.connection_sync_policies WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM integration.platform_capabilities WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};

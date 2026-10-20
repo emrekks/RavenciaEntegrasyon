@@ -646,10 +646,14 @@ public static class TrendyolJsonMapper
             var status = ClaimStatus(claim);
             var lastModifiedAt = Instant(claim, "lastModifiedDate");
             var claimDate = FlexibleInstant(claim, "claimDate", "createdDate", "requestDate");
-            var actionDueAt = FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate")
+            var remoteDueAt = FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate");
+            // Without a deadline from Trendyol the usual rule is applied, and the
+            // claim says so: the panel shows it as an estimate.
+            var actionDueAt = remoteDueAt
                 ?? (IsWaitingInAction(status) && lastModifiedAt is { } waitingInActionAt ? (DateTimeOffset?)waitingInActionAt.AddHours(48) : null)
                 ?? (claimDate is { } requestedAt ? (DateTimeOffset?)requestedAt.AddDays(7) : null);
-            rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink")));
+            rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink"),
+                ActionDueAtEstimated: remoteDueAt is null && actionDueAt is not null));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);

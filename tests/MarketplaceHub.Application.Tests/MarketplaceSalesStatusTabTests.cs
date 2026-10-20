@@ -169,6 +169,59 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
+    public void Old_unpacked_Hepsiburada_rule_hides_only_orders_that_still_look_open()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        var sql = query.ExcludeStaleUnpackaged(db, tenantId, DateTimeOffset.UtcNow).ToQueryString();
+
+        // A cancelled-before-packing order keeps its status and stays listed.
+        Assert.Contains("'NEW'", sql, StringComparison.Ordinal);
+        Assert.Contains("'ON_HOLD'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("'CANCELLED'", sql, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("12345678901", false)]
+    [InlineData("+90 532 000 00 00", false)]
+    [InlineData("Ayşe", true)]
+    [InlineData("ayse@example.com", true)]
+    public void Order_search_reads_the_customer_snapshot_only_for_terms_with_letters(string term, bool expected) =>
+        Assert.Equal(expected, MarketplaceSalesService.SearchesCustomerSnapshot(term));
+
+    [Theory]
+    [InlineData("12345678901", "***8901")]
+    [InlineData("1234", "***")]
+    [InlineData(" ", null)]
+    [InlineData(null, null)]
+    public void Order_list_masks_identity_and_tax_numbers(string? value, string? expected) =>
+        Assert.Equal(expected, MarketplaceSalesService.MaskIdentityNumber(value));
+
+    [Fact]
+    public void Order_list_address_keeps_label_fields_and_drops_phone_and_identity()
+    {
+        const string json = """{"firstName":"Ayşe","lastName":"Yılmaz","fullAddress":"Atatürk Cad. No:1","district":"Kadıköy","city":"İstanbul","phone":"5321234567","identityNumber":"12345678901","email":"a@example.com"}""";
+
+        var address = MarketplaceSalesService.ListAddress(json);
+
+        Assert.NotNull(address);
+        Assert.Equal("Ayşe Yılmaz", address!.FullName);
+        Assert.Equal("Atatürk Cad. No:1", address.FullAddress);
+        Assert.Equal("Kadıköy", address.District);
+        Assert.Equal("İstanbul", address.City);
+        var serialized = System.Text.Json.JsonSerializer.Serialize(address);
+        Assert.DoesNotContain("5321234567", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("12345678901", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("example.com", serialized, StringComparison.Ordinal);
+        Assert.Null(MarketplaceSalesService.ListAddress("{}"));
+    }
+
+    [Fact]
     public void Return_list_hides_Hepsiburada_claims_without_a_recent_order()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
