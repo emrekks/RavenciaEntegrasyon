@@ -2038,6 +2038,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             "REJECT" => "REJECTED",
             _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
         });
+        var restocked = new List<StockProjectionChange>();
         foreach (var (stockLine, stockItem) in stockTargets)
         {
             var alreadyReceived = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == stockLine.Id).SumAsync(x => x.Quantity, cancellationToken);
@@ -2049,7 +2050,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = stockLine.Id, InventoryItemId = stockItem.Id, Disposition = ReturnStockDispositionKind.Pass, Quantity = receivable, IdempotencyKey = stockKey, Reason = "İade kabulünde stoğa eklendi", ActorUserId = userId, CreatedAt = stockAt });
             stockItem.OnHand += receivable; stockItem.Available = Math.Max(0, stockItem.OnHand - stockItem.Reserved); stockItem.ProjectionVersion++; stockItem.Version++;
             db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = stockItem.Id, MovementType = "RETURN_PASS", QuantityDelta = receivable, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = stockKey, IdempotencyKey = stockKey, OccurredAt = stockAt, RecordedAt = stockAt, ActorUserId = userId, CorrelationId = correlationId });
+            restocked.Add(new StockProjectionChange(stockItem.VariantId, stockItem.ProjectionVersion, stockKey));
         }
+        // Restocked units go to every connection selling the variant, committed with the restock.
+        await StockProjectionOutbox.EnqueueAsync(db, tenantId, restocked, effect.CompletedAt.Value, cancellationToken);
         if (stockTargets.Count > 0) db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = "İade kabulünde stoğa eklendi", CorrelationId = correlationId, CreatedAt = effect.CompletedAt.Value });
         claim.UpdatedAt = effect.CompletedAt.Value;
         claim.Version++;
@@ -2127,6 +2131,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             {
                 item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++;
                 db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId });
+                await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, idempotencyKey)], now, cancellationToken);
             }
             db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now });
             await db.SaveChangesAsync(cancellationToken);

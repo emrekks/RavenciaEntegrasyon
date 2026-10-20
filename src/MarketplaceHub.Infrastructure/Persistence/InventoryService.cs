@@ -78,6 +78,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
             ActorUserId = userId,
             CorrelationId = correlationId
         });
+        // The new stock goes to every connection selling the variant, committed with the adjustment.
+        await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{command.SourceEventId.Trim()}")], now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var sku = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.Id == item.VariantId).Select(x => x.Sku).SingleAsync(cancellationToken);
@@ -104,6 +106,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         try { _ = Money.Create(command.SalePrice, currency); } catch (ArgumentException) { return Invalid<ChannelOfferView>("currency", "Currency üç büyük harften oluşmalıdır."); }
         if (command.SafetyStock < 0 || command.VatRate < 0) return Invalid<ChannelOfferView>("safetyStock", "Güvenlik stoğu ve KDV negatif olamaz.");
         if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.VatInclusion) || string.IsNullOrWhiteSpace(command.RoundingMode) || string.IsNullOrWhiteSpace(command.Status)) return Invalid<ChannelOfferView>("reason", "Fiyat değişikliği nedeni ve teklif politikası alanları zorunludur.");
+        if (ValidatePricing(command.VatInclusion, command.RoundingMode, command.VatRate) is { } pricingError) return pricingError;
 
         var offer = new ChannelOffer
         {
@@ -115,8 +118,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
             SalePrice = decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven),
             Currency = currency,
             VatRate = decimal.Round(command.VatRate, 4, MidpointRounding.ToEven),
-            VatInclusion = command.VatInclusion.Trim(),
-            RoundingMode = command.RoundingMode.Trim(),
+            VatInclusion = command.VatInclusion.Trim().ToUpperInvariant(),
+            RoundingMode = command.RoundingMode.Trim().ToUpperInvariant(),
             SafetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven),
             Status = command.Status.Trim(),
             PriceVersion = 1,
@@ -138,13 +141,14 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         try { _ = Money.Create(command.SalePrice, currency); } catch (ArgumentException) { return Invalid<ChannelOfferView>("currency", "Currency üç büyük harften oluşmalıdır."); }
         if (command.SafetyStock < 0 || command.VatRate < 0) return Invalid<ChannelOfferView>("safetyStock", "Safety stock ve VAT negatif olamaz.");
         if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.VatInclusion) || string.IsNullOrWhiteSpace(command.RoundingMode) || string.IsNullOrWhiteSpace(command.Status)) return Invalid<ChannelOfferView>("reason", "Fiyat değişikliği nedeni ve teklif politikası alanları zorunludur.");
+        if (ValidatePricing(command.VatInclusion, command.RoundingMode, command.VatRate) is { } pricingError) return pricingError;
 
         offer.ListPrice = decimal.Round(command.ListPrice, 4, MidpointRounding.ToEven);
         offer.SalePrice = decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven);
         offer.Currency = currency;
         offer.VatRate = decimal.Round(command.VatRate, 4, MidpointRounding.ToEven);
-        offer.VatInclusion = command.VatInclusion.Trim();
-        offer.RoundingMode = command.RoundingMode.Trim();
+        offer.VatInclusion = command.VatInclusion.Trim().ToUpperInvariant();
+        offer.RoundingMode = command.RoundingMode.Trim().ToUpperInvariant();
         offer.SafetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven);
         offer.Status = command.Status.Trim();
         offer.PriceVersion++;
@@ -195,6 +199,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         // automatic price/stock policies only govern sends the system starts on its own.
         var manual = connection.PlatformCode == "PAZARAMA";
         if (!manual && pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
+        // The request writes stock as well (Trendyol's too), so the stock policy must allow it.
+        if (!manual && !await StockWritePolicyAllowsAsync(tenantId, connectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
@@ -215,6 +221,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
         if (pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
+        if (!await StockWritePolicyAllowsAsync(tenantId, connectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, productId: productId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;
@@ -228,6 +235,23 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
+    }
+
+    // A missing policy row means the flow was never switched off, the same rule the worker applies.
+    private async Task<bool> StockWritePolicyAllowsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock, cancellationToken);
+        return policy is null || policy.Enabled;
+    }
+
+    // An offer kept without VAT is grossed up with its own rate when it is sent, so the VAT mode and
+    // the rounding mode must be ones the outbound price rule knows.
+    private static ServiceResult<ChannelOfferView>? ValidatePricing(string vatInclusion, string roundingMode, decimal vatRate)
+    {
+        if (!ChannelOfferPricePolicy.IsKnownVatInclusion(vatInclusion)) return Invalid<ChannelOfferView>("vatInclusion", "KDV durumu INCLUDED veya EXCLUDED olmalıdır.");
+        if (!ChannelOfferPricePolicy.IsKnownRoundingMode(roundingMode)) return Invalid<ChannelOfferView>("roundingMode", "Yuvarlama modu HALF_EVEN, HALF_UP, UP, DOWN, CEILING veya FLOOR olmalıdır.");
+        if (ChannelOfferPricePolicy.IsVatExcluded(vatInclusion) && vatRate > 100) return Invalid<ChannelOfferView>("vatRate", "KDV hariç fiyat için KDV oranı 0-100 arasında olmalıdır.");
+        return null;
     }
 
     private bool WritesEnabled(string settingsJson)

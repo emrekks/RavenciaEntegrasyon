@@ -261,10 +261,12 @@ public static class OrderInventoryReservationPolicy
         return Math.Max(0m, afterCancellation - consumed);
     }
 
+    // NOT APPLIED, intentionally: order projection does not call this. ReservationMode,
+    // ReserveOnStatuses and ReleaseOnStatuses are stored but have no effect; order-line reservations
+    // are unconditional (ReservedQuantity). Live connections hold reservations under a DISABLED or
+    // missing policy that was never applied, and wiring this in would release them and oversell.
     public static bool IsReservationEnabled(ConnectionInventoryPolicy? policy, string? rawStatus)
     {
-        // Reservations are opt-in. Without an explicit connection policy,
-        // order synchronization must not create reserved stock implicitly.
         if (policy is null) return false;
         if (string.Equals(policy.ReservationMode?.Trim(), "NONE", StringComparison.OrdinalIgnoreCase)
             || string.Equals(policy.ReservationMode?.Trim(), "DISABLED", StringComparison.OrdinalIgnoreCase))
@@ -275,6 +277,16 @@ public static class OrderInventoryReservationPolicy
         return string.IsNullOrWhiteSpace(policy.ReserveOnStatuses)
             || ContainsStatus(policy.ReserveOnStatuses, status);
     }
+
+    // An order-line reservation holds the units an order could not take from physical stock.
+    // ExpiresAt is set when the reservation is created or its quantity changes, and cleared on release.
+    // It is informational: nothing expires a reservation on its own.
+    public static readonly TimeSpan ReservationLifetime = TimeSpan.FromDays(14);
+
+    public static DateTimeOffset ExpiresAt(DateTimeOffset refreshedAt) => refreshedAt.Add(ReservationLifetime);
+
+    // The whole shortfall stays reserved, independent of the connection's inventory policy.
+    public static decimal ReservedQuantity(decimal shortfall) => Math.Max(0m, shortfall);
 
     private static bool ContainsStatus(string? configuredStatuses, string rawStatus)
     {
@@ -414,14 +426,62 @@ public static class ProductUpdatePollingPolicy
     }
 }
 
+public sealed record StockProjectionChange(Guid VariantId, long ProjectionVersion, string SourceEventId);
+public sealed record StockProjectionTarget(Guid ConnectionId, Guid VariantId, string SourceEventId, string DedupKey);
+
+public enum StockProjectionDispatchDecision { Skip, HoldForPricePolicy, Dispatch }
+
 public static class StockProjectionOutboxPolicy
 {
     public static string DedupKey(Guid connectionId, Guid variantId, long projectionVersion) =>
         $"stock-projection:{connectionId:N}:{variantId:N}:v{projectionVersion}";
+
+    // A stock change reaches every connection that sells the variant (an ACTIVE offer), not only the
+    // connection whose order caused it; a manual adjustment or a return restock has no connection of
+    // its own. The dispatch sends the current projection, so the latest version per variant is enough.
+    public static IReadOnlyList<StockProjectionTarget> FanOut(IEnumerable<StockProjectionChange> changes, IEnumerable<(Guid ConnectionId, Guid VariantId)> activeOffers)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        ArgumentNullException.ThrowIfNull(activeOffers);
+        var latest = changes
+            .GroupBy(change => change.VariantId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(change => change.ProjectionVersion).First());
+        return activeOffers
+            .Distinct()
+            .Where(offer => latest.ContainsKey(offer.VariantId))
+            .OrderBy(offer => offer.ConnectionId)
+            .ThenBy(offer => offer.VariantId)
+            .Select(offer =>
+            {
+                var change = latest[offer.VariantId];
+                return new StockProjectionTarget(offer.ConnectionId, offer.VariantId, change.SourceEventId, DedupKey(offer.ConnectionId, offer.VariantId, change.ProjectionVersion));
+            })
+            .ToList();
+    }
+
+    // Build outcomes meaning there is nothing to send for this variant on this connection (already
+    // sent, not live there, or an offer the user must fix): the dispatch is finished, and a reconcile
+    // scan moves on to the next candidate instead of stopping.
+    public static bool IsSettledBuildFailure(string? code) =>
+        code is "NO_EXTERNAL_CHANGES" or "LIVE_OFFER_REQUIRED" or "CHANNEL_OFFER_INVALID";
+
+    // Every automatic price-and-stock request carries the price as well, so a stock dispatch needs
+    // both write policies. With the price policy off the stock is held (and reported) instead of
+    // being sent with a price the seller may be managing on the marketplace.
+    public static StockProjectionDispatchDecision Decide(bool stockWriteEnabled, bool priceWriteEnabled) =>
+        !stockWriteEnabled ? StockProjectionDispatchDecision.Skip
+        : !priceWriteEnabled ? StockProjectionDispatchDecision.HoldForPricePolicy
+        : StockProjectionDispatchDecision.Dispatch;
 }
 
 public static class PriceInventoryOutboxPolicy
 {
+    // A price-and-stock request writes both values on every marketplace (Trendyol's included), so an
+    // automatic send needs both write policies; a send started from the panel is guarded by the
+    // connection switch alone.
+    public static IReadOnlyList<string> RequiredWritePolicies(bool manual) =>
+        manual ? [] : [MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock];
+
     public static bool IsCurrent(PriceInventoryPushLine line, long projectionVersion, long priceVersion) =>
         line.ProjectionVersion == projectionVersion && line.PriceVersion == priceVersion;
 

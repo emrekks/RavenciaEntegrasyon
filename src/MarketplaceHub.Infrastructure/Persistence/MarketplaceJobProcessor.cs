@@ -1240,21 +1240,25 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (connection is null) return JobExecutionResult.Blocked("CONNECTION_NOT_FOUND", "Bağlantı bulunamadı.");
             if (!WritesEnabled(connection.SettingsJson))
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
-            var isHepsiburadaConnection = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
-            var requiresPriceAndStock = isHepsiburadaConnection || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) || payload.VariantId.HasValue;
-            var requiredWritePolicies = requiresPriceAndStock
-                ? new[] { MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock }
-                : new[] { MarketplaceExternalWritePolicies.Price };
-            // A manual send (started from the panel) is guarded by the connection switch alone.
-            foreach (var writePolicy in payload.Manual ? Array.Empty<string>() : requiredWritePolicies)
+            // Every platform's request carries price and stock together (Trendyol's too), so an
+            // automatic send needs both policies; a manual send is guarded by the connection switch alone.
+            foreach (var writePolicy in PriceInventoryOutboxPolicy.RequiredWritePolicies(payload.Manual))
                 if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
                     return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; pazar yeri isteği gönderilmedi." : "Fiyat dış yazma akışı kapalı; pazar yeri isteği gönderilmedi.");
             var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);
             if (!current.Succeeded)
             {
                 if (current.Error!.Code == "NO_EXTERNAL_CHANGES") return JobExecutionResult.Success();
+                if (current.Error.Code == "INVENTORY_REQUIRED")
+                {
+                    await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", current.Error.Code, current.Error.Message, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                }
                 return JobExecutionResult.Blocked(current.Error.Code, current.Error.Message);
             }
+            // Offers without a MAIN stock row are left out of the request; they stay visible as an issue.
+            if (current.Value!.MissingInventorySkus.Count > 0)
+                await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", "INVENTORY_REQUIRED", PriceInventoryComposer.MissingInventoryMessage(current.Value.MissingInventorySkus), cancellationToken);
             if (!string.Equals(current.Value!.PayloadHash, payload.PayloadHash, StringComparison.Ordinal)) return JobExecutionResult.Blocked("PRICE_INVENTORY_SUPERSEDED", "Fiyat veya stok yeni bir sürüme geçti; eski payload uzak sisteme gönderilmedi.");
             // Price and stock are sent as absolute values (Shopify sets stock against the quantity it reads
             // first), and the payload is the current one (checked above). A send whose outcome is unknown,
@@ -6783,6 +6787,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 PriceVersion = 1,
                 Version = 1
             };
+            // The price came from the marketplace, so it counts as already sent there.
+            offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
             db.ChannelOffers.Add(offer);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
             {
@@ -6800,6 +6806,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return;
         }
 
+        // The marketplace reports VAT-inclusive prices; an offer kept without VAT stores the net
+        // amount that grosses up to the same price again.
+        salePrice = ChannelOfferPricePolicy.StoredFromGross(salePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
+        listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(listPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
         var priceChanged = offer.ListPrice != listPrice || offer.SalePrice != salePrice || !string.Equals(offer.Currency, currency, StringComparison.OrdinalIgnoreCase) || offer.VatRate != vatRate;
         var statusChanged = offer.Status != status;
         if (!priceChanged && !statusChanged) return;
@@ -6812,6 +6822,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (priceChanged)
         {
             offer.PriceVersion++;
+            // The new price is the one the marketplace already holds; without this marker the next
+            // price-and-stock send would push it back as a local change.
+            offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
             {
                 Id = Guid.CreateVersion7(),
@@ -8460,7 +8473,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .GroupBy(x => x.SourceId)
             .ToDictionary(group => group.Key, group => group.Sum(x => x.QuantityDelta), StringComparer.Ordinal);
         var now = timeProvider.GetUtcNow();
-        var outbox = new Dictionary<string, (Guid VariantId, string EventId)>(StringComparer.Ordinal);
+        var outbox = new List<StockProjectionChange>();
         foreach (var line in lines)
         {
             var variantId = line.VariantId!.Value;
@@ -8533,10 +8546,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     CorrelationId = $"order:{line.OrderId:N}"
                 });
                 receivedLedgerDeltas[sourceId] = receivedLedgerDelta + actualOnHandDelta;
-                outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, stockEventId);
+                outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, stockEventId));
             }
             var committedAfterMovement = Math.Max(0m, baselineQuantity - receivedLedgerDeltas.GetValueOrDefault(sourceId));
-            var desired = Math.Max(0m, targetCommitted - committedAfterMovement);
+            // The units the order could not take from physical stock are always held as a reservation,
+            // whatever the connection's inventory policy says (see OrderInventoryReservationPolicy).
+            var desired = OrderInventoryReservationPolicy.ReservedQuantity(Math.Max(0m, targetCommitted - committedAfterMovement));
             if (desired > 0 && actualOnHandDelta != onHandDelta)
             {
                 await RecordIssue(
@@ -8551,14 +8566,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (reservation is null && desired > 0)
                 {
-                    reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = sourceId, Quantity = desired, Status = ReservationStatus.Active, Version = 1 };
+                    reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = sourceId, Quantity = desired, Status = ReservationStatus.Active, ExpiresAt = OrderInventoryReservationPolicy.ExpiresAt(now), Version = 1 };
                     db.StockReservations.Add(reservation);
                     reservationsByKey[(item.Id, sourceId)] = reservation;
                 }
                 else if (reservation is not null)
                 {
-                    if (desired == 0) { reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; }
-                    else { reservation.Quantity = desired; reservation.Status = ReservationStatus.Active; reservation.ReleasedAt = null; }
+                    if (desired == 0) { reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; reservation.ExpiresAt = null; }
+                    else { reservation.Quantity = desired; reservation.Status = ReservationStatus.Active; reservation.ReleasedAt = null; reservation.ExpiresAt = OrderInventoryReservationPolicy.ExpiresAt(now); }
                     reservation.Version++;
                 }
                 var delta = desired - current;
@@ -8568,7 +8583,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 item.Version++;
                 var reservationEventId = $"{eventId}:{desired.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
                 db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = reservationEventId, IdempotencyKey = $"order-reservation:{reservationEventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
-                outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, reservationEventId);
+                outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, reservationEventId));
             }
 
             if (shipmentDelta > 0)
@@ -8592,18 +8607,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 shippedLedger[sourceId] = consumedShipped + shipmentDelta;
             }
         }
-        if (outbox.Count == 0) return;
-        var dedupKeys = outbox.Keys.ToArray();
-        var existingDedupKeys = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && dedupKeys.Contains(x.JobDedupKey))
-            .Select(x => x.JobDedupKey)
-            .ToHashSetAsync(StringComparer.Ordinal, cancellationToken);
-        foreach (var (dedup, details) in outbox)
-        {
-            if (existingDedupKeys.Contains(dedup) || db.IntegrationJobs.Local.Any(x => x.TenantId == tenantId && x.JobDedupKey == dedup)) continue;
-            var payload = JsonSerializer.Serialize(new { variantId = details.VariantId, sourceEventId = details.EventId });
-            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.StockProjectionDispatch, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.StockProjectionDispatch, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = $"stock:{details.VariantId:N}", CreatedAt = now, Version = 1 });
-        }
+        // Every connection selling the variant gets the new stock, not only the one that sold it.
+        await StockProjectionOutbox.EnqueueAsync(db, tenantId, outbox, now, cancellationToken);
     }
 
     private async Task<JobExecutionResult> DispatchStockProjection(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -8617,10 +8622,38 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // available, but an automatic projection must never enqueue a remote write
         // while the explicit external-write switch is off.
         if (!WritesEnabled(connection.SettingsJson)) return JobExecutionResult.Success();
-        if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken)) return JobExecutionResult.Success();
+        var decision = StockProjectionOutboxPolicy.Decide(
+            await ExternalWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken),
+            await ExternalWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Price, cancellationToken));
+        if (decision == StockProjectionDispatchDecision.Skip) return JobExecutionResult.Success();
         if (!await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && x.Status == "ACTIVE", cancellationToken)) return JobExecutionResult.Success();
+        if (decision == StockProjectionDispatchDecision.HoldForPricePolicy)
+        {
+            // The request would carry the price too; sending it with the price policy off could
+            // overwrite a price the seller manages on the marketplace. The stock waits, visibly.
+            await RecordIssue(tenantId, $"stock-projection-price-policy:{connectionId:N}", "STOCK_WRITE_HELD_PRICE_POLICY_DISABLED", "Stok değişikliği pazaryerine gönderilmedi: fiyat-stok isteği fiyatı da taşıdığı için fiyat dış yazma akışı da açık olmalı. Fiyat akışı açıldığında stok kontrol taramasıyla gönderilir.", cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            return JobExecutionResult.Success();
+        }
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
-        if (!build.Succeeded) return JobExecutionResult.Blocked(build.Error!.Code, build.Error.Message);
+        if (!build.Succeeded)
+        {
+            var code = build.Error!.Code;
+            if (code == "INVENTORY_REQUIRED")
+            {
+                await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", code, build.Error.Message, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            if (!StockProjectionOutboxPolicy.IsSettledBuildFailure(code)) return JobExecutionResult.Blocked(code, build.Error.Message);
+            // Already sent, not live on this connection, or an offer the user has to fix: nothing to
+            // send now. An invalid offer stays visible as an issue instead of a blocked job.
+            if (code == "CHANNEL_OFFER_INVALID")
+            {
+                await RecordIssue(tenantId, $"stock-projection-offer-invalid:{connectionId:N}:{variantId:N}", code, build.Error.Message, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            return JobExecutionResult.Success();
+        }
         var draft = build.Value!;
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken)) return JobExecutionResult.Success();
@@ -9364,12 +9397,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var candidate in variants)
         {
             var result = await DispatchStockProjection(tenantId, connectionId, JsonSerializer.Serialize(new { variantId = candidate.VariantId }), correlationId, cancellationToken);
-            if (!result.Succeeded)
-            {
-                if (result.Kind == JobCompletionKind.Retry)
-                    throw new JobProcessingException(result);
-                return false;
-            }
+            // One candidate that cannot be sent must not stop the scan: the same candidate leads
+            // every pass, so stopping here left the rest of the catalog unreconciled.
+            if (!result.Succeeded && result.Kind == JobCompletionKind.Retry)
+                throw new JobProcessingException(result);
 
             // ReconciledAt is an observation watermark, not an enqueue
             // timestamp. It is updated only when a remote catalog read
