@@ -48,6 +48,7 @@ public sealed class RoleAuthorizationMiddlewareTests
 
     [Theory]
     [InlineData("/api/v1/questions/11111111-1111-1111-1111-111111111111/answer")]
+    [InlineData("/api/v1/questions/11111111-1111-1111-1111-111111111111/report")]
     [InlineData("/api/v1/questions/sync")]
     [InlineData("/api/v1/question-templates")]
     public async Task OperationsRole_CanManageMarketplaceQuestions(string path)

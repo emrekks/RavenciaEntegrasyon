@@ -49,6 +49,27 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
         return AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, null), response.RateLimit);
     }
 
+    public QuestionReportCapability ReportCapability(string platformCode) => HepsiburadaQuestionRequestContract.ReportCapability;
+
+    // "Sorun Bildirme": POST api/v1.0/issues/{number}/reject with {"rejectReason"}. The question is closed without an
+    // answer (status 3, Rejected); the customer is told it was not answered and never sees the text, which is for
+    // Hepsiburada only.
+    public async Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken)
+    {
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account?.QuestionBaseAddress is null) return AdapterResult<RemoteQuestionReportResult>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_QUESTION_CREDENTIALS", "Hepsiburada soru bağlantısı veya servis anahtarı eksik.", 401, null, null));
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+            return AdapterResult<RemoteQuestionReportResult>.Failure(new(AdapterErrorClass.Validation, "EXTERNAL_WRITES_DISABLED", "Bu bağlantıda veya ortamda pazaryerine soru bildirme kapalı.", 403, null, null));
+        var text = HepsiburadaQuestionRequestContract.RejectReasonText(report);
+        if (!HepsiburadaQuestionRequestContract.ValidRejectReason(text))
+            return AdapterResult<RemoteQuestionReportResult>.Failure(new(AdapterErrorClass.Validation, "QUESTION_REPORT_NOTE_LENGTH", "Bildirim nedeni 1–2000 karakter arasında olmalıdır.", 422, null, null));
+        using var content = HepsiburadaQuestionRequestContract.CreateRejectContent(text);
+        var response = await SendAsync(account, account.QuestionBaseAddress, HttpMethod.Post, HepsiburadaQuestionRequestContract.RejectPath(questionId), content, cancellationToken,
+            request => request.Headers.TryAddWithoutValidation("merchantId", account.Connection.ExternalStoreId));
+        if (!response.IsSuccess) return AdapterResult<RemoteQuestionReportResult>.Failure(response.Error!, response.RateLimit);
+        response.Value?.Dispose();
+        return AdapterResult<RemoteQuestionReportResult>.Success(new(true), response.RateLimit);
+    }
 }
 
 internal static class HepsiburadaQuestionRequestContract
@@ -72,6 +93,39 @@ internal static class HepsiburadaQuestionRequestContract
         return content;
     }
     public static bool ValidAnswer(string? answer) => answer?.Trim().Length is >= 1 and <= 2000;
+
+    // Sorun Bildirme (reporting a question instead of answering it):
+    // https://developers.hepsiburada.com/tr/companies/hepsiburada?category=saticiya-sor-entegrasyonu&product=saticiya-sor-entegrasyonu&version=v1.0&op=Sorun+Bildirme&view=endpoint
+    // https://developers.hepsiburada.com/tr/companies/hepsiburada?category=saticiya-sor-entegrasyonu&product=saticiya-sor-entegrasyonu&version=v1.0&guide=saticiya-sor-onemli-bilgiler&view=guide
+    // The body is {"rejectReason": string ≤ 2000, "rejectConversationId": optional}. Hepsiburada has no reason codes:
+    // the reason is free text read by Hepsiburada (a reported question shows it as "Ret nedeni: Reklam"), so the panel
+    // offers fixed reasons and sends the chosen one, with the seller's note after it. Only a question still waiting
+    // for its answer (status 1, before expireDate) can be reported; it then becomes status 3 (Rejected).
+    public const string ReportDocumentationUrl = "https://developers.hepsiburada.com/tr/companies/hepsiburada?category=saticiya-sor-entegrasyonu&product=saticiya-sor-entegrasyonu&version=v1.0&op=Sorun+Bildirme&view=endpoint";
+    public const int RejectReasonMaxLength = 2000;
+    public const int ReportNoteMaxLength = 1900;
+
+    public static readonly QuestionReportCapability ReportCapability = new(
+        "HEPSIBURADA", true, null,
+        [
+            new("ADVERTISEMENT", "Reklam"),
+            new("INSULT", "Hakaret veya uygunsuz ifade"),
+            new("NOT_A_QUESTION", "Soru içermiyor"),
+            new("UNRELATED", "Ürün veya siparişle ilgisiz"),
+            new("PERSONAL_DATA", "Kişisel bilgi içeriyor"),
+            new("OTHER", "Diğer", NoteRequired: true),
+        ],
+        ["WAITING_FOR_ANSWER"], "REJECTED", NoteMinLength: 10, NoteMaxLength: ReportNoteMaxLength, ReportDocumentationUrl);
+
+    public static string RejectPath(string questionId) => $"api/v1.0/issues/{Uri.EscapeDataString(questionId)}/reject";
+    public static string RejectReasonText(RemoteQuestionReport report)
+    {
+        var note = report.Note?.Trim();
+        return string.IsNullOrEmpty(note) ? report.ReasonText.Trim() : $"{report.ReasonText.Trim()}: {note}";
+    }
+    public static bool ValidRejectReason(string? text) => text?.Trim().Length is >= 1 and <= RejectReasonMaxLength;
+    public static StringContent CreateRejectContent(string rejectReason) =>
+        new(JsonSerializer.Serialize(new { rejectReason = rejectReason.Trim() }), System.Text.Encoding.UTF8, "application/json");
 }
 
 internal static class HepsiburadaQuestionMapper

@@ -716,11 +716,29 @@ public sealed record RemoteMarketplaceQuestion(
     DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteQuestionConversation> Conversations, string? ProductUrl = null);
 public sealed record MarketplaceQuestionPage(IReadOnlyList<RemoteMarketplaceQuestion> Items, int Page, int TotalPages, long TotalElements);
 public sealed record RemoteQuestionAnswerResult(bool Accepted, bool IsVerified, string? AnswerId);
+
+// Reporting a customer question to the marketplace instead of answering it (advertising, insults, no question).
+// Each marketplace says whether it takes a report over its API, which reasons the panel offers, in which states
+// and what the question becomes afterwards.
+public sealed record QuestionReportReason(string Code, string Label, bool NoteRequired = false);
+public sealed record QuestionReportCapability(
+    string PlatformCode, bool Supported, string? UnsupportedReason, IReadOnlyList<QuestionReportReason> Reasons,
+    IReadOnlyList<string> AllowedStatuses, string? ResultStatus, int NoteMinLength, int NoteMaxLength, string? DocumentationUrl)
+{
+    public static QuestionReportCapability Unsupported(string platformCode, string reason, string? documentationUrl) =>
+        new(platformCode, false, reason, [], [], null, 0, 0, documentationUrl);
+}
+public sealed record RemoteQuestionReport(string ReasonCode, string ReasonText, string? Note);
+public sealed record RemoteQuestionReportResult(bool Accepted);
+public sealed record ReportQuestionCommand(long Version, string? ReasonCode, string? Note);
+
 public interface IQuestionPort
 {
     Task<AdapterResult<MarketplaceQuestionPage>> ListQuestionsAsync(AdapterContext context, QuestionPollRequest request, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteMarketplaceQuestion>> GetQuestionAsync(AdapterContext context, string questionId, string kind, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken);
+    QuestionReportCapability ReportCapability(string platformCode);
+    Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken);
 }
 
 public sealed record MarketplaceQuestionView(Guid Id, Guid ConnectionId, string PlatformCode, string StoreName, string ExternalQuestionId, string Kind, string Status, string QuestionText, string? ProductName, string? ProductImageUrl, string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName, string? ExternalOrderNumber, IReadOnlyList<RemoteQuestionConversation> Conversations, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, DateTimeOffset LastRemoteModifiedAt, DateTimeOffset LastSyncedAt, long Version, string? ProductUrl = null, string? AnswerSubmissionStatus = null, string? PendingAnswerText = null);
@@ -740,6 +758,8 @@ public interface IMarketplaceQuestionService
     Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken);
     Task<IReadOnlyList<MarketplaceQuestionSyncStateView>> SyncStatesAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<MarketplaceQuestionView>> AnswerAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, string answer, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    QuestionReportCapability ReportCapability(string platformCode);
+    Task<ServiceResult<MarketplaceQuestionView>> ReportAsync(Guid tenantId, Guid userId, Guid id, ReportQuestionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<IReadOnlyList<MarketplaceQuestionTemplateView>> TemplatesAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<MarketplaceQuestionTemplateView>> SaveTemplateAsync(Guid tenantId, Guid? id, long? expectedVersion, SaveQuestionTemplateCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteTemplateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);

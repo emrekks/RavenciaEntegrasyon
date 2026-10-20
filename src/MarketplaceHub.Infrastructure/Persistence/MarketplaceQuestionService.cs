@@ -340,6 +340,119 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
     }
 
+    public QuestionReportCapability ReportCapability(string platformCode) => port.ReportCapability(platformCode);
+
+    // Reports a question to the marketplace instead of answering it (advertising, insults). Each marketplace's own
+    // rules come from its adapter: whether it takes a report at all, the reasons, the states that allow it and the
+    // state the question ends in. The same Idempotency-Key repeated after a success returns the reported question
+    // without a second report; the audit log keeps who reported what and why.
+    public async Task<ServiceResult<MarketplaceQuestionView>> ReportAsync(Guid tenantId, Guid userId, Guid id, ReportQuestionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var question = await db.MarketplaceQuestions.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id, cancellationToken);
+        if (question is null) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_NOT_FOUND", "Soru bulunamadı.", 404);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleAsync(row => row.TenantId == tenantId && row.Id == question.ConnectionId, cancellationToken);
+        var keyHash = QuestionReportAudit.KeyHash(idempotencyKey);
+        var target = question.Id.ToString("D");
+        var keyMarker = ";key:" + keyHash;
+        var attempts = await db.AuditLogs.AsNoTracking().Where(row => row.TenantId == tenantId && row.TargetType == QuestionReportAudit.TargetType
+            && row.TargetId == target && row.Reason.Contains(keyMarker)).Select(row => row.Action).ToListAsync(cancellationToken);
+        if (attempts.Contains(QuestionReportAudit.Reported)) return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+
+        var capability = port.ReportCapability(connection.PlatformCode);
+        if (!capability.Supported)
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_UNSUPPORTED", capability.UnsupportedReason ?? "Bu pazaryeri soru bildirmeyi desteklemiyor.", 422);
+        // A retry of an attempt whose result stayed open carries the version it started from; the marketplace is
+        // read again below, so it is not refused as stale.
+        if (attempts.Count == 0 && question.Version != command.Version) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_STALE", "Soru yenilendi. Güncel kaydı açıp tekrar deneyin.", 412);
+        var now = timeProvider.GetUtcNow();
+        // A retry of this key after an open result, when a sync has meanwhile shown the question as reported.
+        if (attempts.Contains(QuestionReportAudit.Started) && question.Status == capability.ResultStatus)
+        {
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Reported, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = QuestionReportAudit.Reason(connection.PlatformCode, command.ReasonCode ?? "", keyHash), CorrelationId = correlationId, CreatedAt = now });
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+        }
+        if (question.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_NOT_ALLOWED", "Bu soruya gönderilen cevap pazaryerinde işleniyor; soru bildirilemez.", 409);
+        if (!capability.AllowedStatuses.Contains(question.Status) || question.ExpiresAt is { } expiresAt && expiresAt <= now)
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_NOT_ALLOWED", "Yalnızca cevap süresi dolmamış, cevap bekleyen sorular bildirilebilir.", 409);
+        var reason = capability.Reasons.FirstOrDefault(item => string.Equals(item.Code, command.ReasonCode?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (reason is null) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_REASON_INVALID", "Listeden bir bildirim nedeni seçin.", 422);
+        var note = string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim();
+        if (reason.NoteRequired && (note?.Length ?? 0) < capability.NoteMinLength)
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_NOTE_REQUIRED", $"Bu neden için en az {capability.NoteMinLength} karakterlik açıklama yazın.", 422);
+        if (note is not null && note.Length > capability.NoteMaxLength)
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_NOTE_LENGTH", $"Açıklama en fazla {capability.NoteMaxLength} karakter olabilir.", 422);
+
+        // The marketplace is read first: a question answered, closed or reported elsewhere in the meantime is not
+        // reported again, and the panel takes its current state.
+        var context = new AdapterContext(tenantId, question.ConnectionId, correlationId, $"question-report:{keyHash}", now.AddMinutes(2), Operation: IntegrationOperation.Manual);
+        var current = await port.GetQuestionAsync(context, question.ExternalQuestionId, question.Kind, cancellationToken);
+        if (!current.IsSuccess) return ServiceResult<MarketplaceQuestionView>.Fail(current.Error!.Code, current.Error.SafeMessage, current.Error.HttpStatus ?? 502);
+        if (!capability.AllowedStatuses.Contains(current.Value!.Status.ToUpperInvariant()))
+        {
+            var previousVersion = question.Version;
+            await UpsertAsync(tenantId, question.ConnectionId, current.Value, now, cancellationToken);
+            if (question.Version == previousVersion) question.Version++;
+            var reportedRemotely = current.Value.Status.Equals(capability.ResultStatus, StringComparison.OrdinalIgnoreCase);
+            // This key's earlier attempt, whose result was unknown, did reach the marketplace: it is settled as reported.
+            if (reportedRemotely && attempts.Contains(QuestionReportAudit.Started))
+            {
+                db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Reported, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = QuestionReportAudit.Reason(connection.PlatformCode, reason.Code, keyHash), CorrelationId = correlationId, CreatedAt = now });
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+            }
+            await db.SaveChangesAsync(cancellationToken);
+            return reportedRemotely
+                ? ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ALREADY_REPORTED", "Soru pazaryerinde zaten bildirilmiş. Güncel durum alındı.", 409)
+                : ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ALREADY_CLOSED", "Soru pazaryerinde artık cevap beklemiyor. Güncel durum alındı.", 409);
+        }
+
+        var auditReason = QuestionReportAudit.Reason(connection.PlatformCode, reason.Code, keyHash);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Started, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = auditReason, CorrelationId = correlationId, CreatedAt = now });
+        question.Version++;
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_STALE", "Bu soru başka bir işlem tarafından güncellendi.", 409); }
+
+        AdapterResult<RemoteQuestionReportResult> sent;
+        var handedToPort = false;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            handedToPort = true;
+            sent = await port.ReportQuestionAsync(context, question.ExternalQuestionId, question.Kind, new(reason.Code, reason.Label, note), cancellationToken);
+        }
+        catch (Exception exception) when (!handedToPort || NeverReachedMarketplace(exception))
+        {
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Failed, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = auditReason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+            await db.SaveChangesAsync(CancellationToken.None);
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_NOT_SENT", "Bildirim pazaryerine gönderilemedi; yeniden deneyebilirsiniz.", 503);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or HttpRequestException or TimeoutException)
+        {
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Unknown, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = auditReason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+            await db.SaveChangesAsync(CancellationToken.None);
+            logger.LogWarning(exception, "Soru bildiriminin uzak sonucu kesinleşmedi. TenantId: {TenantId}, ConnectionId: {ConnectionId}, QuestionId: {QuestionId}", tenantId, question.ConnectionId, question.Id);
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_RESULT_UNKNOWN", "Bildirim isteği kesildi; sonuç bir sonraki soru aktarımında görünecek.", 409);
+        }
+        if (!sent.IsSuccess)
+        {
+            var uncertain = sent.Error!.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx;
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = uncertain ? QuestionReportAudit.Unknown : QuestionReportAudit.Failed, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = Truncate($"{auditReason};{sent.Error.Code}"), CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+            await db.SaveChangesAsync(CancellationToken.None);
+            return ServiceResult<MarketplaceQuestionView>.Fail(sent.Error.Code, sent.Error.SafeMessage, sent.Error.HttpStatus ?? 502);
+        }
+
+        question.Status = capability.ResultStatus ?? question.Status;
+        question.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Reported, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = auditReason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+        await db.SaveChangesAsync(CancellationToken.None);
+        logger.LogInformation("Soru pazaryerine bildirildi. TenantId: {TenantId}, ConnectionId: {ConnectionId}, QuestionId: {QuestionId}, Reason: {Reason}", tenantId, question.ConnectionId, question.Id, reason.Code);
+        return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+
+        static string Truncate(string value) => value.Length <= 512 ? value : value[..512];
+    }
+
     // True when the answer certainly did not leave: the connection to the marketplace could not even be opened
     // (refused, name not resolved). A timeout or a dropped connection may have delivered it and stays uncertain.
     internal static bool NeverReachedMarketplace(Exception exception) =>
@@ -578,6 +691,26 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         for (var cursor = start; cursor < end; cursor = cursor.Add(maximum)) yield return (cursor, cursor.Add(maximum) < end ? cursor.Add(maximum) : end);
     }
     private sealed class QuestionSyncException(AdapterError error) : Exception(error.SafeMessage) { public AdapterError Error { get; } = error; }
+}
+
+// Audit entries of question reports. The idempotency key is kept only as a short hash next to the reason code.
+internal static class QuestionReportAudit
+{
+    public const string TargetType = "MarketplaceQuestion";
+    public const string Started = "QUESTION_REPORT_STARTED";
+    public const string Reported = "QUESTION_REPORTED";
+    public const string Failed = "QUESTION_REPORT_FAILED";
+    public const string Unknown = "QUESTION_REPORT_RESULT_UNKNOWN";
+
+    public static string KeyHash(string idempotencyKey) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(idempotencyKey)))[..16].ToLowerInvariant();
+
+    public static string Reason(string platformCode, string reasonCode, string keyHash)
+    {
+        var code = reasonCode.Trim().ToUpperInvariant();
+        if (code.Length > 64) code = code[..64];
+        return $"{platformCode}:{code};key:{keyHash}";
+    }
 }
 
 // What a marketplace accepts as an answer. Trendyol refuses answers shorter

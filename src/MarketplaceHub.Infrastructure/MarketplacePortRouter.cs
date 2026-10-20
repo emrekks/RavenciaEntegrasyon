@@ -83,6 +83,18 @@ public sealed class MarketplacePortRouter(
     public async Task<AdapterResult<MarketplaceQuestionPage>> ListQuestionsAsync(AdapterContext context, QuestionPollRequest request, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).ListQuestionsAsync(context, request, cancellationToken);
     public async Task<AdapterResult<RemoteMarketplaceQuestion>> GetQuestionAsync(AdapterContext context, string questionId, string kind, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).GetQuestionAsync(context, questionId, kind, cancellationToken);
     public async Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).AnswerQuestionAsync(context, questionId, kind, answer, cancellationToken);
+    public async Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).ReportQuestionAsync(context, questionId, kind, report, cancellationToken);
+    // The reasons are known per platform without a connection: the panel asks before a question is reported.
+    public QuestionReportCapability ReportCapability(string platformCode)
+    {
+        var platform = platformCode.Trim().ToUpperInvariant();
+        object? port;
+        try { port = SelectPort(platform, trendyol, shopify, hepsiburada, n11, pazarama); }
+        catch (InvalidOperationException) { port = null; }
+        return port is IQuestionPort questions
+            ? questions.ReportCapability(platform)
+            : QuestionReportCapability.Unsupported(platform, "Bu pazaryerinin soruları panelde yönetilmiyor.", null);
+    }
     public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken) => await (await Resolve<IInvoiceMarketplacePort>(context)).DeliverAsync(context, command, cancellationToken);
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => await (await Resolve<IInvoiceMarketplacePort>(context)).QueryDeliveryAsync(context, reference, cancellationToken);
     public async Task<AdapterResult<InvoiceLinkRevocationResult>> RevokeLinkAsync(AdapterContext context, InvoiceLinkRevocationCommand command, CancellationToken cancellationToken) => await (await Resolve<IInvoiceMarketplacePort>(context)).RevokeLinkAsync(context, command, cancellationToken);

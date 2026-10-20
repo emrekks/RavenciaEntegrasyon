@@ -144,4 +144,43 @@ public sealed class MarketplaceQuestionAdapterTests
         Assert.Equal("Answer", field.Headers.ContentDisposition?.Name);
         Assert.Equal("Metin cevabı", await field.ReadAsStringAsync());
     }
+
+    [Fact]
+    public async Task HepsiburadaReportPostsTheReasonAsRejectReasonJson()
+    {
+        Assert.Equal("api/v1.0/issues/HB%2F77/reject", HepsiburadaQuestionRequestContract.RejectPath("HB/77"));
+        Assert.Equal("Reklam", HepsiburadaQuestionRequestContract.RejectReasonText(new("ADVERTISEMENT", "Reklam", "  ")));
+        var text = HepsiburadaQuestionRequestContract.RejectReasonText(new("OTHER", "Diğer", "  Rakip mağazaya yönlendiriyor  "));
+        Assert.Equal("Diğer: Rakip mağazaya yönlendiriyor", text);
+        Assert.False(HepsiburadaQuestionRequestContract.ValidRejectReason(" "));
+        Assert.False(HepsiburadaQuestionRequestContract.ValidRejectReason(new string('x', 2001)));
+
+        using var content = HepsiburadaQuestionRequestContract.CreateRejectContent(text);
+        Assert.Equal("application/json", content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await content.ReadAsStringAsync());
+        var property = Assert.Single(body.RootElement.EnumerateObject());
+        Assert.Equal("rejectReason", property.Name);
+        Assert.Equal("Diğer: Rakip mağazaya yönlendiriyor", property.Value.GetString());
+    }
+
+    [Fact]
+    public void ReportCapabilitiesFollowEachMarketplacesDocumentation()
+    {
+        var hepsiburada = HepsiburadaQuestionRequestContract.ReportCapability;
+        Assert.True(hepsiburada.Supported);
+        Assert.Equal(["WAITING_FOR_ANSWER"], hepsiburada.AllowedStatuses);
+        Assert.Equal("REJECTED", hepsiburada.ResultStatus);
+        Assert.Contains(hepsiburada.Reasons, reason => reason is { Code: "ADVERTISEMENT", Label: "Reklam", NoteRequired: false });
+        Assert.Contains(hepsiburada.Reasons, reason => reason is { Code: "OTHER", NoteRequired: true });
+        // The longest note after the longest label still fits Hepsiburada's 2000 characters.
+        Assert.True(hepsiburada.Reasons.Max(reason => reason.Label.Length) + 2 + hepsiburada.NoteMaxLength <= HepsiburadaQuestionRequestContract.RejectReasonMaxLength);
+        Assert.StartsWith("https://developers.hepsiburada.com/", hepsiburada.DocumentationUrl);
+
+        var trendyol = TrendyolQuestionRequestContract.ReportCapability;
+        Assert.False(trendyol.Supported);
+        Assert.Contains("Satıcı Paneli", trendyol.UnsupportedReason);
+        Assert.Empty(trendyol.Reasons);
+        Assert.False(MarketplaceHub.Infrastructure.Adapters.N11.N11HttpClient.QuestionReportSupport.Supported);
+        Assert.False(MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaHttpClient.QuestionReportSupport.Supported);
+    }
 }
