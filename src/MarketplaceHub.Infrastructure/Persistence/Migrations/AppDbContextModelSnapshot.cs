@@ -1376,6 +1376,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("LastCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Outcome")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
@@ -1385,6 +1388,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("UnclearChecks")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("VerificationSeconds")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -1866,6 +1875,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("ConflictCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("ConnectionId")
                         .HasColumnType("uuid");
 
@@ -1907,6 +1919,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("LeaseTokenHash")
                         .HasColumnType("text");
+
+                    b.Property<string>("LockGroup")
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
 
                     b.Property<int>("MaxAttempts")
                         .ValueGeneratedOnAdd()
@@ -3437,6 +3453,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("OccurrenceCount")
                         .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -5380,6 +5399,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("LastSkippedCount")
                         .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastSliceAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("LastSuccessAt")
                         .HasColumnType("timestamp with time zone");
