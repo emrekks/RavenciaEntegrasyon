@@ -29,11 +29,7 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
         var saved = await SendSoapAsync(account, SellerInvoiceService, "SaveLinkSellerInvoice", inner, cancellationToken);
         if (!saved.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(saved.Error!, saved.RateLimit);
 
-        // n11 echoes the saved link and invoice number; matching echoes prove this attempt.
-        var echoedLink = Child(saved.Value, "url");
-        var echoedNumber = Child(saved.Value, "invoiceNumber");
-        var verified = string.Equals(echoedLink, request.Link, StringComparison.Ordinal)
-            && string.Equals(echoedNumber, request.InvoiceNumber, StringComparison.Ordinal);
+        var verified = InvoiceLinkVerified(saved.Value!, request);
         return AdapterResult<InvoiceDeliveryResult>.Success(new(request.OrderNumber!, "INVOICED", verified,
             verified ? request.InvoiceNumber : null,
             verified ? request.StoredLink : null));
@@ -45,6 +41,17 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
         Task.FromResult(string.IsNullOrWhiteSpace(reference.InvoiceNumber) && string.IsNullOrWhiteSpace(reference.InvoiceLink)
             ? AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, "NOT_INVOICED", IsTerminal: true))
             : Failure<InvoiceDeliveryStatus>(AdapterErrorClass.NotSupported, "N11_INVOICE_READBACK_UNSUPPORTED", "N11 gönderilen fatura linkini geri okuma servisi sunmuyor.", HttpStatusCode.NotImplemented));
+
+    // C8: a success answer (SendSoapAsync already required result/status=success) that echoes this link and this
+    // order proves the attempt. n11 echoes invoiceNumber only for e-export orders, so a missing number is not a
+    // mismatch; a different one is.
+    internal static bool InvoiceLinkVerified(System.Xml.Linq.XElement response, N11InvoiceLinkRequest request)
+    {
+        var echoedNumber = Child(response, "invoiceNumber");
+        return string.Equals(Child(response, "url"), request.Link, StringComparison.Ordinal)
+            && string.Equals(Child(response, "orderNumber"), request.OrderNumber, StringComparison.Ordinal)
+            && (echoedNumber is null || string.Equals(echoedNumber, request.InvoiceNumber, StringComparison.Ordinal));
+    }
 
     internal sealed record N11InvoiceLinkRequest(string? Link, string? StoredLink, string? OrderNumber, string? InvoiceNumber, string? InvoiceDateTime, string? Error);
 

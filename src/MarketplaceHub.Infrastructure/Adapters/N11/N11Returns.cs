@@ -27,9 +27,12 @@ public sealed partial class N11HttpClient : IReturnPort
 
     // ClaimReturnList searches by request date; "ALL" covers every claim state. The WSDL types the
     // period as plain strings; n11's SOAP services use dd/MM/yyyy dates (Turkey time).
+    // C9: sender defaults to SELLER, which hides n11depom returns; ALL reads both. It closes searchData, as in the
+    // WSDL order (status, executer, searchInfoType, searchQuery, period, sender).
     internal static string ClaimReturnListBody(DateTimeOffset start, DateTimeOffset end, int page) =>
         "<searchData>" + SoapElement("status", "ALL")
-        + "<period>" + SoapElement("startDate", TurkeyDate(start)) + SoapElement("endDate", TurkeyDate(end)) + "</period></searchData>"
+        + "<period>" + SoapElement("startDate", TurkeyDate(start)) + SoapElement("endDate", TurkeyDate(end)) + "</period>"
+        + SoapElement("sender", "ALL") + "</searchData>"
         + "<pagingData>" + SoapElement("currentPage", page.ToString(CultureInfo.InvariantCulture)) + "</pagingData>";
 
     internal static string TurkeyDate(DateTimeOffset value) =>
@@ -45,12 +48,22 @@ public sealed partial class N11HttpClient : IReturnPort
         if (account is null) return CredentialMissing<IReadOnlyList<ReturnIssueReason>>();
         var reasons = await SendSoapAsync(account, ReturnService, "ClaimReturnDenyReasonTypes", "", cancellationToken);
         if (!reasons.IsSuccess) return AdapterResult<IReadOnlyList<ReturnIssueReason>>.Failure(reasons.Error!, reasons.RateLimit);
-        IReadOnlyList<ReturnIssueReason> items = reasons.Value!.Descendants().Where(x => x.Name.LocalName == "denyReasonTypeData")
+        return AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success(DenyReasons(reasons.Value!));
+    }
+
+    // C34: the WSDL wraps each reason as <list><denyReasonTypeData><id/><value/></denyReasonTypeData></list>;
+    // production answers a flat repeated <list><id/><value/></list>. Both are read.
+    internal static IReadOnlyList<ReturnIssueReason> DenyReasons(XElement response)
+    {
+        var wrapped = response.Descendants().Where(x => x.Name.LocalName == "denyReasonTypeData").ToList();
+        var entries = wrapped.Count > 0
+            ? wrapped
+            : response.Descendants().Where(x => x.Name.LocalName == "list" && x.Elements().Any(child => child.Name.LocalName == "id")).ToList();
+        return entries
             .Select(x => (Id: Child(x, "id"), Name: Child(x, "value")))
             .Where(x => x.Id is not null && x.Name is not null)
             .Select(x => new ReturnIssueReason(x.Id!, x.Name!, false))
             .ToList();
-        return AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success(items);
     }
 
     // Approve is sent as ClaimReturnApprove. Deny needs the return shipment type, cargo company and

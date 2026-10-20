@@ -24,6 +24,8 @@ public sealed partial class N11HttpClient : IProductPort
         if (!string.IsNullOrWhiteSpace(filter.Barcode)) query += $"&stockCode={Uri.EscapeDataString(filter.Barcode.Trim())}";
         if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query += $"&productMainId={Uri.EscapeDataString(filter.ProductMainId.Trim())}";
         if (!string.IsNullOrWhiteSpace(filter.ContentId)) query += $"&id={Uri.EscapeDataString(filter.ContentId.Trim())}";
+        // C23: sender defaults to SELLER, which hides SKUs stocked in n11depom; ALL lists both.
+        query += "&sender=ALL";
         return query;
     }
 
