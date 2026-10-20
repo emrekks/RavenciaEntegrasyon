@@ -8,7 +8,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // An instant action whose marketplace response was unclear (timeout, 5xx) leaves an open effect
 // record. This job reads the marketplace instead of sending again: if the action took effect the
 // record is completed; if it clearly did not, the record is released so the user can try again;
-// if the marketplace cannot tell within 30 minutes, it is closed as unresolved and reported.
+// if the marketplace cannot tell after several reads over 30 minutes of verification, it is closed as
+// unresolved and reported.
 public sealed partial class MarketplaceJobProcessor
 {
     private async Task<JobExecutionResult> ReconcileExternalEffect(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -39,7 +40,12 @@ public sealed partial class MarketplaceJobProcessor
         var decision = effect.Action?.StartsWith("RETURN_", StringComparison.Ordinal) == true
             ? await db.ReturnDecisions.Where(x => x.TenantId == tenantId && x.IdempotencyKey == effect.IdempotencyKey).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken)
             : null;
-        var outcome = ExternalEffectReconcilePolicy.Decide(verdict, now - effect.CreatedAt);
+        // Unclear reads are counted with the verification time actually spent (a gap while the worker was
+        // stopped does not count), so a single unclear read after a restart cannot close an older action.
+        if (verdict == EffectVerdict.Unknown)
+            (effect.UnclearChecks, effect.VerificationSeconds) = ExternalEffectReconcilePolicy.RecordUnclearCheck(effect.UnclearChecks, effect.VerificationSeconds, effect.LastCheckedAt, now);
+        effect.LastCheckedAt = now;
+        var outcome = ExternalEffectReconcilePolicy.Decide(verdict, now - effect.CreatedAt, effect.UnclearChecks, TimeSpan.FromSeconds(effect.VerificationSeconds));
         switch (outcome)
         {
             case ExternalEffectOutcome.Applied:
@@ -63,10 +69,12 @@ public sealed partial class MarketplaceJobProcessor
                 // with a code the next claim read can still upgrade to success.
                 if (decision is not null) { decision.Status = "FAILED"; decision.ErrorCode = "EXTERNAL_EFFECT_UNRESOLVED"; decision.CompletedAt = now; }
                 await RecordIssue(tenantId, $"external-effect:{effect.Id}", "EXTERNAL_EFFECT_UNRESOLVED",
-                    "Pazaryerine gönderilen işlemin sonucu 30 dakikada doğrulanamadı; pazaryeri panelinden kontrol edin.", cancellationToken);
+                    "Pazaryerine gönderilen işlemin sonucu 30 dakikalık doğrulamada kesinleşmedi; pazaryeri panelinden kontrol edin.", cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
                 return JobExecutionResult.Success();
             default:
+                // The read count and verification time are kept for the next read.
+                await db.SaveChangesAsync(cancellationToken);
                 return JobExecutionResult.Continue("İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.", TimeSpan.FromSeconds(30));
         }
     }

@@ -23,8 +23,8 @@ public sealed class JobQueueAuditTests
         Assert.InRange(result.RetryAfter!.Value.TotalSeconds, 10, 30);
     }
 
+    // A duplicate insert is retried first (BackgroundProcessingAuditTests.ADuplicateInsertIsRetriedTwiceBeforeItGoesToReview).
     [Theory]
-    [InlineData(PostgresErrorCodes.UniqueViolation)]
     [InlineData(PostgresErrorCodes.CheckViolation)]
     [InlineData(PostgresErrorCodes.StringDataRightTruncation)]
     public void AConstraintViolationGoesToManualReviewInsteadOfSixRetries(string sqlState)

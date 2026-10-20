@@ -62,6 +62,8 @@ public sealed class SyncCursor
     public DateTimeOffset? CursorStagnantSince { get; set; }
     public DateTimeOffset? LastAttemptAt { get; set; }
     public DateTimeOffset? LastSuccessAt { get; set; }
+    // When a slice of a long run (Continue) last finished; LastSuccessAt moves only when the whole run completes.
+    public DateTimeOffset? LastSliceAt { get; set; }
     public string? LastError { get; set; }
     public DateTimeOffset? LastErrorAt { get; set; }
     public int ConsecutiveFailureCount { get; set; }

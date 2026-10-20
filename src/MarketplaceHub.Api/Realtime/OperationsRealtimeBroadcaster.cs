@@ -1,5 +1,4 @@
 using MarketplaceHub.Application;
-using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +22,6 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
     {
         var nextReconciliation = timeProvider.GetUtcNow();
         var nextOutboxCleanup = timeProvider.GetUtcNow();
-        DateTimeOffset? newestAnnouncedJob = null;
         using var timer = new PeriodicTimer(PollInterval, timeProvider);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
@@ -79,8 +77,6 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                         }
                     }
 
-                    newestAnnouncedJob = await AnnounceNewJobsAsync(db, newestAnnouncedJob, now, stoppingToken);
-
                     if (now >= nextReconciliation)
                     {
                         var tenantIds = await db.Tenants.AsNoTracking().Select(x => x.Id).ToListAsync(stoppingToken);
@@ -129,40 +125,6 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
             {
                 logger.LogWarning(exception, "Realtime outbox dispatcher döngüsü başarısız oldu");
             }
-        }
-    }
-
-    /// <summary>
-    /// Queuing a job writes no outbox event, so the job list would only see it on its next poll. Each tick looks for
-    /// active jobs created after the newest one already announced and tells their tenants that "jobs" changed. Only
-    /// reads (active jobs are a small set reached through the status index); a failure here never stops the dispatcher.
-    /// </summary>
-    private async Task<DateTimeOffset?> AnnounceNewJobsAsync(AppDbContext db, DateTimeOffset? newestAnnounced, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        try
-        {
-            // The first tick starts from the newest job so a restart does not announce old ones.
-            if (newestAnnounced is null)
-                return await db.IntegrationJobs.AsNoTracking().MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken) ?? now;
-
-            var since = newestAnnounced.Value;
-            var fresh = await db.IntegrationJobs.AsNoTracking()
-                .Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled) && x.CreatedAt > since)
-                .GroupBy(x => x.TenantId)
-                .Select(group => new { TenantId = group.Key, Newest = group.Max(x => x.CreatedAt) })
-                .ToListAsync(cancellationToken);
-            foreach (var tenant in fresh)
-            {
-                await hub.Clients.Group(OperationsHub.TenantGroup(tenant.TenantId.ToString("D")))
-                    .SendAsync("operationsChanged", new { resources = new[] { "jobs" }, events = Array.Empty<object>(), occurredAt = now }, cancellationToken);
-            }
-            return fresh.Count == 0 ? since : fresh.Max(x => x.Newest);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception)
-        {
-            logger.LogWarning(exception, "Yeni işler canlı akışa duyurulamadı; liste kendi yenilemesiyle güncellenecek");
-            return newestAnnounced;
         }
     }
 

@@ -651,7 +651,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var normalized = resourceType.Trim().ToUpperInvariant(); if (normalized == "PRODUCTS") return ServiceResult<SyncPolicyView>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
         var minimumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 0 : 30;
         var maximumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 86_400 : ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds;
-        if (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
+        if (!command.ResetToDefault && (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600)) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA"), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
         if (command.Enabled && MarketplaceSyncPolicyRules.RequiresExternalWrites(normalized) && !WritesEnabled(connection.SettingsJson))
             return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
@@ -669,10 +669,17 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", $"{requiredCapability} akışı açılamadı: aynı mağaza, ortam ve API sürümü için resmî kaynakla doğrulanmış yetenek ve Stage/SIT test kanıtı gerekir.", 422);
         }
         var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(connection.PlatformCode, normalized, command.IntervalSeconds, command.JitterSeconds);
+        var defaults = ScheduledJobProducer.DefaultPolicyValues(configuration, connection.PlatformCode, normalized);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
+        var isNew = policy is null;
         if (policy is null) { if (expectedVersion is not null) return NotFound<SyncPolicyView>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
         else { if (expectedVersion is null) return ServiceResult<SyncPolicyView>.Fail("PRECONDITION_REQUIRED", "Mevcut sync policy için If-Match gereklidir.", 428); if (policy.Version != expectedVersion) return Precondition<SyncPolicyView>(policy.Version); policy.Version++; }
-        policy.IntervalSeconds = cadence.IntervalSeconds; policy.OverlapSeconds = command.OverlapSeconds; policy.JitterSeconds = cadence.JitterSeconds; policy.Enabled = command.Enabled; policy.UserDefined = true; await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
+        // Only a save that changes the cadence makes the policy the user's own (the scheduler then never upgrades it
+        // to a newer default); a reset puts the default back and lets later defaults reach it again.
+        var saved = command.ResetToDefault && defaults is { } reset ? reset : (cadence.IntervalSeconds, command.OverlapSeconds, cadence.JitterSeconds);
+        var current = isNew ? defaults : (policy.IntervalSeconds, policy.OverlapSeconds, policy.JitterSeconds);
+        policy.UserDefined = !command.ResetToDefault && ScheduledJobProducer.MarksUserDefined(!isNew && policy.UserDefined, current, saved);
+        policy.IntervalSeconds = saved.Item1; policy.OverlapSeconds = saved.Item2; policy.JitterSeconds = saved.Item3; policy.Enabled = command.Enabled; await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
     }
 
     public async Task<ServiceResult<IReadOnlyList<WebhookSubscriptionView>>> WebhooksAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

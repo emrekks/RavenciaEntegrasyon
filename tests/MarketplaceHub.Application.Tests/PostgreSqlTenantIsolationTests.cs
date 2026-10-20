@@ -1636,6 +1636,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var started = await verification.IntegrationOutboxEvents.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.AggregateId == job.Id);
             Assert.Equal(2, started.AggregateVersion);
             Assert.Contains("LEASED", started.PayloadJson);
+            // Job state changes are "jobs" events; the job's domain travels in the payload.
+            Assert.Equal("jobs", started.ResourceType);
+            Assert.Contains("\"resource\"", started.PayloadJson);
         }
         finally
         {
@@ -2219,7 +2222,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task InvoiceReconciliation_WaitsWithoutReadingWhileAnOrderJobHoldsTheOrdersLock()
+    public async Task InvoiceReconciliation_RunsBesideAnOrderJobWithoutVersionWritesAndSkipsOnlyThePartialOrder()
     {
         var tenant = NewTenant("invoice-return-lock-fairness");
         var connection = NewQuestionConnection(tenant);
@@ -2266,20 +2269,21 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 "invoice-return-lock-fairness",
                 CancellationToken.None);
 
-            // The invoice check shares the "orders" lock with the order reads (audit Q2: in a lane of its own it
-            // raced their writes). While an order job holds the lock it waits, attempt refunded, without reading.
-            Assert.False(result.Succeeded);
-            Assert.Equal(JobCompletionKind.Retry, result.Kind);
-            Assert.True(result.RefundAttempt);
-            Assert.Equal("ORDER_INVOICE_RECONCILIATION_BUSY", result.ErrorCode);
+            // The invoice check has its own "order-invoices" lock (audit 2026-10-20 G14) and writes only invoice
+            // columns without a version check, so it runs while an order job holds the "orders" lock. Only the
+            // partial return-claim order, whose completion is a full versioned order write, waits for that lock.
+            Assert.True(result.Succeeded, result.ErrorSummary);
             Assert.Equal(0, orderPort.OrderReadCalls);
-            Assert.Empty(orderPort.PackageReadCalls);
 
             var persistedPackages = await processorDb.ShipmentPackages.AsNoTracking()
                 .Where(package => package.TenantId == tenant.Id && package.ConnectionId == connection.Id)
                 .ToDictionaryAsync(package => package.ExternalPackageId);
             Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["partial-package"].MarketplaceInvoiceStatus);
-            Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["regular-package"].MarketplaceInvoiceStatus);
+            Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["regular-package"].MarketplaceInvoiceStatus);
+            // Version-free: an order read that loaded the package before this write still saves.
+            Assert.Equal(1, persistedPackages["regular-package"].Version);
+            Assert.True(await processorDb.OperationalIssues.AsNoTracking().AnyAsync(issue => issue.TenantId == tenant.Id && issue.Code == "RETURN_ORDER_HYDRATION_BUSY"));
+            Assert.True(await processorDb.IntegrationOutboxEvents.AsNoTracking().AnyAsync(item => item.TenantId == tenant.Id && item.AggregateId == regularPackageId && item.ResourceType == "orders"));
         }
         finally
         {

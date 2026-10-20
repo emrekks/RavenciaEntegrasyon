@@ -23,4 +23,5 @@ public interface IJobLeaseService
     Task<bool> ReleaseAsync(Guid jobId, string leaseToken, CancellationToken cancellationToken);
 }
 
-public sealed record LeasedJob(Guid Id, Guid TenantId, Guid? ConnectionId, string JobType, string PayloadJson, string CorrelationId, string LeaseToken);
+// QueueWait: how long the job waited between becoming runnable and this lease (slot, lock group or backoff wait).
+public sealed record LeasedJob(Guid Id, Guid TenantId, Guid? ConnectionId, string JobType, string PayloadJson, string CorrelationId, string LeaseToken, TimeSpan? QueueWait = null);

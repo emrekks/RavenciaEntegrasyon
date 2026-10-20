@@ -748,15 +748,35 @@ public static class ExternalEffectReconcilePolicy
     // Records written before effects carried their context cannot be checked; they are closed after a week.
     public static readonly TimeSpan LegacyCloseAfter = TimeSpan.FromDays(7);
 
-    public static ExternalEffectOutcome Decide(EffectVerdict verdict, TimeSpan age) => verdict switch
+    // An unclear outcome is closed as unresolved only after several unclear reads spread over at least
+    // UnresolvedAfter of verification actually done: the hours the worker was stopped (00:30-09:00) between
+    // two reads do not count, so the first unclear read after a restart no longer closes an older action.
+    public const int MinimumUnclearChecks = 5;
+    // A longer pause between two reads means the worker (or the job) was not running; it is not counted.
+    public static readonly TimeSpan MaximumCountedCheckGap = TimeSpan.FromMinutes(5);
+
+    public static ExternalEffectOutcome Decide(EffectVerdict verdict, TimeSpan age, int unclearChecks, TimeSpan verificationTime) => verdict switch
     {
         EffectVerdict.Applied => ExternalEffectOutcome.Applied,
         EffectVerdict.NotApplied when age >= MinimumAgeForNotApplied => ExternalEffectOutcome.NotApplied,
-        EffectVerdict.Unknown when age >= UnresolvedAfter => ExternalEffectOutcome.Unresolved,
+        EffectVerdict.Unknown when unclearChecks >= MinimumUnclearChecks && verificationTime >= UnresolvedAfter => ExternalEffectOutcome.Unresolved,
         _ => ExternalEffectOutcome.Wait
     };
 
+    // Counts one more unclear read and adds the time since the previous read, unless that gap was too long.
+    public static (int UnclearChecks, int VerificationSeconds) RecordUnclearCheck(int unclearChecks, int verificationSeconds, DateTimeOffset? lastCheckedAt, DateTimeOffset now)
+    {
+        var gap = lastCheckedAt is { } last && now > last ? now - last : TimeSpan.Zero;
+        var counted = gap <= MaximumCountedCheckGap ? (int)gap.TotalSeconds : 0;
+        return (Math.Max(0, unclearChecks) + 1, Math.Max(0, verificationSeconds) + counted);
+    }
+
     public static string JobDedupKey(Guid effectId) => $"effect-reconcile:{effectId:N}";
+
+    // The read-back of an unclear return decision writes the return claim, which the return reads write too,
+    // so it runs under their lock group; package and order checks run with the order reads. The group is
+    // stored on the job, so the lease query and the quota backoff check the same group the lock takes.
+    public static string LockGroup(string? action) => action is "RETURN_APPROVE" or "RETURN_REJECT" ? "returns" : "orders";
 
     public static IntegrationJob NewJob(ExternalEffectRecord effect, DateTimeOffset now, DateTimeOffset availableAt)
     {
@@ -774,11 +794,38 @@ public static class ExternalEffectReconcilePolicy
             EffectIdempotencyKey = JobDedupKey(effect.Id),
             Priority = JobPriorityPolicy.UserAction,
             TriggerType = "user",
+            LockGroup = LockGroup(effect.Action),
             AvailableAt = availableAt,
             CorrelationId = $"effect-reconcile:{effect.Id:N}",
             CreatedAt = now,
             Version = 1
         };
+    }
+}
+
+// Daily (and longer) scheduled jobs run in the Istanbul afternoon, 14:00-17:00, instead of drifting to the
+// start-up catch-up after the night's stop (00:30-09:00). The policy's jitter shifts the start inside the
+// window. A policy that missed a whole window (the worker was down all afternoon) runs at once.
+public static class DailyScheduleWindowPolicy
+{
+    public const int DailyIntervalSeconds = 86_400;
+    public static readonly TimeSpan IstanbulOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan WindowStart = TimeSpan.FromHours(14);
+    public static readonly TimeSpan WindowEnd = TimeSpan.FromHours(17);
+
+    public static bool Applies(int intervalSeconds) => intervalSeconds >= DailyIntervalSeconds;
+
+    public static bool IsDue(DateTimeOffset now, DateTimeOffset? lastScheduledAt, int intervalSeconds, int jitterSeconds)
+    {
+        var local = now.ToOffset(IstanbulOffset);
+        var day = new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, IstanbulOffset);
+        var windowLength = WindowEnd - WindowStart;
+        var start = day + WindowStart + TimeSpan.FromSeconds(Math.Clamp(jitterSeconds, 0, (int)windowLength.TotalSeconds / 2));
+        var inWindow = now >= start && now < day + WindowEnd;
+        if (lastScheduledAt is not { } last) return inWindow;
+        var interval = TimeSpan.FromSeconds(intervalSeconds);
+        if (now - last >= interval + TimeSpan.FromDays(1)) return true;
+        return inWindow && last < start && now - last >= interval - windowLength;
     }
 }
 

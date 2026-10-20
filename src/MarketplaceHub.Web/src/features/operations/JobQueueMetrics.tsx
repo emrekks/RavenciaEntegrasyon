@@ -15,10 +15,28 @@ export type JobTypeMetric = {
   running: number
 }
 
-export type LaneMetric = { lane: 'USER' | 'INITIAL' | 'HOT' | 'BACKGROUND'; attempts: number; averageWaitSeconds: number | null; p95WaitSeconds: number | null; queued: number; running: number }
+// The worker's own lanes; queued counts only jobs a slot could take now (not those waiting for their
+// connection's lock or a quota backoff).
+export type LaneCode = 'USER' | 'INITIAL' | 'HOT' | 'BACKGROUND' | 'ORDER_STATUS' | 'RETURNS_READ' | 'PRODUCT_CATALOG' | 'HEPSIBURADA_STATUS' | 'HEPSIBURADA_ORDERS' | 'PAZARAMA_ORDERS'
+export type LaneMetric = { lane: LaneCode | string; attempts: number; averageWaitSeconds: number | null; p95WaitSeconds: number | null; queued: number; running: number }
 export type QuotaUsage = { platformCode: string; storeName: string; lane: 'FOREGROUND' | 'BACKGROUND'; limitPerMinute: number; lastHourRequests: number; peakMinuteRequests: number; averagePerMinute: number }
 
-export const laneLabels: Record<LaneMetric['lane'], string> = { USER: 'Kullanıcı İşlemleri', INITIAL: 'İlk Aktarım', HOT: 'Yeni Veri', BACKGROUND: 'Arka Plan' }
+export const laneLabels: Record<LaneCode, string> = {
+  USER: 'Kullanıcı İşlemleri',
+  INITIAL: 'İlk Aktarım',
+  HOT: 'Yeni Veri',
+  BACKGROUND: 'Arka Plan',
+  ORDER_STATUS: 'Sipariş Durum Taraması',
+  RETURNS_READ: 'İade Okuma',
+  PRODUCT_CATALOG: 'Ürün Kataloğu',
+  HEPSIBURADA_STATUS: 'Hepsiburada Durum Taraması',
+  HEPSIBURADA_ORDERS: 'Hepsiburada Siparişleri',
+  PAZARAMA_ORDERS: 'Pazarama Siparişleri'
+}
+
+export function laneLabel(lane: string) {
+  return laneLabels[lane as LaneCode] ?? lane
+}
 const quotaLaneLabels: Record<QuotaUsage['lane'], string> = { FOREGROUND: 'Yeni sipariş ve işlemler', BACKGROUND: 'Diğer okumalar' }
 
 // How full a quota ran over the last hour: the average requests per minute against the limit.
@@ -71,7 +89,7 @@ export function JobQueueMetrics({ hours, titleFor, platform = null }: { hours: n
       {lanes.data?.length ? <section aria-label="Şeritler">
         <h3>Şeritler</h3>
         <div className="job-queue-lanes">{lanes.data.map(lane => <div key={lane.lane} className="job-queue-lane">
-          <strong>{laneLabels[lane.lane]}</strong>
+          <strong>{laneLabel(lane.lane)}</strong>
           <span>p95 bekleme <b>{formatMetricSeconds(lane.p95WaitSeconds)}</b></span>
           <small>Kuyrukta {lane.queued} · Çalışıyor {lane.running} · {lane.attempts.toLocaleString('tr-TR')} deneme</small>
         </div>)}</div>
