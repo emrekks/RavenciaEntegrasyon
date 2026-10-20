@@ -1099,6 +1099,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return ServiceResult<CreateOrderPackageResult>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
 
+        // No local projection here (only the effect row is written): the new package reaches the
+        // order through the queued order read, which takes the "orders" lock itself.
         effect.EffectType = $"{effectPrefix}:{Uri.EscapeDataString(result.Value!.PackageNumber)}";
         effect.IdempotencyKey = normalizedKey;
         effect.CompletedAt = timeProvider.GetUtcNow();
@@ -1366,6 +1368,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
 
+        // The local projection runs under the connection's "orders" lock, as the order jobs'
+        // writes do (see OrdersProjectionLockAsync); the remote call above did not hold it.
+        await using var projectionLock = await OrdersProjectionLockAsync(package.ConnectionId, cancellationToken);
         for (var attempt = 0; ; attempt++)
         {
             if (package.Status == ShipmentPackageStatus.New)
@@ -1414,13 +1419,33 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             }
             catch (DbUpdateConcurrencyException)
             {
-                // The action is applied on the marketplace; the next order read
+                // The action is applied on the marketplace; a targeted order read
                 // brings the package into the same state.
                 db.ChangeTracker.Clear();
+                await QueueProjectionReadAsync(tenantId, package.ConnectionId, orderNumber, correlationId, cancellationToken);
                 var latest = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
                 return ServiceResult<ShipmentView>.Ok(Map(latest, orderNumber));
             }
         }
+    }
+
+    // How long an instant action waits for the order jobs' lock before projecting without it.
+    // The remote write is already applied and recorded; holding the request longer only delays
+    // the answer, and an optimistic projection (retried once, then left to a targeted order read)
+    // is still safe.
+    internal static readonly TimeSpan InstantProjectionLockWait = TimeSpan.FromSeconds(3);
+
+    // The lock is taken around the local projection only, not around the marketplace call: an
+    // order job may hold it for a whole page read, and the remote call itself may take up to
+    // 30 seconds; waiting for both would hold either the user or the order lane far too long.
+    private Task<MarketplaceSyncExecutionLock?> OrdersProjectionLockAsync(Guid connectionId, CancellationToken cancellationToken) =>
+        MarketplaceSyncExecutionLock.AcquireGroupAsync(db, connectionId, MarketplaceSyncExecutionLock.OrdersGroup, InstantProjectionLockWait, timeProvider, cancellationToken);
+
+    private async Task QueueProjectionReadAsync(Guid tenantId, Guid connectionId, string orderNumber, string correlationId, CancellationToken cancellationToken)
+    {
+        // Best effort: the scheduled order reads reach the same state later anyway.
+        var queued = await EnqueueOrderSyncAsync(tenantId, connectionId, orderNumber, false, correlationId, cancellationToken);
+        if (!queued.Succeeded) db.ChangeTracker.Clear();
     }
 
     public async Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1460,15 +1485,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (existing is not null)
         {
             if (existing.CompletedAt is null) return Verifying<ShipmentView>();
-
-            if (!string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
-            {
-                package.CargoProviderExternalId = cargoProvider;
-                package.UpdatedAt = timeProvider.GetUtcNow();
-                package.Version++;
-                await db.SaveChangesAsync(cancellationToken);
-            }
-            return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+            return await ProjectCargoProviderAsync(tenantId, package, cargoProvider, orderNumber, correlationId, cancellationToken);
         }
 
         var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "CHANGE_CARGO_PROVIDER", ExpectedValue = cargoProvider };
@@ -1498,24 +1515,46 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         effect.CompletedAt = timeProvider.GetUtcNow();
         effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
-        package.CargoProviderExternalId = cargoProvider;
-        package.UpdatedAt = timeProvider.GetUtcNow();
-        package.Version++;
-        try
+        return await ProjectCargoProviderAsync(tenantId, package, cargoProvider, orderNumber, correlationId, cancellationToken);
+    }
+
+    // Writes an accepted cargo provider change onto the package under the order jobs' lock
+    // (see OrdersProjectionLockAsync): retried once on fresh rows, then left to a targeted order read.
+    private async Task<ServiceResult<ShipmentView>> ProjectCargoProviderAsync(Guid tenantId, ShipmentPackage package, string cargoProvider, string orderNumber, string correlationId, CancellationToken cancellationToken)
+    {
+        if (string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+        var packageId = package.Id;
+        var connectionId = package.ConnectionId;
+        await using var projectionLock = await OrdersProjectionLockAsync(connectionId, cancellationToken);
+        for (var attempt = 0; ; attempt++)
         {
-            await db.SaveChangesAsync(cancellationToken);
+            if (!string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
+            {
+                package.CargoProviderExternalId = cargoProvider;
+                package.UpdatedAt = timeProvider.GetUtcNow();
+                package.Version++;
+            }
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+            }
+            catch (DbUpdateConcurrencyException) when (attempt == 0)
+            {
+                db.ChangeTracker.Clear();
+                var fresh = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                if (fresh is null) return NotFound<ShipmentView>();
+                package = fresh;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                db.ChangeTracker.Clear();
+                await QueueProjectionReadAsync(tenantId, connectionId, orderNumber, correlationId, cancellationToken);
+                var latest = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(latest, orderNumber));
+            }
         }
-        catch (DbUpdateConcurrencyException)
-        {
-            db.ChangeTracker.Clear();
-            var fresh = await db.ShipmentPackages.SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
-            fresh.CargoProviderExternalId = cargoProvider;
-            fresh.UpdatedAt = timeProvider.GetUtcNow();
-            fresh.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-            return ServiceResult<ShipmentView>.Ok(Map(fresh, orderNumber));
-        }
-        return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
     }
 
     public async Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string format = "ZPL")

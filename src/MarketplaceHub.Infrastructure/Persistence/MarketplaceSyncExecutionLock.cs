@@ -34,7 +34,31 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         var group = jobType == MarketplaceJobTypes.ExternalEffectReconcile && payloadJson is not null
             ? EffectReconcileGroup(await EffectActionAsync(db, payloadJson, cancellationToken))
             : GroupFor(jobType);
+        return await TryAcquireKeyAsync(db, LockKey(connectionId, group), cancellationToken);
+    }
+
+    internal const string OrdersGroup = "orders";
+    private static readonly TimeSpan GroupPollInterval = TimeSpan.FromMilliseconds(200);
+
+    // The API's instant actions project an accepted marketplace write onto the same orders and
+    // packages the order jobs write. They wait a short while for the job lane's lock instead of
+    // skipping it; null when it stayed busy for the whole wait.
+    public static async Task<MarketplaceSyncExecutionLock?> AcquireGroupAsync(AppDbContext db, Guid connectionId, string group, TimeSpan wait, TimeProvider clock, CancellationToken cancellationToken)
+    {
         var key = LockKey(connectionId, group);
+        var deadline = clock.GetUtcNow() + wait;
+        while (true)
+        {
+            var acquired = await TryAcquireKeyAsync(db, key, cancellationToken);
+            if (acquired is not null) return acquired;
+            var remaining = deadline - clock.GetUtcNow();
+            if (remaining <= TimeSpan.Zero) return null;
+            await Task.Delay(remaining < GroupPollInterval ? remaining : GroupPollInterval, clock, cancellationToken);
+        }
+    }
+
+    private static async Task<MarketplaceSyncExecutionLock?> TryAcquireKeyAsync(AppDbContext db, long key, CancellationToken cancellationToken)
+    {
         var connection = db.Database.GetDbConnection() as NpgsqlConnection;
         if (!string.Equals(db.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal)
             || connection is null
@@ -166,7 +190,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync
         or MarketplaceJobTypes.QuestionSync;
 
-    private static long LockKey(Guid connectionId, string group)
+    internal static long LockKey(Guid connectionId, string group)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"sync:trendyol:{connectionId:N}:{group}"));
         return BitConverter.ToInt64(bytes, 0);
