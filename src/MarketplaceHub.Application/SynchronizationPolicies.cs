@@ -622,6 +622,17 @@ public static class WebhookPollingPolicy
 
     // Trendyol order times are stored as Turkey wall time (three hours ahead of UTC), so the cut-off moves with them.
     public static DateTimeOffset MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead) => now - DeliveryGrace + storedClockAhead;
+
+    // Only an order placed before the notifications' last delivery is a miss: notifications arrived after it,
+    // yet not its own. Orders placed while nothing was delivered (the server was shut for the night, the
+    // webhook passive) are an outage, which the silence rule judges; counting them would spend one of the
+    // day's two allowed misses every morning. Without any delivery yet nothing counts as missed.
+    public static DateTimeOffset? MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead, DateTimeOffset? lastReceivedAt)
+    {
+        if (lastReceivedAt is not { } lastDelivery) return null;
+        var cutoff = now - DeliveryGrace;
+        return (lastDelivery < cutoff ? lastDelivery : cutoff) + storedClockAhead;
+    }
 }
 
 // A connection whose credentials were just entered or renewed is a draft until a test passes. When that test fails

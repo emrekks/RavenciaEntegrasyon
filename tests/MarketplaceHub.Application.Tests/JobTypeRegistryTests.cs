@@ -38,7 +38,7 @@ public sealed class JobTypeRegistryTests
     public void AProfileGathersLockGroupPriorityAndTimeoutBehaviour()
     {
         var invoice = JobTypeRegistry.For(MarketplaceJobTypes.OrderInvoiceReconciliation);
-        Assert.Equal("order-invoices", invoice.LockGroup);
+        Assert.Equal("orders", invoice.LockGroup);
         Assert.True(invoice.StopHeartbeatOnTimeout);
         Assert.Equal(TimeSpan.FromMinutes(3), invoice.RetryAfterTimeout);
 
