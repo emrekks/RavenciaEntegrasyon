@@ -7962,14 +7962,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     remote.LifecycleStatus))
                 order.DerivedStatus = "UNVERIFIED";
         }
-        if (usesTrendyolPackageStatuses && orderIsFresh)
+        if (usesTrendyolPackageStatuses)
         {
             // A stream page carries one sibling package at a time: the totals
-            // are rebuilt from every stored live package, not from the page.
+            // are rebuilt from every stored live package, not from the page
+            // (also after an older page that still brought a newer package).
             var packagesInRead = remote.Packages.Select(package => package.ExternalPackageId).ToHashSet(StringComparer.Ordinal);
             if (OrderAmountProjectionPolicy.FromPackages(orderPackages, packagesInRead) is { } totals)
                 (order.GrossAmount, order.DiscountAmount, order.NetAmount) = totals;
-            else if (!isNewOrder)
+            else if (orderIsFresh && !isNewOrder)
                 (order.GrossAmount, order.DiscountAmount, order.NetAmount) = previousAmounts;
         }
         if (isShopify)
