@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }> }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const respond = async (path: string, init?: RequestInit) => {
@@ -18,6 +18,7 @@ vi.mock('../../shared/api', async importOriginal => {
       { id: 's3', state: 'REVOKED', current: false, issuedAt: '2026-10-10T08:00:00Z', lastSeenAt: '2026-10-12T09:31:00Z', expiresAt: '2026-10-19T09:31:00Z' }
     ]
     if (path === '/sessions/revoke-others') return undefined
+    if (path === '/settings/shipping-label' && method === 'PUT' && apiState.failShippingSave) throw new Error(apiState.failShippingSave)
     if (path === '/settings/shipping-label') return { settings: method === 'PUT' ? JSON.parse(body ?? 'null') : null, version: method === 'PUT' ? 4 : 3 }
     if (path === '/settings/appearance') return { settings: null, version: 0 }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
@@ -64,6 +65,7 @@ const paneTitle = () => container.querySelector('.ss-head h2')?.textContent
 describe('SystemSettingsPage', () => {
   beforeEach(() => {
     apiState.calls = []
+    apiState.failShippingSave = null
     localStorage.clear()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -125,6 +127,34 @@ describe('SystemSettingsPage', () => {
     const saved = apiState.calls.find(call => call.path === '/settings/shipping-label' && call.method === 'PUT')
     // the save names the version it was made on, so a change made meanwhile elsewhere is refused (412)
     expect(saved?.headers?.['if-match']).toBe('"v3"')
+  })
+
+  it('shows a failed save as an error even when the server text does not sound like one (W9)', async () => {
+    // Wording the old guesser read as success ("kaydedildi") or did not recognise at all.
+    apiState.failShippingSave = 'Ayarlar başka bir oturumda kaydedildi; sayfayı yenileyin.'
+    await renderPage('/settings?tab=sender')
+    click(container.querySelector<HTMLInputElement>('input[aria-label="Sticker Yazdırma Butonunu Göster"]')!)
+    click(button('Ayarları Kaydet'))
+    await settle()
+    const toast = container.querySelector('.app-toast')!
+    expect(toast.classList.contains('app-toast-error')).toBe(true)
+    expect(toast.getAttribute('role')).toBe('alert')
+    expect(toast.textContent).toContain('başka bir oturumda')
+  })
+
+  it('shows a successful save as a success', async () => {
+    await renderPage('/settings?tab=sender')
+    click(container.querySelector<HTMLInputElement>('input[aria-label="Sticker Yazdırma Butonunu Göster"]')!)
+    click(button('Ayarları Kaydet'))
+    await settle()
+    expect(container.querySelector('.app-toast')!.classList.contains('app-toast-success')).toBe(true)
+  })
+
+  it('label designer preview shows the address block like the print: title, recipient name, then the address', async () => {
+    await renderPage('/settings?tab=designer')
+    const address = container.querySelector('.preview-content-address')!
+    const texts = Array.from(address.children).map(child => child.textContent)
+    expect(texts).toEqual(['Teslimat adresi', 'Alıcı adıFEHİME MAT', 'KARAKÖPRÜ / ŞANLIURFA'])
   })
 
   it('label designer: Tab selects a block, the arrow keys move it 1% (Shift 5%), the drag handles stay out of the Tab order', async () => {
