@@ -99,37 +99,10 @@ public sealed class TrendyolEFaturamHttpClient(
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<InvoiceRemoteStatus>.Failure(access.Error!, access.RateLimit);
         var uuid = reference.EttnUuid ?? reference.ExternalReference;
-        AdapterResult<AuthorizedResponse> response;
-        if (reference.InvoiceType == "EARSIVFATURA")
-        {
-            response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Get, TrendyolEFaturamEndpoints.EArchiveStatus(uuid), null, cancellationToken);
-        }
-        else
-        {
-            // The provider does not publish a stable UUID-based outgoing E-Invoice status path.
-            // This is endpoint configuration, not capability evidence: manual Stage requests are
-            // allowed to reach the provider as soon as a validated relative path is configured.
-            // Until then the adapter fails closed rather than guessing an endpoint.
-            if (string.IsNullOrWhiteSpace(_options.OutgoingInvoiceStatusPath))
-                return AdapterResult<InvoiceRemoteStatus>.Failure(new(
-                    AdapterErrorClass.Validation,
-                    "EFATURAM_EINVOICE_STATUS_PATH_NOT_CONFIGURED",
-                    "Giden E-Fatura durum sorgusu için sağlayıcının güncel göreli endpoint yolu yapılandırılmalıdır.",
-                    null, null, null));
-            var search = new
-            {
-                invoiceUuid = uuid,
-                companyId = access.Value!.CompanyId,
-                pagination = new { page = 0, size = 1 }
-            };
-            if (!TryNormalizeRelativePath(_options.OutgoingInvoiceStatusPath, out var statusPath))
-                return AdapterResult<InvoiceRemoteStatus>.Failure(new(
-                    AdapterErrorClass.ContractViolation,
-                    "EFATURAM_EINVOICE_STATUS_PATH_INVALID",
-                    "Giden E-Fatura durum sorgusu yolu göreli, boş olmayan ve üst dizin geçişi içermeyen bir API yolu olmalıdır.",
-                    null, null, null));
-            response = await SendAuthorized(configured, access.Value.AccessToken, HttpMethod.Post, statusPath, JsonContent.Create(search), cancellationToken);
-        }
+        // Both statuses are documented UUID reads: E-Archive "get-e-archive-status" and outgoing E-Invoice
+        // "get-outgoing-e-invoice-status" (developers.trendyolefaturam.com/OpenApi). Issuing an E-Invoice stays closed
+        // (InvoiceIssuePolicy.EInvoiceRecipientCode); reading one only reports its state.
+        var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Get, TrendyolEFaturamEndpoints.Status(reference.InvoiceType, uuid), null, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<InvoiceRemoteStatus>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<InvoiceRemoteStatus>.Success(TrendyolEFaturamJsonMapper.InvoiceStatus(response.Value!.Body, reference.ExternalReference), response.RateLimit); }
         catch (JsonException) { return AdapterResult<InvoiceRemoteStatus>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit); }
@@ -283,14 +256,6 @@ public sealed class TrendyolEFaturamHttpClient(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<AuthorizedResponse>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_TIMEOUT", "E-Faturam isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null)); }
         catch (HttpRequestException) { return AdapterResult<AuthorizedResponse>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_NETWORK_ERROR", "E-Faturam ağına güvenli bağlantı kurulamadı.", null, TimeSpan.FromSeconds(5), null)); }
-    }
-
-    private static bool TryNormalizeRelativePath(string value, out string path)
-    {
-        path = value.Trim();
-        if (Uri.TryCreate(path, UriKind.Absolute, out _)) return false;
-        path = path.TrimStart('/');
-        return path.Length > 0 && !path.Contains("..", StringComparison.Ordinal);
     }
 
     internal sealed record AuthorizedResponse(string Body, string? RemoteRequestId);

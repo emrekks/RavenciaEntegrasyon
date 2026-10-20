@@ -205,6 +205,41 @@ public static class InvoiceDeliveryRecoveryPolicy
     }
 }
 
+/// <summary>
+/// An invoice that is being cancelled, was cancelled, was refused or must be adjusted never has its link sent to (or
+/// confirmed on) a marketplace, and a package whose link is in removal is never sent again.
+/// </summary>
+public static class InvoiceDeliveryGuardPolicy
+{
+    public const string InvoiceNotDeliverableCode = "INVOICE_DELIVERY_INVOICE_NOT_DELIVERABLE";
+    public const string LinkRevocationOpenCode = "INVOICE_DELIVERY_LINK_REVOCATION_OPEN";
+    public const string CancelledJobCode = "INVOICE_DELIVERY_CANCELLED_BY_INVOICE_STATE";
+
+    public static bool InvoiceBlocksDelivery(InvoiceStatus status) => status is InvoiceStatus.Cancelled
+        or InvoiceStatus.CancellationPending or InvoiceStatus.CancellationRejected or InvoiceStatus.AdjustmentRequired
+        or InvoiceStatus.CancelledLocal or InvoiceStatus.Rejected;
+
+    public static bool StateBlocksDelivery(string? deliveryStatus) =>
+        MarketplaceInvoiceLinkRevocationPolicy.IsOpen(deliveryStatus)
+        || string.Equals(deliveryStatus, MarketplaceInvoiceLinkRevocationPolicy.Removed, StringComparison.Ordinal);
+
+    /// <summary>
+    /// The invoice status a confirmed delivery leads to (Completed once every target package is confirmed, otherwise
+    /// MarketplacePending), when the state machine allows it: directly, or through MarketplacePending for a failed
+    /// delivery that a later read-back confirms. A delivery under review of an invoice the provider holds may also be
+    /// confirmed by such a read-back. Null leaves the invoice as it is.
+    /// </summary>
+    public static InvoiceStatus? OutcomeStatus(InvoiceStatus current, bool allTargetsConfirmed, bool issuedAtProvider)
+    {
+        if (InvoiceBlocksDelivery(current)) return null;
+        var target = allTargetsConfirmed ? InvoiceStatus.Completed : InvoiceStatus.MarketplacePending;
+        if (InvoiceStateMachine.CanTransition(current, target)) return target;
+        if (InvoiceStateMachine.CanTransition(current, InvoiceStatus.MarketplacePending)
+            && InvoiceStateMachine.CanTransition(InvoiceStatus.MarketplacePending, target)) return target;
+        return current == InvoiceStatus.ManualReview && issuedAtProvider ? target : null;
+    }
+}
+
 public static class MarketplaceInvoiceDeliveryEvidencePolicy
 {
     public static bool HasConfirmedDelivery(string? currentStateStatus, bool hasConfirmedHistoricalAttempt) =>

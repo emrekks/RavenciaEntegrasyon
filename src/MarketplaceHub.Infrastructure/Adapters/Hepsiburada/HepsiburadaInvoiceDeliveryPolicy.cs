@@ -10,7 +10,9 @@ internal sealed record HepsiburadaInvoiceDeliveryRequest(
     Uri InvoiceLink,
     string ArrangementDate,
     string ContentType,
-    string InvoiceNumber);
+    string InvoiceNumber,
+    string? SerialNumber = null,
+    string? RowNumber = null);
 
 internal static class HepsiburadaInvoiceDeliveryPolicy
 {
@@ -65,8 +67,8 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
                 error = "Hepsiburada fatura düzenleme tarihi geçerli bir tarih olmalıdır.";
                 return false;
             }
-            if (!string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(contentType, "text/html", StringComparison.OrdinalIgnoreCase))
+            var documentType = DocumentContentType(contentType);
+            if (documentType is null)
             {
                 error = "Hepsiburada fatura bağlantısı PDF veya HTML belge sunmalıdır.";
                 return false;
@@ -77,7 +79,8 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
                 return false;
             }
 
-            request = new(packageNumber, orderNumber, invoiceLink, arrangementDate.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture), contentType!.ToLowerInvariant(), invoiceNumber);
+            var (serialNumber, rowNumber) = SplitInvoiceNumber(invoiceNumber);
+            request = new(packageNumber, orderNumber, invoiceLink, arrangementDate.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture), documentType, invoiceNumber, serialNumber, rowNumber);
             error = string.Empty;
             return true;
         }
@@ -86,6 +89,47 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
             error = "Hepsiburada fatura bağlantısı isteği geçerli JSON değil.";
             return false;
         }
+    }
+
+    private static readonly JsonSerializerOptions BodyOptions = new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+
+    // The PUT .../invoice body. serialNumber and rowNumber are left out when the number cannot be split (needs SIT confirmation).
+    public static string Body(HepsiburadaInvoiceDeliveryRequest invoice) => JsonSerializer.Serialize(new
+    {
+        arrangementDate = invoice.ArrangementDate,
+        invoiceLink = invoice.InvoiceLink.AbsoluteUri,
+        invoices = new[]
+        {
+            new
+            {
+                arrangementDate = invoice.ArrangementDate,
+                contentType = invoice.ContentType,
+                invoiceLink = invoice.InvoiceLink.AbsoluteUri,
+                orderNumber = invoice.OrderNumber,
+                serialNumber = invoice.SerialNumber,
+                rowNumber = invoice.RowNumber
+            }
+        }
+    }, BodyOptions);
+
+    // NEEDS SIT CONFIRMATION: the invoice schema documents contentType as "pdf" or "html" (not a MIME type) and
+    // serialNumber/rowNumber as the parts of the invoice number; checked against the documentation only, not yet
+    // against Hepsiburada's SIT environment. A MIME type from the stored document is accepted and mapped.
+    internal static string? DocumentContentType(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "pdf" or "application/pdf" => "pdf",
+        "html" or "text/html" => "html",
+        _ => null
+    };
+
+    // A GİB invoice number is a three-character serial and a thirteen-digit row (year and sequence), e.g.
+    // DAP2026000000016 -> DAP / 2026000000016. Any other number (a hand-entered one) is sent without the split.
+    internal static (string? SerialNumber, string? RowNumber) SplitInvoiceNumber(string invoiceNumber)
+    {
+        var value = invoiceNumber.Trim();
+        return value.Length == 16 && value[..3].All(char.IsAsciiLetterOrDigit) && value[3..].All(char.IsAsciiDigit)
+            ? (value[..3], value[3..])
+            : (null, null);
     }
 
     private static string? String(JsonElement element, string name) =>

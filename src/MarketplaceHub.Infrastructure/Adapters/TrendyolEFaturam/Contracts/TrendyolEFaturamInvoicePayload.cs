@@ -72,7 +72,7 @@ public static class TrendyolEFaturamInvoicePayload
             userId = account.UserId,
             source = account.Source,
             notes = new[] { source.Note },
-            recipientInfo = source.Recipient,
+            recipientInfo = EfaturamRecipientNormalizer.Normalize(source.Recipient),
             currencyInfo = new { currency = source.Currency, hasExchange = false },
             invoiceInfo = new { invoiceType = source.InvoiceType, invoiceTypeCode = "SATIS" },
             invoiceLines = lineRows,
@@ -93,119 +93,69 @@ public static class TrendyolEFaturamInvoicePayload
         return JsonSerializer.Serialize(payload, JsonOptions);
     }
 
-    public static string CreateEArchiveV2(EfaturamFiscalAccount account, EfaturamInvoicePayloadSource source)
-    {
-        if (account.CompanyId <= 0 || account.UserId <= 0) throw new ArgumentOutOfRangeException(nameof(account));
-        if (!string.Equals(source.InvoiceType, "EARSIVFATURA", StringComparison.Ordinal)) throw new ArgumentException("V2 E-Archive payload requires EARSIVFATURA.", nameof(source));
-        if (source.Lines.Count == 0) throw new ArgumentException("Invoice requires at least one line.", nameof(source));
-        if (source.Lines.Any(line => line.Quantity <= 0)) throw new ArgumentException("Invoice line quantity must be greater than zero.", nameof(source));
-
-        var taxExclusive = Money(source.Lines.Sum(x => x.TaxableAmount));
-        var taxTotal = Money(source.Lines.Sum(x => x.VatAmount));
-        var discountTotal = Money(source.Lines.Sum(x => x.DiscountAmount));
-        var payable = Money(source.Lines.Sum(x => x.PayableAmount));
-        if (Money(taxExclusive + taxTotal) != payable) throw new ArgumentException("Invoice total equation is invalid.", nameof(source));
-
-        // The provider's current portal and V2 API exchange monetary values in the
-        // invoice currency's major unit (TRY), unlike the retired V1 contract which
-        // expected integer kuruş values.
-        var lineRows = source.Lines.Select(line => new
-        {
-            itemName = line.ItemName,
-            unitCode = line.UnitCode,
-            unitPriceAmount = Money((line.TaxableAmount + line.DiscountAmount) / line.Quantity),
-            quantity = line.Quantity,
-            subtotal = Money(line.TaxableAmount + line.DiscountAmount),
-            totalAmount = Money(line.TaxableAmount),
-            totalDiscountAmount = Money(line.DiscountAmount),
-            totalTax = new
-            {
-                totalTaxAmount = Money(line.VatAmount),
-                subTotalTaxes = new[]
-                {
-                    new
-                    {
-                        taxableAmount = Money(line.TaxableAmount),
-                        taxAmount = Money(line.VatAmount),
-                        taxType = "KDV",
-                        percent = line.VatRate
-                    }
-                }
-            }
-        }).ToArray();
-
-        var taxes = source.Lines.GroupBy(x => x.VatRate).Select(group => new
-        {
-            taxableAmount = Money(group.Sum(x => x.TaxableAmount)),
-            taxAmount = Money(group.Sum(x => x.VatAmount)),
-            taxType = "KDV",
-            percent = group.Key
-        }).ToArray();
-
-        var payload = new
-        {
-            source = account.Source,
-            receiverInfo = source.Recipient,
-            invoiceIdentification = new
-            {
-                invoiceType = source.InvoiceType,
-                invoiceTypeCode = "SATIS",
-                autoInvoiceId = true,
-                issuedAt = ProviderDateTime(source.IssuedAt)
-            },
-            invoiceLines = lineRows,
-            totalTax = new { totalTaxAmount = taxTotal, subTotalTaxes = taxes },
-            invoiceTotal = new
-            {
-                totalRawPrice = Money(taxExclusive + discountTotal),
-                totalSubtotal = taxExclusive,
-                totalAmount = Money(taxExclusive + taxTotal),
-                totalDiscountAmount = discountTotal,
-                payableAmount = payable
-            },
-            currencyInfo = new
-            {
-                currency = source.Currency,
-                hasExchange = false,
-                sourceCurrency = source.Currency,
-                targetCurrency = "TRY",
-                calculationRate = 0,
-                exchangeDate = ProviderDateTime(source.IssuedAt)
-            },
-            bankInfo = Array.Empty<object>(),
-            notes = new[] { source.Note },
-            references = new
-            {
-                orderInfo = new
-                {
-                    orderId = source.OrderNumber,
-                    orderDate = source.OrderDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-                }
-            },
-            paymentInfo = source.Payment is null ? null : new
-            {
-                source.Payment.PurchaseUrl,
-                source.Payment.PaymentAgentName,
-                paymentDate = ProviderDateTime(source.Payment.PaymentDate),
-                source.Payment.PaymentMeans,
-                instructionNote = "Trendyol siparişi"
-            },
-            deliveryInfo = source.Delivery is null ? null : new
-            {
-                source.Delivery.CarrierTaxId,
-                source.Delivery.CarrierName,
-                sentAt = source.Delivery.SentAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-            },
-            targetAlias = ""
-        };
-
-        return JsonSerializer.Serialize(payload, JsonOptions);
-    }
-
     private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     private static long Kurus(decimal value) => decimal.ToInt64(Money(value) * 100m);
     private static decimal KurusDecimal(decimal value) => decimal.Round(value * 100m, 4, MidpointRounding.AwayFromZero);
     private static string ProviderDateTime(DateTimeOffset value) => EfaturamTurkeyTime.ProviderDateTime(value);
+}
+
+/// <summary>
+/// Fits recipientInfo to E-Faturam's documented field rules: postal code five digits, phone ten digits (a leading 0 or
+/// +90 is dropped), e-mail lower case, address at most 255 and name/surname at most 127 characters, city at least two
+/// and district at least one character. Optional fields that do not fit are left out; a missing city or district stops
+/// the request (ArgumentException, reported as EFATURAM_FISCAL_PAYLOAD_INVALID) instead of sending an empty value.
+/// </summary>
+public static class EfaturamRecipientNormalizer
+{
+    public const int AddressMaxLength = 255;
+    public const int NameMaxLength = 127;
+    public const string CityRequiredCode = "EFATURAM_RECIPIENT_CITY_REQUIRED";
+    public const string DistrictRequiredCode = "EFATURAM_RECIPIENT_DISTRICT_REQUIRED";
+
+    private static readonly System.Text.RegularExpressions.Regex EmailShape = new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    public static EfaturamRecipient Normalize(EfaturamRecipient recipient)
+    {
+        var city = Collapse(recipient.City);
+        if (city.Length < 2) throw new ArgumentException(CityRequiredCode);
+        var district = Collapse(recipient.District);
+        if (district.Length < 1) throw new ArgumentException(DistrictRequiredCode);
+        return recipient with
+        {
+            City = city,
+            District = district,
+            Address = Truncate(Collapse(recipient.Address), AddressMaxLength),
+            PostalCode = PostalCode(recipient.PostalCode),
+            Phone = Phone(recipient.Phone),
+            Email = Email(recipient.Email),
+            Name = recipient.Name is null ? null : Truncate(Collapse(recipient.Name), NameMaxLength),
+            Surname = recipient.Surname is null ? null : Truncate(Collapse(recipient.Surname), NameMaxLength) is { Length: > 0 } surname ? surname : null
+        };
+    }
+
+    internal static string? PostalCode(string? value)
+    {
+        var digits = Digits(value);
+        return digits.Length == 5 ? digits : null;
+    }
+
+    internal static string? Phone(string? value)
+    {
+        var digits = Digits(value);
+        if (digits.Length == 12 && digits.StartsWith("90", StringComparison.Ordinal)) digits = digits[2..];
+        if (digits.Length == 11 && digits.StartsWith('0')) digits = digits[1..];
+        return digits.Length == 10 && digits[0] != '0' ? digits : null;
+    }
+
+    internal static string? Email(string? value)
+    {
+        var email = value?.Trim().ToLowerInvariant();
+        return !string.IsNullOrEmpty(email) && email.Length <= 254 && EmailShape.IsMatch(email) ? email : null;
+    }
+
+    private static string Digits(string? value) => new((value ?? "").Where(char.IsAsciiDigit).ToArray());
+    private static string Collapse(string? value) => string.Join(' ', (value ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    private static string Truncate(string value, int length) => value.Length <= length ? value : value[..length].TrimEnd();
 }
 
 /// <summary>Every date and time sent to E-Faturam is Istanbul time (UTC+3 all year, no daylight saving since 2016).</summary>

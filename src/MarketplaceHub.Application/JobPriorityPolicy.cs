@@ -33,7 +33,9 @@ public static class JobPriorityPolicy
 
     public static int For(string jobType, bool userInitiated) => jobType switch
     {
-        InvoicingJobTypes.InvoiceDueScan => InitialDataSync,
+        // A background sweep (deadlines, adjustments, delivery recovery): it must not share the first-import slot
+        // that user-waited invoice work also depends on.
+        InvoicingJobTypes.InvoiceDueScan => Reconciliation,
 
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync
             or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync

@@ -43,8 +43,9 @@ public sealed class JobPriorityPolicyTests
     }
 
     [Fact]
-    public void InvoiceDueScanUsesTheInitialDataSyncLane()
+    public void InvoiceDueScanRunsInTheReconciliationLane()
     {
-        Assert.Equal(-1, JobPriorityPolicy.For(InvoicingJobTypes.InvoiceDueScan, userInitiated: false));
+        Assert.Equal(JobPriorityPolicy.Reconciliation, JobPriorityPolicy.For(InvoicingJobTypes.InvoiceDueScan, userInitiated: false));
+        Assert.Equal(JobPriorityPolicy.UserAction, JobPriorityPolicy.ForUser(InvoicingJobTypes.ManualOrderInvoiceDelivery));
     }
 }

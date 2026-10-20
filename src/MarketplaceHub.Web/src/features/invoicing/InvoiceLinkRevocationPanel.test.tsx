@@ -96,6 +96,26 @@ describe('InvoiceLinkRevocationPanel', () => {
     expect(container.textContent).toContain('Sunucudaki genel dış yazma anahtarı kapalı.')
   })
 
+  it('asks for the password on a live provider and sends it with the removal', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    let used = 0
+    const renderWith = async (password: string) => act(async () => {
+      root.render(<QueryClientProvider client={client}><InvoiceLinkRevocationPanel invoiceId="invoice-1" invoiceNumber="GIB2026000000001" items={[trendyol]} onNotice={() => undefined} requiresPassword password={password} onPasswordUsed={() => { used += 1 }} /></QueryClientProvider>)
+    })
+
+    await renderWith('')
+    expect(button('Fatura Linkini Kaldır').disabled).toBe(true)
+    expect(container.textContent).toContain('Dış Mali İşlem Onayı')
+
+    await renderWith('secret-test-value')
+    await act(async () => { button('Fatura Linkini Kaldır').click() })
+    await act(async () => { button('Linki Kaldır').click() })
+    await settle()
+
+    expect(JSON.parse(String(calls.requests.at(-1)?.init?.body))).toEqual({ confirmed: true, password: 'secret-test-value' })
+    expect(used).toBe(1)
+  })
+
   it('renders nothing when no link is left behind', async () => {
     await render([])
     expect(container.textContent).toBe('')

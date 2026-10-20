@@ -706,6 +706,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (!TryReadOneTimeInvoiceDeliveryAuthorization(payloadJson, out var oneTimeAuthorization)) return false;
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null) return false;
+        if (InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(invoice.Status))
+            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.InvoiceNotDeliverableCode,
+                "Fatura iptal sürecinde, iptal edilmiş, reddedilmiş veya düzeltme bekliyor; pazaryerine fatura linki gönderilmedi."));
         using var deliveryJobPayload = JsonDocument.Parse(payloadJson);
         var manualDeliveryRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
             && retryValue.ValueKind == JsonValueKind.True
@@ -720,6 +723,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var permanentUrl = permanentDocument?.PermanentUrl;
 
         var state = await LoadDeliveryState(tenantId, invoice.Id, package.Id, cancellationToken);
+        // A link in removal (or already removed) belongs to a cancelled invoice and is never sent again.
+        if (InvoiceDeliveryGuardPolicy.StateBlocksDelivery(state?.Status))
+            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.LinkRevocationOpenCode,
+                "Bu paketteki fatura linki kaldırma sürecinde veya kaldırıldı; pazaryerine yeniden gönderilmedi."));
         if (oneTimeAuthorization is not null
             && !await IsValidOneTimeInvoiceDeliveryAsync(tenantId, jobConnectionId, invoice, package, order?.OrderNumber, oneTimeAuthorization, state, cancellationToken))
             return false;
@@ -1476,7 +1483,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var confirmedPackageIds = deliveryStates.Where(state => state.Status == "CONFIRMED" && state.PackageId.HasValue)
             .Select(state => state.PackageId!.Value).ToHashSet();
         var completed = MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed(packageIds, confirmedPackageIds);
-        invoice.Status = completed ? InvoiceStatus.Completed : InvoiceStatus.MarketplacePending;
+        var next = InvoiceDeliveryGuardPolicy.OutcomeStatus(invoice.Status, completed, !string.IsNullOrWhiteSpace(invoice.ExternalReference));
+        if (next is null)
+        {
+            // The invoice left delivery while this job ran (cancelled, being cancelled, refused or to be adjusted): its
+            // status stays. A link just confirmed for a cancelled invoice is queued for removal like the earlier ones.
+            if (invoice.Status == InvoiceStatus.Cancelled)
+                await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, at ?? timeProvider.GetUtcNow(), cancellationToken);
+            return;
+        }
+        invoice.Status = next.Value;
         invoice.LastErrorCode = null;
         invoice.UpdatedAt = at ?? timeProvider.GetUtcNow();
         invoice.Version++;
@@ -1587,7 +1603,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task<bool> ScanDue(Guid tenantId, CancellationToken cancellationToken)
     {
         // DueAt is the issuing deadline (delivery + InvoiceDueDays), so only sale invoices the provider does not hold yet are overdue.
-        var now = timeProvider.GetUtcNow(); var due = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.SequencePurpose == "SALE" && x.ExternalReference == null && x.DueAt != null && x.DueAt < now && x.Status != InvoiceStatus.Cancelled && x.Status != InvoiceStatus.CancelledLocal && x.Status != InvoiceStatus.Rejected).Select(x => x.Id).ToListAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        await FillMissingIssueDeadlines(tenantId, cancellationToken);
+        var due = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.SequencePurpose == "SALE" && x.ExternalReference == null && x.DueAt != null && x.DueAt < now && x.Status != InvoiceStatus.Cancelled && x.Status != InvoiceStatus.CancelledLocal && x.Status != InvoiceStatus.Rejected).Select(x => x.Id).ToListAsync(cancellationToken);
         foreach (var invoiceId in due)
         {
             var key = $"invoice-due:{invoiceId:N}"; var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken);
@@ -1597,6 +1615,31 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, tenantId, now, cancellationToken);
         await QueuePendingMarketplaceDeliveryRecovery(tenantId, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return true;
+    }
+
+    // A draft made before its packages were delivered has no issuing deadline; once a package is delivered the deadline
+    // is set here (only DueAt: it is derived, so the invoice's version and the operator's If-Match stay as they are).
+    private async Task FillMissingIssueDeadlines(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var open = await db.Invoices.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SequencePurpose == "SALE" && x.ExternalReference == null && x.DueAt == null
+                && x.Status != InvoiceStatus.Cancelled && x.Status != InvoiceStatus.CancelledLocal && x.Status != InvoiceStatus.Rejected)
+            .Select(x => new { x.Id, x.OrderId, x.PackageId }).ToListAsync(cancellationToken);
+        if (open.Count == 0) return;
+        var orderIds = open.Select(x => x.OrderId).Distinct().ToArray();
+        var packages = (await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.Status != ShipmentPackageStatus.Cancelled)
+                .Select(x => new { x.Id, x.OrderId, x.Status, x.StatusOccurredAt }).ToListAsync(cancellationToken))
+            .ToLookup(x => x.OrderId);
+        foreach (var invoice in open)
+        {
+            var dueAt = InvoicingBillingService.InvoiceIssueDueAt(packages[invoice.OrderId]
+                .Where(x => invoice.PackageId == null || x.Id == invoice.PackageId)
+                .Select(x => (x.Status, x.StatusOccurredAt)));
+            if (dueAt is null) continue;
+            await db.Invoices.Where(x => x.TenantId == tenantId && x.Id == invoice.Id && x.DueAt == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.DueAt, dueAt), cancellationToken);
+        }
     }
 
     private async Task QueuePendingMarketplaceDeliveryRecovery(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -1635,45 +1678,53 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null))
             .Select(invoice => new { invoice.Id, invoice.OrderId, invoice.PackageId })
             .ToListAsync(cancellationToken);
+        // The targets, the deliverable connections and the active and earlier delivery jobs are read in a few set
+        // queries instead of several queries per invoice.
+        var neverOrderIds = acceptedNeverDelivered.Select(invoice => invoice.OrderId).Distinct().ToArray();
+        var neverPackageIds = acceptedNeverDelivered.Where(invoice => invoice.PackageId != null).Select(invoice => invoice.PackageId!.Value).Distinct().ToArray();
+        var targetPackages = acceptedNeverDelivered.Count == 0 ? [] : await db.ShipmentPackages.AsNoTracking()
+            .Where(package => package.TenantId == tenantId && (neverOrderIds.Contains(package.OrderId) || neverPackageIds.Contains(package.Id)))
+            .Select(package => new RecoveryTargetPackage(package.Id, package.OrderId, package.ConnectionId, package.Status)).ToListAsync(cancellationToken);
+        var deliverableConnections = (await db.PlatformConnections.AsNoTracking()
+            .Where(connection => connection.TenantId == tenantId
+                && connection.Status == "ACTIVE"
+                && connection.Environment == "PRODUCTION"
+                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA"))
+            .Select(connection => connection.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var activeDeliveryJobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled))
+            .Select(job => new { job.JobDedupKey, job.PayloadJson }).ToListAsync(cancellationToken);
         var neverQueued = new List<(Guid InvoiceId, Guid ConnectionId)>();
         foreach (var invoice in acceptedNeverDelivered)
         {
-            var targetConnections = await db.ShipmentPackages.AsNoTracking()
-                .Where(package => package.TenantId == tenantId && (invoice.PackageId == null
+            var targetConnections = targetPackages
+                .Where(package => invoice.PackageId == null
                     ? package.OrderId == invoice.OrderId && package.Status != ShipmentPackageStatus.Cancelled
-                    : package.Id == invoice.PackageId.Value))
-                .Select(package => package.ConnectionId).Distinct().ToListAsync(cancellationToken);
-            if (targetConnections.Count != 1) continue;
-            var connectionId = targetConnections[0];
-            var deliverable = await db.PlatformConnections.AsNoTracking().AnyAsync(connection => connection.TenantId == tenantId && connection.Id == connectionId
-                && connection.Status == "ACTIVE"
-                && connection.Environment == "PRODUCTION"
-                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA"), cancellationToken);
-            if (deliverable) neverQueued.Add((invoice.Id, connectionId));
+                    : package.Id == invoice.PackageId.Value)
+                .Select(package => package.ConnectionId).Distinct().ToList();
+            if (targetConnections.Count == 1 && deliverableConnections.Contains(targetConnections[0]))
+                neverQueued.Add((invoice.Id, targetConnections[0]));
         }
         foreach (var undelivered in neverQueued)
         {
-            // Every delivery job is keyed "{type}:{invoiceId}:...", so the key prefix finds it through the
-            // (TenantId, JobType, JobDedupKey) index instead of a text search over every payload.
+            // Every delivery job is keyed "{type}:{invoiceId}:...", so the key prefix finds it.
             var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{undelivered.InvoiceId}:";
-            var activeDelivery = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
-                && job.JobDedupKey.StartsWith(keyPrefix) && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
-            if (activeDelivery) continue;
+            if (activeDeliveryJobs.Any(job => job.JobDedupKey.StartsWith(keyPrefix, StringComparison.Ordinal))) continue;
             await EnqueueAutomaticJob(tenantId, undelivered.ConnectionId, undelivered.InvoiceId, InvoicingJobTypes.MarketplaceDelivery, $"never-queued:{bucket}", "scheduler-delivery-recovery", cancellationToken);
         }
 
+        var recoveryKeys = candidates.Select(candidate => RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket)).ToArray();
+        var queuedRecoveryKeys = recoveryKeys.Length == 0 ? [] : (await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery && recoveryKeys.Contains(job.JobDedupKey))
+            .Select(job => job.JobDedupKey).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
         foreach (var candidate in candidates)
         {
             var payload = JsonSerializer.Serialize(new { invoiceId = candidate.Id, packageId = candidate.PackageId });
-            var activeJobExists = await db.IntegrationJobs.AsNoTracking().AnyAsync(job =>
-                job.TenantId == tenantId
-                && job.JobType == InvoicingJobTypes.MarketplaceDelivery
-                && job.PayloadJson == payload
-                && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
-            if (activeJobExists) continue;
+            if (activeDeliveryJobs.Any(job => string.Equals(job.PayloadJson, payload, StringComparison.Ordinal))) continue;
 
-            var dedup = $"{InvoicingJobTypes.MarketplaceDelivery}:{candidate.Id}:{candidate.PackageId}:recovery:{candidate.StateVersion}:{bucket}";
-            if (await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery && job.JobDedupKey == dedup, cancellationToken)) continue;
+            var dedup = RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket);
+            if (!queuedRecoveryKeys.Add(dedup)) continue;
 
             db.IntegrationJobs.Add(new IntegrationJob
             {
@@ -1694,6 +1745,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
     }
 
+    private sealed record RecoveryTargetPackage(Guid Id, Guid OrderId, Guid ConnectionId, ShipmentPackageStatus Status);
+
+    private static string RecoveryDedupKey(Guid invoiceId, Guid packageId, long stateVersion, long bucket) =>
+        $"{InvoicingJobTypes.MarketplaceDelivery}:{invoiceId}:{packageId}:recovery:{stateVersion}:{bucket}";
+
     private async Task<bool> Cancel(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
@@ -1703,6 +1759,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         {
             invoice.Status = result.Value!.CanonicalStatus == "CANCELLED" ? InvoiceStatus.Cancelled : InvoiceStatus.CancellationPending;
             invoice.LastErrorCode = null;
+            // Cancelled at once: the links sent for it must come off the marketplace, as after a reconciled cancellation.
+            if (invoice.Status == InvoiceStatus.Cancelled)
+                await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, timeProvider.GetUtcNow(), cancellationToken);
             if (invoice.Status == InvoiceStatus.CancellationPending)
                 await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-cancellation", correlationId, cancellationToken);
         }

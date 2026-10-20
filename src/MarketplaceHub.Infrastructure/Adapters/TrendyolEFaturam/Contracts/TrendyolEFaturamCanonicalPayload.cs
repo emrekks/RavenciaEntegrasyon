@@ -126,7 +126,7 @@ public static class TrendyolEFaturamCanonicalPayload
             var source = new EfaturamInvoicePayloadSource(
                 RequiredText(root, "Id"), invoiceType, RequiredText(root, "Currency"), RequiredText(root, "Note"), RequiredText(order, "OrderNumber"),
                 EfaturamTurkeyTime.Day(orderedAt), DateTimeOffset.Parse(RequiredText(root, "IssuedAt"), CultureInfo.InvariantCulture),
-                new(taxId, Text(address, "countryCode") is { Length: > 0 } country ? country : "TR", Text(address, "city"), Text(address, "district"),
+                new(taxId, Text(address, "countryCode") is { Length: > 0 } country ? country : "TR", Text(address, "city", "cityName", "province"), Text(address, "district", "districtName", "town", "county"),
                     WithoutMarketplaceIds(Text(address, "fullAddress", "address1", "addressText", "address")), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,
                     recipientSurname, NullText(address, "taxOffice") ?? NullText(addressRoot, "taxOffice") ?? NullText(customer.RootElement, "taxOffice")),

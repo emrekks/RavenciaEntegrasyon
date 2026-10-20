@@ -10,13 +10,13 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true, marketplaceConnectionId: 'trendyol-connection', externalOrderId: 'external-ty-1003', externalPackageNumber: 'package-ty-3' },
 ]
 
-const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }> }))
+const apiState = vi.hoisted(() => ({ deliveryKeys: [] as string[], uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }> }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
     if (path.startsWith('/invoice-workspace/page?')) {
       apiState.pageRequests.push(path)
-      return { items: invoiceFixtures, totalCount: invoiceFixtures.length, pageNumber: 1, pageSize: 20, totalPages: 1, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
+      return { items: invoiceFixtures.map(item => ({ ...item })), totalCount: invoiceFixtures.length, pageNumber: 1, pageSize: 20, totalPages: 1, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
     }
     if (path === '/invoice-workspace/manual-status') {
       const body = JSON.parse(String(init?.body)) as { status: string; packageIds: string[] }
@@ -32,7 +32,10 @@ vi.mock('../../shared/api', () => ({
       apiState.orderSyncRequests.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null })
       return { jobId: 'order-sync-job' }
     }
-    if (path === '/invoice-workspace/manual-documents/manual-doc-2/delivery-jobs') return { jobIds: ['manual-delivery-job'], queuedPackageCount: 1, inspectionOnlyPackageCount: 0 }
+    if (path === '/invoice-workspace/manual-documents/manual-doc-2/delivery-jobs') {
+      apiState.deliveryKeys.push((init?.headers as Record<string, string>)['Idempotency-Key'])
+      return { jobIds: ['manual-delivery-job'], queuedPackageCount: 1, inspectionOnlyPackageCount: 0 }
+    }
     throw new Error(`Test API fixture does not handle ${init?.method ?? 'GET'} ${path}`)
   }),
   loadAllPages: vi.fn(async () => ({ items: [{ id: 'shopify-connection', platformCode: 'SHOPIFY', displayName: 'Shopify', status: 'ACTIVE', environment: 'LIVE', hasCredential: false }, { id: 'trendyol-connection', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE', environment: 'LIVE', hasCredential: false }], nextCursor: null, hasMore: false })),
@@ -54,6 +57,7 @@ async function settle() { await act(async () => { await new Promise(resolve => s
 
 beforeEach(async () => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  apiState.deliveryKeys = []
   apiState.uploads = []
   apiState.statusUpdates = []
   apiState.pageRequests = []
@@ -264,4 +268,95 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(container.textContent).toContain('2 siparişin fatura durumu')
   })
+})
+
+describe('InvoicesPage on a phone (375 px)', () => {
+  function phoneViewport() {
+    return vi.spyOn(window, 'matchMedia').mockImplementation(query => ({ matches: query.includes('760px'), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false }))
+  }
+  function row(orderNumber: string) {
+    return Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row')).find(item => item.textContent?.includes(orderNumber))!
+  }
+
+  it('starts bulk selection with a long press and picks cards with a tap', async () => {
+    const media = phoneViewport()
+    try {
+      const first = row('SH-1001').querySelector<HTMLElement>('.invoice-reference-buyer')!
+      act(() => { first.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 20, clientY: 20 })) })
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 600)) })
+      act(() => {
+        first.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
+        first.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+
+      expect(container.querySelector('.invoice-selection-bar')?.textContent).toContain('1 sipariş seçildi')
+      expect(row('SH-1001').classList.contains('is-selected')).toBe(true)
+      // The press that started the mode does not also open the detail window.
+      expect(container.querySelector('.invoice-detail-modal')).toBeNull()
+
+      act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+      expect(container.querySelector('.invoice-selection-bar')?.textContent).toContain('2 sipariş seçildi')
+      expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('2 sipariş seçildi')
+
+      act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+      expect(container.querySelector('.invoice-selection-bar')?.textContent).toContain('1 sipariş seçildi')
+
+      act(() => button('İptal').click())
+      expect(container.querySelector('.invoice-selection-bar')).toBeNull()
+      expect(container.querySelectorAll('.invoice-reference-row.is-selected')).toHaveLength(0)
+    } finally {
+      media.mockRestore()
+    }
+  })
+
+  it('opens the detail with a short tap outside selection mode', async () => {
+    const media = phoneViewport()
+    try {
+      act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+      await settle()
+      expect(container.querySelector('.invoice-detail-modal')).not.toBeNull()
+      expect(container.querySelector('.invoice-selection-bar')).toBeNull()
+    } finally {
+      media.mockRestore()
+    }
+  })
+})
+
+describe('InvoicesPage detail window', () => {
+  it('turns "Platforma İlet" off once the delivery is queued and sends one versioned key', async () => {
+    act(() => row('SH-1002').querySelector<HTMLButtonElement>('.invoice-reference-details-trigger')!.click())
+    await settle()
+    const deliver = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.invoice-detail-document-actions button')).find(item => /Platforma İle/.test(item.textContent ?? ''))!
+    expect(deliver().textContent).toBe('Platforma İlet')
+
+    act(() => deliver().click())
+    await settle()
+
+    expect(apiState.deliveryKeys).toEqual(['manual-invoice-delivery:manual-doc-2:vNEW'])
+    expect(deliver().textContent).toBe('Platforma İletim Sırada')
+    expect(deliver().disabled).toBe(true)
+  })
+
+  it('follows the latest page data instead of the row copied when it opened', async () => {
+    const fixture = invoiceFixtures[1] as Record<string, unknown>
+    const before = fixture.manualInvoiceDeliveryStatus
+    try {
+      act(() => row('SH-1002').querySelector<HTMLButtonElement>('.invoice-reference-details-trigger')!.click())
+      await settle()
+      expect(container.querySelector('.invoice-detail-document-actions')?.textContent).toContain('Platforma İlet')
+
+      fixture.manualInvoiceDeliveryStatus = 'CONFIRMED'
+      await act(async () => { await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }) })
+      await settle()
+
+      expect(container.querySelector('.invoice-detail-modal')?.textContent).toContain('Pazaryerinde Doğrulandı')
+      expect(container.querySelector('.invoice-detail-document-actions')?.textContent).not.toContain('Platforma İlet')
+    } finally {
+      fixture.manualInvoiceDeliveryStatus = before
+    }
+  })
+
+  function row(orderNumber: string) {
+    return Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row')).find(item => item.textContent?.includes(orderNumber))!
+  }
 })

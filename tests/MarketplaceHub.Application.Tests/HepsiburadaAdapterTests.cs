@@ -2006,7 +2006,9 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("package-1", request.PackageNumber);
         Assert.Equal("order-1", request.OrderNumber);
         Assert.Equal("DAP2026000000016", request.InvoiceNumber);
-        Assert.Equal("application/pdf", request.ContentType);
+        Assert.Equal("pdf", request.ContentType);
+        Assert.Equal("DAP", request.SerialNumber);
+        Assert.Equal("2026000000016", request.RowNumber);
         Assert.Equal("https", request.InvoiceLink.Scheme);
 
         var mismatchedPackage = command with { PayloadJson = command.PayloadJson.Replace("package-1", "package-2", StringComparison.Ordinal) };

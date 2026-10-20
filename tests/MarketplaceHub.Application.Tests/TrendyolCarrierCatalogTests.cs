@@ -148,7 +148,7 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
             "CustomerSnapshotJson":"{\"name\":\"Test Müşteri\"}",
-            "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"1098765432\",\"address\":{\"city\":\"İstanbul\",\"fullAddress\":\"Test adres\"}}"
+            "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"1098765432\",\"address\":{\"city\":\"İstanbul\",\"district\":\"Şişli\",\"fullAddress\":\"Test adres\"}}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
@@ -348,7 +348,7 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
             "CustomerSnapshotJson":"{}",
-            "InvoiceAddressSnapshotJson":"{\"companyName\":\"Örnek Ticaret Ltd.\",\"taxNumber\":\"1234567890\",\"taxOffice\":\"Şişli\",\"city\":\"İstanbul\",\"name\":\"Yetkili Kişi\",\"lastName\":\"Yetkili\"}"
+            "InvoiceAddressSnapshotJson":"{\"companyName\":\"Örnek Ticaret Ltd.\",\"taxNumber\":\"1234567890\",\"taxOffice\":\"Şişli\",\"city\":\"İstanbul\",\"district\":\"Şişli\",\"name\":\"Yetkili Kişi\",\"lastName\":\"Yetkili\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]

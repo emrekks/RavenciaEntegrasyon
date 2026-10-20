@@ -103,26 +103,7 @@ public static class InvoicingEndpoints
             var result = await service.PreviewWorkspaceInvoicesAsync(tenant.TenantId, request, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
         });
-        api.MapPost("/invoice-workspace/confirm", async (InvoiceWorkspacePreviewConfirmRequest request, HttpContext http, IInvoicingBillingService service, IInvoiceInlineRunner inline) =>
-        {
-            if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            if (RequireIdempotency(http) is { } failure) return failure;
-            // The server's budget bounds the work, not the browser's connection (see InlineExecutionBudget).
-            var budget = InlineExecutionBudget.Current(http)!;
-            var result = await service.ConfirmWorkspaceInvoicesAsync(tenant.TenantId, request,
-                http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, budget.Token);
-            if (!result.Succeeded) return Problem(http, result.Error!);
-            // These are immediate writes: the first queued jobs run now and are answered with their real outcome;
-            // the rest stay QUEUED with their job ids for the worker.
-            var items = await budget.RunAsync(result.Value!.Items,
-                item => item.Status == "QUEUED" && item.JobId is not null && item.InvoiceId is not null,
-                async (item, cancellationToken) =>
-                {
-                    var outcome = await inline.RunAsync(tenant.TenantId, item.InvoiceId!.Value, item.JobId!.Value, budget.Deadline, cancellationToken);
-                    return item with { Status = outcome.Status == "IN_PROGRESS" ? "QUEUED" : outcome.Status, Message = outcome.Message };
-                });
-            return Results.Ok(new InvoiceWorkspaceConfirmResult(items));
-        }).WithServerBudget();
+        api.MapPost("/invoice-workspace/confirm", ConfirmWorkspaceAsync);
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/invoices/{id:guid}/validate", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ValidateAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
@@ -131,14 +112,17 @@ public static class InvoicingEndpoints
         api.MapPost("/invoices/{id:guid}/reconcile-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReconcileAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
         // Operator-only: removes (Trendyol) or confirms the removal of (Hepsiburada) the link a cancelled invoice left on one package.
-        api.MapPost("/invoices/{id:guid}/marketplace-link-revocations/{stateId:guid}", async (Guid id, Guid stateId, LinkRevocationRequest request, HttpContext http, IInvoicingBillingService service) =>
+        // Like the other fiscal writes it asks for the password again (live provider connection) and runs under the
+        // server's budget, so a closed tab does not leave the state "being removed".
+        api.MapPost("/invoices/{id:guid}/marketplace-link-revocations/{stateId:guid}", async (Guid id, Guid stateId, LinkRevocationRequest request, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } missingKey) return missingKey;
             if (request is not { Confirmed: true }) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Fatura linkini kaldırmak için açık onay gerekir.", 422));
+            if (await FiscalStepUpAsync(id, request.Password, tenant, http, users, db) is { } refused) return refused;
             var result = await service.RevokeMarketplaceLinkAsync(tenant.TenantId, id, stateId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
-        });
+        }).WithServerBudget();
         api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
         api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery();
         api.MapPut("/invoices/{id:guid}/shopify-status", UpdateShopifyInvoiceStatusAsync);
@@ -360,7 +344,7 @@ public static class InvoicingEndpoints
                 state.Version++;
             }
             var payload = JsonSerializer.Serialize(new { manualOrderInvoiceDocumentId = document.Id, packageId = package.Id, inspectionOnly });
-            var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ConnectionId = package.ConnectionId, JobType = InvoicingJobTypes.ManualOrderInvoiceDelivery, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = packageKey, Priority = -1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 4, CorrelationId = http.TraceIdentifier, CreatedAt = now, Version = 1 };
+            var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ConnectionId = package.ConnectionId, JobType = InvoicingJobTypes.ManualOrderInvoiceDelivery, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = packageKey, Priority = JobPriorityPolicy.ForUser(InvoicingJobTypes.ManualOrderInvoiceDelivery), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 4, CorrelationId = http.TraceIdentifier, CreatedAt = now, Version = 1 };
             db.IntegrationJobs.Add(job);
             jobs.Add(job.Id);
         }
@@ -580,7 +564,54 @@ public static class InvoicingEndpoints
     }
 
     private sealed record ShopifyInvoiceStatusCommand(string Status);
-    private sealed record LinkRevocationRequest(bool Confirmed);
+    private sealed record LinkRevocationRequest(bool Confirmed, string? Password = null);
+
+    // Confirms the workspace selection. Queuing the batch is bounded by the server's lifetime only: not by the
+    // browser (a closed tab must not stop it midway) and not by the inline budget (a large batch may take longer
+    // than it). The budget starts afterwards and bounds only the inline runs (see InlineExecutionBudget).
+    internal static async Task<IResult> ConfirmWorkspaceAsync(InvoiceWorkspacePreviewConfirmRequest request, HttpContext http, IInvoicingBillingService service, IInvoiceInlineRunner inline)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } failure) return failure;
+        var lifetime = http.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+        ServiceResult<InvoiceWorkspaceConfirmResult> result;
+        try
+        {
+            result = await service.ConfirmWorkspaceInvoicesAsync(tenant.TenantId, request,
+                http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, lifetime.ApplicationStopping);
+        }
+        catch (OperationCanceledException) when (lifetime.ApplicationStopping.IsCancellationRequested)
+        {
+            return Problem(http, new("INLINE_BUDGET_EXHAUSTED", "Sunucu yeniden başlatılırken işlem yarıda kaldı; sonucu iş listesinden kontrol edin.", 503));
+        }
+        if (!result.Succeeded) return Problem(http, result.Error!);
+        using var budget = new InlineExecutionBudget(lifetime, http.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System);
+        // These are immediate writes: the first queued jobs run now and are answered with their real outcome;
+        // the rest stay QUEUED with their job ids for the worker.
+        var items = await budget.RunAsync(result.Value!.Items,
+            item => item.Status == "QUEUED" && item.JobId is not null && item.InvoiceId is not null,
+            async (item, cancellationToken) =>
+            {
+                var outcome = await inline.RunAsync(tenant.TenantId, item.InvoiceId!.Value, item.JobId!.Value, budget.Deadline, cancellationToken);
+                return item with { Status = outcome.Status == "IN_PROGRESS" ? "QUEUED" : outcome.Status, Message = outcome.Message };
+            });
+        return Results.Ok(new InvoiceWorkspaceConfirmResult(items));
+    }
+
+    // The password step-up of fiscal writes: asked again when the invoice's provider connection is live, as in EnqueueProtected.
+    internal static async Task<IResult?> FiscalStepUpAsync(Guid invoiceId, string? password, TenantContext tenant, HttpContext http, UserManager<ApplicationUser> users, AppDbContext db)
+    {
+        var connection = await (from invoice in db.Invoices.AsNoTracking()
+                                join provider in db.PlatformConnections.AsNoTracking() on new { invoice.TenantId, Id = invoice.ProviderConnectionId } equals new { provider.TenantId, provider.Id }
+                                where invoice.TenantId == tenant.TenantId && invoice.Id == invoiceId
+                                select provider).SingleOrDefaultAsync(http.RequestAborted);
+        if (connection is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Fatura bulunamadı.", 404));
+        if (!IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)) return null;
+        var user = await users.FindByIdAsync(tenant.UserId.ToString());
+        return await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(users, user, password ?? string.Empty)
+            ? null
+            : Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
+    }
     private sealed record InvoiceWorkspaceManualStatusCommand(IReadOnlyList<Guid> PackageIds, string Status);
     private sealed record InvoiceWorkspaceHiddenCommand(IReadOnlyList<Guid> PackageIds, bool Hidden);
 

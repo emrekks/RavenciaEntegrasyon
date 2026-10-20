@@ -61,7 +61,8 @@ public sealed partial class InvoicingBillingService
                 return ServiceResult<MarketplaceLinkRevocationView>.Fail("INVOICE_LINK_STATUS_UNAVAILABLE", $"Pazaryeri paketi okunamadı ({observed.Error!.Code}); durum değiştirilmedi.", 502);
             if (MarketplaceInvoiceStatePolicy.FromRemote(observed.Value!.RawStatus) != MarketplaceInvoiceStatus.NotInvoiced)
                 return ServiceResult<MarketplaceLinkRevocationView>.Fail("INVOICE_LINK_STILL_PRESENT", $"{connection.DisplayName} paketi hâlâ faturalı görünüyor. {instructions}", 409);
-            await CompleteLinkRevocationAsync(invoice, state, package, observed.Value.RawStatus, "verified-absent", idempotencyKey, correlationId, cancellationToken);
+            if (!await CompleteLinkRevocationAsync(invoice, state, package, observed.Value.RawStatus, "verified-absent", idempotencyKey, correlationId, cancellationToken))
+                return ConcurrentRevocation();
             return ServiceResult<MarketplaceLinkRevocationView>.Ok(await LinkRevocationViewAsync(state, connection, package.ExternalPackageId, cancellationToken));
         }
 
@@ -74,7 +75,8 @@ public sealed partial class InvoicingBillingService
         var result = await marketplace.RevokeLinkAsync(context, new InvoiceLinkRevocationCommand(reference, expectedLinks, invoice.InvoiceNumber), cancellationToken);
         if (result.IsSuccess)
         {
-            await CompleteLinkRevocationAsync(invoice, state, package, result.Value!.ObservedRawStatus, result.Value.AlreadyAbsent ? "already-absent" : "deleted", idempotencyKey, correlationId, cancellationToken);
+            if (!await CompleteLinkRevocationAsync(invoice, state, package, result.Value!.ObservedRawStatus, result.Value.AlreadyAbsent ? "already-absent" : "deleted", idempotencyKey, correlationId, cancellationToken))
+                return ConcurrentRevocation();
             return ServiceResult<MarketplaceLinkRevocationView>.Ok(await LinkRevocationViewAsync(state, connection, package.ExternalPackageId, cancellationToken));
         }
 
@@ -95,9 +97,13 @@ public sealed partial class InvoicingBillingService
         });
     }
 
+    private static ServiceResult<MarketplaceLinkRevocationView> ConcurrentRevocation() =>
+        ServiceResult<MarketplaceLinkRevocationView>.Fail("INVOICE_LINK_REVOCATION_RUNNING", "Bu link için başka bir istek aynı anda sonuçlandı. Sayfayı yenileyip güncel durumu görün.", 409);
+
     // The link is gone: the delivery state ends as LINK_REMOVED, the package no longer shows the cancelled invoice,
     // and the operational issue closes once no other package of the invoice still holds a link.
-    private async Task CompleteLinkRevocationAsync(Invoice invoice, MarketplaceDeliveryState state, ShipmentPackage package, string observedRawStatus, string outcome, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    // False when another request finished the same removal first (its write won): nothing of this one is saved.
+    private async Task<bool> CompleteLinkRevocationAsync(Invoice invoice, MarketplaceDeliveryState state, ShipmentPackage package, string observedRawStatus, string outcome, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         InvoiceAdjustmentTracking.AppendDeliveryHistory(db, state, MarketplaceInvoiceLinkRevocationPolicy.Removed, state.ExternalReference, null, now);
@@ -112,15 +118,30 @@ public sealed partial class InvoicingBillingService
         package.Version++;
         db.AuditLogs.Add(new AuditLog { TenantId = invoice.TenantId, Action = "INVOICE_MARKETPLACE_LINK_REVOKED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"package:{package.ExternalPackageId};{outcome};key:{Hash(idempotencyKey)[..16]}", CorrelationId = correlationId, CreatedAt = now });
         await InvoiceAdjustmentTracking.ResolveLinkRevocationIfDoneAsync(db, invoice.TenantId, invoice.Id, now, cancellationToken);
-        try { await db.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateConcurrencyException exception) when (exception.Entries.All(entry => entry.Entity is ShipmentPackage))
+        try
         {
-            // An order sync changed the package meanwhile; the removal itself is still recorded and the next
-            // package read brings the marketplace's view of the invoice.
-            foreach (var entry in exception.Entries) entry.State = EntityState.Detached;
-            await db.SaveChangesAsync(cancellationToken);
+            try { await db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateConcurrencyException exception) when (exception.Entries.All(entry => entry.Entity is ShipmentPackage))
+            {
+                // An order sync changed the package meanwhile; the removal itself is still recorded and the next
+                // package read brings the marketplace's view of the invoice.
+                foreach (var entry in exception.Entries) entry.State = EntityState.Detached;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            return true;
+        }
+        catch (DbUpdateException exception) when (IsConcurrentRevocationWrite(exception))
+        {
+            // Two checks of the same package ran at once (a double click, two tabs): the delivery state or its history
+            // row was written by the other one.
+            db.ChangeTracker.Clear();
+            return false;
         }
     }
+
+    internal static bool IsConcurrentRevocationWrite(DbUpdateException exception) =>
+        exception is DbUpdateConcurrencyException
+        || exception.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation };
 
     private async Task<IReadOnlyList<MarketplaceLinkRevocationView>> LinkRevocationViewsAsync(Invoice invoice, CancellationToken cancellationToken)
     {
@@ -134,17 +155,19 @@ public sealed partial class InvoicingBillingService
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == invoice.TenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var packageIds = states.Where(x => x.PackageId.HasValue).Select(x => x.PackageId!.Value).Distinct().ToArray();
         var packageNumbers = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == invoice.TenantId && packageIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.ExternalPackageId, cancellationToken);
+        // The write gate of a connection is read once, however many packages of the invoice sit on it.
+        var writeBlocks = new Dictionary<Guid, string?>();
         var views = new List<MarketplaceLinkRevocationView>(states.Count);
         foreach (var state in states)
         {
             if (!connections.TryGetValue(state.ConnectionId, out var connection)) continue;
             var packageNumber = state.PackageId is { } packageId ? packageNumbers.GetValueOrDefault(packageId) : null;
-            views.Add(await LinkRevocationViewAsync(state, connection, packageNumber, cancellationToken));
+            views.Add(await LinkRevocationViewAsync(state, connection, packageNumber, cancellationToken, writeBlocks));
         }
         return views;
     }
 
-    private async Task<MarketplaceLinkRevocationView> LinkRevocationViewAsync(MarketplaceDeliveryState state, PlatformConnection connection, string? packageNumber, CancellationToken cancellationToken)
+    private async Task<MarketplaceLinkRevocationView> LinkRevocationViewAsync(MarketplaceDeliveryState state, PlatformConnection connection, string? packageNumber, CancellationToken cancellationToken, Dictionary<Guid, string?>? writeBlocks = null)
     {
         var mode = MarketplaceInvoiceLinkRevocationPolicy.ModeFor(connection.PlatformCode);
         var now = timeProvider.GetUtcNow();
@@ -152,10 +175,11 @@ public sealed partial class InvoicingBillingService
         var canAct = mode != MarketplaceInvoiceLinkRevocationPolicy.Manual
             && MarketplaceInvoiceLinkRevocationPolicy.CanStart(state.Status, state.UpdatedAt, now)
             && marketplace is not null;
-        if (canAct && mode == MarketplaceInvoiceLinkRevocationPolicy.Automatic && !await WriteGates(state.TenantId, connection.Id, InvoicingCapabilities.InvoiceDeliver, cancellationToken))
+        if (canAct && mode == MarketplaceInvoiceLinkRevocationPolicy.Automatic
+            && await WriteBlockedReasonAsync(state.TenantId, connection.Id, writeBlocks, cancellationToken) is { } writeBlocked)
         {
             canAct = false;
-            blocked = await DeliveryBlockedReasonAsync(state.TenantId, connection.Id, cancellationToken);
+            blocked = writeBlocked;
         }
         else if (canAct && !IntegrationRuntimePolicy.AllowsManualRead(connection))
         {
@@ -164,5 +188,16 @@ public sealed partial class InvoicingBillingService
         }
         return new(state.Id, state.PackageId, connection.PlatformCode, connection.DisplayName, packageNumber ?? state.ExternalReference, state.Status, state.ErrorCode, mode,
             MarketplaceInvoiceLinkRevocationPolicy.Instructions(connection.PlatformCode, packageNumber ?? state.ExternalReference), canAct, blocked, state.UpdatedAt);
+    }
+
+    // Why the connection may not write now (null when it may), remembered per connection for one detail view.
+    private async Task<string?> WriteBlockedReasonAsync(Guid tenantId, Guid connectionId, Dictionary<Guid, string?>? cache, CancellationToken cancellationToken)
+    {
+        if (cache is not null && cache.TryGetValue(connectionId, out var known)) return known;
+        var reason = await WriteGates(tenantId, connectionId, InvoicingCapabilities.InvoiceDeliver, cancellationToken)
+            ? null
+            : await DeliveryBlockedReasonAsync(tenantId, connectionId, cancellationToken);
+        if (cache is not null) cache[connectionId] = reason;
+        return reason;
     }
 }

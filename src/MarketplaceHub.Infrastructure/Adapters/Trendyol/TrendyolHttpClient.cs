@@ -797,9 +797,37 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                     || !payload.RootElement.TryGetProperty("invoiceNumber", out var invoiceNumber) || invoiceNumber.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(invoiceNumber.GetString()))
                     return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Mikro ihracat delivery payloadında invoiceDateTime ve invoiceNumber zorunludur."));
             }
-            var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.InvoiceLinks(authorized.Connection.ExternalStoreId), JsonContent.Create(payload.RootElement), cancellationToken, storeFrontCode: WriteStoreFront(command.StoreFrontCode)); if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
+            if (InvoiceLinkBody(payload.RootElement) is not { } body)
+                return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.Validation, InvoiceLinkBodyInvalidCode,
+                    "Trendyol fatura linki gönderilmedi: paket numarası sayı değil veya fatura numarası GİB biçiminde (3 harf/rakam ve 13 rakam) değil.", null, null, null));
+            var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.InvoiceLinks(authorized.Connection.ExternalStoreId), JsonContent.Create(body), cancellationToken, storeFrontCode: WriteStoreFront(command.StoreFrontCode)); if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
             return AdapterResult<InvoiceDeliveryResult>.Success(new(command.ExternalPackageId, "SUBMITTED"), response.RateLimit);
         }
+    }
+
+    internal const string InvoiceLinkBodyInvalidCode = "TRENDYOL_INVOICE_LINK_BODY_INVALID";
+    private static readonly System.Text.RegularExpressions.Regex GibInvoiceNumber = new(@"^[A-Za-z0-9]{3}\d{13}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    // The documented "send-invoice-link" body: shipmentPackageId as a number (int64), invoiceLink, and the optional
+    // invoiceDateTime and invoiceNumber (GİB format, three letters/digits and thirteen digits). The panel's own fields
+    // (micro, the other marketplaces' keys) are not sent. Null when the package number or invoice number does not fit.
+    internal static Dictionary<string, object>? InvoiceLinkBody(JsonElement payload)
+    {
+        var packageText = payload.TryGetProperty("shipmentPackageId", out var packageValue)
+            ? packageValue.ValueKind == JsonValueKind.Number ? packageValue.GetRawText() : packageValue.ValueKind == JsonValueKind.String ? packageValue.GetString()?.Trim() : null
+            : null;
+        if (!long.TryParse(packageText, NumberStyles.None, CultureInfo.InvariantCulture, out var shipmentPackageId) || shipmentPackageId <= 0) return null;
+        if (!payload.TryGetProperty("invoiceLink", out var link) || link.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(link.GetString())) return null;
+        var body = new Dictionary<string, object> { ["shipmentPackageId"] = shipmentPackageId, ["invoiceLink"] = link.GetString()! };
+        if (payload.TryGetProperty("invoiceDateTime", out var issuedAt) && issuedAt.TryGetInt64(out var issuedAtMilliseconds))
+            body["invoiceDateTime"] = issuedAtMilliseconds;
+        if (payload.TryGetProperty("invoiceNumber", out var number) && number.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(number.GetString()))
+        {
+            var invoiceNumber = number.GetString()!.Trim();
+            if (!GibInvoiceNumber.IsMatch(invoiceNumber)) return null;
+            body["invoiceNumber"] = invoiceNumber;
+        }
+        return body;
     }
 
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)
@@ -901,8 +929,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             && command.ExpectedInvoiceLinks.Any(link => string.Equals(link.Trim().TrimEnd('/'), url, StringComparison.OrdinalIgnoreCase));
         var numberMatches = !string.IsNullOrWhiteSpace(number) && !string.IsNullOrWhiteSpace(command.ExpectedInvoiceNumber)
             && string.Equals(number, command.ExpectedInvoiceNumber.Trim(), StringComparison.Ordinal);
-        // A link or number that names another invoice wins over a partial match.
-        if (!string.IsNullOrWhiteSpace(url) && !urlMatches && !string.IsNullOrWhiteSpace(number) && !numberMatches) return false;
+        // A link or a number that names another invoice wins over a partial match: a package with the same number but
+        // another link (or the same link but another number) holds a live invoice that is not this one.
+        if (!string.IsNullOrWhiteSpace(url) && !urlMatches) return false;
+        if (!string.IsNullOrWhiteSpace(number) && !string.IsNullOrWhiteSpace(command.ExpectedInvoiceNumber) && !numberMatches) return false;
         return urlMatches || numberMatches;
     }
 
