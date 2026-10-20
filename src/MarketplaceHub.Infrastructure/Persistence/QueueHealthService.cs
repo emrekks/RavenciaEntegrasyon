@@ -3,13 +3,18 @@ using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Jobs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // Read-only queue health: waits per worker lane, and how full the Trendyol order quota runs.
-public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions> trendyolOptions, TimeProvider timeProvider) : IQueueHealthService
+public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions> trendyolOptions, TimeProvider timeProvider, IConfiguration? configuration = null) : IQueueHealthService
 {
+    // The worker's hot lane ceiling (Worker:HotPriorityCeiling, read the same way as the worker), so the lanes shown
+    // here are the ones the worker leases by.
+    private readonly int hotPriorityCeiling = Math.Clamp(configuration?.GetValue("Worker:HotPriorityCeiling", WorkerLanes.DefaultHotPriorityCeiling) ?? WorkerLanes.DefaultHotPriorityCeiling, 0, 5);
+
     private static readonly string[] LockGroupJobTypes = [.. MarketplaceJobTypes.ProcessorJobTypes];
     private static readonly string[] LockGroups = [.. MarketplaceJobTypes.ProcessorJobTypes.Select(MarketplaceSyncExecutionLock.GroupFor)];
 
@@ -17,7 +22,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
     {
         var now = timeProvider.GetUtcNow();
         var since = now - window;
-        var lanes = WorkerLanes.All();
+        var lanes = WorkerLanes.All(hotPriorityCeiling);
         // The lanes are the worker's own (WorkerLanes): a job belongs to the first lane that would lease it.
         var lane = LaneCaseSql(lanes, out var laneParameters);
         var parameters = new List<object>
@@ -45,7 +50,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
         {
             var code = LaneCode(definition.Name);
             var attempt = attempts.FirstOrDefault(row => row.Lane == definition.Name);
-            var depth = queue.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority) == definition.Name).ToArray();
+            var depth = queue.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).ToArray();
             return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count));
         }).ToList();
     }
