@@ -16,7 +16,7 @@ public sealed class ShopifyAdapterRequestTests
     private static readonly Guid ConnectionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     [Fact]
-    public async Task InventoryWriteSendsTheDocumentedInventorySetQuantitiesShape()
+    public async Task InventoryWriteSendsTheIdempotentInventorySetQuantitiesMutation()
     {
         var handler = new Capturing("""{"data":{"inventorySetQuantities":{"userErrors":[]}}}""");
         var client = Client(handler);
@@ -26,32 +26,38 @@ public sealed class ShopifyAdapterRequestTests
         Assert.True(result.IsSuccess, result.Error?.Code);
         using var body = JsonDocument.Parse(Assert.Single(handler.Bodies));
         Assert.Equal(
-            "mutation($input:InventorySetQuantitiesInput!){inventorySetQuantities(input:$input){userErrors{field message}}}",
+            "mutation($input:InventorySetQuantitiesInput!,$idempotencyKey:String!){inventorySetQuantities(input:$input) @idempotent(key:$idempotencyKey){userErrors{field message}}}",
             body.RootElement.GetProperty("query").GetString());
         var variables = body.RootElement.GetProperty("variables");
-        Assert.Equal(["input"], variables.EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.Equal(["input", "idempotencyKey"], variables.EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.Equal(ShopifyHttpClient.IdempotencyKey("effect-1:8690000000001:inventory"), variables.GetProperty("idempotencyKey").GetString());
         var input = variables.GetProperty("input");
-        Assert.Equal(["name", "reason", "referenceDocumentUri", "ignoreCompareQuantity", "quantities"], input.EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.Equal(["name", "reason", "referenceDocumentUri", "quantities"], input.EnumerateObject().Select(property => property.Name).ToArray());
         Assert.Equal("available", input.GetProperty("name").GetString());
         Assert.Equal("correction", input.GetProperty("reason").GetString());
         Assert.Equal($"marketplacehub://{TenantId:D}/{ConnectionId:D}/8690000000001", input.GetProperty("referenceDocumentUri").GetString());
-        Assert.False(input.GetProperty("ignoreCompareQuantity").GetBoolean());
         var quantity = Assert.Single(input.GetProperty("quantities").EnumerateArray());
-        Assert.Equal(["inventoryItemId", "locationId", "quantity", "compareQuantity"], quantity.EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.Equal(["inventoryItemId", "locationId", "quantity", "changeFromQuantity"], quantity.EnumerateObject().Select(property => property.Name).ToArray());
         Assert.Equal("gid://shopify/InventoryItem/7", quantity.GetProperty("inventoryItemId").GetString());
         Assert.Equal("gid://shopify/Location/3", quantity.GetProperty("locationId").GetString());
         Assert.Equal(12, quantity.GetProperty("quantity").GetInt32());
-        Assert.Equal(9, quantity.GetProperty("compareQuantity").GetInt32());
-        Assert.DoesNotContain("@idempotent", handler.Bodies[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("changeFromQuantity", handler.Bodies[0], StringComparison.Ordinal);
+        Assert.Equal(9, quantity.GetProperty("changeFromQuantity").GetInt32());
     }
 
     [Fact]
-    public void WithoutAKnownQuantityTheCompareCheckIsSkippedExplicitly()
+    public async Task TheSameEffectAndBarcodeAlwaysSendTheSameIdempotencyKey()
     {
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(ShopifyHttpClient.InventorySetQuantitiesVariables(TenantId, ConnectionId, "B", "item", "location", 1, null)));
+        var handler = new Capturing("""{"data":{"inventorySetQuantities":{"userErrors":[]}}}""");
+        var client = Client(handler);
 
-        Assert.True(json.RootElement.GetProperty("input").GetProperty("ignoreCompareQuantity").GetBoolean());
+        await client.SetAvailableQuantityAsync(Shop(), Context(), "B-1", "item", "location", 3, 2, CancellationToken.None);
+        await client.SetAvailableQuantityAsync(Shop(), Context(), "B-1", "item", "location", 3, 2, CancellationToken.None);
+        await client.SetAvailableQuantityAsync(Shop(), Context(), "B-2", "item", "location", 3, 2, CancellationToken.None);
+
+        var keys = handler.Bodies.Select(body => JsonDocument.Parse(body).RootElement.GetProperty("variables").GetProperty("idempotencyKey").GetString()).ToArray();
+        Assert.Equal(keys[0], keys[1]);
+        Assert.NotEqual(keys[0], keys[2]);
+        Assert.Matches("^[0-9a-f]{64}$", keys[0]);
     }
 
     [Fact]
@@ -115,7 +121,7 @@ public sealed class ShopifyAdapterRequestTests
         new PlatformConnection { Id = ConnectionId, TenantId = TenantId, PlatformCode = "SHOPIFY", Environment = "PRODUCTION", Status = "ACTIVE", DisplayName = "Shopify", ExternalStoreId = "test-shop", ApiVersion = "2026-10" },
         "test-shop", "2026-10", "fixture-token", DateTimeOffset.MaxValue);
 
-    private static AdapterContext Context() => new(TenantId, ConnectionId, "effect-1", "correlation-1", DateTimeOffset.UtcNow.AddMinutes(1));
+    private static AdapterContext Context() => new(TenantId, ConnectionId, "correlation-1", "effect-1", DateTimeOffset.UtcNow.AddMinutes(1));
 
     private sealed class Capturing(params string[] responses) : HttpMessageHandler
     {

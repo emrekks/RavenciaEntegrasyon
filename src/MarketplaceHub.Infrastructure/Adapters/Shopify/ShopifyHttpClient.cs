@@ -893,26 +893,19 @@ public sealed partial class ShopifyHttpClient(
         return true;
     }
 
-    // Admin API inventorySetQuantities: the quantities carry compareQuantity (the "available" amount read just
-    // before), so Shopify refuses the write if the stock moved in between; with ignoreCompareQuantity false that
-    // check, the job's effect record and the read-before-write are what keep a retried write from double-applying.
-    // There is no @idempotent directive on this mutation.
-    internal const string InventorySetQuantitiesMutation = "mutation($input:InventorySetQuantitiesInput!){inventorySetQuantities(input:$input){userErrors{field message}}}";
+    // Admin API 2026-10 inventorySetQuantities: the @idempotent key is required since 2026-04 and each quantity
+    // carries changeFromQuantity (the "available" amount read just before), so a retried write with the same
+    // effect key is applied once and a stock that moved in between is refused.
+    internal const string InventorySetQuantitiesMutation = "mutation($input:InventorySetQuantitiesInput!,$idempotencyKey:String!){inventorySetQuantities(input:$input) @idempotent(key:$idempotencyKey){userErrors{field message}}}";
 
-    internal static object InventorySetQuantitiesVariables(Guid tenantId, Guid connectionId, string barcode, string inventoryItemId, string locationId, int quantity, int? compareQuantity) => new
+    internal Task<AdapterResult<JsonDocument>> SetAvailableQuantityAsync(ShopifyRequestContext shop, AdapterContext context, string barcode, string inventoryItemId, string locationId, int quantity, int compareQuantity, CancellationToken cancellationToken)
     {
-        input = new
-        {
-            name = "available",
-            reason = "correction",
-            referenceDocumentUri = $"marketplacehub://{tenantId:D}/{connectionId:D}/{barcode}",
-            ignoreCompareQuantity = compareQuantity is null,
-            quantities = new[] { new { inventoryItemId, locationId, quantity, compareQuantity } }
-        }
-    };
+        var effect = string.IsNullOrWhiteSpace(context.IdempotencyKey) ? Guid.NewGuid().ToString("N") : context.IdempotencyKey;
+        var key = IdempotencyKey($"{effect}:{barcode}:inventory");
+        return QueryAsync(shop, InventorySetQuantitiesMutation, new { input = new { name = "available", reason = "correction", referenceDocumentUri = $"marketplacehub://{context.TenantId:D}/{context.ConnectionId:D}/{barcode}", quantities = new[] { new { inventoryItemId, locationId, quantity, changeFromQuantity = compareQuantity } } }, idempotencyKey = key }, cancellationToken);
+    }
 
-    internal Task<AdapterResult<JsonDocument>> SetAvailableQuantityAsync(ShopifyRequestContext shop, AdapterContext context, string barcode, string inventoryItemId, string locationId, int quantity, int? compareQuantity, CancellationToken cancellationToken) =>
-        QueryAsync(shop, InventorySetQuantitiesMutation, InventorySetQuantitiesVariables(context.TenantId, context.ConnectionId, barcode, inventoryItemId, locationId, quantity, compareQuantity), cancellationToken);
+    internal static string IdempotencyKey(string value) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     private static string EncodeCompletedOperation(IReadOnlyList<RemoteOperationLine> lines) => "shopify-completed:" + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(lines));
 
     private static CapabilityEvidence ScopeEvidence(string code, ConnectionIdentity identity, string source, AdapterResult<JsonDocument> scopeResult, IReadOnlySet<string> scopes, string[] requiredScopes, DateTimeOffset verified)
