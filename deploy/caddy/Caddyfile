@@ -4,7 +4,9 @@
 }
 
 {$MARKETPLACEHUB_SITE_ADDRESS:https://localhost} {
-  encode zstd gzip
+  # Kept in step with Caddyfile.production: API/SignalR responses are not compressed (BREACH class).
+  @compressible not path /api/* /hubs/*
+  encode @compressible zstd gzip
   header {
     -Server
     X-Content-Type-Options "nosniff"
@@ -16,13 +18,22 @@
 
   @webhook path /api/v1/hooks/*
   request_body @webhook {
-		max_size 10MB
+    max_size 10MB
   }
   log_skip @webhook
 
-  # SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
-  @backend path /api/* /health/* /hubs/*
-  handle @backend {
+  # /health/live is public; readiness and queue state answer only to private sources.
+  @health_private_only {
+    path /health/*
+    not path /health/live
+    not remote_ip private_ranges
+  }
+  handle @health_private_only {
+    respond 404
+  }
+
+  # Only a 401 from the authentication endpoints clears the browser cache.
+  handle /api/v1/auth/* {
     reverse_proxy api:8080 {
       @unauthenticated status 401
       handle_response @unauthenticated {
@@ -30,6 +41,12 @@
         copy_response
       }
     }
+  }
+
+  # SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
+  @backend path /api/* /health/* /hubs/*
+  handle @backend {
+    reverse_proxy api:8080
   }
   handle {
     root * /srv
