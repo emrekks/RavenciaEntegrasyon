@@ -17,7 +17,7 @@ public sealed partial class N11HttpClient : IInventoryPricePort
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (WriteBlocked<RemoteOperationRef>(account, context, "fiyat-stok") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteOperationRef>(account, "fiyat-stok") is { } blocked) return blocked;
         var result = await SendAsync(account, HttpMethod.Post, PriceStockUpdate, cancellationToken, new StringContent(payloadJson, Encoding.UTF8, "application/json"));
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;

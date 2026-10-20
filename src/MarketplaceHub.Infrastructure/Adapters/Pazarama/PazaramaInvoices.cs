@@ -22,7 +22,7 @@ public sealed partial class PazaramaHttpClient : IInvoiceMarketplacePort
         if (request.Error is not null) return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "PAZARAMA_INVOICE_LINK_INVALID", request.Error, HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<InvoiceDeliveryResult>();
-        if (WriteBlocked<InvoiceDeliveryResult>(account, context, "fatura linki") is { } blocked) return blocked;
+        if (WriteBlocked<InvoiceDeliveryResult>(account, "fatura linki") is { } blocked) return blocked;
 
         var saved = await SendAsync(account, HttpMethod.Post, InvoiceLink, cancellationToken, Json(PazaramaInvoiceMapper.Body(request)));
         if (!saved.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(saved.Error!, saved.RateLimit);

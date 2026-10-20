@@ -30,7 +30,7 @@ public sealed partial class PazaramaHttpClient
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PAZARAMA_PRODUCT_PAYLOAD_INVALID", error ?? "Pazarama ürün açma içeriği beklenen yapıda değil.", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (WriteBlocked<RemoteOperationRef>(account, context, "ürün açma isteği") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteOperationRef>(account, "ürün açma isteği") is { } blocked) return blocked;
 
         var result = await SendAsync(account, HttpMethod.Post, ProductCreate, cancellationToken, new StringContent(publication.PayloadJson, System.Text.Encoding.UTF8, "application/json"));
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
@@ -123,7 +123,7 @@ public sealed partial class PazaramaHttpClient
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PAZARAMA_SALE_STATUS_PAYLOAD_INVALID", "Satışa açma/kapatma içeriği beklenen yapıda değil (1-100 barkod).", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (WriteBlocked<RemoteOperationRef>(account, context, "satışa açma/kapatma") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteOperationRef>(account, "satışa açma/kapatma") is { } blocked) return blocked;
 
         var lines = new List<RemoteOperationLine>();
         RateLimitMetadata? rate = null;

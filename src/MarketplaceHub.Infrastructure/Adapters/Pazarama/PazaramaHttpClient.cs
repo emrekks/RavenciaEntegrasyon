@@ -33,16 +33,16 @@ public sealed partial class PazaramaHttpClient(
     internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private readonly PazaramaOptions settings = options.Value;
 
-    // Every Pazarama write goes through this gate: the shared write policy (server-wide switch,
-    // connection switch, an active production connection, the manual/automatic split) as for the other
-    // marketplaces. Pazarama has no sandbox, so a connection that is not PRODUCTION would still reach the
-    // live store and never writes. Callers above check the same switches when they queue work; this keeps
-    // a write from leaving even when a caller forgets.
-    internal AdapterResult<T>? WriteBlocked<T>(PazaramaRequestContext account, AdapterContext context, string what)
+    // Every Pazarama write goes through this gate: the server-wide switch, the connection switch,
+    // a production connection that was verified or activated. Callers above check the same switches
+    // when they queue work; this keeps a write from leaving even when a caller forgets.
+    internal AdapterResult<T>? WriteBlocked<T>(PazaramaRequestContext account, string what)
     {
         var connection = account.Connection;
-        var allowed = IntegrationRuntimePolicy.IsProduction(connection)
-            && IntegrationRuntimePolicy.AllowsExternalWrite(connection, context, configuration.GetValue<bool>("FeatureFlags:ExternalWrites"), ConnectionWritesEnabled(connection.SettingsJson));
+        var allowed = configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
+            && ConnectionWritesEnabled(connection.SettingsJson)
+            && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
         return allowed
             ? null
             : Failure<T>(AdapterErrorClass.Validation, "PAZARAMA_EXTERNAL_WRITES_DISABLED", $"Pazarama bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);

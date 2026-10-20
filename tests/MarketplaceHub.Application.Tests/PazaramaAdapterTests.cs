@@ -188,20 +188,19 @@ public sealed class PazaramaAdapterTests
     }
 
     [Theory]
-    [InlineData("PRODUCTION", "ACTIVE", IntegrationOperation.Automatic)]
-    [InlineData("PRODUCTION", "ACTIVE", IntegrationOperation.Manual)]
-    public void WritesPassOnlyWhenEverySwitchIsOn(string environment, string status, IntegrationOperation operation) =>
-        Assert.Null(Client(true).WriteBlocked<bool>(Account(environment, status, true), Context(operation), "test"));
+    [InlineData("PRODUCTION", "VERIFIED")]
+    [InlineData("PRODUCTION", "ACTIVE")]
+    public void WritesPassOnlyWhenEverySwitchIsOn(string environment, string status) =>
+        Assert.Null(Client(true).WriteBlocked<bool>(Account(environment, status, true), "test"));
 
     [Theory]
     [InlineData(false, "PRODUCTION", "VERIFIED", true)]
     [InlineData(true, "PRODUCTION", "VERIFIED", false)]
     [InlineData(true, "STAGE", "VERIFIED", true)]
     [InlineData(true, "PRODUCTION", "DRAFT", true)]
-    [InlineData(true, "PRODUCTION", "VERIFIED", true)]
     public void AnyClosedSwitchBlocksTheWrite(bool global, string environment, string status, bool connectionWrites)
     {
-        var blocked = Client(global).WriteBlocked<bool>(Account(environment, status, connectionWrites), Context(IntegrationOperation.Manual), "fiyat-stok");
+        var blocked = Client(global).WriteBlocked<bool>(Account(environment, status, connectionWrites), "fiyat-stok");
 
         Assert.Equal("PAZARAMA_EXTERNAL_WRITES_DISABLED", blocked!.Error!.Code);
         Assert.Contains("fiyat-stok gönderilmedi", blocked.Error.SafeMessage);
@@ -275,8 +274,6 @@ public sealed class PazaramaAdapterTests
         Assert.Equal("Pazarama", JobOperationsService.Marketplace("PAZARAMA_CONNECTION_TEST"));
         Assert.Equal("Pazarama", JobOperationsService.Marketplace("PRICE_INVENTORY_SYNC", "PAZARAMA"));
     }
-
-    private static AdapterContext Context(IntegrationOperation operation) => new(Guid.NewGuid(), Guid.NewGuid(), "correlation", "effect", DateTimeOffset.UtcNow.AddMinutes(1), Operation: operation);
 
     private static PazaramaHttpClient Client(bool globalWrites) => new(
         new NoHttpFactory(), null!, new PazaramaTokenCache(TimeProvider.System), Options.Create(new PazaramaOptions()), TimeProvider.System, NullLogger<PazaramaHttpClient>.Instance,

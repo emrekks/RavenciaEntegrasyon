@@ -35,7 +35,7 @@ public sealed partial class N11HttpClient
 
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<PackageActionResult>();
-        if (WriteBlocked<PackageActionResult>(account, context, "paket işlemi") is { } blocked) return blocked;
+        if (WriteBlocked<PackageActionResult>(account, "paket işlemi") is { } blocked) return blocked;
         var (method, path) = N11PackageActionMapper.Endpoint(action);
         var result = await SendAsync(account, method, path, cancellationToken, new StringContent(body, Encoding.UTF8, "application/json"));
         if (!result.IsSuccess) return AdapterResult<PackageActionResult>.Failure(result.Error!, result.RateLimit);

@@ -63,7 +63,7 @@ public sealed partial class N11HttpClient : IQuestionPort
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteQuestionAnswerResult>();
-        if (WriteBlocked<RemoteQuestionAnswerResult>(account, context, "soru cevabı") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteQuestionAnswerResult>(account, "soru cevabı") is { } blocked) return blocked;
         var saved = await SendSoapAsync(account, ProductService, "SaveProductAnswer", SoapElement("productQuestionId", questionId) + SoapElement("answer", answer.Trim()), cancellationToken);
         return saved.IsSuccess
             ? AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, null))

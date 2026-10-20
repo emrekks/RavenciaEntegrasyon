@@ -39,7 +39,7 @@ public sealed partial class PazaramaHttpClient
 
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<PackageActionResult>();
-        if (WriteBlocked<PackageActionResult>(account, context, "paket işlemi") is { } blocked) return blocked;
+        if (WriteBlocked<PackageActionResult>(account, "paket işlemi") is { } blocked) return blocked;
 
         if (action is "PICKING" or "NOT_SUPPLIED")
         {
