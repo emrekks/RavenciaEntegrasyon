@@ -165,10 +165,9 @@ public sealed partial class N11HttpClient(
         using var request = new HttpRequestMessage(method, new Uri(settings.BaseAddress, path)) { Content = content };
         ApplyAuthentication(request, context);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        using var timeout = new QuotaAwareTimeout(request, N11RateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
             using var response = await client.SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             var retryAfter = response.Headers.RetryAfter?.Delta
@@ -188,6 +187,8 @@ public sealed partial class N11HttpClient(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            // Never sent: the shared quota stayed full. This is not an "outcome unknown" call.
+            if (!timeout.QuotaAcquired) return LocalQuotaWait<JsonDocument>();
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_TIMEOUT", "N11 isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)
@@ -196,6 +197,11 @@ public sealed partial class N11HttpClient(
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR", "N11 bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
         }
     }
+
+    private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
+
+    private static AdapterResult<T> LocalQuotaWait<T>() =>
+        AdapterResult<T>.Failure(new(AdapterErrorClass.RateLimit, "N11_LOCAL_QUOTA_WAIT", "N11 istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
 
     internal static void ApplyAuthentication(HttpRequestMessage request, N11RequestContext context)
     {

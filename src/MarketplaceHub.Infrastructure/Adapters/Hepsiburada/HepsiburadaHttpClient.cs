@@ -1204,10 +1204,9 @@ public sealed partial class HepsiburadaHttpClient(
             return Failure<JsonDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_INTEGRATOR_NAME_INVALID", "Hepsiburada entegratör adı geçerli bir User-Agent kimliği olmalıdır.", HttpStatusCode.UnprocessableEntity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         configure?.Invoke(request);
+        using var timeout = new QuotaAwareTimeout(request, HepsiburadaRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
             using var response = await client.SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             var rate = RateLimit(response);
@@ -1234,6 +1233,8 @@ public sealed partial class HepsiburadaHttpClient(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            // Never sent: the shared quota stayed full. This is not an "outcome unknown" call.
+            if (!timeout.QuotaAcquired) return LocalQuotaWait<JsonDocument>();
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_TIMEOUT", "Hepsiburada isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)
@@ -1242,6 +1243,11 @@ public sealed partial class HepsiburadaHttpClient(
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
         }
     }
+
+    private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
+
+    private static AdapterResult<T> LocalQuotaWait<T>() =>
+        AdapterResult<T>.Failure(new(AdapterErrorClass.RateLimit, "HEPSIBURADA_LOCAL_QUOTA_WAIT", "Hepsiburada istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
 
     internal static string? SafeInvoiceErrorDetails(string body)
     {

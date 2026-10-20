@@ -18,6 +18,9 @@ public sealed class N11RateLimitHandler(
     public static readonly HttpRequestOptionsKey<string> BucketKey = new("MarketplaceHub.N11.RateBucket");
     // SOAP calls carry the account inside the envelope, so the client names it here.
     public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.N11.Account");
+    // Invoked once the request has its quota token, right before it is sent; the caller starts the request
+    // timeout there, so time spent waiting for the quota is not counted as a timeout.
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.N11.QuotaAcquired");
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -38,6 +41,7 @@ public sealed class N11RateLimitHandler(
                 logger?.LogWarning(exception, "Shared n11 rate limiter unavailable; sending without the shared quota");
             }
         }
+        if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
         return await base.SendAsync(request, cancellationToken);
     }
 
