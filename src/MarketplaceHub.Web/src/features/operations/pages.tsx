@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
-import { Pagination, Tabs, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
+import { Button, Pagination, Tabs, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification } from '../../shared/notifications'
@@ -10,7 +10,7 @@ import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } fr
 import { catalogStructureImportChange, catalogStructureImportPresentation } from './catalog-structure-import'
 import { hasEligibleOneTimeInvoiceSourceFailure } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { jobListQueryString, type JobListTimeRange } from './job-list-query'
+import { jobListQueryString, jobPageQueryString, jobTypesForCategory, type JobListTimeRange } from './job-list-query'
 import { JobQueueMetrics } from './JobQueueMetrics'
 import './jobs-responsive.css'
 import './jobs-sade.css'
@@ -59,6 +59,7 @@ type JobChange = { label: string; value: string; detail: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
 type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
 type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null }
+type JobPage = { items: JobSummary[]; nextCursor: string | null; hasMore: boolean }
 
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
   { value: '', label: 'Tüm durumlar' },
@@ -447,9 +448,24 @@ export function JobsPage({ me }: { me: Me }) {
   }, [feedback])
   const elevated = ['OWNER', 'ADMINISTRATOR'].includes((me.role ?? '').toUpperCase())
   const serverStatus = status || [...statusChips].sort().flatMap(chip => jobChipStatuses[chip]).join(',')
-  const list = useQuery({
-    queryKey: ['jobs', serverStatus, timeRange],
-    queryFn: () => hubApi<JobSummary[]>(`/jobs${jobListQueryString(serverStatus, timeRange)}`),
+  // The list holds only the jobs loaded so far, so the counts come from the server's real totals; until they arrive
+  // the loaded list is counted instead.
+  const serverCounts = useQuery({
+    queryKey: ['jobs', 'counts', timeRange],
+    queryFn: () => hubApi<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobListQueryString('', timeRange)}`),
+    refetchInterval: 5000
+  })
+  const categoryJobTypes = useMemo(() => jobTypesForCategory(serverCounts.data, categoryTabs.find(tab => tab.key === category)?.match ?? (() => true), category === 'ALL'), [serverCounts.data, category])
+  const categoryJobTypesKey = categoryJobTypes?.join(',') ?? null
+  // A tab with no job in the range needs no request.
+  const categoryEmpty = categoryJobTypes !== null && categoryJobTypes.length === 0
+  const list = useInfiniteQuery({
+    queryKey: ['jobs', 'page', serverStatus, timeRange, categoryJobTypesKey],
+    queryFn: ({ pageParam }) => categoryEmpty
+      ? Promise.resolve<JobPage>({ items: [], nextCursor: null, hasMore: false })
+      : hubApi<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: pageParam })}`),
+    initialPageParam: null as string | null,
+    getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
     refetchInterval: 5000
   })
@@ -481,7 +497,11 @@ export function JobsPage({ me }: { me: Me }) {
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'Tek seferlik fatura işlemi başlatılamadı.', tone: 'danger' })
   })
-  const rawJobs = useMemo(() => list.data ?? [], [list.data])
+  const rawJobs = useMemo(() => {
+    // A refetch can shift rows between pages while new jobs arrive, so a job is shown once.
+    const seen = new Set<string>()
+    return (list.data?.pages ?? []).flatMap(page => page.items).filter(job => !seen.has(job.id) && Boolean(seen.add(job.id)))
+  }, [list.data])
   const rangeFiltered = useMemo(() => {
     if (timeRange === 'all') return rawJobs
     const rangeMs = timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
@@ -512,17 +532,23 @@ export function JobsPage({ me }: { me: Me }) {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const currentPage = Math.min(pageNumber, totalPages)
   const pageJobs = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const moreOnServer = Boolean(list.hasNextPage)
+  // Reads the next server page; from the last screen page the view moves on to the newly loaded rows.
+  const loadMoreJobs = async () => {
+    if (!moreOnServer || list.isFetchingNextPage) return
+    const wasLastPage = currentPage === totalPages
+    const result = await list.fetchNextPage()
+    if (result.isError) { setFeedback({ message: result.error instanceof Error ? result.error.message : 'İşlem listesinin devamı alınamadı.', tone: 'danger' }); return }
+    if (wasLastPage && pageJobs.length === pageSize) setPageNumber(currentPage + 1)
+  }
+  const goToNextPage = () => {
+    if (currentPage < totalPages) setPageNumber(currentPage + 1)
+    else void loadMoreJobs()
+  }
   const selected = detail.data?.job
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
   const selectedIsRunning = selected?.status === 'LEASED'
-  // The list holds only the newest jobs (2.000), so the counts come from the server's real totals; until they arrive
-  // the loaded list is counted instead.
-  const serverCounts = useQuery({
-    queryKey: ['jobs', 'counts', timeRange],
-    queryFn: () => hubApi<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobListQueryString('', timeRange)}`),
-    refetchInterval: 5000
-  })
   const countRows = useMemo(() => serverCounts.data ?? rangeFiltered.map(job => ({ status: job.status, jobType: job.jobType, count: 1 })), [serverCounts.data, rangeFiltered])
   const statusSummary = useMemo(() => {
     const summary = { success: 0, running: 0, waiting: 0, error: 0, cancelled: 0 }
@@ -577,7 +603,7 @@ export function JobsPage({ me }: { me: Me }) {
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>
-      {list.isLoading ? <Busy text="İşlemler yükleniyor…" /> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
+      {list.isLoading ? <Busy text="İşlemler yükleniyor…" /> : list.isError && !list.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
         <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th></tr></thead><tbody>
           {pageJobs.map(job => {
             const presentation = jobPresentation(job.jobType)
@@ -591,9 +617,9 @@ export function JobsPage({ me }: { me: Me }) {
               <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
             </tr>
           })}
-          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.</td></tr>}
+          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</td></tr>}
         </tbody></table></div>
-        {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></div>}
+        {(filtered.length > 0 || moreOnServer) && <div className="jobs-reference-pagination"><strong>{moreOnServer ? `${filtered.length.toLocaleString('tr-TR')} kayıt yüklendi, daha eskileri var` : `Toplam ${filtered.length.toLocaleString('tr-TR')} kayıt`}</strong><div className="jobs-reference-pagination-actions">{moreOnServer && <Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void loadMoreJobs()}>Daha Fazla Yükle</Button>}<Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages || moreOnServer} disabled={list.isFetchingNextPage} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} /></div></div>}
       </>}
     </div>
      {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}

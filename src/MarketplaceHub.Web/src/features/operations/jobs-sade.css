@@ -66,6 +66,12 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-state { margin: 0; padding: 24px; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 0; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-pagination > strong { font-size: 13px; font-weight: 400; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-pagination-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-pagination { flex-direction: column; align-items: stretch; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-pagination-actions { justify-content: space-between; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-load-more { flex: 1 1 100%; }
+}
 
 /* Detail: centred popup with plain sections */
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-backdrop { display: grid; place-items: center; padding: 24px; background: rgb(5 6 12 / 55%); backdrop-filter: none; }

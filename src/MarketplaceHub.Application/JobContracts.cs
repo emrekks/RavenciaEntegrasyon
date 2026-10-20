@@ -162,12 +162,41 @@ public sealed record JobDetailView(
     JobInvoiceContextView? Invoice = null);
 
 // The job list returns at most Limit of the newest matching jobs (default 200, max 1,000)
-// instead of the whole history.
-public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null)
+// instead of the whole history. After is the NextCursor of the previous page (paged list only):
+// the next page continues the same CreatedAt desc, Id desc order with the same filters.
+public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null)
 {
     public const int DefaultLimit = 200;
     public const int MaximumLimit = 1_000;
     public int EffectiveLimit => Math.Clamp(Limit ?? DefaultLimit, 1, MaximumLimit);
+}
+
+// Keyset position of the last job on a page: its CreatedAt (UTC ticks) and Id. The cursor carries no tenant
+// data; the list query is always tenant-scoped, so a cursor from another tenant only moves the position.
+public static class JobListCursor
+{
+    public static string Encode(DateTimeOffset createdAt, Guid id) =>
+        Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"J1|{createdAt.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture)}|{id:D}"))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    public static bool TryDecode(string? cursor, out DateTimeOffset createdAt, out Guid id)
+    {
+        createdAt = default;
+        id = Guid.Empty;
+        if (string.IsNullOrWhiteSpace(cursor) || cursor.Length > 128) return false;
+        var base64 = cursor.Trim().Replace('-', '+').Replace('_', '/');
+        base64 = base64.PadRight(base64.Length + (4 - base64.Length % 4) % 4, '=');
+        Span<byte> bytes = stackalloc byte[96];
+        if (!Convert.TryFromBase64String(base64, bytes, out var written)) return false;
+        var parts = System.Text.Encoding.ASCII.GetString(bytes[..written]).Split('|');
+        if (parts.Length != 3 || parts[0] != "J1"
+            || !long.TryParse(parts[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var ticks)
+            || ticks < DateTimeOffset.MinValue.UtcTicks || ticks > DateTimeOffset.MaxValue.UtcTicks
+            || !Guid.TryParseExact(parts[2], "D", out id))
+            return false;
+        createdAt = new DateTimeOffset(ticks, TimeSpan.Zero);
+        return true;
+    }
 }
 
 // Per job type, over the requested window: wait = first attempt start minus the time the job
@@ -203,6 +232,8 @@ public interface IJobOperationsService
     Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
+    // Cursor-paged list: Items holds at most EffectiveLimit jobs; NextCursor continues after the last one.
+    Task<ServiceResult<PageResult<JobSummaryView>>> PageAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> EnqueueOneTimeInvoiceDeliveryAsync(Guid tenantId, Guid jobId, string orderNumber, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

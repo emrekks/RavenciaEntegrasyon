@@ -15,6 +15,14 @@ public static class JobEndpoints
                     new JobListQuery(status, since, jobTypes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), limit),
                     http.RequestAborted))
                 : Unauthorized(http));
+        // Cursor-paged list for the operations page: { items, nextCursor, hasMore }; after continues a previous page.
+        api.MapGet("/page", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? after) =>
+            Tenant(http) is { } tenant
+                ? Result(http, await service.PageAsync(
+                    tenant.TenantId,
+                    new JobListQuery(status, since, jobTypes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), limit, after),
+                    http.RequestAborted))
+                : Unauthorized(http));
         api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.CountAsync(tenant.TenantId, since, http.RequestAborted))
