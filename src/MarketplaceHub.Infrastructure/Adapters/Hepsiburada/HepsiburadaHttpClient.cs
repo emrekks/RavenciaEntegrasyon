@@ -26,6 +26,8 @@ public sealed partial class HepsiburadaHttpClient(
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
     // C19: the known clients upload at most 1,000 items per inventory-upload; 4,000 was never confirmed.
     internal const int MaxInventoryUploadItems = 1000;
+    // Waits between the post-delivery reads of the order (about 10 s in all, well inside the job lease).
+    internal static readonly TimeSpan[] InvoiceReadbackWaits = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5)];
     private static readonly string[] ClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
     // Hepsiburada has no endpoint that lists rejection reasons; the values below are the documented
     // ClaimRejectionReason list ("Talep Reddetme" > "Reddetme Sebepleri", checked 20 Oct 2026):
@@ -1023,7 +1025,16 @@ public sealed partial class HepsiburadaHttpClient(
                 return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_INVOICE_ALREADY_PRESENT", "Hepsiburada paketin zaten faturalı olduğunu bildirdi; fatura eşleşmesi kontrol edilecek.", (int)HttpStatusCode.Conflict, null, response.Error.RemoteRequestId), current.RateLimit ?? response.RateLimit);
         }
         if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
+        // Hepsiburada answers 204 before the order read shows the invoice (live 20 Oct 2026: still NOT_INVOICED
+        // 0.3 s after the PUT, INVOICED two minutes later). The read is repeated a few times before the result
+        // counts as unknown and waits for the next attempt.
         var after = await QueryDeliveryAsync(context, new(invoice.PackageNumber, invoice.OrderNumber), cancellationToken);
+        foreach (var wait in InvoiceReadbackWaits)
+        {
+            if (!after.IsSuccess || string.Equals(after.Value!.RawStatus, "INVOICED", StringComparison.Ordinal)) break;
+            await Task.Delay(wait, timeProvider, cancellationToken);
+            after = await QueryDeliveryAsync(context, new(invoice.PackageNumber, invoice.OrderNumber), cancellationToken);
+        }
         if (!after.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(after.Error!, after.RateLimit);
         if (!string.Equals(after.Value!.RawStatus, "INVOICED", StringComparison.Ordinal))
             return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_INVOICE_DELIVERY_READBACK_MISSING", "Hepsiburada isteği kabul etti ancak pakette fatura bulunduğu doğrulanmadı; gönderim otomatik tekrarlanmayacak.", (int)HttpStatusCode.Conflict, null, null), after.RateLimit ?? response.RateLimit);

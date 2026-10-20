@@ -1614,7 +1614,56 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, tenantId, now, cancellationToken);
         await QueuePendingMarketplaceDeliveryRecovery(tenantId, now, cancellationToken);
+        await CloseDeliveryJobsSettledElsewhere(tenantId, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return true;
+    }
+
+    public const string DeliverySettledElsewhereCode = "INVOICE_DELIVERY_CONFIRMED_BY_ANOTHER_JOB";
+
+    // A delivery job that stopped for review (or gave up) while another job of the same invoice confirmed the
+    // delivery has nothing left to do: it is closed here instead of waiting for an operator. Only targets whose
+    // delivery state is CONFIRMED count (the job's package, or every package of an invoice-level job).
+    private async Task CloseDeliveryJobsSettledElsewhere(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var stopped = await db.IntegrationJobs
+            .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                && (job.Status == JobStatus.ManualReview || job.Status == JobStatus.Blocked || job.Status == JobStatus.Dead)
+                && job.CreatedAt >= now.AddDays(-30))
+            .OrderBy(job => job.CreatedAt).Take(200)
+            .ToListAsync(cancellationToken);
+        if (stopped.Count == 0) return;
+        var targets = stopped.Select(job => (Job: job, Target: DeliveryJobTarget(job.PayloadJson))).Where(x => x.Target is not null).ToList();
+        var invoiceIds = targets.Select(x => x.Target!.Value.InvoiceId).Distinct().ToArray();
+        var states = (await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(state => state.TenantId == tenantId && invoiceIds.Contains(state.InvoiceId))
+                .Select(state => new { state.InvoiceId, state.PackageId, state.Status }).ToListAsync(cancellationToken))
+            .ToLookup(state => state.InvoiceId);
+        foreach (var (job, target) in targets)
+        {
+            var invoiceStates = states[target!.Value.InvoiceId].ToList();
+            var settled = target.Value.PackageId is { } packageId
+                ? invoiceStates.Any(state => state.PackageId == packageId && state.Status == "CONFIRMED")
+                : invoiceStates.Count > 0 && invoiceStates.All(state => state.Status == "CONFIRMED");
+            if (!settled) continue;
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.LastErrorCode = DeliverySettledElsewhereCode;
+            job.LastErrorSummary = "Fatura pazaryerine başka bir işle iletildi ve doğrulandı; bu iş otomatik kapatıldı.";
+            job.Version++;
+        }
+    }
+
+    private static (Guid InvoiceId, Guid? PackageId)? DeliveryJobTarget(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("invoiceId", out var invoice) || !invoice.TryGetGuid(out var invoiceId)) return null;
+            Guid? packageId = root.TryGetProperty("packageId", out var package) && package.ValueKind == JsonValueKind.String && package.TryGetGuid(out var parsed) ? parsed : null;
+            return (invoiceId, packageId);
+        }
+        catch (JsonException) { return null; }
     }
 
     // A draft made before its packages were delivered has no issuing deadline; once a package is delivered the deadline
@@ -1721,7 +1770,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         foreach (var candidate in candidates)
         {
             var payload = JsonSerializer.Serialize(new { invoiceId = candidate.Id, packageId = candidate.PackageId });
-            if (activeDeliveryJobs.Any(job => string.Equals(job.PayloadJson, payload, StringComparison.Ordinal))) continue;
+            // Any running or waiting delivery job of the invoice (panel, automatic or recovery; with or without a
+            // package in its payload) settles this package itself. Comparing payloads missed an invoice-level job
+            // ({"invoiceId"} only), so a recovery job ran beside its retry and both took the same attempt number.
+            var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{candidate.Id}:";
+            if (activeDeliveryJobs.Any(job => job.JobDedupKey.StartsWith(keyPrefix, StringComparison.Ordinal))) continue;
 
             var dedup = RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket);
             if (!queuedRecoveryKeys.Add(dedup)) continue;

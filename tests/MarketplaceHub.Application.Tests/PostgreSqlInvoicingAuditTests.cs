@@ -172,6 +172,101 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
+    // Live 20 Oct 2026: a recovery job was queued beside the retry of an invoice-level delivery job ({"invoiceId"}
+    // only), both took the same attempt number and the second stopped for review on the unique key.
+    [PostgreSqlFact]
+    public async Task DueScan_DoesNotQueueARecoveryBesideAnInvoiceLevelDeliveryJobOfTheSameInvoice()
+    {
+        var seed = NewSeed("audit-recovery-beside-retry");
+        var invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.MarketplacePending);
+        var state = NewConfirmedDeliveryState(seed, invoice);
+        state.Status = "UNKNOWN";
+        state.ExternalReference = null;
+        state.CompletedAt = null;
+        state.UpdatedAt = fixture.Now.AddMinutes(-3);
+        var asset = NewFileAsset(seed.Tenant.Id);
+        var document = new InvoiceDocument
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = invoice.Id,
+            DocumentType = "PDF",
+            FileAssetId = asset.Id,
+            Sha256 = asset.Sha256,
+            PermanentUrl = "https://documents.example.test/invoice.pdf",
+            CreatedAt = fixture.Now
+        };
+        var retrying = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:after-document", $$"""{"invoiceId":"{{invoice.Id}}"}""", JobStatus.RetryScheduled);
+        await SeedAsync(seed, db => { db.Invoices.Add(invoice); db.MarketplaceDeliveryStates.Add(state); db.FileAssets.Add(asset); db.InvoiceDocuments.Add(document); db.IntegrationJobs.Add(retrying); });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var processor = NewProcessor(db, null, new Dictionary<string, string?>
+                {
+                    ["FeatureFlags:ExternalWrites"] = "true",
+                    ["FeatureFlags:InvoiceMarketplaceDeliveryWrites"] = "true"
+                });
+                Assert.True((await processor.ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "audit-recovery-beside-retry", CancellationToken.None)).Succeeded);
+            }
+
+            await using var verification = fixture.CreateContext();
+            var job = Assert.Single(await verification.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery).ToListAsync());
+            Assert.Equal(retrying.Id, job.Id);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task DueScan_ClosesAStoppedDeliveryJobWhoseDeliveryAnotherJobConfirmed()
+    {
+        var seed = NewSeed("audit-settled-elsewhere");
+        var invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Completed);
+        var state = NewConfirmedDeliveryState(seed, invoice);
+        var otherOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-settled-elsewhere-other");
+        var otherInvoice = NewInvoice(seed, otherOrder.Id, InvoiceStatus.MarketplaceFailed);
+        var stopped = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:{seed.Package.Id}:recovery:3:1", $$"""{"invoiceId":"{{invoice.Id}}","packageId":"{{seed.Package.Id}}"}""", JobStatus.ManualReview);
+        var unsettled = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{otherInvoice.Id}:after-document", $$"""{"invoiceId":"{{otherInvoice.Id}}"}""", JobStatus.ManualReview);
+        await SeedAsync(seed, db => { db.Orders.Add(otherOrder); db.Invoices.AddRange(invoice, otherInvoice); db.MarketplaceDeliveryStates.Add(state); db.IntegrationJobs.AddRange(stopped, unsettled); });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "audit-settled-elsewhere", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            var closed = await verification.IntegrationJobs.SingleAsync(job => job.Id == stopped.Id);
+            Assert.Equal(JobStatus.Cancelled, closed.Status);
+            Assert.Equal(InvoicingJobProcessor.DeliverySettledElsewhereCode, closed.LastErrorCode);
+            Assert.Equal(JobStatus.ManualReview, (await verification.IntegrationJobs.SingleAsync(job => job.Id == unsettled.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private IntegrationJob NewDeliveryJob(Seed seed, string key, string payload, JobStatus status) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = seed.Tenant.Id,
+        ConnectionId = seed.Marketplace.Id,
+        JobType = InvoicingJobTypes.MarketplaceDelivery,
+        PayloadJson = payload,
+        PayloadHash = "audit-hash",
+        JobDedupKey = key,
+        EffectIdempotencyKey = key,
+        Status = status,
+        AvailableAt = fixture.Now,
+        CorrelationId = key,
+        CreatedAt = fixture.Now.AddMinutes(-5),
+        Version = 1
+    };
+
     [PostgreSqlFact]
     public async Task ReplaceCancelledInvoice_RequiresTheProviderToReportTheCancellationAndMarksTheLinkForRemoval()
     {
