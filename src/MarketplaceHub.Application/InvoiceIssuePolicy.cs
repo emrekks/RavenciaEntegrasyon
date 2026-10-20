@@ -66,6 +66,11 @@ public static class InvoiceIssuePolicy
         }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex GibInvoiceNumberPattern = new(@"^[A-Za-z0-9]{3}\d{13}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>The GİB invoice number format (three letters/digits and thirteen digits) Trendyol accepts with a link.</summary>
+    public static bool IsGibInvoiceNumber(string? invoiceNumber) => invoiceNumber is not null && GibInvoiceNumberPattern.IsMatch(invoiceNumber.Trim());
+
     public static bool RequiresExportFlow(string? currency, string? customerSnapshotJson) =>
         !string.Equals(currency?.Trim(), "TRY", StringComparison.OrdinalIgnoreCase) || IsMicroExport(customerSnapshotJson);
 

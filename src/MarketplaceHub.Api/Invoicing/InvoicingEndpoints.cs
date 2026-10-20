@@ -175,6 +175,11 @@ public static class InvoicingEndpoints
             return Problem(http, new("INVOICE_DOCUMENT_URL_INVALID", "Fatura bağlantısı geçerli, herkese açık HTTPS adresi olmalıdır.", 422));
         var invoiceNumber = form["invoiceNumber"].ToString().Trim();
         if (invoiceNumber.Length > 64) return Problem(http, new("INVOICE_NUMBER_INVALID", "Fatura numarası en fazla 64 karakter olabilir.", 422));
+        // Trendyol takes the link of a micro-export invoice only with its GİB number; a domestic package's link is
+        // sent without a number Trendyol would refuse (the number is optional there).
+        if (connection.PlatformCode == "TRENDYOL" && InvoiceIssuePolicy.IsMicroExport(order.CustomerSnapshotJson)
+            && !InvoiceIssuePolicy.IsGibInvoiceNumber(invoiceNumber))
+            return Problem(http, new("INVOICE_NUMBER_INVALID", "Mikro ihracat faturası için GİB biçiminde fatura numarası gerekli: 3 harf/rakam ve 13 rakam (örnek: ABC2026000000045).", 422));
         DateTimeOffset? issuedAt = null;
         if (!string.IsNullOrWhiteSpace(form["issuedAt"]))
         {
