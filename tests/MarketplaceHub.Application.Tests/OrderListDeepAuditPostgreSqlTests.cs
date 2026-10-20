@@ -83,6 +83,80 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // O13, O14 and the unverified tab: a Shopify order with a panel status is in that status's tab
+    // only, a Hepsiburada order whose package the panel unpacked is back in Yeni, an unverified one
+    // has its own tab, and every counter still equals its list.
+    [PostgreSqlFact]
+    public async Task EveryOrderSitsInTheTabItsBadgeShows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"ol-tab-{Guid.NewGuid():N}"[..20], DisplayName = "ol-tab", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        PlatformConnection Connection(string platform) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "STAGE", DisplayName = platform, ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var shopify = Connection("SHOPIFY");
+        var hepsiburada = Connection("HEPSIBURADA");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(shopify, hepsiburada);
+            var minute = 0;
+            Order AddOrder(PlatformConnection connection, string number, string derived, params (ShipmentPackageStatus Status, string Raw)[] packages)
+            {
+                minute++;
+                var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ExternalOrderId = number, OrderNumber = number, Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-minute), LastRemoteModifiedAt = now.AddHours(-1), CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = derived, CreatedAt = now, UpdatedAt = now, Version = 1 };
+                seed.Orders.Add(order);
+                seed.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = "1", Sku = $"SKU-{number}", TitleSnapshot = number, OrderedQuantity = 1, UnitPrice = 10m, VatRate = 20m, RawStatus = "Created" });
+                var index = 0;
+                foreach (var (status, raw) in packages)
+                    seed.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = order.Id, ExternalPackageId = $"{number}-{index++}", Status = status, RawStatus = raw, StatusOccurredAt = now.AddHours(-2), MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+                return order;
+            }
+            void Manual(Order order, string status) => seed.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, CanonicalStatus = status, RawStatus = $"MANUAL_SHOPIFY_STATUS:{status}", SourceEventId = $"manual:shopify-status:NEW:{Guid.NewGuid():N}", OccurredAt = now, RecordedAt = now });
+            // The marketplace says new; the operator marked it shipped.
+            Manual(AddOrder(shopify, "ol-tab-ship", "SHIPPED", (ShipmentPackageStatus.New, "unfulfilled")), "SHIPPED");
+            // The marketplace says shipped; the operator marked it processing.
+            Manual(AddOrder(shopify, "ol-tab-proc", "PROCESSING", (ShipmentPackageStatus.Shipped, "fulfilled")), "PROCESSING");
+            // The marketplace says new; the operator marked it undelivered.
+            Manual(AddOrder(shopify, "ol-tab-und", "UNDELIVERED", (ShipmentPackageStatus.New, "unfulfilled")), "UNDELIVERED");
+            // Without a panel status the packages decide.
+            AddOrder(shopify, "ol-tab-plain", "NEW", (ShipmentPackageStatus.New, "unfulfilled"));
+            // The panel unpacked the only package: the order is new and unpackaged again.
+            AddOrder(hepsiburada, "ol-tab-unpacked", "NEW", (ShipmentPackageStatus.Cancelled, ShipmentPackageSupersession.LocallyUnpackedRawStatus));
+            AddOrder(hepsiburada, "ol-tab-unverified", "UNVERIFIED");
+            await seed.SaveChangesAsync();
+        }
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            var summary = await service.OrderSummaryAsync(tenant.Id, new OrderListQuery(), CancellationToken.None);
+            async Task<string[]> Tab(string tab) => (await service.OrdersAsync(tenant.Id, 50, 1, null, new OrderListQuery(Status: tab), CancellationToken.None)).Items.Select(item => item.OrderNumber).Order().ToArray();
+
+            Assert.Equal(["ol-tab-plain", "ol-tab-unpacked"], await Tab("NEW"));
+            Assert.Equal(["ol-tab-ship"], await Tab("SHIPPED"));
+            Assert.Equal(["ol-tab-proc"], await Tab("PROCESSING"));
+            Assert.Equal(["ol-tab-und"], await Tab("UNDELIVERED"));
+            Assert.Equal(["ol-tab-unverified"], await Tab("UNVERIFIED"));
+            Assert.Empty(await Tab("CANCELLED"));
+            Assert.Equal(["ol-tab-plain", "ol-tab-proc", "ol-tab-unpacked"], await Tab("PENDING"));
+            Assert.Equal(6, summary.All);
+            Assert.Equal(1, summary.Unverified);
+
+            foreach (var tab in MarketplaceSalesService.OrderSummaryTabs)
+            {
+                var page = await service.OrdersAsync(tenant.Id, 50, 1, null, new OrderListQuery(Status: tab), CancellationToken.None);
+                var count = (int)typeof(OrderSummaryView).GetProperties().Single(property => string.Equals(property.Name.ToUpperInvariant(), tab.Replace("_", string.Empty), StringComparison.Ordinal)).GetValue(summary)!;
+                Assert.True(page.TotalCount == count, $"{tab}: list {page.TotalCount}, counter {count}");
+                // Each badge is the tab's status (or one of its statuses).
+                if (tab is "NEW" or "SHIPPED" or "UNDELIVERED" or "UNVERIFIED")
+                    Assert.All(page.Items, item => Assert.Equal(tab, item.DerivedStatus));
+            }
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     private MarketplaceSalesService NewService(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
 

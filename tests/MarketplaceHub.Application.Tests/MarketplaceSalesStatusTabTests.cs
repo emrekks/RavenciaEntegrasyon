@@ -132,7 +132,7 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
-    public void Unverified_order_filter_is_empty_for_Hepsiburada_rows()
+    public void Unverified_order_filter_lists_the_unverified_orders()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
@@ -144,8 +144,9 @@ public sealed class MarketplaceSalesStatusTabTests
 
         service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "UNVERIFIED"), tenantId);
 
+        // The unverified orders have their own tab and counter now, so the whole list adds up.
         var sql = query.ToQueryString();
-        Assert.Contains("FALSE", sql, StringComparison.Ordinal);
+        Assert.Contains("\"DerivedStatus\" = @", sql, StringComparison.Ordinal);
     }
 
     [Fact]
