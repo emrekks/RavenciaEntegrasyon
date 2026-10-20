@@ -1636,6 +1636,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var started = await verification.IntegrationOutboxEvents.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.AggregateId == job.Id);
             Assert.Equal(2, started.AggregateVersion);
             Assert.Contains("LEASED", started.PayloadJson);
+            // Job state changes are "jobs" events; the job's domain travels in the payload.
+            Assert.Equal("jobs", started.ResourceType);
+            Assert.Contains("\"resource\"", started.PayloadJson);
         }
         finally
         {

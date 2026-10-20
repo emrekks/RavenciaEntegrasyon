@@ -18,82 +18,108 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         includedJobTypes ??= [];
         excludedJobTypes ??= [];
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
-        // A job whose connection already runs a job of the same execution-lock group is skipped
-        // here instead of being leased and then deferred, so the slot takes the next job at once.
-        // Two slots leasing at the same instant can still collide; the processor's advisory lock
-        // remains the final guard and defers the loser without consuming an attempt.
-        // The running jobs are counted once per tenant and the busy connection lock groups gathered once
-        // (derived tables the planner joins by hash) instead of a correlated count and lookup for every
-        // eligible row before LIMIT 1.
+        // A job whose connection already runs a job of the same execution-lock group, or whose connection and
+        // group wait out a quota backoff, is skipped here instead of being leased and then deferred, so the slot
+        // takes the next job at once. Two slots leasing at the same instant can still collide; the processor's
+        // advisory lock remains the final guard. A job's stored LockGroup wins over its type's group, so the
+        // lease checks the same group the lock takes.
+        // Only the first CandidateLimit runnable rows in (Priority, AvailableAt) order are taken (a top-N sort
+        // instead of sorting every eligible row); the tenant fairness order is applied to those. The status,
+        // availability and attempt conditions are repeated on the locked row so a row another slot leased
+        // meanwhile is re-checked after its lock is taken.
         var job = await db.IntegrationJobs.FromSqlInterpolated($"""
-            SELECT candidate.* FROM integration.jobs candidate
-            LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS candidate_group(job_type, lock_group)
-              ON candidate_group.job_type = candidate."JobType"
+            WITH busy AS (
+                SELECT DISTINCT running."ConnectionId", coalesce(running."LockGroup", running_group.lock_group) AS lock_group
+                FROM integration.jobs running
+                LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS running_group(job_type, lock_group)
+                  ON running_group.job_type = running."JobType"
+                WHERE running."Status" = 'LEASED'
+                  AND running."LeaseExpiresAt" > {now}
+                  AND running."ConnectionId" IS NOT NULL),
+            picks AS (
+                SELECT candidate."Id", candidate."TenantId", candidate."Priority", candidate."AvailableAt", candidate."CreatedAt"
+                FROM integration.jobs candidate
+                LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS candidate_group(job_type, lock_group)
+                  ON candidate_group.job_type = candidate."JobType"
+                WHERE candidate."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+                  AND candidate."AttemptCount" < candidate."MaxAttempts"
+                  AND candidate."AvailableAt" <= {now}
+                  AND ({minimumPriority}::int IS NULL OR candidate."Priority" >= {minimumPriority}::int)
+                  AND ({maximumPriority}::int IS NULL OR candidate."Priority" <= {maximumPriority}::int)
+                  AND ({onlyJobType}::text IS NULL OR candidate."JobType" = {onlyJobType}::text)
+                  AND (cardinality({includedJobTypes}::text[]) = 0 OR candidate."JobType" = ANY({includedJobTypes}::text[]))
+                  AND NOT (candidate."JobType" = ANY({excludedJobTypes}::text[]))
+                  AND ({onlyJobId}::uuid IS NULL OR candidate."Id" = {onlyJobId}::uuid)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM busy
+                      WHERE busy."ConnectionId" = candidate."ConnectionId"
+                        AND busy.lock_group = coalesce(candidate."LockGroup", candidate_group.lock_group))
+                  -- A connection + lock group that hit a marketplace quota waits until its backoff ends.
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM integration.connection_backoffs backoff
+                      WHERE backoff."ConnectionId" = candidate."ConnectionId"
+                        AND backoff."LockGroup" = coalesce(candidate."LockGroup", candidate_group.lock_group)
+                        AND backoff."Until" > {now})
+                ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
+                LIMIT {CandidateLimit})
+            SELECT job.* FROM integration.jobs job
+            JOIN picks ON picks."Id" = job."Id"
             LEFT JOIN (
                 SELECT tenant_running."TenantId", count(*) AS running_count
                 FROM integration.jobs tenant_running
                 WHERE tenant_running."Status" = 'LEASED' AND tenant_running."LeaseExpiresAt" > {now}
                 GROUP BY tenant_running."TenantId") tenant_load
-              ON tenant_load."TenantId" = candidate."TenantId"
-            WHERE candidate."Status" IN ('PENDING', 'RETRY_SCHEDULED')
-              AND candidate."AttemptCount" < candidate."MaxAttempts"
-              AND candidate."AvailableAt" <= {now}
-              AND ({minimumPriority}::int IS NULL OR candidate."Priority" >= {minimumPriority}::int)
-              AND ({maximumPriority}::int IS NULL OR candidate."Priority" <= {maximumPriority}::int)
-              AND ({onlyJobType}::text IS NULL OR candidate."JobType" = {onlyJobType}::text)
-              AND (cardinality({includedJobTypes}::text[]) = 0 OR candidate."JobType" = ANY({includedJobTypes}::text[]))
-              AND NOT (candidate."JobType" = ANY({excludedJobTypes}::text[]))
-              AND ({onlyJobId}::uuid IS NULL OR candidate."Id" = {onlyJobId}::uuid)
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM (
-                      SELECT DISTINCT running."ConnectionId", running_group.lock_group
-                      FROM integration.jobs running
-                      JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS running_group(job_type, lock_group)
-                        ON running_group.job_type = running."JobType"
-                      WHERE running."Status" = 'LEASED'
-                        AND running."LeaseExpiresAt" > {now}
-                        AND running."ConnectionId" IS NOT NULL) busy
-                  WHERE busy."ConnectionId" = candidate."ConnectionId"
-                    AND busy.lock_group = candidate_group.lock_group)
-              -- A connection + lock group that hit a marketplace quota waits until its backoff ends.
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM integration.connection_backoffs backoff
-                  WHERE backoff."ConnectionId" = candidate."ConnectionId"
-                    AND backoff."LockGroup" = candidate_group.lock_group
-                    AND backoff."Until" > {now})
-            ORDER BY candidate."Priority" ASC,
+              ON tenant_load."TenantId" = picks."TenantId"
+            WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+              AND job."AttemptCount" < job."MaxAttempts"
+              AND job."AvailableAt" <= {now}
+            ORDER BY picks."Priority" ASC,
               -- Fairness: within one priority, the tenant with fewer running jobs goes first, so a
               -- tenant with hundreds of queued jobs cannot keep every slot to itself.
               coalesce(tenant_load.running_count, 0) ASC,
-              candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
-            FOR UPDATE OF candidate SKIP LOCKED
+              picks."AvailableAt" ASC, picks."CreatedAt" ASC
+            FOR UPDATE OF job SKIP LOCKED
             LIMIT 1
             """).SingleOrDefaultAsync(cancellationToken);
         if (job is null) { await transaction.CommitAsync(cancellationToken); return null; }
         var token = TokenHasher.NewToken();
+        var firstLease = job.StartedAt is null;
+        var queueWait = QueueWait(job, now);
         job.Status = JobStatus.Leased;
         job.LeaseTokenHash = hasher.Hash(token);
         job.LeaseExpiresAt = now.Add(leaseDuration);
         job.HeartbeatAt = now;
         job.StartedAt ??= now;
         job.AttemptCount++;
-        // The panel learns that the job started now, not only when it finishes.
         job.Version++;
         db.JobAttempts.Add(new JobAttempt { Id = Guid.NewGuid(), TenantId = job.TenantId, JobId = job.Id, AttemptNumber = job.AttemptCount, StartedAt = now });
-        AddOutboxEvent(job, now);
+        // The panel learns that the job started, once: later leases of the same job (retries, slices of a long
+        // run) would only make every open screen refetch its job list again.
+        if (firstLease) AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token);
+        return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token, queueWait);
     }
 
-    private async Task RecordConnectionBackoffAsync(Guid connectionId, string jobType, DateTimeOffset now, JobExecutionResult result, CancellationToken cancellationToken)
+    internal const int CandidateLimit = 50;
+
+    // How long the job has been runnable: since it became available (or was created, whichever is later).
+    internal static TimeSpan QueueWait(IntegrationJob job, DateTimeOffset now)
+    {
+        var runnableSince = job.AvailableAt > job.CreatedAt ? job.AvailableAt : job.CreatedAt;
+        return now > runnableSince ? now - runnableSince : TimeSpan.Zero;
+    }
+
+    // The lock group a job runs under: its stored group, otherwise its job type's group.
+    internal static string LockGroupOf(IntegrationJob job) =>
+        string.IsNullOrWhiteSpace(job.LockGroup) ? MarketplaceSyncExecutionLock.GroupFor(job.JobType) : job.LockGroup;
+
+    private async Task RecordConnectionBackoffAsync(Guid connectionId, string lockGroup, DateTimeOffset now, JobExecutionResult result, CancellationToken cancellationToken)
     {
         var wait = result.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero ? retryAfter : TimeSpan.FromSeconds(30);
         if (wait > TimeSpan.FromMinutes(15)) wait = TimeSpan.FromMinutes(15);
         var until = now.Add(wait);
-        var lockGroup = MarketplaceSyncExecutionLock.GroupFor(jobType);
         var reason = result.ErrorCode is { Length: > 128 } code ? code[..128] : result.ErrorCode;
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO integration.connection_backoffs ("ConnectionId", "LockGroup", "Until", "Reason")
@@ -134,8 +160,11 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
         var now = timeProvider.GetUtcNow();
         if (job.LeaseExpiresAt <= now) return false;
+        // Consecutive write conflicts are counted on the job: only the first few version conflicts go without an
+        // attempt, and a duplicate insert that keeps coming back goes to review.
+        (result, job.ConflictCount) = MarketplaceHub.Infrastructure.Jobs.JobConflictPolicy.Apply(result, job.ConflictCount);
         if (result.BackOffConnection && job.ConnectionId is { } backoffConnectionId)
-            await RecordConnectionBackoffAsync(backoffConnectionId, job.JobType, now, result, cancellationToken);
+            await RecordConnectionBackoffAsync(backoffConnectionId, LockGroupOf(job), now, result, cancellationToken);
 
         // A deferred job never ran, so its attempt is refunded. Jobs deferred for over a day fall
         // back to normal attempt accounting so a permanently busy lock cannot loop forever. A finished
@@ -317,6 +346,10 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         return 0;
     }
 
+    // A job's state change is published as a "jobs" event, so only the job screens refetch; the domain the job
+    // works on (orders, returns, ...) travels in the payload. The data a job changes raises its own events.
+    internal const string JobEventResource = "jobs";
+
     private IntegrationOutboxEvent AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
     {
         var metadata = IntegrationJobMetadataPolicy.Apply(job);
@@ -324,12 +357,12 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         {
             Id = Guid.CreateVersion7(),
             TenantId = job.TenantId,
-            ResourceType = metadata.ResourceType,
+            ResourceType = JobEventResource,
             OperationType = metadata.OperationType,
             AggregateType = "IntegrationJob",
             AggregateId = job.Id,
             AggregateVersion = job.Version,
-            PayloadJson = JsonSerializer.Serialize(new { jobId = job.Id, jobType = job.JobType, status = JobStatusText(job.Status), version = job.Version }),
+            PayloadJson = JsonSerializer.Serialize(new { jobId = job.Id, jobType = job.JobType, resource = metadata.ResourceType, status = JobStatusText(job.Status), version = job.Version }),
             CreatedAt = now,
             NextAttemptAt = now
         };

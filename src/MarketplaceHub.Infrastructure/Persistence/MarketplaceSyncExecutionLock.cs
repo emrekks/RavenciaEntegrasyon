@@ -128,9 +128,9 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     }
 
     // The read-back of an unclear return decision writes the return claim, which the return reads write
-    // too; it serializes with them. Package and order checks stay with the order reads.
-    internal static string EffectReconcileGroup(string? action) =>
-        action is "RETURN_APPROVE" or "RETURN_REJECT" ? "returns" : GroupFor(MarketplaceJobTypes.ExternalEffectReconcile);
+    // too; it serializes with them. Package and order checks stay with the order reads. The same group is
+    // stored on the verification job (ExternalEffectReconcilePolicy.NewJob) for the lease query.
+    internal static string EffectReconcileGroup(string? action) => ExternalEffectReconcilePolicy.LockGroup(action);
 
     private static async Task<string?> EffectActionAsync(AppDbContext db, string payloadJson, CancellationToken cancellationToken)
     {

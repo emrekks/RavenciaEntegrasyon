@@ -16,6 +16,13 @@ public static class MarketplaceHubTelemetry
         "marketplacehub.jobs.completed", unit: "{job}", description: "Jobs finished, by job type and outcome.");
     public static readonly Histogram<double> JobDuration = Meter.CreateHistogram<double>(
         "marketplacehub.jobs.duration", unit: "s", description: "How long a job ran, by job type and outcome.");
+    // Time between a job becoming runnable and its lease: a free slot, its connection's lock group (another
+    // job of the group running) or a quota backoff. Quota waits inside a running job count in jobs.duration
+    // but not in marketplace.request.duration, so the two together tell lock waits from quota waits.
+    public static readonly Histogram<double> JobQueueWait = Meter.CreateHistogram<double>(
+        "marketplacehub.jobs.queue_wait", unit: "s", description: "How long a runnable job waited before its lease, by job type.");
+    public static readonly Counter<long> JobLockContention = Meter.CreateCounter<long>(
+        "marketplacehub.jobs.lock_contention", unit: "{job}", description: "Leased jobs that found their connection lock group busy, by job type, group and result.");
     public static readonly Counter<long> MarketplaceRequests = Meter.CreateCounter<long>(
         "marketplacehub.marketplace.requests", unit: "{request}", description: "Requests sent to a marketplace, by client and status.");
     public static readonly Histogram<double> MarketplaceRequestDuration = Meter.CreateHistogram<double>(

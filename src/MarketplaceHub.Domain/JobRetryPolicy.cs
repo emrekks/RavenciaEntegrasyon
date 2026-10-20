@@ -33,8 +33,17 @@ public static class JobRetryPolicy
     {
         if (attemptCount <= 0) throw new ArgumentOutOfRangeException(nameof(attemptCount));
         var baseDelay = DefaultRetryDelays[Math.Min(attemptCount - 1, DefaultRetryDelays.Length - 1)];
-        var jitterPercent = jobId.ToByteArray()[0] % 21;
+        var jitterPercent = JitterPercent(jobId);
         return baseDelay + TimeSpan.FromTicks(baseDelay.Ticks * jitterPercent / 100);
+    }
+
+    // 0-20 % from a hash of the whole job id. The first byte alone is part of a UUIDv7's timestamp, so jobs
+    // created within the same few seconds used to get the same jitter and retried together.
+    public static int JitterPercent(Guid jobId)
+    {
+        var hash = 2166136261u;
+        foreach (var value in jobId.ToByteArray()) hash = (hash ^ value) * 16777619u;
+        return (int)(hash % 21);
     }
 }
 

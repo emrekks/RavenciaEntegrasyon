@@ -758,6 +758,11 @@ public static class ExternalEffectReconcilePolicy
 
     public static string JobDedupKey(Guid effectId) => $"effect-reconcile:{effectId:N}";
 
+    // The read-back of an unclear return decision writes the return claim, which the return reads write too,
+    // so it runs under their lock group; package and order checks run with the order reads. The group is
+    // stored on the job, so the lease query and the quota backoff check the same group the lock takes.
+    public static string LockGroup(string? action) => action is "RETURN_APPROVE" or "RETURN_REJECT" ? "returns" : "orders";
+
     public static IntegrationJob NewJob(ExternalEffectRecord effect, DateTimeOffset now, DateTimeOffset availableAt)
     {
         var payload = System.Text.Json.JsonSerializer.Serialize(new { effectId = effect.Id });
@@ -774,6 +779,7 @@ public static class ExternalEffectReconcilePolicy
             EffectIdempotencyKey = JobDedupKey(effect.Id),
             Priority = JobPriorityPolicy.UserAction,
             TriggerType = "user",
+            LockGroup = LockGroup(effect.Action),
             AvailableAt = availableAt,
             CorrelationId = $"effect-reconcile:{effect.Id:N}",
             CreatedAt = now,

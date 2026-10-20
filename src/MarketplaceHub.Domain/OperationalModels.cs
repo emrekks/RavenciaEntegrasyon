@@ -39,6 +39,13 @@ public sealed class IntegrationJob
     public int ProgressProcessed { get; set; }
     public int ProgressSkipped { get; set; }
     public int ProgressFailed { get; set; }
+    // Consecutive write conflicts (a version conflict or a duplicate insert) of this job; any other outcome
+    // resets it. The first few version conflicts are deferred without an attempt, later ones retry normally.
+    public int ConflictCount { get; set; }
+    // The connection execution-lock group the job runs under when it differs from its job type's group (a
+    // return decision read-back serializes with the return reads). The lease query and the quota backoff use
+    // the same group as the lock; null means the job type's group.
+    public string? LockGroup { get; set; }
     public long Version { get; set; }
 }
 
@@ -82,6 +89,11 @@ public sealed class ExternalEffectRecord
     public string? ExpectedValue { get; set; }
     // APPLIED, or UNRESOLVED when the marketplace could not confirm it in time; null while open.
     public string? Outcome { get; set; }
+    // Verification bookkeeping: how many reads left the outcome unclear, the verification time actually spent
+    // (a gap while the worker was stopped does not count) and when the last read ran.
+    public int UnclearChecks { get; set; }
+    public int VerificationSeconds { get; set; }
+    public DateTimeOffset? LastCheckedAt { get; set; }
 }
 
 public sealed class AuditLog
@@ -108,6 +120,8 @@ public sealed class OperationalIssue
     public DateTimeOffset FirstSeenAt { get; set; }
     public DateTimeOffset LastSeenAt { get; set; }
     public int OccurrenceCount { get; set; }
+    // When the issue was last resolved; retention deletes a resolved issue only some time after this.
+    public DateTimeOffset? ResolvedAt { get; set; }
 }
 
 public sealed class FeatureFlag
