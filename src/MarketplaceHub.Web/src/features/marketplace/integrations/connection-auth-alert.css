@@ -13,3 +13,15 @@
   .connection-auth-alert { flex-direction: column; align-items: stretch; }
   .connection-auth-alert .connection-auth-alert-test { width: 100%; }
 }
+
+/* The card badge: same size as the "Pasif" state chip, the reason opens on hover or keyboard focus. */
+.connection-auth-badge { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border: 1px solid var(--rv-color-danger); border-radius: 6px; min-height: 22px; margin: 0; font: inherit; font-size: 12px; font-weight: 600; line-height: 1; box-shadow: none; cursor: help; outline: none; }
+.connection-auth-badge.is-warning { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: var(--rv-color-warning); }
+.connection-auth-badge.is-info { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
+.connection-auth-badge > i { width: 7px; height: 7px; flex: 0 0 7px; background: currentColor; border-radius: 50%; }
+.connection-auth-badge:focus-visible { box-shadow: 0 0 0 2px var(--rv-color-focus, var(--rv-color-accent)); }
+.connection-auth-tip { position: absolute; top: calc(100% + 8px); left: 0; z-index: 30; display: none; width: min(300px, 80vw); padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 28%); font-size: 12.5px; font-weight: 400; line-height: 1.45; white-space: normal; text-align: left; cursor: default; }
+.connection-auth-badge:is(:hover, :focus-visible) > .connection-auth-tip { display: grid; gap: 4px; }
+.connection-auth-tip strong { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.connection-auth-tip small { color: var(--rv-color-muted); font-size: 11.5px; overflow-wrap: anywhere; }
+.reference-footer-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }

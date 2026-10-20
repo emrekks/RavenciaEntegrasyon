@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { formatDateTime } from '../../../shared/format-date'
 import './connection-auth-alert.css'
 
@@ -39,7 +40,37 @@ export function activationErrorMessage(reason: unknown) {
   return reason instanceof Error ? reason.message : 'Bağlantı etkinleştirilemedi.'
 }
 
-/** The card and settings warning for refused credentials or access, with when it was last seen. */
+/** What a card says about a refused connection, or null when there is nothing to report. */
+export function connectionAuthSummary(item: AuthAlertConnection) {
+  const problem = connectionAuthProblem(item.lastErrorCode)
+  const needsTest = reactivationNeedsTest(item)
+  if (!problem && !needsTest) return null
+  const seenAt = item.lastErrorAt ?? item.lastTestedAt
+  if (!problem) return { title: 'Yeniden açmak için yeni test gerekli', action: 'Bağlantı devre dışı bırakıldıktan sonra test edilmedi. Test Et’e basın; test başarılı olunca bağlantıyı etkinleştirebilirsiniz.', tone: 'info' as const, meta: null }
+  const presentation = presentations[problem]
+  return { title: presentation.title, action: presentation.action, tone: presentation.tone, meta: `${seenAt ? `Son görülme: ${formatDateTime(seenAt)}` : 'Zamanı bilinmiyor'} · Kod: ${item.lastErrorCode}` }
+}
+
+/**
+ * The card's state badge for a refused connection: "Hata" (or "Uyarı"), with the reason on hover or focus, so the
+ * card keeps the same height as its neighbours instead of growing a warning box.
+ */
+export function ConnectionAuthBadge({ item }: { item: AuthAlertConnection }) {
+  const tipId = `connection-auth-tip${useId()}`
+  const summary = connectionAuthSummary(item)
+  if (!summary) return null
+  const label = summary.tone === 'danger' ? 'Hata' : summary.tone === 'warning' ? 'Uyarı' : 'Test gerekli'
+  return <button type="button" className={`connection-auth-badge is-${summary.tone}`} aria-describedby={tipId}>
+    <i aria-hidden="true" />{label}
+    <span className="connection-auth-tip" role="tooltip" id={tipId}>
+      <strong>{summary.title}</strong>
+      <span>{summary.action}</span>
+      {summary.meta && <small>{summary.meta}</small>}
+    </span>
+  </button>
+}
+
+/** The settings warning for refused credentials or access, with when it was last seen. */
 export function ConnectionAuthAlert({ item, detail, onTest, testing = false, compact = false }: { item: AuthAlertConnection; detail?: string | null; onTest?: () => void; testing?: boolean; compact?: boolean }) {
   const problem = connectionAuthProblem(item.lastErrorCode)
   const needsTest = reactivationNeedsTest(item)

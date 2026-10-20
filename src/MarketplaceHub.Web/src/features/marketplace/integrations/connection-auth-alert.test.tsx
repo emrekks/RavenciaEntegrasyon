@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { activationErrorMessage, ConnectionAuthAlert, connectionAuthProblem, reactivationNeedsTest } from './connection-auth-alert'
+import { activationErrorMessage, ConnectionAuthAlert, ConnectionAuthBadge, connectionAuthProblem, reactivationNeedsTest } from './connection-auth-alert'
 
 const base = { status: 'ACTIVE', lastErrorCode: null as string | null, lastErrorAt: null as string | null, lastTestedAt: '2026-10-19T08:00:00Z', lastSuccessAt: '2026-10-19T08:00:00Z', disabledAt: null as string | null }
 
@@ -80,6 +80,22 @@ describe('ConnectionAuthAlert', () => {
     expect(alert.textContent).toContain('Son görülme: 19.10.2026')
     expect(container.querySelector('.connection-auth-alert-hint')).toBeNull()
     expect(container.querySelector('.connection-auth-alert-test')).toBeNull()
+  })
+
+  it('puts a card in the Hata state with the reason in its hover tip instead of a warning box', () => {
+    act(() => root.render(<ConnectionAuthBadge item={{ ...base, lastErrorCode: 'PAZARAMA_CREDENTIALS_REJECTED', lastErrorAt: '2026-10-20T06:30:00Z' }} />))
+    const badge = container.querySelector<HTMLButtonElement>('.connection-auth-badge.is-danger')!
+    const tip = container.querySelector('[role="tooltip"]')!
+    expect(badge.firstChild?.nextSibling?.textContent).toBe('Hata')
+    expect(badge.getAttribute('aria-describedby')).toBe(tip.id)
+    expect(tip.textContent).toContain('Kimlik bilgileri reddedildi')
+    expect(tip.textContent).toContain('PAZARAMA_CREDENTIALS_REJECTED')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+  })
+
+  it('leaves the badge out when the connection has nothing to report', () => {
+    act(() => root.render(<ConnectionAuthBadge item={base} />))
+    expect(container.innerHTML).toBe('')
   })
 
   it('shows the gateway block as a warning', () => {
