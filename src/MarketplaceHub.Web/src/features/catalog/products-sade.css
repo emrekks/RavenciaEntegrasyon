@@ -241,6 +241,10 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab :is(th, td) { display: table-cell !important; position: static !important; width: auto !important; min-width: 28px; padding: 3px 6px !important; background: none !important; border-right: 0 !important; border-left: 0 !important; vertical-align: middle !important; text-align: center !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab tbody th { padding-left: 0 !important; text-align: left !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab :is(th, td)::before { content: none !important; }
+/* The product table's td/th lines reached the stock table too and differed per cell, so the last row's line stopped
+   after the colour name. Rows are now split by one line of their own and the last row has none. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab tbody :is(th, td) { border-top: 0 !important; border-bottom: 1px solid color-mix(in srgb, var(--rr-line) 60%, transparent) !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab tbody tr:last-child > :is(th, td) { border-bottom: 0 !important; }
 /* ---------- phones: each product is a compact card (mobil-tum-sayfalar.html) ----------
    identity · price, stock and variants in one box · platform marks and status · two actions */
 @media (max-width: 760px) {
