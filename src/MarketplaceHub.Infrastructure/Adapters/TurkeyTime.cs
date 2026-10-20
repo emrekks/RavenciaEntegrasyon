@@ -34,9 +34,10 @@ internal static partial class TurkeyTime
         new DateTimeOffset(DateTimeOffset.FromUnixTimeMilliseconds(value).DateTime, Offset).ToUniversalTime();
 
     // True when the text ends with Z or an offset such as +03:00 / +0300 / +03 (G29). The offset must follow a time
-    // (hh:mm[:ss[.fff]]), so the day of a bare date ("2026-10-19") is never read as an offset.
+    // (hh:mm[:ss[.fff]]), so the day of a bare date ("2026-10-19") is never read as an offset. The offset may be
+    // written right after the time or after one space ("2026-10-20 14:30:00 +03:00").
     internal static bool HasOffset(string text) => OffsetSuffix().IsMatch(text);
 
-    [GeneratedRegex(@"(Z|(?<=\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)[+-]\d{2}(?::?\d{2})?)$")]
+    [GeneratedRegex(@"(Z|(?<=\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?) ?[+-]\d{2}(?::?\d{2})?)$")]
     private static partial Regex OffsetSuffix();
 }
