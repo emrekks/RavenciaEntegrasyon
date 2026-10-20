@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
@@ -105,7 +106,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     decimal.Round(total - vat, 2, MidpointRounding.AwayFromZero), vat, Decimal(line, "VatRate"), Decimal(line, "DiscountAmount"), total);
             }).ToArray();
 
-            var orderedAt = DateTimeOffset.Parse(RequiredText(order, "OrderedAt"));
+            var orderedAt = DateTimeOffset.Parse(RequiredText(order, "OrderedAt"), CultureInfo.InvariantCulture);
             var includeInternetSalesInfo = OptionalBoolean(root, "IncludeInternetSalesInfo", true);
             EfaturamPayment? payment = null;
             EfaturamDelivery? delivery = null;
@@ -115,15 +116,16 @@ public static class TrendyolEFaturamCanonicalPayload
                 var cargoProvider = RequiredText(package, "CargoProviderExternalId");
                 if (!TrendyolCarrierCatalog.TryResolve(cargoProvider, out var carrier))
                     throw new JsonException("EFATURAM_CARRIER_CATALOG_MISS");
-                var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"));
+                var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"), CultureInfo.InvariantCulture);
                 if (includeInternetSalesInfo)
                     payment = MarketplacePayment(root, orderedAt);
-                delivery = new(carrier.TaxId, carrier.Name, null, DateOnly.FromDateTime(sentAt.Date));
+                // Stored instants are UTC; 01:30 in Istanbul is still the previous UTC day.
+                delivery = new(carrier.TaxId, carrier.Name, null, EfaturamTurkeyTime.Day(sentAt));
             }
 
             var source = new EfaturamInvoicePayloadSource(
                 RequiredText(root, "Id"), invoiceType, RequiredText(root, "Currency"), RequiredText(root, "Note"), RequiredText(order, "OrderNumber"),
-                DateOnly.FromDateTime(orderedAt.Date), DateTimeOffset.Parse(RequiredText(root, "IssuedAt")),
+                EfaturamTurkeyTime.Day(orderedAt), DateTimeOffset.Parse(RequiredText(root, "IssuedAt"), CultureInfo.InvariantCulture),
                 new(taxId, Text(address, "countryCode") is { Length: > 0 } country ? country : "TR", Text(address, "city"), Text(address, "district"),
                     WithoutMarketplaceIds(Text(address, "fullAddress", "address1", "addressText", "address")), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,

@@ -148,8 +148,6 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         using (frozenReceiver)
         {
-            // The invoice date is the moment it is actually sent: nothing has reached the provider yet, so a date left over from an earlier failed try is replaced.
-            if (string.IsNullOrWhiteSpace(invoice.ExternalReference)) { invoice.IssuedAt = timeProvider.GetUtcNow(); invoice.UpdatedAt = invoice.IssuedAt.Value; }
             var snapshotRoot = frozenReceiver?.RootElement ?? default;
             var orderNumber = SnapshotText(snapshotRoot, "OrderNumber", order.OrderNumber);
             var orderedAt = SnapshotDate(snapshotRoot, "OrderedAt", order.OrderedAt);
@@ -164,23 +162,6 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 await BlockFiscalSubmission(invoice, "INVOICE_DELIVERY_PACKAGE_SNAPSHOT_INVALID",
                     "E-Arşiv için doğrulanmış kargo firması ve gönderim tarihi bulunamadı. Fatura sağlayıcıya gönderilmedi.", cancellationToken);
             }
-            var canonical = JsonSerializer.Serialize(new
-            {
-                invoice.Id,
-                invoice.InvoiceType,
-                invoice.Currency,
-                invoice.PayableTotal,
-                invoice.Note,
-                invoice.IncludeInternetSalesInfo,
-                IssuedAt = invoice.IssuedAt ?? invoice.UpdatedAt,
-                MarketplacePlatformCode = orderConnection?.PlatformCode ?? "TRENDYOL",
-                MarketplaceDisplayName = orderConnection?.DisplayName ?? "Trendyol",
-                MarketplaceExternalStoreId = orderConnection?.ExternalStoreId,
-                MarketplaceEnvironment = orderConnection?.Environment ?? "UNKNOWN",
-                Order = new { OrderNumber = orderNumber, OrderedAt = orderedAt, CustomerSnapshotJson = customerSnapshotJson, InvoiceAddressSnapshotJson = invoiceAddressSnapshotJson, ShipmentAddressSnapshotJson = shipmentAddressSnapshotJson },
-                Package = fiscalDeliveryPackage,
-                Lines = lines.Select(x => new { x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal })
-            });
             if (orderConnection is null)
                 await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED", "Siparişin pazaryeri bağlantısı okunamadı; mali kesim başlatılmadı.", cancellationToken);
 
@@ -237,6 +218,25 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 }
                 await db.SaveChangesAsync(cancellationToken);
             }
+            // Stamped after the marketplace reads, right before the request: the provider prints this as the invoice date and time.
+            StampIssueTime(invoice, timeProvider.GetUtcNow());
+            var canonical = JsonSerializer.Serialize(new
+            {
+                invoice.Id,
+                invoice.InvoiceType,
+                invoice.Currency,
+                invoice.PayableTotal,
+                invoice.Note,
+                invoice.IncludeInternetSalesInfo,
+                IssuedAt = invoice.IssuedAt ?? invoice.UpdatedAt,
+                MarketplacePlatformCode = orderConnection.PlatformCode,
+                MarketplaceDisplayName = orderConnection.DisplayName,
+                MarketplaceExternalStoreId = orderConnection.ExternalStoreId,
+                MarketplaceEnvironment = orderConnection.Environment,
+                Order = new { OrderNumber = orderNumber, OrderedAt = orderedAt, CustomerSnapshotJson = customerSnapshotJson, InvoiceAddressSnapshotJson = invoiceAddressSnapshotJson, ShipmentAddressSnapshotJson = shipmentAddressSnapshotJson },
+                Package = fiscalDeliveryPackage,
+                Lines = lines.Select(x => new { x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal })
+            });
             var hash = Hash(canonical); var started = timeProvider.GetUtcNow();
             var attempt = new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, AttemptNumber = await NextAttempt(tenantId, invoice.Id, cancellationToken), RequestHash = hash, Outcome = "STARTED", StartedAt = started };
             // A Submitting invoice with an error code means "refused, nothing in flight" (retryable in the
@@ -298,6 +298,15 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
             return true;
         }
+    }
+
+    // The invoice date is the moment it is actually sent: nothing has reached the provider yet, so a date
+    // left from the draft or an earlier failed try is replaced. Once the provider holds it, it never changes.
+    internal static void StampIssueTime(Invoice invoice, DateTimeOffset now)
+    {
+        if (!string.IsNullOrWhiteSpace(invoice.ExternalReference)) return;
+        invoice.IssuedAt = now;
+        invoice.UpdatedAt = now;
     }
 
     private void MarkSubmissionUnknown(Invoice invoice, InvoiceSubmissionAttempt attempt, string errorCode)
