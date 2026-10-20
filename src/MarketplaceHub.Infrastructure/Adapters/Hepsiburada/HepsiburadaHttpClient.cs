@@ -1435,6 +1435,8 @@ public sealed partial class HepsiburadaHttpClient(
         HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "HEPSIBURADA_ACCESS_FORBIDDEN", "Hepsiburada HTTP 403: mağaza veya endpoint erişim yetkisi reddedildi. Mağaza ID’sini ve entegratör erişim yetkisini kontrol edin.", (int)status, null, requestId),
         HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "HEPSIBURADA_RATE_LIMITED", "Hepsiburada istek sınırına ulaşıldı.", 429, retryAfter ?? TimeSpan.FromSeconds(5), requestId),
         HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "HEPSIBURADA_RESOURCE_NOT_FOUND", "Hepsiburada kaynağı bulunamadı.", 404, null, requestId),
+        HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_REMOTE_TIMEOUT", "Hepsiburada isteği kendi tarafında zaman aşımına uğrattı; yeniden denenecek.", 408, retryAfter ?? TimeSpan.FromSeconds(15), requestId),
+        HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_CONFLICT", "Hepsiburada isteği kaydın mevcut durumuyla çakıştığı için reddetti.", 409, null, requestId),
         >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "HEPSIBURADA_REMOTE_ERROR", "Hepsiburada geçici sunucu hatası verdi.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), requestId),
         _ => new(AdapterErrorClass.Validation, "HEPSIBURADA_REQUEST_REJECTED", "Hepsiburada isteği doğrulama nedeniyle reddedildi.", (int)status, null, requestId)
     };

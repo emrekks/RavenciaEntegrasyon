@@ -345,6 +345,8 @@ public sealed partial class PazaramaHttpClient(
                 : $"Pazarama bu hesabın API erişimini reddetti (403): {remote}. Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null),
             HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "PAZARAMA_NOT_FOUND", remote is null ? "Pazarama istenen kaydı bulamadı." : $"Pazarama kaydı bulamadı: {remote}", (int)status, null, null),
+            HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "PAZARAMA_REMOTE_TIMEOUT", "Pazarama isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), null),
+            HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "PAZARAMA_CONFLICT", remote is null ? "Pazarama isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
             _ => new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null)
         };

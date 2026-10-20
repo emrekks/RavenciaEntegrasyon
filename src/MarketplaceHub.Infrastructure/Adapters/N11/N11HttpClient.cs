@@ -217,6 +217,8 @@ public sealed partial class N11HttpClient(
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", (int)status, null, null),
             HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "N11_NOT_FOUND", remote is null ? "N11 istenen kaydı bulamadı." : $"N11 kaydı bulamadı: {remote}", (int)status, null, null),
+            HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "N11_REMOTE_TIMEOUT", "N11 isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), null),
+            HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "N11_CONFLICT", remote is null ? "N11 isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"N11 isteği reddetti: {remote}", (int)status, null, null),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR", "N11 servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
             _ => new(AdapterErrorClass.Validation, "N11_REQUEST_REJECTED", remote is null ? "N11 isteği reddetti." : $"N11 isteği reddetti: {remote}", (int)status, null, null)
         };

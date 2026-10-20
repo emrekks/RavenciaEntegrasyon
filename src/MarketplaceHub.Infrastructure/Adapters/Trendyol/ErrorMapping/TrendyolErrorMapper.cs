@@ -23,6 +23,7 @@ internal static class TrendyolErrorMapper
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "REMOTE_RESOURCE_NOT_FOUND", "Platform kaynağı bulunamadı.", 404, null, remoteRequestId),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "REMOTE_SERVER_ERROR", "Platform geçici sunucu hatası verdi.", (int)status, retryAfter, remoteRequestId),
             HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", 408, retryAfter, remoteRequestId),
+            HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "REMOTE_CONFLICT", "Trendyol isteği kaydın mevcut durumuyla çakıştığı için reddetti; paneldeki mevcut bilgi korundu.", 409, null, remoteRequestId),
             _ => new(AdapterErrorClass.Validation, "REMOTE_REQUEST_REJECTED", "Trendyol isteği reddetti; paneldeki mevcut bilgi korundu.", (int)status, null, remoteRequestId)
         };
     }

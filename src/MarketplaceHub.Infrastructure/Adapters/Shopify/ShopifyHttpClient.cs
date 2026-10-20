@@ -1456,10 +1456,13 @@ public sealed partial class ShopifyHttpClient(
         if (window.ModifiedBefore is { } until) terms.Add($"updated_at:<={until.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}");
         return terms.Count == 0 ? null : string.Join(' ', terms);
     }
-    private static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) => status switch
+    internal static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) => status switch
     {
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "SHOPIFY_ACCESS_DENIED", "Shopify erişim izni reddedildi.", (int)status, null, remoteRequestId),
         (HttpStatusCode)429 => new(AdapterErrorClass.RateLimit, "SHOPIFY_RATE_LIMITED", "Shopify API sınırına ulaşıldı.", (int)status, retryAfter ?? TimeSpan.FromSeconds(5), remoteRequestId),
+        HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "SHOPIFY_NOT_FOUND", "Shopify istenen kaynağı bulamadı (404).", (int)status, null, remoteRequestId),
+        HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "SHOPIFY_REMOTE_TIMEOUT", "Shopify isteği kendi tarafında zaman aşımına uğrattı; yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), remoteRequestId),
+        HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "SHOPIFY_CONFLICT", "Shopify isteği kaydın mevcut durumuyla çakıştığı için reddetti.", (int)status, null, remoteRequestId),
         >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "SHOPIFY_REMOTE_ERROR", "Shopify geçici bir sunucu hatası döndürdü.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), remoteRequestId),
         _ => new(AdapterErrorClass.Validation, "SHOPIFY_HTTP_ERROR", $"Shopify isteği reddedildi ({(int)status}).", (int)status, null, remoteRequestId)
     };
