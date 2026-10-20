@@ -1,5 +1,6 @@
 // Eşleştirmeler (/mappings/categories, /mappings/attributes).
 import { useRememberedHeight } from '../../../shared/remembered-height'
+import './mapping-design-system.css'
 import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router'
