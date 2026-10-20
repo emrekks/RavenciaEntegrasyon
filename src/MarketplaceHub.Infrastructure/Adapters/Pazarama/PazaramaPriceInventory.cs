@@ -192,7 +192,11 @@ public static class PazaramaBatchMapper
 
     public sealed record BatchPage(IReadOnlyList<BatchItem> Items, int? TotalCount);
 
-    public enum BatchState { Processing, Succeeded, Failed }
+    // C39: PendingApproval is status 5 "Onaya gönderildi": the value was taken but waits for Pazarama staff
+    // (a price change past the discount limit); it is not reported as a plain success any more.
+    public enum BatchState { Processing, Succeeded, Failed, PendingApproval }
+
+    public const string PendingApprovalStatus = "PENDING_APPROVAL";
 
     // "p:{id}:{count}|s:{id}:{count}"; anything else is not an operation this adapter created.
     public static IReadOnlyList<BatchPart> ParseOperation(string? operationId)
@@ -234,10 +238,13 @@ public static class PazaramaBatchMapper
             if (row.TryGetProperty(section, out var part) && part.ValueKind == JsonValueKind.Object && part.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.Number && status.TryGetInt32(out var value))
                 statuses.Add(value);
         if (statuses.Count > 0)
-            return statuses.Any(x => x == 3) ? BatchState.Processing : statuses.All(x => x is 0 or 5) ? BatchState.Succeeded : BatchState.Failed;
+            return statuses.Any(x => x == 3) ? BatchState.Processing
+                : statuses.All(x => x is 0 or 5) ? (statuses.Any(x => x == 5) ? BatchState.PendingApproval : BatchState.Succeeded)
+                : BatchState.Failed;
         return (Text(row, "operationStatusText") ?? "").ToLower(Turkish) switch
         {
-            "başarılı" or "onaya gönderildi" => BatchState.Succeeded,
+            "başarılı" => BatchState.Succeeded,
+            "onaya gönderildi" => BatchState.PendingApproval,
             "işleniyor" => BatchState.Processing,
             _ => BatchState.Failed
         };
@@ -266,10 +273,12 @@ public static class PazaramaBatchMapper
         var codes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var priceFailed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var stockFailed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pendingApproval = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (part, items) in results)
             foreach (var item in items)
             {
                 var failed = item.State == BatchState.Failed;
+                if (item.State == BatchState.PendingApproval) pendingApproval.Add(item.Code);
                 if (!codes.TryGetValue(item.Code, out var detail) || failed) codes[item.Code] = failed || detail is null ? item.Detail : detail;
                 if (failed) (part.Family == "p" ? priceFailed : stockFailed).Add(item.Code);
             }
@@ -278,7 +287,9 @@ public static class PazaramaBatchMapper
             var price = priceFailed.Contains(entry.Key);
             var stock = stockFailed.Contains(entry.Key);
             var code = price && stock ? PriceAndStockRejected : price ? PriceRejected : stock ? StockRejected : null;
-            return new RemoteOperationLine(entry.Key, code is null, null, code, false, entry.Value);
+            // A pending-approval line was accepted (it is not resent) and says so in its status.
+            var status = code is null && pendingApproval.Contains(entry.Key) ? PendingApprovalStatus : entry.Value;
+            return new RemoteOperationLine(entry.Key, code is null, null, code, false, status);
         }).ToList();
         return new(operationId, "COMPLETED", lines);
     }
