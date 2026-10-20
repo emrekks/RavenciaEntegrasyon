@@ -450,6 +450,35 @@ public static class ImportedDesi
     public const decimal Maximum = 10000m;
 
     public static decimal? From(decimal? value) => value is > 0 and <= Maximum ? decimal.Round(value.Value, 2, MidpointRounding.AwayFromZero) : null;
+
+    // A desi sent as text: "2,5", "2.5", "2,5 desi" or "3 kg". A single comma is the decimal separator
+    // (Turkish), so "2,5" is 2.5 and not 25; with both marks the last one separates the decimals.
+    public static decimal? FromText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var value = text.Trim();
+        foreach (var unit in new[] { "desi", "kg" })
+        {
+            if (!value.EndsWith(unit, StringComparison.OrdinalIgnoreCase)) continue;
+            value = value[..^unit.Length].TrimEnd();
+            break;
+        }
+        var commas = value.Count(character => character == ',');
+        if (commas > 1) return null;
+        if (commas == 1)
+            value = value.Contains('.', StringComparison.Ordinal) && value.LastIndexOf('.') > value.LastIndexOf(',')
+                ? value.Replace(",", "", StringComparison.Ordinal)
+                : value.Replace(".", "", StringComparison.Ordinal).Replace(',', '.');
+        return decimal.TryParse(value, System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? From(parsed) : null;
+    }
+
+    // A desi field of a marketplace answer: a JSON number, or text read by FromText.
+    public static decimal? FromJson(System.Text.Json.JsonElement value) => value.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.Number => value.TryGetDecimal(out var number) ? From(number) : null,
+        System.Text.Json.JsonValueKind.String => FromText(value.GetString()),
+        _ => null
+    };
 }
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false, bool CatalogStructure = false);

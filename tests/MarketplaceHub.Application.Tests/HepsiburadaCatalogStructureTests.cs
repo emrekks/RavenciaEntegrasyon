@@ -17,6 +17,38 @@ public sealed class HepsiburadaCatalogStructureTests
     }
 
     [Fact]
+    public void ReadsTheDesiFromTheAttributeListsWithADecimalComma()
+    {
+        using var document = JsonDocument.Parse("""
+        {
+          "data": [
+            { "hbSku": "HBV1", "merchantSku": "SKU-1", "baseAttributes": [ { "name": "kg", "value": "2,5" }, { "name": "Renk", "value": "Mavi" } ] },
+            { "hbSku": "HBV2", "merchantSku": "SKU-2", "attributes": { "Desi": "3" } },
+            { "hbSku": "HBV3", "merchantSku": "SKU-3", "desi": "1,75" },
+            { "hbSku": "HBV4", "merchantSku": "SKU-4", "baseAttributes": [ { "name": "kg", "value": "0" } ] }
+          ]
+        }
+        """);
+
+        var page = HepsiburadaJsonMapper.CatalogStructurePage(document.RootElement, 0, 10);
+
+        Assert.Equal([2.5m, 3m, 1.75m, null], page.Items.Select(item => Assert.Single(item.Variants).Desi).ToArray());
+    }
+
+    [Theory]
+    [InlineData("2,5", "2.5")]
+    [InlineData("2.5", "2.5")]
+    [InlineData("2,5 desi", "2.5")]
+    [InlineData("3 kg", "3")]
+    [InlineData("1.250,5", "1250.5")]
+    [InlineData("1,250.5", "1250.5")]
+    [InlineData("0", null)]
+    [InlineData("1,2,3", null)]
+    [InlineData("abc", null)]
+    public void DesiTextUsesADecimalComma(string text, string? expected) =>
+        Assert.Equal(expected is null ? null : decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ImportedDesi.FromText(text));
+
+    [Fact]
     public void ReadsCategoryAndAttributeListsFromAWrappedPage()
     {
         using var document = JsonDocument.Parse("""

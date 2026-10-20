@@ -242,7 +242,7 @@ public static class PazaramaProductMapper
             "TRY",
             item.GetRawText(),
             imageUrls,
-            Desi: ImportedDesi.From(Amount(item, "desi")));
+            Desi: item.TryGetProperty("desi", out var desiElement) ? ImportedDesi.FromJson(desiElement.ValueKind == JsonValueKind.Object && desiElement.TryGetProperty("value", out var desiValue) ? desiValue : desiElement) : null);
         return new(
             groupCode is null ? $"code:{code}" : $"group:{groupCode}",
             groupCode,
