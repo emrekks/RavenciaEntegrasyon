@@ -243,7 +243,7 @@
 /* Phones (mobil-tum-sayfalar.html): the marketplace import status takes two compact columns instead of four tall rows. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync { grid-template-columns: 1fr 1fr !important; gap: 0; }
-  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item { min-height: 0; grid-template-columns: 24px minmax(0, 1fr) !important; column-gap: 8px; padding: 10px 12px; border-left: 0 !important; border-top: 0 !important; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item { min-height: 0; grid-template-columns: 24px minmax(0, 1fr) !important; column-gap: 8px; padding: 10px 12px; border-left: 0 !important; border-top: 0; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:nth-child(even) { border-left: 1px solid var(--rv-color-border) !important; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:nth-child(n+3) { border-top: 1px solid var(--rv-color-border) !important; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > img { width: 24px; height: 24px; }

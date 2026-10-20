@@ -26,7 +26,7 @@
   :root .app-shell.stitch-shell main .jobs-reference-table-scroll { padding: 0 !important; background: none !important; border: 0 !important; box-shadow: none !important; }
   :root .app-shell.stitch-shell main .jobs-reference-table { margin: 0 !important; background: none !important; border: 0 !important; box-shadow: none !important; }
   :root .app-shell.stitch-shell main .jobs-reference-table tbody > tr { margin: 0 0 var(--m-gap) !important; }
-  :root .app-shell.stitch-shell main .category-library-list { gap: var(--m-gap) !important; grid-auto-rows: min-content !important; align-content: start !important; }
+  :root .app-shell.stitch-shell main .category-library-list { gap: var(--m-gap) !important; grid-auto-rows: min-content; align-content: start; }
   :root .app-shell.stitch-shell main .category-library-list > * { margin: 0 !important; }
 
   /* Lists without a frame: the page gutter is their edge */

@@ -530,10 +530,10 @@
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row:not(:has(*)) { display: none; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row { justify-content: flex-start; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-grid { row-gap: 0; }
-.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid > .mapping-link-rail { align-self: start !important; margin-top: 12px !important; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid > .mapping-link-rail { align-self: start; margin-top: 12px !important; }
 
 /* Chips use the UI font, not the browser button font. */
-.app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span > button:first-child { font-family: inherit !important; letter-spacing: 0; }
+.app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span > button:first-child { font-family: inherit; letter-spacing: 0; }
 
 /* Backup popups: checked rows stay plain; the check mark carries the state. */
 .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options label:has(input:checked), .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-all-option { background: none !important; }
@@ -549,7 +549,7 @@
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid { display: grid; grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); align-items: end; gap: 0 12px; margin: 0; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-side { display: grid; gap: 6px; margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid .mapping-side-head { display: none; }
-.app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-link-rail { grid-column: 2; grid-row: 1; align-self: end !important; margin: 0 !important; }
+.app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-link-rail { grid-column: 2; grid-row: 1; align-self: end; margin: 0 !important; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-link-rail small { display: none; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid .mapping-side-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-target-controls { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.2fr); gap: 8px; }
@@ -584,9 +584,9 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > * { grid-column: 1; grid-row: auto; width: 100%; min-width: 0; }
   /* the link mark sits between the two category pickers, on a hairline */
-  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-rows: none !important; grid-auto-rows: auto !important; row-gap: 6px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-rows: none; grid-auto-rows: auto; row-gap: 6px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-reference-local { order: 1; }
-  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { order: 2; display: flex !important; align-items: center; gap: 10px; width: 100%; height: 28px !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { order: 2; display: flex !important; align-items: center; gap: 10px; width: 100%; height: 28px !important; min-height: 0; margin: 0 !important; padding: 0 !important; color: var(--rv-color-primary); }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail::before,
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail::after { content: ""; flex: 1; height: 1px; background: var(--rv-color-border-strong); }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail .ui-icon { width: 18px; height: 18px; }
