@@ -430,7 +430,8 @@ public static class TrendyolJsonMapper
                     DecimalNullable(variant, "quantity") ?? NestedDecimalNullable(variant, "stock", "quantity"),
                     NestedText(variant, "price", "currency"),
                     variant.GetRawText(),
-                    variantImages));
+                    variantImages,
+                    Desi: ImportedDesi.From(DecimalNullable(variant, "dimensionalWeight") ?? DecimalNullable(product, "dimensionalWeight"))));
             }
         }
         if (variants.Count == 0)
@@ -439,7 +440,7 @@ public static class TrendyolJsonMapper
             var sku = NullText(product, "stockCode", "merchantSku", "sku") ?? barcode;
             var variantId = NullText(product, "variantId", "id", "barcode", "stockCode");
             if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
-                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product)));
+                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product), Desi: ImportedDesi.From(DecimalNullable(product, "dimensionalWeight"))));
         }
         var productImages = images;
         var allImages = productImages

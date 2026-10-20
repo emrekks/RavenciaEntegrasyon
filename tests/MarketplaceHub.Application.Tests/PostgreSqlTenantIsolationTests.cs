@@ -31,6 +31,75 @@ namespace MarketplaceHub.Application.Tests;
 [Collection("postgres-integration")]
 public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture, ITestOutputHelper output) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
+    // Products imported before desi was read are preserved on the next import (updateExistingProducts off); their
+    // empty desi is still filled from the marketplace, while a desi entered locally stays.
+    [PostgreSqlFact]
+    public async Task ProductSync_FillsAnEmptyDesiOfAPreservedProductAndKeepsAnEnteredOne()
+    {
+        var tenant = NewTenant("marketplace-desi-fill");
+        var connection = NewQuestionConnection(tenant);
+        // A Shopify import reads no brand or category reference and only observes existing products; the desi fill
+        // runs the same way for every marketplace.
+        connection.PlatformCode = "SHOPIFY";
+        var productId = Guid.CreateVersion7();
+        var emptyVariantId = Guid.CreateVersion7();
+        var enteredVariantId = Guid.CreateVersion7();
+        ProductVariant Variant(Guid id, string sku, decimal? desi, int sortOrder) => new()
+        {
+            Id = id,
+            TenantId = tenant.Id,
+            ProductId = productId,
+            SortOrder = sortOrder,
+            Sku = sku,
+            SkuNormalized = sku,
+            OptionSignature = "-",
+            Desi = desi,
+            CreatedAt = fixture.Now.AddDays(-1),
+            UpdatedAt = fixture.Now.AddDays(-1),
+            Version = 3
+        };
+        RemoteCatalogVariant Remote(string id, string sku, decimal desi) => new(id, sku, null, null, new Dictionary<string, string>(), false, null, null, null, null, null, "{}", Desi: desi);
+        var productPort = new ReadOnlyCatalogProductTestPort(new RemoteCatalogProduct(
+            "remote-desi-product", "DESI", "Remote title", "", null, null, null, null, [],
+            [Remote("remote-desi-empty", "DESI-EMPTY", 4.5m), Remote("remote-desi-entered", "DESI-ENTERED", 9m)],
+            "{}"));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Local title", Description = "", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 5 });
+            seedDb.ProductVariants.AddRange(Variant(emptyVariantId, "DESI-EMPTY", null, 0), Variant(enteredVariantId, "DESI-ENTERED", 2m, 1));
+            seedDb.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, ExternalId = "remote-desi-product", LastImportedProductVersion = 5, SyncStatus = "SYNCED", Version = 1 });
+            seedDb.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = emptyVariantId, ExternalId = "remote-desi-empty", Version = 1 },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = enteredVariantId, ExternalId = "remote-desi-entered", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, productPort, null!, null!, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync,
+                    "{\"full\":true,\"updateExistingProducts\":false}", "marketplace-desi-fill", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            Assert.Equal(4.5m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == emptyVariantId)).Desi);
+            Assert.Equal(2m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == enteredVariantId)).Desi);
+            Assert.Equal("Local title", (await verificationDb.Products.AsNoTracking().SingleAsync(row => row.Id == productId)).Title);
+        }
+        finally
+        {
+            await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task TrendyolOptionRepair_UpdatesOnlyMappedVariantOptionsWithoutWritingRemotely()
     {

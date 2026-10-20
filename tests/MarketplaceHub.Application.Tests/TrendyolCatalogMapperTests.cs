@@ -561,6 +561,43 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg", "https://cdn.example.test/haki-back.jpg" }, product.ImageUrls);
     }
 
+    // Live 20 Oct 2026: Trendyol carries the desi as each variant's dimensionalWeight and answers 0 when the
+    // seller never entered one.
+    [Fact]
+    public void CatalogProductResponse_ReadsTheVariantDesiAndTreatsZeroAsMissing()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800006,
+            "title": "Desili ürün",
+            "variants": [
+              { "variantId": 860001, "stockCode": "SKU-006-S", "dimensionalWeight": 3.5 },
+              { "variantId": 860002, "stockCode": "SKU-006-M", "dimensionalWeight": 0 },
+              { "variantId": 860003, "stockCode": "SKU-006-L" }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+
+        Assert.Equal(3.5m, Assert.Single(product.Variants, x => x.Sku == "SKU-006-S").Desi);
+        Assert.Null(Assert.Single(product.Variants, x => x.Sku == "SKU-006-M").Desi);
+        Assert.Null(Assert.Single(product.Variants, x => x.Sku == "SKU-006-L").Desi);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("0", null)]
+    [InlineData("-2", null)]
+    [InlineData("10001", null)]
+    [InlineData("2.345", "2.35")]
+    [InlineData("1", "1")]
+    public void ImportedDesi_KeepsOnlyARealMeasurement(string? value, string? expected) =>
+        Assert.Equal(expected is null ? null : decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture),
+            ImportedDesi.From(value is null ? null : decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture)));
+
     [Fact]
     public void CatalogProductResponse_AssociatesTopLevelColorImagesWithMatchingVariants()
     {

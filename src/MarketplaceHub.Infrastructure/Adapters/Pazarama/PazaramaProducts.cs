@@ -241,7 +241,8 @@ public static class PazaramaProductMapper
             Amount(item, "stockCount"),
             "TRY",
             item.GetRawText(),
-            imageUrls);
+            imageUrls,
+            Desi: ImportedDesi.From(Amount(item, "desi")));
         return new(
             groupCode is null ? $"code:{code}" : $"group:{groupCode}",
             groupCode,

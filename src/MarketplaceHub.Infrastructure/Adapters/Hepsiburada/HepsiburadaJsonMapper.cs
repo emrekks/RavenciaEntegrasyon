@@ -180,7 +180,9 @@ internal static class HepsiburadaJsonMapper
             stock,
             currency,
             item.GetRawText(),
-            images);
+            images,
+            // Hepsiburada names the desi "kg" in its catalog attributes (the publication sends it so).
+            Desi: ImportedDesi.From(Decimal(item, "desi", "Desi", "dimensionalWeight", "kg")));
         return new(
             simple.ExternalProductId,
             Text(item, "productMainId", "ProductMainId", "productId", "ProductId"),
@@ -232,7 +234,8 @@ internal static class HepsiburadaJsonMapper
             StructureOptions(item),
             false,
             null, null, null, null, null,
-            item.GetRawText());
+            item.GetRawText(),
+            Desi: ImportedDesi.From(Decimal(item, "desi", "Desi", "dimensionalWeight", "kg")));
         return new(
             identity,
             Text(item, "VaryantGroupID", "variantGroupId", "productId"),

@@ -184,6 +184,14 @@ public sealed class ImportJobProcessor(
                     if (row.decision.LinkProductId is null || row.decision.LinkVariantId is null) { failed++; continue; }
                     await AddExternalLinksAsync(session, row.staging, row.decision.LinkProductId.Value, row.decision.LinkVariantId.Value, cancellationToken);
                     AddProvenance(tenantId, sessionId, row.staging, row.decision.LinkProductId.Value, row.decision.LinkVariantId, values);
+                    // A linked variant takes the file's desi only when it has none; a desi already set stays.
+                    if (ImportedDesi.From(ParseDecimal(Value(values, "desi"))) is { } linkedDesi
+                        && await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == row.decision.LinkVariantId.Value && x.Desi == null, cancellationToken) is { } linkedVariant)
+                    {
+                        linkedVariant.Desi = linkedDesi;
+                        linkedVariant.UpdatedAt = timeProvider.GetUtcNow();
+                        linkedVariant.Version++;
+                    }
                 }
                 else
                 {
@@ -231,6 +239,7 @@ public sealed class ImportJobProcessor(
                         Barcode = barcode,
                         BarcodeNormalized = barcodeNormalized,
                         ModelCode = Value(values, "modelCode"),
+                        Desi = ImportedDesi.From(ParseDecimal(Value(values, "desi"))),
                         OptionSignature = VariantOptionSignature.Build(options, empty: "-"),
                         DefaultListPrice = listPrice,
                         DefaultSalePrice = salePrice,

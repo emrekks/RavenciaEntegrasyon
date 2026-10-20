@@ -6357,6 +6357,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                      select variantLink.ExternalId.Trim().ToUpper()).ToListAsync(cancellationToken);
         var hasCompleteVariantLinks = MarketplaceVariantLinkCoverage.IsComplete(expectedVariantExternalIds, linkedVariantExternalIds);
 
+        // Runs before the unchanged-payload and preserved-product paths, so a product imported before desi was read
+        // (or edited locally since) still gets the marketplace desi on its empty variants.
+        if (!isNewProduct)
+            await FillMissingImportedDesi(tenantId, connectionId, snapshot, now, cancellationToken);
+
         // A catalog scan can revisit hundreds of products whose last imported
         // payload and local projection are already in sync. In that case the
         // inventory/media reconciliation below only repeats database reads;
@@ -6807,6 +6812,31 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return category;
     }
 
+    // Fills the desi of the variants linked to this snapshot's variants on this connection, only where the local desi
+    // is empty. Nothing else of the product or variant changes, and a desi already set is never overwritten.
+    private async Task FillMissingImportedDesi(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var desiByExternalId = snapshot.Variants
+            .Where(variant => variant.Desi is not null && !string.IsNullOrWhiteSpace(variant.ExternalVariantId))
+            .GroupBy(variant => Short(variant.ExternalVariantId, 256), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().Desi!.Value, StringComparer.Ordinal);
+        if (desiByExternalId.Count == 0) return;
+        var externalIds = desiByExternalId.Keys.ToArray();
+        var targets = await (from variantLink in db.MarketplaceVariantLinks
+                             join variant in db.ProductVariants on new { variantLink.TenantId, variantLink.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                             where variantLink.TenantId == tenantId && variantLink.ConnectionId == connectionId
+                                 && externalIds.Contains(variantLink.ExternalId) && variant.Desi == null
+                             select new { variantLink.ExternalId, Variant = variant }).ToListAsync(cancellationToken);
+        foreach (var target in targets)
+        {
+            if (target.Variant.Desi is not null || !desiByExternalId.TryGetValue(target.ExternalId, out var desi)) continue;
+            target.Variant.Desi = desi;
+            target.Variant.UpdatedAt = now;
+            target.Variant.Version++;
+            telemetryUpdatedCount++;
+        }
+    }
+
     private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingPricesAndStock = false)
     {
         var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
@@ -6873,6 +6903,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = nextSkuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = nextBarcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
                 telemetryUpdatedCount++;
             }
+        }
+        // The marketplace desi fills an empty local desi (also for observed catalogs: it only adds a value). A desi
+        // the person entered or an earlier import set is never overwritten.
+        if (variant.Desi is null && remote.Desi is { } remoteDesi)
+        {
+            variant.Desi = remoteDesi;
+            if (!isNewVariant) { variant.UpdatedAt = now; variant.Version++; telemetryUpdatedCount++; }
         }
         if (link is not null && link.VariantId != variant.Id)
         {

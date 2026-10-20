@@ -439,7 +439,18 @@ public sealed record RemoteCatalogVariant(
     string? Currency,
     string RawJson,
     IReadOnlyList<string>? ImageUrls = null,
-    IReadOnlyList<RemoteInventoryLevel>? InventoryLevels = null);
+    IReadOnlyList<RemoteInventoryLevel>? InventoryLevels = null,
+    // The marketplace's desi (volumetric weight) when it carries one; ImportedDesi drops 0 and nonsense.
+    decimal? Desi = null);
+
+// A desi read from a marketplace or an import file counts only when it is a real measurement: Trendyol
+// answers 0 for a product whose desi was never entered.
+public static class ImportedDesi
+{
+    public const decimal Maximum = 10000m;
+
+    public static decimal? From(decimal? value) => value is > 0 and <= Maximum ? decimal.Round(value.Value, 2, MidpointRounding.AwayFromZero) : null;
+}
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false, bool CatalogStructure = false);
 public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);

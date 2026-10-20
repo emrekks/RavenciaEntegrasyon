@@ -172,7 +172,8 @@ public static class N11ProductMapper
             Decimal(item, "quantity"),
             currency,
             item.GetRawText(),
-            images);
+            images,
+            Desi: ImportedDesi.From(Decimal(item, "desi")));
         return new(
             externalProductId,
             productMainId,
