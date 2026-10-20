@@ -391,3 +391,22 @@ bash deploy/scripts/install-ci-deploy.sh "<deploy key .pub satırı>"
 git rev-parse HEAD > ~/deploy-logs/.last-success
 ```
 İsteğe bağlı: `deploy/secrets/alert_webhook_url.txt` (Telegram veya Slack webhook URL'si, 600 izin) ve GitHub `ALERT_WEBHOOK_URL` sırrı.
+
+### 9.1 Kısmi kalanların tamamlanması (20 Ekim 2026, akşam)
+
+| # | Sonuç |
+|---|---|
+| S5 | Müşteri e-postası listeden kalktı; kargo etiketi bilgiyi sipariş detayından alıyor |
+| S6 | Anlık işleme alma ve kargo firması değişimi yerel kayıtta "orders" kilidini (3 sn bekleme) alıyor |
+| İ6 | Bağlantı kartı kimlik/erişim/ağ geçidi hatasını son görülme zamanı ve "Test Et" ile gösteriyor |
+| İ11 | HB ve Pazarama'da ret nedeni ucu yok; listeler dokümanla aynı, kaynak adresleri kodda |
+| İ13 | İade tutarı sipariş satırının ödenen fiyatından hesaplanıp gösteriliyor |
+| A16 | Trendyol iade imleci metin olarak saklanıyor; biten durumlar yeniden sorgulanmıyor |
+| P17 | İşlem Takibi imleçle sayfalanıyor; platform filtresi liste, sayılar ve kuyruk kartlarında |
+| W4 | İadeler sunucuda sayfalanıyor ve süzülüyor (`GET /returns/summary`) |
+| F5a | Trendyol fatura linki operatör onayıyla kaldırılabiliyor; HB/N11/Pazarama'da silme ucu yok, ekranda talimat var |
+| F5b | İade faturası yapılmadı: E-Faturam belgesinde tüketici iadesinin belge türü belirsiz; sorular `docs/IADE-FATURASI-ARASTIRMA.md` |
+| W11, W15, W20 | Klavye erişimi (görsel büyütme, etiket blokları), ana CSS 643 → 365 KB, tek kaydırma kilidi |
+| W12, W13 | Kısmi: CSS katman taşıması ve iki Shopify penceresinin birleştirilmesi görünür değişiklik riski nedeniyle yapılmadı |
+
+Görsel karşılaştırma düzeneği: `src/MarketplaceHub.Web/tests/visual` (`npm run test:visual`, `npm run check:cascade`).
