@@ -78,6 +78,8 @@ public sealed class UserSession
     public DateTimeOffset AbsoluteExpiresAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
     public DateTimeOffset? LastSeenAt { get; set; }
+    // Wrong second-factor codes (TOTP or recovery) entered in this session; the session is revoked at five.
+    public int MfaFailedAttempts { get; set; }
 }
 
 public sealed class BootstrapState

@@ -42,10 +42,20 @@ public static class AuthEndpoints
         // A body without the fields used to reach request.Email.Trim() and fail with 500.
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password)) return InvalidBody("E-posta ve parola zorunludur.");
         var user = await users.FindByEmailAsync(request.Email.Trim());
-        if (user is null || user.Status != "ACTIVE" || await users.IsLockedOutAsync(user)) return InvalidCredentials();
+        var now = time.GetUtcNow();
+        if (user is null || user.Status != "ACTIVE" || await users.IsLockedOutAsync(user))
+        {
+            // The typed e-mail is not recorded: users sometimes type their password into it.
+            AuthAudit.Record(db, context, AuthAudit.LoginFailed, user?.Id, null, user is null ? "unknown-account" : user.Status != "ACTIVE" ? "inactive-account" : "locked-out", now);
+            await db.SaveChangesAsync(context.RequestAborted);
+            return InvalidCredentials();
+        }
         if (!await users.CheckPasswordAsync(user, request.Password))
         {
             await users.AccessFailedAsync(user);
+            AuthAudit.Record(db, context, AuthAudit.LoginFailed, user.Id, null, "wrong-password", now);
+            if (await users.IsLockedOutAsync(user)) AuthAudit.Record(db, context, AuthAudit.AccountLockedOut, user.Id, null, "failed-sign-ins", now);
+            await db.SaveChangesAsync(context.RequestAborted);
             return InvalidCredentials();
         }
         await users.ResetAccessFailedCountAsync(user);
@@ -57,13 +67,19 @@ public static class AuthEndpoints
             : memberships.Count == 1 ? memberships[0] : null;
         if (membership is null)
         {
-            if (memberships.Count == 0) return Problem("TENANT_NOT_AVAILABLE", "Kullanıcı için aktif çalışma alanı bulunamadı.", 403);
+            if (memberships.Count == 0)
+            {
+                AuthAudit.Record(db, context, AuthAudit.LoginFailed, user.Id, null, "no-active-workspace", now);
+                await db.SaveChangesAsync(context.RequestAborted);
+                return Problem("TENANT_NOT_AVAILABLE", "Kullanıcı için aktif çalışma alanı bulunamadı.", 403);
+            }
             var tenantIds = memberships.Select(x => x.TenantId).ToArray();
             var tenants = await db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active && tenantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, context.RequestAborted);
             return ApiProblems.Of(context, "TENANT_SELECTION_REQUIRED", "Devam etmek için bir çalışma alanı seçin.", 409, new Dictionary<string, object?> { ["tenants"] = memberships.Select(x => new { id = x.TenantId, displayName = tenants.GetValueOrDefault(x.TenantId)?.DisplayName ?? x.TenantId.ToString("D") }).ToList() });
         }
-        var raw = TokenHasher.NewToken(); var now = time.GetUtcNow();
-        db.UserSessions.Add(new UserSession { Id = Guid.NewGuid(), UserId = user.Id, TenantId = membership.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
+        var raw = TokenHasher.NewToken(); var sessionId = Guid.NewGuid();
+        AuthAudit.Record(db, context, AuthAudit.LoginSucceeded, user.Id, membership.TenantId, $"state={SessionStateWire(state)}", now, sessionId);
+        db.UserSessions.Add(new UserSession { Id = sessionId, UserId = user.Id, TenantId = membership.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
         user.LastLoginAt = now; await db.SaveChangesAsync(context.RequestAborted);
         SetSessionCookie(context.Response, raw, now.AddHours(12));
         return Results.Ok(new { state = SessionStateWire(state) });
@@ -71,7 +87,12 @@ public static class AuthEndpoints
 
     private static async Task<IResult> LogoutAsync(HttpContext context, AppDbContext db, TimeProvider time)
     {
-        if (CurrentSession(context) is { } session) { session.State = SessionState.Revoked; session.RevokedAt = time.GetUtcNow(); await db.SaveChangesAsync(context.RequestAborted); }
+        if (CurrentSession(context) is { } session)
+        {
+            session.State = SessionState.Revoked; session.RevokedAt = time.GetUtcNow();
+            AuthAudit.Record(db, context, AuthAudit.SessionRevoked, session.UserId, session.TenantId, "logout", session.RevokedAt.Value, session.Id);
+            await db.SaveChangesAsync(context.RequestAborted);
+        }
         context.Response.Cookies.Delete(SessionAuthMiddleware.CookieName(context), new CookieOptions { Secure = SecureCookie(context), Path = "/" });
         return Results.NoContent();
     }
@@ -85,7 +106,13 @@ public static class AuthEndpoints
         if (session.TenantId is Guid currentTenantId && !await HasActiveTenantMembershipAsync(db, user.Id, currentTenantId, context.RequestAborted))
             return Problem("TENANT_NOT_AVAILABLE", "Aktif çalışma alanı bulunamadı.", 403);
         var result = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
-        if (!result.Succeeded) return ApiProblems.Of(context, new("PASSWORD_CHANGE_FAILED", "Parola değiştirilemedi; mevcut parolayı ve yeni parola kurallarını kontrol edin.", 400, result.Errors.ToDictionary(x => x.Code, x => new[] { x.Description })));
+        if (!result.Succeeded)
+        {
+            AuthAudit.Record(db, context, AuthAudit.PasswordChangeFailed, user.Id, session.TenantId, string.Join(',', result.Errors.Select(x => x.Code)), time.GetUtcNow(), session.Id);
+            await db.SaveChangesAsync(context.RequestAborted);
+            return ApiProblems.Of(context, new("PASSWORD_CHANGE_FAILED", "Parola değiştirilemedi; mevcut parolayı ve yeni parola kurallarını kontrol edin.", 400, result.Errors.ToDictionary(x => x.Code, x => new[] { x.Description })));
+        }
+        AuthAudit.Record(db, context, AuthAudit.PasswordChanged, user.Id, session.TenantId, "other-sessions-revoked", time.GetUtcNow(), session.Id);
         user.ForcePasswordChange = false; user.SessionVersion++;
         await db.UserSessions.Where(x => x.UserId == user.Id && x.Id != session.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
@@ -104,10 +131,11 @@ public static class AuthEndpoints
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
         var user = await users.FindByIdAsync(session.UserId.ToString());
-        if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return Problem("REAUTHENTICATION_FAILED", "Parola doğrulanamadı.", 401);
+        if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return await PasswordRecheckFailedAsync(session, user, users, db, context, time);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
-            return Problem("SECOND_FACTOR_FAILED", "İkinci doğrulama kodu kabul edilmedi.", 401);
+            return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
+        MfaAttemptPolicy.RegisterSuccess(session);
         session.ReauthenticatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(context.RequestAborted);
         return Results.Ok(new { reauthenticatedAt = session.ReauthenticatedAt });
@@ -179,15 +207,19 @@ public static class AuthEndpoints
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
         security.TotpState = TotpState.Enabled; security.ProtectedTotpSecret = pendingSecret; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = step; security.Version++;
         session.ReauthenticatedAt = time.GetUtcNow();
+        AuthAudit.Record(db, context, AuthAudit.MfaEnabled, session.UserId, session.TenantId, "totp", time.GetUtcNow(), session.Id);
         var codes = ReplaceRecoveryCodes(db, security, hasher, time.GetUtcNow()); await db.SaveChangesAsync(context.RequestAborted); await transaction.CommitAsync(context.RequestAborted);
         return Results.Ok(new { recoveryCodes = codes });
     }
 
-    private static async Task<IResult> MfaChallengeAsync(CodeRequest request, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+    private static async Task<IResult> MfaChallengeAsync(CodeRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.MfaChallenge); if (session is null) return Forbidden();
         if (session.TenantId is Guid currentTenantId && !await HasActiveTenantMembershipAsync(db, session.UserId, currentTenantId, context.RequestAborted))
             return Problem("TENANT_NOT_AVAILABLE", "Aktif çalışma alanı bulunamadı.", 403);
+        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null) return Forbidden();
+        // An account locked meanwhile (wrong passwords or codes elsewhere) cannot finish signing in.
+        if (await users.IsLockedOutAsync(user)) return await EndSessionAfterFailuresAsync(session, db, context, time, "account-locked-out");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var accepted = false;
         if (request.RecoveryCode is { Length: > 0 })
@@ -207,25 +239,32 @@ public static class AuthEndpoints
                 accepted = updated == 1;
             }
         }
-        if (!accepted) return Problem("MFA_CHALLENGE_INVALID", "Doğrulama kodu veya kurtarma kodu geçersiz.", 400);
+        if (!accepted)
+            return await SecondFactorFailedAsync(session, user, users, db, context, time, request.RecoveryCode is { Length: > 0 } ? "recovery-code" : "totp",
+                Problem("MFA_CHALLENGE_INVALID", "Doğrulama kodu veya kurtarma kodu geçersiz.", 400));
         if (session.TenantId is null)
         {
             var membership = await ActiveTenantMemberships(db, session.UserId).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
             if (membership is null) return Problem("TENANT_NOT_AVAILABLE", "Aktif çalışma alanı bulunamadı.", 403);
             session.TenantId = membership.TenantId;
         }
+        MfaAttemptPolicy.RegisterSuccess(session);
+        await users.ResetAccessFailedCountAsync(user);
         session.State = SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow();
+        AuthAudit.Record(db, context, AuthAudit.MfaSucceeded, session.UserId, session.TenantId, request.RecoveryCode is { Length: > 0 } ? "recovery-code" : "totp", session.ReauthenticatedAt.Value, session.Id);
         await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
     private static async Task<IResult> MfaDisableAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
-        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return Problem("REAUTHENTICATION_FAILED", "Parola doğrulanamadı.", 401);
+        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return await PasswordRecheckFailedAsync(session, user, users, db, context, time);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
-            return Problem("SECOND_FACTOR_FAILED", "İkinci doğrulama kodu kabul edilmedi.", 401);
+            return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
+        MfaAttemptPolicy.RegisterSuccess(session);
         session.ReauthenticatedAt = time.GetUtcNow();
+        AuthAudit.Record(db, context, AuthAudit.MfaDisabled, user.Id, session.TenantId, "other-sessions-revoked", session.ReauthenticatedAt.Value, session.Id);
         security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null; security.Version++;
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         user.SessionVersion++; session.SessionVersion = user.SessionVersion;
@@ -236,11 +275,13 @@ public static class AuthEndpoints
     private static async Task<IResult> RecoveryRegenerateAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
-        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return Problem("REAUTHENTICATION_FAILED", "Parola doğrulanamadı.", 401);
+        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return await PasswordRecheckFailedAsync(session, user, users, db, context, time);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted); if (security.TotpState != TotpState.Enabled) return Problem("MFA_NOT_ENABLED", "İki adımlı doğrulama açık değil.", 409);
         if (!await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
-            return Problem("SECOND_FACTOR_FAILED", "İkinci doğrulama kodu kabul edilmedi.", 401);
+            return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
+        MfaAttemptPolicy.RegisterSuccess(session);
         session.ReauthenticatedAt = time.GetUtcNow();
+        AuthAudit.Record(db, context, AuthAudit.RecoveryCodesRegenerated, user.Id, session.TenantId, "previous-codes-invalidated", session.ReauthenticatedAt.Value, session.Id);
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         var codes = ReplaceRecoveryCodes(db, security, hasher, time.GetUtcNow()); await db.SaveChangesAsync(context.RequestAborted); await transaction.CommitAsync(context.RequestAborted);
@@ -251,13 +292,17 @@ public static class AuthEndpoints
     {
         var current = RequireSession(context, SessionState.Active); if (current is null) return Forbidden();
         var target = await db.UserSessions.SingleOrDefaultAsync(x => x.Id == id && x.UserId == current.UserId, context.RequestAborted); if (target is null) return ApiProblems.NotFound(context, "Oturum bulunamadı.");
-        target.State = SessionState.Revoked; target.RevokedAt = time.GetUtcNow(); await db.SaveChangesAsync(context.RequestAborted); return Results.NoContent();
+        target.State = SessionState.Revoked; target.RevokedAt = time.GetUtcNow();
+        AuthAudit.Record(db, context, AuthAudit.SessionRevoked, current.UserId, current.TenantId, target.Id == current.Id ? "current-session" : "by-user", target.RevokedAt.Value, target.Id);
+        await db.SaveChangesAsync(context.RequestAborted); return Results.NoContent();
     }
 
     private static async Task<IResult> RevokeOthersAsync(HttpContext context, AppDbContext db, TimeProvider time)
     {
         var current = RequireSession(context, SessionState.Active); if (current is null) return Forbidden();
-        await db.UserSessions.Where(x => x.UserId == current.UserId && x.Id != current.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
+        var revoked = await db.UserSessions.Where(x => x.UserId == current.UserId && x.Id != current.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
+        AuthAudit.Record(db, context, AuthAudit.OtherSessionsRevoked, current.UserId, current.TenantId, $"count={revoked}", time.GetUtcNow(), current.Id);
+        await db.SaveChangesAsync(context.RequestAborted);
         return Results.NoContent();
     }
 
@@ -279,6 +324,44 @@ public static class AuthEndpoints
             .ExecuteDeleteAsync(context.RequestAborted);
         return Results.NoContent();
     }
+
+    // A wrong TOTP or recovery code counts in the session (the fifth ends it) and towards the account
+    // lockout. A sign-in still at the MFA step also ends when the account gets locked.
+    private static async Task<IResult> SecondFactorFailedAsync(UserSession session, ApplicationUser user, UserManager<ApplicationUser> users, AppDbContext db, HttpContext context, TimeProvider time, string method, IResult? refusal = null)
+    {
+        var now = time.GetUtcNow();
+        var challenge = session.State == SessionState.MfaChallenge;
+        await users.AccessFailedAsync(user);
+        var lockedOut = await users.IsLockedOutAsync(user);
+        var ended = MfaAttemptPolicy.RegisterFailure(session, now);
+        AuthAudit.Record(db, context, AuthAudit.MfaFailed, session.UserId, session.TenantId, $"{method}; attempt={session.MfaFailedAttempts}", now, session.Id);
+        if (lockedOut) AuthAudit.Record(db, context, AuthAudit.AccountLockedOut, session.UserId, session.TenantId, "failed-second-factor", now);
+        if (ended || lockedOut && challenge) return await EndSessionAfterFailuresAsync(session, db, context, time, ended ? "too-many-second-factor-failures" : "account-locked-out");
+        await db.SaveChangesAsync(CancellationToken.None);
+        return refusal ?? Problem("SECOND_FACTOR_FAILED", "İkinci doğrulama kodu kabul edilmedi.", 401);
+    }
+
+    private static async Task<IResult> EndSessionAfterFailuresAsync(UserSession session, AppDbContext db, HttpContext context, TimeProvider time, string reason)
+    {
+        var now = time.GetUtcNow();
+        MfaAttemptPolicy.Revoke(session, now);
+        AuthAudit.Record(db, context, AuthAudit.SessionRevoked, session.UserId, session.TenantId, reason, now, session.Id);
+        await db.SaveChangesAsync(CancellationToken.None);
+        context.Response.Cookies.Delete(SessionAuthMiddleware.CookieName(context), new CookieOptions { Secure = SecureCookie(context), Path = "/" });
+        return Problem("MFA_ATTEMPTS_EXCEEDED", "Doğrulama tamamlanamadı ve oturum kapatıldı; yeniden giriş yapın.", 401);
+    }
+
+    // PasswordCheck already counted the wrong password towards the lockout.
+    private static async Task<IResult> PasswordRecheckFailedAsync(UserSession session, ApplicationUser? user, UserManager<ApplicationUser> users, AppDbContext db, HttpContext context, TimeProvider time)
+    {
+        var now = time.GetUtcNow();
+        AuthAudit.Record(db, context, AuthAudit.ReauthenticationFailed, session.UserId, session.TenantId, "password", now, session.Id);
+        if (user is not null && await users.IsLockedOutAsync(user)) AuthAudit.Record(db, context, AuthAudit.AccountLockedOut, session.UserId, session.TenantId, "failed-reauthentication", now);
+        await db.SaveChangesAsync(CancellationToken.None);
+        return Problem("REAUTHENTICATION_FAILED", "Parola doğrulanamadı.", 401);
+    }
+
+    private static string SecondFactorMethod(ReauthenticateRequest request) => string.IsNullOrWhiteSpace(request.RecoveryCode) ? "totp" : "recovery-code";
 
     private static async Task<bool> ValidateSecondFactorAsync(ReauthenticateRequest request, Guid userId, UserSecurity security, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
