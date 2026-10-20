@@ -20,7 +20,7 @@ vi.mock('../../shared/api', async importOriginal => ({
   }),
 }))
 
-import { ShipmentDetailPage } from './pages'
+import { ShipmentDetailPage } from './orders/ShipmentPages'
 
 beforeEach(() => { api.calls = []; api.release = null; api.platformCode = 'TRENDYOL'; api.allowedActions = [] })
 afterEach(cleanup)

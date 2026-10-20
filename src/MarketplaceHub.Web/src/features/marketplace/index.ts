@@ -1,1 +1,5 @@
-export * from './pages'
+export * from './orders/OrdersPage'
+export * from './orders/ShipmentPages'
+export * from './returns/ReturnPages'
+export * from './integrations/IntegrationPages'
+export * from './mappings/MappingPages'

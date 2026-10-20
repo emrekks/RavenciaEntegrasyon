@@ -1,0 +1,19 @@
+/* Finishing touches for the mappings page; loaded after its own sheets so they win ties, as before the route split. */
+/* Attribute library rows: the actions have no fill or frame; they only light up on hover. */
+.app-shell.stitch-shell main .panel-attribute-record-actions > button {
+  background: none;
+  border-color: transparent;
+}
+.app-shell.stitch-shell main .panel-attribute-record-actions > .panel-attribute-category-button {
+  color: var(--rv-color-primary);
+  font-weight: 600;
+}
+.app-shell.stitch-shell main .panel-attribute-record-actions > button:hover:not(:disabled),
+.app-shell.stitch-shell main .panel-attribute-record-actions > button:focus-visible {
+  background: var(--rv-color-surface-soft);
+  border-color: var(--rv-color-border);
+}
+
+/* Attribute library: "Kategoriler" reads as a real button; edit and delete stay quiet icons. */
+.app-shell.stitch-shell main .panel-attribute-record-actions > .panel-attribute-category-button { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); font-weight: 600; }
+.app-shell.stitch-shell main .panel-attribute-record-actions > .panel-attribute-category-button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border-color: var(--rv-color-primary); }

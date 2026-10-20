@@ -19,7 +19,7 @@ vi.mock('../../shared/api', async importOriginal => ({
   }),
 }))
 
-import { ShipmentsPage } from './pages'
+import { ShipmentsPage } from './orders/ShipmentPages'
 
 beforeEach(() => { api.paths = [] })
 afterEach(cleanup)
