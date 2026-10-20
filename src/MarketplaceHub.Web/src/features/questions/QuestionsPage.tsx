@@ -120,8 +120,14 @@ function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, prod
   const [sourceIndex, setSourceIndex] = useState(0)
   useEffect(() => setSourceIndex(0), [sourceKey])
   const imageUrl = sources[sourceIndex]
+  const [zoomed, setZoomed] = useState(false)
+  // The thumbnail opens a large copy (the marketplace's original where there is one) in a window.
+  const largeUrl = src && imageUrl === thumbnailUrl(src) ? src : imageUrl
   return imageUrl
-    ? <img src={imageUrl} alt={`${productName} görseli`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setSourceIndex(current => current === sourceIndex ? current + 1 : current)} />
+    ? <>
+      <button type="button" className="qi-product-zoom" onClick={() => setZoomed(true)} aria-label={`${productName} görselini büyüt`} title="Görseli büyüt"><img src={imageUrl} alt={`${productName} görseli`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setSourceIndex(current => current === sourceIndex ? current + 1 : current)} /></button>
+      <Modal open={zoomed} title={productName} className="qi-image-modal" onClose={() => setZoomed(false)}><img className="qi-image-large" src={largeUrl} alt={`${productName} büyük görseli`} referrerPolicy="no-referrer" /></Modal>
+    </>
     : <span className="rv-question-product-placeholder" aria-label="Ürün görseli bulunamadı"><UiIcon name="image" size={20} /></span>
 }
 

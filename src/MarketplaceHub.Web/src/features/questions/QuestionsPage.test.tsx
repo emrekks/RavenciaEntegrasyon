@@ -399,8 +399,17 @@ describe('QuestionsPage workspace flows', () => {
     expect(toast?.textContent).toContain('İşlem Başarısız')
   })
 
+  it('keeps a reported Hepsiburada question and an expired rejection closed', async () => {
+    apiState.detail = { ...createQuestion(), platformCode: 'HEPSIBURADA', status: 'REJECTED', expiresAt: new Date(Date.now() + 86_400_000).toISOString() }
+    await renderPage()
+
+    expect(container.querySelector('.qi-composer')).toBeNull()
+    expect(container.querySelector('.qi-closed')?.textContent).toContain('Pazaryerince kapatıldı')
+  })
+
   it('lets a rejected answer be written again and shows why it was rejected', async () => {
-    apiState.detail = { ...createQuestion(), status: 'REJECTED' }
+    // A Trendyol rejection may be rewritten until the question expires.
+    apiState.detail = { ...createQuestion(), status: 'REJECTED', expiresAt: new Date(Date.now() + 86_400_000).toISOString() }
     await renderPage()
 
     expect(container.querySelector('.qi-composer')).not.toBeNull()

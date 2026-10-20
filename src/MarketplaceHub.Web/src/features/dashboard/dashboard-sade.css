@@ -7,7 +7,16 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header h2 { font-size: 15px; font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header p { color: var(--rr-muted); font-size: 13px; }
+/* The page column is the page's width: a wide block (the integration matrix) scrolls inside itself instead of pushing
+   the whole page past the screen's right edge (narrow desktop windows, 20 Oct 2026). */
+main .rr.rr-dashboard { grid-template-columns: minmax(0, 1fr); }
+main .rr.rr-dashboard > * { min-width: 0; }
+/* Six operation cards: one row where the section has room for six, otherwise two rows of three. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect { container-type: inline-size; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@container (min-width: 960px) {
+  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; color: var(--rr-ink); text-decoration: none; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rr-hover); border-color: var(--rr-line-strong); }
@@ -109,7 +118,7 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm .rr-ends span + span { text-align: right; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm .rr-ends small { color: var(--rr-subtle); font-size: 11.5px; white-space: nowrap; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm .rr-ends b { color: var(--rr-muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxwrap { border-top: 1px solid var(--rr-line); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxwrap { border-top: 1px solid var(--rr-line); overflow-x: auto; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt th { padding: 9px 12px; color: var(--rr-muted); font-size: 12px; font-weight: 500; text-align: left; background: var(--rr-raised); border-bottom: 1px solid var(--rr-line); white-space: nowrap; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt td { padding: 11px 12px; border-bottom: 1px solid var(--rr-line); vertical-align: middle; }
