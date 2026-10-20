@@ -57,7 +57,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // no data sync or marketplace operation may execute while it is passive.
         if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
-        var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
+        var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken, payloadJson);
         if (syncLock is null)
         {
             // Scheduled duplicates may coalesce, but another job cannot satisfy
@@ -150,14 +150,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (exception.Result.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
                 else telemetryFailedCount++;
-                if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, false, exception.Result.ErrorCode, cancellationToken);
+                if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, exception.Result.ErrorCode, cancellationToken);
                 return exception.Result;
             }
             catch (Exception exception)
             {
                 telemetryFailedCount++;
                 telemetryRetryCount++;
-                if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, false, exception.GetType().Name, cancellationToken);
+                if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, exception.GetType().Name, cancellationToken);
                 throw;
             }
         }
@@ -233,6 +233,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         cursor.LastAttemptAt = timeProvider.GetUtcNow();
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // On the failure path the telemetry write must not replace the job's own failure: when the database
+    // connection itself broke, writing the cursor fails too and that second error would hide the first.
+    private async Task TryRecordFailedSyncCompletion(Guid tenantId, Guid connectionId, string resourceType, TimeSpan duration, string? error, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RecordSyncCompletion(tenantId, connectionId, resourceType, duration, false, error, cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Telemetry only; the original failure is what the job reports.
+            db.ChangeTracker.Clear();
+        }
     }
 
     private async Task RecordSyncCompletion(Guid tenantId, Guid connectionId, string resourceType, TimeSpan duration, bool succeeded, string? error, CancellationToken cancellationToken)
@@ -2061,18 +2076,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .SingleOrDefaultAsync(cancellationToken) ?? DefaultOrderSyncOverlapSeconds;
         var overlap = TimeSpan.FromSeconds(Math.Clamp(overlapSeconds, 0, 86_399));
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
-        var forceBaseline = allowBaseline && (full || !hasSnapshots || retryAfterFailure);
-        HepsiburadaOrderSyncState? state = null;
-        if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
-        {
-            try
-            {
-                var saved = JsonSerializer.Deserialize<HepsiburadaOrderSyncState>(cursor.OpaqueCursor);
-                if (saved is { Version: HepsiburadaOrderSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) state = saved;
-            }
-            catch (JsonException) { }
-        }
+        // A failed run does not force a new baseline: the saved window state and the watermark are only
+        // advanced after a page is stored, so the next run resumes where the failure stopped it.
+        var forceBaseline = allowBaseline && (full || !hasSnapshots);
+        var state = ReadHepsiburadaOrderSyncState(cursor.OpaqueCursor, now, forceBaseline);
         if (state is null)
         {
             var anchor = now;
@@ -2131,11 +2138,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.OpaqueCursor = JsonSerializer.Serialize(state);
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
+            // Each finished day window releases the lane and the job's timeout: a month-long read would
+            // otherwise not fit one run, time out, restart and never finish.
+            if (state.Offset == 0 && HepsiburadaWindowRemains(state))
+                throw new JobProcessingException(JobExecutionResult.Continue("Hepsiburada sipariş okumasının sonraki günü birkaç saniye içinde okunacak."));
         }
     }
 
     private const string HepsiburadaOrderSyncStateVersion = "hepsiburada-orders-v2";
-    private sealed record HepsiburadaOrderSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
+    internal sealed record HepsiburadaOrderSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
+
+    internal static bool HepsiburadaWindowRemains(HepsiburadaOrderSyncState state) =>
+        state.AnchorEnd.AddDays(-state.WindowIndex) > state.StartAt;
+
+    // A saved state continues a run under way. When a baseline is asked for (a full read, an empty store),
+    // only a baseline that is itself under way and less than a day old continues; restarting it would read
+    // its first windows forever. Anything else starts afresh.
+    internal static HepsiburadaOrderSyncState? ReadHepsiburadaOrderSyncState(string? opaqueCursor, DateTimeOffset now, bool forceBaseline)
+    {
+        if (string.IsNullOrWhiteSpace(opaqueCursor)) return null;
+        try
+        {
+            var saved = JsonSerializer.Deserialize<HepsiburadaOrderSyncState>(opaqueCursor);
+            if (saved is not { Version: HepsiburadaOrderSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) return null;
+            if (!forceBaseline) return saved;
+            var isBaseline = saved.StartAt <= HepsiburadaOrderHistoryPolicy.InitialWindowStart(saved.AnchorEnd);
+            return isBaseline && now - saved.AnchorEnd < TimeSpan.FromDays(1) ? saved : null;
+        }
+        catch (JsonException) { return null; }
+    }
 
     private async Task<bool> SyncHepsiburadaPackages(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
@@ -2421,10 +2452,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // an older cursor survived the reset. This keeps the first import idempotent
         // without requiring any direct database mutation.
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        // Recovery is the safety net after an interrupted/auth-failed sync.
-        // Do not let a stale successful watermark turn the first healthy run
-        // into a narrow incremental read that permanently misses the gap.
-        var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
+        // A failed run does not force a three-month baseline: the watermark only moves once a run
+        // completes, so the next incremental read starts before the gap the failure left.
         var storefrontCursor = await Cursor(tenantId, connectionId, TrendyolStorefrontPolicy.CursorResource, cancellationToken);
         var storefrontActivity = ReadStorefrontActivity(storefrontCursor);
         void NoteStorefront(string code, TrendyolStorefrontActivity seen)
@@ -2433,7 +2462,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             storefrontCursor.OpaqueCursor = JsonSerializer.Serialize(storefrontActivity);
             storefrontCursor.Version++;
         }
-        var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots || retryAfterFailure),
+        var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots),
             activeStorefronts: TrendyolStorefrontPolicy.Active(TrendyolReadStorefronts.Codes, storefrontActivity, now),
             readableStorefronts: TrendyolStorefrontPolicy.Readable(TrendyolReadStorefronts.Codes, storefrontActivity, now));
         var resetExpiredCursor = false;
@@ -2528,13 +2557,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await db.SaveChangesAsync(cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
 
-        // An order this poll had to insert while notifications are on, and that was old enough for its
-        // notification to have come, is one the notifications missed.
-        var missedOrderCutoff = WebhookPollingPolicy.MissedOrderCutoff(now, TimeSpan.FromHours(3));
-        if (completed && telemetryInsertedCount > insertedBeforePoll
-            && await db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId
-                && order.CreatedAt >= now && order.OrderedAt <= missedOrderCutoff, cancellationToken))
-            await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);
+        // An order this poll had to insert while notifications are on, that was old enough for its
+        // notification to have come and was placed before the notifications' last delivery, is one the
+        // notifications missed. Orders placed while nothing was delivered (the server was off at night,
+        // the webhook passive) are an outage the silence rule covers, not a miss.
+        if (completed && telemetryInsertedCount > insertedBeforePoll)
+        {
+            var lastNotificationAt = await db.WebhookSubscriptions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+                .MaxAsync(x => x.LastReceivedAt, cancellationToken);
+            if (WebhookPollingPolicy.MissedOrderCutoff(now, TimeSpan.FromHours(3), lastNotificationAt) is { } missedOrderCutoff
+                && await db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId
+                    && order.CreatedAt >= now && order.OrderedAt <= missedOrderCutoff, cancellationToken))
+                await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);
+        }
 
         // A full scan already read every storefront; an incremental run probes at most one
         // inactive storefront over the time since its last probe.
@@ -2862,6 +2898,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
+    private const string HepsiburadaLifecycleCursorPrefix = "after:";
+
+    internal static string HepsiburadaLifecycleCursor(string lastSeenOrderId) => HepsiburadaLifecycleCursorPrefix + lastSeenOrderId;
+
+    // An older numeric offset cursor (or none) starts the scan from the first order.
+    internal static string? HepsiburadaLifecycleLastSeen(string? opaqueCursor) =>
+        opaqueCursor is { Length: > 6 } saved && saved.StartsWith(HepsiburadaLifecycleCursorPrefix, StringComparison.Ordinal)
+            ? saved[HepsiburadaLifecycleCursorPrefix.Length..]
+            : null;
+
     private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
@@ -2898,20 +2944,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                             && package.ConnectionId == connectionId
                             && package.OrderId == order.Id))));
 
-            var lifecycleOffset = int.TryParse(cursor.OpaqueCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var savedOffset)
-                ? Math.Max(0, savedOffset)
-                : 0;
-            externalOrderIds = await lifecycleOrders
+            // Keyset paging: the set shrinks as packages are delivered, so an offset would skip the orders
+            // that slid into the pages already read. The cursor keeps the last order id read instead.
+            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(cursor.OpaqueCursor);
+            var lifecyclePage = lastSeenOrderId is null
+                ? lifecycleOrders
+                : lifecycleOrders.Where(order => string.Compare(order.ExternalOrderId, lastSeenOrderId) > 0);
+            externalOrderIds = await lifecyclePage
                 .OrderBy(order => order.ExternalOrderId)
                 .Select(order => order.ExternalOrderId)
-                .Skip(lifecycleOffset)
                 .Take(lifecycleBatchSize)
                 .ToListAsync(cancellationToken);
-            if (externalOrderIds.Count == 0 && lifecycleOffset > 0)
+            if (externalOrderIds.Count == 0 && lastSeenOrderId is not null)
             {
                 // Wrap to the first page so the lifecycle scan keeps polling
                 // when a status request fails or an order has no new package.
-                lifecycleOffset = 0;
                 externalOrderIds = await lifecycleOrders
                     .OrderBy(order => order.ExternalOrderId)
                     .Select(order => order.ExternalOrderId)
@@ -2919,7 +2966,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     .ToListAsync(cancellationToken);
             }
             cursor.OpaqueCursor = externalOrderIds.Count == lifecycleBatchSize
-                ? (lifecycleOffset + externalOrderIds.Count).ToString(CultureInfo.InvariantCulture)
+                ? HepsiburadaLifecycleCursor(externalOrderIds[^1])
                 : null;
             // Orders Hepsiburada lists as cancelled but the panel does not are read again now.
             foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, cancellationToken))
@@ -7728,7 +7775,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var packageObservation = remotePackage with { Allocations = packageAllocations };
             if (package is not null) await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
-            var eventAlreadyRecorded = knownEventIds.Contains(eventId);
+            // An observation that left the status unchanged writes no history row (below); its replay is still
+            // known as applied by the line allocations it stored under the same event id.
+            var eventAlreadyRecorded = knownEventIds.Contains(eventId)
+                || package is not null && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal)
+                    && allocationsByKey.Values.Any(allocation => allocation.PackageId == package.Id && allocation.SourceEventId == eventId);
             if (eventAlreadyRecorded)
             {
                 // Shopify can enrich the same fulfillment event later with
@@ -7814,13 +7865,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     remotePackage.OccurredAt,
                     remotePackage.IsStatusObservation)
                 : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt));
+            // A newer modification date with the same status is not a status change: no history row for it.
+            var statusUnchanged = package is not null && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal);
             if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
-                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
+                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
         }

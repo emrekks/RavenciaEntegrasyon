@@ -6,6 +6,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // An operational issue that has not been seen for a month no longer describes the live system (the
 // product mapping it named was fixed, the order it named was delivered), yet it stayed open and buried
 // the live ones. Such issues are resolved; the next occurrence reopens the same record.
+// Resolved issues not seen for a month are deleted: many issue keys carry an event id or a timestamp,
+// so they would otherwise pile up forever.
 public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvider timeProvider)
 {
     public static readonly TimeSpan DefaultStaleAfter = TimeSpan.FromDays(30);
@@ -16,5 +18,13 @@ public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvid
         return await db.OperationalIssues
             .Where(issue => issue.Status == IssueStatus.Open && issue.LastSeenAt < cutoff)
             .ExecuteUpdateAsync(setters => setters.SetProperty(issue => issue.Status, IssueStatus.Resolved), cancellationToken);
+    }
+
+    public async Task<int> DeleteResolvedAsync(TimeSpan retention, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow() - retention;
+        return await db.OperationalIssues
+            .Where(issue => issue.Status == IssueStatus.Resolved && issue.LastSeenAt < cutoff)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 }

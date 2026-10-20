@@ -74,6 +74,8 @@ internal static class MarketplaceModelConfiguration
             entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.ExternalOrderId).HasMaxLength(256); entity.Property(x => x.OrderNumber).HasMaxLength(160); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.Property(x => x.GrossAmount).HasPrecision(19, 4); entity.Property(x => x.DiscountAmount).HasPrecision(19, 4); entity.Property(x => x.NetAmount).HasPrecision(19, 4); entity.Property(x => x.DerivedStatus).HasMaxLength(48); entity.Property(x => x.StoreFrontCode).HasMaxLength(8); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalOrderId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.OrderedAt, x.Id }); entity.HasIndex(x => new { x.TenantId, x.ShipmentDueAt, x.OrderedAt, x.Id });
+            // "Did an order of this connection arrive since ..." (webhook health, missed-order check) every scheduler pass.
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.CreatedAt });
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<OrderLine>(entity =>

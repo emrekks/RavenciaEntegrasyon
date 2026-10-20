@@ -622,6 +622,17 @@ public static class WebhookPollingPolicy
 
     // Trendyol order times are stored as Turkey wall time (three hours ahead of UTC), so the cut-off moves with them.
     public static DateTimeOffset MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead) => now - DeliveryGrace + storedClockAhead;
+
+    // Only an order placed before the notifications' last delivery is a miss: notifications arrived after it,
+    // yet not its own. Orders placed while nothing was delivered (the server was shut for the night, the
+    // webhook passive) are an outage, which the silence rule judges; counting them would spend one of the
+    // day's two allowed misses every morning. Without any delivery yet nothing counts as missed.
+    public static DateTimeOffset? MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead, DateTimeOffset? lastReceivedAt)
+    {
+        if (lastReceivedAt is not { } lastDelivery) return null;
+        var cutoff = now - DeliveryGrace;
+        return (lastDelivery < cutoff ? lastDelivery : cutoff) + storedClockAhead;
+    }
 }
 
 // A connection whose credentials were just entered or renewed is a draft until a test passes. When that test fails
@@ -640,8 +651,27 @@ public static class ConnectionRetestPolicy
             || errorCode.EndsWith("_NETWORK_ERROR", StringComparison.Ordinal)
             || errorCode is "REMOTE_TIMEOUT" or "REMOTE_UNAVAILABLE" or "REMOTE_RATE_LIMITED");
 
-    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now) =>
-        status == "DRAFT" && lastTestedAt is { } tested && IsTransient(lastErrorCode) && now - tested >= Interval;
+    // A marketplace's identity service can refuse good credentials while it is itself failing (Pazarama answered
+    // "Oturum bilgileriniz alınamadı" with HTTP 400 during a Cloudflare outage). Such a refusal is retried once an
+    // hour, but only while the credential the test used is still the active one and for at most a day after it was
+    // saved (the first refusal follows its save); after that the seller has to look at the credentials.
+    public static readonly TimeSpan AuthRefusalInterval = TimeSpan.FromHours(1);
+    public static readonly TimeSpan AuthRefusalWindow = TimeSpan.FromHours(24);
+
+    public static bool IsAuthRefusal(string? errorCode) =>
+        errorCode is not null && (errorCode.EndsWith("_CREDENTIALS_REJECTED", StringComparison.Ordinal)
+            || errorCode.EndsWith("_ACCESS_DENIED", StringComparison.Ordinal)
+            || errorCode is "CREDENTIALS_REJECTED" or "ACCESS_DENIED");
+
+    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now, DateTimeOffset? credentialSavedAt = null)
+    {
+        if (status != "DRAFT" || lastTestedAt is not { } tested) return false;
+        if (IsTransient(lastErrorCode)) return now - tested >= Interval;
+        return IsAuthRefusal(lastErrorCode)
+            && credentialSavedAt is { } saved && saved <= tested
+            && now - saved < AuthRefusalWindow
+            && now - tested >= AuthRefusalInterval;
+    }
 }
 
 public enum EffectVerdict { Applied, NotApplied, Unknown }

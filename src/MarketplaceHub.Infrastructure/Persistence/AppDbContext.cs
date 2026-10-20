@@ -342,6 +342,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("inbox_messages", "integration"); entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.TenantId, x.Source, x.ExternalMessageId }).IsUnique();
+            // The hourly retention deletes processed rows older than a month.
+            entity.HasIndex(x => x.ProcessedAt).HasFilter("\"ProcessedAt\" IS NOT NULL");
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ExternalEffectRecord>(entity =>

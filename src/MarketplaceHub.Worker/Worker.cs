@@ -20,6 +20,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private static readonly string[] ReturnReadJobTypes =
         [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
     private static readonly string[] ProductCatalogSyncJobTypes = [.. MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.ProductCatalogSyncJobTypes];
+    // Trendyol's open-package scan can run for twenty minutes; it has its own slot so webhooks, new-order
+    // reads and user writes in the hot lane never wait behind it.
+    internal static readonly string[] OrderStatusLaneJobTypes = [MarketplaceJobTypes.OrderStatusSync];
+    internal static readonly string[] HotLaneExcludedJobTypes = [.. HepsiburadaOrderJobTypes, .. PazaramaOrderJobTypes, .. ReturnReadJobTypes, .. OrderStatusLaneJobTypes];
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
     private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
@@ -55,8 +59,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var loops = new List<Task>();
         // Jobs a user waits for (JobPriorityPolicy.UserAction) never queue behind syncs.
         loops.AddRange(Lane("user", 2, slot => RunLeaseLaneAsync(slot, JobPriorityPolicy.UserAction, null, stoppingToken)));
-        loops.AddRange(Lane("hot", 3, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, excludedJobTypes: [.. HepsiburadaOrderJobTypes, .. PazaramaOrderJobTypes, .. ReturnReadJobTypes])));
-        loops.AddRange(Lane("returns-read", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes)));
+        loops.AddRange(Lane("hot", 3, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, excludedJobTypes: HotLaneExcludedJobTypes)));
+        loops.AddRange(Lane("order-status", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, includedJobTypes: OrderStatusLaneJobTypes)));
+        loops.AddRange(Lane("returns-read", 2, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes)));
         loops.AddRange(Lane("product-catalog", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ProductCatalogSyncJobTypes)));
         loops.AddRange(Lane("hepsiburada-status", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, MarketplaceJobTypes.HepsiburadaOrderStatusSync)));
         loops.AddRange(Lane("hepsiburada-orders", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, includedJobTypes: HepsiburadaOrderJobTypes)));
@@ -67,6 +72,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         loops.Add(RunLeaseReaperAsync(stoppingToken));
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
+        if (schedulerEnabled) loops.Add(RunPolicyMaintenanceAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:JobRetention:Enabled", true)) loops.Add(RunJobRetentionAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:IssueRetention:Enabled", true)) loops.Add(RunIssueRetentionAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
@@ -113,6 +119,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
             var reaped = await jobs.ReapExpiredAsync(cancellationToken);
             var producer = scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>();
+            if (producer is ScheduledJobProducer maintenance) await maintenance.MaintainPoliciesAsync(includeDefaults: true, cancellationToken);
             var scheduled = await producer.EnqueueDueAsync(cancellationToken);
             TouchHealthFile();
             logger.LogInformation("Worker startup recovery completed; reaped {ReapedJobs} expired jobs and enqueued {ScheduledJobs} due jobs", reaped, scheduled);
@@ -142,6 +149,34 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (!stoppingToken.IsCancellationRequested)
                 await Task.Delay(schedulerScanInterval, stoppingToken);
         }
+    }
+
+    // The policy passes (default upgrades, switching off product and write automation) do not need to run
+    // every scheduler tick: they run every five minutes, the default upgrades once an hour. The startup
+    // recovery runs them all once before the first scheduling pass.
+    private async Task RunPolicyMaintenanceAsync(CancellationToken stoppingToken)
+    {
+        var lastDefaultsPass = DateTimeOffset.UtcNow;
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                try
+                {
+                    var includeDefaults = DateTimeOffset.UtcNow - lastDefaultsPass >= TimeSpan.FromHours(1);
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    if (scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>() is ScheduledJobProducer producer)
+                        await producer.MaintainPoliciesAsync(includeDefaults, stoppingToken);
+                    if (includeDefaults) lastDefaultsPass = DateTimeOffset.UtcNow;
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "Sync policy maintenance pass failed");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
     private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
@@ -371,11 +406,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
-    // Hourly purge of old finished scheduled jobs so the queue tables stop growing forever.
+    // Hourly purge of old finished jobs and processed webhook inbox rows so the queue tables stop growing forever.
     private async Task RunJobRetentionAsync(CancellationToken stoppingToken)
     {
         var succeededRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:SucceededDays", 14), 1, 365));
         var failedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:FailedDays", 30), 1, 365));
+        var inboxRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:InboxDays", 30), 1, 365));
         try
         {
             await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
@@ -385,9 +421,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 try
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
-                    var deleted = await scope.ServiceProvider.GetRequiredService<JobRetentionService>()
-                        .PurgeAsync(succeededRetention, failedRetention, maximumBatches: 25, stoppingToken);
-                    if (deleted > 0) logger.LogInformation("Job retention removed {Count} finished scheduled jobs", deleted);
+                    var retention = scope.ServiceProvider.GetRequiredService<JobRetentionService>();
+                    var deleted = await retention.PurgeAsync(succeededRetention, failedRetention, maximumBatches: 25, stoppingToken);
+                    if (deleted > 0) logger.LogInformation("Job retention removed {Count} finished jobs", deleted);
+                    var inbox = await retention.PurgeProcessedInboxAsync(inboxRetention, maximumBatches: 25, stoppingToken);
+                    if (inbox > 0) logger.LogInformation("Job retention removed {Count} processed webhook inbox rows", inbox);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
@@ -400,10 +438,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     // An open operational issue not seen for a month is closed daily, so the operations page shows what is
-    // happening now; a recurrence reopens the same record.
+    // happening now; a recurrence reopens the same record. A resolved issue not seen for a month is deleted
+    // (many issue keys carry event ids or timestamps, so they would otherwise pile up forever).
     private async Task RunIssueRetentionAsync(CancellationToken stoppingToken)
     {
         var staleAfter = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:StaleDays", 30), 7, 365));
+        var resolvedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:ResolvedDays", 30), 7, 365));
         try
         {
             await Task.Delay(TimeSpan.FromMinutes(15), stoppingToken);
@@ -413,8 +453,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 try
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
-                    var resolved = await scope.ServiceProvider.GetRequiredService<OperationalIssueRetentionService>().ResolveStaleAsync(staleAfter, stoppingToken);
+                    var issues = scope.ServiceProvider.GetRequiredService<OperationalIssueRetentionService>();
+                    var resolved = await issues.ResolveStaleAsync(staleAfter, stoppingToken);
                     if (resolved > 0) logger.LogInformation("Issue retention resolved {Count} operational issue(s) not seen for {Days} days", resolved, staleAfter.TotalDays);
+                    var deleted = await issues.DeleteResolvedAsync(resolvedRetention, stoppingToken);
+                    if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
@@ -557,18 +600,35 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         return JobExecutionResult.Dead("UNSUPPORTED_JOB_TYPE", $"Unsupported job type: {job.JobType}");
     }
 
-    private static JobExecutionResult ExceptionResult(Exception exception) => exception switch
+    internal static JobExecutionResult ExceptionResult(Exception exception) => exception switch
     {
-        TimeoutException or HttpRequestException or IOException or System.Data.Common.DbException =>
-            JobExecutionResult.Retry("TRANSIENT_EXECUTION_FAILURE", "Geçici altyapı hatası nedeniyle işlem yeniden denenecek."),
+        // Another job of the connection changed the same rows meanwhile. Nothing is wrong with this job: it
+        // runs again shortly on fresh data without losing an attempt.
+        DbUpdateConcurrencyException =>
+            JobExecutionResult.Deferred("CONCURRENT_UPDATE", "Aynı kayıtlar başka bir işlem tarafından güncellendi; işlem kısa süre içinde yeniden çalışacak.", TimeSpan.FromSeconds(Random.Shared.Next(10, 31))),
+        // A duplicate, a violated check or a value too long is a data fault that six retries cannot fix.
+        _ when DataConstraintViolation(exception) is { } violation =>
+            JobExecutionResult.ManualReview("DATABASE_CONSTRAINT_VIOLATION", $"Kayıt bir veritabanı kuralına takıldı ve incelenmeli. ({violation.SqlState} {violation.ConstraintName}: {violation.MessageText.ReplaceLineEndings(" ")})"),
+        TimeoutException or HttpRequestException or IOException or System.Data.Common.DbException or DbUpdateException =>
+            JobExecutionResult.Retry("TRANSIENT_EXECUTION_FAILURE", $"Geçici altyapı hatası nedeniyle işlem yeniden denenecek. ({Describe(exception)})"),
         // InvalidOperationException is also thrown by runtime/EF faults, not only by bad job data,
         // so it is surfaced for manual review instead of being silently blocked.
         InvalidOperationException =>
-            JobExecutionResult.ManualReview("UNEXPECTED_JOB_STATE", $"İşlem beklenmeyen bir durumla karşılaştı ve incelenmeli. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"),
+            JobExecutionResult.ManualReview("UNEXPECTED_JOB_STATE", $"İşlem beklenmeyen bir durumla karşılaştı ve incelenmeli. ({Describe(exception)})"),
         JsonException or ArgumentException =>
-            JobExecutionResult.Blocked("INVALID_JOB_STATE", $"İşlem verisi veya mevcut durum doğrulaması başarısız oldu. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"),
-        _ => JobExecutionResult.Retry("UNHANDLED_EXECUTION_FAILURE", "Beklenmeyen işlem hatası otomatik deneme sınırı içinde yeniden denenecek.")
+            JobExecutionResult.Blocked("INVALID_JOB_STATE", $"İşlem verisi veya mevcut durum doğrulaması başarısız oldu. ({Describe(exception)})"),
+        _ => JobExecutionResult.Retry("UNHANDLED_EXECUTION_FAILURE", $"Beklenmeyen işlem hatası otomatik deneme sınırı içinde yeniden denenecek. ({Describe(exception)})")
     };
+
+    private static string Describe(Exception exception) => $"{exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")}";
+
+    private static PostgresException? DataConstraintViolation(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.CheckViolation or PostgresErrorCodes.StringDataRightTruncation } postgres)
+                return postgres;
+        return null;
+    }
 
     private void TouchHealthFile()
     {

@@ -39,9 +39,9 @@ public sealed class MarketplaceSyncContentionTests
     }
 
     [Fact]
-    public void InvoiceReadsUseSeparateLaneWhileOrderLifecycleStaysSerializedWithOrderRefreshes()
+    public void InvoiceReadsShareTheOrderLaneSoTheyNeverRaceOrderWrites()
     {
-        Assert.Equal("order-invoices", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderInvoiceReconciliation));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderInvoiceReconciliation));
         Assert.Equal("order-cargo-info", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation));
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderSync));
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation));

@@ -29,9 +29,12 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         this.closeConnectionOnDispose = closeConnectionOnDispose;
     }
 
-    public static async Task<MarketplaceSyncExecutionLock?> TryAcquireAsync(AppDbContext db, Guid connectionId, string jobType, CancellationToken cancellationToken)
+    public static async Task<MarketplaceSyncExecutionLock?> TryAcquireAsync(AppDbContext db, Guid connectionId, string jobType, CancellationToken cancellationToken, string? payloadJson = null)
     {
-        var key = LockKey(connectionId, GroupFor(jobType));
+        var group = jobType == MarketplaceJobTypes.ExternalEffectReconcile && payloadJson is not null
+            ? EffectReconcileGroup(await EffectActionAsync(db, payloadJson, cancellationToken))
+            : GroupFor(jobType);
+        var key = LockKey(connectionId, group);
         var connection = db.Database.GetDbConnection() as NpgsqlConnection;
         if (!string.Equals(db.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal)
             || connection is null
@@ -84,10 +87,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // Historical cargo lookups can scan many pages; keep them out of the
         // lifecycle lane so a slow metadata repair cannot hold up status polling.
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return "order-cargo-info";
-        // Trendyol invoice reconciliation only reads package data and merges
-        // invoice fields. Keeping it out of the full order-read lane prevents
-        // a long order scan from starving invoice status refreshes.
-        if (type == MarketplaceJobTypes.OrderInvoiceReconciliation) return "order-invoices";
+        // Trendyol invoice reconciliation writes the same packages and orders (their versions) as the order
+        // reads, webhooks and status scans, so it shares their "orders" lock: in a lane of its own it hit
+        // version conflicts that threw away a 200-order page. While the lane is busy it waits (deferred,
+        // attempt refunded) instead of coalescing.
         // Webhook deliveries and the read-back of uncertain marketplace writes update the same orders
         // and packages as the order reads; sharing their lock avoids version conflicts and the
         // retries (and quota) those cost.
@@ -98,6 +101,24 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return "products";
         if (type.Contains("REFERENCE", StringComparison.Ordinal) || type.Contains("CATEGORY", StringComparison.Ordinal) || type.Contains("BRAND", StringComparison.Ordinal)) return "references";
         return "connection";
+    }
+
+    // The read-back of an unclear return decision writes the return claim, which the return reads write
+    // too; it serializes with them. Package and order checks stay with the order reads.
+    internal static string EffectReconcileGroup(string? action) =>
+        action is "RETURN_APPROVE" or "RETURN_REJECT" ? "returns" : GroupFor(MarketplaceJobTypes.ExternalEffectReconcile);
+
+    private static async Task<string?> EffectActionAsync(AppDbContext db, string payloadJson, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (payload.RootElement.ValueKind != JsonValueKind.Object
+                || !payload.RootElement.TryGetProperty("effectId", out var value)
+                || !value.TryGetGuid(out var effectId)) return null;
+            return await db.ExternalEffectRecords.AsNoTracking().Where(x => x.Id == effectId).Select(x => x.Action).FirstOrDefaultAsync(cancellationToken);
+        }
+        catch (JsonException) { return null; }
     }
 
     internal static JobExecutionResult ContentionResult(string jobType, string payloadJson, string? triggerType = null)
