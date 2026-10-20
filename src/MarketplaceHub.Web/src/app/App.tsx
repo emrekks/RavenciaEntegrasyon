@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazyPage } from '../shared/lazy-page'
-import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
-import { Drawer, Modal, UiIcon, type UiIconName } from '../shared/components'
+import { api, ApiRequestError, backgroundPollHeaders, hubApi, setUnauthorizedHandler, type Me, type TenantOption } from '../shared/api'
+import { Drawer, ErrorBox, Modal, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
@@ -66,8 +66,10 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
-  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000, refetchIntervalInBackground: true })
-  const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubApi<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
+  // The menu counts poll only while the tab is on screen, and say they are automatic so the server does not count them as
+  // the person using the panel (otherwise an open tab would never reach the idle sign-out).
+  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary', { headers: backgroundPollHeaders }), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000 })
+  const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubApi<{ totalCount: number }>(questionWaitingSummaryPath, { headers: backgroundPollHeaders }), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -125,7 +127,8 @@ function Shell({ me }: { me: Me }) {
     return () => window.removeEventListener('keydown', openQuickSearch)
   }, [])
   const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
-  async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
+  // A failed sign-out request (network, expired session) still leaves the workspace.
+  async function logout() { try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { window.location.replace(`/?signedOut=${Date.now()}`) } }
   // Hover expansion is an overlay state: the layout column stays collapsed so
   // opening and closing the menu does not move the page underneath it.
   const menuCollapsed = !sidebarPinned
@@ -191,8 +194,20 @@ function Shell({ me }: { me: Me }) {
     </div>
 }
 
+const sessionExpiredNotice = 'Oturumunuzun süresi doldu. Devam etmek için yeniden giriş yapın.'
+const isSignedOut = (error: unknown) => error instanceof ApiRequestError && error.status === 401
+
 export function App() {
+  const client = useQueryClient()
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false })
+  // A request heard 401: the session ended while the panel was open. The workspace gives way to the sign-in screen at
+  // once (no reload, no screens retrying forever); signing in again brings the person back to the same page.
+  useEffect(() => setUnauthorizedHandler(() => {
+    const current = client.getQueryData<Me>(['me'])
+    if (!current || current.state === 'REVOKED') return
+    void client.cancelQueries({ predicate: query => query.queryKey[0] !== 'me' })
+    client.setQueryData<Me>(['me'], { ...current, state: 'REVOKED' })
+  }), [client])
   useOperationsRealtime(me.data?.state === 'ACTIVE')
   useEffect(() => {
     const blurNumberInputOnWheel = (event: WheelEvent) => {
@@ -206,11 +221,13 @@ export function App() {
   if (authPreview === 'password') return <ChangePassword />
   if (authPreview === 'mfa') return <MfaChallenge />
   if (me.isLoading) return <DelayedStatus title="Çalışma alanı hazırlanıyor" />
-  if (me.isError) return <Routes><Route path="*" element={<Login />} /></Routes>
+  // Only "not signed in" asks for the password; a server that is restarting or unreachable shows the error and tries again.
+  if (me.isError) return isSignedOut(me.error) ? <Routes><Route path="*" element={<Login />} /></Routes> : <SessionLoadError error={me.error} onRetry={() => void me.refetch()} />
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />
+  if (me.data.state === 'REVOKED') return <Routes><Route path="*" element={<Login notice={sessionExpiredNotice} />} /></Routes>
   if (me.data.state === 'PASSWORD_CHANGE_REQUIRED') return <ChangePassword />
   if (me.data.state === 'MFA_CHALLENGE') return <MfaChallenge />
-  if (me.data.state !== 'ACTIVE') return <Status title="Oturum kilitli" detail="Yeniden giriş yapın." />
+  if (me.data.state !== 'ACTIVE') return <LockedSession />
   return <Shell me={me.data} />
 }
 
@@ -302,8 +319,9 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
   </main>
 }
 
-function Login() {
+function Login({ notice }: { notice?: string }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const client = useQueryClient()
   const rememberedEmail = localStorage.getItem('ravencia.rememberedEmail') ?? ''
   const [email, setEmail] = useState(rememberedEmail)
@@ -324,8 +342,10 @@ function Login() {
       const currentUser = await api<Me>('/me')
       if (rememberMe) localStorage.setItem('ravencia.rememberedEmail', email.trim())
       else localStorage.removeItem('ravencia.rememberedEmail')
+      // Nothing read under the previous session (perhaps another account or workspace) is shown to this one.
+      client.removeQueries({ predicate: query => query.queryKey[0] !== 'me' })
       client.setQueryData(['me'], currentUser)
-      navigate('/dashboard', { replace: true })
+      if (location.pathname === '/' || location.pathname === '') navigate('/dashboard', { replace: true })
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError('Bir çalışma alanı seçip girişe devam edin.') }
       else if (reason instanceof ApiRequestError && reason.status === 401) setError('E-posta veya parola hatalı. Art arda başarısız denemelerde hesap 15 dakika geçici olarak kilitlenir.')
@@ -339,6 +359,7 @@ function Login() {
 
   return <AuthPageFrame ariaLabel="Ravencia operasyon merkezi girişi" accessLabel="Güvenli erişim" accessMeta="Oturum korumalı" cardTitle="Hesabınıza giriş yapın" cardDescription="Ravencia çalışma alanınıza güvenli erişim.">
           <form className="rv-auth-form" onSubmit={submit}>
+            {notice && !error && <div className="rv-auth-error" role="status"><i /><span>{notice}</span></div>}
             <div className="rv-auth-field"><label htmlFor="login-email">E-posta adresi</label><div className="rv-auth-control"><UiIcon name="mail" size={18} /><input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="username" placeholder="ornek@ravencia.com" autoFocus /></div></div>
             <div className="rv-auth-field"><div className="rv-auth-label-row"><label htmlFor="login-password">Parola</label><button type="button" onClick={() => setError('Parola sıfırlama için sistem yöneticinizle iletişime geçin.')}>Parolamı unuttum</button></div><div className="rv-auth-control"><UiIcon name="lock" size={18} /><input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Parolanızı girin" /><button type="button" className="rv-auth-password-toggle" aria-label={showPw ? 'Parolayı gizle' : 'Parolayı göster'} onClick={() => setShowPw(value => !value)}><UiIcon name={showPw ? 'eye' : 'eyeOff'} size={18} /></button></div></div>
             {tenantOptions.length > 0 && <div className="rv-auth-field"><label htmlFor="login-tenant">Çalışma alanı</label><select id="login-tenant" value={tenantId} onChange={event => setTenantId(event.target.value)} required><option value="">Çalışma alanı seçin</option>{tenantOptions.map(option => <option key={option.id} value={option.id}>{option.displayName}</option>)}</select></div>}
@@ -415,7 +436,27 @@ type DashboardLowStock = { id: string; title: string; totalStock: number; primar
 type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
 type DashboardBootstrap = { metrics: DashboardMetrics; lowStock: DashboardLowStock[]; sync: DashboardSyncStatus[]; platforms: { name: string; status: string }[]; generatedAt: string; version: number }
 
-function Status({ title, detail }: { title: string; detail?: string }) {
+// The session is neither active nor waiting for a sign-in step: the way out is a fresh sign-in.
+function LockedSession() {
+  const [leaving, setLeaving] = useState(false)
+  async function backToLogin() {
+    setLeaving(true)
+    try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { window.location.replace(`/?signedOut=${Date.now()}`) }
+  }
+  return <Status title="Oturum kilitli" detail="Bu oturumla devam edilemiyor. Giriş ekranına dönüp yeniden giriş yapın." action={<button type="button" className="rv-button rv-button-primary rv-button-md" onClick={() => void backToLogin()} disabled={leaving}>{leaving ? 'Giriş ekranına dönülüyor…' : 'Giriş Ekranına Dön'}</button>} />
+}
+
+// The session could not be read for another reason (server restarting during a deploy, network): no password prompt.
+function SessionLoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return <div className="rv-splash-screen">
+    <div className="rv-splash-card">
+      <div className="rv-splash-brand" aria-label="Ravencia"><img className="rv-splash-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-splash-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
+      <ErrorBox error={error} onRetry={onRetry} />
+    </div>
+  </div>
+}
+
+function Status({ title, detail, action }: { title: string; detail?: string; action?: ReactNode }) {
   return (
     <div className="rv-splash-screen" role="status" aria-live="polite">
       <div className="rv-splash-card">
@@ -430,7 +471,7 @@ function Status({ title, detail }: { title: string; detail?: string }) {
             <div className="rv-splash-skeleton-card is-wide"><span className="rv-splash-skeleton-media" /><span className="rv-splash-skeleton-line line-wide" /><span className="rv-splash-skeleton-line line-medium" /></div>
           </div>
         </div>
-        <small className="rv-splash-detail">Güvenli bağlantı kuruluyor</small>
+        {action ? <div className="rv-splash-action">{action}</div> : <small className="rv-splash-detail">Güvenli bağlantı kuruluyor</small>}
       </div>
     </div>
   )

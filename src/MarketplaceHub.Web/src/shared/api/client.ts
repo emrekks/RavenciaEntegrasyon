@@ -4,6 +4,28 @@ export type TenantOption = { id: string; displayName: string }
 import { readSuccessJson } from './read-success-json'
 
 let csrfToken: string | null = null
+
+// The session ended while the panel was open (idle timeout, revoked elsewhere, server restart). The app registers one
+// handler that swaps the workspace for the sign-in screen; every request that hears 401 reports it once.
+type UnauthorizedHandler = () => void
+let unauthorizedHandler: UnauthorizedHandler | null = null
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  unauthorizedHandler = handler
+  return () => { if (unauthorizedHandler === handler) unauthorizedHandler = null }
+}
+export function onUnauthorized() {
+  csrfToken = null
+  unauthorizedHandler?.()
+}
+
+// Client errors that a repeat of the same request cannot fix: signed out, not allowed, gone, stale version, invalid.
+const permanentStatuses = new Set([401, 403, 404, 412, 422])
+export function isPermanentRequestError(error: unknown) {
+  return error instanceof ApiRequestError && permanentStatuses.has(error.status)
+}
+
+// Automatic polls that should not count as the person using the panel: the server can leave the session's idle clock alone.
+export const backgroundPollHeaders = { 'X-Background-Poll': '1' } as const
 async function csrf(forceRefresh = false) {
   if (forceRefresh) csrfToken = null
   if (csrfToken) return csrfToken
@@ -57,7 +79,7 @@ export class ApiRequestError extends Error {
 export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithCsrf(`/api/v1${path}`, init)
   if (!response.ok) {
-    if (response.status === 401) csrfToken = null
+    if (response.status === 401) onUnauthorized()
     const problem = await response.json().catch(() => ({})) as ApiProblem
     throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { isPermanentRequestError } from '../api/client'
 
 // Seconds before the next automatic try: 10, 20, 40, then every 60 so a long outage does not keep the server busy.
 export function autoRetryDelaySeconds(attempt: number) {
@@ -23,20 +24,21 @@ function countdown() {
 }
 
 // A failed load counts down and tries again by itself; every failure in a row waits longer. The person can try at
-// once or stop the countdown. Without a retry action there is nothing to count down.
+// once or stop the countdown. Without a retry action there is nothing to count down, and an error that the same request
+// cannot fix (signed out, not allowed, not found, stale version, invalid) is not tried again either.
 export function useAutoRetry(error: unknown, onRetry?: () => void): AutoRetry | null {
   const retryRef = useRef(onRetry)
-  retryRef.current = onRetry
+  useEffect(() => { retryRef.current = onRetry })
   const shownError = useRef(error)
-  const [state, setState] = useState(() => onRetry ? countdown() : { total: 10, left: 10, stopped: false })
-  const enabled = Boolean(onRetry)
+  const enabled = Boolean(onRetry) && !isPermanentRequestError(error)
+  const [state, setState] = useState(() => enabled ? countdown() : { total: 10, left: 10, stopped: false })
 
   // A failed try that keeps the box on screen brings a new error: the next countdown starts.
   useEffect(() => {
     if (shownError.current === error) return
     shownError.current = error
-    setState(countdown())
-  }, [error])
+    if (enabled) setState(countdown())
+  }, [enabled, error])
 
   useEffect(() => {
     if (!enabled || state.stopped) return

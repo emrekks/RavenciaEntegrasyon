@@ -9,6 +9,7 @@ import phoneSpacingStylesheet from './styles/phone-spacing.css?url'
 import { installScrollbarVisibility } from './shared/scrollbar-visibility'
 import { installDialogScrollLock } from './shared/hooks/useScrollLock'
 import { reloadForNewBuild } from './shared/lazy-page'
+import { ApiRequestError } from './shared/api'
 import { installSheetSwipeClose } from './shared/sheet-swipe'
 
 // Phone and tablet rules for the main-bundle screens live in their own file, linked for small
@@ -32,5 +33,7 @@ installScrollbarVisibility()
 installDialogScrollLock()
 installSheetSwipeClose()
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000, refetchOnWindowFocus: false } } })
+// One quick repeat for server and network failures; a client error (4xx) would answer the same way again.
+const retryOnce = (failureCount: number, error: unknown) => failureCount < 1 && !(error instanceof ApiRequestError && error.status < 500)
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: retryOnce, staleTime: 60_000, refetchOnWindowFocus: false } } })
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider></StrictMode>)

@@ -175,15 +175,15 @@ export function DashboardPage() {
   const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), ...refresh })
   const invoiceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), ...refresh })
   const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), ...refresh })
-  const matrix = useQuery({ queryKey: ['dashboard-integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix'), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
+  const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix'), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
   const platforms = Array.from(new Set((bootstrap.data?.platforms ?? []).map(platform => platform.name)))
   const report = rangeDates(range, from, to, now)
   const reportPrevious = previousRange(report.start, report.end)
   const reportKey = `${range}:${from}:${to}`
-  const reportQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-revenue-series', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, platform)), ...refresh })
-  const reportPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-revenue-series-previous', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, platform)), ...refresh })
-  const channelQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-channel-revenue', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, name)) }))), enabled: platforms.length > 0, ...refresh })
-  const channelPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-channel-revenue-previous', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, name)) }))), enabled: platforms.length > 0, ...refresh })
+  const reportQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'revenue-series', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, platform)), ...refresh })
+  const reportPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'revenue-series-previous', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, platform)), ...refresh })
+  const channelQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'channel-revenue', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, name)) }))), enabled: platforms.length > 0, ...refresh })
+  const channelPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'channel-revenue-previous', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, name)) }))), enabled: platforms.length > 0, ...refresh })
 
   const metrics = bootstrap.data?.metrics
   const series = reportQuery.data ?? []

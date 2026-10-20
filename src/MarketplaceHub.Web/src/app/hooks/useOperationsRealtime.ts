@@ -1,7 +1,18 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
+import { HttpError, HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { RecentOperationEventIds } from '../operations-event-deduplication'
+import { realtimeQueryKeysFor, realtimeReconnectQueryKeys } from '../realtime-query-keys'
+import { onUnauthorized } from '../../shared/api/client'
+
+// Seconds before the next connection try: 3, 6, 12, 24, then every 60.
+export function realtimeRetryDelayMs(attempt: number) {
+  return Math.min(60_000, 3000 * 2 ** Math.max(0, attempt))
+}
+
+function signedOut(error: unknown) {
+  return error instanceof HttpError && (error.statusCode === 401 || error.statusCode === 403)
+}
 
 export function useOperationsRealtime(enabled: boolean) {
   const client = useQueryClient()
@@ -19,21 +30,7 @@ export function useOperationsRealtime(enabled: boolean) {
       flushTimer = null
       const resources = [...pendingResources]
       pendingResources.clear()
-      const queryKeysByResource: Record<string, string[][]> = {
-        orders: [['orders'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
-        returns: [['returns'], ['dashboard-bootstrap']],
-        products: [['products'], ['dashboard-bootstrap']],
-        inventory: [['inventory'], ['dashboard-bootstrap']],
-        invoices: [['invoices'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
-        connections: [['connections'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
-        jobs: [['jobs']]
-      }
-      for (const resource of resources) {
-        for (const queryKey of queryKeysByResource[resource.toLowerCase()] ?? []) void client.invalidateQueries({ queryKey })
-      }
-      // Job events are announced under the resource the job works on (orders, invoices...), so any change also refreshes the
-      // job list; it only refetches while the list is on screen.
-      if (resources.length && !resources.some(resource => resource.toLowerCase() === 'jobs')) void client.invalidateQueries({ queryKey: ['jobs'] })
+      for (const queryKey of realtimeQueryKeysFor(resources)) void client.invalidateQueries({ queryKey })
     }
     connection.on('operationsChanged', ({ resources, events }: { resources?: string[]; events?: { eventId?: string }[] }) => {
       if (!seenEvents.shouldProcess((events ?? []).map(event => event.eventId))) return
@@ -41,21 +38,28 @@ export function useOperationsRealtime(enabled: boolean) {
       if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
     })
     connection.onreconnected(() => {
-      for (const queryKey of [['orders'], ['returns'], ['products'], ['inventory'], ['invoices'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['connections'], ['jobs'], ['dashboard-bootstrap'], ['dashboard-revenue-series']]) void client.invalidateQueries({ queryKey })
+      for (const queryKey of realtimeReconnectQueryKeys) void client.invalidateQueries({ queryKey })
     })
     let stopped = false
+    let failures = 0
     let retryTimer: number | null = null
+    const scheduleStart = () => {
+      if (stopped || retryTimer !== null) return
+      retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, realtimeRetryDelayMs(failures))
+      failures += 1
+    }
     const start = async () => {
       if (stopped || connection.state !== 'Disconnected') return
       try {
         await connection.start()
-      } catch {
-        if (!stopped) retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, 3000)
+        failures = 0
+      } catch (error) {
+        // The session is gone: trying again cannot help; the app shows the sign-in screen and a new sign-in starts over.
+        if (signedOut(error)) { stopped = true; onUnauthorized(); return }
+        scheduleStart()
       }
     }
-    connection.onclose(() => {
-      if (!stopped && retryTimer === null) retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, 3000)
-    })
+    connection.onclose(() => scheduleStart())
     void start()
     return () => {
       stopped = true

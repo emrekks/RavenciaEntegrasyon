@@ -3343,6 +3343,7 @@ button,
 .rv-splash-skeleton-line.line-medium { width: 72%; }
 .rv-splash-skeleton-line.line-short { width: 48%; }
 .rv-splash-detail { color: var(--rv-color-muted); }
+.rv-splash-action { display: flex; justify-content: center; }
 @keyframes rv-splash-progress { 0% { transform: translateX(-120%); } 50%, 70% { transform: translateX(170%); } 100% { transform: translateX(300%); } }
 @keyframes rv-splash-shimmer { to { background-position: -220% 0; } }
 @media (prefers-reduced-motion: reduce) { .rv-splash-loading-progress, .rv-splash-skeleton-media, .rv-splash-skeleton-line, .rv-loading-state-icon .ui-icon, .rv-loading-state-skeleton i, .rv-loading-feedback-lines i, .panel-attribute-category-skeleton { animation: none; } }
