@@ -607,7 +607,17 @@ public static class InvoicingEndpoints
         }
         if (!command.Confirmed) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Dış mali işlem için açık onay zorunludur.", 422));
         var user = await users.FindByIdAsync(tenant.UserId.ToString());
-        if (!await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(http, users, user, command.Password)) return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
+        if (!await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(http, users, user, command.Password))
+        {
+            // Wrong passwords at a fiscal confirmation are audited like those at the re-authentication step, lockouts too.
+            var now = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
+            var sessionId = (http.Items["UserSession"] as UserSession)?.Id;
+            MarketplaceHub.Api.Security.AuthAudit.Record(db, http, MarketplaceHub.Api.Security.AuthAudit.ReauthenticationFailed, tenant.UserId, tenant.TenantId, "password; invoice-action", now, sessionId);
+            if (user is not null && await MarketplaceHub.Api.Security.PasswordCheck.IsBlockedAsync(http, users, user))
+                MarketplaceHub.Api.Security.AuthAudit.Record(db, http, MarketplaceHub.Api.Security.AuthAudit.AccountLockedOut, tenant.UserId, tenant.TenantId, "failed-reauthentication; invoice-action", now);
+            await db.SaveChangesAsync(CancellationToken.None);
+            return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
+        }
         long version = 0;
         if (requireVersion && !TryIfMatch(http, out version, out var failure)) return failure!;
         return Accepted(await enqueue(tenant.TenantId, version, http.Request.Headers["Idempotency-Key"].ToString()));
