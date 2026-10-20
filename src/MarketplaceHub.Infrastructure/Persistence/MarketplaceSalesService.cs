@@ -12,15 +12,21 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
 {
-    // A real Trendyol package supersedes the zero-ID payment placeholder.
-    // Retain its history without displaying or counting a second live package.
+    // A real Trendyol package supersedes the zero-ID payment placeholder, and a
+    // package another package names as its origin (a split UnPacked parent, a
+    // resent original) is superseded by it. Retain their history without
+    // displaying, counting or invoicing them as live packages.
     internal IQueryable<ShipmentPackage> CurrentShipmentPackages() => db.ShipmentPackages.AsNoTracking()
-        .Where(package => package.ExternalPackageId != "0"
+        .Where(package => (package.ExternalPackageId != "0"
             || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
                 && connection.Id == package.ConnectionId && connection.PlatformCode == "TRENDYOL")
             || !db.ShipmentPackages.Any(real => real.TenantId == package.TenantId
                 && real.ConnectionId == package.ConnectionId && real.OrderId == package.OrderId
-                && real.ExternalPackageId != "0" && real.ExternalPackageId != ""));
+                && real.ExternalPackageId != "0" && real.ExternalPackageId != ""))
+            && !db.ShipmentPackages.Any(child => child.TenantId == package.TenantId
+                && child.ConnectionId == package.ConnectionId && child.OrderId == package.OrderId
+                && child.OriginExternalPackageId == package.ExternalPackageId
+                && child.ExternalPackageId != package.ExternalPackageId));
 
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery queryOptions, CancellationToken cancellationToken)
     {
@@ -226,6 +232,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal void ApplyOrderFilters(ref IQueryable<Order> query, OrderListQuery options, Guid tenantId)
     {
+        // Superseded packages (split parents, resent originals, the zero-ID
+        // placeholder) neither match a tab nor count as invoice targets.
+        var currentPackages = CurrentShipmentPackages();
         var resendCreators = new[] { "transfer", "resend", "replacement" };
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
@@ -235,13 +244,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && candidate.SequencePurpose == "SALE" && candidate.Status == InvoiceStatus.Completed
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == candidate.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (candidate.PackageId.HasValue
-                        ? db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
+                        ? currentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
                             && package.Status != ShipmentPackageStatus.Cancelled
                             && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED")
                                 || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                     && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))
-                        : db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
-                            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
+                        : currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
+                            && !currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
                                 && !((db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED"))
                                     || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                         && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))))
@@ -251,13 +260,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && candidate.SequencePurpose == "SALE" && candidate.Status == InvoiceStatus.Completed
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == candidate.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (candidate.PackageId.HasValue
-                        ? !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
+                        ? !currentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
                             && package.Status != ShipmentPackageStatus.Cancelled
                             && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED")
                                 || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                     && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))
-                        : !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
-                            || db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
+                        : !currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
+                            || currentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
                                 && !((db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED"))
                                     || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                         && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))))
@@ -268,7 +277,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 "FATURA_KONTROLDE" => query.Where(x =>
                     fullyDeliveredInvoiceOrderIds.Contains(x.Id)
                     || completedInvoiceOrderIdsMissingDelivery.Contains(x.Id)
-                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
+                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
                         && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced))),
                 "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -277,7 +286,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                         && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed || i.Status == InvoiceStatus.ManualReview || i.Status == InvoiceStatus.UnknownResult))
-                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
+                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
                 "FATURA_IPTAL" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Cancelled || i.Status == InvoiceStatus.CancelledLocal))),
@@ -285,7 +294,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))),
                 "FATURA_BEKLIYOR" => query.Where(x =>
-                    db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
+                    currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
                     || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -326,7 +335,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         else if (invoiceRegion == "TR")
             query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"micro\":true") && !x.CustomerSnapshotJson.Contains("\"micro\": true") && !x.CustomerSnapshotJson.Contains("\"microExport\":true") && !x.CustomerSnapshotJson.Contains("\"microExport\": true") && !x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") && !x.CustomerSnapshotJson.Contains("MICRO") && !x.CustomerSnapshotJson.Contains("İHRAC") && !x.CustomerSnapshotJson.Contains("IHRAC"));
 
-        var currentPackages = CurrentShipmentPackages();
         var status = options.Status?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
         {
@@ -420,7 +428,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
         var cargo = options.Cargo?.Trim();
         if (!string.IsNullOrWhiteSpace(cargo) && cargo != "ALL")
-            query = query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
+            query = query.Where(x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
 
         if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
         if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
@@ -1325,30 +1333,69 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return ServiceResult<ShipmentView>.Fail("PICKING_FAILED", error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
 
-        package.Status = ShipmentPackageStatus.Processing;
-        package.RawStatus = "Processing";
-        package.StatusOccurredAt = timeProvider.GetUtcNow();
-        package.UpdatedAt = package.StatusOccurredAt;
-        package.Version++;
-        // Orders are filtered by DerivedStatus while the counters are calculated
-        // from shipment packages. Keep both read models in sync before returning
-        // so the order moves between tabs in the same response.
-        var packageStatuses = await db.ShipmentPackages.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
-            .Select(x => new { x.Id, x.Status })
-            .ToListAsync(cancellationToken);
-        var acceptedStatuses = packageStatuses.ToDictionary(x => x.Id, x => x.Status);
-        acceptedStatuses[package.Id] = package.Status;
-        var derivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses.Values));
-        if (!string.Equals(order.DerivedStatus, derivedStatus, StringComparison.Ordinal))
-        {
-            order.DerivedStatus = derivedStatus;
-            order.UpdatedAt = package.UpdatedAt;
-            order.Version++;
-        }
-        effect.CompletedAt = package.StatusOccurredAt;
+        // The marketplace accepted the write: record that first and on its own,
+        // so a conflict while projecting it locally can never leave the effect
+        // open (and the same key answering "verifying" forever).
+        var appliedAt = timeProvider.GetUtcNow();
+        effect.CompletedAt = appliedAt;
+        effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+
+        for (var attempt = 0; ; attempt++)
+        {
+            if (package.Status == ShipmentPackageStatus.New)
+            {
+                package.Status = ShipmentPackageStatus.Processing;
+                package.RawStatus = "Processing";
+                // StatusOccurredAt stays the marketplace's own event time: a
+                // local clock here would make the marketplace's Picking event
+                // (with its cargo and invoice fields) look older and be dropped.
+                package.UpdatedAt = appliedAt;
+                package.Version++;
+                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "PROCESSING", RawStatus = "PICKING_REQUESTED", SourceEventId = $"instant-picking:{effect.Id:N}", OccurredAt = appliedAt, RecordedAt = appliedAt });
+            }
+            // Orders are filtered by DerivedStatus while the counters are calculated
+            // from shipment packages. Keep both read models in sync before returning
+            // so the order moves between tabs in the same response.
+            var orderPackages = await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
+                .ToListAsync(cancellationToken);
+            var current = orderPackages.Select(x => x.Id == package.Id ? package : x).ToList();
+            if (ShipmentPackageSupersession.StatusSources(current) is { } statusSources)
+            {
+                var derivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(statusSources));
+                if (!string.Equals(order.DerivedStatus, derivedStatus, StringComparison.Ordinal))
+                {
+                    order.DerivedStatus = derivedStatus;
+                    order.UpdatedAt = appliedAt;
+                    order.Version++;
+                }
+            }
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+            }
+            catch (DbUpdateConcurrencyException) when (attempt == 0)
+            {
+                // A sync read updated the package or order meanwhile; project
+                // the accepted action once more on the fresh rows.
+                db.ChangeTracker.Clear();
+                var freshPackage = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                var freshOrder = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.OrderId, cancellationToken);
+                if (freshPackage is null || freshOrder is null) return NotFound<ShipmentView>();
+                package = freshPackage;
+                order = freshOrder;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // The action is applied on the marketplace; the next order read
+                // brings the package into the same state.
+                db.ChangeTracker.Clear();
+                var latest = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(latest, orderNumber));
+            }
+        }
     }
 
     public async Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1422,11 +1469,27 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return ServiceResult<ShipmentView>.Fail("CARGO_PROVIDER_CHANGE_FAILED", error.SafeMessage, status);
         }
 
+        // Record the accepted write on its own first (see ProcessShipmentInstantAsync).
+        effect.CompletedAt = timeProvider.GetUtcNow();
+        effect.Outcome = "APPLIED";
+        await db.SaveChangesAsync(cancellationToken);
         package.CargoProviderExternalId = cargoProvider;
         package.UpdatedAt = timeProvider.GetUtcNow();
         package.Version++;
-        effect.CompletedAt = timeProvider.GetUtcNow();
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            var fresh = await db.ShipmentPackages.SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+            fresh.CargoProviderExternalId = cargoProvider;
+            fresh.UpdatedAt = timeProvider.GetUtcNow();
+            fresh.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<ShipmentView>.Ok(Map(fresh, orderNumber));
+        }
         return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
     }
 

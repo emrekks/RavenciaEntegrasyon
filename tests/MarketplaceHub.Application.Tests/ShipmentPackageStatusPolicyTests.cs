@@ -32,7 +32,7 @@ public sealed class ShipmentPackageStatusPolicyTests
     [Theory]
     [InlineData("Awaiting", ShipmentPackageStatus.PaymentPending)]
     [InlineData("Verified", ShipmentPackageStatus.PaymentPending)]
-    [InlineData("UnPacked", ShipmentPackageStatus.New)]
+    [InlineData("UnPacked", ShipmentPackageStatus.Cancelled)]
     [InlineData("At_Collection_Point", ShipmentPackageStatus.Shipped)]
     [InlineData("Created", ShipmentPackageStatus.New)]
     public void TrendyolFromRemote_UsesShipmentMeaningInsteadOfGenericHoldMapping(string rawStatus, ShipmentPackageStatus expected)
@@ -59,7 +59,7 @@ public sealed class ShipmentPackageStatusPolicyTests
     [Theory]
     [InlineData("Awaiting", ShipmentPackageStatus.PaymentPending)]
     [InlineData("Verified", ShipmentPackageStatus.PaymentPending)]
-    [InlineData("UnPacked", ShipmentPackageStatus.New)]
+    [InlineData("UnPacked", ShipmentPackageStatus.Cancelled)]
     [InlineData("At_Collection_Point", ShipmentPackageStatus.Shipped)]
     public void TrendyolStatusPolicy_RepairsLegacyZeroIdHoldWhenRealPackageIsPresent(
         string rawStatus,

@@ -2582,6 +2582,12 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             using var sent = JsonDocument.Parse(port.Payload!);
             Assert.Equal(lineId, sent.RootElement.GetProperty("lines")[0].GetProperty("lineId").GetString());
             Assert.True(await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenant.Id && x.EffectType == "PAZARAMA_INSTANT_PICKING" && x.CompletedAt != null));
+            // The marketplace's own Picking event must stay newer than the
+            // stored status time, and the local step leaves a history row.
+            var picked = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == package.Id);
+            Assert.Equal(ShipmentPackageStatus.Processing, picked.Status);
+            Assert.Equal(package.StatusOccurredAt, picked.StatusOccurredAt);
+            Assert.True(await db.OrderStatusHistory.AnyAsync(x => x.TenantId == tenant.Id && x.PackageId == package.Id && x.CanonicalStatus == "PROCESSING"));
         }
         finally
         {
@@ -2679,6 +2685,109 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var persistedPackage = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == packageNumber);
             Assert.Equal(persistedOrder.Id, persistedPackage.OrderId);
             Assert.Equal("7330037500176178", persistedPackage.CargoTrackingNumber);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TrendyolOrderTotals_SumSiblingPackagesReadOnSeparatePages()
+    {
+        var tenant = NewTenant("trendyol-sibling-totals");
+        var connection = NewQuestionConnection(tenant);
+        connection.ApiVersion = "V2";
+        const string externalOrderId = "116483579001";
+        RemoteOrder Page(string packageNumber, string lineId, decimal amount, DateTimeOffset at) => new(
+            externalOrderId, externalOrderId, fixture.Now.AddDays(-1), at, "TRY", amount, 0m, amount, "{}", "{}", "{}",
+            [new RemoteOrderLine(lineId, $"SKU-{lineId}", $"BC-{lineId}", "Test ürün", 1m, amount, 10m, "Created")],
+            [new RemotePackage(packageNumber, null, "Created", at, null, null, [new RemotePackageAllocation(lineId, 1m, 0m, 0m, 0m, 0m)], amount, 0m, amount)],
+            "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            // Each stream page carries one sibling package of the same order.
+            foreach (var (page, key) in new[] { (Page("P-300", "line-1", 300m, fixture.Now.AddHours(-2)), "first"), (Page("P-200", "line-2", 200m, fixture.Now.AddHours(-1)), "second") })
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(page.Packages[0], page, externalOrderId, directOrderResult: page), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""",
+                    $"sibling-totals-{key}", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var order = await verifyDb.Orders.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalOrderId == externalOrderId);
+            Assert.Equal(500m, order.GrossAmount);
+            Assert.Equal(500m, order.NetAmount);
+            Assert.Equal(2, await verifyDb.ShipmentPackages.CountAsync(row => row.TenantId == tenant.Id && row.OrderId == order.Id));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task RefusedPackageTransition_KeepsCargoDetailsAndIsRecordedOnce()
+    {
+        var tenant = NewTenant("trendyol-refused-transition");
+        var connection = NewQuestionConnection(tenant);
+        connection.ApiVersion = "V2";
+        const string externalOrderId = "116483579002";
+        var shippedAt = fixture.Now.AddHours(-3);
+        var cancelledAt = fixture.Now.AddHours(-1);
+        RemoteOrder Read(string status, DateTimeOffset at, string? tracking) => new(
+            externalOrderId, externalOrderId, fixture.Now.AddDays(-1), at, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+            [new RemoteOrderLine("line-1", "SKU-1", "BC-1", "Test ürün", 1m, 100m, 10m, status)],
+            [new RemotePackage("P-1", null, status, at, "TRENDYOL_EXPRESS", tracking, [new RemotePackageAllocation("line-1", 1m, 0m, status == "Shipped" ? 1m : 0m, 0m, 0m)], 100m, 0m, 100m)],
+            "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task SyncAsync(RemoteOrder read, string key)
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(read.Packages[0], read, externalOrderId, directOrderResult: read), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""", key, CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await SyncAsync(Read("Shipped", shippedAt, null), "refused-1");
+            // Shipped -> Cancelled is refused; the newer tracking number is still taken.
+            await SyncAsync(Read("Cancelled", cancelledAt, "7330000000001"), "refused-2");
+            await SyncAsync(Read("Cancelled", cancelledAt, "7330000000001"), "refused-3");
+
+            await using var verifyDb = fixture.CreateContext();
+            var package = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == "P-1");
+            Assert.Equal("7330000000001", package.CargoTrackingNumber);
+            Assert.Equal(ShipmentPackageStatus.ManualReview, package.Status);
+            Assert.Equal(1, await verifyDb.OrderStatusHistory.CountAsync(row => row.TenantId == tenant.Id && row.SourceEventId.StartsWith("REJECTED:")));
+            Assert.True(await verifyDb.OperationalIssues.AnyAsync(row => row.TenantId == tenant.Id && row.Code == "PACKAGE_TERMINAL_STATUS_CONFLICT"));
         }
         finally
         {

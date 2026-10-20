@@ -31,8 +31,13 @@ public static class PackageLineProjectionPolicy
             .Select(package => package.OriginExternalPackageId!)
             .ToHashSet(StringComparer.Ordinal);
 
+        // A split (UnPacked) parent never carries quantities of its own: its
+        // lines live on in the child packages. Until the children are read the
+        // line projection keeps its previous values instead of counting the
+        // parent's allocation as cancelled.
         var currentPackages = packageByExternalId.Values
-            .Where(package => !replacedExternalIds.Contains(package.ExternalPackageId));
+            .Where(package => !replacedExternalIds.Contains(package.ExternalPackageId)
+                && !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus));
         var result = new Dictionary<Guid, NormalizedPackageAllocation>();
 
         foreach (var package in currentPackages)
@@ -59,6 +64,31 @@ public static class PackageLineProjectionPolicy
         $"{externalPackageId}:{occurredAt.ToUnixTimeMilliseconds()}";
 }
 
+public static class OrderAmountProjectionPolicy
+{
+    // Package-shaped platforms (Trendyol, n11, Pazarama) read one sibling
+    // package per stream page, so the page sum is not the order total. The
+    // total is the sum of the order's stored live packages; cancelled packages
+    // do not count while any package is still live, and a fully cancelled
+    // order keeps the value it was placed with. Null when a stored package
+    // predates package amounts and was not in this read: the sum would then
+    // undercount and the caller keeps the previous totals.
+    public static (decimal Gross, decimal Discount, decimal Net)? FromPackages(
+        IReadOnlyCollection<ShipmentPackage> packages,
+        IReadOnlySet<string> packagesInRead)
+    {
+        var current = ShipmentPackageSupersession.Current(packages)
+            .Where(package => !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus))
+            .ToList();
+        if (current.Count == 0) return null;
+        if (current.Any(package => package.GrossAmount == 0 && package.NetAmount == 0 && !packagesInRead.Contains(package.ExternalPackageId)))
+            return null;
+        var billable = current.Where(package => package.Status != ShipmentPackageStatus.Cancelled).ToList();
+        if (billable.Count == 0) billable = current;
+        return (billable.Sum(package => package.GrossAmount), billable.Sum(package => package.DiscountAmount), billable.Sum(package => package.NetAmount));
+    }
+}
+
 public static class PackageIngestionSafety
 {
     public static bool TryGetOrderedQuantities(
@@ -82,8 +112,28 @@ public static class PackageIngestionSafety
         ShipmentPackageStatus current,
         DateTimeOffset currentOccurredAt,
         ShipmentPackageStatus incoming,
-        DateTimeOffset incomingOccurredAt) =>
-        incomingOccurredAt >= currentOccurredAt && ShipmentPackageStateMachine.CanTransition(current, incoming);
+        DateTimeOffset incomingOccurredAt,
+        string? incomingRawStatus = null) =>
+        incomingOccurredAt >= currentOccurredAt
+        && (ShipmentPackageStateMachine.CanTransition(current, incoming)
+            // A split parent is superseded from any open state (Processing,
+            // ReadyToShip, Shipped...), not only from those that may cancel.
+            || incoming == ShipmentPackageStatus.Cancelled
+                && ShipmentPackageSupersession.IsSplitParentRawStatus(incomingRawStatus)
+                && ShipmentPackageSupersession.CanSupersede(current));
+
+    // A refused transition to an end state means the panel and the
+    // marketplace disagree about the outcome; an operator has to look.
+    public static bool IsTerminalConflict(ShipmentPackageStatus incoming, string? incomingRawStatus) =>
+        incoming is ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned
+        && !ShipmentPackageSupersession.IsSplitParentRawStatus(incomingRawStatus);
+
+    public static string RejectedEventId(string eventId) => $"REJECTED:{eventId}";
+
+    // Kept as raw status while a terminal conflict waits for review. It maps to
+    // ManualReview, so the ManualReview repair does not flip it back on the
+    // next read; a newer marketplace event still settles it.
+    public static string ConflictRawStatus(string remoteRawStatus) => $"CONFLICT:{remoteRawStatus}";
 
     public static string EventId(string externalPackageId, DateTimeOffset occurredAt) =>
         $"{externalPackageId}:{occurredAt.ToUnixTimeMilliseconds()}";
@@ -103,7 +153,8 @@ public static class PackageIngestionSafety
         var cancelled = packageStatus == ShipmentPackageStatus.Cancelled
             ? Math.Max(remote.AllocatedQuantity, remote.CancelledQuantity)
             : remote.CancelledQuantity;
-        var shipped = packageStatus is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.ReturnInTransit or ShipmentPackageStatus.Returned
+        // An undelivered parcel was still handed to the carrier.
+        var shipped = packageStatus is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.ReturnInTransit or ShipmentPackageStatus.Returned
             ? active
             : remote.ShippedQuantity;
         var delivered = packageStatus is ShipmentPackageStatus.Delivered or ShipmentPackageStatus.ReturnInTransit or ShipmentPackageStatus.Returned
