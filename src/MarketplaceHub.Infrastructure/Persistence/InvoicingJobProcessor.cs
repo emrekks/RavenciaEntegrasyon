@@ -1653,9 +1653,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         foreach (var undelivered in neverQueued)
         {
-            var payload = $"\"{undelivered.InvoiceId}\"";
+            // Every delivery job is keyed "{type}:{invoiceId}:...", so the key prefix finds it through the
+            // (TenantId, JobType, JobDedupKey) index instead of a text search over every payload.
+            var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{undelivered.InvoiceId}:";
             var activeDelivery = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
-                && job.PayloadJson.Contains(payload) && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
+                && job.JobDedupKey.StartsWith(keyPrefix) && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
             if (activeDelivery) continue;
             await EnqueueAutomaticJob(tenantId, undelivered.ConnectionId, undelivered.InvoiceId, InvoicingJobTypes.MarketplaceDelivery, $"never-queued:{bucket}", "scheduler-delivery-recovery", cancellationToken);
         }

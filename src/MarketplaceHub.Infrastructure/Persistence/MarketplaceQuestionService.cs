@@ -518,11 +518,11 @@ internal static class QuestionAnswerPolicy
 {
     private static readonly System.Text.RegularExpressions.Regex Url = new(@"(https?://|www\.)\S+", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     private static readonly System.Text.RegularExpressions.Regex Email = new(@"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-    // Turkish mobile numbers (5xx, with or without a 0/+90 prefix), landlines
-    // (2xx-4xx, only with the prefix, so order and package numbers are not
-    // taken for phones) and 444 numbers, with any separators.
+    // Turkish mobile numbers (5xx with a 0/+90 prefix; without one only real operator codes 501-507, 530-559
+    // and 561, so Hepsiburada package numbers such as 5000031618 are not taken for phones), landlines
+    // (2xx-4xx, only with the prefix) and 444 numbers, with any separators.
     private static readonly System.Text.RegularExpressions.Regex Phone = new(
-        @"(?<!\d)(?:(?:\+?90|0)[\s.\-]*\(?[2-5]\d{2}\)?|\(?5\d{2}\)?)[\s.\-]*\d{3}[\s.\-]*\d{2}[\s.\-]*\d{2}(?!\d)|(?<!\d)444[\s.\-]*\d[\s.\-]*\d{3}(?!\d)",
+        @"(?<!\d)(?:(?:\+?90|0)[\s.\-]*\(?[2-5]\d{2}\)?|\(?5(?:0[1-7]|[3-5]\d|61)\)?)[\s.\-]*\d{3}[\s.\-]*\d{2}[\s.\-]*\d{2}(?!\d)|(?<!\d)444[\s.\-]*\d[\s.\-]*\d{3}(?!\d)",
         System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     public static (int Minimum, int Maximum) LengthLimits(string? platformCode) =>

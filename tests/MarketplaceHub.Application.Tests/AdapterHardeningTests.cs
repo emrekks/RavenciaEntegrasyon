@@ -29,7 +29,7 @@ public sealed class AdapterHardeningTests
             new HepsiburadaRequestContext(Connection, new Uri("https://oms.test/"), new Uri("https://listing.test/"), "integrator", "secret-service-key").ToString(),
             new ShopifyRequestContext(Connection, "store", "2026-10", "secret-access-token", DateTimeOffset.MaxValue).ToString(),
             new TrendyolEFaturamCredentialPayload("owner@example.com", "secret-password").ToString(),
-            new TrendyolEFaturamRequestContext(Connection, new Uri("https://efaturam.test/"), new("owner@example.com", "secret-password"), new(false)).ToString(),
+            new TrendyolEFaturamRequestContext(Connection, new Uri("https://efaturam.test/"), new("owner@example.com", "secret-password"), new(false), Guid.NewGuid()).ToString(),
             new TrendyolEFaturamAccessContext("secret-bearer-token", 7, 9).ToString()
         };
 

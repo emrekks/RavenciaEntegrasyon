@@ -80,6 +80,8 @@ public sealed class MarketplaceQuestionAnswerReconciliationPolicyTests
     [InlineData("TRENDYOL", "Bizi 5321234567 numarasından arayın.", "QUESTION_ANSWER_CONTENT")]
     [InlineData("TRENDYOL", "Merkezimizi 444 1 234 numarasından arayın.", "QUESTION_ANSWER_CONTENT")]
     [InlineData("TRENDYOL", "11697863851 numaralı siparişiniz yarın kargoda.", null)]
+    [InlineData("HEPSIBURADA", "5000031618 numaralı paketiniz yarın kargoda.", null)]
+    [InlineData("HEPSIBURADA", "Bizi 0500 003 16 18 numarasından arayın.", "QUESTION_ANSWER_CONTENT")]
     [InlineData("TRENDYOL", "Ürünün ölçüsü 42 x 30 cm, ağırlığı 1,5 kg.", null)]
     public void AnswerPolicyChecksLengthAndContactDetails(string platform, string answer, string? expectedCode) =>
         Assert.Equal(expectedCode, QuestionAnswerPolicy.Validate(platform, answer)?.Code);
