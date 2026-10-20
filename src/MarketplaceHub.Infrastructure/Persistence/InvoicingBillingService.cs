@@ -1482,11 +1482,35 @@ public sealed partial class InvoicingBillingService(
         if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış iptal işlemi yapılamaz.", 422);
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
+        // The cancellation and the stop of the waiting deliveries are saved in one transaction.
+        await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
         var queued = await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired], InvoiceStatus.CancellationPending, cancellationToken);
+        if (!queued.Succeeded) return queued;
         // A delivery still waiting in the queue would send the link of an invoice that is being cancelled.
-        if (queued.Succeeded && await InvoiceAdjustmentTracking.CancelPendingDeliveryJobsAsync(db, tenantId, id, timeProvider.GetUtcNow(), cancellationToken) > 0)
-            await db.SaveChangesAsync(cancellationToken);
+        if (await InvoiceAdjustmentTracking.CancelPendingDeliveryJobsAsync(db, tenantId, id, timeProvider.GetUtcNow(), cancellationToken) > 0)
+            await SaveSkippingJobsTakenMeanwhileAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return queued;
+    }
+
+    // A waiting delivery job a worker leased (or an operator changed) between the read and this save keeps its new
+    // state: the delivery itself refuses an invoice in cancellation (InvoiceDeliveryGuardPolicy). The other changes are saved.
+    private async Task SaveSkippingJobsTakenMeanwhileAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException exception)
+            {
+                var jobs = exception.Entries.Where(entry => entry.Entity is IntegrationJob).ToList();
+                if (jobs.Count == 0 || jobs.Count != exception.Entries.Count) throw;
+                foreach (var entry in jobs) entry.State = EntityState.Detached;
+            }
+        }
     }
 
     public async Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)

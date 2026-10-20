@@ -119,6 +119,56 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
     }
 
     [PostgreSqlFact]
+    public async Task CancellingAnInvoiceToleratesADeliveryJobLeasedWhileItWasBeingCancelled()
+    {
+        var seed = NewSeed("cancel-leased-meanwhile", InvoiceStatus.Accepted);
+        seed.Provider.SettingsJson = JsonSerializer.Serialize(new { ExternalWritesEnabled = true });
+        var takenMeanwhile = NewDeliveryJob(seed, seed.Invoice.Id, "k1", JobStatus.Pending, 1);
+        var waiting = NewDeliveryJob(seed, seed.Invoice.Id, "k2", JobStatus.RetryScheduled, 2);
+        await SeedAsync(seed, db => db.IntegrationJobs.AddRange(takenMeanwhile, waiting));
+        try
+        {
+            var connectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!;
+            var leaseMeanwhile = new LeaseJobBeforeCancellationSave(fixture, takenMeanwhile.Id);
+            await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).AddInterceptors(leaseMeanwhile).Options))
+            {
+                var queued = await NewBillingService(db, OpenWrites).EnqueueCancellationAsync(seed.Tenant.Id, seed.Invoice.Id, seed.Invoice.Version, "cancel-leased-key", "cancel-leased", CancellationToken.None);
+                Assert.True(queued.Succeeded, queued.Error?.Message);
+            }
+
+            Assert.True(leaseMeanwhile.Fired);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(JobStatus.Leased, (await verification.IntegrationJobs.SingleAsync(job => job.Id == takenMeanwhile.Id)).Status);
+            Assert.Equal(JobStatus.Cancelled, (await verification.IntegrationJobs.SingleAsync(job => job.Id == waiting.Id)).Status);
+            Assert.Equal(InvoiceStatus.CancellationPending, (await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id)).Status);
+            Assert.True(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceCancellation));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // A worker leases the job between the cancellation's read of the waiting deliveries and its save.
+    private sealed class LeaseJobBeforeCancellationSave(PostgreSqlTenantIsolationFixture fixture, Guid jobId) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public bool Fired { get; private set; }
+
+        public override async ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!Fired && eventData.Context!.ChangeTracker.Entries<IntegrationJob>().Any(entry => entry.Entity.Id == jobId && entry.Entity.Status == JobStatus.Cancelled))
+            {
+                Fired = true;
+                await using var worker = fixture.CreateContext();
+                await worker.IntegrationJobs.Where(job => job.Id == jobId).ExecuteUpdateAsync(setters => setters
+                    .SetProperty(job => job.Status, JobStatus.Leased)
+                    .SetProperty(job => job.Version, job => job.Version + 1), cancellationToken);
+            }
+            return await base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task G1_ACancellationReadFromTheProviderCancelsQueuedDeliveries()
     {
         var seed = NewSeed("g1-recon", InvoiceStatus.CancellationPending);
