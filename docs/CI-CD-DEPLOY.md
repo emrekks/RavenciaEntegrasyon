@@ -1,20 +1,54 @@
 # Otomatik Deploy (GitHub Actions → AWS Ubuntu)
 
 `main` dalına push → `Validate` workflow'u geçer → `Deploy` workflow'u sunucuda
-`deploy/scripts/fast-deploy.sh` çalıştırır (test, yedek, migration, health doğrulaması).
+`deploy/scripts/fast-deploy.sh` çalıştırır (imaj derleme, taze yedek, migration, health doğrulaması).
+Geri alma: [RUNBOOK-GERI-ALMA.md](RUNBOOK-GERI-ALMA.md).
 
 ## Akış
 
-1. `.github/workflows/ci.yml` (`Validate`) derleme, test, format ve güvenlik denetimlerini çalıştırır.
-2. Yalnızca `main` üzerindeki başarılı bir push sonrasında `.github/workflows/deploy.yml` tetiklenir.
-3. Deploy işi sunucuya SSH ile bağlanır ve doğrulanmış 40 karakterlik commit SHA'sını gönderir.
+1. `.github/workflows/ci.yml` (`Validate`) derleme, test, format, imaj derlemesi ve güvenlik denetimlerini çalıştırır.
+2. Deploy üç yoldan tetiklenir:
+   - `main` üzerindeki başarılı bir push'un Validate'i bittiğinde (`workflow_run`), o commit;
+   - her sabah **06:20 UTC (09:20 TR)** `schedule` ile — sunucu 00:30–09:00 kapalıyken gelen push'lar
+     sabah yakalanır;
+   - elle: Actions → Deploy → Run workflow (yalnızca `main`; isteğe bağlı `redeploy` kutusu).
+   Zamanlanmış ve elle çalıştırmalar **son yeşil Validate SHA'sını** (`main`'e push, `success`) çözer
+   (`permissions: actions: read`).
+3. Deploy işi sunucuya SSH ile bağlanır ve 40 karakterlik SHA'yı (gerekirse `"<sha> redeploy"`) gönderir.
 4. Sunucuda `/usr/local/bin/ravencia-ci-deploy` (`deploy/scripts/ci-entrypoint.sh`) çalışır:
-   kilit alır, repoyu o commit'e fast-forward eder, `fast-deploy.sh` komutunu SSH bağlantısından
-   bağımsız çalıştırır ve logu `~/deploy-logs/` altına yazar.
-5. İş sonunda `https://panel.ravencia.com/health/ready` kontrol edilir.
+   kilit alır, aşağıdaki karar tablosunu uygular, gerekirse repoyu o commit'e fast-forward eder,
+   `fast-deploy.sh`'ı SSH bağlantısından bağımsız çalıştırır ve logu `~/deploy-logs/` altına yazar.
+5. İş sonunda `https://panel.ravencia.com/health/live` kontrol edilir (ready/queues dışarıya kapalı,
+   bkz. Kenar). Hazırlık (`/health/ready`) sunucu tarafında deploy betiği içinde doğrulanır.
 
 Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `flock` ile sıraya girer.
-Manuel yeniden deploy: Actions → Deploy → Run workflow (yalnızca `main`).
+
+### ci-entrypoint karar tablosu (`~/deploy-logs/` durum dosyaları)
+
+| Durum | Sonuç |
+| --- | --- |
+| SHA, `.hold` içindeki SHA'nın atası/aynısı (geri alınmış sürüm) | deploy yok, `::warning::`, çıkış 0 |
+| `.last-success` SHA'yı içeriyor (ve `redeploy` yok) | "already live", çıkış 0 |
+| SHA, çalışma ağacındaki HEAD'in atası ama `.last-success` içermiyor (daha yeni deploy başarısız olmuş) | **çıkış 1** — ileri düzeltme ya da `rollback.sh` |
+| Diğer | fast-forward + `fast-deploy.sh`; başarıda `.last-success` = SHA, daha yeni bir sürüm `.hold`'u kaldırır |
+
+`.last-success` henüz yoksa (bu betiğin ilk kurulumu) eski kural geçerlidir: HEAD'in atası olan SHA için 0.
+`releases.tsv` her deploy/geri alma için bir satır tutar (zaman, tür, SHA, imajlar).
+
+**`ci-entrypoint.sh` değiştiğinde** sunucuda bir kez yeniden kurulmalıdır (root'a ait kopya):
+`bash deploy/scripts/install-ci-deploy.sh "$(cat deploy_key.pub)"`.
+
+## Deploy betikleri
+
+- `fast-deploy.sh` (CI yolu, sunucuda yerel imaj derler) ve `deploy.sh` (ilk kurulum / registry digest)
+  ortak fonksiyonları `deploy/scripts/lib.sh`'tan alır: gizli dosya kontrolü, `production.env` okuma,
+  doğrulanmış yedek, readiness/worker/frontend doğrulaması, sürüm kaydı.
+- Deploy öncesi yedek **her zaman taze** alınır (`BACKUP_FORCE=true`); günün daha önceki seti yeniden
+  kullanılmaz.
+- `fast-deploy.sh` yeni sürümün ve **bir önceki** sürümün `marketplacehub-{app,edge}:manual-<rev>`
+  imajlarını tutar (N-1, geri alma için); daha eskilerini siler.
+- Her deploy `install-backup-timer.sh` ile sunucudaki systemd birimlerini yeniler ve zamanlayıcıları
+  etkinleştirir (bkz. İşletim).
 
 ## GitHub Secrets (Settings → Secrets and variables → Actions)
 
@@ -24,6 +58,7 @@ Manuel yeniden deploy: Actions → Deploy → Run workflow (yalnızca `main`).
 | `DEPLOY_USER` | `ubuntu` |
 | `DEPLOY_SSH_KEY` | Deploy özel anahtarı (ed25519, tüm içerik) |
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan` / sunucu host key satırı (`<host> ssh-ed25519 AAAA...`) |
+| `ALERT_WEBHOOK_URL` | *(isteğe bağlı)* Validate (main) veya Deploy başarısız olunca bildirim; sunucudaki `alert_webhook_url.txt` ile aynı biçim |
 
 ## Güvenlik modeli
 
@@ -32,6 +67,10 @@ Manuel yeniden deploy: Actions → Deploy → Run workflow (yalnızca `main`).
   bu anahtarın yetkisini değiştiremez.
 - Sunucu host key'i `StrictHostKeyChecking=yes` ile sabitlenir.
 - Deploy işi repo kodunu çalıştırmaz; yalnızca SSH ile SHA gönderir.
+- Actions'lar commit SHA ile sabitlenmiştir (yorumda sürüm). `.github/dependabot.yml` haftalık
+  (Pazartesi 06:00 TR) actions, Docker (kök + `deploy/caddy`), compose (PostgreSQL), npm ve NuGet
+  güncellemesi önerir; her PR Validate'ten geçer, hiçbiri otomatik birleşmez. PostgreSQL digest'i
+  değişirse `ci.yml` servis imajı ve `deploy/backup/restore-drill.sh` elle eşitlenmelidir.
 
 ## Anahtarı yenileme / kurulum
 
@@ -43,20 +82,140 @@ bash deploy/scripts/install-ci-deploy.sh "$(cat deploy_key.pub)"
 
 Eski anahtarı `~/.ssh/authorized_keys` içinden silin ve `DEPLOY_SSH_KEY` secret'ını güncelleyin.
 
+## Veritabanı bağlantısı ve PostgreSQL
+
+- `app_db_connection.txt`: `...;Maximum Pool Size=25;Timeout=15;Command Timeout=120`.
+  API ve Worker'ın her biri EF havuzu + ayrı `NpgsqlDataSource` + LISTEN açar; havuz başına 25 ile toplam
+  `max_connections=150` altında kalır. Yeni kurulumda `initialize-deployment.sh` bunu yazar; **mevcut
+  sunucuda elle eklenir** (bkz. İşletim). Eksikse deploy betikleri uyarı basar.
+- PostgreSQL (`compose.yaml`): `max_connections=150`, `shared_buffers=256MB`,
+  `effective_cache_size=1GB`, `work_mem=16MB`, `log_min_duration_statement=2000` (2 sn üstü sorgular
+  loglanır), `shm_size: 256m`. Bu ayar değişikliği ilk deploy'da postgres konteynerini yeniden yaratır
+  (birkaç saniyelik bağlantı kesintisi; API/Worker yeniden bağlanır).
+
+## Loglar (journald)
+
+Üretimde postgres, migrate, api, worker ve caddy `journald` sürücüsüyle loglar
+(`compose.production.yaml`, `!override`); konteyner her deploy'da yeniden yaratılsa da loglar kalır.
+Yerel pilot (`compose.yaml` tek başına) `json-file` kullanmaya devam eder.
+
+```bash
+journalctl CONTAINER_NAME=marketplacehub-api-1 --since -1h
+journalctl CONTAINER_NAME=marketplacehub-worker-1 -f
+journalctl CONTAINER_NAME=marketplacehub-caddy-1 --since today -o cat | jq .   # Caddy JSON erişim logu
+docker logs marketplacehub-api-1        # journald sürücüsüyle de çalışır
+```
+
+Saklama host'un journald sınırlarına bağlıdır; önerilen `/etc/systemd/journald.conf.d/ravencia.conf`:
+
+```ini
+[Journal]
+SystemMaxUse=2G
+MaxRetentionSec=30day
+```
+
+(`sudo systemctl restart systemd-journald`.) IAM rolü eklendiğinde `awslogs` sürücüsü düşünülebilir.
+
+## Kenar (Caddy)
+
+- `/health/live` herkese açık (yalnız süreç canlılığı; dış uptime izleyicisi ve Deploy doğrulaması).
+- `/health/ready`, `/health/queues` yalnızca özel kaynak adreslerine (`remote_ip private_ranges`) yanıt
+  verir; dışarıya `404`. Sunucu üstündeki betikler loopback'ten girer:
+  `curl --resolve panel.ravencia.com:443:127.0.0.1 https://panel.ravencia.com/health/ready`.
+- `Clear-Site-Data: "cache"` yalnızca `/api/v1/auth/*` 401 yanıtlarına eklenir.
+- `/api/*` ve `/hubs/*` yanıtları sıkıştırılmaz (BREACH sınıfı); statik dosyalar ve SPA kabuğu
+  zstd/gzip ile sıkıştırılmaya devam eder.
+- Caddyfile her imaj derlemesinde `caddy adapt` ile doğrulanır (CI `image-edge` işi dahil).
+
+## İşletim: zamanlayıcılar, alarm, izleme
+
+`install-backup-timer.sh` (her deploy'da çalışır) şu birimleri kurar ve zamanlayıcıları etkinleştirir:
+
+| Birim | Ne zaman | Ne yapar |
+| --- | --- | --- |
+| `ravencia-backup.timer` | 20:30 UTC (23:30 TR) ±10 dk, `Persistent=true` | `daily-backup.sh`: api/caddy konteynerlerini 5 dk'ya kadar bekler, taze yedek + doğrulama |
+| `ravencia-restore-drill.timer` | ayın ilk Pazar'ı 19:00 UTC (22:00 TR) | `monthly-restore-drill.sh`: en yeni seti izole konteynerlere geri yükler, migration/API/Worker sağlığını doğrular |
+| `ravencia-healthwatch.timer` | 5 dakikada bir, 09:00–00:25 TR | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
+| `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
+
+**Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatteki tüm setler + son 14 günün her gününün en
+yeni seti + daha eski 4 ISO haftasının her birinin en yeni seti; en yeni set her koşulda kalır.
+(`BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` ile değiştirilebilir.) Disk kullanımını ilk hafta izleyin:
+`sudo docker run --rm -v marketplacehub_backup_staging:/b alpine du -sh /b/*`.
+
+**Alarm kanalı**: `deploy/secrets/alert_webhook_url.txt` (tek satır, root:root 600). Dosya yoksa alarm
+sessizce atlanır.
+
+- Telegram: `https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>`
+- Slack (ya da Slack uyumlu; Discord için webhook URL'sinin sonuna `/slack`): `https://hooks.slack.com/services/...`
+
+Deneme: `bash deploy/scripts/send-alert.sh "test"`.
+
+**Healthwatch**: bir sorun iki ardışık kontrolde (≈10 dk) sürerse alarm, sürdükçe saatte bir tekrar,
+düzelince "Recovered" mesajı. Docker'ın `unhealthy` dediği API konteyneri iki ardışık kontrolde öyle
+kalırsa ve PostgreSQL sağlıklıysa `docker restart` edilir (en çok 30 dakikada bir) ve alarm gönderilir.
+Açılıştan sonraki ilk 10 dakika atlanır. Durum: `/var/lib/ravencia-healthwatch/`.
+
+> Autoheal sidecar'ı (`willfarrell/autoheal`) bilinçli olarak kullanılmadı: Docker soketini
+> (host'ta root eşdeğeri) üçüncü taraf bir imaja açmak gerekirdi; aynı işi sunucudaki healthwatch
+> birimi, PostgreSQL kesintisinde gereksiz yeniden başlatma yapmadan görüyor.
+
+**Dış izleme (önerilen, ücretsiz)**: UptimeRobot/Better Stack ile `https://panel.ravencia.com/health/live`
+5 dakikada bir; bakım penceresi 00:30–09:00 Europe/Istanbul. Ready/queues dışarıya kapalı olduğu için
+derin kontroller sunucudaki healthwatch'tadır.
+
+**Metrikler**: imaj yalnızca debugger/profiler eklemeyi kapatır
+(`DOTNET_EnableDiagnostics_Debugger=0`, `DOTNET_EnableDiagnostics_Profiler=0`); tanılama IPC soketi
+açıktır. Örnek: `dotnet-counters` aracını içeren geçici bir konteyneri aynı PID ad alanına ve `/tmp`'ye
+bağlayıp `dotnet-counters monitor -p 1 --counters MarketplaceHub` (araç imajda yoktur).
+
+## Elle uygulanacaklar (bu değişikliklerden sonra bir kez)
+
+```bash
+cd ~/RavenciaEntegrasyon
+# 1) Bağlantı havuzu sınırı (dosya sonunda yeni satır yok; ';' ile eklenir)
+sudo grep -q 'Maximum Pool Size' deploy/secrets/app_db_connection.txt || \
+  sudo sh -c 'printf ";Maximum Pool Size=25;Timeout=15;Command Timeout=120" >> deploy/secrets/app_db_connection.txt'
+# 2) Alarm kanalı (isteğe bağlı)
+sudo install -m 600 -o root -g root /dev/null deploy/secrets/alert_webhook_url.txt
+sudo nano deploy/secrets/alert_webhook_url.txt
+# 3) Yeni ci-entrypoint (root'a ait kopya)
+bash deploy/scripts/install-ci-deploy.sh "$(cat ~/deploy_key.pub)"   # ya da aynı public key satırı
+# 4) İlk .last-success kaydı: o an canlı olan commit
+git rev-parse HEAD > ~/deploy-logs/.last-success
+```
+
+Birimler bir sonraki deploy'da otomatik kurulur; beklemeden kurmak için
+`bash deploy/scripts/install-backup-timer.sh` (daemon-reload + enable --now dahil).
+
+## GHCR seçeneği (sonraki adım)
+
+Bugün imajlar sunucuda (2 vCPU) derlenir; CI aynı Dockerfile'ları yalnızca derleyip doğrular
+(`image-app`, `image-edge`), itmez. Sonraki adım: Validate'te `docker/build-push-action` + `cache-to:
+type=gha` ile `ghcr.io/<owner>/ravencia-{app,edge}:<sha>` itmek (`permissions: packages: write`),
+Deploy'da digest'i SSH ile göndermek ve sunucuda `deploy.sh` yolunu (digest'li `pull`) kullanmak.
+Sunucuya GHCR okuma için ince bir PAT ya da paketleri public yapmak gerekir. Böylece deploy süresi
+ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
+
 ## Notlar
 
 - Sunucu IP'si AWS'de Elastic IP değilse durdur/başlat sonrası değişir; `DEPLOY_HOST` ve
   `DEPLOY_KNOWN_HOSTS` güncellenmelidir.
 - Security group 22. portu GitHub runner'larına açık olmalıdır (IP aralığı değişkendir).
-- `fast-deploy.sh` doğrulama veritabanının anonim volume'ünü artık `--volumes` ile siler;
-  eskiden her deploy ~570 MB sızdırıyordu.
+- `fast-deploy.sh` doğrulama veritabanının anonim volume'ünü `--volumes` ile siler.
+- `appsettings.Development.json` (API) yayın çıktısına ve imaja girmez (`CopyToPublishDirectory=Never`);
+  CI `image-app` işi bunu denetler.
 
 ## Hız
 
-- `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend`, `frontend`, sonda `gate`.
+- `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend`, `image-app`, `image-edge`,
+  `frontend`, sonda `gate`. Her iş en çok 30 dakika (`timeout-minutes`).
 - Backend ve frontend işleri, **aynı içerik** (git tree hash) daha önce geçtiyse atlanır; geçen içerik
-  için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Yalnızca
-  `src/MarketplaceHub.Web` değişirse backend atlanır; hatalı bir backend commit'i asla atlanamaz.
+  için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Hash'ler
+  Dockerfile'ları ve `deploy/caddy`'yi de kapsar; imaj işi de geçmeden işaret yazılmaz.
+- `ops` işi, sunucunun gerektirdiği Docker Compose 2.40.2'yi checksum'la kurup sürümü doğrular,
+  birleşik compose dosyalarını ve journald sürücüsünü, systemd takvim ifadelerini denetler.
+- Ön yüz `npm run lint` adımı, `package.json`'da `lint` betiği varsa çalışır.
 - CI'dan gelen deploy'da (`DEPLOY_REVISION`) sunucudaki test tekrarı atlanır; elle çalıştırılan
   `fast-deploy.sh` testleri yine koşar.
 - Dockerfile yalnızca backend klasörlerini kopyalar, bu yüzden frontend değişikliği .NET katmanlarını
