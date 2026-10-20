@@ -34,6 +34,7 @@ import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, t
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
+import { publicationJobPollInterval } from '../publication-job-poll'
 import { productPublicationTargets } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from '../operation-feedback-toast'
@@ -926,10 +927,7 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
   const job = useQuery({
     queryKey,
     queryFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
-    refetchInterval: query => {
-      const status = query.state.data?.job.status.trim().toUpperCase()
-      return status && ['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(status) ? false : 2500
-    },
+    refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     staleTime: 0,
