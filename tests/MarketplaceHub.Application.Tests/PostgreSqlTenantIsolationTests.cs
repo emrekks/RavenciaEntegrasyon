@@ -6243,6 +6243,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             AnswerCalls++;
             return Task.FromResult(AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, null)));
         }
+
+        public QuestionReportCapability ReportCapability(string platformCode) => QuestionReportCapability.Unsupported(platformCode, "test", null);
+
+        public Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class SteppingTimeProvider(DateTimeOffset start) : TimeProvider
@@ -6413,6 +6418,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
         public Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public QuestionReportCapability ReportCapability(string platformCode) => QuestionReportCapability.Unsupported(platformCode, "test", null);
+
+        public Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class PagedLiveQuestionTestPort(DateTimeOffset lastModifiedAt) : IQuestionPort
@@ -6440,6 +6450,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             throw new NotSupportedException();
 
         public Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public QuestionReportCapability ReportCapability(string platformCode) => QuestionReportCapability.Unsupported(platformCode, "test", null);
+
+        public Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         private static RemoteMarketplaceQuestion NewRemoteQuestion(string id, string status, DateTimeOffset modifiedAt) =>

@@ -71,6 +71,8 @@ public sealed class QuestionSyncJobHandlerTests
         public Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<MarketplaceQuestionSyncStateView>> SyncStatesAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<MarketplaceQuestionView>> AnswerAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, string answer, string idempotencyKey, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public QuestionReportCapability ReportCapability(string platformCode) => throw new NotSupportedException();
+        public Task<ServiceResult<MarketplaceQuestionView>> ReportAsync(Guid tenantId, Guid userId, Guid id, ReportQuestionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<MarketplaceQuestionTemplateView>> TemplatesAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<MarketplaceQuestionTemplateView>> SaveTemplateAsync(Guid tenantId, Guid? id, long? expectedVersion, SaveQuestionTemplateCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<bool>> DeleteTemplateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) => throw new NotSupportedException();

@@ -74,6 +74,19 @@ public sealed partial class N11HttpClient : IQuestionPort
             ? AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, null))
             : AdapterResult<RemoteQuestionAnswerResult>.Failure(saved.Error!, saved.RateLimit);
     }
+
+    // n11's question service offers no report: ProductService has GetProductQuestionList, GetProductQuestionDetail and
+    // SaveProductAnswer only (https://api.n11.com/ws/ProductService.wsdl), and the REST documentation
+    // (https://developer.n11.com/) has no question endpoints.
+    internal static readonly QuestionReportCapability QuestionReportSupport = QuestionReportCapability.Unsupported(
+        "N11",
+        "N11 soru servisinde soru bildirme işlemi yok; yalnızca listeleme, detay ve cevaplama var. Bildirmeyi N11 Mağaza Paneli'nden yapın.",
+        "https://api.n11.com/ws/ProductService.wsdl");
+
+    public QuestionReportCapability ReportCapability(string platformCode) => QuestionReportSupport;
+
+    public Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken) =>
+        Task.FromResult(Failure<RemoteQuestionReportResult>(AdapterErrorClass.NotSupported, "QUESTION_REPORT_UNSUPPORTED", QuestionReportSupport.UnsupportedReason!, HttpStatusCode.UnprocessableEntity));
 }
 
 public static class N11QuestionMapper

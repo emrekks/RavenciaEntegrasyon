@@ -75,6 +75,18 @@ public sealed partial class PazaramaHttpClient : IQuestionPort
         saved.Value!.Dispose();
         return AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, null), saved.RateLimit);
     }
+
+    // Pazarama's question services are status list, topics, filter, detail, answer and summary; none reports a
+    // question: https://isortagim.pazarama.com/auth/integration/saticiya-sorulan-urun-soru-ve-cevap
+    internal static readonly QuestionReportCapability QuestionReportSupport = QuestionReportCapability.Unsupported(
+        "PAZARAMA",
+        "Pazarama soru servislerinde soru bildirme işlemi yok; yalnızca listeleme, detay ve cevaplama var.",
+        "https://isortagim.pazarama.com/auth/integration/saticiya-sorulan-urun-soru-ve-cevap");
+
+    public QuestionReportCapability ReportCapability(string platformCode) => QuestionReportSupport;
+
+    public Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken) =>
+        Task.FromResult(Failure<RemoteQuestionReportResult>(AdapterErrorClass.NotSupported, "QUESTION_REPORT_UNSUPPORTED", QuestionReportSupport.UnsupportedReason!, HttpStatusCode.UnprocessableEntity));
 }
 
 public static class PazaramaQuestionMapper

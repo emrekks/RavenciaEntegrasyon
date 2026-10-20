@@ -71,6 +71,19 @@ public sealed class N11ContractTests
         Assert.Equal(2048, N11HttpClient.MaxAnswerLength);
     }
 
+    [Fact]
+    public async Task AQuestionReportIsRefusedWithoutAnyCall()
+    {
+        var handler = new NoCalls();
+        var client = new N11HttpClient(new Factory(handler), null!, Options.Create(new N11Options()), TimeProvider.System, NullLogger<N11HttpClient>.Instance, new ConfigurationBuilder().Build());
+
+        var result = await client.ReportQuestionAsync(new AdapterContext(Guid.NewGuid(), Guid.NewGuid(), "c", "k", DateTimeOffset.UtcNow.AddMinutes(1)), "77", "PRODUCT", new("ADVERTISEMENT", "Reklam", null), CancellationToken.None);
+
+        Assert.Equal("QUESTION_REPORT_UNSUPPORTED", result.Error?.Code);
+        Assert.Equal(0, handler.Calls);
+        Assert.False(client.ReportCapability("N11").Supported);
+    }
+
     private sealed class NoCalls : HttpMessageHandler
     {
         public int Calls { get; private set; }

@@ -49,6 +49,11 @@ public sealed partial class TrendyolHttpClient : IQuestionPort
         try { using var json = JsonDocument.Parse(response.Value!); answerId = TrendyolQuestionMapper.Text(json.RootElement, "answerId"); } catch (JsonException) { }
         return AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, answerId), response.RateLimit);
     }
+
+    public QuestionReportCapability ReportCapability(string platformCode) => TrendyolQuestionRequestContract.ReportCapability;
+
+    public Task<AdapterResult<RemoteQuestionReportResult>> ReportQuestionAsync(AdapterContext context, string questionId, string kind, RemoteQuestionReport report, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<RemoteQuestionReportResult>.Failure(new(AdapterErrorClass.NotSupported, "QUESTION_REPORT_UNSUPPORTED", TrendyolQuestionRequestContract.ReportCapability.UnsupportedReason!, 422, null, null)));
 }
 
 internal static class TrendyolQuestionRequestContract
@@ -59,6 +64,16 @@ internal static class TrendyolQuestionRequestContract
     public static string DetailPath(string sellerId, string questionId) => $"qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/{Uri.EscapeDataString(questionId)}?supplierId={Uri.EscapeDataString(sellerId)}";
     public static string AnswerPath(string sellerId, string questionId) => $"qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/{Uri.EscapeDataString(questionId)}/answers";
     public static bool ValidAnswer(string? answer) => answer?.Trim().Length is >= 10 and <= 2000;
+
+    // Trendyol reads reported questions (status REPORTED, reportedDate, reportReason) but takes the report itself only in
+    // its seller panel: the question list documents reportReason as "Bu işlem sadece Trendyol Satıcı Panelinden
+    // yapılmaktadır", and the Q&A API has no report endpoint (filter, detail and answer only):
+    // https://developers.trendyol.com/docs/m%C3%BC%C5%9Fteri-sorular%C4%B1n%C4%B1-%C3%A7ekme
+    // https://developers.trendyol.com/docs/m%C3%BC%C5%9Fteri-sorular%C4%B1n%C4%B1-cevaplama
+    public static readonly QuestionReportCapability ReportCapability = QuestionReportCapability.Unsupported(
+        "TRENDYOL",
+        "Trendyol soru bildirmeyi yalnızca Trendyol Satıcı Paneli'nden kabul ediyor; entegrasyon servisinde bildirme yok.",
+        "https://developers.trendyol.com/docs/m%C3%BC%C5%9Fteri-sorular%C4%B1n%C4%B1-%C3%A7ekme");
 }
 
 internal static class TrendyolQuestionMapper
