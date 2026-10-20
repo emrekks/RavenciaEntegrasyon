@@ -127,6 +127,15 @@ public sealed class StockPricePublishingPolicyTests
         Assert.Equal(PriceInventoryComposer.StandardPriceHash(120.5m, 100m, 3), PriceInventoryComposer.StandardPriceHash(twoDecimals));
     }
 
+    // K8: a value mapping outside the current snapshot is not a fallback any more.
+    [Fact]
+    public void ValueMapping_OutsideTheCurrentSnapshot_IsNotSent()
+    {
+        Assert.Null(ProductPublicationComposer.ChooseUsableExternalValue([]));
+        Assert.Equal(1393L, ProductPublicationComposer.ChooseUsableExternalValue([
+            new AttributeValueMapping { Id = Guid.Parse("01990000-0000-7000-8000-000000000001"), ExternalId = "1393", Status = "VERIFIED", VerifiedAt = DateTimeOffset.Parse("2026-10-01T10:00:00Z") }]));
+    }
+
     // K9: a marketplace price stored on an offer kept without VAT grosses up to the same price, so the
     // marker written at import matches what the next send computes and the price is not pushed back.
     [Theory]

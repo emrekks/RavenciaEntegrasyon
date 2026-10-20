@@ -96,6 +96,9 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         if (variants.Select(x => x.Sku.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("STOCK_CODE_DUPLICATE", "N11 ürün açma isteğindeki stok kodları (SKU) benzersiz olmalıdır.");
         var barcodes = variants.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => x.Barcode!.Trim()).ToList();
         if (barcodes.Distinct(StringComparer.OrdinalIgnoreCase).Count() != barcodes.Count) return Fail("BARCODE_DUPLICATE", "N11 ürün açma isteğindeki barkodlar benzersiz olmalıdır.");
+        // n11 keys a listing by its stock code (the variant link carries it), so both codes are checked.
+        if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), barcodes, variants.Select(x => x.Sku.Trim()).ToArray(), cancellationToken) is { } takenCode)
+            return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenCode), status: 409);
         var modelCodes = variants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "N11 varyant grubu tek bir ortak model kodu (productMainId) kullanmalıdır.");
         var productMainId = modelCodes[0]!;

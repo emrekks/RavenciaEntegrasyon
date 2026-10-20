@@ -83,6 +83,68 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
     }
 
+    // K10: a barcode another product already lists on the same connection is refused before create.
+    [PostgreSqlFact]
+    public async Task Publication_RefusesABarcodeAnotherProductUsesOnTheSameConnection()
+    {
+        var tenant = NewTenant("barcode-duplicate");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var otherStore = NewConnection(tenant, "TRENDYOL");
+        var (listedProduct, listedVariant) = NewVariant(tenant, "DUP-OLD", "8690000000042");
+        var (newProduct, newVariant) = NewVariant(tenant, "DUP-NEW", "8690000000042-B");
+        var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, ProductId = listedProduct.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "LIVE" };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(trendyol, otherStore);
+            seed.Products.AddRange(listedProduct, newProduct);
+            seed.ProductVariants.AddRange(listedVariant, newVariant);
+            seed.ChannelListingProfiles.Add(profile);
+            seed.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProfileId = profile.Id, VariantId = listedVariant.Id, ExternalBarcode = "8690000000042", DesiredStatus = "LIVE", ActualStatus = "LIVE" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        Assert.Equal("8690000000042", await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenant.Id, trendyol.Id, [newVariant.Id], ["8690000000042"], [], CancellationToken.None));
+        // The product's own listing, and another store of the same seller, are not duplicates.
+        Assert.Null(await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenant.Id, trendyol.Id, [listedVariant.Id], ["8690000000042"], [], CancellationToken.None));
+        Assert.Null(await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenant.Id, otherStore.Id, [newVariant.Id], ["8690000000042"], [], CancellationToken.None));
+    }
+
+    // K11: an active offer without a MAIN stock row is reported instead of silently skipped.
+    [PostgreSqlFact]
+    public async Task PriceInventoryBuild_ReportsAnOfferWithoutInventory()
+    {
+        var tenant = NewTenant("inventory-required");
+        var n11 = NewConnection(tenant, "N11");
+        var (product, withoutInventory) = NewVariant(tenant, "INV-0", "8690000000059");
+        var withInventory = NewVariant(tenant, "INV-1", "8690000000066", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(withoutInventory, withInventory);
+            seed.InventoryItems.Add(NewInventory(tenant, withInventory, 2m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, n11, withoutInventory), NewOffer(tenant, n11, withInventory));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = withoutInventory.Id, ExternalId = "INV-0" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = withInventory.Id, ExternalId = "INV-1" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var composer = new PriceInventoryComposer(db);
+        var single = await composer.BuildAsync(tenant.Id, n11.Id, CancellationToken.None, withoutInventory.Id);
+        Assert.False(single.Succeeded);
+        Assert.Equal("INVENTORY_REQUIRED", single.Error!.Code);
+
+        var all = await composer.BuildAsync(tenant.Id, n11.Id, CancellationToken.None);
+        Assert.True(all.Succeeded, all.Error?.Message);
+        Assert.Equal([withInventory.Id], all.Value!.Lines.Select(x => x.VariantId));
+        Assert.Equal(["INV-0"], all.Value.MissingInventorySkus);
+    }
+
     private static IConfiguration WritesOnConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
 

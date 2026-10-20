@@ -79,6 +79,8 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek Hepsiburada yayın isteğinde en fazla 1000 varyant gönderilebilir.");
         if (variants.Any(x => !IsValidEan13(x.Barcode))) return Fail("BARCODE_INVALID", "Hepsiburada ürün aktarımında tüm varyantların geçerli 13 haneli EAN-13 barkodu olmalıdır.");
         if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.Ordinal).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Hepsiburada ürün aktarımındaki EAN-13 barkodları benzersiz olmalıdır.");
+        if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), variants.Select(x => x.Barcode!.Trim()).ToArray(), [], cancellationToken) is { } takenBarcode)
+            return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenBarcode), status: 409);
         var sellerSkus = variants.Select(x => NormalizeMerchantSku(x.Sku)).ToArray();
         if (sellerSkus.Any(x => x is null)) return Fail("MERCHANT_SKU_INVALID", "Hepsiburada merchantSku boş olmamalı ve boşluk yerine noktalama kullanılmalıdır.");
         if (sellerSkus.Distinct(StringComparer.Ordinal).Count() != sellerSkus.Length) return Fail("MERCHANT_SKU_DUPLICATE", "Büyük harf/boşluksuz dönüşüm sonrası merchantSku değerleri benzersiz olmalıdır.");

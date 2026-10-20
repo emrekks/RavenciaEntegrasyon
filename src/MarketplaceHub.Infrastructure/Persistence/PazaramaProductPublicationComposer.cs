@@ -91,6 +91,10 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 500)) return Fail("BARCODE_REQUIRED", "Pazarama ürün açma için her varyantın barkodu (en fazla 500 karakter) olmalıdır.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Sku) || x.Sku.Trim().Length > 100)) return Fail("STOCK_CODE_INVALID", "Pazarama stok kodu olarak kullanılan SKU boş olmamalı ve en fazla 100 karakter olmalıdır.");
         if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Pazarama ürün açma isteğindeki barkodlar benzersiz olmalıdır.");
+        // Pazarama keys a listing by its barcode (the variant link carries it).
+        var publishedBarcodes = variants.Select(x => x.Barcode!.Trim()).ToArray();
+        if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), publishedBarcodes, publishedBarcodes, cancellationToken) is { } takenBarcode)
+            return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenBarcode), status: 409);
         var modelCodes = variants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "Pazarama varyant grubu tek bir ortak model kodu kullanmalıdır.");
         var groupCode = GroupCode(modelCodes[0]!);

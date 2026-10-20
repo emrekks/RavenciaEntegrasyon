@@ -113,6 +113,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek yayın isteğinde en fazla 1000 varyant gönderilebilir.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 40 || !IsValidBarcode(x.Barcode.Trim()))) return Fail("BARCODE_INVALID", "Tüm varyantlarda en fazla 40 karakterlik; yalnız harf, rakam, nokta, tire veya alt çizgi içeren barkod bulunmalıdır.");
         if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Yayınlanan varyant barkodları benzersiz olmalıdır.");
+        if (await ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), variants.Select(x => x.Barcode!.Trim()).ToArray(), [], cancellationToken) is { } takenBarcode)
+            return Fail("BARCODE_DUPLICATE", ConnectionDuplicateMessage(takenBarcode), status: 409);
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Sku) || x.Sku.Trim().Length > 100)) return Fail("SKU_INVALID", "Tüm varyantlarda en fazla 100 karakterlik SKU bulunmalıdır.");
         var modelCodes = variants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
@@ -332,11 +334,42 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     {
         var scope = $"{categoryExternalId}/{attributeExternalId}";
         var mappings = await VerifiedValueMappingsAsync(tenantId, connectionId, scope, localValueId, cancellationToken);
-        // Prefer mappings that are valid in the current snapshot, the same ones the readiness check accepts.
-        return ChooseExternalValue(mappings.Usable.Count > 0 ? mappings.Usable : mappings.All) is { } value
+        return ChooseUsableExternalValue(mappings.Usable) is { } value
             ? ServiceResult<long>.Ok(value)
-            : ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirme Ayarları'ndan bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
+            : ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", mappings.All.Count > 0
+                ? $"'{label}' için Trendyol değer eşlemesi güncel değer listesinde yok veya değer artık etkin değil. Eşleştirme Ayarları'ndan bu panel değerini güncel bir Trendyol değeriyle yeniden eşleyin."
+                : $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirme Ayarları'ndan bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
     }
+
+    // Only a mapping in the current value snapshot that points at an active Trendyol value may be sent,
+    // the same rule the readiness check applies. An older mapping outside the snapshot is not a fallback:
+    // Trendyol rejects a value id it no longer offers for the category.
+    internal static long? ChooseUsableExternalValue(IReadOnlyList<AttributeValueMapping> usable) => ChooseExternalValue(usable);
+
+    // A barcode (or stock code) another product's variant already uses on the same connection: the
+    // marketplace keeps one listing per code in a store, so creating a second one would collide.
+    internal static async Task<string?> ConnectionDuplicateAsync(AppDbContext db, Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, IReadOnlyCollection<string> barcodes, IReadOnlyCollection<string> linkKeys, CancellationToken cancellationToken)
+    {
+        if (barcodes.Count > 0)
+        {
+            var listed = await (from listing in db.ChannelListingVariants.AsNoTracking()
+                                join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
+                                where listing.TenantId == tenantId && profile.ConnectionId == connectionId
+                                    && listing.ExternalBarcode != null && barcodes.Contains(listing.ExternalBarcode) && !variantIds.Contains(listing.VariantId)
+                                orderby listing.ExternalBarcode
+                                select listing.ExternalBarcode).FirstOrDefaultAsync(cancellationToken);
+            if (listed is not null) return listed;
+        }
+        if (linkKeys.Count == 0) return null;
+        return await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId && linkKeys.Contains(link.ExternalId) && !variantIds.Contains(link.VariantId))
+            .OrderBy(link => link.ExternalId)
+            .Select(link => link.ExternalId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    internal static string ConnectionDuplicateMessage(string code) =>
+        $"'{code}' kodu bu bağlantıda başka bir ürünün varyantında kullanılıyor; aynı mağazada iki ürün aynı barkodu veya stok kodunu kullanamaz.";
 
     private sealed record ValueMappingCandidates(IReadOnlyList<AttributeValueMapping> All, int InCurrentSnapshot, IReadOnlyList<AttributeValueMapping> Usable);
 

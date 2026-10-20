@@ -1234,8 +1234,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (!current.Succeeded)
             {
                 if (current.Error!.Code == "NO_EXTERNAL_CHANGES") return JobExecutionResult.Success();
+                if (current.Error.Code == "INVENTORY_REQUIRED")
+                {
+                    await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", current.Error.Code, current.Error.Message, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                }
                 return JobExecutionResult.Blocked(current.Error.Code, current.Error.Message);
             }
+            // Offers without a MAIN stock row are left out of the request; they stay visible as an issue.
+            if (current.Value!.MissingInventorySkus.Count > 0)
+                await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", "INVENTORY_REQUIRED", PriceInventoryComposer.MissingInventoryMessage(current.Value.MissingInventorySkus), cancellationToken);
             if (!string.Equals(current.Value!.PayloadHash, payload.PayloadHash, StringComparison.Ordinal)) return JobExecutionResult.Blocked("PRICE_INVENTORY_SUPERSEDED", "Fiyat veya stok yeni bir sürüme geçti; eski payload uzak sisteme gönderilmedi.");
             // Price and stock are sent as absolute values (Shopify sets stock against the quantity it reads
             // first), and the payload is the current one (checked above). A send whose outcome is unknown,
@@ -8581,6 +8589,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (!build.Succeeded)
         {
             var code = build.Error!.Code;
+            if (code == "INVENTORY_REQUIRED")
+            {
+                await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", code, build.Error.Message, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+            }
             if (!StockProjectionOutboxPolicy.IsSettledBuildFailure(code)) return JobExecutionResult.Blocked(code, build.Error.Message);
             // Already sent, not live on this connection, or an offer the user has to fix: nothing to
             // send now. An invalid offer stays visible as an issue instead of a blocked job.
