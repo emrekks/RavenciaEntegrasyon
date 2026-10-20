@@ -2017,6 +2017,55 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobLease_KeepsFairnessWhenOneTenantQueuedMoreOlderJobsThanTheCandidateLimit()
+    {
+        var busyTenant = NewTenant("lease-fair-flood");
+        var quietTenant = NewTenant("lease-fair-flood-quiet");
+        var running = NewJob(busyTenant.Id);
+        running.Status = JobStatus.Leased;
+        running.AttemptCount = 1;
+        running.LeaseTokenHash = "running-lease";
+        running.LeaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(2);
+        // The busy tenant's queued jobs are all older than the quiet tenant's one and outnumber the candidate list.
+        var flood = Enumerable.Range(0, JobLeaseService.CandidateLimit + 10).Select(index =>
+        {
+            var job = NewJob(busyTenant.Id);
+            job.AvailableAt = job.AvailableAt.AddSeconds(-600 + index);
+            job.CreatedAt = job.CreatedAt.AddSeconds(-600 + index);
+            return job;
+        }).ToList();
+        var quietQueued = NewJob(quietTenant.Id);
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.AddRange(busyTenant, quietTenant);
+            setup.IntegrationJobs.Add(running);
+            setup.IntegrationJobs.AddRange(flood);
+            setup.IntegrationJobs.Add(quietQueued);
+            await setup.SaveChangesAsync();
+        }
+
+        var jobIds = flood.Select(job => job.Id).Append(running.Id).Append(quietQueued.Id).ToArray();
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+
+            var first = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+
+            Assert.Equal(quietQueued.Id, first?.Id);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.JobAttempts.Where(x => jobIds.Contains(x.JobId)).ExecuteDeleteAsync();
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.IntegrationOutboxEvents.Where(x => x.TenantId == busyTenant.Id || x.TenantId == quietTenant.Id).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == busyTenant.Id || x.Id == quietTenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task JobLease_HepsiburadaStatusLaneSkipsOtherMarketplaceJobs()
     {
         var tenant = NewTenant("lease-hepsiburada-status-lane");
