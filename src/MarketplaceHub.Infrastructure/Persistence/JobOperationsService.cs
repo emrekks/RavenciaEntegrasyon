@@ -10,10 +10,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvider) : IJobOperationsService
 {
-    public async Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, IReadOnlyList<string>? platforms, CancellationToken cancellationToken)
     {
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (since is { } from) query = query.Where(x => x.CreatedAt >= from);
+        query = OfPlatforms(query, tenantId, platforms);
         var groups = await query
             .GroupBy(x => new { x.Status, x.JobType })
             .Select(group => new { group.Key.Status, group.Key.JobType, Count = group.Count() })
@@ -23,6 +24,34 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
     public async Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery listQuery, CancellationToken cancellationToken)
     {
+        var query = FilteredJobs(tenantId, listQuery);
+        if (query is null) return [];
+        var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(listQuery.EffectiveLimit).ToListAsync(cancellationToken);
+        return await SummariesAsync(tenantId, jobs, cancellationToken);
+    }
+
+    public async Task<ServiceResult<PageResult<JobSummaryView>>> PageAsync(Guid tenantId, JobListQuery listQuery, CancellationToken cancellationToken)
+    {
+        var query = FilteredJobs(tenantId, listQuery);
+        if (query is null) return ServiceResult<PageResult<JobSummaryView>>.Ok(new([], null, false));
+        if (!string.IsNullOrWhiteSpace(listQuery.After))
+        {
+            if (!JobListCursor.TryDecode(listQuery.After, out var afterCreatedAt, out var afterId))
+                return ServiceResult<PageResult<JobSummaryView>>.Fail("JOB_CURSOR_INVALID", "Listenin devamı okunamadı. Listeyi yenileyip tekrar deneyin.", 400);
+            // Same order as the page: newest first, Id breaks ties among jobs created in the same instant.
+            query = query.Where(x => x.CreatedAt < afterCreatedAt || (x.CreatedAt == afterCreatedAt && x.Id.CompareTo(afterId) < 0));
+        }
+        var limit = listQuery.EffectiveLimit;
+        var rows = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var hasMore = rows.Count > limit;
+        var jobs = hasMore ? rows.Take(limit).ToList() : rows;
+        var nextCursor = hasMore ? JobListCursor.Encode(jobs[^1].CreatedAt, jobs[^1].Id) : null;
+        return ServiceResult<PageResult<JobSummaryView>>.Ok(new(await SummariesAsync(tenantId, jobs, cancellationToken), nextCursor, hasMore));
+    }
+
+    // Null when a filter can never match (an unknown status), so the caller answers with an empty list.
+    private IQueryable<IntegrationJob>? FilteredJobs(Guid tenantId, JobListQuery listQuery)
+    {
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (!string.IsNullOrWhiteSpace(listQuery.Status))
         {
@@ -30,10 +59,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var statuses = new List<JobStatus>();
             foreach (var part in listQuery.Status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                if (!TryParseStatus(part, out var parsed)) return [];
+                if (!TryParseStatus(part, out var parsed)) return null;
                 statuses.Add(parsed);
             }
-            if (statuses.Count == 0) return [];
+            if (statuses.Count == 0) return null;
             query = query.Where(x => statuses.Contains(x.Status));
         }
         if (listQuery.Since is { } since) query = query.Where(x => x.CreatedAt >= since);
@@ -42,7 +71,21 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var types = jobTypes.Select(type => type.Trim().ToUpperInvariant()).Where(type => type.Length > 0).Distinct().ToArray();
             query = query.Where(x => types.Contains(x.JobType));
         }
-        var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(listQuery.EffectiveLimit).ToListAsync(cancellationToken);
+        return OfPlatforms(query, tenantId, listQuery.Platforms);
+    }
+
+    // Jobs whose connection belongs to one of the platforms (PlatformCode, e.g. TRENDYOL, TRENDYOL_EFATURAM). A job
+    // without a connection has no platform, so it is left out whenever a platform is chosen.
+    private IQueryable<IntegrationJob> OfPlatforms(IQueryable<IntegrationJob> query, Guid tenantId, IReadOnlyList<string>? platforms)
+    {
+        var codes = (platforms ?? []).Select(code => code.Trim().ToUpperInvariant()).Where(code => code.Length > 0).Distinct().ToArray();
+        if (codes.Length == 0) return query;
+        return query.Where(x => x.ConnectionId != null && db.PlatformConnections.Any(connection =>
+            connection.TenantId == tenantId && connection.Id == x.ConnectionId && codes.Contains(connection.PlatformCode)));
+    }
+
+    private async Task<IReadOnlyList<JobSummaryView>> SummariesAsync(Guid tenantId, List<IntegrationJob> jobs, CancellationToken cancellationToken)
+    {
         var failures = await FailureTimes(jobs, cancellationToken);
         var jobIds = jobs.Select(job => job.Id).ToArray();
         var lastAttemptStarts = jobIds.Length == 0

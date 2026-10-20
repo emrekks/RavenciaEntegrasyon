@@ -74,7 +74,28 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var credentialIds = await ActiveCredentialConnectionIds(tenantId, rows.Select(x => x.Id), cancellationToken);
-        return Page(rows, limit, x => Map(x, credentialIds.Contains(x.Id)));
+        var errorTimes = await LastErrorTimesAsync(tenantId, rows, cancellationToken);
+        return Page(rows, limit, x => Map(x, credentialIds.Contains(x.Id)) with { LastErrorAt = errorTimes.GetValueOrDefault(x.Id) });
+    }
+
+    // When the connection's current error code was last seen: the newest failed job attempt of that connection with
+    // the same code in the last 30 days. Only connections that carry an error code are looked up.
+    private async Task<Dictionary<Guid, DateTimeOffset?>> LastErrorTimesAsync(Guid tenantId, IReadOnlyCollection<PlatformConnection> connections, CancellationToken cancellationToken)
+    {
+        var failing = connections.Where(x => !string.IsNullOrWhiteSpace(x.LastErrorCode)).ToDictionary(x => x.Id, x => x.LastErrorCode!);
+        if (failing.Count == 0) return [];
+        var ids = failing.Keys.ToArray();
+        var codes = failing.Values.Distinct(StringComparer.Ordinal).ToArray();
+        var since = timeProvider.GetUtcNow().AddDays(-30);
+        var rows = await (from attempt in db.JobAttempts.AsNoTracking()
+                          join job in db.IntegrationJobs.AsNoTracking() on new { attempt.TenantId, attempt.JobId } equals new { job.TenantId, JobId = job.Id }
+                          where attempt.TenantId == tenantId && job.ConnectionId != null && ids.Contains(job.ConnectionId!.Value)
+                              && attempt.StartedAt >= since && !attempt.Succeeded && attempt.ErrorCode != null && codes.Contains(attempt.ErrorCode)
+                          group attempt by new { ConnectionId = job.ConnectionId!.Value, attempt.ErrorCode } into grouped
+                          select new { grouped.Key.ConnectionId, grouped.Key.ErrorCode, At = grouped.Max(x => x.CompletedAt ?? x.StartedAt) })
+            .ToListAsync(cancellationToken);
+        return rows.Where(row => failing.TryGetValue(row.ConnectionId, out var code) && string.Equals(code, row.ErrorCode, StringComparison.Ordinal))
+            .ToDictionary(row => row.ConnectionId, row => (DateTimeOffset?)row.At);
     }
 
     public async Task<ServiceResult<ConnectionView>> CreateAsync(Guid tenantId, CreateConnectionCommand command, CancellationToken cancellationToken)
@@ -208,7 +229,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<ConnectionView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var connection = await Find(tenantId, id, cancellationToken); return connection is null ? NotFound<ConnectionView>() : ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
+        var connection = await Find(tenantId, id, cancellationToken);
+        if (connection is null) return NotFound<ConnectionView>();
+        var errorTimes = await LastErrorTimesAsync(tenantId, [connection], cancellationToken);
+        return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)) with { LastErrorAt = errorTimes.GetValueOrDefault(id) });
     }
 
     public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken)
@@ -849,7 +873,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                         : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
         var invoiceCreationEnabled = x.PlatformCode != "HEPSIBURADA" && MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
         var n11Settings = x.PlatformCode == "N11" ? ReadN11Settings(x) : null;
-        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled, n11Settings?.N11ShipmentTemplate, n11Settings?.N11PreparingDay);
+        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled, n11Settings?.N11ShipmentTemplate, n11Settings?.N11PreparingDay, x.DisabledAt);
     }
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, RequiresExternalWrites: MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);

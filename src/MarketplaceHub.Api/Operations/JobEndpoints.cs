@@ -8,16 +8,25 @@ public static class JobEndpoints
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1/jobs");
-        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit) =>
+        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? platform, string? platforms) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.ListAsync(
                     tenant.TenantId,
-                    new JobListQuery(status, since, jobTypes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), limit),
+                    new JobListQuery(status, since, List(jobTypes), limit, Platforms: Platforms(platform, platforms)),
                     http.RequestAborted))
                 : Unauthorized(http));
-        api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since) =>
+        // Cursor-paged list for the operations page: { items, nextCursor, hasMore }; after continues a previous page.
+        // platform (or platforms, a comma list) keeps the jobs of those connection platforms.
+        api.MapGet("/page", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? after, string? platform, string? platforms) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.CountAsync(tenant.TenantId, since, http.RequestAborted))
+                ? Result(http, await service.PageAsync(
+                    tenant.TenantId,
+                    new JobListQuery(status, since, List(jobTypes), limit, after, Platforms(platform, platforms)),
+                    http.RequestAborted))
+                : Unauthorized(http));
+        api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since, string? platform, string? platforms) =>
+            Tenant(http) is { } tenant
+                ? Results.Ok(await service.CountAsync(tenant.TenantId, since, Platforms(platform, platforms), http.RequestAborted))
                 : Unauthorized(http));
         api.MapGet("/metrics", async (HttpContext http, IJobOperationsService service, int? hours) =>
             Tenant(http) is { } tenant
@@ -62,6 +71,12 @@ public static class JobEndpoints
         return endpoints;
     }
 
+    private static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    public static IReadOnlyList<string>? Platforms(string? platform, string? platforms)
+    {
+        var codes = (List(platform) ?? []).Concat(List(platforms) ?? []).Select(code => code.ToUpperInvariant()).Distinct(StringComparer.Ordinal).Take(20).ToArray();
+        return codes.Length == 0 ? null : codes;
+    }
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])
         ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400))
