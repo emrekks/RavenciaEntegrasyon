@@ -19,9 +19,9 @@ type RevenuePoint = { day: string; amount: number; orderCount: number; productQu
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
 type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
 type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
-type Range = '7' | '30' | '90' | 'custom'
+type Range = 'today' | '7' | '30' | '90' | 'custom'
 
-const PERIODS: Array<[Range, string]> = [['7', 'Son 7 Gün'], ['30', 'Son 30 Gün'], ['90', 'Son 90 Gün'], ['custom', 'Özel Tarih']]
+const PERIODS: Array<[Range, string]> = [['today', 'Bugün'], ['7', 'Son 7 Gün'], ['30', 'Son 30 Gün'], ['90', 'Son 90 Gün'], ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
 const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#f5b301'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8']]
 const platformCode = (name: string) => PLATFORMS.find(([code]) => name.toLocaleUpperCase('tr-TR').replace(/İ/g, 'I').includes(code))?.[0] ?? name.toUpperCase()
@@ -47,20 +47,24 @@ function dateKey(value: Date) {
   const pad = (part: number) => String(part).padStart(2, '0')
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
 }
-function rangeDates(range: Range, from: string, to: string, now: Date) {
+export function rangeDates(range: Range, from: string, to: string, now: Date) {
   if (range === 'custom') {
     const start = new Date(`${from}T00:00:00`), end = new Date(`${to}T23:59:59.999`)
     return start <= end ? { start, end } : { start: end, end: start }
   }
   const start = new Date(now)
   start.setHours(0, 0, 0, 0)
-  start.setDate(start.getDate() - (Number(range) - 1))
+  if (range !== 'today') start.setDate(start.getDate() - (Number(range) - 1))
   return { start, end: now }
 }
-function previousRange(start: Date, end: Date) {
-  const day = 86_400_000
-  const previousEnd = new Date(start.getTime() - day)
-  return { start: new Date(previousEnd.getTime() - Math.max(day, end.getTime() - start.getTime())), end: previousEnd }
+// The series counts whole calendar days, so the previous period is the same number of days right before this one:
+// today is compared with yesterday, the last 7 days with the 7 days before them.
+export function previousRange(start: Date, end: Date) {
+  const midnight = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate())
+  const days = Math.round((midnight(end).getTime() - midnight(start).getTime()) / 86_400_000) + 1
+  const previousStart = midnight(start)
+  previousStart.setDate(previousStart.getDate() - days)
+  return { start: previousStart, end: new Date(midnight(start).getTime() - 1) }
 }
 const revenuePath = (from: Date, to: Date, platform = 'ALL') => `/dashboard/revenue-series?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&platform=${encodeURIComponent(platform)}`
 const money = (amount: number, currency = 'TRY') => formatMoney(amount, currency || 'TRY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -136,6 +140,9 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
       <path className="rr-area" d={`${line(points)} L${x(points.length - 1)} ${y(0)} L${x(0)} ${y(0)} Z`} />
       {previous.length > 0 && <path className="rr-prev" d={line(previous)} />}
       <path className="rr-cur" d={line(points)} />
+      {/* A one-day period has no line to draw: its value (and the previous day's) shows as a point. */}
+      {points.length === 1 && <circle className="rr-hp" cx={x(0)} cy={y(value(points[0]))} r="4.5" />}
+      {previous.length === 1 && points.length === 1 && <circle className="rr-hp rr-hp-prev" cx={x(0)} cy={y(value(previous[0]))} r="3.5" />}
       {hover && point && <><line className="rr-hl" x1={x(hover.index)} x2={x(hover.index)} y1={T} y2={H - B} /><circle className="rr-hp" cx={x(hover.index)} cy={y(value(point))} r="4.5" /></>}
     </svg>
     {hover && point && <div ref={tipRef} className="rr-ctip" style={{ visibility: 'hidden' }}><b>{dayLong(point.day)}</b><table><thead><tr><th /><th>Seçilen Gün</th><th>Önceki Gün</th></tr></thead><tbody>
@@ -248,7 +255,7 @@ export function DashboardPage() {
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byPlatform]) => <Link key={kind} className={`rr-opcard${tone && value ? ` rr-${tone}` : ''}`} to={to}><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows(byPlatform)} /></Link>)}</div></section>
     <section className="rr-panel rr-pf" style={platform === 'ALL' ? undefined : { ['--pf-accent' as string]: platformColor(platform, 0) }}>
-      <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {platform === 'ALL' ? 'Tüm Platformlar' : platformName(platform)} · önceki eşit dönemle karşılaştırma</p></div><div className="rr-pf-tools">
+      <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {platform === 'ALL' ? 'Tüm Platformlar' : platformName(platform)} · {range === 'today' ? 'dünle karşılaştırma' : 'önceki eşit dönemle karşılaştırma'}</p></div><div className="rr-pf-tools">
         {range === 'custom' && <DateRangePicker className="rr-date" from={from} to={to} onChange={value => { setFrom(value.from); setTo(value.to) }} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
         <div className="rr-seg" role="radiogroup" aria-label="Dönem">{PERIODS.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={range === value} className={range === value ? 'rr-on' : undefined} onClick={() => setRange(value)}>{value === 'custom' ? 'Özel' : label.replace('Son ', '')}</button>)}</div>
       </div></div>

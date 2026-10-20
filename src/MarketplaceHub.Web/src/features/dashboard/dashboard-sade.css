@@ -50,6 +50,7 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-prev { fill: none; stroke: var(--rr-subtle); stroke-width: 1.5; stroke-dasharray: 4 4; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hl { stroke: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hp { fill: var(--rr-surface); stroke: var(--rr-violet); stroke-width: 2; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hp.rr-hp-prev { stroke: var(--rr-muted); stroke-dasharray: 2 2; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { position: absolute; z-index: 20; top: 0; left: 0; width: 290px; padding: 10px 12px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12.5px; pointer-events: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip > b { display: block; margin-bottom: 6px; font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip table { width: 100%; border-collapse: collapse; }
