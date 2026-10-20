@@ -5,6 +5,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -31,7 +32,7 @@ public sealed class TrendyolAuthenticationHandler(AppDbContext db, IDataProtecti
             return null;
         }
         CredentialPayload? payload; ConnectionSettings? settings;
-        try { payload = JsonSerializer.Deserialize<CredentialPayload>(_protector.Unprotect(credential.ProtectedPayload)); settings = JsonSerializer.Deserialize<ConnectionSettings>(connection.SettingsJson); }
+        try { payload = JsonSerializer.Deserialize<CredentialPayload>(BoundSecret.UnprotectForConnection(_protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload)); settings = JsonSerializer.Deserialize<ConnectionSettings>(connection.SettingsJson); }
         catch (Exception exception) when (exception is CryptographicException or JsonException)
         {
             logger.LogWarning(exception, "Trendyol credential veya bağlantı ayarları çözülemedi. ConnectionId: {ConnectionId}", connectionId);

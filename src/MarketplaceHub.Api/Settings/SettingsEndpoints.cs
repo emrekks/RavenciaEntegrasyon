@@ -101,8 +101,8 @@ public static class SettingsEndpoints
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (settings.ValueKind != JsonValueKind.Object) return Problem(http, new("SHIPPING_LABEL_SETTINGS_INVALID", "Kargo etiketi ayarları JSON nesnesi olmalıdır.", 400));
-        var valueJson = settings.GetRawText();
-        if (valueJson.Length > MaximumJsonCharacters) return Problem(http, new("SHIPPING_LABEL_SETTINGS_TOO_LARGE", "Kargo etiketi ayarları çok büyük.", 413));
+        if (settings.GetRawText().Length > MaximumJsonCharacters) return Problem(http, new("SHIPPING_LABEL_SETTINGS_TOO_LARGE", "Kargo etiketi ayarları çok büyük.", 413));
+        var valueJson = ShippingLabelSettingsSchema.Normalize(settings).ToJsonString();
 
         var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ShippingLabelKey, http.RequestAborted);
         if (Precondition(http, setting) is { } precondition) return precondition;
@@ -118,7 +118,7 @@ public static class SettingsEndpoints
             setting.Version++;
         }
 
-        await db.SaveChangesAsync(http.RequestAborted);
+        if (await SaveAsync(http, db) is { } conflict) return conflict;
         return Versioned(http, setting.Version, new { settings = ParseObject(valueJson), version = setting.Version });
     }
 
@@ -151,7 +151,7 @@ public static class SettingsEndpoints
             setting.Version++;
         }
 
-        await db.SaveChangesAsync(http.RequestAborted);
+        if (await SaveAsync(http, db) is { } conflict) return conflict;
         return Versioned(http, setting.Version, new { settings = normalized, version = setting.Version });
     }
 
@@ -325,6 +325,31 @@ public static class SettingsEndpoints
         return setting is not null && setting.Version == expected
             ? null
             : Problem(http, new("PRECONDITION_FAILED", "Ayarlar başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", 412));
+    }
+
+    // Two first saves of the same setting at once both insert (the second hits the primary key), and two
+    // updates of one version both pass the If-Match check (the second hits the version token): the loser is
+    // answered like a stale If-Match instead of a 500.
+    private static async Task<IResult?> SaveAsync(HttpContext http, AppDbContext db)
+    {
+        try
+        {
+            await db.SaveChangesAsync(http.RequestAborted);
+            return null;
+        }
+        catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException || IsUniqueViolation(exception))
+        {
+            // The refused row must not be saved again with the idempotency record.
+            foreach (var entry in db.ChangeTracker.Entries<TenantSetting>().ToList()) entry.State = EntityState.Detached;
+            return Problem(http, new("PRECONDITION_FAILED", "Ayarlar başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", 412));
+        }
+    }
+
+    internal static bool IsUniqueViolation(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation }) return true;
+        return false;
     }
 
     private static IResult Versioned(HttpContext http, long version, object body)

@@ -3,6 +3,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -33,7 +34,7 @@ public sealed class HepsiburadaAuthenticationHandler(
         if (credential is null) return null;
 
         CredentialPayload? payload;
-        try { payload = JsonSerializer.Deserialize<CredentialPayload>(protector.Unprotect(credential.ProtectedPayload)); }
+        try { payload = JsonSerializer.Deserialize<CredentialPayload>(BoundSecret.UnprotectForConnection(protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload)); }
         catch (Exception exception) when (exception is CryptographicException or JsonException)
         {
             logger.LogWarning(exception, "Hepsiburada credential çözülemedi. ConnectionId: {ConnectionId}", connectionId);
@@ -77,7 +78,7 @@ public sealed class HepsiburadaAuthenticationHandler(
         if (credential is null) return false;
 
         CredentialPayload? payload;
-        try { payload = JsonSerializer.Deserialize<CredentialPayload>(protector.Unprotect(credential.ProtectedPayload)); }
+        try { payload = JsonSerializer.Deserialize<CredentialPayload>(BoundSecret.UnprotectForConnection(protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload)); }
         catch (Exception exception) when (exception is CryptographicException or JsonException)
         {
             logger.LogWarning(exception, "Hepsiburada credential çözülemedi; doğrulanan Basic kullanıcı adı saklanamadı. ConnectionId: {ConnectionId}", connectionId);
@@ -86,7 +87,7 @@ public sealed class HepsiburadaAuthenticationHandler(
         if (payload is null || string.IsNullOrWhiteSpace(payload.ApiSecret) || string.IsNullOrWhiteSpace(username)) return false;
         if (string.Equals(payload.ApiKey, username, StringComparison.Ordinal)) return true;
 
-        credential.ProtectedPayload = protector.Protect(JsonSerializer.Serialize(payload with { ApiKey = username, IntegratorName = payload.IntegratorName ?? payload.ApiKey.Trim() }));
+        credential.ProtectedPayload = BoundSecret.ProtectForConnection(protector, credential.TenantId, credential.ConnectionId, JsonSerializer.Serialize(payload with { ApiKey = username, IntegratorName = payload.IntegratorName ?? payload.ApiKey.Trim() }));
         credential.Version++;
         try
         {

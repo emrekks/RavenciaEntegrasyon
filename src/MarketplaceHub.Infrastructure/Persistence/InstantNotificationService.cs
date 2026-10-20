@@ -116,7 +116,7 @@ public sealed class InstantNotificationService(
             RouteTokenHash = tokenHasher.Hash(routeToken),
             // Shopify signs each delivery (HMAC) with the client secret instead of Basic Auth.
             AuthenticationType = shopify ? clientSecret is null ? "ROUTE_TOKEN" : "HMAC_SHA256" : "BASIC_AUTHENTICATION",
-            ProtectedVerifierSecret = protector.Protect(JsonSerializer.Serialize(shopify ? new VerifierPayload(null, null, null, clientSecret) : new VerifierPayload(username, password, null, null))),
+            ProtectedVerifierSecret = BoundSecret.ProtectForConnection(protector, tenantId, connectionId, JsonSerializer.Serialize(shopify ? new VerifierPayload(null, null, null, clientSecret) : new VerifierPayload(username, password, null, null))),
             Status = "ACTIVE",
             Version = 1
         };
@@ -259,7 +259,7 @@ public sealed class InstantNotificationService(
         if (protectedPayload is null) return null;
         try
         {
-            var stored = JsonSerializer.Deserialize<StoredShopifyCredential>(dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1").Unprotect(protectedPayload));
+            var stored = JsonSerializer.Deserialize<StoredShopifyCredential>(BoundSecret.UnprotectForConnection(dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1"), tenantId, connectionId, protectedPayload));
             var secret = stored?.ClientSecret ?? stored?.ApiSecret;
             return string.IsNullOrWhiteSpace(secret) ? null : secret.Trim();
         }

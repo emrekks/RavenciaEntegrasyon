@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -34,7 +35,7 @@ public sealed class ShopifyAuthenticationHandler(
         if (connection is null || credential is null) return null;
 
         ShopifyCredentialPayload? payload;
-        try { payload = JsonSerializer.Deserialize<ShopifyCredentialPayload>(protector.Unprotect(credential.ProtectedPayload)); }
+        try { payload = JsonSerializer.Deserialize<ShopifyCredentialPayload>(BoundSecret.UnprotectForConnection(protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload)); }
         catch (Exception exception) when (exception is CryptographicException or JsonException)
         {
             logger.LogWarning(exception, "Shopify credential çözülemedi. ConnectionId: {ConnectionId}", connectionId);

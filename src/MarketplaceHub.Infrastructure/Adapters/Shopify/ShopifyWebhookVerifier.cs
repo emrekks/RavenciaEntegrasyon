@@ -4,6 +4,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,7 +21,7 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         if (subscription is null) return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Unsupported("Aktif Shopify webhook subscription bulunamadı."));
 
         WebhookVerifierPayload? payload;
-        try { payload = JsonSerializer.Deserialize<WebhookVerifierPayload>(protector.Unprotect(subscription.ProtectedVerifierSecret)); }
+        try { payload = JsonSerializer.Deserialize<WebhookVerifierPayload>(BoundSecret.UnprotectForConnection(protector, subscription.TenantId, subscription.ConnectionId, subscription.ProtectedVerifierSecret)); }
         catch (Exception exception) when (exception is CryptographicException or JsonException or ArgumentException)
         {
             return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Configuration());

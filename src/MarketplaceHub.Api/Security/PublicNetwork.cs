@@ -13,6 +13,8 @@ public static class PublicNetwork
     public static SocketsHttpHandler Handler() => new()
     {
         AllowAutoRedirect = false,
+        // A proxy from the environment (HTTPS_PROXY) would make the connect-time address check meaningless.
+        UseProxy = false,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         ConnectTimeout = TimeSpan.FromSeconds(8),
         ConnectCallback = async (context, cancellationToken) =>
@@ -52,11 +54,30 @@ public static class PublicNetwork
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
             var b = address.GetAddressBytes();
-            return !(address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast
-                || (b[0] & 0xFE) == 0xFC // unique local fc00::/7
-                || b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8); // documentation
+            // Forms that carry an IPv4 address inside are judged by that address (an internal one is refused).
+            if (EmbeddedIPv4(b) is { } embedded) return IsPublic(embedded);
+            // Only global unicast (2000::/3) is public; inside it, the special-purpose blocks are refused.
+            if ((b[0] & 0xE0) != 0x20) return false;
+            return !(b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8 // documentation 2001:db8::/32
+                || b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x00 // Teredo 2001::/32 (an IPv4 relay)
+                || b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && (b[3] & 0xF0) is 0x10 or 0x20 // ORCHID 2001:10::/28, 2001:20::/28
+                || b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x02 && b[4] == 0 && b[5] == 0 // benchmarking 2001:2::/48
+                || b[0] == 0x3F && b[1] == 0xFF && (b[2] & 0xF0) == 0x00); // documentation 3fff::/20
         }
         return false;
+    }
+
+    // NAT64 (64:ff9b::/96 and the local-use 64:ff9b:1::/48), 6to4 (2002::/16), IPv4-compatible (::a.b.c.d)
+    // and IPv4-translated (::ffff:0:a.b.c.d) addresses route to the IPv4 address they carry.
+    internal static IPAddress? EmbeddedIPv4(byte[] b)
+    {
+        if (b.Length != 16) return null;
+        if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b.AsSpan(4, 8).IndexOfAnyExcept((byte)0) < 0) return new IPAddress(b.AsSpan(12, 4));
+        if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b[4] == 0x00 && b[5] == 0x01) return new IPAddress(b.AsSpan(12, 4));
+        if (b[0] == 0x20 && b[1] == 0x02) return new IPAddress(b.AsSpan(2, 4));
+        if (b.AsSpan(0, 12).IndexOfAnyExcept((byte)0) < 0 && b.AsSpan(12, 4).IndexOfAnyExcept((byte)0) >= 0) return new IPAddress(b.AsSpan(12, 4));
+        if (b.AsSpan(0, 8).IndexOfAnyExcept((byte)0) < 0 && b[8] == 0xFF && b[9] == 0xFF && b[10] == 0 && b[11] == 0) return new IPAddress(b.AsSpan(12, 4));
+        return null;
     }
 
     // GET that follows at most three https redirects itself and reads at most maxBytes; null when
