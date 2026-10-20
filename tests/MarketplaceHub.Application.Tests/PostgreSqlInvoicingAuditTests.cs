@@ -494,6 +494,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
     private async Task DeleteTenantAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();
+        await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.IntegrationJobs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.AuditLogs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OperationalIssues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();

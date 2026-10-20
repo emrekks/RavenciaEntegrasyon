@@ -27,12 +27,15 @@ require_secret_files() {
 }
 
 # Prints the value of an exact key in production.env; fails when the key is absent.
+# The awk program is single-quoted on purpose: its $-fields belong to awk, not to the shell.
+# shellcheck disable=SC2016
 read_env() {
   local key="$1"
   "${sudo_cmd[@]}" awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) exit 1 }' "$environment_file"
 }
 
 # Prints the value of an exact key in production.env, or the fallback when absent.
+# shellcheck disable=SC2016
 read_env_or() {
   local key="$1" fallback="$2"
   "${sudo_cmd[@]}" awk -F= -v wanted="$key" -v fallback="$fallback" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print fallback }' "$environment_file"
@@ -121,7 +124,7 @@ verify_frontend() {
 verify_stack() {
   local site_address="$1"
   wait_for_readiness "$site_address"
-  wait_for_worker_health
+  wait_for_worker_health 30
   verify_frontend "$site_address"
 }
 
