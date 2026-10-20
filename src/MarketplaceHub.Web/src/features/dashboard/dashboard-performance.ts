@@ -8,8 +8,12 @@ export type Performance = {
   from: string; to: string; previousFrom: string; previousTo: string
   currentStart: string; currentEnd: string; previousStart: string; previousEnd: string
   partialDay: boolean; channels: DashboardChannel[]; current: PerformanceRow[]; previous: PerformanceRow[]
+  // A one-day period also comes hour by hour ("yyyy-MM-ddTHH:00", Istanbul); the previous day stops at the same time.
+  currentHours?: HourRow[] | null; previousHours?: HourRow[] | null
 }
-export type DayPoint = { day: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
+export type HourRow = Omit<PerformanceRow, 'day'> & { hour: string }
+// day is the calendar day, or the hour key ("yyyy-MM-ddTHH:00") of an hourly series; label is the axis text then.
+export type DayPoint = { day: string; label?: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
 export type Range = 'today' | '7' | '30' | '90' | 'custom'
 
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/
@@ -37,7 +41,7 @@ export function periodDays(range: Range, custom: { from: string; to: string }, t
   return { from: range === 'today' ? today : addDays(today, -(Number(range) - 1)), to: today }
 }
 
-const inChannel = (row: PerformanceRow, channel: string) => channel === 'ALL' || row.connectionId === channel
+const inChannel = (row: { connectionId: string }, channel: string) => channel === 'ALL' || row.connectionId === channel
 
 /** The currency the panel totals in: Turkish lira whenever there is any, otherwise the largest one. Others are listed apart. */
 export function primaryCurrency(rows: PerformanceRow[]) {
@@ -115,4 +119,29 @@ export function revenueReport(performance: Performance, channel: string, channel
   const content = String.fromCharCode(0xfeff) + `${[header, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n')}`
   const name = `ravencia-ciro-${performance.from}_${performance.to}-${channel === 'ALL' ? 'tum-platformlar' : slug(channelName)}.csv`
   return { name, content, columns: header }
+}
+
+/** Hours 00..lastHour of one Istanbul day, the hourly rows of the chosen store and currency added up. */
+export function hourSeries(rows: HourRow[], day: string, channel: string, currency: string, lastHour: number): DayPoint[] {
+  const byHour = new Map<string, DayPoint>()
+  for (const row of rows) {
+    if (!inChannel(row, channel) || row.currency !== currency) continue
+    const point = byHour.get(row.hour) ?? { day: row.hour, amount: 0, orderCount: 0, productQuantity: 0, packageCount: 0, returnedAmount: 0, returnedOrderCount: 0 }
+    point.amount += row.amount; point.orderCount += row.orderCount; point.productQuantity += row.productQuantity
+    point.packageCount += row.packageCount; point.returnedAmount += row.returnedAmount; point.returnedOrderCount += row.returnedOrderCount
+    byHour.set(row.hour, point)
+  }
+  return Array.from({ length: Math.max(0, Math.min(23, lastHour)) + 1 }, (_, hour) => {
+    const label = `${String(hour).padStart(2, '0')}:00`
+    const key = `${day}T${label}`
+    return { ...(byHour.get(key) ?? { day: key, amount: 0, orderCount: 0, productQuantity: 0, packageCount: 0, returnedAmount: 0, returnedOrderCount: 0 }), label }
+  })
+}
+
+/** The Istanbul hour (0-23) of an instant: the last hour a partial "today" report has reached. */
+export function istanbulHour(instant: string) {
+  const date = new Date(instant)
+  if (Number.isNaN(date.getTime())) return 23
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Istanbul', hour: '2-digit', hourCycle: 'h23' }).format(date))
+  return Number.isFinite(hour) ? hour : 23
 }

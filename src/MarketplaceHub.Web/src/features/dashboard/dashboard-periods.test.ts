@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { matrixCellText } from './DashboardPage'
-import { addDays, channelTotals, comparisonText, dayKeys, daySeries, otherCurrencies, periodDays, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
+import { addDays, channelTotals, comparisonText, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
 
 const row = (day: string, connectionId: string, amount: number, extra: Partial<PerformanceRow> = {}): PerformanceRow =>
   ({ day, connectionId, currency: 'TRY', amount, orderCount: 1, productQuantity: 2, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0, ...extra })
@@ -81,5 +81,24 @@ describe('integration matrix cells', () => {
     expect(matrixCellText({ state: 'bad', lastSuccessAt: null, lastProblemAt: null })).toBe('Hata Var')
     expect(matrixCellText({ state: 'off', lastSuccessAt: null, lastProblemAt: null })).toBe('İşlem Yok')
     expect(matrixCellText({ state: 'ok', lastSuccessAt: new Date().toISOString(), lastProblemAt: null })).toBe('Az önce')
+  })
+})
+
+describe('hourly series of a one-day period', () => {
+  const row = (hour: string, amount: number, connectionId = 'store-1') => ({ hour, connectionId, currency: 'TRY', amount, orderCount: 1, productQuantity: 2, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0 })
+
+  it('fills every hour up to the last one and adds the stores up', () => {
+    const points = hourSeries([row('2026-10-20T09:00', 100), row('2026-10-20T09:00', 50, 'store-2'), row('2026-10-20T14:00', 30)], '2026-10-20', 'ALL', 'TRY', 14)
+    expect(points).toHaveLength(15)
+    expect(points[0]).toMatchObject({ day: '2026-10-20T00:00', label: '00:00', amount: 0 })
+    expect(points[9]).toMatchObject({ label: '09:00', amount: 150, orderCount: 2 })
+    expect(points[14]).toMatchObject({ label: '14:00', amount: 30 })
+    expect(hourSeries([row('2026-10-20T09:00', 100), row('2026-10-20T09:00', 50, 'store-2')], '2026-10-20', 'store-2', 'TRY', 23)[9].amount).toBe(50)
+  })
+
+  it('reads the Istanbul hour of an instant', () => {
+    expect(istanbulHour('2026-10-20T20:28:00Z')).toBe(23)
+    expect(istanbulHour('2026-10-20T21:05:00Z')).toBe(0)
+    expect(istanbulHour('not a date')).toBe(23)
   })
 })

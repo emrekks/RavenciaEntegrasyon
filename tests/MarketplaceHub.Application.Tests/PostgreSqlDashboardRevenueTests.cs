@@ -134,6 +134,11 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
             var row = Assert.Single(performance.Current);
             Assert.Equal(draft.Id, row.ConnectionId);
             Assert.Equal(150m, row.Amount);
+            // A one-day report also comes hour by hour: the same order, in its Istanbul hour.
+            var hour = Assert.Single(performance.CurrentHours!);
+            Assert.Equal("2026-10-15T23:00", hour.Hour);
+            Assert.Equal(150m, hour.Amount);
+            Assert.Equal(1, hour.OrderCount);
             Assert.Contains(performance.Channels, channel => channel.ConnectionId == draft.Id);
             Assert.DoesNotContain(performance.Channels, channel => channel.ConnectionId == hidden.Id);
         }

@@ -49,7 +49,22 @@ public sealed record DashboardPerformanceView(
     bool PartialDay,
     IReadOnlyList<DashboardChannelView> Channels,
     IReadOnlyList<DashboardPerformanceRowView> Current,
-    IReadOnlyList<DashboardPerformanceRowView> Previous);
+    IReadOnlyList<DashboardPerformanceRowView> Previous,
+    // A one-day period also comes hour by hour (the previous day up to the same time), so the panel can draw the day.
+    IReadOnlyList<DashboardPerformanceHourView>? CurrentHours = null,
+    IReadOnlyList<DashboardPerformanceHourView>? PreviousHours = null);
+
+// One hour (tenant's local time, "yyyy-MM-ddTHH:00") of one connection in one currency; same rules as the day rows.
+public sealed record DashboardPerformanceHourView(
+    string Hour,
+    Guid ConnectionId,
+    string Currency,
+    decimal Amount,
+    int OrderCount,
+    decimal ProductQuantity,
+    int PackageCount,
+    decimal ReturnedAmount,
+    int ReturnedOrderCount);
 
 public interface IDashboardReadService
 {

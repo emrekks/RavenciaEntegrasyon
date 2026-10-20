@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -91,8 +92,16 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .ToListAsync(cancellationToken);
         var current = rows.Where(x => x.Day >= period.From && x.Day <= period.To).ToList();
         var previous = rows.Where(x => x.Day >= period.PreviousFrom && x.Day <= period.PreviousTo).ToList();
+        List<DashboardPerformanceHourView>? currentHours = null, previousHours = null;
+        if (period.From == period.To)
+        {
+            var hours = await PerformanceHoursAsync(tenantId, period, IanaId(timezone), cancellationToken);
+            var currentDay = period.From.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            currentHours = hours.Where(x => x.Hour.StartsWith(currentDay, StringComparison.Ordinal)).ToList();
+            previousHours = hours.Where(x => !x.Hour.StartsWith(currentDay, StringComparison.Ordinal)).ToList();
+        }
         return ServiceResult<DashboardPerformanceView>.Ok(new(period.From, period.To, period.PreviousFrom, period.PreviousTo,
-            period.CurrentStart, period.CurrentEnd, period.PreviousStart, period.PreviousEnd, period.PartialDay, channels, current, previous));
+            period.CurrentStart, period.CurrentEnd, period.PreviousStart, period.PreviousEnd, period.PartialDay, channels, current, previous, currentHours, previousHours));
     }
 
     // Both periods in three grouped queries (revenue, product units, packages), one row per day × store × currency.
@@ -105,6 +114,27 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var packages = await PackageQuery(db, orders).ToListAsync(cancellationToken);
         return MergePerformanceRows(revenue, units, packages);
     }
+
+    // The same three queries with the order time cut to the hour instead of the day (one-day periods only).
+    internal async Task<List<DashboardPerformanceHourView>> PerformanceHoursAsync(Guid tenantId, DashboardPerformancePeriod period, string timezone, CancellationToken cancellationToken)
+    {
+        var orders = PerformanceOrders(db, tenantId, period, timezone, hourly: true);
+        var revenue = await RevenueQuery(orders).ToListAsync(cancellationToken);
+        var units = await UnitQuery(db, orders).ToListAsync(cancellationToken);
+        var packages = await PackageQuery(db, orders).ToListAsync(cancellationToken);
+        return MergePerformanceHours(revenue, units, packages);
+    }
+
+    internal static List<DashboardPerformanceHourView> MergePerformanceHours(IReadOnlyList<RevenueGroup> revenue, IReadOnlyList<UnitGroup> units, IReadOnlyList<PackageGroup> packages) => revenue
+        .GroupBy(x => (x.Day, x.ConnectionId, x.Currency))
+        .Select(group => new DashboardPerformanceHourView(
+            group.Key.Day.ToString("yyyy-MM-dd'T'HH':00'", CultureInfo.InvariantCulture), group.Key.ConnectionId, group.Key.Currency,
+            group.Sum(x => x.Amount), group.Sum(x => x.Orders),
+            units.Where(x => x.Day == group.Key.Day && x.ConnectionId == group.Key.ConnectionId && x.Currency == group.Key.Currency).Sum(x => x.Quantity),
+            packages.Where(x => x.Day == group.Key.Day && x.ConnectionId == group.Key.ConnectionId && x.Currency == group.Key.Currency).Sum(x => x.Count),
+            group.Sum(x => x.ReturnedAmount), group.Sum(x => x.ReturnedOrders)))
+        .OrderBy(x => x.Hour, StringComparer.Ordinal).ThenBy(x => x.ConnectionId).ThenBy(x => x.Currency)
+        .ToList();
 
     // Amount is what was sold and kept; ReturnedAmount what went back (a whole returned order, or the returned part of one).
     internal sealed record RevenueGroup(DateTime Day, Guid ConnectionId, string Currency, decimal Amount, int Orders, decimal ReturnedAmount, int ReturnedOrders);
@@ -187,7 +217,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
     // Trendyol order total also holds its cancelled packages); an order whose packages carry no amount keeps the
     // order total. The returned amount is the larger of the packages sent back and the returned share of the lines
     // (returned quantities and accepted return claims), so a partial return is taken off too.
-    internal static IQueryable<PerformanceOrderRow> PerformanceOrders(AppDbContext db, Guid tenantId, DashboardPerformancePeriod period, string timezone)
+    internal static IQueryable<PerformanceOrderRow> PerformanceOrders(AppDbContext db, Guid tenantId, DashboardPerformancePeriod period, string timezone, bool hourly = false)
     {
         var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
         var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
@@ -249,7 +279,10 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                    Amount = amount,
                    ReturnedAmount = packagesBack > linesBack ? packagesBack : linesBack,
                    Returned = returnedStatuses.Contains(order.DerivedStatus),
-                   Day = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Date
+                   // Day is the local calendar day, or the local hour for an hourly report.
+                   Day = hourly
+                       ? TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Date.AddHours(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Hour)
+                       : TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Date
                };
     }
 

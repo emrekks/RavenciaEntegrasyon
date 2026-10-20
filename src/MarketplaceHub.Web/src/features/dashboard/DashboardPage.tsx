@@ -10,7 +10,7 @@ import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { channelTotals, comparisonText, daySeries, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { channelTotals, comparisonText, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
@@ -85,7 +85,8 @@ function Breakdown({ rows }: { rows: Array<{ key: string; code: string; name: st
 
 // Daily revenue: area and line for this period, dashed line for the previous one. The day tooltip follows the
 // pointer, above it when the page has room there, otherwise below.
-function RevenueChart({ points, previous, currency, value = point => point.amount, axis = axisLabel }: { points: DayPoint[]; previous: DayPoint[]; currency: string; value?: (point: DayPoint) => number; axis?: (value: number) => string }) {
+// An hourly chart (a one-day period) compares each hour with the same hour of the previous day.
+function RevenueChart({ points, previous, currency, value = point => point.amount, axis = axisLabel, hourly = false }: { points: DayPoint[]; previous: DayPoint[]; currency: string; value?: (point: DayPoint) => number; axis?: (value: number) => string; hourly?: boolean }) {
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
@@ -113,11 +114,11 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
     setHover({ index, x: event.clientX, y: event.clientY })
   }
   const point = hover ? points[hover.index] : null
-  const before = hover ? points[hover.index - 1] ?? previous[previous.length - 1] : null
+  const before = hover ? (hourly ? previous[hover.index] ?? null : points[hover.index - 1] ?? previous[previous.length - 1]) : null
   return <div ref={chartRef} className="rr-chart" onMouseMove={move} onMouseLeave={() => setHover(null)}>
-    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Günlük ciro grafiği">
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={hourly ? 'Saatlik ciro grafiği' : 'Günlük ciro grafiği'}>
       <g className="rr-grid">{Array.from({ length: 6 }, (_, index) => { const value = max / 5 * index; return <g key={index}><line x1={L} x2={W - R} y1={y(value)} y2={y(value)} /><text x={L - 10} y={y(value) + 4} textAnchor="end">{axis(value)}</text></g> })}</g>
-      <g className="rr-xax">{points.map((item, index) => index % labelStep === 0 || Number(item.day.slice(8, 10)) === 1 ? <text key={item.day} x={x(index)} y={H - 8} textAnchor="middle">{dayShort(item.day)}</text> : null)}</g>
+      <g className="rr-xax">{points.map((item, index) => index % labelStep === 0 || (!item.label && Number(item.day.slice(8, 10)) === 1) ? <text key={item.day} x={x(index)} y={H - 8} textAnchor="middle">{item.label ?? dayShort(item.day)}</text> : null)}</g>
       <path className="rr-area" d={`${line(points)} L${x(points.length - 1)} ${y(0)} L${x(0)} ${y(0)} Z`} />
       {previous.length > 0 && <path className="rr-prev" d={line(previous)} />}
       <path className="rr-cur" d={line(points)} />
@@ -126,7 +127,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
       {previous.length === 1 && points.length === 1 && <circle className="rr-hp rr-hp-prev" cx={x(0)} cy={y(value(previous[0]))} r="3.5" />}
       {hover && point && <><line className="rr-hl" x1={x(hover.index)} x2={x(hover.index)} y1={T} y2={H - B} /><circle className="rr-hp" cx={x(hover.index)} cy={y(value(point))} r="4.5" /></>}
     </svg>
-    {hover && point && <div ref={tipRef} className="rr-ctip" style={{ visibility: 'hidden' }}><b>{dayLong(point.day)}</b><table><thead><tr><th /><th>Seçilen Gün</th><th>Önceki Gün</th></tr></thead><tbody>
+    {hover && point && <div ref={tipRef} className="rr-ctip" style={{ visibility: 'hidden' }}><b>{point.label ? `${dayLong(point.day.slice(0, 10))} · ${point.label}–${point.label.slice(0, 2)}:59` : dayLong(point.day)}</b><table><thead><tr><th /><th>{hourly ? 'Bu Saat' : 'Seçilen Gün'}</th><th>{hourly ? 'Önceki Gün Aynı Saat' : 'Önceki Gün'}</th></tr></thead><tbody>
       <tr><td>Sipariş</td><td className="rr-num">{count(point.orderCount)}</td><td className="rr-num">{before ? count(before.orderCount) : '—'}</td></tr>
       <tr><td>Ürün (Adet)</td><td className="rr-num">{count(point.productQuantity)}</td><td className="rr-num">{before ? count(before.productQuantity) : '—'}</td></tr>
       <tr><td>Kargo (Paket)</td><td className="rr-num">{count(point.packageCount)}</td><td className="rr-num">{before ? count(before.packageCount) : '—'}</td></tr>
@@ -179,8 +180,11 @@ export function DashboardPage() {
   const data = performance.data
   const loading = performance.isLoading
   const currency = primaryCurrency(data?.current ?? [])
-  const series = data ? daySeries(data.current, data.from, data.to, channel, currency) : []
-  const previousSeries = data ? daySeries(data.previous, data.previousFrom, data.previousTo, channel, currency) : []
+  // A one-day period is drawn and measured hour by hour, up to the hour the day has reached.
+  const hourly = Boolean(data && data.from === data.to && data.currentHours)
+  const lastHour = data && data.partialDay ? istanbulHour(data.currentEnd) : 23
+  const series = data ? (hourly ? hourSeries(data.currentHours ?? [], data.from, channel, currency, lastHour) : daySeries(data.current, data.from, data.to, channel, currency)) : []
+  const previousSeries = data ? (hourly ? hourSeries(data.previousHours ?? [], data.previousFrom, channel, currency, lastHour) : daySeries(data.previous, data.previousFrom, data.previousTo, channel, currency)) : []
   const total = sumOf(series, point => point.amount)
   const orders = sumOf(series, point => point.orderCount)
   const previousTotal = sumOf(previousSeries, point => point.amount)
@@ -199,9 +203,9 @@ export function DashboardPage() {
   const selectedName = selected?.displayName ?? storeTotals.find(item => item.connectionId === channel)?.name ?? ''
   const periodText = range === 'custom' ? 'Seçilen dönem' : periodLabel(range)
   const chartValues: Array<[(point: DayPoint) => number, (value: number) => string, string]> = [
-    [point => point.amount, axisLabel, 'Günlük Ciro'],
-    [point => point.orderCount, value => count(value), 'Günlük Sipariş'],
-    [point => point.orderCount ? point.amount / point.orderCount : 0, axisLabel, 'Günlük Ortalama Sepet'],
+    [point => point.amount, axisLabel, hourly ? 'Saatlik Ciro' : 'Günlük Ciro'],
+    [point => point.orderCount, value => count(value), hourly ? 'Saatlik Sipariş' : 'Günlük Sipariş'],
+    [point => point.orderCount ? point.amount / point.orderCount : 0, axisLabel, hourly ? 'Saatlik Ortalama Sepet' : 'Günlük Ortalama Sepet'],
   ]
   // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
   const rows = (matrix.data ?? []).filter(row => PLATFORMS.some(([code]) => code === row.platformCode.toUpperCase()))
@@ -251,9 +255,9 @@ export function DashboardPage() {
       </div></div>
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell loading={loading} label="Toplam Gelir" value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
-        <KpiCell loading={loading} label="Toplam Sipariş" value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
-        <KpiCell loading={loading} label="Ortalama Sepet" value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
+        <KpiCell loading={loading} label="Toplam Gelir" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell loading={loading} label="Toplam Sipariş" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell loading={loading} label="Ortalama Sepet" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
       {!loading && (returnedOrders > 0 || foreign.length > 0) && <p className="rr-pf-note">
@@ -262,7 +266,7 @@ export function DashboardPage() {
       </p>}
       <div className="rr-pf-body">
         <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{channel === 'ALL' ? '' : ` · ${selectedName}`}</b>
-          {loading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
+          {loading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} hourly={hourly} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
           <div className="rr-legend"><span><i className="rr-lg-cur" />Bu Dönem</span><span><i className="rr-lg-prev" />Önceki Dönem</span></div></div>
         <div className="rr-pf-chan">
           <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{selected && <span className="rr-ftag"><RrLogo code={selected.platformCode} />{selectedName}<button type="button" onClick={() => setChannel('ALL')} aria-label="Mağaza süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>
