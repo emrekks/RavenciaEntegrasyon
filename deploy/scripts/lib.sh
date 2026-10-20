@@ -55,9 +55,15 @@ require_boolean() {
 # BACKUP_FORCE=true: a deploy or rollback must not reuse the set taken earlier
 # today, otherwise a failed migration could cost a whole day of orders.
 run_verified_backup() {
-  local backup_output backup_set
-  backup_output="$("${compose[@]}" --profile operations run --rm -e BACKUP_FORCE=true backup)"
+  local backup_output backup_set backup_status=0 disk_warning
+  backup_output="$("${compose[@]}" --profile operations run --rm -e BACKUP_FORCE=true backup)" || backup_status=$?
   printf '%s\n' "$backup_output"
+  # backup.sh's disk guard reports a nearly full disk on this line; it becomes an operator alert.
+  disk_warning="$(printf '%s\n' "$backup_output" | grep -m 1 '^DISK_GUARD_WARNING:' || true)"
+  if [[ -n "$disk_warning" ]]; then
+    "$repository_root/deploy/scripts/send-alert.sh" "${disk_warning#DISK_GUARD_WARNING: }" || echo "Disk warning alert could not be sent." >&2
+  fi
+  (( backup_status == 0 )) || { echo "Backup job failed with exit code $backup_status." >&2; return "$backup_status"; }
   backup_set="$(printf '%s\n' "$backup_output" | sed -nE 's#^Backup set created at /backup/([0-9]{8}T[0-9]{6}Z);.*$#\1#p' | tail -n 1)"
   [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup job did not return a valid backup-set name." >&2; return 1; }
   # The quoted script runs in the backup container, where its variables expand.

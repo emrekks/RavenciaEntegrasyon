@@ -138,10 +138,18 @@ MaxRetentionSec=30day
 | `ravencia-healthwatch.timer` | 5 dakikada bir, 09:00–00:25 TR | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
 
-**Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatteki tüm setler + son 14 günün her gününün en
-yeni seti + daha eski 4 ISO haftasının her birinin en yeni seti; en yeni set her koşulda kalır.
-(`BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` ile değiştirilebilir.) Disk kullanımını ilk hafta izleyin:
-`sudo docker run --rm -v marketplacehub_backup_staging:/b alpine du -sh /b/*`.
+**Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatteki tüm setler + son **7 günün** her gününün
+en yeni seti + daha eski 4 ISO haftasının her birinin en yeni seti; en yeni set her koşulda kalır
+(`BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` ile değiştirilebilir). Bir set ≈1,1 GB; olağan durumda
+~12–14 set ≈ 15 GB (72 GB kök diskte).
+
+**Disk koruması**: yeni set yazılmadan önce, en yeni setin boyutu kadar ekleme sonrası disk doluluğu
+hesaplanır. %85'i (`BACKUP_DISK_LIMIT_PERCENT`) geçecekse önce **en eski haftalık setler** silinir
+(günlük ve son 72 saatlik setlere dokunulmaz). Hâlâ %85 üstündeyse yedek yine alınır ama
+`DISK_GUARD_WARNING` satırı basılır ve deploy/yedek betiği `send-alert.sh` ile alarm gönderir.
+%95'i (`BACKUP_DISK_HARD_LIMIT_PERCENT`) geçecekse yedek **reddedilir** (dump PostgreSQL'in diskini
+doldurmasın): gece yedeği başarısız olur (`OnFailure` alarmı), deploy yedeksiz ilerlemez.
+Disk kullanımı: `df -h /` ve `sudo docker run --rm -v marketplacehub_backup_staging:/b alpine du -sh /b/*`.
 
 **Alarm kanalı**: `deploy/secrets/alert_webhook_url.txt` (tek satır, root:root 600). Dosya yoksa alarm
 sessizce atlanır.

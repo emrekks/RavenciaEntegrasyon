@@ -63,7 +63,8 @@ bilinçlidir — sonraki düzeltme commit'i fast-forward ile gelir.
 
 Yedekler `marketplacehub_backup_staging` volume'ündedir (`<UTC zaman damgası>/database.dump`,
 `private-volumes.tar.gz`, `SHA256SUMS`). Her deploy ve geri alma öncesinde taze set alınır; saklama:
-son 72 saat tümü, 14 gün günlük, 4 hafta haftalık.
+son 72 saat tümü, 7 gün günlük, 4 hafta haftalık. Disk %85'i geçecekse en eski haftalık setler önce
+silinir — yani bir haftadan eski bir noktaya dönüş her zaman garanti değildir.
 
 1. **Hangi set?** Bozan deploy'un hemen öncesindeki set: `releases.tsv`'deki deploy zamanından hemen
    önceki zaman damgası (deploy logunda "Backup set created at /backup/<set>" satırı).
