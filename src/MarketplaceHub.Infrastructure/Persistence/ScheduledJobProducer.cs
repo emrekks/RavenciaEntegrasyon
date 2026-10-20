@@ -53,10 +53,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .Select(x => x.ConnectionId!.Value)
             .Distinct()
             .ToListAsync(cancellationToken)).ToHashSet();
-        var webhookHealthy = await HealthyWebhookConnectionsAsync(now, cancellationToken);
+        HashSet<Guid>? webhookHealthy = null;
         var reservedExecutionGroups = new HashSet<string>(StringComparer.Ordinal);
         var backgroundOrderReservations = new HashSet<Guid>();
         var activeJobTypesByConnection = new Dictionary<Guid, List<string>>();
+        var scheduledPolicyIds = new List<Guid>();
 
         foreach (var row in policies)
         {
@@ -65,6 +66,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             if (definition is null) continue;
 
             var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds);
+            var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync;
+            var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
+            // The cheap due check first: a policy queued less than its (shortest possible) interval ago is skipped
+            // before any of the lookups below. Daily policies run only inside their afternoon window.
+            if (!MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
             // Questions are rare; a connection without a new question for a while is asked less often.
             if (row.Policy.ResourceType == "QUESTIONS")
             {
@@ -74,7 +80,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 interval = QuestionCadencePolicy.IntervalSeconds(interval, lastQuestionAt, now);
             }
             // Healthy order notifications make the order polls a slower safety net.
-            if (webhookHealthy.Contains(row.Connection.Id) && WebhookPollingPolicy.StretchedIntervalSeconds(row.Policy.ResourceType) is { } stretched)
+            if (WebhookPollingPolicy.StretchedIntervalSeconds(row.Policy.ResourceType) is { } stretched
+                && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id))
                 interval = Math.Max(interval, stretched);
             interval = ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment);
             // Different scheduled job types can share one provider execution
@@ -94,7 +101,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             }
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
             var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
-            var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync;
             var hotOrderAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderSync, StringComparer.Ordinal)
                 || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderSync, StringComparer.Ordinal)
                 || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderSync, StringComparer.Ordinal)
@@ -128,14 +134,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var latest = row.Policy.LastScheduledAt ?? await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-            var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
+            if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
             if (row.Policy.ResourceType == "REFERENCE_DATA"
                 && await db.ReferenceSnapshots.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId
                     && x.ConnectionId == row.Connection.Id && x.ResourceType == "CATEGORIES" && x.ScopeExternalId == ""
                     && x.IsCurrent && x.FetchedAt > now.AddSeconds(-(interval + jitterSeconds)), cancellationToken)) continue;
-            var hasOrderSnapshots = definition.Value.JobType is not (MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync)
-                || await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken);
-            if (hasOrderSnapshots && latest is not null && latest.Value.AddSeconds(interval + jitterSeconds) > now) continue;
+            // A hot order read of a connection without any order yet runs at once, whatever its interval.
+            if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
+                && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) continue;
 
             var bucket = now.ToUnixTimeSeconds() / interval;
             var dedup = $"{definition.Value.DedupPrefix}:{bucket}";
@@ -143,9 +149,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             reservedExecutionGroups.Add(reservationKey);
             if (canQueueOrderBackgroundBehindOrderLane) backgroundOrderReservations.Add(row.Connection.Id);
             db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, definition.Value.PayloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
-            // Saved together with the job; the policy row was read untracked, so only this column is written.
-            db.ConnectionSyncPolicies.Attach(row.Policy);
-            row.Policy.LastScheduledAt = now;
+            scheduledPolicyIds.Add(row.Policy.Id);
             added++;
         }
 
@@ -168,16 +172,36 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return added;
         }
-        catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException || IsExpectedDedupRace(exception))
+        catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
         {
-            // Another worker may have won the unique dedup race, or a user saved a policy meanwhile.
-            // Clear the pending rows; the next scheduler pass will observe the committed state.
+            // Another worker won the unique dedup race. Clear the pending rows; the next scheduler pass
+            // observes the committed state.
             db.ChangeTracker.Clear();
             return 0;
         }
+        // When each policy last queued its job is written on its own, without the policy's version check: a
+        // user saving a policy meanwhile no longer throws the whole pass away, and the save does not conflict
+        // with this write either.
+        if (scheduledPolicyIds.Count > 0)
+            await db.ConnectionSyncPolicies
+                .Where(policy => scheduledPolicyIds.Contains(policy.Id))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(policy => policy.LastScheduledAt, now), cancellationToken);
+        return added;
     }
+
+    // The cheap part of the due check, made before any lookup: the policy's own LastScheduledAt against the
+    // shortest interval it can have this pass (question and webhook cadences only stretch it). A hot order
+    // read is never skipped here because a connection without orders reads at once.
+    internal static bool MayBeDue(DateTimeOffset? lastScheduledAt, int minimumIntervalSeconds, int jitterSeconds, DateTimeOffset now, bool isHotOrder) =>
+        isHotOrder || IsDue(lastScheduledAt, minimumIntervalSeconds, jitterSeconds, now);
+
+    // A daily (or longer) policy runs inside its Istanbul afternoon window (DailyScheduleWindowPolicy); every
+    // other policy once its interval and jitter have passed since its last job.
+    internal static bool IsDue(DateTimeOffset? latest, int intervalSeconds, int jitterSeconds, DateTimeOffset now) =>
+        DailyScheduleWindowPolicy.Applies(intervalSeconds)
+            ? DailyScheduleWindowPolicy.IsDue(now, latest, intervalSeconds, jitterSeconds)
+            : latest is not { } last || last.AddSeconds(intervalSeconds + jitterSeconds) <= now;
 
     internal Task<bool> ConnectionsWithoutPoliciesExistAsync(CancellationToken cancellationToken) =>
         db.PlatformConnections.AsNoTracking().AnyAsync(connection => (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
@@ -381,7 +405,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
         foreach (var connection in operationalConnections)
         {
-            var defaultsForConnection = DefaultPolicies()
+            var defaultsForConnection = DefaultPolicies(configuration)
                 .Where(defaults => connection.PlatformCode switch
                 {
                     "SHOPIFY" => SupportsShopifyPolicy(defaults.ResourceType),
@@ -436,7 +460,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             await db.SaveChangesAsync(cancellationToken);
     }
 
-    private IReadOnlyList<PolicyDefaults> DefaultPolicies() =>
+    internal static IReadOnlyList<PolicyDefaults> DefaultPolicies(IConfiguration configuration) =>
     [
         new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 5)),
         new("ORDER_RECOVERY", configuration.GetValue("MarketplaceSync:OrderRecovery:IntervalSeconds", 900), configuration.GetValue("MarketplaceSync:OrderRecovery:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:OrderRecovery:JitterSeconds", 30)),
@@ -461,6 +485,21 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new(MarketplaceExternalWritePolicies.Shipment, 0, 0, 0),
         new(MarketplaceExternalWritePolicies.Return, 0, 0, 0)
     ];
+
+    // The application default of one policy of a platform (after the platform's cadence), or null when the
+    // resource has no default. A user resetting a policy to its default gets these values.
+    public static (int IntervalSeconds, int OverlapSeconds, int JitterSeconds)? DefaultPolicyValues(IConfiguration configuration, string platformCode, string resourceType)
+    {
+        var defaults = DefaultPolicies(configuration).FirstOrDefault(policy => policy.ResourceType == resourceType);
+        if (defaults is null) return null;
+        var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(platformCode, resourceType, defaults.IntervalSeconds, defaults.JitterSeconds);
+        return (cadence.IntervalSeconds, defaults.OverlapSeconds, cadence.JitterSeconds);
+    }
+
+    // A save marks a policy as the user's own only when it changes the cadence: saving the values it already
+    // had (for example only switching it on or off) keeps it following the application defaults.
+    public static bool MarksUserDefined(bool alreadyUserDefined, (int IntervalSeconds, int OverlapSeconds, int JitterSeconds)? current, (int IntervalSeconds, int OverlapSeconds, int JitterSeconds) saved) =>
+        alreadyUserDefined || current is null || current.Value != saved;
 
     internal static bool ShouldUpgradeToDefault(ConnectionSyncPolicy current, string platformCode) =>
         !current.UserDefined && IsKnownDefault(current, platformCode);
@@ -703,6 +742,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private static int Priority(string type) => JobPriorityPolicy.For(type, userInitiated: false);
 
-    private sealed record PolicyDefaults(string ResourceType, int IntervalSeconds, int OverlapSeconds, int JitterSeconds);
+    internal sealed record PolicyDefaults(string ResourceType, int IntervalSeconds, int OverlapSeconds, int JitterSeconds);
 
 }

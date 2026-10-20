@@ -195,6 +195,87 @@ public sealed class BackgroundProcessingAuditTests
     }
 
     [Fact]
+    public void DailyPoliciesRunInTheIstanbulAfternoonWindow()
+    {
+        // 14:30 Istanbul is 11:30 UTC.
+        var afternoon = new DateTimeOffset(2026, 10, 20, 11, 30, 0, TimeSpan.Zero);
+        var morningCatchUp = new DateTimeOffset(2026, 10, 20, 6, 5, 0, TimeSpan.Zero);
+        var yesterdayAfternoon = afternoon.AddDays(-1).AddMinutes(-20);
+
+        Assert.True(DailyScheduleWindowPolicy.Applies(86_400));
+        Assert.False(DailyScheduleWindowPolicy.Applies(21_600));
+        // The 09:00 start-up catch-up no longer runs a daily job that ran yesterday afternoon.
+        Assert.False(DailyScheduleWindowPolicy.IsDue(morningCatchUp, yesterdayAfternoon, 86_400, 0));
+        Assert.True(DailyScheduleWindowPolicy.IsDue(afternoon, yesterdayAfternoon, 86_400, 0));
+        // Once a day: a run earlier in today's window is not repeated.
+        Assert.False(DailyScheduleWindowPolicy.IsDue(afternoon.AddHours(1), afternoon, 86_400, 0));
+        // A job that drifted to the morning moves to the afternoon of the next day.
+        Assert.False(DailyScheduleWindowPolicy.IsDue(afternoon, morningCatchUp, 86_400, 0));
+        Assert.True(DailyScheduleWindowPolicy.IsDue(afternoon.AddDays(1), morningCatchUp, 86_400, 0));
+        // The jitter shifts the start inside the window.
+        Assert.False(DailyScheduleWindowPolicy.IsDue(afternoon, yesterdayAfternoon, 86_400, 3_600));
+        // A policy that missed a whole window runs at once, even in the morning.
+        Assert.True(DailyScheduleWindowPolicy.IsDue(morningCatchUp, morningCatchUp.AddDays(-2).AddHours(-1), 86_400, 0));
+        Assert.True(DailyScheduleWindowPolicy.IsDue(afternoon, null, 86_400, 0));
+        Assert.False(DailyScheduleWindowPolicy.IsDue(morningCatchUp, null, 86_400, 0));
+    }
+
+    [Fact]
+    public void TheSchedulerChecksWhetherAPolicyIsDueBeforeAnyLookup()
+    {
+        Assert.False(ScheduledJobProducer.MayBeDue(Now.AddSeconds(-100), 180, 10, Now, isHotOrder: false));
+        Assert.True(ScheduledJobProducer.MayBeDue(Now.AddSeconds(-200), 180, 10, Now, isHotOrder: false));
+        Assert.True(ScheduledJobProducer.MayBeDue(null, 180, 10, Now, isHotOrder: false));
+        // A hot order read may run at once for a connection without orders, so it always reaches the lookups.
+        Assert.True(ScheduledJobProducer.MayBeDue(Now.AddSeconds(-5), 60, 5, Now, isHotOrder: true));
+        Assert.False(ScheduledJobProducer.IsDue(Now.AddSeconds(-5), 60, 5, Now));
+    }
+
+    [Fact]
+    public void OnlyACadenceChangeMakesAPolicyTheUsersOwn()
+    {
+        var defaults = ScheduledJobProducer.DefaultPolicyValues(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TRENDYOL", "RETURNS");
+
+        Assert.Equal((180, 900, 10), defaults);
+        Assert.False(ScheduledJobProducer.MarksUserDefined(false, (180, 900, 10), (180, 900, 10)));
+        Assert.True(ScheduledJobProducer.MarksUserDefined(false, (180, 900, 10), (300, 900, 10)));
+        Assert.True(ScheduledJobProducer.MarksUserDefined(true, (180, 900, 10), (180, 900, 10)));
+        Assert.Null(ScheduledJobProducer.DefaultPolicyValues(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TRENDYOL", "UNKNOWN"));
+    }
+
+    [Fact]
+    public void RetentionLetsGoOfGuardsThatGuardNothing()
+    {
+        Assert.Contains(MarketplaceJobTypes.StockProjectionDispatch, JobRetentionService.VersionedGuardJobTypes);
+        Assert.Contains(MarketplaceJobTypes.PriceInventorySync, JobRetentionService.VersionedGuardJobTypes);
+        Assert.DoesNotContain(MarketplaceJobTypes.ShipmentAction, JobRetentionService.VersionedGuardJobTypes);
+        Assert.All(JobRetentionService.VersionedGuardJobTypes, type => Assert.Contains(type, JobRetentionService.EffectGuardJobTypes));
+        Assert.StartsWith("stock-projection:", StockProjectionOutboxPolicy.DedupKey(Guid.CreateVersion7(), Guid.CreateVersion7(), 7));
+        Assert.Contains("EXTERNAL_WRITES_DISABLED", JobRetentionService.PreSendBlockCodes);
+        Assert.Contains("CONNECTION_INACTIVE", JobRetentionService.PreSendBlockCodes);
+        Assert.DoesNotContain("F3_JOB_REJECTED", JobRetentionService.PreSendBlockCodes);
+    }
+
+    [Fact]
+    public void AStockChangeQueuesNoDispatchForAConnectionWithWritesOff()
+    {
+        Assert.True(StockProjectionOutbox.StoredExternalWritesEnabled("{\"ExternalWritesEnabled\":true}"));
+        Assert.False(StockProjectionOutbox.StoredExternalWritesEnabled("{\"ExternalWritesEnabled\":false}"));
+        Assert.False(StockProjectionOutbox.StoredExternalWritesEnabled("{}"));
+        Assert.False(StockProjectionOutbox.StoredExternalWritesEnabled("{bozuk"));
+        Assert.False(StockProjectionOutbox.StoredExternalWritesEnabled(null));
+    }
+
+    [Fact]
+    public void TheRealtimeDispatcherNoLongerScansForNewJobs()
+    {
+        var method = typeof(MarketplaceHub.Api.Realtime.OperationsRealtimeBroadcaster).GetMethod("AnnounceNewJobsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        Assert.Null(method);
+        Assert.Equal("jobs", JobLeaseService.JobEventResource);
+    }
+
+    [Fact]
     public void TheRequiredPoolSizeFollowsTheLaneSlots()
     {
         var defaultSlots = WorkerLanes.All().Sum(lane => lane.DefaultSlots);

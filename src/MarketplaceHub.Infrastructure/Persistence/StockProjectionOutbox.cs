@@ -21,9 +21,14 @@ internal static class StockProjectionOutbox
                                   join connection in db.PlatformConnections.AsNoTracking() on new { offer.TenantId, Id = offer.ConnectionId } equals new { connection.TenantId, connection.Id }
                                   where offer.TenantId == tenantId && variantIds.Contains(offer.VariantId) && offer.Status == "ACTIVE"
                                       && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-                                  select new { offer.ConnectionId, offer.VariantId })
+                                  select new { offer.ConnectionId, offer.VariantId, connection.SettingsJson })
             .ToListAsync(cancellationToken);
-        var targets = StockProjectionOutboxPolicy.FanOut(changes, activeOffers.Select(offer => (offer.ConnectionId, offer.VariantId)));
+        // A connection whose external writes are off would only finish the dispatch without sending, yet the
+        // job (an effect guard) stayed in the table; it gets none. The stock reconcile scan catches it up once
+        // writes are on again. The maintenance pass clears the stored switch when the global switch is off.
+        var targets = StockProjectionOutboxPolicy.FanOut(changes, activeOffers
+            .Where(offer => StoredExternalWritesEnabled(offer.SettingsJson))
+            .Select(offer => (offer.ConnectionId, offer.VariantId)));
         if (targets.Count == 0) return;
         var dedupKeys = targets.Select(target => target.DedupKey).ToArray();
         var existing = await db.IntegrationJobs.AsNoTracking()
@@ -54,5 +59,17 @@ internal static class StockProjectionOutbox
                 Version = 1
             });
         }
+    }
+
+    internal static bool StoredExternalWritesEnabled(string? settingsJson)
+    {
+        if (string.IsNullOrWhiteSpace(settingsJson)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(settingsJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
     }
 }

@@ -788,6 +788,32 @@ public static class ExternalEffectReconcilePolicy
     }
 }
 
+// Daily (and longer) scheduled jobs run in the Istanbul afternoon, 14:00-17:00, instead of drifting to the
+// start-up catch-up after the night's stop (00:30-09:00). The policy's jitter shifts the start inside the
+// window. A policy that missed a whole window (the worker was down all afternoon) runs at once.
+public static class DailyScheduleWindowPolicy
+{
+    public const int DailyIntervalSeconds = 86_400;
+    public static readonly TimeSpan IstanbulOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan WindowStart = TimeSpan.FromHours(14);
+    public static readonly TimeSpan WindowEnd = TimeSpan.FromHours(17);
+
+    public static bool Applies(int intervalSeconds) => intervalSeconds >= DailyIntervalSeconds;
+
+    public static bool IsDue(DateTimeOffset now, DateTimeOffset? lastScheduledAt, int intervalSeconds, int jitterSeconds)
+    {
+        var local = now.ToOffset(IstanbulOffset);
+        var day = new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, IstanbulOffset);
+        var windowLength = WindowEnd - WindowStart;
+        var start = day + WindowStart + TimeSpan.FromSeconds(Math.Clamp(jitterSeconds, 0, (int)windowLength.TotalSeconds / 2));
+        var inWindow = now >= start && now < day + WindowEnd;
+        if (lastScheduledAt is not { } last) return inWindow;
+        var interval = TimeSpan.FromSeconds(intervalSeconds);
+        if (now - last >= interval + TimeSpan.FromDays(1)) return true;
+        return inWindow && last < start && now - last >= interval - windowLength;
+    }
+}
+
 // An e-invoice is usually accepted by the provider within seconds to a minute of submission.
 public static class InvoicePendingPolicy
 {

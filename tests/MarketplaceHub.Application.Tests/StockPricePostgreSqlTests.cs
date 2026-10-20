@@ -31,20 +31,22 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     public async Task ManualStockAdjustment_QueuesADispatchForEveryConnectionSellingTheVariant()
     {
         var tenant = NewTenant("stock-fan-out");
-        var trendyol = NewConnection(tenant, "TRENDYOL");
-        var n11 = NewConnection(tenant, "N11");
-        var pazarama = NewConnection(tenant, "PAZARAMA");
-        var passive = NewConnection(tenant, "HEPSIBURADA");
+        var trendyol = NewConnection(tenant, "TRENDYOL", writesEnabled: true);
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var pazarama = NewConnection(tenant, "PAZARAMA", writesEnabled: true);
+        var passive = NewConnection(tenant, "HEPSIBURADA", writesEnabled: true);
         passive.Status = "PASSIVE";
+        // Writes off: the dispatch would send nothing, so none is queued (audit 2026-10-20 Q7).
+        var writesOff = NewConnection(tenant, "HEPSIBURADA");
         var (product, variant) = NewVariant(tenant, "FAN-1", "8690000000011");
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
-            seed.PlatformConnections.AddRange(trendyol, n11, pazarama, passive);
+            seed.PlatformConnections.AddRange(trendyol, n11, pazarama, passive, writesOff);
             seed.Products.Add(product);
             seed.ProductVariants.Add(variant);
             seed.InventoryItems.Add(NewInventory(tenant, variant, 5m));
-            seed.ChannelOffers.AddRange(NewOffer(tenant, trendyol, variant), NewOffer(tenant, n11, variant), NewOffer(tenant, pazarama, variant, status: "INACTIVE"), NewOffer(tenant, passive, variant));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, trendyol, variant), NewOffer(tenant, n11, variant), NewOffer(tenant, pazarama, variant, status: "INACTIVE"), NewOffer(tenant, passive, variant), NewOffer(tenant, writesOff, variant));
             await seed.SaveChangesAsync();
         }
 

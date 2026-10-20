@@ -759,7 +759,9 @@ public sealed record SyncPolicyView(
     DateTimeOffset? LastCursorAdvancedAt = null,
     DateTimeOffset? CursorStagnantSince = null,
     string CursorProgressStatus = "UNKNOWN");
-public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
+// ResetToDefault puts the application default cadence back (the given cadence is ignored) and lets later
+// default changes reach the policy again.
+public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, bool ResetToDefault = false);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);
 

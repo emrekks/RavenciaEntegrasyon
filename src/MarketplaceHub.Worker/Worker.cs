@@ -491,6 +491,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var succeededRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:SucceededDays", 14), 1, 365));
         var failedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:FailedDays", 30), 1, 365));
         var inboxRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:InboxDays", 30), 1, 365));
+        var inboxReceivedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:InboxReceivedDays", 90), 30, 365));
+        var guardRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:GuardDays", 90), 30, 3650));
+        var effectRecordRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:EffectRecordDays", 90), 30, 3650));
         try
         {
             await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
@@ -501,10 +504,14 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
                     var retention = scope.ServiceProvider.GetRequiredService<JobRetentionService>();
-                    var deleted = await retention.PurgeAsync(succeededRetention, failedRetention, maximumBatches: 25, stoppingToken);
+                    var deleted = await retention.PurgeAsync(succeededRetention, failedRetention, guardRetention, maximumBatches: 25, stoppingToken);
                     if (deleted > 0) logger.LogInformation("Job retention removed {Count} finished jobs", deleted);
-                    var inbox = await retention.PurgeProcessedInboxAsync(inboxRetention, maximumBatches: 25, stoppingToken);
-                    if (inbox > 0) logger.LogInformation("Job retention removed {Count} processed webhook inbox rows", inbox);
+                    var inbox = await retention.PurgeInboxAsync(inboxRetention, inboxReceivedRetention, maximumBatches: 25, stoppingToken);
+                    if (inbox > 0) logger.LogInformation("Job retention removed {Count} webhook inbox rows", inbox);
+                    var usage = await retention.PurgeRateLimitUsageAsync(maximumBatches: 25, stoppingToken);
+                    if (usage > 0) logger.LogInformation("Job retention removed {Count} old quota usage rows", usage);
+                    var effects = await retention.PurgeCompletedEffectRecordsAsync(effectRecordRetention, maximumBatches: 25, stoppingToken);
+                    if (effects > 0) logger.LogInformation("Job retention removed {Count} settled marketplace action records", effects);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
@@ -517,8 +524,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     // An open operational issue not seen for a month is closed daily, so the operations page shows what is
-    // happening now; a recurrence reopens the same record. A resolved issue not seen for a month is deleted
-    // (many issue keys carry event ids or timestamps, so they would otherwise pile up forever).
+    // happening now; a recurrence reopens the same record. A resolved issue is deleted a month after it was
+    // resolved and last seen (many issue keys carry event ids or timestamps, so they would otherwise pile up
+    // forever); an issue resolved in this pass is not deleted in the same pass.
     private async Task RunIssueRetentionAsync(CancellationToken stoppingToken)
     {
         var staleAfter = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:StaleDays", 30), 7, 365));
