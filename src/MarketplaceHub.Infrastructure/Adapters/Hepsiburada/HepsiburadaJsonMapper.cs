@@ -1071,11 +1071,14 @@ internal static class HepsiburadaJsonMapper
             "UNDELIVERED" => "Undelivered",
             _ => throw new JsonException("Hepsiburada sevkiyat durumu desteklenmiyor.")
         };
-        var occurredAt = Date(item,
-            "ShippedDate", "shippedDate",
-            "DeliveredDate", "deliveredDate",
-            "UndeliveredDate", "undeliveredDate",
-            "lastStatusUpdateDate", "LastStatusUpdateDate");
+        // The list's own event date comes first: a delivered row also carries its shipped date, which must not
+        // date the delivery (and let an older "Shipped" observation look newer than "Delivered").
+        var occurredAt = rawStatus switch
+        {
+            "Delivered" => Date(item, "DeliveredDate", "lastStatusUpdateDate", "UndeliveredDate", "ShippedDate"),
+            "Undelivered" => Date(item, "UndeliveredDate", "lastStatusUpdateDate", "DeliveredDate", "ShippedDate"),
+            _ => Date(item, "ShippedDate", "lastStatusUpdateDate", "DeliveredDate", "UndeliveredDate")
+        };
         if (occurredAt is null) throw new JsonException("Hepsiburada sevkiyat durumunda olay tarihi yok.");
 
         var package = new RemotePackage(
@@ -1395,7 +1398,7 @@ internal static class HepsiburadaJsonMapper
         var lineInvoiceFlags = lineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).Distinct().ToArray();
         var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice")
             ?? (lineInvoiceFlags.Length == 1 ? lineInvoiceFlags[0] : null);
-        var packages = Packages(order, lines, orderedAt.Value, invoiceUploaded);
+        var packages = Packages(order, lines, LineAliases(lineItems, lines), orderedAt.Value, invoiceUploaded);
         var dueAt = Date(order, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")
             ?? lineItems.Select(item => Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")).FirstOrDefault(value => value.HasValue);
         // The common sales model uses the order number for GetAsync lookups. Hepsiburada's
@@ -1455,7 +1458,21 @@ internal static class HepsiburadaJsonMapper
         return new(lineId, sku, Text(line, "barcode", "Barcode", "productBarcode", "ProductBarcode"), Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, snapshot, cancelled);
     }
 
-    private static IReadOnlyList<RemotePackage> Packages(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, DateTimeOffset orderDate, bool? orderInvoiceUploaded)
+    // Every identity a line is known by (id, lineItemId, orderLineId) leads to its ExternalLineId, so a package
+    // item that names the line by another of its keys is still allocated instead of being dropped.
+    private static IReadOnlyDictionary<string, string> LineAliases(IReadOnlyList<JsonElement> lineItems, IReadOnlyList<RemoteOrderLine> lines)
+    {
+        var aliases = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in lines) aliases[line.ExternalLineId] = line.ExternalLineId;
+        for (var index = 0; index < lineItems.Count && index < lines.Count; index++)
+            foreach (var name in LineIdentityNames)
+                if (Text(lineItems[index], name) is { Length: > 0 } alias) aliases.TryAdd(alias, lines[index].ExternalLineId);
+        return aliases;
+    }
+
+    private static readonly string[] LineIdentityNames = ["id", "lineItemId", "orderLineId", "orderItemId"];
+
+    private static IReadOnlyList<RemotePackage> Packages(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, IReadOnlyDictionary<string, string> lineAliases, DateTimeOffset orderDate, bool? orderInvoiceUploaded)
     {
         var element = Find(order, "packages", "Packages", "shipments", "Shipments");
         if (element.ValueKind != JsonValueKind.Array) return [];
@@ -1473,9 +1490,12 @@ internal static class HepsiburadaJsonMapper
             var allocations = new List<RemotePackageAllocation>();
             foreach (var item in packageItems.EnumerateArray())
             {
-                var lineId = Text(item, "orderLineId", "OrderLineId", "lineItemId", "LineItemId", "orderItemId", "OrderItemId");
+                var lineId = new[] { "orderLineId", "lineItemId", "orderItemId", "id" }
+                    .Select(name => Text(item, name))
+                    .Select(alias => alias is not null && lineAliases.TryGetValue(alias, out var known) ? known : null)
+                    .FirstOrDefault(known => known is not null);
                 var quantity = Decimal(item, "quantity", "Quantity", "allocatedQuantity", "AllocatedQuantity");
-                if (lineId is null || quantity is null || quantity <= 0 || !lines.Any(line => string.Equals(line.ExternalLineId, lineId, StringComparison.Ordinal))) continue;
+                if (lineId is null || quantity is null || quantity <= 0) continue;
                 allocations.Add(new(lineId, quantity.Value, 0, 0, 0, 0));
             }
             if (allocations.Count == 0) continue;
@@ -1653,7 +1673,13 @@ internal static class HepsiburadaJsonMapper
         if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number)) return number;
         return null;
     }
-    private static DateTimeOffset? Date(JsonElement element, params string[] names) => TurkeyDate(Text(element, names));
+    // The first name (in priority order) that holds a readable date; a present but empty field does not hide the next one.
+    private static DateTimeOffset? Date(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+            if (TurkeyDate(Text(element, name)) is { } date) return date;
+        return null;
+    }
 
     // Hepsiburada writes dates in Turkey time without an offset ("2026-10-19T14:19:58"): on live rows an
     // order dated 14:19 was already stored by the panel at 11:21 UTC. A value with an offset or Z keeps it.
@@ -1677,11 +1703,13 @@ internal static class HepsiburadaJsonMapper
     internal static string QueryTime(DateTimeOffset value) =>
         value.ToOffset(TurkeyOffset).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     private static JsonElement Find(JsonElement element, params string[] names) => TryFind(element, out var value, names) ? value : default;
+    // The names are in priority order: the first name present wins, whatever order the JSON lists its properties in.
     private static bool TryFind(JsonElement element, out JsonElement value, params string[] names)
     {
         if (element.ValueKind == JsonValueKind.Object)
-            foreach (var property in element.EnumerateObject())
-                if (names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))) { value = property.Value; return true; }
+            foreach (var name in names)
+                foreach (var property in element.EnumerateObject())
+                    if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) { value = property.Value; return true; }
         value = default;
         return false;
     }

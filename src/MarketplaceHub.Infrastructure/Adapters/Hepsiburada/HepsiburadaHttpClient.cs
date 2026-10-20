@@ -632,6 +632,13 @@ public sealed partial class HepsiburadaHttpClient(
             var items = new List<RemoteOrderPackage>(deduplicated.Count);
             foreach (var item in deduplicated)
             {
+                // A package the lists already show as delivered, undelivered, cancelled or returned cannot move on
+                // through the tracking read; asking for it anyway made every page cost one extra request per row.
+                if (HasTerminalListStatus(item))
+                {
+                    items.Add(item);
+                    continue;
+                }
                 var trackingRead = await ReadPackageTrackingInfoAsync(account, item, cancellationToken);
                 items.Add(trackingRead.Package);
                 if (trackingRead.Issue is not null) issues.Add(trackingRead.Issue);
@@ -750,6 +757,12 @@ public sealed partial class HepsiburadaHttpClient(
         if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(before)));
         return string.Join('&', query);
     }
+
+    internal static bool HasTerminalListStatus(RemoteOrderPackage package) =>
+        ShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered
+            or ShipmentPackageStatus.Undelivered
+            or ShipmentPackageStatus.Cancelled
+            or ShipmentPackageStatus.Returned;
 
     private static RemoteOrderPackage MergePackageStatusObservation(IGrouping<(string ExternalOrderId, string ExternalPackageId), RemoteOrderPackage> group)
     {
