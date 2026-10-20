@@ -145,21 +145,20 @@ public sealed class InvoicingDeepAuditTests
         Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientCode, InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", "{}")?.Code);
     }
 
-    // C5: Hepsiburada's invoice schema (needs SIT confirmation).
+    // C5 reverted: Hepsiburada keeps the live-proven invoice body (MIME contentType, no number parts) until SIT says otherwise.
     [Fact]
-    public void Hepsiburada_invoice_body_uses_the_documented_content_type_and_number_parts()
+    public void Hepsiburada_invoice_body_keeps_the_live_proven_mime_content_type()
     {
-        Assert.Equal("pdf", HepsiburadaInvoiceDeliveryPolicy.DocumentContentType("application/pdf"));
-        Assert.Equal("html", HepsiburadaInvoiceDeliveryPolicy.DocumentContentType("text/html"));
+        Assert.Equal("application/pdf", HepsiburadaInvoiceDeliveryPolicy.DocumentContentType("pdf"));
+        Assert.Equal("text/html", HepsiburadaInvoiceDeliveryPolicy.DocumentContentType("TEXT/HTML"));
         Assert.Null(HepsiburadaInvoiceDeliveryPolicy.DocumentContentType("image/png"));
-        Assert.Equal(((string?)"DAP", (string?)"2026000000016"), HepsiburadaInvoiceDeliveryPolicy.SplitInvoiceNumber("DAP2026000000016"));
-        Assert.Equal(((string?)null, (string?)null), HepsiburadaInvoiceDeliveryPolicy.SplitInvoiceNumber("ELLE-1"));
 
-        var body = HepsiburadaInvoiceDeliveryPolicy.Body(new("p", "o", new Uri("https://x.test/a.pdf"), "2026-10-20T09:00:00.0000000+00:00", "pdf", "ELLE-1"));
+        var body = HepsiburadaInvoiceDeliveryPolicy.Body(new("p", "o", new Uri("https://x.test/a.pdf"), "2026-10-20T09:00:00.0000000+00:00", "application/pdf", "DAP2026000000016"));
         using var document = JsonDocument.Parse(body);
         var invoice = document.RootElement.GetProperty("invoices")[0];
-        Assert.Equal("pdf", invoice.GetProperty("contentType").GetString());
+        Assert.Equal("application/pdf", invoice.GetProperty("contentType").GetString());
         Assert.False(invoice.TryGetProperty("serialNumber", out _));
+        Assert.False(invoice.TryGetProperty("rowNumber", out _));
     }
 
     // G36: only codes proven to stop before the provider make a Submitting invoice retryable.

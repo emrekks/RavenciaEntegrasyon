@@ -2006,10 +2006,21 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("package-1", request.PackageNumber);
         Assert.Equal("order-1", request.OrderNumber);
         Assert.Equal("DAP2026000000016", request.InvoiceNumber);
-        Assert.Equal("pdf", request.ContentType);
-        Assert.Equal("DAP", request.SerialNumber);
-        Assert.Equal("2026000000016", request.RowNumber);
+        Assert.Equal("application/pdf", request.ContentType);
         Assert.Equal("https", request.InvoiceLink.Scheme);
+
+        // The live-proven body: MIME contentType, no serialNumber/rowNumber.
+        using (var body = JsonDocument.Parse(HepsiburadaInvoiceDeliveryPolicy.Body(request)))
+        {
+            var line = body.RootElement.GetProperty("invoices")[0];
+            Assert.Equal("application/pdf", line.GetProperty("contentType").GetString());
+            Assert.Equal("order-1", line.GetProperty("orderNumber").GetString());
+            Assert.False(line.TryGetProperty("serialNumber", out _));
+            Assert.False(line.TryGetProperty("rowNumber", out _));
+        }
+        var bareType = command with { PayloadJson = command.PayloadJson.Replace("Application/PDF", "pdf", StringComparison.Ordinal) };
+        Assert.True(HepsiburadaInvoiceDeliveryPolicy.TryCreate(bareType, out var bareRequest, out _));
+        Assert.Equal("application/pdf", bareRequest!.ContentType);
 
         var mismatchedPackage = command with { PayloadJson = command.PayloadJson.Replace("package-1", "package-2", StringComparison.Ordinal) };
         Assert.False(HepsiburadaInvoiceDeliveryPolicy.TryCreate(mismatchedPackage, out _, out _));
