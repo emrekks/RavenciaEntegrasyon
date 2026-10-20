@@ -885,7 +885,7 @@ public sealed record OrderListView(
     string? CargoTrackingNumber = null,
     string? PrimaryImageUrl = null,
     decimal ProductQuantity = 0,
-    string? CustomerEmail = null,
+    // No e-mail here: the shipping label reads it from the order detail when it prints.
     // Masked (***1234): the full identity or tax number is only in the order detail.
     string? CustomerTaxOrIdentityNumber = null,
     // The delivery address fields a shipping label needs; the raw address
@@ -963,7 +963,9 @@ public sealed record OrderLineView(
     string? ModelCode = null,
     string? OptionSignature = null,
     string? ImageUrl = null,
-    decimal AllocatedQuantity = 0);
+    decimal AllocatedQuantity = 0,
+    // Return lists only: what the returned quantity is worth, calculated from the order (ReturnRefundAmounts).
+    decimal? RefundAmount = null);
 public sealed record ShipmentView(
     Guid Id,
     Guid OrderId,
@@ -1002,7 +1004,9 @@ public sealed record OrderDetailView(
     string InvoiceStatus = "FATURA_BEKLIYOR",
     string? CustomerPhone = null,
     bool? IsEInvoiceAvailable = null,
-    string? InvoiceDocumentUrl = null);
+    string? InvoiceDocumentUrl = null,
+    // The delivery address in the list's shape, for the shipping label printed from the detail.
+    OrderAddressView? ShipmentAddress = null);
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents, string PlatformCode = "TRENDYOL");
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);
@@ -1021,7 +1025,9 @@ public sealed record ReturnLineView(
     bool HasInventoryMapping,
     string? OptionSignature = null,
     string? ModelCode = null,
-    string? Status = null);
+    string? Status = null,
+    // Quantity × the order line's paid unit price; null without an order line.
+    decimal? RefundAmount = null);
 public sealed record ReturnListView(
     Guid Id,
     string ExternalClaimId,
@@ -1055,7 +1061,11 @@ public sealed record ReturnListView(
     DateTimeOffset? ApprovedAt = null,
     string? CargoTrackingLink = null,
     IReadOnlyDictionary<Guid, string>? LineStatuses = null,
-    bool ActionDueAtEstimated = false);
+    bool ActionDueAtEstimated = false,
+    // Calculated from the order (quantity × paid unit price), in Currency; null when no line matches its order line.
+    decimal? RefundAmount = null,
+    // Set when a claim is shown as more than one card (its accepted lines apart from the waiting ones).
+    string? RowKey = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1065,7 +1075,28 @@ public sealed record ReturnListQuery(
     string? Reason = null,
     DateTimeOffset? DateFrom = null,
     DateTimeOffset? DateTo = null,
-    string? Search = null);
+    string? Search = null,
+    // The Returns page's own filters, applied to the cards the way the page applied them before:
+    // platform codes, the trimmed cargo provider name, the reason key (code, else text) and the
+    // invoice label. Sort orders the approved tab (APPROVED_DESC/ASC, ORDERED_DESC/ASC).
+    IReadOnlyList<string>? Platforms = null,
+    string? Cargo = null,
+    string? ReasonKey = null,
+    string? InvoiceStatus = null,
+    string? Sort = null);
+// Tab counts (every filter but the tab applied) and the filter choices of the current tab (search
+// and dates applied, the platform/cargo/reason/invoice filters not), as the Returns page showed them.
+public sealed record ReturnSummaryView(
+    IReadOnlyDictionary<string, int> TabCounts,
+    IReadOnlyList<ReturnPlatformOption> Platforms,
+    IReadOnlyList<string> CargoProviders,
+    IReadOnlyList<ReturnReasonOption> Reasons,
+    IReadOnlyList<string> InvoiceStatuses,
+    // Cards of the current tab before the platform/cargo/reason/invoice filters.
+    int UnfilteredCount);
+public sealed record ReturnPlatformOption(string PlatformCode, string DisplayName);
+// Value is the filter key (reason code, else text); the page labels it from code and text.
+public sealed record ReturnReasonOption(string Value, string? ReasonCode, string? ReasonText);
 public sealed record ReturnDetailView(
     Guid Id,
     string ExternalClaimId,
@@ -1090,7 +1121,9 @@ public sealed record ReturnDetailView(
     bool DecisionPending = false,
     string? PlatformCode = null,
     string? CargoTrackingLink = null,
-    bool ActionDueAtEstimated = false);
+    bool ActionDueAtEstimated = false,
+    // Calculated from the order (quantity × paid unit price), in Currency; null when no line matches its order line.
+    decimal? RefundAmount = null);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
@@ -1118,7 +1151,8 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string format = "ZPL");
     Task<ServiceResult<Guid>> EnqueueLabelCapabilityProbeAsync(Guid tenantId, Guid actorUserId, Guid packageId, long expectedVersion, string capabilityCode, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueStageTestOrderAsync(Guid tenantId, Guid actorUserId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
-    Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery query, bool latest, CancellationToken cancellationToken);
+    Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery query, bool latest, CancellationToken cancellationToken, int page = 1);
+    Task<ReturnSummaryView> ReturnSummaryAsync(Guid tenantId, ReturnListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);

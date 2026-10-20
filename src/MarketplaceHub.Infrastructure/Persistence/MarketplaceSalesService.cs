@@ -2,6 +2,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
@@ -10,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
+public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
 {
     // A real Trendyol package supersedes the zero-ID payment placeholder, and a
     // package another package names as its origin (a split UnPacked parent, a
@@ -215,7 +216,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
-                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, MaskIdentityNumber(customer.TaxOrIdentityNumber),
+                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), MaskIdentityNumber(customer.TaxOrIdentityNumber),
                 ListAddress(order.ShipmentAddressSnapshotJson), order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, invoiceDocumentUrl,
                 connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null,
@@ -434,8 +435,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             // The customer snapshot holds identity, tax and phone numbers: a
             // term without letters (a number) is only matched against order,
             // product and barcode fields, never against the snapshot.
+            // Nor against its e-mail fields: the list no longer shows the e-mail.
             var searchCustomer = SearchesCustomerSnapshot(search);
-            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || (searchCustomer && x.CustomerSnapshotJson.Contains(search))
+            var customerPattern = CustomerSnapshotSearchPattern(search);
+            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || (searchCustomer && Regex.IsMatch(x.CustomerSnapshotJson, customerPattern))
                 || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
                     && (line.TitleSnapshot.Contains(search) || line.Sku.Contains(search) || (line.Barcode != null && line.Barcode.Contains(search)))));
         }
@@ -771,7 +774,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabelForPlatform(invoice, displayPackage?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
-            customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl));
+            customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson)));
     }
 
     public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null)
@@ -1099,6 +1102,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return ServiceResult<CreateOrderPackageResult>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
 
+        // No local projection here (only the effect row is written): the new package reaches the
+        // order through the queued order read, which takes the "orders" lock itself.
         effect.EffectType = $"{effectPrefix}:{Uri.EscapeDataString(result.Value!.PackageNumber)}";
         effect.IdempotencyKey = normalizedKey;
         effect.CompletedAt = timeProvider.GetUtcNow();
@@ -1366,6 +1371,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
 
+        // The local projection runs under the connection's "orders" lock, as the order jobs'
+        // writes do (see OrdersProjectionLockAsync); the remote call above did not hold it.
+        await using var projectionLock = await OrdersProjectionLockAsync(package.ConnectionId, cancellationToken);
         for (var attempt = 0; ; attempt++)
         {
             if (package.Status == ShipmentPackageStatus.New)
@@ -1414,13 +1422,33 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             }
             catch (DbUpdateConcurrencyException)
             {
-                // The action is applied on the marketplace; the next order read
+                // The action is applied on the marketplace; a targeted order read
                 // brings the package into the same state.
                 db.ChangeTracker.Clear();
+                await QueueProjectionReadAsync(tenantId, package.ConnectionId, orderNumber, correlationId, cancellationToken);
                 var latest = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
                 return ServiceResult<ShipmentView>.Ok(Map(latest, orderNumber));
             }
         }
+    }
+
+    // How long an instant action waits for the order jobs' lock before projecting without it.
+    // The remote write is already applied and recorded; holding the request longer only delays
+    // the answer, and an optimistic projection (retried once, then left to a targeted order read)
+    // is still safe.
+    internal static readonly TimeSpan InstantProjectionLockWait = TimeSpan.FromSeconds(3);
+
+    // The lock is taken around the local projection only, not around the marketplace call: an
+    // order job may hold it for a whole page read, and the remote call itself may take up to
+    // 30 seconds; waiting for both would hold either the user or the order lane far too long.
+    private Task<MarketplaceSyncExecutionLock?> OrdersProjectionLockAsync(Guid connectionId, CancellationToken cancellationToken) =>
+        MarketplaceSyncExecutionLock.AcquireGroupAsync(db, connectionId, MarketplaceSyncExecutionLock.OrdersGroup, InstantProjectionLockWait, timeProvider, cancellationToken);
+
+    private async Task QueueProjectionReadAsync(Guid tenantId, Guid connectionId, string orderNumber, string correlationId, CancellationToken cancellationToken)
+    {
+        // Best effort: the scheduled order reads reach the same state later anyway.
+        var queued = await EnqueueOrderSyncAsync(tenantId, connectionId, orderNumber, false, correlationId, cancellationToken);
+        if (!queued.Succeeded) db.ChangeTracker.Clear();
     }
 
     public async Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1460,15 +1488,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (existing is not null)
         {
             if (existing.CompletedAt is null) return Verifying<ShipmentView>();
-
-            if (!string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
-            {
-                package.CargoProviderExternalId = cargoProvider;
-                package.UpdatedAt = timeProvider.GetUtcNow();
-                package.Version++;
-                await db.SaveChangesAsync(cancellationToken);
-            }
-            return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+            return await ProjectCargoProviderAsync(tenantId, package, cargoProvider, orderNumber, correlationId, cancellationToken);
         }
 
         var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "CHANGE_CARGO_PROVIDER", ExpectedValue = cargoProvider };
@@ -1498,24 +1518,46 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         effect.CompletedAt = timeProvider.GetUtcNow();
         effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
-        package.CargoProviderExternalId = cargoProvider;
-        package.UpdatedAt = timeProvider.GetUtcNow();
-        package.Version++;
-        try
+        return await ProjectCargoProviderAsync(tenantId, package, cargoProvider, orderNumber, correlationId, cancellationToken);
+    }
+
+    // Writes an accepted cargo provider change onto the package under the order jobs' lock
+    // (see OrdersProjectionLockAsync): retried once on fresh rows, then left to a targeted order read.
+    private async Task<ServiceResult<ShipmentView>> ProjectCargoProviderAsync(Guid tenantId, ShipmentPackage package, string cargoProvider, string orderNumber, string correlationId, CancellationToken cancellationToken)
+    {
+        if (string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+        var packageId = package.Id;
+        var connectionId = package.ConnectionId;
+        await using var projectionLock = await OrdersProjectionLockAsync(connectionId, cancellationToken);
+        for (var attempt = 0; ; attempt++)
         {
-            await db.SaveChangesAsync(cancellationToken);
+            if (!string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
+            {
+                package.CargoProviderExternalId = cargoProvider;
+                package.UpdatedAt = timeProvider.GetUtcNow();
+                package.Version++;
+            }
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+            }
+            catch (DbUpdateConcurrencyException) when (attempt == 0)
+            {
+                db.ChangeTracker.Clear();
+                var fresh = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                if (fresh is null) return NotFound<ShipmentView>();
+                package = fresh;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                db.ChangeTracker.Clear();
+                await QueueProjectionReadAsync(tenantId, connectionId, orderNumber, correlationId, cancellationToken);
+                var latest = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+                return ServiceResult<ShipmentView>.Ok(Map(latest, orderNumber));
+            }
         }
-        catch (DbUpdateConcurrencyException)
-        {
-            db.ChangeTracker.Clear();
-            var fresh = await db.ShipmentPackages.SingleAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
-            fresh.CargoProviderExternalId = cargoProvider;
-            fresh.UpdatedAt = timeProvider.GetUtcNow();
-            fresh.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-            return ServiceResult<ShipmentView>.Ok(Map(fresh, orderNumber));
-        }
-        return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
     }
 
     public async Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string format = "ZPL")
@@ -1611,25 +1653,36 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<Guid>.Ok(jobId);
     }
 
-    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery options, bool latest, CancellationToken cancellationToken)
+    // The Returns page reads cards (a claim with accepted and waiting lines is two cards), filtered,
+    // counted and paged by the server (MarketplaceSalesService.ReturnList.cs). "latest" keeps the
+    // plain claim list by last change, unsplit and unpaged, for tools and tests.
+    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery options, bool latest, CancellationToken cancellationToken, int page = 1)
     {
-        var hasOperationalReturnConnection = await db.PlatformConnections.AsNoTracking()
+        if (!await HasOperationalReturnConnectionAsync(tenantId, cancellationToken)) return new([], null, false);
+        if (!latest) return await ReturnCardPageAsync(tenantId, limit, page, after, options, cancellationToken);
+
+        var query = ReturnBaseQuery(tenantId);
+        ApplyReturnFilters(ref query, options);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var claims = await query.OrderByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var rows = await ReturnViewsAsync(tenantId, claims, cancellationToken);
+        return new(rows.Take(limit).ToList(), null, rows.Count > limit, totalCount);
+    }
+
+    private Task<bool> HasOperationalReturnConnectionAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
                 && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
-        if (!hasOperationalReturnConnection) return new([], null, false);
 
-        var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
+    private IQueryable<ReturnClaim> ReturnBaseQuery(Guid tenantId) =>
+        ExcludeStaleHepsiburadaReturns(db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
             && x.Status != ReturnClaimStatus.Cancelled
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
-        query = ExcludeStaleHepsiburadaReturns(query, tenantId);
-        ApplyReturnFilters(ref query, options);
-        var totalCount = await query.CountAsync(cancellationToken);
-        var afterId = latest ? Guid.Empty : Decode(after);
-        if (!latest && afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
-        var claims = latest
-            ? await query.OrderByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken)
-            : await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))), tenantId);
+
+    // One list view per claim, in the claims' order.
+    private async Task<List<ReturnListView>> ReturnViewsAsync(Guid tenantId, List<ReturnClaim> claims, CancellationToken cancellationToken)
+    {
         var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
         var claimIds = claims.Select(x => x.Id).ToArray();
         var approvedAtByClaim = claimIds.Length == 0
@@ -1640,6 +1693,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 .Select(group => new { ClaimId = group.Key, ApprovedAt = group.Max(decision => decision.CompletedAt) })
                 .ToDictionaryAsync(x => x.ClaimId, x => x.ApprovedAt, cancellationToken);
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var lineGrossByOrder = await ActiveLineGrossAsync(tenantId, orders.Values.Where(x => x.GrossAmount <= 0).Select(x => x.Id).ToArray(), cancellationToken);
+        decimal RefundRatio(Order order) => ReturnRefundAmounts.DiscountRatio(order.GrossAmount, order.DiscountAmount, order.NetAmount, lineGrossByOrder.GetValueOrDefault(order.Id));
         var connectionIds = claims.Select(x => x.ConnectionId).Concat(orders.Values.Select(x => x.ConnectionId)).Distinct().ToArray();
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var returnLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId)).ToListAsync(cancellationToken);
@@ -1734,7 +1789,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 if (line is null) return null;
                 var source = SourceLine(line.SourceSnapshotJson);
                 var variant = ResolveReturnVariant(line);
-                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)));
+                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)),
+                    RefundAmount: order is null ? null : ReturnRefundAmounts.LineRefund(returnLine.Quantity, line.UnitPrice, RefundRatio(order)));
             }).Where(line => line is not null).Select(line => line!).ToList();
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
@@ -1743,12 +1799,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
                 claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))),
-                IsEstimatedReturnDueAt(platformCode, claim));
+                IsEstimatedReturnDueAt(platformCode, claim),
+                ReturnRefundAmounts.ClaimTotal(lineViews.Select(line => line.RefundAmount)));
         }).ToList();
-        var hasMore = rows.Count > limit;
-        var pageRows = rows.Take(limit).ToList();
-        var next = !latest && hasMore && pageRows.Count > 0 ? cursors.Encode(pageRows[^1].Id) : null;
-        return new(pageRows, next, hasMore, totalCount);
+        return rows;
     }
 
     internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
@@ -1799,19 +1853,23 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
         var search = options.Search?.Trim();
         var searchCustomer = search is not null && SearchesCustomerSnapshot(search);
+        var customerPattern = CustomerSnapshotSearchPattern(search ?? string.Empty);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(claim => claim.ExternalClaimId.Contains(search)
                 || (claim.ReasonCode != null && claim.ReasonCode.Contains(search))
                 || (claim.ReasonText != null && claim.ReasonText.Contains(search))
                 || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
-                    && (order.OrderNumber.Contains(search) || (searchCustomer && order.CustomerSnapshotJson.Contains(search))))
+                    && (order.OrderNumber.Contains(search) || (searchCustomer && Regex.IsMatch(order.CustomerSnapshotJson, customerPattern))))
                 || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
                     && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
                         && ((line.Barcode != null && line.Barcode.Contains(search)) || line.Sku.Contains(search)))));
 
         var customer = options.Customer?.Trim();
         if (!string.IsNullOrWhiteSpace(customer))
-            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && (order.CustomerSnapshotJson.Contains(customer) || order.OrderNumber.Contains(customer))));
+        {
+            var customerFilterPattern = CustomerSnapshotSearchPattern(customer);
+            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && (Regex.IsMatch(order.CustomerSnapshotJson, customerFilterPattern) || order.OrderNumber.Contains(customer))));
+        }
         var orderNumber = options.OrderNumber?.Trim();
         if (!string.IsNullOrWhiteSpace(orderNumber))
             query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderNumber.Contains(orderNumber)));
@@ -1910,6 +1968,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var variantIds = resolvedVariants.Select(x => x.Id).Distinct().ToArray();
         var inventoryVariants = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").Select(x => x.VariantId).ToListAsync(cancellationToken);
         var imageUrls = await MediaUrls(tenantId, variantIds.Select(x => (Guid?)x), cancellationToken);
+        var refundRatio = ReturnRefundAmounts.DiscountRatio(order.GrossAmount, order.DiscountAmount, order.NetAmount,
+            order.GrossAmount > 0 ? 0 : (await ActiveLineGrossAsync(tenantId, [order.Id], cancellationToken)).GetValueOrDefault(order.Id));
         var lines = sourceLines.Select(line =>
         {
             var source = orderLines.GetValueOrDefault(line.OrderLineId);
@@ -1924,12 +1984,24 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 variant is not null && inventoryVariants.Contains(variant.Id),
                 variant?.OptionSignature ?? sourceSnapshot?.OptionSignature,
                 variant?.ModelCode ?? sourceSnapshot?.ModelCode,
-                string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)));
+                string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
+                source is null ? null : ReturnRefundAmounts.LineRefund(line.Quantity, source.UnitPrice, refundRatio));
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim)));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
+            ReturnRefundAmounts.ClaimTotal(lines.Select(line => line.RefundAmount))));
+    }
+
+    // The gross of each order's active lines (quantity × unit price): the refund's discount share
+    // falls back on it when an order carries no gross total.
+    private async Task<Dictionary<Guid, decimal>> ActiveLineGrossAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
+    {
+        if (orderIds.Length == 0) return [];
+        var rows = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId))
+            .Select(x => new { x.OrderId, x.OrderedQuantity, x.CancelledQuantity, x.UnitPrice }).ToListAsync(cancellationToken);
+        return rows.GroupBy(x => x.OrderId).ToDictionary(group => group.Key, group => group.Sum(x => Math.Max(0, x.OrderedQuantity - x.CancelledQuantity) * x.UnitPrice));
     }
 
     // Each marketplace says per rejection reason whether evidence is needed;
@@ -2908,6 +2980,20 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private sealed record SourceLineView(string? ImageUrl, string? ModelCode, string? OptionSignature);
 
     internal static bool SearchesCustomerSnapshot(string term) => term.Any(char.IsLetter);
+
+    // A PostgreSQL (and .NET) regular expression that finds the term in a customer snapshot value
+    // whose key is not an e-mail field ("email", "customerEmail", ...): a list search matches names
+    // and places, never e-mail addresses. Matching stays case-sensitive, as the plain search was.
+    internal static string CustomerSnapshotSearchPattern(string term)
+    {
+        var escaped = new StringBuilder(term.Length * 2);
+        foreach (var ch in term)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch == '_' || ch > 127) escaped.Append(ch);
+            else escaped.Append('\\').Append(ch);
+        }
+        return "\"(?![A-Za-z0-9_]*[Mm][Aa][Ii][Ll]\")[A-Za-z0-9_]*\"\\s*:\\s*\"[^\"]*" + escaped;
+    }
 
     internal static string? MaskIdentityNumber(string? value)
     {

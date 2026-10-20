@@ -27,6 +27,8 @@ import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from '../../i
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatDateTime, formatIstanbul, fromDateTimeLocal, istanbulDateKey, istanbulDayBoundary } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
+import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
+import { OrderMetricCards } from './OrderMetricCards'
 import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnPlatformName, usableShipmentDueAt } from '../shared'
 
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
@@ -322,12 +324,16 @@ function LabelBarcode({ value, compact = false }: { value: string; compact?: boo
   const bars = code128Bars(value)
   return <div className={`shipping-label-barcode${compact ? ' compact' : ''}`} aria-label={`Barkod: ${value || 'Takip numarası bekleniyor'}`}><div className="shipping-label-barcode-bars" style={{ '--barcode-module-count': bars.length } as CSSProperties}>{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</div><strong>{value || 'Takip numarası bekleniyor'}</strong></div>
 }
-function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline = false }: { item: Order; settings: ShippingLabelSettings; format?: ShippingLabelFormat; onClose: () => void; onPrinted?: () => void; inline?: boolean }) {
+function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline = false, detail: suppliedDetail }: { item: Order; settings: ShippingLabelSettings; format?: ShippingLabelFormat; onClose: () => void; onPrinted?: () => void; inline?: boolean; detail?: OrderLabelDetail }) {
   format = format === 'sticker' ? 'sticker' : settings.defaultFormat
+  // The buyer's e-mail (and name and address) are read from the order detail when the label is printed.
+  const detailQuery = useQuery({ queryKey: ['order-label-detail', item.id], queryFn: () => hubApi<OrderLabelDetail>(`/orders/${item.id}`), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
+  const detail = suppliedDetail ?? detailQuery.data
+  const personal = labelPersonalData(item, detail)
   const shipment = orderDisplayShipment(item)
   const trackingNumber = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? ''
   const packageNumber = shipment?.externalPackageId ?? '—'
-  const address = listAddressText(item.shipmentAddress, item.platformCode)
+  const address = listAddressText(personal.shipmentAddress, item.platformCode)
   const addressLines = address.split(' · ').filter(Boolean)
   const senderLines = settings.senderAddress.split(/\r?\n| · /).map(value => value.trim()).filter(Boolean)
   const style = { '--shipping-label-width': `${settings.stickerWidthMm}mm`, '--shipping-label-height': `${settings.stickerHeightMm}mm`, '--shipping-label-gap': `${settings.sectionGapMm}mm` } as CSSProperties
@@ -335,12 +341,12 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
     trackingNumber,
     packageNumber,
     orderNumber: displayOrderNumber(item.orderNumber),
-    customerName: customerDisplayName(item),
+    customerName: customerDisplayName({ ...item, customerName: personal.customerName, shipmentAddress: personal.shipmentAddress }),
     address,
     cargoProvider: cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName),
     senderName: settings.senderName,
     senderAddress: settings.senderAddress,
-    customerEmail: item.customerEmail ?? '—'
+    customerEmail: personal.customerEmail
   }
   function fieldLabel(field: ShippingLabelField) { return shippingLabelFields.find(option => option.id === field)?.label ?? field }
   function renderField(field: ShippingLabelField) {
@@ -366,21 +372,27 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
     {settings.layout[format].map(block => <div key={block.id} className="shipping-label-positioned-block" style={block.position ? { left: `${block.position.x}%`, top: `${block.position.y}%`, width: `${block.position.width}%`, height: `${block.position.height}%`, fontSize: `${block.fontSize ?? 14}px`, color: '#000', transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined, transformOrigin: 'center' } : { fontSize: `${block.fontSize ?? 14}px`, color: '#000' }}><Fragment>{renderLabelBlock(block)}</Fragment></div>)}
   </article>
   if (inline) return labelSurface
-  return <RrModal crumb="Yazdırma Önizlemesi" title={format === 'a4' ? 'A4 Kargo Etiketi' : 'Sticker Kargo Etiketi'} desc={`${displayOrderNumber(item.orderNumber)} · ${cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => { markShippingLabelPrinted(item.id, format); onPrinted?.(); window.print() }}><RrIcon name="print" />Yazdır</button></>}>
-    <div className="shipping-label-preview-wrap rr-label-wrap">{labelSurface}</div>
+  const detailReady = Boolean(detail)
+  return <RrModal crumb="Yazdırma Önizlemesi" title={format === 'a4' ? 'A4 Kargo Etiketi' : 'Sticker Kargo Etiketi'} desc={`${displayOrderNumber(item.orderNumber)} · ${cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!detailReady} onClick={() => { markShippingLabelPrinted(item.id, format); onPrinted?.(); window.print() }}><RrIcon name="print" />Yazdır</button></>}>
+    {detailQuery.isError && !detailReady ? <RrError error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /> : !detailReady ? <RrLoading text="Alıcı bilgileri yükleniyor…" /> : <div className="shipping-label-preview-wrap rr-label-wrap">{labelSurface}</div>}
   </RrModal>
 }
 function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }: { items: Order[]; settings: ShippingLabelSettings; format: ShippingLabelFormat; onClose: () => void; onPrinted: () => void }) {
+  // Each selected order's detail is read (a few at a time) for the personal fields the labels print.
+  const ids = items.map(item => item.id)
+  const details = useQuery({ queryKey: ['order-label-details', ids], queryFn: () => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`)), staleTime: 30_000 })
   function printLabels() {
+    if (!details.data) return
     items.forEach(item => markShippingLabelPrinted(item.id, format))
     // The server keeps the first print per order so every computer sees it; a failed call leaves the local mark.
     void Promise.allSettled(items.map(item => hubApi<void>(`/orders/${item.id}/label-printed`, { method: 'POST' }))).then(() => onPrinted())
     onPrinted()
     window.print()
   }
-  return <RrModal crumb="Toplu Yazdırma" title="Kargo Stickerlarını Yazdır" desc={`${items.length} etiket · Takip numarası bulunan seçili paketler`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal shipping-label-batch-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">{items.length} etiket yazdırılmaya hazır.</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={printLabels}><RrIcon name="print" />Yazdır</button></>}>
+  return <RrModal crumb="Toplu Yazdırma" title="Kargo Stickerlarını Yazdır" desc={`${items.length} etiket · Takip numarası bulunan seçili paketler`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal shipping-label-batch-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">{details.data ? `${items.length} etiket yazdırılmaya hazır.` : details.isError ? 'Alıcı bilgileri alınamadı.' : 'Alıcı bilgileri yükleniyor…'}</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!details.data} onClick={printLabels}><RrIcon name="print" />Yazdır</button></>}>
+    {details.isError && <RrError error={details.error} onRetry={() => void details.refetch()} />}
     <div className="rr-sum rr-screen-only">{items.map(item => { const shipment = orderDisplayShipment(item); return <div key={item.id}><RrLogo code={item.platformCode} /><span>{displayOrderNumber(item.orderNumber)} · {customerDisplayName(item)}<small>{cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)} · {shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? '—'}</small></span><RrBadge label={(['a4', 'sticker'] as ShippingLabelFormat[]).some(value => loadPrintedShippingLabels().includes(printedShippingLabelKey(item.id, value))) ? 'Yazdırıldı' : 'Bekliyor'} glyph={undefined} /></div> })}</div>
-    <div className="shipping-label-batch-preview rr-print-only">{items.map(item => <ShippingLabelModal key={item.id} item={item} settings={settings} format={format} onClose={onClose} inline />)}</div>
+    {details.data && <div className="shipping-label-batch-preview rr-print-only">{items.map(item => <ShippingLabelModal key={item.id} item={item} settings={settings} format={format} onClose={onClose} inline detail={details.data.get(item.id)} />)}</div>}
   </RrModal>
 }
 function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, onSuccess }: { activeConnection: Connection[]; onClose: () => void; onSuccess: (connectionCount: number, orderNumber: string) => void }) {
@@ -912,7 +924,6 @@ export function OrdersPage() {
     }
   }
 
-  const metricValue = (value: number | undefined, loading: boolean) => loading ? '…' : (value ?? 0).toLocaleString('tr-TR')
   const cargoOptions = [{ value: 'ALL', label: 'Tüm Kargolar' }, ...cargos.map(value => ({ value, label: cargoLabel(value) }))]
   const invoiceOptions = [{ value: 'ALL', label: 'Tüm Fatura Durumları' }, ...invoiceStatuses.map(([value, label]) => ({ value, label }))]
   const invoiceTypeOptions = [{ value: 'ALL', label: 'Tüm Türler' }, { value: 'BIREYSEL', label: 'Bireysel' }, { value: 'KURUMSAL', label: 'Kurumsal' }]
@@ -936,7 +947,7 @@ export function OrdersPage() {
   const orderRows = useMemo(() => pageItems.map(item => <OrderReferenceRow item={item} key={item.id} noBuyer={noBuyer} selectionMode={selectionMode} selected={selectedIds.includes(item.id)} processing={processingOrderId === item.id} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); if (item.platformCode === 'SHOPIFY') setInvoiceUploadOrder(item); else setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder({ item, items: [item] }) }} onOrderStatusChange={() => { setMenu(null); setShopifyStatusOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} onCreatePackage={() => { setMenu(null); setHepsiburadaPackageOrder(item) }} onPrintLabel={format => { if (isMicroExportLabelBlocked(item)) { showBulkNotice('Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.', 'error'); return } setMenu(null); setShippingLabel({ item, format }) }} onPreviewImage={setPreviewImage} labelSettings={labelSettings} printedLabels={printedLabels} />), [pageItemsKey, noBuyer, selectionMode, selectedIds, processingOrderId, menu, labelSettings, printedLabels])
   return <section className="content f3 rr rr-orders">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>Siparişler</h1><p>Tüm pazaryerlerinden gelen siparişleri tek yerden hazırlayın, etiketleyin ve takip edin.</p><DataFreshnessNote kind="ORDERS" /></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={!items.length || exporting} aria-busy={exporting} title={exporting ? 'Dışa aktarılıyor…' : undefined} onClick={() => void exportOrders()}><RrIcon name="export" />Dışa Aktar</button><button type="button" className="rr-btn" onClick={() => setShopifyCsvImportOpen(true)}><RrIcon name="import" />İçe Aktar</button><button type="button" className="rr-btn rr-primary" onClick={() => setSingleSyncOpen(true)}><RrIcon name="refresh" /><span className="rr-long">Sipariş Senkronizasyonu</span><span className="rr-short">Senkronize Et</span></button></div></div>
-    <div className="rr-metrics"><article className="rr-warn"><small>Yeni Sipariş</small><strong>{metricValue(summary.data?.new, summary.isLoading)}</strong><span>işleme alınmayı bekliyor</span></article><article className="rr-bad"><small>Geciken</small><strong>{metricValue(lateOrdersQuery.data?.metrics.lateOrders, lateOrdersQuery.isLoading)}</strong><span>kargoya verme süresi doldu</span></article><article><small>Kargoda</small><strong>{metricValue(summary.data?.shipped, summary.isLoading)}</strong><span>alıcıya doğru yolda</span></article><article><small>Fatura Bekleyen</small><strong>{metricValue(invoiceSummaryQuery.data?.uninvoicedCount ?? lateOrdersQuery.data?.metrics.uninvoicedInvoices, invoiceSummaryQuery.isLoading)}</strong><span>kesilmesi gereken fatura</span></article></div>
+    <OrderMetricCards newOrders={{ value: summary.data?.new, loading: summary.isLoading }} processing={{ value: summary.data?.processing, loading: summary.isLoading }} late={{ value: lateOrdersQuery.data?.metrics.lateOrders, loading: lateOrdersQuery.isLoading }} shipped={{ value: summary.data?.shipped, loading: summary.isLoading }} uninvoiced={{ value: invoiceSummaryQuery.data?.uninvoicedCount ?? lateOrdersQuery.data?.metrics.uninvoicedInvoices, loading: invoiceSummaryQuery.isLoading }} />
     {bulkNotice && <NoticeToast key={bulkNoticeVersion} kind={bulkNoticeKind} message={bulkNotice} onClose={() => setBulkNotice('')} durationMs={bulkNoticeKind === 'pending' ? undefined : 5000} />}
     <div className="rr-fshell">
       <ViewTabsWithMore className="order-tabs" more={['PARTIALLY_CANCELLED', 'RESENT', 'ON_HOLD']} ariaLabel="Sipariş durumları" value={filters.status} onChange={selectStatus} items={orderStatusTabs.map(([value, label]) => { const count = summary.isLoading ? '…' : summary.isError ? '—' : tabCount(value); return { value, label: viewTabLabel(({ ALL: 'all', NEW: 'new', PROCESSING: 'processing', SHIPPED: 'shipping', DELIVERED: 'done', CANCELLED: 'cancelled', RESENT: 'resend', ON_HOLD: 'paused', PARTIALLY_CANCELLED: 'partial' } as const)[value], label), count: typeof count === 'number' ? count.toLocaleString('tr-TR') : count, countTone: value === 'NEW' && typeof count === 'number' && count > 0 ? 'warn' as const : undefined } })} />
