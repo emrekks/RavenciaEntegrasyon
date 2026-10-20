@@ -515,9 +515,7 @@ public sealed partial class ShopifyHttpClient(
                     results.Add(new(barcode, false, null, "SHOPIFY_PRICE_REJECTED", false, priceError));
                     continue;
                 }
-                var effect = string.IsNullOrWhiteSpace(context.IdempotencyKey) ? Guid.NewGuid().ToString("N") : context.IdempotencyKey;
-                var key = IdempotencyKey($"{effect}:{barcode}:inventory");
-                var stockMutation = await QueryAsync(shop, "mutation($input:InventorySetQuantitiesInput!,$idempotencyKey:String!){inventorySetQuantities(input:$input) @idempotent(key:$idempotencyKey){userErrors{field message}}}", new { input = new { name = "available", reason = "correction", referenceDocumentUri = $"marketplacehub://{context.TenantId:D}/{context.ConnectionId:D}/{barcode}", quantities = new[] { new { inventoryItemId, locationId, quantity = (int)quantity.Value, changeFromQuantity = compareQuantity } } }, idempotencyKey = key }, cancellationToken);
+                var stockMutation = await SetAvailableQuantityAsync(shop, context, barcode, inventoryItemId, locationId, (int)quantity.Value, compareQuantity, cancellationToken);
                 if (!stockMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(stockMutation.Error!, stockMutation.RateLimit);
                 if (HasUserErrors(stockMutation.Value!.RootElement.GetProperty("inventorySetQuantities"), out var stockError))
                 {
@@ -612,9 +610,24 @@ public sealed partial class ShopifyHttpClient(
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
         if (!IntegrationRuntimePolicy.AllowsManualRead(shop.Connection)) return Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.NotSupported, "SHOPIFY_CONNECTION_INACTIVE", "Shopify iadeleri yalnızca etkin bağlantıdan okunabilir.", HttpStatusCode.Forbidden);
-        var query = "query($first:Int!,$after:String,$query:String){orders(first:$first,after:$after,query:$query,sortKey:UPDATED_AT,reverse:false){edges{node{id name createdAt returns(first:100){nodes{id status createdAt returnLineItems(first:100){nodes{id quantity returnReason returnReasonNote fulfillmentLineItem{id lineItem{id}}}}}}}} pageInfo{hasNextPage endCursor}}}";
+        return await PollReturnsAsync(shop, window, page, cancellationToken);
+    }
+
+    // Nested page sizes (20 returns per order, 50 lines per return) keep a page of orders nearer Shopify's 1,000-point
+    // single-query ceiling; past it the page shrinks below. An order with more returns or return lines is not read whole here.
+    internal const string ReturnPageQuery = "query($first:Int!,$after:String,$query:String){orders(first:$first,after:$after,query:$query,sortKey:UPDATED_AT,reverse:false){edges{node{id name createdAt returns(first:20){nodes{id status createdAt returnLineItems(first:50){nodes{id quantity returnReason returnReasonNote fulfillmentLineItem{id lineItem{id}}}}}}}} pageInfo{hasNextPage endCursor}}}";
+
+    internal async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollReturnsAsync(ShopifyRequestContext shop, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
         var search = window.ModifiedAfter is { } from ? $"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}" : null;
-        var result = await QueryAsync(shop, query, new { first = Math.Clamp(page.Limit, 1, 100), after = page.Cursor, query = search }, cancellationToken);
+        var first = Math.Clamp(page.Limit, 1, 100);
+        var result = await QueryAsync(shop, ReturnPageQuery, new { first, after = page.Cursor, query = search }, cancellationToken);
+        // Over the cost ceiling: the same page is asked again with a quarter of the orders, down to one (as for orders).
+        while (!result.IsSuccess && result.Error?.Code == QueryCostExceededCode && first > 1)
+        {
+            first = Math.Max(1, first / 4);
+            result = await QueryAsync(shop, ReturnPageQuery, new { first, after = page.Cursor, query = search }, cancellationToken);
+        }
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(result.Error!, result.RateLimit);
         try
         {
@@ -880,7 +893,26 @@ public sealed partial class ShopifyHttpClient(
         return true;
     }
 
-    private static string IdempotencyKey(string value) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+    // Admin API inventorySetQuantities: the quantities carry compareQuantity (the "available" amount read just
+    // before), so Shopify refuses the write if the stock moved in between; with ignoreCompareQuantity false that
+    // check, the job's effect record and the read-before-write are what keep a retried write from double-applying.
+    // There is no @idempotent directive on this mutation.
+    internal const string InventorySetQuantitiesMutation = "mutation($input:InventorySetQuantitiesInput!){inventorySetQuantities(input:$input){userErrors{field message}}}";
+
+    internal static object InventorySetQuantitiesVariables(Guid tenantId, Guid connectionId, string barcode, string inventoryItemId, string locationId, int quantity, int? compareQuantity) => new
+    {
+        input = new
+        {
+            name = "available",
+            reason = "correction",
+            referenceDocumentUri = $"marketplacehub://{tenantId:D}/{connectionId:D}/{barcode}",
+            ignoreCompareQuantity = compareQuantity is null,
+            quantities = new[] { new { inventoryItemId, locationId, quantity, compareQuantity } }
+        }
+    };
+
+    internal Task<AdapterResult<JsonDocument>> SetAvailableQuantityAsync(ShopifyRequestContext shop, AdapterContext context, string barcode, string inventoryItemId, string locationId, int quantity, int? compareQuantity, CancellationToken cancellationToken) =>
+        QueryAsync(shop, InventorySetQuantitiesMutation, InventorySetQuantitiesVariables(context.TenantId, context.ConnectionId, barcode, inventoryItemId, locationId, quantity, compareQuantity), cancellationToken);
     private static string EncodeCompletedOperation(IReadOnlyList<RemoteOperationLine> lines) => "shopify-completed:" + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(lines));
 
     private static CapabilityEvidence ScopeEvidence(string code, ConnectionIdentity identity, string source, AdapterResult<JsonDocument> scopeResult, IReadOnlySet<string> scopes, string[] requiredScopes, DateTimeOffset verified)
@@ -951,7 +983,7 @@ public sealed partial class ShopifyHttpClient(
                             ? $"Shopify API izni eksik{(string.IsNullOrWhiteSpace(deniedField) ? string.Empty : $" ({deniedField})")}. read_products, read_inventory, read_orders, read_customers, read_locations, write_products ve write_inventory izinlerini kontrol edin."
                             : message ?? "Shopify GraphQL isteği reddedildi.",
                     (int)response.StatusCode,
-                    throttled ? rate?.RetryAfter ?? TimeSpan.FromSeconds(5) : null,
+                    throttled ? ThrottleWait(document.RootElement) ?? TimeSpan.FromSeconds(5) : null,
                     remoteRequestId), rate);
             }
             if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
@@ -1196,7 +1228,7 @@ public sealed partial class ShopifyHttpClient(
         return new(ShortId(line.GetProperty("id").GetString()), string.IsNullOrWhiteSpace(sku) ? "SHOPIFY-LINE" : sku!, barcode, line.GetProperty("name").GetString() ?? "Shopify ürünü", orderedQuantity, unitPrice, 0m, financialStatus, line.GetRawText(), cancelledQuantity);
     }
 
-    private static string FulfillmentStatus(JsonElement fulfillment)
+    internal static string FulfillmentStatus(JsonElement fulfillment)
     {
         if (fulfillment.TryGetProperty("deliveredAt", out var deliveredAt) && deliveredAt.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
             return "DELIVERED";
@@ -1209,12 +1241,15 @@ public sealed partial class ShopifyHttpClient(
             && eventNodes.EnumerateArray().Any(item => item.TryGetProperty("status", out var eventStatus) && string.Equals(eventStatus.GetString(), "DELIVERED", StringComparison.OrdinalIgnoreCase)))
             return "DELIVERED";
         var raw = fulfillment.TryGetProperty("status", out var status) ? status.GetString()?.Trim().ToUpperInvariant() : null;
+        // FulfillmentStatus: CANCELLED, ERROR, FAILURE, OPEN, PENDING, SUCCESS. A failed or unknown fulfillment
+        // has not shipped; it is named as such (manual review) instead of falling through to SHIPPED.
         return raw switch
         {
             "CANCELLED" or "CANCELED" => "CANCELLED",
             "OPEN" or "PENDING" or "IN_PROGRESS" => "PROCESSING",
             "SUCCESS" or "FULFILLED" => "SHIPPED",
-            _ => "SHIPPED"
+            "ERROR" or "FAILURE" => "FULFILLMENT_FAILED",
+            _ => "UNKNOWN"
         };
     }
 
@@ -1513,6 +1548,20 @@ public sealed partial class ShopifyHttpClient(
         if (requested < 500) return;
         int? actual = cost.TryGetProperty("actualQueryCost", out var actualElement) && actualElement.ValueKind == JsonValueKind.Number && actualElement.TryGetInt32(out var actualValue) ? actualValue : null;
         logger.LogInformation("Shopify query for {Shop} requested {RequestedCost} points (actual {ActualCost})", shop, requested, actual);
+    }
+
+    // A THROTTLED query waits until the bucket holds what the query asked for ((requested − available) /
+    // restoreRate), not until the whole bucket has refilled. At least one second; null without cost figures.
+    internal static TimeSpan? ThrottleWait(JsonElement root)
+    {
+        if (!root.TryGetProperty("extensions", out var extensions) || !extensions.TryGetProperty("cost", out var cost)
+            || !cost.TryGetProperty("requestedQueryCost", out var requestedElement) || !requestedElement.TryGetDouble(out var requested)
+            || !cost.TryGetProperty("throttleStatus", out var throttle)
+            || !throttle.TryGetProperty("currentlyAvailable", out var availableElement) || !availableElement.TryGetDouble(out var available)
+            || !throttle.TryGetProperty("restoreRate", out var restoreElement) || !restoreElement.TryGetDouble(out var restoreRate) || restoreRate <= 0)
+            return null;
+        var seconds = Math.Ceiling(Math.Max(0, requested - available) / restoreRate);
+        return TimeSpan.FromSeconds(Math.Max(1, seconds));
     }
 
     private static RateLimitMetadata? ReadRateLimit(JsonDocument document)
