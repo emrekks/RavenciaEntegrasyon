@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Buffers.Text;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
@@ -11,17 +11,17 @@ namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 // (POST product/external-status) and the publication state lookup. Pazarama has no service to edit a
 // listing's content, so the update and archive-as-delete operations stay unsupported.
 //
-// Operation ids: "b:{batchRequestId}:{count}" for a create batch polled with getProductBatchResult and
-// "i:{guid}:{count}" for an answer Pazarama gave at once (a single product create answers without a batch
-// id; sale open/close answers per barcode). The barcodes of an operation are remembered for a few hours
-// so a finished batch can be reported line by line even when Pazarama lists only the failures.
+// Operation ids carry what the poll needs, so any process (API or worker) can answer it:
+// "b:{batchRequestId}:{count}:{barcodes}" for a create batch polled with getProductBatchResult (the barcodes
+// let a finished batch be reported line by line when Pazarama lists only the failures), and
+// "c:{lines}" for an answer Pazarama gave at once (a single product create answers without a batch id;
+// sale open/close answers per barcode). {barcodes} and {lines} are base64url JSON. Ids from before this
+// encoding ("b:{id}:{count}" and "i:{guid}:{count}") are still read; an "i:" result was only in memory.
 public sealed partial class PazaramaHttpClient
 {
     internal const string ProductCreate = "product/create";
     internal const string ProductBatchResult = "product/getProductBatchResult";
     internal const string SaleStatus = "product/external-status";
-    private static readonly TimeSpan OperationMemory = TimeSpan.FromHours(6);
-    private static readonly ConcurrentDictionary<string, (DateTimeOffset At, IReadOnlyList<RemoteOperationLine> Lines, IReadOnlyList<string> Codes)> Operations = new();
 
     public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
     {
@@ -30,7 +30,7 @@ public sealed partial class PazaramaHttpClient
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PAZARAMA_PRODUCT_PAYLOAD_INVALID", error ?? "Pazarama ürün açma içeriği beklenen yapıda değil.", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (WriteBlocked<RemoteOperationRef>(account, "ürün açma isteği") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteOperationRef>(account, context, "ürün açma isteği") is { } blocked) return blocked;
 
         var result = await SendAsync(account, HttpMethod.Post, ProductCreate, cancellationToken, new StringContent(publication.PayloadJson, System.Text.Encoding.UTF8, "application/json"));
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
@@ -42,39 +42,30 @@ public sealed partial class PazaramaHttpClient
         if (created.BatchId is null)
         {
             // A single product is answered without a batch: the accepted answer is the result.
-            var inline = $"i:{Guid.NewGuid():N}:{codes.Count.ToString(CultureInfo.InvariantCulture)}";
-            Remember(inline, codes.Select(code => new RemoteOperationLine(code, true, null, null, false, "Ürün ekleme isteği iletildi.")).ToList(), codes, now);
+            var inline = PazaramaOperationId.Completed(codes.Select(code => new RemoteOperationLine(code, true, null, null, false, "Ürün ekleme isteği iletildi.")).ToList());
             return AdapterResult<RemoteOperationRef>.Success(new(inline, "PRODUCT_CREATE", now), result.RateLimit);
         }
-        var operation = $"b:{created.BatchId}:{codes.Count.ToString(CultureInfo.InvariantCulture)}";
-        Remember(operation, [], codes, now);
-        return AdapterResult<RemoteOperationRef>.Success(new(operation, "PRODUCT_CREATE", now), result.RateLimit);
-    }
-
-    private static void Remember(string operation, IReadOnlyList<RemoteOperationLine> lines, IReadOnlyList<string> codes, DateTimeOffset now)
-    {
-        foreach (var stale in Operations.Where(entry => now - entry.Value.At > OperationMemory).Select(entry => entry.Key).ToList()) Operations.TryRemove(stale, out _);
-        Operations[operation] = (now, lines, codes);
+        return AdapterResult<RemoteOperationRef>.Success(new(PazaramaOperationId.Batch(created.BatchId, codes), "PRODUCT_CREATE", now), result.RateLimit);
     }
 
     // The result of a create batch or of a sale status change.
     private async Task<AdapterResult<RemoteOperationStatus>> GetProductOperationAsync(AdapterContext context, string operationId, CancellationToken cancellationToken)
     {
-        Operations.TryGetValue(operationId, out var remembered);
         if (operationId.StartsWith("i:", StringComparison.Ordinal))
-            return remembered.Lines is null
-                ? Failure<RemoteOperationStatus>(AdapterErrorClass.NotFound, "PAZARAMA_OPERATION_FORGOTTEN", "Pazarama işleminin sonucu bellekte kalmadı; ürünü Pazarama'dan yeniden okuyarak kontrol edin.", HttpStatusCode.NotFound)
-                : AdapterResult<RemoteOperationStatus>.Success(new(operationId, "COMPLETED", remembered.Lines));
+            return Failure<RemoteOperationStatus>(AdapterErrorClass.NotFound, "PAZARAMA_OPERATION_FORGOTTEN", "Pazarama işleminin sonucu bellekte kalmadı; ürünü Pazarama'dan yeniden okuyarak kontrol edin.", HttpStatusCode.NotFound);
+        if (operationId.StartsWith("c:", StringComparison.Ordinal))
+            return PazaramaOperationId.TryCompletedLines(operationId, out var lines)
+                ? AdapterResult<RemoteOperationStatus>.Success(new(operationId, "COMPLETED", lines))
+                : Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "PAZARAMA_OPERATION_ID_INVALID", "Pazarama işlem numarası geçersiz.", HttpStatusCode.UnprocessableEntity);
 
-        var parts = operationId.Split(':');
-        if (parts.Length != 3 || !Guid.TryParse(parts[1], out var batchId))
+        if (!PazaramaOperationId.TryBatch(operationId, out var batchId, out var codes))
             return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "PAZARAMA_OPERATION_ID_INVALID", "Pazarama işlem numarası geçersiz.", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationStatus>();
         var result = await SendAsync(account, HttpMethod.Get, $"{ProductBatchResult}?BatchRequestId={batchId}", cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
-        try { return AdapterResult<RemoteOperationStatus>.Success(PazaramaProductWriteMapper.BatchStatus(document.RootElement, operationId, remembered.Codes), result.RateLimit); }
+        try { return AdapterResult<RemoteOperationStatus>.Success(PazaramaProductWriteMapper.BatchStatus(document.RootElement, operationId, codes), result.RateLimit); }
         catch (JsonException)
         {
             return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "PAZARAMA_BATCH_CONTRACT_INVALID", "Pazarama ürün işlem sonucu beklenen yapıda değil.", HttpStatusCode.BadGateway);
@@ -132,7 +123,7 @@ public sealed partial class PazaramaHttpClient
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PAZARAMA_SALE_STATUS_PAYLOAD_INVALID", "Satışa açma/kapatma içeriği beklenen yapıda değil (1-100 barkod).", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (WriteBlocked<RemoteOperationRef>(account, "satışa açma/kapatma") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteOperationRef>(account, context, "satışa açma/kapatma") is { } blocked) return blocked;
 
         var lines = new List<RemoteOperationLine>();
         RateLimitMetadata? rate = null;
@@ -149,16 +140,52 @@ public sealed partial class PazaramaHttpClient
             using var document = result.Value!;
             lines.Add(PazaramaProductWriteMapper.SaleResult(document.RootElement, code));
         }
-        var now = timeProvider.GetUtcNow();
-        var operation = $"i:{Guid.NewGuid():N}:{lines.Count.ToString(CultureInfo.InvariantCulture)}";
-        Remember(operation, lines, changes.Select(x => x.Code).ToList(), now);
-        return AdapterResult<RemoteOperationRef>.Success(new(operation, "SALE_STATUS", now), rate);
+        return AdapterResult<RemoteOperationRef>.Success(new(PazaramaOperationId.Completed(lines), "SALE_STATUS", timeProvider.GetUtcNow()), rate);
     }
 
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
+}
+
+// Product write operation ids that carry their own result or barcodes (see PazaramaHttpClient above).
+public static class PazaramaOperationId
+{
+    public static string Completed(IReadOnlyList<RemoteOperationLine> lines) =>
+        "c:" + Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(lines));
+
+    public static string Batch(string batchId, IReadOnlyList<string> codes) =>
+        $"b:{batchId}:{codes.Count.ToString(CultureInfo.InvariantCulture)}:{Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(codes))}";
+
+    public static bool TryCompletedLines(string operationId, out IReadOnlyList<RemoteOperationLine> lines)
+    {
+        lines = [];
+        if (!operationId.StartsWith("c:", StringComparison.Ordinal)) return false;
+        try
+        {
+            if (JsonSerializer.Deserialize<List<RemoteOperationLine>>(Base64Url.DecodeFromChars(operationId.AsSpan(2))) is not { } decoded) return false;
+            lines = decoded;
+            return true;
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException) { return false; }
+    }
+
+    // codes is null for an id from before the barcodes were encoded ("b:{id}:{count}").
+    public static bool TryBatch(string operationId, out Guid batchId, out IReadOnlyList<string>? codes)
+    {
+        batchId = Guid.Empty;
+        codes = null;
+        var parts = operationId.Split(':');
+        if (parts.Length is not (3 or 4) || parts[0] != "b" || !Guid.TryParse(parts[1], out batchId)) return false;
+        if (parts.Length == 3) return true;
+        try
+        {
+            codes = JsonSerializer.Deserialize<List<string>>(Base64Url.DecodeFromChars(parts[3]));
+            return codes is not null;
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException) { return false; }
+    }
 }
 
 public static class PazaramaProductPayloadRules

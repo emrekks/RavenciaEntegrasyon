@@ -69,7 +69,7 @@ public sealed partial class PazaramaHttpClient : IQuestionPort
             return Failure<RemoteQuestionAnswerResult>(AdapterErrorClass.Validation, "PAZARAMA_ANSWER_EMPTY", "Cevap metni boş olamaz.", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteQuestionAnswerResult>();
-        if (WriteBlocked<RemoteQuestionAnswerResult>(account, "soru cevabı") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteQuestionAnswerResult>(account, context, "soru cevabı") is { } blocked) return blocked;
         var saved = await SendAsync(account, HttpMethod.Put, QuestionAnswer, cancellationToken, Json(new { questionId = id.ToString(), text = answer.Trim() }));
         if (!saved.IsSuccess) return AdapterResult<RemoteQuestionAnswerResult>.Failure(saved.Error!, saved.RateLimit);
         saved.Value!.Dispose();

@@ -27,16 +27,16 @@ public sealed partial class N11HttpClient(
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
     private readonly N11Options settings = options.Value;
 
-    // Every n11 write goes through this gate: the server-wide switch, the connection switch, a
-    // production connection that was verified or activated. Callers above check the same switches
-    // when they queue work; this keeps a write from leaving even when a caller forgets.
-    internal AdapterResult<T>? WriteBlocked<T>(N11RequestContext account, string what)
+    // Every n11 write goes through this gate: the shared write policy (server-wide switch, connection
+    // switch, an active production connection, the manual/automatic split) as for the other marketplaces.
+    // n11 has no sandbox, so a connection that is not PRODUCTION would still reach the live store and
+    // never writes. Callers above check the same switches when they queue work; this keeps a write from
+    // leaving even when a caller forgets.
+    internal AdapterResult<T>? WriteBlocked<T>(N11RequestContext account, AdapterContext context, string what)
     {
         var connection = account.Connection;
-        var allowed = configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
-            && ConnectionWritesEnabled(connection.SettingsJson)
-            && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
-            && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        var allowed = IntegrationRuntimePolicy.IsProduction(connection)
+            && IntegrationRuntimePolicy.AllowsExternalWrite(connection, context, configuration.GetValue<bool>("FeatureFlags:ExternalWrites"), ConnectionWritesEnabled(connection.SettingsJson));
         return allowed
             ? null
             : Failure<T>(AdapterErrorClass.Validation, "N11_EXTERNAL_WRITES_DISABLED", $"N11 bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);

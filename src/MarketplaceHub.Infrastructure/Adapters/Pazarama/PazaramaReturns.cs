@@ -63,7 +63,7 @@ public sealed partial class PazaramaHttpClient : IReturnPort
             return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "PAZARAMA_RETURN_ACTION_INVALID", request.Error, HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<ReturnActionResult>();
-        if (WriteBlocked<ReturnActionResult>(account, action == "APPROVE" ? "iade onayı" : "iade reddi") is { } blocked) return blocked;
+        if (WriteBlocked<ReturnActionResult>(account, context, action == "APPROVE" ? "iade onayı" : "iade reddi") is { } blocked) return blocked;
 
         var result = await SendAsync(account, HttpMethod.Post, UpdateRefund, cancellationToken, Json(request.Body!));
         if (!result.IsSuccess) return AdapterResult<ReturnActionResult>.Failure(result.Error!, result.RateLimit);

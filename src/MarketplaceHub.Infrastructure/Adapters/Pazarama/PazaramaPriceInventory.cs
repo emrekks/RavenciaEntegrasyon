@@ -30,7 +30,7 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PAZARAMA_PRICE_STOCK_PAYLOAD_INVALID", $"Pazarama fiyat-stok içeriği beklenen yapıda değil (en fazla {PazaramaPriceInventoryRules.MaxItemsPerRequest} ürün, barkod ve geçerli değerler).", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (WriteBlocked<RemoteOperationRef>(account, "fiyat-stok") is { } blocked) return blocked;
+        if (WriteBlocked<RemoteOperationRef>(account, context, "fiyat-stok") is { } blocked) return blocked;
 
         // Stock goes first (an unsent stock change risks overselling) and the two requests stand alone:
         // Pazarama refuses a value it already holds, so a retry must not depend on resending the part that
@@ -67,7 +67,7 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
 
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
-        if (externalOperationId.StartsWith("b:", StringComparison.Ordinal) || externalOperationId.StartsWith("i:", StringComparison.Ordinal))
+        if (externalOperationId.StartsWith("b:", StringComparison.Ordinal) || externalOperationId.StartsWith("c:", StringComparison.Ordinal) || externalOperationId.StartsWith("i:", StringComparison.Ordinal))
             return await GetProductOperationAsync(context, externalOperationId, cancellationToken);
         var parts = PazaramaBatchMapper.ParseOperation(externalOperationId);
         if (parts.Count == 0)

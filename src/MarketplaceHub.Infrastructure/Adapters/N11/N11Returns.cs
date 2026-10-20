@@ -63,7 +63,7 @@ public sealed partial class N11HttpClient : IReturnPort
             return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "N11_RETURN_ID_INVALID", "N11 iade numarası geçersiz.", HttpStatusCode.BadRequest);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<ReturnActionResult>();
-        if (WriteBlocked<ReturnActionResult>(account, "iade onayı") is { } blocked) return blocked;
+        if (WriteBlocked<ReturnActionResult>(account, context, "iade onayı") is { } blocked) return blocked;
         var approved = await SendSoapAsync(account, ReturnService, "ClaimReturnApprove", SoapElement("claimReturnId", command.ExternalClaimId) + SoapElement("splitQuantity", ""), cancellationToken);
         return approved.IsSuccess
             ? AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, "APPROVED", null))
