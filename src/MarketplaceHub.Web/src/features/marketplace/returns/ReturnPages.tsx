@@ -11,7 +11,6 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
-import { DataFreshnessNote } from '../../../shared/data-freshness'
 import { returnReasonPresentation } from '../return-reference-presentation'
 import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrLoading, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
 import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, type NotificationDetail, type NotificationTarget } from '../../../shared/notifications'
@@ -390,7 +389,7 @@ export function ReturnsPage() {
   const selectColumn = bulkItems.length > 0
   const tabLabel = tabs.find(tab => tab[0] === status)?.[1] ?? 'Tüm İadeler'
   return <section className="content f3 rr rr-returns">
-    <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>İadeler</h1><p>İade taleplerini inceleyin, onaylayın veya reddedin; kargo ve fatura durumunu izleyin.</p><DataFreshnessNote kind="RETURNS" /></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={returnConnections.length === 0 || sync.isPending} onClick={() => sync.mutate()}><RrIcon name="refresh" />{sync.isPending ? 'Eşitleniyor…' : 'İade Senkronizasyonu'}</button></div></div>
+    <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>İadeler</h1><p>İade taleplerini inceleyin, onaylayın veya reddedin; kargo ve fatura durumunu izleyin.</p></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={returnConnections.length === 0 || sync.isPending} onClick={() => sync.mutate()}><RrIcon name="refresh" />{sync.isPending ? 'Eşitleniyor…' : 'İade Senkronizasyonu'}</button></div></div>
     <div className="rr-metrics"><article className="rr-warn"><small>Aksiyon Bekleyen</small><strong>{metric('ACTION_REQUIRED')}</strong><span>satıcı kararı bekliyor</span></article><article><small>Kargoya Verilen</small><strong>{metric('SHIPPING')}</strong><span>müşteriden yola çıktı</span></article><article><small>Onaylanan</small><strong>{metric('APPROVED')}</strong><span>kabul kararı iletildi</span></article><article><small>Tüm İadeler</small><strong>{metric('ALL')}</strong><span>iade çalışma alanı</span></article></div>
     <div className="rr-fshell">
       <ViewTabsWithMore className="return-reference-tabs" more={[]} ariaLabel="İade durumları" value={status} onChange={selectStatus} items={tabs.map(([value, label]) => { const count = tabCount(value); return { value, label: viewTabLabel(({ ALL: 'all', REQUESTED: 'new', SHIPPING: 'shipping', ACTION_REQUIRED: 'waiting', APPROVED: 'done', REJECTED: 'cancelled', REVIEW: 'review', DISPUTED: 'disputed', SUSPENDED: 'paused' } as const)[value], label), count: typeof count === 'number' ? count.toLocaleString('tr-TR') : count, countTone: value === 'ACTION_REQUIRED' && typeof count === 'number' && count > 0 ? 'warn' as const : undefined } })} />

@@ -93,8 +93,6 @@
 .qi-page .qi-list .rv-empty-state, .qi-page .qi-list .rv-loading-state { min-height: 200px; margin: 12px; border: 0; }
 .qi-page .qi-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; color: var(--rv-color-subtle); border-top: 1px solid var(--rv-color-border); font-size: 12px; }
 .qi-page .qi-foot nav { display: flex; align-items: center; gap: 6px; }
-.qi-page .qi-live { display: inline-flex; align-items: center; gap: 6px; }
-.qi-page .qi-live i { width: 6px; height: 6px; background: var(--rv-color-success, #34d399); border-radius: 50%; }
 
 /* Right: selected question */
 .qi-page .qi-detail { display: flex; flex: 1; flex-direction: column; min-height: 0; }

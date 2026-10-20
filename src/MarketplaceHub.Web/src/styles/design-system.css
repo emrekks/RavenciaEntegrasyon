@@ -7166,6 +7166,5 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 }
 
 /* Page heads: when the data on the page was last read from the marketplaces. */
-.rv-freshness { display: block; margin-top: 4px; overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 /* Integration card: how far a first import has come. */
 .reference-initial-import { margin: 0; padding: var(--rv-space-3) var(--rv-space-5) 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }

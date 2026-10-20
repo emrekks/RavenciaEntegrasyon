@@ -1,26 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { freshnessAge, freshnessText, initialImportSummary } from './data-freshness'
+import { initialImportSummary } from './data-freshness'
 
 describe('data freshness', () => {
-  const now = Date.parse('2026-10-18T12:00:00Z')
-
-  it('says how long ago the stores were read', () => {
-    expect(freshnessAge('2026-10-18T11:59:25Z', now)).toBe('35 sn önce')
-    expect(freshnessAge('2026-10-18T11:56:00Z', now)).toBe('4 dk önce')
-    expect(freshnessAge('2026-10-18T09:00:00Z', now)).toBe('3 sa önce')
-  })
-
-  it('mentions order notifications only when they are on', () => {
-    expect(freshnessText({ kind: 'ORDERS', lastSuccessAt: '2026-10-18T11:59:25Z', instant: true, connections: 2 }, now)).toBe('Son güncelleme 35 sn önce · Webhook açık')
-    expect(freshnessText({ kind: 'RETURNS', lastSuccessAt: '2026-10-18T11:59:25Z', instant: false, connections: 2 }, now)).toBe('Son güncelleme 35 sn önce')
-    expect(freshnessText({ kind: 'QUESTIONS', lastSuccessAt: null, instant: false, connections: 2 }, now)).toBeNull()
-  })
-
-  it('names stores that were never read instead of skipping them', () => {
-    expect(freshnessText({ kind: 'ORDERS', lastSuccessAt: '2026-10-18T11:56:00Z', instant: false, connections: 3, neverSynced: 1 }, now)).toBe('Son güncelleme 4 dk önce · 1 mağaza henüz okunmadı')
-    expect(freshnessText({ kind: 'QUESTIONS', lastSuccessAt: null, instant: false, connections: 2, neverSynced: 2 }, now)).toBe('Henüz güncellenmedi · 2 mağaza henüz okunmadı')
-  })
-
   it('summarises a first import per kind of data', () => {
     expect(initialImportSummary([
       { kind: 'ORDERS', state: 'RUNNING', percent: 60 },

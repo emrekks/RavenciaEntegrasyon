@@ -22,7 +22,6 @@ vi.mock('../../../shared/api', async importOriginal => ({
   hubApi: vi.fn(async (path: string) => {
     api.paths.push(path)
     const params = new URLSearchParams(path.split('?')[1])
-    if (path === '/data-freshness') return { parts: [] }
     if (path.startsWith('/returns/summary')) return summary
     if (path.startsWith('/returns?')) {
       if (params.get('after') === 'next-1') return { items: [claim('21')], nextCursor: null, hasMore: false, totalCount: 41 }

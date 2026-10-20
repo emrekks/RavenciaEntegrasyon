@@ -7,7 +7,6 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { hubApi, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
-import { DataFreshnessNote } from '../../shared/data-freshness'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Button, EmptyState, LoadingState, Tabs, UiIcon } from '../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
@@ -328,7 +327,7 @@ export function QuestionsPage() {
   })()
 
   return <section className="content rv-questions-page qi-page">
-    <header className="qi-head rv-page-head"><div><p className="qi-crumb">Müşteri İletişimi</p><h1>Ürün Soruları</h1><p>Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin.</p><DataFreshnessNote kind="QUESTIONS" /></div><div className="qi-acts"><Button variant="secondary" onClick={() => setTemplatesOpen(true)}><UiIcon name="list" size={16} />Hazır Cevaplar<span className="qi-count">{templates.data?.length ?? 0}</span></Button><Button variant="secondary" onClick={() => sync.mutate({ kind })} loading={sync.isPending}><UiIcon name="refresh" size={16} /> Yenile</Button></div></header>
+    <header className="qi-head rv-page-head"><div><p className="qi-crumb">Müşteri İletişimi</p><h1>Ürün Soruları</h1><p>Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin.</p></div><div className="qi-acts"><Button variant="secondary" onClick={() => setTemplatesOpen(true)}><UiIcon name="list" size={16} />Hazır Cevaplar<span className="qi-count">{templates.data?.length ?? 0}</span></Button><Button variant="secondary" onClick={() => sync.mutate({ kind })} loading={sync.isPending}><UiIcon name="refresh" size={16} /> Yenile</Button></div></header>
     <section className="rv-questions-sync qi-sync" aria-label="Soru aktarım durumu" ref={syncHeight.ref} style={syncHeight.style}>
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read the sync details */}
       {(syncStates.data ?? []).filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => { const summary = syncSummary(item, tab); return <div className="rv-questions-sync-item" tabIndex={0} data-platform={item.platformCode.toLowerCase()} key={item.connectionId} data-detail={[`${summary.records} kayıt`, summary.state, item.lastSuccessAt ? `Son aktarım ${formatShortDate(item.lastSuccessAt)}` : item.lastError, item.historyStartedAt ? `Aktarım başlangıcı ${formatShortDate(item.historyStartedAt)}` : null].filter(Boolean).join(' · ')}><img className={`rv-question-platform-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? undefined} alt="" aria-hidden="true" /><div><b>{item.storeName} <em>{summary.records}<span className="qi-sync-unit"> kayıt</span></em></b><small className={`qi-sync-state is-${summary.glyph}`}><StateGlyph state={summary.glyph} /><span>{summary.state}</span></small><small className="qi-sync-time" title={item.lastSuccessAt ? `Son aktarım ${formatDate(item.lastSuccessAt)}` : item.lastError ?? undefined}>{item.lastSuccessAt ? `Son aktarım ${formatShortDate(item.lastSuccessAt)}` : item.lastError ?? ''}</small></div></div> })}
@@ -370,7 +369,7 @@ export function QuestionsPage() {
             </button>
           })}
         </div>
-        <footer className="qi-foot"><span>{questions.isLoading ? 'Yükleniyor…' : `${totalCount.toLocaleString('tr-TR')} soru`}</span>{totalCount > 50 && <nav className="rv-questions-pagination" aria-label="Soru sayfaları"><Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Önceki</Button><span>Sayfa {page} / {pageCount}</span><Button size="sm" variant="secondary" disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}>Sonraki</Button></nav>}<span className="qi-live"><i aria-hidden="true" />2 dk’da bir yenilenir</span></footer>
+        <footer className="qi-foot"><span>{questions.isLoading ? 'Yükleniyor…' : `${totalCount.toLocaleString('tr-TR')} soru`}</span>{totalCount > 50 && <nav className="rv-questions-pagination" aria-label="Soru sayfaları"><Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Önceki</Button><span>Sayfa {page} / {pageCount}</span><Button size="sm" variant="secondary" disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}>Sonraki</Button></nav>}</footer>
       </div>
       <div className="qi-right">{detail}</div>
     </div>
