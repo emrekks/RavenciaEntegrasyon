@@ -163,6 +163,22 @@ public sealed class DashboardPerformanceTests
         Assert.Empty(DashboardReadService.ReadBreakdown("not json").Late);
     }
 
+    // Live 20 Oct 2026: the worker writes "Pending"/"Late"/"Returns"; the reader looked for "pending" only and every
+    // hover breakdown was empty.
+    [Fact]
+    public void Breakdowns_survive_the_form_the_worker_writes()
+    {
+        var store = Guid.NewGuid().ToString("D");
+        var written = DashboardReadService.WriteBreakdown(new(
+            new Dictionary<string, int> { [store] = 8 }, new Dictionary<string, int> { [store] = 1 }, new Dictionary<string, int>()));
+
+        var read = DashboardReadService.ReadBreakdown(written);
+
+        Assert.Equal(8, read.Pending[store]);
+        Assert.Equal(1, read.Late[store]);
+        Assert.Empty(read.Returns);
+    }
+
     [Fact]
     public void Integration_matrix_reads_the_newest_problem_per_store_and_job_type_without_policy_blocks()
     {

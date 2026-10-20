@@ -215,7 +215,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         snapshot.PendingOrders = pending.Sum(x => x.Count);
         snapshot.LateOrders = late.Sum(x => x.Count);
         snapshot.PendingReturns = returns.Sum(x => x.Count);
-        snapshot.PendingByPlatformJson = JsonSerializer.Serialize(breakdown, BreakdownJson);
+        snapshot.PendingByPlatformJson = WriteBreakdown(breakdown);
         snapshot.DeadJobCount = deadJobCount;
         snapshot.ManualReviewJobCount = manualReviewJobCount;
         snapshot.RecentJobCount = recentJobCount;
@@ -227,6 +227,10 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
     // grouped by store holds a flat name → count map; it is ignored until the next rebuild.
     internal sealed record DashboardBreakdown(IReadOnlyDictionary<string, int> Pending, IReadOnlyDictionary<string, int> Late, IReadOnlyDictionary<string, int> Returns);
 
+    internal static string WriteBreakdown(DashboardBreakdown breakdown) => JsonSerializer.Serialize(breakdown, BreakdownJson);
+
+    // The writer keeps the record's property names ("Pending"); the check for the per-store shape must not depend on
+    // their case (live 20 Oct 2026: it looked for "pending" only, so every card's hover breakdown came back empty).
     internal static DashboardBreakdown ReadBreakdown(string? json)
     {
         var empty = new Dictionary<string, int>();
@@ -234,7 +238,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("pending", out var pendingElement) || pendingElement.ValueKind != JsonValueKind.Object)
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.EnumerateObject().Any(property => string.Equals(property.Name, "pending", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Object))
                 return new(empty, empty, empty);
             var parsed = JsonSerializer.Deserialize<DashboardBreakdown>(json, BreakdownJson);
             return new(parsed?.Pending ?? empty, parsed?.Late ?? empty, parsed?.Returns ?? empty);
