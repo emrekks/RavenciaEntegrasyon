@@ -614,7 +614,8 @@ export function JobsPage({ me }: { me: Me }) {
           <span {...statusChipProps('running')}><JobStateGlyph tone="running" />Çalışıyor <strong>{runningCount.count ?? 0}</strong></span>
           <span {...statusChipProps('waiting')}><JobStateGlyph tone="waiting" />Bekliyor <strong>{waitingCount.count ?? 0}</strong></span>
           <span {...statusChipProps('error')}><JobStateGlyph tone="error" />Hata <strong>{errorCount.count ?? 0}</strong></span>
-          {(statusSummary.cancelled > 0 || statusChips.includes('cancelled')) && <span {...statusChipProps('cancelled')}><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>}
+          {/* Always shown like the others: appearing once the counts arrive pushed the table down on phones. */}
+          <span {...statusChipProps('cancelled')}><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>
         </div>
         <div className="jobs-reference-toolbar-actions">
           <label className="jobs-reference-search"><JobsIcon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>

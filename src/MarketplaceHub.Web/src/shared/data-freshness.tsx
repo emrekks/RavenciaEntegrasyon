@@ -26,7 +26,8 @@ export function freshnessText(part: FreshnessPart | undefined, now: number): str
   return `Son güncelleme ${freshnessAge(part.lastSuccessAt, now)}${part.instant ? ' · Webhook açık' : ''}${waiting ? ` · ${waiting}` : ''}`
 }
 
-// One line under a page title telling when its data was last read from the marketplaces.
+// One line under a page title telling when its data was last read from the marketplaces. The line is kept (empty)
+// while the answer is on its way, and never wraps, so the page below does not jump down when it arrives.
 export function DataFreshnessNote({ kind }: { kind: FreshnessKind }) {
   const query = useQuery({ queryKey: ['data-freshness'], queryFn: () => hubApi<FreshnessView>('/data-freshness'), refetchInterval: 30_000, staleTime: 15_000 })
   const [now, setNow] = useState(() => Date.now())
@@ -35,8 +36,7 @@ export function DataFreshnessNote({ kind }: { kind: FreshnessKind }) {
     return () => window.clearInterval(timer)
   }, [])
   const text = freshnessText(query.data?.parts.find(part => part.kind === kind), now)
-  if (!text) return null
-  return <span className="rv-freshness" role="status">{text}</span>
+  return <span className="rv-freshness" role="status" title={text ?? undefined}>{text ?? ' '}</span>
 }
 
 export type InitialImportPart = { kind: FreshnessKind; state: 'DONE' | 'RUNNING' | 'QUEUED'; percent: number | null }
