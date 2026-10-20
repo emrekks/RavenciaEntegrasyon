@@ -19,7 +19,8 @@ public sealed class TrendyolEFaturamHttpClient(
     Microsoft.Extensions.Options.IOptions<TrendyolEFaturamOptions> options,
     SafeRemoteDocumentDownloader documents,
     TimeProvider timeProvider,
-    ILogger<TrendyolEFaturamHttpClient> logger) : IInvoiceProviderPort
+    ILogger<TrendyolEFaturamHttpClient> logger,
+    TrendyolEFaturamTokenCache tokens) : IInvoiceProviderPort
 {
     private const string ConnectionProbeInvoiceUuid = "00000000-0000-0000-0000-000000000000";
     private readonly TrendyolEFaturamOptions _options = options.Value;
@@ -30,7 +31,8 @@ public sealed class TrendyolEFaturamHttpClient(
     {
         var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (configured is null) return AdapterResult<ConnectionIdentity>.Failure(TrendyolEFaturamErrorMapper.Configuration());
-        var access = await AcquireAccess(configured, cancellationToken);
+        // A connection test proves the stored credential, so it always signs in again.
+        var access = await AcquireAccess(configured, cancellationToken, reuseCachedToken: false);
         if (!access.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(access.Error!, access.RateLimit);
 
         // A successful sign-in only proves that the portal account exists. API_USER access can
@@ -173,10 +175,25 @@ public sealed class TrendyolEFaturamHttpClient(
         return AdapterResult<InvoiceCancellationResult>.Success(new(command.ExternalReference, "CANCELLATION_SUBMITTED", "PENDING", false), response.RateLimit);
     }
 
-    private async Task<AdapterResult<TrendyolEFaturamAccessContext>> AcquireAccess(TrendyolEFaturamRequestContext context, CancellationToken cancellationToken)
+    internal Task<AdapterResult<TrendyolEFaturamAccessContext>> AcquireAccess(TrendyolEFaturamRequestContext context, CancellationToken cancellationToken, bool reuseCachedToken = true)
+    {
+        if (!reuseCachedToken) tokens.Forget(context.CredentialId);
+        return tokens.GetAsync(context.CredentialId, token => SignInForAccess(context, token), cancellationToken);
+    }
+
+    // A sign-in that timed out, failed on the network or got a 5xx/409 never reached the fiscal endpoint.
+    // It gets its own retryable code so a submission is not mistaken for one whose outcome is unknown.
+    internal static AdapterError SignInFailure(AdapterError error) =>
+        error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.BusinessConflict
+            ? new(AdapterErrorClass.TransientNetwork, InvoiceSubmissionOutcomePolicy.SignInUnavailableCode,
+                "E-Faturam oturumu açılamadı; fatura isteği gönderilmedi. İşlem otomatik olarak yeniden denenecek.",
+                error.HttpStatus, error.RetryAfter ?? TimeSpan.FromSeconds(30), error.RemoteRequestId)
+            : error;
+
+    private async Task<AdapterResult<TrendyolEFaturamAccessContext>> SignInForAccess(TrendyolEFaturamRequestContext context, CancellationToken cancellationToken)
     {
         var login = await SignIn(context, context.Credential.Email!, context.Credential.Password!, cancellationToken);
-        if (!login.IsSuccess) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(login.Error!, login.RateLimit);
+        if (!login.IsSuccess) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(SignInFailure(login.Error!), login.RateLimit);
         if (!TrendyolEFaturamDirectAccountAccess.TryRead(login.Value!, out var access))
             return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(
                 AdapterErrorClass.ContractViolation,
@@ -236,7 +253,7 @@ public sealed class TrendyolEFaturamHttpClient(
         IntegrationRuntimePolicy.IsManualStage(configured.Connection, context)
         || (IntegrationRuntimePolicy.IsProduction(configured.Connection) && GlobalWritesEnabled && configured.ExternalWritesEnabled);
 
-    private async Task<AdapterResult<AuthorizedResponse>> SendAuthorized(TrendyolEFaturamRequestContext context, string token, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken, string acceptMediaType = "application/json")
+    internal async Task<AdapterResult<AuthorizedResponse>> SendAuthorized(TrendyolEFaturamRequestContext context, string token, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken, string acceptMediaType = "application/json")
     {
         using var request = new HttpRequestMessage(method, new Uri(context.BaseAddress, endpoint)) { Content = content };
         request.Headers.Accept.ParseAdd(acceptMediaType);
@@ -257,6 +274,8 @@ public sealed class TrendyolEFaturamHttpClient(
             var remoteId = response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null;
             if (!response.IsSuccessStatusCode)
             {
+                // The cached token was refused; the next operation signs in again.
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) tokens.Forget(context.CredentialId);
                 remoteId ??= await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(response.Content, linked.Token);
                 return AdapterResult<AuthorizedResponse>.Failure(TrendyolEFaturamErrorMapper.FromAuthorizedStatus(response.StatusCode, retryAfter, remoteId), rate);
             }
@@ -274,5 +293,5 @@ public sealed class TrendyolEFaturamHttpClient(
         return path.Length > 0 && !path.Contains("..", StringComparison.Ordinal);
     }
 
-    private sealed record AuthorizedResponse(string Body, string? RemoteRequestId);
+    internal sealed record AuthorizedResponse(string Body, string? RemoteRequestId);
 }

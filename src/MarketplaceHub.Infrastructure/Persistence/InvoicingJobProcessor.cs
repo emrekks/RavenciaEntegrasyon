@@ -274,7 +274,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             else
             {
                 var error = result.Error!;
-                if (error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.BusinessConflict)
+                if (InvoiceSubmissionOutcomePolicy.IsOutcomeUnknown(error))
                 {
                     MarkSubmissionUnknown(invoice, attempt, error.Code);
                     attempt.RemoteRequestId = error.RemoteRequestId;
