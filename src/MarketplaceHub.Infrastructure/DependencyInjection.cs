@@ -25,7 +25,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddMarketplaceInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var connection = RequiredSecret(configuration, "ConnectionStrings:AppDb");
+        var connection = WithoutJit(RequiredSecret(configuration, "ConnectionStrings:AppDb"));
         var credentialKey = Convert.FromBase64String(RequiredSecret(configuration, "Security:CredentialKey"));
         var filesRoot = configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "private-files");
         var keysRoot = configuration["DataProtection:KeysRoot"] ?? Path.Combine(AppContext.BaseDirectory, "dp-keys");
@@ -186,6 +186,17 @@ public static class DependencyInjection
             if (!info.Exists || info.Length is 0 or > 65_536) throw new InvalidOperationException($"Secret file for {pair.Key} is missing or invalid.");
             builder.AddInMemoryCollection(new Dictionary<string, string?> { [pair.Key[..^5]] = File.ReadAllText(path).Trim() });
         }
+    }
+
+    // PostgreSQL's JIT compiles a big query before running it. The panel's queries are small reads that finish in
+    // milliseconds, but a wide one passes the JIT cost threshold: the 16-tab order summary took 12.5 s with JIT and 49 ms
+    // without it (live, 21 Oct 2026). The session setting is sent with every connection; one already set is kept.
+    internal static string WithoutJit(string connection)
+    {
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder(connection);
+        if (builder.Options?.Contains("jit", StringComparison.OrdinalIgnoreCase) == true) return connection;
+        builder.Options = string.IsNullOrWhiteSpace(builder.Options) ? "-c jit=off" : $"{builder.Options} -c jit=off";
+        return builder.ConnectionString;
     }
 
     private static string RequiredSecret(IConfiguration configuration, string key) =>

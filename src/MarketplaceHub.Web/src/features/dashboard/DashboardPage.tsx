@@ -189,8 +189,6 @@ export function DashboardPage() {
   const orders = sumOf(series, point => point.orderCount)
   const previousTotal = sumOf(previousSeries, point => point.amount)
   const previousOrders = sumOf(previousSeries, point => point.orderCount)
-  const returnedAmount = sumOf(series, point => point.returnedAmount)
-  const returnedOrders = sumOf(series, point => point.returnedOrderCount)
   const foreign = data ? otherCurrencies(data.current, channel, currency) : []
   const basket = orders ? total / orders : 0
   const previousBasket = previousOrders ? previousTotal / previousOrders : 0
@@ -263,9 +261,7 @@ export function DashboardPage() {
         <KpiCell loading={loading} label="Ortalama Sepet" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
-      {!loading && (returnedOrders > 0 || foreign.length > 0) && <p className="rr-pf-note">
-        {/* Revenue (ciro) is everything sold, returns included; the returned part and what remains without it are shown here. */}
-        {returnedOrders > 0 && <span className="rr-pf-net">Ciroya dahil iade: <b className="rr-num">{money(returnedAmount, currency)}</b> ({count(returnedOrders)} sipariş) · İadeler düşülünce: <b className="rr-num">{money(total - returnedAmount, currency)}</b></span>}
+      {!loading && foreign.length > 0 && <p className="rr-pf-note">
         {foreign.length > 0 && <span>Diğer para birimleri: {foreign.map(item => <b key={item.currency} className="rr-num">{money(item.amount, item.currency)} ({count(item.orders)} sipariş) </b>)}</span>}
       </p>}
       <div className="rr-pf-body">

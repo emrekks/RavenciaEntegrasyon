@@ -197,7 +197,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg > button:hover { color: var(--rr-ink); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg > button.rr-on { color: var(--rr-ink); background: var(--rr-raised); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--rr-line); border-bottom: 1px solid var(--rr-line); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { position: relative; display: grid; gap: 4px; align-content: start; min-width: 0; padding: 14px 16px; border-right: 1px solid var(--rr-line); outline: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { position: relative; display: grid; grid-template-rows: auto auto 1fr auto auto; gap: 4px; align-items: start; min-width: 0; padding: 14px 16px; border-right: 1px solid var(--rr-line); outline: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc:last-child { border-right: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-pick { cursor: pointer; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-pick:hover { background: var(--rr-hover); }
