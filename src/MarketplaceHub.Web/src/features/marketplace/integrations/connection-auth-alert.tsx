@@ -59,17 +59,24 @@ export function ConnectionAuthBadge({ item }: { item: AuthAlertConnection }) {
   const tipId = `connection-auth-tip${useId()}`
   const summary = connectionAuthSummary(item)
   if (!summary) return null
-  const label = summary.tone === 'danger' ? 'Hata' : summary.tone === 'warning' ? 'Uyarı' : 'Test gerekli'
+  const label = summary.tone === 'danger' ? 'Hata' : summary.tone === 'warning' ? 'Uyarı' : 'Test Gerekli'
   // The same chip as "Pasif" / "Bağlı ve aktif"; focusable so a keyboard can read the reason too.
   // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger
   return <span className={`reference-connection-state connection-auth-badge is-${summary.tone}`} tabIndex={0} aria-describedby={tipId}>
-    <i aria-hidden="true" />{label}
+    <AuthStateGlyph tone={summary.tone} />{label}
     <span className="connection-auth-tip" role="tooltip" id={tipId}>
       <b>{summary.title}</b>
       {summary.action}
       {summary.meta && <small>{summary.meta}</small>}
     </span>
   </span>
+}
+
+// Drawn like the Pasif / Bağlı ve aktif marks (MappingStateGlyph): a refused connection is a filled disc with an
+// exclamation, one waiting for a new test is a ring with a clock hand.
+function AuthStateGlyph({ tone }: { tone: string }) {
+  if (tone === 'info') return <svg className="cm-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="M8 4.9v3.3l2 1.2" /></svg>
+  return <svg className="cm-glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="M8 4.6v4.1" stroke="var(--rv-color-surface)" strokeWidth="1.7" strokeLinecap="round" /><circle cx="8" cy="11.3" r="1" fill="var(--rv-color-surface)" /></svg>
 }
 
 /** The settings warning for refused credentials or access, with when it was last seen. */
