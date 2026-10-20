@@ -1,0 +1,13 @@
+/* "Soruyu Bildir" button and dialog. */
+.qi-report-trigger { display: inline-flex; }
+.qi-report-trigger .qi-report-button:not(:disabled) { color: var(--rv-color-danger); }
+.qi-report-trigger .qi-report-button:disabled { pointer-events: none; }
+.qi-report-modal .qi-report-reasons { display: grid; gap: 6px; margin: 0 0 14px; padding: 0; border: 0; }
+.qi-report-modal .qi-report-reasons legend { margin-bottom: 6px; padding: 0; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.qi-report-modal .qi-report-reasons label { display: flex; align-items: center; gap: 10px; padding: 9px 12px; color: var(--rv-color-ink); font-size: 13.5px; border: 1px solid var(--rv-color-border); border-radius: 7px; cursor: pointer; }
+.qi-report-modal .qi-report-reasons label.is-on { border-color: var(--rv-color-danger); background: var(--rv-color-surface-soft); }
+.qi-report-modal .qi-report-reasons input { margin: 0; accent-color: var(--rv-color-danger); }
+.qi-report-modal .qi-report-note { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.qi-report-modal .qi-report-note textarea { width: 100%; resize: vertical; font: inherit; font-size: 13.5px; }
+.qi-report-modal .qi-report-note small { justify-self: end; color: var(--rv-color-subtle); }
+.qi-report-modal .qi-report-note small.is-invalid { color: var(--rv-color-danger); }

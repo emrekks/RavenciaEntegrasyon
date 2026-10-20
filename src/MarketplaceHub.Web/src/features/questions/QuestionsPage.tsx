@@ -21,6 +21,7 @@ import './questions-inbox.css'
 import { viewTabLabel } from '../../shared/view-tabs'
 import { formatIstanbul, istanbulDayBoundary } from '../../shared/format-date'
 import { scopedStorageKey } from '../../shared/storage-scope'
+import { QuestionReportAction } from './QuestionReportAction'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -314,7 +315,7 @@ export function QuestionsPage() {
         {row.answerSubmissionStatus === 'NOT_DELIVERED' && <p className="qi-note" role="status"><UiIcon name="info" size={14} />Önceki cevabınız pazaryerine ulaşmadı; taslağınız geri yüklendi. Kontrol edip yeniden gönderebilirsiniz.</p>}
         <div className="qi-templates-row"><span>Hazır Cevap</span>{templates.data?.length ? <div className="rv-question-bubbles" aria-label="Hazır cevaplar">{templates.data.map(item => <button type="button" key={item.id} title={item.text} onClick={() => setAnswerDrafts(current => ({ ...current, [row.id]: item.text }))}>{item.title}</button>)}</div> : <small>Kayıtlı hazır cevap yok</small>}<button type="button" className="qi-link" onClick={() => setTemplatesOpen(true)}><UiIcon name="edit" size={14} />Yönet</button></div>
         <textarea rows={2} maxLength={2000} value={draft} onChange={event => setAnswerDrafts(current => ({ ...current, [row.id]: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); send() } }} placeholder="Cevabınızı yazın…" aria-label="Soruya cevap" />
-        <div className="qi-composer-foot"><span className="rv-answer-bar-meta">{length}/{row.platformCode === 'TRENDYOL' ? '10–2000' : '1–2000'} karakter · Ctrl+Enter ile gönderin{row.platformCode === 'N11' ? ' · N11’de cevap bir kez verilir, değiştirilemez' : ''}</span><div>{next && <Button variant="secondary" onClick={() => setSelectedId(next.id)}>Sonraki Soru</Button>}<Button onClick={send} loading={sendAnswer.isPending} disabled={length < minLength || length > 2000}>Gönder</Button></div></div>
+        <div className="qi-composer-foot"><span className="rv-answer-bar-meta">{length}/{row.platformCode === 'TRENDYOL' ? '10–2000' : '1–2000'} karakter · Ctrl+Enter ile gönderin{row.platformCode === 'N11' ? ' · N11’de cevap bir kez verilir, değiştirilemez' : ''}</span><div><QuestionReportAction question={row} onNotice={setNotice} />{next &&<Button variant="secondary" onClick={() => setSelectedId(next.id)}>Sonraki Soru</Button>}<Button onClick={send} loading={sendAnswer.isPending} disabled={length < minLength || length > 2000}>Gönder</Button></div></div>
         {sendAnswer.isError && sendAnswer.variables?.id === row.id && <p className="rv-question-send-error" role="alert">{sendAnswer.error instanceof Error ? sendAnswer.error.message : 'Cevap gönderilemedi.'}</p>}
       </div> : <div className="qi-closed"><StateGlyph state={state.glyph} />{state.label}{row.status === 'ANSWER_SUBMITTED' ? ' · Pazaryeri onayı bekleniyor' : ''}{isClosedRejection(row) ? ` · Pazaryerince kapatıldı${rejection ? ` (${rejection})` : ''}, cevap beklemiyor` : ''}</div>}
     </article>
