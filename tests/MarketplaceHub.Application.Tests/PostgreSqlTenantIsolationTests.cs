@@ -3182,6 +3182,32 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task SyncCursorProgressAndOutboxTimes_FollowTheInjectedClock()
+    {
+        var tenant = NewTenant("sync-cursor-clock");
+        var connection = NewQuestionConnection(tenant);
+        var clock = new SteppingTimeProvider(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero));
+        var cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "ORDERS", OpaqueCursor = "cursor-1", Version = 1 };
+
+        try
+        {
+            await using var db = fixture.CreateContext(clock);
+            db.Tenants.Add(tenant);
+            db.PlatformConnections.Add(connection);
+            db.SyncCursors.Add(cursor);
+            await db.SaveChangesAsync();
+
+            Assert.Equal(clock.GetUtcNow(), cursor.LastCursorAdvancedAt);
+            Assert.All(await db.IntegrationOutboxEvents.AsNoTracking().Where(row => row.TenantId == tenant.Id).ToListAsync(),
+                row => Assert.Equal(clock.GetUtcNow(), row.CreatedAt));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task SyncCursorProgress_ChangesOnlyWhenCursorOrWatermarkAdvances()
     {
         var tenant = NewTenant("sync-cursor-progress");
@@ -5698,6 +5724,8 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     }
 
     public AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options);
+
+    public AppDbContext CreateContext(TimeProvider clock) => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options, clock);
 
     public Task DisposeAsync() => Task.CompletedTask;
 }

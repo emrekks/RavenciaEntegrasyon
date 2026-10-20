@@ -215,8 +215,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
-                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
-                order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
+                orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, MaskIdentityNumber(customer.TaxOrIdentityNumber),
+                ListAddress(order.ShipmentAddressSnapshotJson), order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, invoiceDocumentUrl,
                 connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null,
                 shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null);
@@ -410,7 +410,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var search = options.Search?.Trim();
         if (!string.IsNullOrWhiteSpace(search))
         {
-            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || x.CustomerSnapshotJson.Contains(search)
+            // The customer snapshot holds identity, tax and phone numbers: a
+            // term without letters (a number) is only matched against order,
+            // product and barcode fields, never against the snapshot.
+            var searchCustomer = SearchesCustomerSnapshot(search);
+            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || (searchCustomer && x.CustomerSnapshotJson.Contains(search))
                 || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
                     && (line.TitleSnapshot.Contains(search) || line.Sku.Contains(search) || (line.Barcode != null && line.Barcode.Contains(search)))));
         }
@@ -1765,12 +1769,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }
 
         var search = options.Search?.Trim();
+        var searchCustomer = search is not null && SearchesCustomerSnapshot(search);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(claim => claim.ExternalClaimId.Contains(search)
                 || (claim.ReasonCode != null && claim.ReasonCode.Contains(search))
                 || (claim.ReasonText != null && claim.ReasonText.Contains(search))
                 || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
-                    && (order.OrderNumber.Contains(search) || order.CustomerSnapshotJson.Contains(search)))
+                    && (order.OrderNumber.Contains(search) || (searchCustomer && order.CustomerSnapshotJson.Contains(search))))
                 || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
                     && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
                         && ((line.Barcode != null && line.Barcode.Contains(search)) || line.Sku.Contains(search)))));
@@ -2827,6 +2832,34 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     }
 
     private sealed record SourceLineView(string? ImageUrl, string? ModelCode, string? OptionSignature);
+
+    internal static bool SearchesCustomerSnapshot(string term) => term.Any(char.IsLetter);
+
+    internal static string? MaskIdentityNumber(string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return null;
+        return trimmed.Length > 4 ? $"***{trimmed[^4..]}" : "***";
+    }
+
+    // Only the delivery fields a label prints: no phone, e-mail, identity or tax number.
+    internal static OrderAddressView? ListAddress(string shipmentAddressJson)
+    {
+        var name = NameFrom(shipmentAddressJson, "firstName", "lastName", "shippingFirstName", "shippingLastName", "fullName", "name", "company", "companyName");
+        var address = new OrderAddressView(
+            IsMeaningfulText(name) ? name : null,
+            JsonText(shipmentAddressJson, "fullAddress"),
+            JsonText(shipmentAddressJson, "address1"),
+            JsonText(shipmentAddressJson, "address2"),
+            JsonText(shipmentAddressJson, "neighborhood"),
+            JsonText(shipmentAddressJson, "district", "countyName"),
+            JsonText(shipmentAddressJson, "city", "province"),
+            JsonText(shipmentAddressJson, "postalCode", "zip"),
+            JsonText(shipmentAddressJson, "countryCode", "country"),
+            JsonBool(shipmentAddressJson, "isDeliveryPoint"),
+            JsonText(shipmentAddressJson, "deliveryPointType"));
+        return address == new OrderAddressView(null, null, null, null, null, null, null, null, null) ? null : address;
+    }
 
     private static string? JsonText(string json, params string[] names)
     {
