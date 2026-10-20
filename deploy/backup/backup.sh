@@ -13,12 +13,30 @@ verify_backup() {
   (cd "$backup_dir" && sha256sum -c SHA256SUMS >/dev/null && pg_restore --list database.dump >/dev/null)
 }
 
+# Retention (newest first):
+#   - every set of the last 72 hours (pre-deploy sets stay restorable);
+#   - the newest set of each UTC day for BACKUP_KEEP_DAILY days (default 14);
+#   - the newest set of each ISO week, older than the daily window, for
+#     BACKUP_KEEP_WEEKLY weeks (default 4);
+#   - always the newest set, whatever its age.
+# Everything else is removed. Names that are not UTC timestamps are never touched.
 prune_expired_backups() {
+  keep_daily="${BACKUP_KEEP_DAILY:-14}"
+  keep_weekly="${BACKUP_KEEP_WEEKLY:-4}"
   now="$(date -u +%s)"
-  cutoff="$((now - 259200))"
-  for expired in /backup/*; do
-    test -d "$expired" || continue
-    name="${expired##*/}"
+  recent_cutoff="$((now - 259200))"
+  daily_cutoff="$((now - keep_daily * 86400))"
+  weekly_cutoff="$((now - (keep_daily + keep_weekly * 7 + 7) * 86400))"
+  seen_days=" "
+  seen_weeks=" "
+  weeks_kept=0
+  newest_kept=false
+
+  # Timestamp names sort chronologically; walk them newest first.
+  # The names contain no whitespace (checked below), so word splitting is safe.
+  for path in $(printf '%s\n' /backup/????????T??????Z | sort -r); do
+    test -d "$path" || continue
+    name="${path##*/}"
     case "$name" in
       ????????T??????Z) ;;
       *) continue ;;
@@ -35,15 +53,40 @@ prune_expired_backups() {
     second="$(printf '%s' "$name" | cut -c14-15)"
     backup_time="$(date -u -d "$year-$month-$day $hour:$minute:$second UTC" +%s 2>/dev/null || true)"
     test -n "$backup_time" || continue
+    day_key="$year$month$day"
+    week_key="$(date -u -d "@$backup_time" +%G%V)"
 
-    if test "$backup_time" -lt "$cutoff"; then
-      rm -rf -- "$expired"
+    keep=false
+    if test "$newest_kept" = false; then
+      keep=true
+    elif test "$backup_time" -ge "$recent_cutoff"; then
+      keep=true
+    elif test "$backup_time" -ge "$daily_cutoff"; then
+      case "$seen_days" in
+        *" $day_key "*) ;;
+        *) keep=true ;;
+      esac
+    elif test "$backup_time" -ge "$weekly_cutoff" && test "$weeks_kept" -lt "$keep_weekly"; then
+      case "$seen_weeks" in
+        *" $week_key "*) ;;
+        *) keep=true; weeks_kept="$((weeks_kept + 1))" ;;
+      esac
+    fi
+
+    if test "$keep" = true; then
+      newest_kept=true
+      seen_days="$seen_days$day_key "
+      seen_weeks="$seen_weeks$week_key "
+    else
+      rm -rf -- "/backup/$name"
       echo "Removed expired backup set: $name"
     fi
   done
 }
 
 today="$(date -u +%Y%m%d)"
+# Deploys, rollbacks and the nightly timer pass BACKUP_FORCE=true; only an ad-hoc
+# run may reuse today's verified set.
 if test "${BACKUP_FORCE:-false}" != "true"; then
   today_backup=""
   for candidate in /backup/"$today"T??????Z; do

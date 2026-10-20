@@ -3,12 +3,15 @@ Description=Create and verify the daily Ravencia database and private-volume bac
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
+OnFailure=ravencia-alert@%n.service
 
 [Service]
 Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
 ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/daily-backup.sh
+# Up to 5 minutes waiting for the stack plus dump, archive and verification.
+TimeoutStartSec=90min
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

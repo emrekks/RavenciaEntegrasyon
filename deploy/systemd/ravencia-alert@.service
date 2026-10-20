@@ -1,0 +1,10 @@
+[Unit]
+Description=Send a Ravencia operator alert for the failed unit %i
+# Used as OnFailure=ravencia-alert@%n.service by the backup and restore-drill units.
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
+ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/send-alert.sh "%i failed; see: journalctl -u %i -n 100"
+TimeoutStartSec=2min
