@@ -1208,6 +1208,8 @@ public sealed partial class InvoicingBillingService(
             if (!TryResolveWholeOrderInvoiceLines(orderLines, allocations, activePackagesForOrder.Select(item => item.Id).ToArray(), out orderLines, out var allocationError))
                 return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
         }
+        if (orderLines.Any(line => InvoiceIssuePolicy.IsLineVatRateUnknown(orderPlatform, line.SourceSnapshotJson)))
+            return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.LineVatRateUnknown);
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
             Id = Guid.CreateVersion7(),
@@ -1361,6 +1363,15 @@ public sealed partial class InvoicingBillingService(
         if (lines.Count == 0 || lines.Any(x => x.Quantity <= 0 || x.LineTotal < 0)) failures.Add("INVOICE_LINES_INVALID");
         if (lines.Sum(x => x.LineTotal) != invoice.PayableTotal || invoice.TaxExclusiveTotal + invoice.TaxTotal != invoice.PayableTotal) failures.Add("INVOICE_TOTAL_MISMATCH");
         if (lines.Any(x => x.UnitSnapshot == "UNSPECIFIED" || x.VatRate != 0 && x.VatAmount <= 0)) failures.Add("FISCAL_CALCULATION_AUTHORITY_REQUIRED");
+        // A line whose VAT rate the marketplace did not report must not be issued at an inferred rate or at 0%.
+        var sourceLineIds = lines.Where(x => x.OrderLineId != null).Select(x => x.OrderLineId!.Value).ToList();
+        var sourcePlatform = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Join(db.PlatformConnections.AsNoTracking(), x => new { x.TenantId, x.ConnectionId }, x => new { x.TenantId, ConnectionId = x.Id }, (_, connection) => connection.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (sourceLineIds.Count > 0 && sourcePlatform == "TRENDYOL"
+            && (await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && sourceLineIds.Contains(x.Id)).Select(x => x.SourceSnapshotJson).ToListAsync(cancellationToken))
+                .Any(snapshot => InvoiceIssuePolicy.IsLineVatRateUnknown(sourcePlatform, snapshot)))
+            failures.Insert(0, InvoiceIssuePolicy.LineVatRateUnknownCode);
         if (invoice.Note != InvoiceAmounts.TurkishInvoiceNote(invoice.PayableTotal)) failures.Add("INVOICE_NOTE_MISMATCH");
         var providerConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
         if (providerConnection is null) failures.Add("ACTIVE_CONNECTION_REQUIRED");

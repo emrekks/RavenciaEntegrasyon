@@ -392,6 +392,37 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
+    [PostgreSqlFact]
+    public async Task ALineWhoseVatRateTrendyolDidNotReportBlocksThePreviewAndTheDraft()
+    {
+        var seed = NewSeed("audit-vat-unknown");
+        var line = NewLine(seed.Tenant.Id, seed.Order.Id);
+        line.VatRate = 0m;
+        line.SourceSnapshotJson = "{\"lineId\":\"1\",\"stockCode\":\"AUDIT-SKU\",\"quantity\":1,\"lineItemPrice\":120}";
+        await SeedAsync(seed, db => db.OrderLines.Add(line));
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewBillingService(db);
+            var preview = await service.PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            var draft = await service.CreateDraftAsync(seed.Tenant.Id,
+                new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), "audit-vat-unknown", CancellationToken.None);
+
+            var item = Assert.Single(preview.Value ?? []);
+            Assert.False(item.CanConfirm);
+            Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknown.Message, item.BlockedReason);
+            Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknownCode, draft.Error?.Code);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Invoices.AnyAsync(invoice => invoice.TenantId == seed.Tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private InvoicingBillingService NewBillingService(AppDbContext db, IInvoiceProviderPort? provider = null, IDictionary<string, string?>? configuration = null)
     {
         var dataProtection = new EphemeralDataProtectionProvider();

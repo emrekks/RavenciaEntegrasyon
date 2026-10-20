@@ -120,8 +120,9 @@ public static class TrendyolJsonMapper
     }
 
     // G30: a line without vatRate keeps its place in the package. When every line that has a rate agrees, that is the
-    // package's rate and the line takes it (reported as inferred); otherwise the line carries 0 and is reported so the
-    // rate is checked before invoicing. Either way the order, its stock and the package allocation stay whole.
+    // package's rate and the line takes it (reported as inferred); otherwise the line carries 0 and is reported. The order,
+    // its stock and the package allocation stay whole, but no invoice is issued for the order until Trendyol reports the
+    // rate (InvoiceIssuePolicy.IsLineVatRateUnknown reads the line's raw JSON).
     private static void ApplyPackageVatRate(List<RemoteOrderLine> lines, List<int> linesWithoutVat, string externalPackageId, List<AdapterPageIssue> issues)
     {
         if (linesWithoutVat.Count == 0) return;
@@ -134,12 +135,12 @@ public static class TrendyolJsonMapper
             {
                 lines[index] = line with { VatRate = known[0] };
                 issues.Add(new("ORDER_PACKAGE_LINE_VAT_RATE_INFERRED", $"{externalPackageId}:{line.ExternalLineId}",
-                    $"Sipariş paketi {externalPackageId} satırında KDV oranı yoktu; paketin diğer satırlarındaki %{known[0].ToString("0.##", CultureInfo.InvariantCulture)} kullanıldı."));
+                    $"Sipariş paketi {externalPackageId} satırında KDV oranı yoktu; paketin diğer satırlarındaki %{known[0].ToString("0.##", CultureInfo.InvariantCulture)} kullanıldı. Oran Trendyol'dan gelmeden bu siparişe fatura kesilmez."));
             }
             else
             {
                 issues.Add(new("ORDER_PACKAGE_LINE_VAT_RATE_MISSING", $"{externalPackageId}:{line.ExternalLineId}",
-                    $"Sipariş paketi {externalPackageId} satırında KDV oranı yok; satır alındı, faturalamadan önce KDV oranını kontrol edin."));
+                    $"Sipariş paketi {externalPackageId} satırında KDV oranı yok; satır alındı; oran Trendyol'dan gelmeden bu siparişe fatura kesilmez."));
             }
         }
     }

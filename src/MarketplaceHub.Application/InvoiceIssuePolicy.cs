@@ -34,6 +34,38 @@ public static class InvoiceIssuePolicy
         return null;
     }
 
+    public const string LineVatRateUnknownCode = "ORDER_LINE_VAT_RATE_UNKNOWN";
+
+    public static readonly InvoiceIssueRefusal LineVatRateUnknown = new(LineVatRateUnknownCode,
+        "Trendyol siparişin en az bir ürün satırında KDV oranını bildirmedi. KDV oranı bilinmeyen satırla fatura kesilmez; siparişi yeniden eşitleyin ya da faturayı E-Faturam portalında doğru KDV ile düzenleyip siparişe manuel belge olarak ekleyin.");
+
+    /// <summary>
+    /// True when the marketplace did not report the line's VAT rate. Trendyol lines keep their raw JSON; a line
+    /// without a numeric vatRate was kept with an inferred rate or 0 (G30), which must not reach a fiscal invoice.
+    /// Lines of other platforms, and lines without a raw snapshot, carry the rate the platform reported (0 included).
+    /// </summary>
+    public static bool IsLineVatRateUnknown(string? platformCode, string? lineSourceSnapshotJson)
+    {
+        if (!string.Equals(platformCode, "TRENDYOL", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(lineSourceSnapshotJson)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(lineSourceSnapshotJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.EnumerateObject().Any()) return false;
+            if (!root.TryGetProperty("vatRate", out var vatRate)) return true;
+            return vatRate.ValueKind switch
+            {
+                JsonValueKind.Number => false,
+                JsonValueKind.String => !decimal.TryParse(vatRate.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out _),
+                _ => true
+            };
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     public static bool RequiresExportFlow(string? currency, string? customerSnapshotJson) =>
         !string.Equals(currency?.Trim(), "TRY", StringComparison.OrdinalIgnoreCase) || IsMicroExport(customerSnapshotJson);
 
@@ -63,6 +95,7 @@ public static class InvoiceIssuePolicy
         EInvoiceRecipientCode => EInvoiceRecipient.Message,
         ExportFlowRequiredCode => ExportFlowRequired.Message,
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
+        LineVatRateUnknownCode => LineVatRateUnknown.Message,
         RecipientTaxIdInvalidCode => "Alıcının vergi numarası veya T.C. kimlik numarası geçersiz (kontrol hanesi tutmuyor). Sipariş bilgisini pazaryerinde düzeltip yeniden eşitleyin.",
         null or "" => "Fatura doğrulanamadı.",
         _ => code
