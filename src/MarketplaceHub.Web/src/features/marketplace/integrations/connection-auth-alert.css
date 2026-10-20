@@ -1,0 +1,15 @@
+/* Refused credentials / access warning on the integration card and in the connection settings. */
+.connection-auth-alert { display: flex; align-items: flex-start; gap: 12px; margin: 12px 0 0; padding: 12px 14px; color: var(--rv-color-ink); background: var(--rv-color-danger-soft); border: 1px solid var(--rv-color-danger); border-radius: 12px; }
+.connection-auth-alert.is-warning { background: var(--rv-color-warning-soft); border-color: var(--rv-color-warning); }
+.connection-auth-alert.is-info { background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
+.connection-auth-alert > div { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.connection-auth-alert strong { font-size: 14px; font-weight: 600; }
+.connection-auth-alert p { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.connection-auth-alert small { color: var(--rv-color-muted); font-size: 12px; overflow-wrap: anywhere; }
+.connection-auth-alert .connection-auth-alert-hint { color: var(--rv-color-muted); }
+.connection-auth-alert .connection-auth-alert-test { flex: none; height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; white-space: nowrap; }
+.connection-auth-alert.is-compact { margin: 10px 16px 0; }
+@media (max-width: 760px) {
+  .connection-auth-alert { flex-direction: column; align-items: stretch; }
+  .connection-auth-alert .connection-auth-alert-test { width: 100%; }
+}
