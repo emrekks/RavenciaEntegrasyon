@@ -212,9 +212,12 @@ export function DashboardPage() {
   const attention = rows.filter(row => row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn')).length
   const errors = [bootstrap.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
   const loadingValue = (busy: boolean, value: number | undefined) => busy ? '—' : count(value ?? 0)
-  const revenueStats = dailyStats(series.map(point => point.amount), value => money(value, currency), total / dayCount)
-  const orderStats = dailyStats(series.map(point => point.orderCount), count, orders / dayCount)
-  const basketStats = dailyStats(series.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
+  // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
+  // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
+  const finished = data?.partialDay && series.length > 1 ? series.slice(0, -1) : series
+  const revenueStats = dailyStats(finished.map(point => point.amount), value => money(value, currency), total / dayCount)
+  const orderStats = dailyStats(finished.map(point => point.orderCount), count, orders / dayCount)
+  const basketStats = dailyStats(finished.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
   const products = productSummary.data
   const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
     .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
