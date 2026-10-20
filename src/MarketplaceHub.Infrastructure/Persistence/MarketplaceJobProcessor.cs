@@ -4623,7 +4623,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, result.Value.HasMore ? "sayfa alındı; aktarım havuzuna yazıldı" : "tarama tamamlandı; aktarım havuzu hazır", receivedProducts, mappingOnly), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
             }
 
             if (!result.Value.HasMore || cancellationToken.IsCancellationRequested) break;
@@ -4643,7 +4643,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 receivedProducts,
                 totalProducts,
                 totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
-                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · markalar", receivedProducts, mappingOnly),
+                ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly),
                 cancellationToken);
 
         // Product imports carry Trendyol's brand id, so keep the current brand
@@ -4659,7 +4659,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 receivedProducts,
                 totalProducts,
                 totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
-                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · kategoriler", receivedProducts, mappingOnly),
+                ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly),
                 cancellationToken);
         categoryReferences = isShopify || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
         categoryItems = categoryReferences is null
@@ -4678,7 +4678,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         if (jobId is { } orderingJob)
-            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "aktarim havuzu hazır; model grupları başlıyor", receivedProducts, mappingOnly), cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
 
         await db.ProductImportSessions.Where(x => x.TenantId == tenantId && x.JobId == importJobId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Phase, "FINALIZING").SetProperty(x => x.UpdatedAt, timeProvider.GetUtcNow()), cancellationToken);
         db.ChangeTracker.Clear();
@@ -4808,7 +4808,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(completedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, $"{importedModelCount:N0}/{totalModelGroups:N0} model grubu tamamlandı", receivedProducts, mappingOnly), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
             }
         }
 
@@ -4816,7 +4816,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (receivedProducts > 0 && telemetryImportFailedCount >= receivedProducts)
         {
             if (jobId is { } failedJob)
-                await UpdateProductSyncProgressAsync(tenantId, failedJob, receivedProducts, totalProducts, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlanamadı", receivedProducts, mappingOnly), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, failedJob, receivedProducts, totalProducts, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
             throw new JobProcessingException(JobExecutionResult.ManualReview("PRODUCT_IMPORT_ALL_FAILED", "Ürün aktarımındaki kayıtların tamamı işlenemedi; aktarım başarılı sayılmadı."));
         }
         if (!singleLookup)
@@ -4836,7 +4836,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
             .ExecuteDeleteAsync(cancellationToken);
         if (jobId is { } completedJob)
-            await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts, mappingOnly), cancellationToken, keepExistingTotal: true);
+            await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken, keepExistingTotal: true);
         return true;
     }
 
@@ -4848,12 +4848,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
     }
 
-    private string ProductImportProgressLabel(int pageNumber, int? total, string suffix, int received, bool mappingOnly)
+    // Counts only: the internal stage (page number, "referanslar hazırlanıyor", model groups) is not shown to the user.
+    private string ProductImportProgressLabel(int? total, int received, bool mappingOnly)
     {
         var totalPart = total is > 0 ? $" / {total:N0}" : "";
         var processedLabel = mappingOnly ? "Eşlenen" : "İşlenen";
         var skippedLabel = mappingOnly ? "Eşleşmeyen" : "Atlanan";
-        return $"{received:N0}{totalPart} · Alınan {received:N0} · {processedLabel} {telemetryImportProcessedCount:N0} · {skippedLabel} {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0} · {pageNumber}. sayfa {suffix}";
+        return $"{received:N0}{totalPart} · Alınan {received:N0} · {processedLabel} {telemetryImportProcessedCount:N0} · {skippedLabel} {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}";
     }
 
     private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken)
