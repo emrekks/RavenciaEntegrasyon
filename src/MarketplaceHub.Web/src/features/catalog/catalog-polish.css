@@ -1,5 +1,11 @@
 /* Back link of the product pages: a quiet text link with a round arrow, no filled pill. */
 .app-shell.stitch-shell main .product-heading-back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
   min-height: 32px;
   gap: 10px;
   padding: 0 4px 0 0;
@@ -82,7 +88,7 @@
 .app-shell.stitch-shell main .product-heading-back:hover .ui-icon,
 .app-shell.stitch-shell main .product-heading-back:focus-visible .ui-icon { background: var(--rv-color-surface-soft); border-color: transparent; transform: none; }
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .product-add-page .product-heading-back { background: none; border: 0; border-radius: 7px; }
+  .app-shell.stitch-shell main .product-add-page .product-heading-back { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; background: none; border: 0; border-radius: 7px; }
   .app-shell.stitch-shell main .product-add-page .product-heading-back .ui-icon { width: 20px; height: 20px; padding: 0; background: none; border: 0; transform: none; }
   .app-shell.stitch-shell main .product-add-page .product-heading-back:hover,
   .app-shell.stitch-shell main .product-add-page .product-heading-back:focus-visible { background: var(--rv-color-surface-soft); }

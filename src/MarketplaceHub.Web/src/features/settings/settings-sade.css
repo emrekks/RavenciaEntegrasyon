@@ -437,5 +437,9 @@
 
 /* Phones: the save bar is the plain end of the section, under a line, with no frame or shadow of its own. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .ss-page .ss-bar { margin-top: 4px; padding: 14px 0 0; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; backdrop-filter: none; }
+  .app-shell.stitch-shell main .ss-page .ss-bar { position: static; margin-top: 4px; padding: 14px 0 0; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; backdrop-filter: none; }
 }
+
+/* Label designer: a block with keyboard focus (Tab selects it, the arrow keys move it) carries a clear ring outside its
+   selection outline. */
+.app-shell.stitch-shell main .ss-page .shipping-designer-block:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 3px; }

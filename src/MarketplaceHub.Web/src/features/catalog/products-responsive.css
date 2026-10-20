@@ -353,7 +353,6 @@
   .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-fields > label { display: grid; gap: 4px; min-width: 0; color: var(--rv-color-muted); font-size: 12px; }
 
   .app-shell.stitch-shell main .product-add-page .product-page-heading-copy { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 12px; }
-  .app-shell.stitch-shell main .product-add-page .product-heading-back { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--rv-color-border-strong); border-radius: 10px; }
   .app-shell.stitch-shell main .product-add-page .product-heading-back > span { display: none; }
   .app-shell.stitch-shell main .product-add-page .product-page-heading-title { display: grid; gap: 2px; min-width: 0; }
   .app-shell.stitch-shell main .product-add-page .product-page-heading-title .eyebrow { margin: 0; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
@@ -483,10 +482,10 @@
    left, one even column per size, rows divided by thin lines and a shadow to lift it off the buttons under it. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip:not(.rr-vtip-empty) { right: 12px; left: 12px; max-height: 280px; padding: 6px 12px 8px; border-radius: 12px; box-shadow: 0 14px 36px rgb(0 0 0 / 38%); }
-  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab { width: 100% !important; table-layout: auto !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab { width: 100% !important; table-layout: auto; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab :is(th, td) { padding: 7px 4px !important; font-size: 13px; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab thead th { padding-block: 4px 7px !important; color: var(--rv-color-subtle); font-size: 12px; font-weight: 600; }
-  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab :is(thead th:first-child, tbody th) { width: auto !important; padding-left: 0 !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap; text-align: left !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab :is(thead th:first-child, tbody th) { width: auto !important; padding-left: 0 !important; overflow: visible !important; text-overflow: clip; white-space: nowrap; text-align: left !important; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab tbody th { max-width: none; color: var(--rv-color-ink); font-weight: 500; }
 }
 
@@ -523,12 +522,26 @@
 /* The variant filter's clear button keeps its label on one line. */
 .app-shell.stitch-shell main .product-add-page .variant-filter-clear { white-space: nowrap; }
 
-/* Picture order buttons: hidden on wider screens (pictures are dragged there); on phones a pair of arrows sits along the
-   bottom of every picture and moves it one place earlier or later. */
-.app-shell.stitch-shell main .product-add-page .media-move-buttons { display: none; }
+/* Picture order buttons: on phones a pair of arrows sits along the bottom of every picture and moves it one place
+   earlier or later. On wider screens pictures are dragged; the arrows stay out of sight but in the Tab order and show
+   while the picture has keyboard focus, so the order can be changed without a mouse too. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; display: flex; justify-content: space-between; gap: 4px; }
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button { display: grid; width: 34px; min-width: 0; height: 28px; min-height: 28px; padding: 0; place-items: center; color: #fff; background: rgb(15 16 22 / 72%); border: 1px solid rgb(255 255 255 / 18%); border-radius: 7px; box-shadow: none; }
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button:disabled { opacity: .35; }
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons .ui-icon { width: 16px; height: 16px; }
+}
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; display: flex; justify-content: space-between; gap: 4px; opacity: 0; pointer-events: none; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:has(:focus-visible) .media-move-buttons { opacity: 1; pointer-events: auto; }
+}
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button { display: grid; width: 34px; min-width: 0; height: 28px; min-height: 28px; padding: 0; place-items: center; color: #fff; background: rgb(15 16 22 / 72%); border: 1px solid rgb(255 255 255 / 18%); border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button:disabled { opacity: .35; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons .ui-icon { width: 16px; height: 16px; }
+
+/* The keyboard way to the picture zoom (MediaZoomButton): a small corner button, shown on hover and on keyboard focus;
+   a touch screen taps the picture itself. */
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn { position: absolute; top: 4px; left: 4px; z-index: 2; display: grid; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 0; place-items: center; color: #fff; background: rgb(9 20 39 / 86%); border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; opacity: 0; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:hover .image-zoom-btn, .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn:focus-visible { opacity: 1; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn .ui-icon { width: 12px; height: 12px; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn { width: 26px; min-width: 26px; height: 26px; min-height: 26px; border-radius: 7px; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn .ui-icon { width: 14px; height: 14px; }
 }

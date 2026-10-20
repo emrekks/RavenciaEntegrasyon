@@ -64,39 +64,6 @@
   .app-shell.stitch-shell main .invoice-reference-page-size > span { display: none; }
   .app-shell.stitch-shell main .invoice-reference-page-size::after { content: "/ sayfa"; color: var(--rv-color-muted); font-size: 13px; }
 }
-/* Settings on phones: description above its buttons (side by side they squeezed the text into a
-   narrow column), forms in one column, sticky save bars with stacked full-width buttons. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .security-authenticator-card { flex-direction: column; align-items: stretch; gap: 14px; }
-  .app-shell.stitch-shell main .security-authenticator-card > button { width: 100%; min-height: 44px; }
-  .app-shell.stitch-shell main .security-sessions-card .panel-title { flex-direction: column; align-items: stretch; gap: 12px; }
-  .app-shell.stitch-shell main .security-sessions-card .session-bulk-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .app-shell.stitch-shell main .security-sessions-card .session-bulk-actions > button { width: 100%; min-height: 44px; }
-  .app-shell.stitch-shell main .shipping-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .app-shell.stitch-shell main .shipping-settings-grid > * { grid-column: auto; min-width: 0; }
-  .app-shell.stitch-shell main .settings-sticky-actions { flex-direction: column; align-items: stretch; gap: 10px; }
-  .app-shell.stitch-shell main .settings-sticky-actions > :is(button, .rv-button) { width: 100%; min-height: 44px; }
-}
-/* Page heading buttons on phones sit two to a row instead of one per row, so the page starts
-   sooner; an odd one out takes the full row. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .page-heading > .page-heading-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    width: 100%;
-  }
-  .app-shell.stitch-shell main .page-heading > .page-heading-actions > * {
-    width: 100%;
-    min-width: 0;
-    min-height: 44px;
-    padding-inline: 10px;
-    white-space: normal;
-    text-align: center;
-    line-height: 1.25;
-  }
-  .app-shell.stitch-shell main .page-heading > .page-heading-actions > :last-child:nth-child(odd) { grid-column: 1 / -1; }
-}
 /* Revenue chart on phones: the whole drawing fits the card width (no sideways scroll, so the page
    never drifts right). Axis labels get a larger drawing-unit size and every other date is hidden
    so the scaled-down text stays readable and uncrowded. */
@@ -117,27 +84,9 @@
 
 /* Health cards: two columns whenever there is room (phones included) instead of a single stack. */
 
-/* Products on phones: one type size and weight across the heading actions, filters and page-size select. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .products-page-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .app-shell.stitch-shell main .products-page-actions > :is(button, a) { display: inline-flex; box-sizing: border-box; min-height: 44px; align-items: center; justify-content: center; gap: 8px; padding: 0 10px; font-size: 13px; font-weight: 600; line-height: 1.2; text-align: center; }
-  .app-shell.stitch-shell main .product-toolbar :is(select, .product-platform-filter-trigger, .bulk-action) { font-size: 13px; font-weight: 500; }
-  .app-shell.stitch-shell main .product-toolbar .product-platform-filter-trigger-copy strong { font-size: 13px; font-weight: 500; }
-  .app-shell.stitch-shell main .product-toolbar .bulk-action { font-weight: 600; }
-  .app-shell.stitch-shell main .product-catalog-workspace-head .invoice-reference-page-size { width: auto; gap: 8px; font-size: 13px; }
-  .app-shell.stitch-shell main .product-catalog-workspace-head .invoice-reference-page-size select { width: 72px; min-width: 72px; height: 36px; min-height: 36px; padding: 0 28px 0 10px; font-size: 13px; }
-}
-
-/* Return detail window on phones: a centred card with equal space above and below, not a bottom sheet. */
-@media (max-width: 760px) {
-  html body .return-detail-backdrop { align-items: center; padding: 16px; }
-  html body .return-detail-backdrop > .return-detail-modal { max-height: calc(100dvh - 32px); border-radius: var(--rv-radius-lg); border-width: 1px; }
-}
-
 /* Mobile filter shell: on phones every filter bar collapses to its search field plus one filter
    button; the button opens all fields as a full-screen "Filtrele" sheet with Temizle / Filtrele.
-   Desktop renders the original bar untouched. */
-.mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer { display: none; }
+   Desktop renders the original bar untouched (the shell's parts are hidden by default in design-system.css). */
 @media (max-width: 760px) {
 
   /* Closed: [search][filter button], optional kept action (bulk menu) on its own row. */
@@ -179,17 +128,12 @@
 }
 
 /* Column filters (carrier, invoice, reason, status…) live inside the phone filter sheet, so their
-   table-header chips are hidden on phones; the sheet-only fields exist for desktop-free use. */
-@media (min-width: 761px) {
-  .mfs > .mfs-sheet-only { display: none !important; }
-}
+   table-header chips are hidden on phones; the sheet-only fields exist for desktop-free use (hidden on wider
+   screens by design-system.css). */
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .mfs.is-open > .mfs-sheet-only { display: grid; }
   html body .app-shell.stitch-shell main .mfs .mfs-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
   html body .app-shell.stitch-shell main .mfs .mfs-field > select { width: 100%; min-height: 44px; font-size: 14px; font-weight: 500; }
-  html body .app-shell.stitch-shell main .orders-page .order-reference-head > :is(.order-column-filter, .order-reference-platform-heading),
-  html body .app-shell.stitch-shell main .reference-returns-page .return-reference-head > :is(.order-column-filter, .return-reference-platform-heading) { display: none !important; }
-  html body .app-shell.stitch-shell main .reference-returns-page .return-reference-head:not(:has(.return-select-cell)) { display: none !important; }
 }
 
 /* Invoices: the column filter chips in the table header move into the phone filter sheet too. */
@@ -279,8 +223,6 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .mam.mam-primary-2.has-more { grid-template-columns: repeat(2, minmax(0, 1fr)) 44px; }
   html body .mam > .mam-primary { display: contents; }
   html body .mam .mam-primary > * { order: var(--mam-primary-order, 0); display: inline-flex; box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: none; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; text-decoration: none; }
-  html body .mam .mam-primary > .orders-sync-action .orders-sync-label-full { display: none; }
-  html body .mam .mam-primary > .orders-sync-action .orders-sync-label-short { display: inline; }
   html body .mam > .mam-trigger { order: 9; display: inline-grid; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
   html body .mam > .mam-more { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(280px, 82vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
   html body .mam.is-open > .mam-more { display: grid; }
@@ -334,11 +276,6 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) { margin: 0; gap: 8px; }
   html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .rv-questions-tabs) { margin: 0; }
   html body .app-shell.stitch-shell main .mfs:not(.is-open) { margin: 0; padding: 8px; gap: 8px; }
-  /* Products: the toolbar and the list are separate, lightly spaced blocks. */
-  html body .app-shell.stitch-shell main .products-page .product-toolbar.mfs:not(.is-open) { border-bottom: 1px solid var(--rv-color-border); border-radius: 12px; }
-  html body .app-shell.stitch-shell main .products-page .product-catalog-workspace { margin-top: 0; padding: 0; background: transparent; border: 0; border-radius: 0; }
-  html body .app-shell.stitch-shell main .products-page .product-catalog-workspace-head { margin: 0 0 6px; padding: 0 2px; }
-  html body .app-shell.stitch-shell main .products-page .product-metrics { margin: 0; gap: 8px; }
 }
 
 /* Selected cards repaint immediately (some touch browsers hold the paint until the next scroll). */
@@ -361,7 +298,7 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .mam .mam-icons > * > svg { width: 18px; height: 18px; }
   html body .mam .mam-primary > * { flex-wrap: nowrap; }
   html body .mam .mam-primary > * > svg { flex: 0 0 18px; }
-  html body .mam .mam-primary > .orders-sync-action .orders-sync-label-short, html body .mam .mam-primary > button { white-space: nowrap; }
+  html body .mam .mam-primary > button { white-space: nowrap; }
   /* The heading stacks (title above, actions below) on every page that uses the menu. */
   html body .app-shell.stitch-shell main .content > .page-heading, html body .app-shell.stitch-shell main .content > .mapping-reference-heading, html body .app-shell.stitch-shell main .content > .rv-page-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
 }
@@ -371,9 +308,9 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .app-shell.stitch-shell main .content .mam { padding: 0; }
 }
 
-/* Phone sign-in fits one screen: no page scroll, decorative copy dropped. */
+/* Phone sign-in fits one screen: no page scroll (the sign-in screen holds the counted page lock with `root`, see
+   App.tsx authFitsOneScreen — keep the two queries equal), decorative copy dropped. */
 @media (max-width: 640px) and (min-height: 560px) {
-  html.rv-auth-lock, body.rv-auth-lock { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .rv-auth-page { box-sizing: border-box; height: 100dvh; min-height: 0; overflow: hidden; }
   .rv-auth-page :is(.rv-auth-lede, .rv-auth-kicker, .rv-auth-page-footer) { display: none; }
   .rv-auth-page .rv-auth-hero-brand { min-height: 0; margin-bottom: 8px; }

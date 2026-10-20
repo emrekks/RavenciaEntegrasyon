@@ -126,4 +126,34 @@ describe('SystemSettingsPage', () => {
     // the save names the version it was made on, so a change made meanwhile elsewhere is refused (412)
     expect(saved?.headers?.['if-match']).toBe('"v3"')
   })
+
+  it('label designer: Tab selects a block, the arrow keys move it 1% (Shift 5%), the drag handles stay out of the Tab order', async () => {
+    await renderPage('/settings?tab=designer')
+    const blocks = () => Array.from(container.querySelectorAll<HTMLElement>('.shipping-designer-block'))
+    expect(blocks().length).toBeGreaterThan(1)
+    expect(blocks().every(block => block.tabIndex === 0 && block.getAttribute('aria-roledescription') === 'etiket bloğu')).toBe(true)
+
+    act(() => blocks()[1].focus())
+    expect(blocks()[1].classList.contains('is-selected')).toBe(true)
+    expect(blocks()[0].classList.contains('is-selected')).toBe(false)
+    expect(Array.from(blocks()[1].querySelectorAll<HTMLButtonElement>('.shipping-designer-resize-handle')).every(handle => handle.tabIndex === -1)).toBe(true)
+
+    const at = () => ({ left: parseFloat(blocks()[1].style.left), top: parseFloat(blocks()[1].style.top) })
+    const start = at()
+    const press = (key: string, shiftKey = false) => act(() => { blocks()[1].dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true })) })
+    press('ArrowRight')
+    expect(at().left).toBeCloseTo(start.left + 1)
+    press('ArrowDown', true)
+    expect(at().top).toBeCloseTo(start.top + 5)
+    press('ArrowLeft')
+    press('ArrowUp', true)
+    expect(at()).toEqual(start)
+    // the block's name tells where it is now; focus stayed on it
+    expect(blocks()[1].getAttribute('aria-label')).toContain(`solda %${start.left}`)
+    expect(document.activeElement).toBe(blocks()[1])
+
+    // never off the paper
+    for (let step = 0; step < 30; step += 1) press('ArrowLeft', true)
+    expect(at().left).toBe(0)
+  })
 })
