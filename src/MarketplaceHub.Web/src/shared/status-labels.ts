@@ -30,6 +30,9 @@ const statusLabels: Record<string, string> = {
   FATURA_KONTROLDE: 'Faturası Mevcut',
   FATURA_IPTAL: 'Fatura iptal edildi',
   FATURA_REDDEDILDI: 'Fatura reddedildi',
+  FATURA_BELIRSIZ: 'Fatura sonucu belirsiz',
+  ADJUSTMENT_REQUIRED: 'Düzeltme gerekli',
+  REVOCATION_REQUIRED: 'Pazaryerinden kaldırılmalı',
   HEALTHY: 'Sağlıklı',
   HIDDEN: 'Gizli',
   IN_PROGRESS: 'Devam ediyor',
@@ -116,7 +119,10 @@ export function invoiceStatusLabel(value: string | null | undefined) {
   if (['FATURA_KONTROLDE', 'FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED'].includes(normalized)) return 'Faturası Mevcut'
   if (['FATURA_ISLENIYOR', 'FATURA_PLATFORMA_BEKLIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY', 'ACCEPTED'].includes(normalized)) return 'Fatura İletiliyor'
   if (['FATURA_PLATFORMA_AKTARILMADI', 'MARKETPLACE_FAILED'].includes(normalized)) return 'Fatura İletilemedi'
-  if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNKNOWN_RESULT'].includes(normalized)) return 'Fatura Oluşturulamadı'
+  // A lost provider answer is not a rejection: the invoice may exist at the provider until it is checked.
+  if (['FATURA_BELIRSIZ', 'UNKNOWN_RESULT'].includes(normalized)) return 'Fatura Sonucu Belirsiz'
+  if (normalized === 'ADJUSTMENT_REQUIRED') return 'Fatura Düzeltme Gerekli'
+  if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW'].includes(normalized)) return 'Fatura Oluşturulamadı'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'Fatura İptal'
   return 'Fatura durumu bilinmiyor'
 }
@@ -130,7 +136,8 @@ export function invoiceStatusTone(value: string | null | undefined): InvoiceStat
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'warning'
   if (['FATURA_ISLENIYOR', 'FATURA_PLATFORMA_BEKLIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY', 'ACCEPTED'].includes(normalized)) return 'info'
-  if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MARKETPLACE_FAILED', 'MANUAL_REVIEW', 'UNKNOWN_RESULT', 'FATURA_PLATFORMA_AKTARILMADI'].includes(normalized)) return 'danger'
+  if (['FATURA_BELIRSIZ', 'UNKNOWN_RESULT', 'ADJUSTMENT_REQUIRED'].includes(normalized)) return 'warning'
+  if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MARKETPLACE_FAILED', 'MANUAL_REVIEW', 'FATURA_PLATFORMA_AKTARILMADI'].includes(normalized)) return 'danger'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'neutral'
   if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'FATURA_KONTROLDE', 'COMPLETED'].includes(normalized)) return 'success'
   return 'neutral'

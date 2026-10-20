@@ -113,11 +113,23 @@ public static class InvoiceAmounts
         {
             using var customer = JsonDocument.Parse(customerSnapshotJson);
             using var address = JsonDocument.Parse(invoiceAddressSnapshotJson);
-            var commercial = customer.RootElement.TryGetProperty("commercial", out var commercialValue) && commercialValue.ValueKind == JsonValueKind.True;
-            var available = address.RootElement.TryGetProperty("invoiceAddress", out var invoiceAddress) && invoiceAddress.TryGetProperty("eInvoiceAvailable", out var availableValue) && availableValue.ValueKind == JsonValueKind.True;
-            return commercial && available ? "TEMELFATURA" : "EARSIVFATURA";
+            var commercial = customer.RootElement.ValueKind == JsonValueKind.Object
+                && customer.RootElement.TryGetProperty("commercial", out var commercialValue) && commercialValue.ValueKind == JsonValueKind.True;
+            return commercial && EInvoiceAvailable(address.RootElement) ? "TEMELFATURA" : "EARSIVFATURA";
         }
         catch (JsonException) { return "EARSIVFATURA"; }
+    }
+
+    // The Trendyol order mapper stores the invoiceAddress object itself as the snapshot root; older or
+    // local snapshots may still wrap it in an invoiceAddress property. The root value wins when present.
+    private static bool EInvoiceAvailable(JsonElement address)
+    {
+        if (address.ValueKind != JsonValueKind.Object) return false;
+        if (address.TryGetProperty("eInvoiceAvailable", out var flat)) return flat.ValueKind == JsonValueKind.True;
+        return address.TryGetProperty("invoiceAddress", out var nested)
+            && nested.ValueKind == JsonValueKind.Object
+            && nested.TryGetProperty("eInvoiceAvailable", out var value)
+            && value.ValueKind == JsonValueKind.True;
     }
 
     public static VatIncludedInvoiceAmount FromVatIncluded(decimal payableAmount, decimal vatRate)

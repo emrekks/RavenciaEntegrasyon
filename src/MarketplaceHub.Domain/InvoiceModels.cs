@@ -34,10 +34,13 @@ public static class InvoiceStateMachine
             [InvoiceStatus.Submitting] = [InvoiceStatus.Submitted, InvoiceStatus.Rejected, InvoiceStatus.UnknownResult],
             [InvoiceStatus.UnknownResult] = [InvoiceStatus.Submitted, InvoiceStatus.Rejected, InvoiceStatus.ManualReview],
             [InvoiceStatus.Submitted] = [InvoiceStatus.Accepted, InvoiceStatus.Rejected, InvoiceStatus.MarketplacePending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
-            [InvoiceStatus.Accepted] = [InvoiceStatus.MarketplacePending, InvoiceStatus.CancellationPending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
-            [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview],
+            [InvoiceStatus.Accepted] = [InvoiceStatus.MarketplacePending, InvoiceStatus.CancellationPending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed, InvoiceStatus.AdjustmentRequired],
+            [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview, InvoiceStatus.AdjustmentRequired],
             [InvoiceStatus.MarketplaceFailed] = [InvoiceStatus.MarketplacePending, InvoiceStatus.ManualReview],
             [InvoiceStatus.Completed] = [InvoiceStatus.CancellationPending, InvoiceStatus.AdjustmentRequired, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview],
+            // The order was cancelled or a return was accepted after the sale invoice: the e-Archive is cancelled
+            // (or a return invoice is issued outside the panel) after review.
+            [InvoiceStatus.AdjustmentRequired] = [InvoiceStatus.CancellationPending, InvoiceStatus.ManualReview],
             [InvoiceStatus.CancellationPending] = [InvoiceStatus.Cancelled, InvoiceStatus.CancellationRejected],
             [InvoiceStatus.ManualReview] = [InvoiceStatus.Submitting]
         };
