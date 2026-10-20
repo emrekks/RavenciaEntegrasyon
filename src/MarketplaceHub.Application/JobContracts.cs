@@ -161,12 +161,12 @@ public sealed record JobDetailView(
     IReadOnlyList<JobFailureReasonView>? FailureReasons = null,
     JobInvoiceContextView? Invoice = null);
 
-// The job list returns at most Limit of the newest matching jobs (default 2,000, max 5,000)
+// The job list returns at most Limit of the newest matching jobs (default 200, max 1,000)
 // instead of the whole history.
 public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null)
 {
-    public const int DefaultLimit = 2_000;
-    public const int MaximumLimit = 5_000;
+    public const int DefaultLimit = 200;
+    public const int MaximumLimit = 1_000;
     public int EffectiveLimit => Math.Clamp(Limit ?? DefaultLimit, 1, MaximumLimit);
 }
 

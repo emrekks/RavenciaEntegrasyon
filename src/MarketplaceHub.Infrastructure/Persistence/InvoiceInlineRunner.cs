@@ -11,12 +11,15 @@ public sealed class InvoiceInlineRunner(AppDbContext db, IJobLeaseService leases
     private const int MaxSteps = 6;
     private static readonly string[] FollowUpJobTypes = [InvoicingJobTypes.InvoiceReconcile, InvoicingJobTypes.InvoiceDocumentFetch, InvoicingJobTypes.MarketplaceDelivery];
 
-    public async Task<InlineInvoiceOutcome> RunAsync(Guid tenantId, Guid invoiceId, Guid firstJobId, CancellationToken cancellationToken)
+    public async Task<InlineInvoiceOutcome> RunAsync(Guid tenantId, Guid invoiceId, Guid firstJobId, DateTimeOffset deadline, CancellationToken cancellationToken)
     {
-        var deadline = timeProvider.GetUtcNow().Add(Budget);
+        // The caller's budget (shared by every invoice of the request) caps this invoice's own budget.
+        var ownDeadline = timeProvider.GetUtcNow().Add(Budget);
+        if (deadline > ownDeadline) deadline = ownDeadline;
         var jobId = firstJobId;
         for (var step = 0; step < MaxSteps; step++)
         {
+            if (step > 0 && timeProvider.GetUtcNow() >= deadline) break;
             var leased = await leases.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, null, null, cancellationToken, null, jobId);
             if (leased is null)
             {
@@ -26,11 +29,19 @@ public sealed class InvoiceInlineRunner(AppDbContext db, IJobLeaseService leases
             }
             JobExecutionResult result;
             try { result = await processor.ProcessAsync(leased.TenantId, leased.ConnectionId, leased.JobType, leased.PayloadJson, leased.CorrelationId, cancellationToken); }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException)
+            {
+                // Server shutdown or the budget's hard stop: the job goes back to the queue for the worker,
+                // as on a worker shutdown, instead of staying leased until the lease expires.
+                try { await leases.ReleaseAsync(leased.Id, leased.LeaseToken, CancellationToken.None); }
+                catch (Exception) { /* the lease expires and the worker takes the job then */ }
+                throw;
+            }
             catch (Exception exception) when (exception is System.Text.Json.JsonException or ArgumentException or InvalidOperationException)
             { result = JobExecutionResult.Blocked("INVALID_JOB_STATE", $"İşlem verisi veya mevcut durum doğrulaması başarısız oldu. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"); }
             catch (Exception) { result = JobExecutionResult.Retry("INLINE_EXECUTION_FAILED", "Geçici bir hata oluştu; işlem otomatik olarak yeniden denenecek."); }
-            await leases.CompleteAsync(leased.Id, leased.LeaseToken, result, cancellationToken);
+            // The step ran (an invoice may have been cut): its outcome is recorded whatever happens to the request.
+            await leases.CompleteAsync(leased.Id, leased.LeaseToken, result, CancellationToken.None);
             // The provider usually accepts an e-archive invoice within seconds; poll the read-only status check here instead of leaving it for the worker's slow retry.
             if (result.Kind == JobCompletionKind.Retry && result.ErrorCode == "INVOICE_REMOTE_PENDING" && leased.JobType == InvoicingJobTypes.InvoiceReconcile)
                 result = await PollPendingAsync(leased, result, deadline, cancellationToken);
