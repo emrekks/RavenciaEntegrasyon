@@ -19,4 +19,14 @@ public static class ClientNetwork
         Array.Clear(bytes, 8, 8);
         return $"{new IPAddress(bytes)}/64";
     }
+
+    // A coarser unit for the sign-in throttle's "has this sender failed before" question: an IPv6 /48
+    // (a site's usual allocation, from which a sender can pick thousands of /64s); anything else as is.
+    public static string WideGroup(string partitionKey)
+    {
+        if (!partitionKey.EndsWith("/64", StringComparison.Ordinal) || !IPAddress.TryParse(partitionKey[..^3], out var address)) return partitionKey;
+        var bytes = address.GetAddressBytes();
+        Array.Clear(bytes, 6, 10);
+        return $"{new IPAddress(bytes)}/48";
+    }
 }

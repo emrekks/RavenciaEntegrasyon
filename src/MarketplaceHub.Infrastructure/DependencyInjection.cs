@@ -37,8 +37,10 @@ public static class DependencyInjection
             options.Password.RequiredLength = 15; options.Password.RequiredUniqueChars = 4;
             options.Password.RequireDigit = true; options.Password.RequireLowercase = true;
             options.Password.RequireUppercase = true; options.Password.RequireNonAlphanumeric = true;
-            // Account-wide ceiling for guesses spread over many networks; one network is stopped much earlier by the
-            // API's SignInThrottle (five wrong passwords), so one attacker cannot keep the account locked for everybody.
+            // Account-wide ceiling for guesses spread over many networks, kept across restarts; one network is stopped
+            // much earlier by the API's SignInThrottle (five failures). Reaching it does not lock the account for
+            // everybody: the API still lets in signed-in sessions, networks the account recently signed in from and
+            // networks that have not failed for it (PasswordCheck.IsBlockedAsync).
             options.Lockout.MaxFailedAccessAttempts = 30; options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             options.User.RequireUniqueEmail = true;
         }).AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders();

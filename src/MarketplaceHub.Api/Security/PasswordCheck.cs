@@ -3,42 +3,29 @@ using Microsoft.AspNetCore.Identity;
 
 namespace MarketplaceHub.Api.Security;
 
-// Every password check (sign-in, each re-authentication, step-ups and the password change) counts towards
-// the same limits: SignInThrottle blocks the sending network from the account after five wrong passwords
-// (longer each time), and the account-wide Identity lockout is the ceiling for guesses from many networks.
-// A stolen session therefore cannot be used to guess the password through the re-authentication prompts.
+// Every password and second-factor check (sign-in, each re-authentication, step-ups and the password
+// change) counts towards the same limits: SignInThrottle blocks the sending network from the account
+// after five failures (longer each time), and the account-wide ceiling (SignInThrottle's window and the
+// Identity lockout) slows guesses spread over many networks without locking out the owner's trusted or
+// untouched networks, or an already signed-in session. A stolen session therefore cannot be used to
+// guess the password through the re-authentication prompts, and attackers elsewhere cannot end the
+// owner's session or step-ups.
+//
+// Counters are reset only by a complete sign-in or step-up (RegisterSuccessAsync, called by the
+// endpoint once the password *and* the second factor passed), never by a correct password alone.
 public static class PasswordCheck
 {
-    // Without the request the network is unknown: only the account-wide lockout applies.
-    public static Task<bool> VerifyAsync(UserManager<ApplicationUser> users, ApplicationUser? user, string? password) =>
-        VerifyCoreAsync(null, users, user, password);
-
-    public static Task<bool> VerifyAsync(HttpContext http, UserManager<ApplicationUser> users, ApplicationUser? user, string? password) =>
-        VerifyCoreAsync(http, users, user, password);
-
-    // True while the account may not try a password from this request's network.
-    public static async Task<bool> IsBlockedAsync(HttpContext? http, UserManager<ApplicationUser> users, ApplicationUser user) =>
-        await users.IsLockedOutAsync(user)
-        || http?.RequestServices.GetService<SignInThrottle>() is { } throttle && throttle.IsBlocked(user.Id, ClientNetwork.PartitionKey(http));
-
-    // Counts a wrong password or code; true when the account or this network is now blocked.
-    public static async Task<bool> RegisterFailureAsync(HttpContext? http, UserManager<ApplicationUser> users, ApplicationUser user)
+    public readonly record struct FailureOutcome(bool NetworkBlocked, bool AccountUnderAttack)
     {
-        await users.AccessFailedAsync(user);
-        var networkBlocked = http?.RequestServices.GetService<SignInThrottle>() is { } throttle && throttle.RegisterFailure(user.Id, ClientNetwork.PartitionKey(http));
-        return networkBlocked || await users.IsLockedOutAsync(user);
+        public bool Any => NetworkBlocked || AccountUnderAttack;
     }
 
-    public static async Task RegisterSuccessAsync(HttpContext? http, UserManager<ApplicationUser> users, ApplicationUser user)
-    {
-        await users.ResetAccessFailedCountAsync(user);
-        if (http?.RequestServices.GetService<SignInThrottle>() is { } throttle) throttle.RegisterSuccess(user.Id, ClientNetwork.PartitionKey(http));
-    }
-
-    private static async Task<bool> VerifyCoreAsync(HttpContext? http, UserManager<ApplicationUser> users, ApplicationUser? user, string? password)
+    // A password re-check inside a signed-in session: only this network's own block applies, failures
+    // count, and a correct password resets nothing (the caller does that after the second factor).
+    public static async Task<bool> VerifyAsync(HttpContext http, UserManager<ApplicationUser> users, ApplicationUser? user, string? password)
     {
         if (user is null || string.IsNullOrWhiteSpace(password)) return false;
-        if (await IsBlockedAsync(http, users, user))
+        if (await IsBlockedAsync(http, users, user, signedIn: true))
         {
             DummyHash.Verify(users, password);
             return false;
@@ -48,8 +35,38 @@ public static class PasswordCheck
             await RegisterFailureAsync(http, users, user);
             return false;
         }
-        await RegisterSuccessAsync(http, users, user);
         return true;
+    }
+
+    // True while the account may not try a password or code from this request's network. A signed-in
+    // session (signedIn) is held back only by its own network's block, never by failures elsewhere.
+    public static async Task<bool> IsBlockedAsync(HttpContext? http, UserManager<ApplicationUser> users, ApplicationUser user, bool signedIn = false)
+    {
+        var throttle = http?.RequestServices.GetService<SignInThrottle>();
+        var network = http is null ? null : ClientNetwork.PartitionKey(http);
+        if (throttle is not null && network is not null && throttle.IsBlocked(user.Id, network)) return true;
+        if (signedIn) return false;
+        var underAttack = throttle?.IsAccountUnderAttack(user.Id) == true || await users.IsLockedOutAsync(user);
+        if (!underAttack) return false;
+        return throttle is null || network is null || throttle.RefusesWhileUnderAttack(user.Id, network);
+    }
+
+    // Counts a wrong password or code for the account and this network.
+    public static async Task<FailureOutcome> RegisterFailureAsync(HttpContext? http, UserManager<ApplicationUser> users, ApplicationUser user)
+    {
+        await users.AccessFailedAsync(user);
+        var throttle = http?.RequestServices.GetService<SignInThrottle>();
+        var networkBlocked = throttle is not null && http is not null && throttle.RegisterFailure(user.Id, ClientNetwork.PartitionKey(http));
+        var underAttack = throttle?.IsAccountUnderAttack(user.Id) == true || await users.IsLockedOutAsync(user);
+        return new FailureOutcome(networkBlocked, underAttack);
+    }
+
+    // A complete sign-in or step-up: password and (where enabled) the second factor passed.
+    public static async Task RegisterSuccessAsync(HttpContext? http, UserManager<ApplicationUser> users, ApplicationUser user)
+    {
+        // An Identity lockout that is running stays: it keeps slowing guesses from untrusted networks.
+        if (await users.GetAccessFailedCountAsync(user) > 0) await users.ResetAccessFailedCountAsync(user);
+        if (http?.RequestServices.GetService<SignInThrottle>() is { } throttle) throttle.RegisterSuccess(user.Id, ClientNetwork.PartitionKey(http));
     }
 }
 
