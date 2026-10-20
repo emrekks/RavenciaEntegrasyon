@@ -108,6 +108,36 @@ public sealed class TrendyolCatalogMapperTests
         Assert.False(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"customerFirstName":"Ada","customerLastName":"Yılmaz"}"""));
     }
 
+    [Theory]
+    [InlineData("UNDELIVERED", "UnDelivered", 0)]
+    [InlineData("NOT_FIT", "Delivered", 1)]
+    public void ReturnClaimProjection_KeepsAnUndeliveredPackageOutOfDelivered(string reasonCode, string expectedStatus, int expectedDelivered)
+    {
+        var payload = $$"""
+        {
+          "orderNumber": "11608377830",
+          "claimId": "claim-1",
+          "orderDate": 1782998302000,
+          "claimDate": 1783069920000,
+          "lastModifiedDate": 1783069920000,
+          "orderOutboundPackageId": "3968176322",
+          "items": [{
+            "orderLine": { "id": 501, "barcode": "869000000701", "merchantSku": "SKU-1", "productName": "Kazak", "price": 499, "vatRate": 10 },
+            "claimItems": [{ "id": "ci-1", "orderLineItemId": 901, "customerClaimItemReason": { "code": "{{reasonCode}}", "name": "Neden" } }]
+          }]
+        }
+        """;
+
+        var projection = TrendyolJsonMapper.OrderFromReturnClaim(payload);
+
+        Assert.NotNull(projection);
+        var package = Assert.Single(projection.Packages);
+        Assert.Equal(expectedStatus, package.RawStatus);
+        Assert.All(projection.Lines, line => Assert.Equal(expectedStatus, line.RawStatus));
+        var allocation = Assert.Single(package.Allocations);
+        Assert.Equal(expectedDelivered, allocation.DeliveredQuantity);
+    }
+
     [Fact]
     public void PendingApprovalProductResponse_MapsFlatVariantAsPendingCatalogRow()
     {

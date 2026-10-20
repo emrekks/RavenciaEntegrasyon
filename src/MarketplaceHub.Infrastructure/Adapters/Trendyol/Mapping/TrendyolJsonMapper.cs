@@ -731,19 +731,24 @@ public static class TrendyolJsonMapper
         // but it must not prevent a later authoritative order/package read from
         // replacing the incomplete customer, address, and invoice snapshots.
         var modified = DateTimeOffset.UnixEpoch;
+        // A "Teslim edilemeyen gönderi" claim (reason UNDELIVERED) is a package the carrier could not deliver and brought
+        // back: it never reached the customer, so it is not projected as delivered (live 20 Oct 2026: nine such orders
+        // showed "Teslim Edildi" with the claim's date as their delivery date).
+        var undelivered = string.Equals(ClaimReasonCode(claim), "UNDELIVERED", StringComparison.OrdinalIgnoreCase);
+        var lineStatus = undelivered ? "UnDelivered" : "Delivered";
         var lines = new List<RemoteOrderLine>();
         foreach (var entry in ClaimLineEntries(claim))
         {
             if (entry.OrderLine is not { } orderLine) continue;
-            AddReturnOrderLine(lines, entry.ExternalOrderLineId, orderLine, Decimal(entry.Item, "quantity", "returnedQuantity"));
+            AddReturnOrderLine(lines, entry.ExternalOrderLineId, orderLine, Decimal(entry.Item, "quantity", "returnedQuantity"), lineStatus);
         }
 
         var gross = Decimal(claim, "packageGrossAmount", "grossAmount", "packageTotalPrice");
         if (gross == 0) gross = lines.Sum(x => x.UnitPrice * x.Quantity);
         var packageId = Text(claim, "orderOutboundPackageId", "orderShipmentPackageId");
         if (string.IsNullOrWhiteSpace(packageId)) packageId = $"return-claim:{Text(claim, "claimId", "id")}";
-        var allocations = lines.Select(x => new RemotePackageAllocation(x.ExternalLineId, x.Quantity, 0, x.Quantity, x.Quantity, 0)).ToList();
-        var package = new RemotePackage(packageId, null, "Delivered", packageOccurredAt,
+        var allocations = lines.Select(x => new RemotePackageAllocation(x.ExternalLineId, x.Quantity, 0, x.Quantity, undelivered ? 0 : x.Quantity, 0)).ToList();
+        var package = new RemotePackage(packageId, null, lineStatus, packageOccurredAt,
             NullText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider"),
             NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross, CreatedBy: NormalizeCreatedBy(NullText(claim, "createdBy")));
         return new(orderNumber, orderNumber, ordered, modified, NullText(claim, "currencyCode") ?? "TRY", gross, 0, gross,
@@ -782,14 +787,14 @@ public static class TrendyolJsonMapper
         return snapshot.ToJsonString();
     }
 
-    private static void AddReturnOrderLine(List<RemoteOrderLine> lines, string externalLineId, JsonElement orderLine, decimal quantity)
+    private static void AddReturnOrderLine(List<RemoteOrderLine> lines, string externalLineId, JsonElement orderLine, decimal quantity, string status)
     {
         if (quantity <= 0) quantity = 1;
         var index = lines.FindIndex(x => string.Equals(x.ExternalLineId, externalLineId, StringComparison.Ordinal));
         if (index >= 0) { lines[index] = lines[index] with { Quantity = lines[index].Quantity + quantity }; return; }
         lines.Add(new(externalLineId, Text(orderLine, "merchantSku", "stockCode", "sku"), NullText(orderLine, "barcode"),
             Text(orderLine, "productName", "title"), quantity, Decimal(orderLine, "price", "lineUnitPrice", "amount"),
-            Decimal(orderLine, "vatRate"), "Delivered", orderLine.GetRawText()));
+            Decimal(orderLine, "vatRate"), status, orderLine.GetRawText()));
     }
 
     private static string? NormalizeCreatedBy(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
