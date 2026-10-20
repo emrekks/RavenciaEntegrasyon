@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router'
 import { hubApi, loadAllPages, type Me } from '../../shared/api'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
-import { Button, Pagination, Tabs, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
+import { Button, Pagination, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification } from '../../shared/notifications'
@@ -23,7 +23,7 @@ const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Fat
 import { JobQueueMetrics } from './JobQueueMetrics'
 import './jobs-responsive.css'
 import './jobs-sade.css'
-import { viewTabLabel } from '../../shared/view-tabs'
+import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
 import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { formatDateTime, formatIstanbul } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
@@ -607,7 +607,7 @@ export function JobsPage({ me }: { me: Me }) {
     </div>
     <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => jobPresentation(jobType).title} platform={platform} />
     <div className="jobs-reference-canvas">
-      <Tabs className="jobs-reference-tabs rv-view-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />
+      <ViewTabsWithMore more={[]} className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
           <span {...statusChipProps('success')}><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>

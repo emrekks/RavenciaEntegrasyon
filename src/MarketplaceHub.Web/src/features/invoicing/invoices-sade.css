@@ -29,7 +29,9 @@
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button.is-active { color: var(--inv-violet); background: var(--rv-color-primary-soft); border-color: var(--inv-violet-line); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button.is-active::after { display: none; }
-@media (min-width: 901px) {
+/* Five filters in one row only on wide screens; up to 1100 px the shared two-column filter grid applies (the fixed
+   minimum widths here pushed the row past the page between 900 and 1100 px). */
+@media (min-width: 1101px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: minmax(180px, 1fr) minmax(150px, .85fr) minmax(240px, 1.1fr) minmax(170px, .85fr) auto; align-items: end; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
 }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.invoice-reference-search > span:first-child, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
@@ -365,3 +367,4 @@ body .invoice-reference-actions-popover > .invoice-reference-actions-separator {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:first-child { flex-basis: 140px; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses > article { padding: 10px 14px; line-height: 1.4; }
 }
+

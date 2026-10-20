@@ -422,3 +422,13 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line.invoice-detail-line > div > small:last-child { grid-column: 2; grid-row: auto; }
 }
+
+/* Narrow desktop windows (20 Oct 2026): the header row of filter chips grows with its rows instead of keeping the
+   desktop 44 px height (the chips covered the first packages), and the filter area stays the page's width so the
+   view tabs scroll inside it instead of pushing the page to the right. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-table > .invoice-reference-head { height: auto; }
+  .app-shell.stitch-shell main .reference-invoices-page { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { min-width: 0; max-width: 100%; }
+}
