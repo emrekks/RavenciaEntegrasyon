@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionEnvironmentLabel, credentialRequestBody, readIntegrationListState, stageTestOrderAvailable, writeIntegrationListState } from './integration-helpers'
+import { connectionEnvironmentLabel, credentialRequestBody, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
 
 describe('integration helpers', () => {
   it('builds the credential body of each platform', () => {
@@ -28,5 +28,21 @@ describe('integration helpers', () => {
     expect(readIntegrationListState(new URLSearchParams('durum=x&platform=amazon'))).toEqual({ view: 'ALL', filter: 'ALL', platform: 'ALL' })
     expect(writeIntegrationListState(new URLSearchParams('gorunum=bagli'), { platform: 'TRENDYOL_EFATURAM' }).toString()).toBe('gorunum=bagli&platform=trendyol_efaturam')
     expect(writeIntegrationListState(new URLSearchParams('gorunum=bagli&durum=aktif'), { view: 'ALL', filter: 'ALL' }).toString()).toBe('')
+  })
+})
+
+describe('trendyolUserAgentNotice', () => {
+  it('accepts the documented format for the store id', () => {
+    expect(trendyolUserAgentNotice('123456 - Ravencia', '123456')).toBeNull()
+    expect(trendyolUserAgentNotice('123456 - Ravencia', '')).toBeNull()
+    expect(trendyolUserAgentNotice('', '123456')).toBeNull()
+  })
+  it('warns without blocking for another format or seller', () => {
+    expect(trendyolUserAgentNotice('Firma - Entegrasyon', '123456')?.kind).toBe('warning')
+    expect(trendyolUserAgentNotice('654321 - Ravencia', '123456')?.kind).toBe('warning')
+    expect(trendyolUserAgentNotice('123456 - Ravencia Entegrasyon', '123456')?.kind).toBe('warning')
+  })
+  it('reports an identity that cannot be sent as a header', () => {
+    expect(trendyolUserAgentNotice('123456 - Gümüş', '123456')?.kind).toBe('error')
   })
 })

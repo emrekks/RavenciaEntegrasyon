@@ -130,6 +130,8 @@
 .app-shell.stitch-shell main .im-sade .im-fields input[readonly] { color: var(--rv-color-muted); background-color: var(--rv-color-surface-raised); }
 .app-shell.stitch-shell main .im-sade .im-fields :is(input, select):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
 .app-shell.stitch-shell main .im-sade .im-fields small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.app-shell.stitch-shell main .im-sade .im-fields small.im-field-notice.is-warning { color: var(--rv-color-warning); }
+.app-shell.stitch-shell main .im-sade .im-fields small.im-field-notice.is-error { color: var(--rv-color-danger); }
 .app-shell.stitch-shell main .im-sade .im-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .im-sade .im-foot > button { width: auto; height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
 @media (max-width: 640px) {

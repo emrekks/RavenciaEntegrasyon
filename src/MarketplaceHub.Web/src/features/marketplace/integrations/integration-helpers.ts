@@ -52,3 +52,15 @@ export function writeIntegrationListState(current: URLSearchParams, patch: Parti
   set('platform', next.platform === 'ALL' ? '' : next.platform.toLowerCase())
   return params
 }
+
+// Trendyol asks for "User-Agent: {sellerId} - {IntegratorName}" (name: up to 30 ASCII letters or digits). The
+// worker only logs a warning for another format, so this is advice; a non-ASCII identity cannot be sent at all.
+export function trendyolUserAgentNotice(identity: string, sellerId: string): { kind: 'warning' | 'error', message: string } | null {
+  const value = identity.trim()
+  if (!value) return null
+  if (![...value].every(character => character >= ' ' && character <= '~')) return { kind: 'error', message: 'Türkçe karakter ve özel işaret kullanılamaz; bu kimlikle Trendyol’a istek gönderilemez.' }
+  const seller = sellerId.trim()
+  const match = /^([0-9]+) - [A-Za-z0-9]{1,30}$/.exec(value)
+  if (match && (!seller || match[1] === seller)) return null
+  return { kind: 'warning', message: `Trendyol “${seller || 'SatıcıID'} - FirmaAdı” biçimini istiyor (firma adı en çok 30 harf/rakam, boşluksuz). Bağlantı yine kaydedilir.` }
+}
