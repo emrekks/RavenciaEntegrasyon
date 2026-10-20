@@ -2087,6 +2087,20 @@ public sealed class HepsiburadaAdapterTests
         Assert.Null(HepsiburadaHttpClient.LabelContent(System.Text.Encoding.UTF8.GetBytes("""{"data":["not base64!"]}"""), "PDF"));
     }
 
+    // Deep audit 2026-10-20 S23: a multi-parcel PDF/PNG/JPG answer is never cut to its first parcel.
+    [Fact]
+    public void MultiParcelBinaryLabelIsNotCutToTheFirstParcel()
+    {
+        var pdf = Convert.ToBase64String(new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D });
+        var twoParcels = System.Text.Encoding.UTF8.GetBytes($$"""{"format":"PDF","data":["{{pdf}}","{{pdf}}"]}""");
+
+        Assert.Equal(2, HepsiburadaHttpClient.LabelParcelCount(twoParcels));
+        Assert.Null(HepsiburadaHttpClient.LabelContent(twoParcels, "PDF"));
+        Assert.Equal(1, HepsiburadaHttpClient.LabelParcelCount(System.Text.Encoding.UTF8.GetBytes("^XA^XZ")));
+        var zpl = System.Text.Encoding.UTF8.GetBytes("""{"data":["^XA^FD1^FS^XZ","^XA^FD2^FS^XZ"]}""");
+        Assert.Contains("^FD2", System.Text.Encoding.UTF8.GetString(HepsiburadaHttpClient.LabelContent(zpl, "ZPL")!));
+    }
+
     [Fact]
     public void OrderDetailInvoiceStatusIsReadPerPackageFromTheLineItems()
     {

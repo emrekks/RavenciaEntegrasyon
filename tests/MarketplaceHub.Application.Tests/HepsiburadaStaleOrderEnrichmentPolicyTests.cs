@@ -83,6 +83,38 @@ public sealed class HepsiburadaStaleOrderEnrichmentPolicyTests
         Assert.Equal("Blue", lineSnapshot.RootElement.GetProperty("color").GetString());
     }
 
+    // Deep audit 2026-10-20 S27: an older read never rolls a known invoice status or carrier back.
+    [Fact]
+    public void StaleOrderReadDoesNotRollBackKnownInvoiceStatusOrCarrier()
+    {
+        var modifiedAt = new DateTimeOffset(2026, 9, 30, 9, 0, 0, TimeSpan.Zero);
+        var order = new Order
+        {
+            ExternalOrderId = "HB-2",
+            OrderNumber = "HB-2",
+            Currency = "TRY",
+            CustomerSnapshotJson = """{"marketplaceInvoiceStatus":"INVOICED","marketplaceCargoProviderName":"HepsiJet"}""",
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = "{}",
+            DerivedStatus = "SHIPPED",
+            LastRemoteModifiedAt = modifiedAt,
+            CreatedAt = modifiedAt,
+            UpdatedAt = modifiedAt,
+            Version = 2
+        };
+        var remote = new RemoteOrder(
+            "HB-2", "HB-2", modifiedAt, modifiedAt.AddHours(-3), "TRY", 1m, 0m, 1m,
+            """{"marketplaceInvoiceStatus":"NOT_INVOICED","marketplaceCargoProviderName":"Aras"}""", "{}", "{}",
+            [], [], "{}");
+
+        var updatedEntities = HepsiburadaStaleOrderEnrichmentPolicy.Apply(order, [], remote, modifiedAt.AddHours(1));
+
+        Assert.Equal(0, updatedEntities);
+        using var customerSnapshot = JsonDocument.Parse(order.CustomerSnapshotJson);
+        Assert.Equal("INVOICED", customerSnapshot.RootElement.GetProperty("marketplaceInvoiceStatus").GetString());
+        Assert.Equal("HepsiJet", customerSnapshot.RootElement.GetProperty("marketplaceCargoProviderName").GetString());
+    }
+
     [Fact]
     public void StaleOrderReadDoesNotReplaceKnownImageWhenRemoteReadHasNoUsefulFields()
     {

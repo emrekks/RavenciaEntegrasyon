@@ -252,7 +252,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
     private sealed class NoDashboard : IDashboardReadService
     {
         public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<IReadOnlyList<DashboardRevenuePointView>> RevenueSeriesAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, string? platform, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 

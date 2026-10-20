@@ -114,7 +114,8 @@ public sealed class MandatorySynchronizationScenariosTests
             "NEW",
             now.AddHours(12),
             now));
-        Assert.True(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+        // Audit 2026-10-20 S9: a held order is not one the seller can ship, so it is never late.
+        Assert.False(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
             "TRENDYOL",
             "ON_HOLD",
             now.AddDays(-1),

@@ -51,7 +51,7 @@ function PazaramaFinancePanel({ orderId }: { orderId: string }) {
     </>}
   </article>
 }
-function ListPage({ eyebrow, title, description: _description, children }: { eyebrow: string; title: string; description: string; children: React.ReactNode }) { return <section className="content f3"><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div><Badge value="LIVE READ" /></div><div className="panel">{children}</div></section> }
+function ListPage({ eyebrow, title, description: _description, children }: { eyebrow: string; title: string; description: string; children: React.ReactNode }) { return <section className="content f3"><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div></div><div className="panel">{children}</div></section> }
 export function ShipmentsPage() {
   // The server pages by cursor and does not count; the cursors seen so far let the person step back.
   const [pageSize, setPageSize] = useState(20); const [cursors, setCursors] = useState<Array<string | null>>([null]); const [pageIndex, setPageIndex] = useState(0)
@@ -109,6 +109,14 @@ export function ShipmentDetailPage() {
     if (query.data.platformCode === 'N11' && !(await confirm(n11Cancels
       ? { title: 'Ürünler İptal Edilsin mi?', message: 'Bu işlem N11’de ürünleri iptal eder ve geri alınamaz.', confirmLabel: 'Ürünleri İptal Et', destructive: true }
       : { title: 'N11’e Gönderilsin mi?', message: 'Bu işlem N11’e gönderilecek.', confirmLabel: 'Gönder' }))) return
+    // Trendyol actions that cannot be taken back ask first (audit 2026-10-20 S7).
+    const trendyolDestructive: Record<string, { title: string; message: string; confirmLabel: string }> = {
+      CANCEL_ITEMS: { title: 'Ürünler İptal Edilsin mi?', message: 'Seçilen ürünler Trendyol’da iptal edilir; bu işlem geri alınamaz.', confirmLabel: 'Ürünleri İptal Et' },
+      MANUAL_DELIVER: { title: 'Teslim Edildi Olarak İşaretlensin mi?', message: 'Paket Trendyol’da teslim edildi olarak işaretlenir; bu işlem geri alınamaz.', confirmLabel: 'Teslim Edildi İşaretle' },
+      MANUAL_RETURN: { title: 'İade Edildi Olarak İşaretlensin mi?', message: 'Paket Trendyol’da iade edildi olarak işaretlenir; bu işlem geri alınamaz.', confirmLabel: 'İade Edildi İşaretle' }
+    }
+    const trendyolConfirm = query.data.platformCode === 'TRENDYOL' ? trendyolDestructive[actionName] : undefined
+    if (trendyolConfirm && !(await confirm({ ...trendyolConfirm, destructive: true }))) return
     if (query.data.platformCode === 'PAZARAMA' && !(await confirm({ title: 'Pazarama’ya Gönderilsin mi?', message: pazaramaActionWarning(actionName), confirmLabel: 'Gönder', destructive: actionName === 'NOT_SUPPLIED' }))) return
     await sendPackageRequest(`/shipments/${id}/actions`, { action: actionName, payloadJson }, 'Paket işlemi sıraya alındı; sonucu pazaryerinden yeniden okunarak doğrulanacak.', 'İşlem başlatılamadı.')
   }

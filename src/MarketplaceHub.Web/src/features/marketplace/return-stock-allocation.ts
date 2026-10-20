@@ -17,3 +17,13 @@ export function allocateStock(lines: readonly StockSourceLine[], units: number):
 }
 
 export const totalUnits = (lines: readonly StockSourceLine[]) => lines.reduce((sum, line) => sum + Math.max(0, line.quantity), 0)
+
+// The return as an approval answers it: each line with the units already decided for stock.
+export type ApprovedReturn = { status?: string; lines?: Array<{ id: string; disposedQuantity?: number }> | null }
+
+// Units put back in stock on the given return lines, read from the server's answer (not the units
+// that were asked for).
+export function stockedUnits(result: ApprovedReturn | null | undefined, lineIds: readonly string[]) {
+  const wanted = new Set(lineIds)
+  return (result?.lines ?? []).filter(line => wanted.has(line.id)).reduce((sum, line) => sum + (line.disposedQuantity ?? 0), 0)
+}

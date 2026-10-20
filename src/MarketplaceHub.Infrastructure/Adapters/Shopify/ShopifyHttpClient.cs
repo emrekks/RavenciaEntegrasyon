@@ -1123,7 +1123,7 @@ public sealed partial class ShopifyHttpClient(
         return new(ShortId(variant.GetProperty("id").GetString()), variant.GetProperty("sku").GetString() ?? ShortId(variant.GetProperty("id").GetString()), barcode, null, options, productArchived, price, compareAt, null, inventory, currency, variant.GetRawText(), image is null ? [] : [image], levels);
     }
 
-    private static RemoteOrder MapOrder(JsonElement order)
+    internal static RemoteOrder MapOrder(JsonElement order)
     {
         var money = order.GetProperty("currentTotalPriceSet").GetProperty("shopMoney");
         var discount = order.GetProperty("totalDiscountsSet").GetProperty("shopMoney");
@@ -1239,7 +1239,10 @@ public sealed partial class ShopifyHttpClient(
             order.GetProperty("createdAt").GetDateTimeOffset(),
             order.GetProperty("updatedAt").GetDateTimeOffset(),
             currency,
-            DecimalOrNull(money, "amount") ?? 0,
+            // Gross is the amount before the discount: the current total is what the buyer pays
+            // (net), so gross = net + discount (audit 2026-10-20 S11: it was net, and the panel
+            // subtracted the discount a second time).
+            (DecimalOrNull(money, "amount") ?? 0) + (DecimalOrNull(discount, "amount") ?? 0),
             DecimalOrNull(discount, "amount") ?? 0,
             DecimalOrNull(money, "amount") ?? 0,
             customerJson,

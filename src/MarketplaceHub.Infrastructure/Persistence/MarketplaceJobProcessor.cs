@@ -7981,8 +7981,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var externalLineIdsById = lines.Values.ToDictionary(line => line.Id, line => line.ExternalLineId);
         foreach (var remotePackage in remote.Packages)
         {
-            var target = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
+            var target = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : isShopify ? ShopifyShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
+            // A package the panel unpacked is history; a late read of it does not bring it back.
+            if (package is not null && ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus)) continue;
             var legacyTrendyolHoldCorrection = isTrendyol
                 && package is not null
                 && package.Status == ShipmentPackageStatus.OnHold
@@ -8109,6 +8111,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (MergePackageCargoMetadata(package, remotePackage)) { package.UpdatedAt = now; package.Version++; telemetryUpdatedCount++; }
                 continue;
             }
+            // The panel took the package into work a moment ago; a read that still sees it Created
+            // was taken before the marketplace applied the picking. It is neither applied nor
+            // reported as a refused transition while the grace window lasts.
+            if (package is not null && package.Status == ShipmentPackageStatus.Processing && target == ShipmentPackageStatus.New)
+            {
+                var pickedAt = db.OrderStatusHistory.Local
+                    .Where(x => x.TenantId == tenantId && x.PackageId == package.Id && x.RawStatus == PackageIngestionSafety.InstantPickingRawStatus)
+                    .Select(x => (DateTimeOffset?)x.RecordedAt).Max()
+                    ?? await db.OrderStatusHistory.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && x.PackageId == package.Id && x.RawStatus == PackageIngestionSafety.InstantPickingRawStatus)
+                        .MaxAsync(x => (DateTimeOffset?)x.RecordedAt, cancellationToken);
+                if (PackageIngestionSafety.IsCreatedEchoAfterInstantPicking(package.Status, target, pickedAt, now))
+                {
+                    if (MergePackageCargoMetadata(package, remotePackage)) { package.UpdatedAt = now; package.Version++; telemetryUpdatedCount++; }
+                    continue;
+                }
+            }
             var accept = package is null || legacyTrendyolHoldCorrection || (isHepsiburada
                 ? HepsiburadaPackageStatusReconciliationPolicy.ShouldAcceptStatusObservation(
                     package.Status,
@@ -8133,7 +8152,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // reports an end state the panel refuses, the package waits
                 // for an operator instead of staying in an operational tab.
                 MergePackageCargoMetadata(package, remotePackage);
-                var terminalConflict = PackageIngestionSafety.IsTerminalConflict(target, remotePackage.RawStatus);
+                var terminalConflict = PackageIngestionSafety.IsTerminalConflict(package.Status, target, remotePackage.RawStatus);
                 if (terminalConflict)
                 {
                     package.Status = ShipmentPackageStatus.ManualReview;
@@ -8248,13 +8267,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         if (isShopify)
         {
-            var manualStatus = await db.OrderStatusHistory.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:"))
+            var manualStatus = await db.OrderStatusHistory
+                .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.RawStatus.StartsWith(ShopifyManualStatusPolicy.RawStatusPrefix))
                 .OrderByDescending(x => x.OccurredAt)
-                .Select(x => new { x.CanonicalStatus, x.OccurredAt })
                 .FirstOrDefaultAsync(cancellationToken);
-            if (manualStatus is not null && manualStatus.OccurredAt >= order.LastRemoteModifiedAt)
+            if (manualStatus is not null && ShopifyManualStatusPolicy.StillHolds(manualStatus.OccurredAt, ShopifyManualStatusPolicy.RemoteStatusAt(manualStatus.SourceEventId), order.LastRemoteModifiedAt, order.DerivedStatus))
+            {
                 order.DerivedStatus = manualStatus.CanonicalStatus;
+                // Still valid after this read: the lists treat a manual status as current while it
+                // is not older than the order's last marketplace change.
+                if (manualStatus.OccurredAt < order.LastRemoteModifiedAt) manualStatus.OccurredAt = order.LastRemoteModifiedAt;
+            }
         }
         if (projectReservations && batch is null)
             await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
@@ -10083,6 +10106,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!);
         }
         effect.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken);
+        if (string.Equals(payload.Action, "UNPACK", StringComparison.OrdinalIgnoreCase))
+            await MarkHepsiburadaPackageUnpackedAsync(tenantId, connectionId, package.Id, effect.CompletedAt.Value, cancellationToken);
         await RecordN11ShipmentWriteEvidenceAsync(tenantId, connectionId, payload.Action, cancellationToken);
         var readbackOrder = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, Hint = new OrderLookupHint(x.OrderedAt, x.LastRemoteModifiedAt, x.StoreFrontCode) }).SingleAsync(cancellationToken);
         TrackRequest();
@@ -10091,6 +10116,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (readback.IsSuccess) await UpsertOrder(tenantId, connectionId, readback.Value!, cancellationToken);
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
         return true;
+    }
+
+    // Hepsiburada dissolves an unpacked package: its lines return to the order and later reads no
+    // longer list it. The local row stays as superseded history (no tab, count, amount or line
+    // allocation), so the order is not shown with a package that no longer exists.
+    private async Task MarkHepsiburadaPackageUnpackedAsync(Guid tenantId, Guid connectionId, Guid packageId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platform != "HEPSIBURADA") return;
+        var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+        if (package is null || ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus)) return;
+        package.Status = ShipmentPackageStatus.Cancelled;
+        package.RawStatus = ShipmentPackageSupersession.LocallyUnpackedRawStatus;
+        package.UpdatedAt = now;
+        package.Version++;
+        db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = package.OrderId, PackageId = package.Id, CanonicalStatus = "CANCELLED", RawStatus = ShipmentPackageSupersession.LocallyUnpackedRawStatus, SourceEventId = $"panel-unpack:{package.Id:N}:{now.ToUnixTimeMilliseconds()}", OccurredAt = now, RecordedAt = now });
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     // n11 has no sandbox and its probe is read-only, so SHIPMENT_WRITE is proven by the first

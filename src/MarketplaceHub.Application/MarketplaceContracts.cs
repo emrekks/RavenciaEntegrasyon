@@ -949,7 +949,8 @@ public sealed record OrderSummaryView(
     int ManualReview = 0,
     int Pending = 0,
     int Unverified = 0,
-    int PaymentPending = 0);
+    int PaymentPending = 0,
+    int Undelivered = 0);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,
@@ -1014,6 +1015,7 @@ public sealed record OrderDetailView(
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents, string PlatformCode = "TRENDYOL");
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);
+public sealed record ShopifyOrderStatusResult(Guid Id, string Status, long Version);
 public sealed record ReturnLineView(
     Guid Id,
     string ExternalLineId,
@@ -1136,11 +1138,12 @@ public interface IMarketplaceSalesService
 {
     Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery query, CancellationToken cancellationToken);
     Task<bool> MarkLabelPrintedAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken);
-    Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, string? platform, CancellationToken cancellationToken);
+    Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null);
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<ServiceResult<ShopifyOrderStatusResult>> SetShopifyOrderStatusAsync(Guid tenantId, Guid userId, Guid orderId, long expectedVersion, string? status, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<RemoteCargoCompany>>> ChangeableCargoCompaniesAsync(Guid tenantId, Guid packageId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<CreateOrderPackageResult>> CreateOrderPackageInstantAsync(Guid tenantId, Guid orderId, long expectedVersion, OrderPackageCreateRequest command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken, string? packageNumber = null);

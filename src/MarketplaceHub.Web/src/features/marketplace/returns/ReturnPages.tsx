@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../../shared/api'
 import { cargoCarrier, cargoLabel } from '../../../shared/components'
-import { newIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey } from '../../../shared/idempotency'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
@@ -437,7 +437,9 @@ export function ReturnDetailPage() {
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
   const query = useQuery({ queryKey: ['return', id], queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
-  const dispositionRequest = useMutation({ mutationFn: ({ body, version }: { body: string; version: number }) => hubApi(`/returns/${id}/stock-dispositions`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('return-stock-disposition', id, version, body) }, body }) })
+  // Each stock decision is its own request: a decision does not change the return's version, so a key
+  // made from the version and the body would replay the first of two equal decisions (audit 2026-10-20 W11).
+  const dispositionRequest = useMutation({ mutationFn: ({ body, key }: { body: string; key: string }) => hubApi(`/returns/${id}/stock-dispositions`, { method: 'POST', headers: { 'Idempotency-Key': key }, body }) })
   const dispositionInFlight = useRef(false)
   async function disposition(event: FormEvent<HTMLFormElement>, line: ReturnLine) {
     event.preventDefault()
@@ -445,9 +447,10 @@ export function ReturnDetailPage() {
     dispositionInFlight.current = true
     const data = new FormData(event.currentTarget)
     try {
-      await dispositionRequest.mutateAsync({ version: query.data.version, body: JSON.stringify({ returnLineId: line.id, disposition: data.get('disposition'), quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
-      notifyReturn(setNotice, 'İade stok kararı kaydedildi. Satılabilir seçimi stoğu artırır.', 'success')
-      await client.invalidateQueries({ queryKey: ['return', id] })
+      const kind = String(data.get('disposition'))
+      await dispositionRequest.mutateAsync({ key: `return-stock-disposition:${id}:${newIdempotencyKey()}`, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
+      notifyReturn(setNotice, kind === 'PASS' ? 'İade stok kararı kaydedildi; ürün stoğa eklendi.' : 'İade stok kararı kaydedildi; stok değişmedi.', 'success')
+      await Promise.all([client.invalidateQueries({ queryKey: ['return', id] }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: ['products'] })] : [])])
     } catch (reason) { notifyReturn(setNotice, reason instanceof Error ? reason.message : 'Stok kararı kaydedilemedi.', 'error') }
     finally { dispositionInFlight.current = false }
   }
@@ -459,8 +462,9 @@ export function ReturnDetailPage() {
     {notice && <NoticeToast key={`${noticeKind}:${notice}`} kind={noticeKind} message={notice} onClose={() => setNoticeState('')} durationMs={noticeKind === 'info' ? 7000 : 5500} />}
     <div className="rr-two"><article><div className="rr-h3">Talep ve Süre</div><dl className="rr-kv"><dt>Platform Durumu</dt><dd>{titleTr(statusLabel(item.rawStatus))}</dd><dt>Neden</dt><dd>{reason.label}{reason.explanation && <> · {reason.explanation}</>}</dd><dt>Sipariş Tarihi</dt><dd className="rr-num">{returnDateText(item.orderedAt)}</dd><dt>Otomatik İşlem</dt><dd style={critical ? { color: 'var(--rr-warn)' } : undefined}>{returnRemaining(item.actionDueAt)}{item.actionDueAtEstimated && item.actionDueAt ? ' (tahmini)' : ''}</dd><dt>Kargo</dt><dd className="rr-num">{cargoLabel(item.cargoProviderName)} · {item.cargoTrackingNumber ?? '—'}</dd>{item.refundAmount != null && <><dt>İade Tutarı</dt><dd><b className="rr-num">{formatMoney(item.refundAmount, item.currency)}</b> <small className="rr-muted">Siparişten hesaplanan</small></dd></>}</dl></article>
       <article><div className="rr-h3">{marketplaceName} İade Kararı</div>{item.decisionPending ? <ReturnInlineActions item={item} onNotice={setNotice} /> : <>{item.allowedActions.includes('RECEIVE') && <ReturnReceiptButton item={item} onNotice={setNotice} />}{item.allowedActions.includes('APPROVE') || item.allowedActions.includes('REJECT') ? <ReturnDecisionActions item={item} onNotice={setNotice} /> : !item.allowedActions.includes('RECEIVE') && <div className="rr-callout"><RrIcon name="info" /><span><b>İade Aksiyonu Uygun Değil.</b> Pazaryerindeki iade durumu bu kayıtta henüz onay veya ret işlemine izin vermiyor.</span></div>}</>}</article></div>
-    {/* Stock intake is decided while a return is being approved; a return that is already approved or rejected does not ask again. */}
-    {!['APPROVED', 'REJECTED'].includes(returnGroup(item.status)) && <>
+    {/* Stock intake: decided at approval, or afterwards here while units of an approved return are still undecided
+        (the server accepts stock decisions only for approved returns). A rejected return has nothing to put back. */}
+    {(item.stockDispositionAvailable ? lines.some(line => line.remainingQuantity > 0) : returnGroup(item.status) !== 'REJECTED' && returnGroup(item.status) !== 'APPROVED') && <>
     <article><div className="rr-h3">İade Paketi Ürünleri ve Stok Kabulü</div><div className="rr-callout rr-warn"><RrIcon name="alert" /><span><b>Stok otomatik artmaz.</b> Ürün fiziksel olarak kontrol edildikten sonra “Satılabilir” seçilirse stok artar; Karantina, Hasarlı ve Teslim Alınmadı seçimleri stoğu artırmaz.</span></div>
       {!lines.length ? <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>İade Satırı Bulunamadı</b></div> : lines.map(line => <div className="rr-disp" key={line.id}><RrThumb src={line.imageUrl ?? item.primaryImageUrl} quantity={line.quantity} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku}{line.barcode ? ` · ${line.barcode}` : ''}</small><small>{line.quantity} adet · kalan karar {line.remainingQuantity}</small></span>{item.stockDispositionAvailable && line.remainingQuantity > 0 ? <form onSubmit={event => disposition(event, line)}><select className="rr-in" name="disposition" aria-label="Stok kabul kararı"><option value="PASS">Satılabilir — Stoğa Ekle</option><option value="QUARANTINE">Karantina — Stoğa Ekleme</option><option value="DAMAGED">Hasarlı — Stoğa Ekleme</option><option value="NOT_RECEIVED">Teslim Alınmadı</option></select><input className="rr-in rr-num" name="quantity" type="number" min="0.01" max={line.remainingQuantity} step="0.01" defaultValue={line.remainingQuantity} required aria-label="Adet" /><input className="rr-in" name="reason" placeholder="Kontrol notu" required aria-label="Kontrol notu" /><button type="submit" className="rr-btn rr-primary" disabled={dispositionRequest.isPending}>{dispositionRequest.isPending ? 'Kaydediliyor…' : 'Kararı Kaydet'}</button></form> : <div style={{ gridColumn: 2, display: 'flex', flexWrap: 'wrap', gap: 8 }}><RrBadge label={line.remainingQuantity === 0 ? 'Tamamlandı' : line.hasInventoryMapping ? 'Onay Bekliyor' : 'Stok Eşlemesi Gerekli'} /></div>}</div>)}
     </article>

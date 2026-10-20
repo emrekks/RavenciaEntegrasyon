@@ -22,14 +22,14 @@ internal static class CancelledReturnClaimCleanup
 
         var claim = db.ReturnClaims.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == claimId)
             ?? await db.ReturnClaims.SingleAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken);
-        if (claim.Status != ReturnClaimStatus.Cancelled)
-        {
-            claim.Status = ReturnClaimStatus.Cancelled;
-            claim.RawStatus = remoteRawStatus;
-            if (remoteModifiedAt > claim.LastRemoteModifiedAt) claim.LastRemoteModifiedAt = remoteModifiedAt;
-            claim.UpdatedAt = now;
-            claim.Version++;
-        }
+        // A claim already kept as cancelled is read again on every return sync: the issue is raised
+        // when the claim becomes cancelled, not reopened after the operator closed it (audit 2026-10-20 G33).
+        if (claim.Status == ReturnClaimStatus.Cancelled) return true;
+        claim.Status = ReturnClaimStatus.Cancelled;
+        claim.RawStatus = remoteRawStatus;
+        if (remoteModifiedAt > claim.LastRemoteModifiedAt) claim.LastRemoteModifiedAt = remoteModifiedAt;
+        claim.UpdatedAt = now;
+        claim.Version++;
 
         var key = $"return-cancelled-with-history:{claimId:N}";
         var summary = $"{claim.ExternalClaimId} numaralı iade pazaryerinde iptal edildi; verilen karar, kanıt ve stok hareketleri korunarak iade iptal olarak saklandı. Stoğa eklenen adetleri kontrol edin.";

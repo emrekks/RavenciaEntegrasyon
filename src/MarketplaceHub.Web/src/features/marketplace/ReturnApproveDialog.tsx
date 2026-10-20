@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
-import { allocateStock } from './return-stock-allocation'
+import { allocateStock, stockedUnits, type ApprovedReturn } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
 import { versionedIdempotencyKey } from '../../shared/idempotency'
 
@@ -94,17 +94,24 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const approve = useMutation({
     mutationFn: () => {
       const body = JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLines: stockRequests })
-      return hubApi<{ status: string }>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('return-action', claimId, version, body), 'If-Match': `"v${version}"` }, body })
+      return hubApi<ApprovedReturn>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('return-action', claimId, version, body), 'If-Match': `"v${version}"` }, body })
     },
-    onSuccess: async () => {
-      const stock = stockRequests.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
-      onDone(`${order.orderNumber} siparişinin iade kabul kararı ${marketplaceName}’a iletildi.${stock}`, 'success', [
+    onSuccess: async result => {
+      // The units the server actually put back (the return's stock decisions after the approval),
+      // not the units that were asked for.
+      const added = stockedUnits(result, stockRequests.map(request => request.returnLineId))
+      const stockShort = stockRequests.length > 0 && added < stockQuantity
+      const stock = stockRequests.length === 0 ? '' : added > 0 ? ` Stok ${added.toLocaleString('tr-TR')} adet artırıldı.` : ' Stok artırılamadı; stok kararını iade detayından verin.'
+      onDone(`${order.orderNumber} siparişinin iade kabul kararı ${marketplaceName}’a iletildi.${stock}`, stockShort ? 'info' : 'success', [
         { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}`, tone: 'success' },
         ...chosenRows.map(row => ({ label: 'Ürün', value: `${row.title} (${row.quantity} adet)` })),
-        ...(stockRequests.length > 0 ? [{ label: 'Stok', value: `+${stockQuantity.toLocaleString('tr-TR')} adet stoğa eklendi` }] : [])
+        ...(stockRequests.length > 0 ? [{ label: 'Stok', value: `+${added.toLocaleString('tr-TR')} / ${stockQuantity.toLocaleString('tr-TR')} adet stoğa eklendi`, tone: stockShort ? 'error' as const : 'success' as const }] : [])
       ], { href: `/returns?status=APPROVED&search=${encodeURIComponent(order.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
-      await client.invalidateQueries({ queryKey: ['return', claimId] })
-      await client.invalidateQueries({ queryKey: ['returns'] })
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['return', claimId] }),
+        client.invalidateQueries({ queryKey: ['returns'] }),
+        ...(added > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])
+      ])
       onClose()
     },
     onError: reason => {

@@ -73,47 +73,96 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
                 connectionId is null ? "Bu işletmeye ait Shopify bağlantısı bulunamadı." : "Seçilen bağlantı bu işletmeye ait bir Shopify bağlantısı değil.",
                 connectionId is null ? 404 : 422);
 
-        var orders = await db.Orders
-            .Where(order => order.TenantId == tenantId && connectionIds.Contains(order.ConnectionId))
-            .ToListAsync(cancellationToken);
-        var ordersByNumber = orders
-            .GroupBy(order => ShopifyOrderCsvParser.NormalizeOrderNumber(order.OrderNumber), StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Key.Length > 0)
-            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
-
-        var orderMatches = new List<(ShopifyOrderCsvOrder Import, Order Existing)>();
-        foreach (var imported in validOrders)
+        // The order jobs write the same orders: the import takes their per-connection "orders"
+        // lock (a short wait, then optimistically), and a write that still collides with a sync
+        // is read again and applied once more instead of failing (audit 2026-10-20 S24).
+        var locks = new List<MarketplaceSyncExecutionLock>();
+        try
         {
-            var key = ShopifyOrderCsvParser.NormalizeOrderNumber(imported.OrderNumber);
-            if (!ordersByNumber.TryGetValue(key, out var matches))
+            foreach (var lockedConnectionId in connectionIds)
+                if (await MarketplaceSyncExecutionLock.AcquireGroupAsync(db, lockedConnectionId, MarketplaceSyncExecutionLock.OrdersGroup, ImportLockWait, timeProvider, cancellationToken) is { } acquired)
+                    locks.Add(acquired);
+
+            for (var attempt = 1; ; attempt++)
             {
-                unmatchedOrderNumbers.Add(imported.OrderNumber);
-                unmatchedOrders.Add(imported);
-                continue;
+                unmatchedOrderNumbers.Clear();
+                unmatchedOrders.Clear();
+                var attemptIssues = new List<string>();
+                matchedCount = updatedCount = updatedLineCount = unmatchedLineCount = ambiguousCount = 0;
+                try
+                {
+                    await ApplyImportAsync(attemptIssues);
+                    issues.AddRange(attemptIssues);
+                    break;
+                }
+                catch (DbUpdateConcurrencyException) when (attempt < MaximumImportAttempts)
+                {
+                    db.ChangeTracker.Clear();
+                }
             }
-            if (matches.Length != 1)
-            {
-                ambiguousCount++;
-                if (issues.Count < MaximumReportedItems) issues.Add($"{imported.OrderNumber}: Birden fazla Shopify siparişiyle eşleşti; güvenlik için atlandı.");
-                continue;
-            }
-            orderMatches.Add((imported, matches[0]));
+        }
+        finally
+        {
+            foreach (var held in locks) await held.DisposeAsync();
         }
 
-        matchedCount = orderMatches.Count;
-        if (orderMatches.Count > 0)
+        async Task ApplyImportAsync(List<string> attemptIssues)
         {
+            var orders = await db.Orders
+                .Where(order => order.TenantId == tenantId && connectionIds.Contains(order.ConnectionId))
+                .ToListAsync(cancellationToken);
+            var ordersByNumber = orders
+                .GroupBy(order => ShopifyOrderCsvParser.NormalizeOrderNumber(order.OrderNumber), StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Key.Length > 0)
+                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+
+            var orderMatches = new List<(ShopifyOrderCsvOrder Import, Order Existing)>();
+            foreach (var imported in validOrders)
+            {
+                var key = ShopifyOrderCsvParser.NormalizeOrderNumber(imported.OrderNumber);
+                if (!ordersByNumber.TryGetValue(key, out var matches))
+                {
+                    unmatchedOrderNumbers.Add(imported.OrderNumber);
+                    unmatchedOrders.Add(imported);
+                    continue;
+                }
+                if (matches.Length != 1)
+                {
+                    ambiguousCount++;
+                    if (issues.Count + attemptIssues.Count < MaximumReportedItems) attemptIssues.Add($"{imported.OrderNumber}: Birden fazla Shopify siparişiyle eşleşti; güvenlik için atlandı.");
+                    continue;
+                }
+                orderMatches.Add((imported, matches[0]));
+            }
+
+            matchedCount = orderMatches.Count;
+            if (orderMatches.Count == 0) return;
             var orderIds = orderMatches.Select(match => match.Existing.Id).ToArray();
             var linesByOrder = (await db.OrderLines
                     .Where(line => line.TenantId == tenantId && orderIds.Contains(line.OrderId))
                     .ToListAsync(cancellationToken))
                 .GroupBy(line => line.OrderId)
                 .ToDictionary(group => group.Key, group => group.ToList());
+            // An order already invoiced keeps the amounts its invoice was cut with; the file only
+            // brings its buyer and address details.
+            var invoicedOrderIds = (await db.Invoices.AsNoTracking()
+                    .Where(invoice => invoice.TenantId == tenantId && orderIds.Contains(invoice.OrderId) && invoice.OriginalInvoiceId == null
+                        && invoice.Status != InvoiceStatus.Cancelled && invoice.Status != InvoiceStatus.CancelledLocal)
+                    .Select(invoice => invoice.OrderId)
+                    .Concat(db.ShipmentPackages.AsNoTracking()
+                        .Where(package => package.TenantId == tenantId && orderIds.Contains(package.OrderId) && package.ManualInvoiceStatus == "UPLOADED")
+                        .Select(package => package.OrderId))
+                    .Distinct()
+                    .ToListAsync(cancellationToken))
+                .ToHashSet();
+            var keptInvoicedAmounts = 0;
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
             foreach (var (imported, order) in orderMatches)
             {
-                var changed = ApplyOrder(order, imported, now);
+                var invoiced = invoicedOrderIds.Contains(order.Id);
+                var changed = ApplyOrder(order, imported, now, applyAmounts: !invoiced);
+                if (invoiced) keptInvoicedAmounts++;
                 if (!linesByOrder.TryGetValue(order.Id, out var existingLines)) existingLines = [];
                 var unusedLines = existingLines.ToHashSet();
                 foreach (var importedLine in imported.Lines)
@@ -124,7 +173,7 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
                     var lineChanged = false;
                     if (!string.IsNullOrWhiteSpace(importedLine.Sku) && line.Sku != importedLine.Sku) { line.Sku = importedLine.Sku; lineChanged = true; }
                     if (line.TitleSnapshot != importedLine.Title) { line.TitleSnapshot = importedLine.Title; lineChanged = true; }
-                    if (importedLine.UnitPrice is { } price && line.UnitPrice != price) { line.UnitPrice = price; lineChanged = true; }
+                    if (!invoiced && importedLine.UnitPrice is { } price && line.UnitPrice != price) { line.UnitPrice = price; lineChanged = true; }
                     if (lineChanged || !ShopifyOrderCsvSnapshotPolicy.HasImport(line.SourceSnapshotJson))
                     {
                         line.SourceSnapshotJson = ShopifyOrderCsvSnapshotPolicy.ImportLine(line.SourceSnapshotJson, importedLine, now);
@@ -141,6 +190,8 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
                     updatedCount++;
                 }
             }
+            if (keptInvoicedAmounts > 0 && issues.Count + attemptIssues.Count < MaximumReportedItems)
+                attemptIssues.Add($"{keptInvoicedAmounts} faturalanmış siparişin tutarları ve birim fiyatları korundu; yalnız alıcı ve adres bilgileri aktarıldı.");
 
             if (updatedCount > 0 || updatedLineCount > 0)
             {
@@ -185,7 +236,10 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
         return ServiceResult<ShopifyOrderCsvImportResult>.Ok(result);
     }
 
-    private static bool ApplyOrder(Order order, ShopifyOrderCsvOrder imported, DateTimeOffset now)
+    private static readonly TimeSpan ImportLockWait = TimeSpan.FromSeconds(10);
+    private const int MaximumImportAttempts = 3;
+
+    internal static bool ApplyOrder(Order order, ShopifyOrderCsvOrder imported, DateTimeOffset now, bool applyAmounts = true)
     {
         var changed = false;
         var customerName = imported.BillingAddress.Name ?? imported.ShippingAddress.Name;
@@ -196,13 +250,16 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
             order.CustomerSnapshotJson, customerName, imported.Email, customerPhone,
             imported.FinancialStatus, imported.FulfillmentStatus, imported.PaymentMethod,
             grossTotal, netTotal, imported.DiscountAmount, imported.Currency, now);
-        if (customerJson != order.CustomerSnapshotJson) { order.CustomerSnapshotJson = customerJson; changed = true; }
+        // The import marker carries the import time: a file that changes nothing else leaves the
+        // order (and its version) as it was.
+        if (!ShopifyOrderCsvSnapshotPolicy.SameIgnoringImportTime(customerJson, order.CustomerSnapshotJson)) { order.CustomerSnapshotJson = customerJson; changed = true; }
 
         var shippingJson = ShopifyOrderCsvSnapshotPolicy.ImportAddress(order.ShipmentAddressSnapshotJson, imported.ShippingAddress);
         if (shippingJson != order.ShipmentAddressSnapshotJson) { order.ShipmentAddressSnapshotJson = shippingJson; changed = true; }
         var billingJson = ShopifyOrderCsvSnapshotPolicy.ImportAddress(order.InvoiceAddressSnapshotJson, imported.BillingAddress);
         if (billingJson != order.InvoiceAddressSnapshotJson) { order.InvoiceAddressSnapshotJson = billingJson; changed = true; }
 
+        if (!applyAmounts) return changed;
         if (!string.IsNullOrWhiteSpace(imported.Currency) && order.Currency != imported.Currency) { order.Currency = imported.Currency; changed = true; }
         if (grossTotal is { } grossAmount)
         {

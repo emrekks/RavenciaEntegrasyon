@@ -228,11 +228,10 @@ public sealed class MarketplaceSalesStatusTabTests
             .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
             .Options;
         using var db = new AppDbContext(options);
-        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
         var tenantId = Guid.NewGuid();
-        IQueryable<ReturnClaim> query = db.ReturnClaims.AsNoTracking().Where(claim => claim.TenantId == tenantId);
 
-        query = service.ExcludeStaleHepsiburadaReturns(query, tenantId);
+        // The shared definition the Returns page and the dashboard count with (deep audit 2026-10-20 P12).
+        var query = OrderQueueQueries.ListedReturns(db, tenantId, DateTimeOffset.UtcNow);
 
         var sql = query.ToQueryString();
         Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);

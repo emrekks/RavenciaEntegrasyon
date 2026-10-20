@@ -243,3 +243,16 @@ export function markShippingLabelPrinted(orderId: string, format: ShippingLabelF
     return printedShippingLabelKey(orderId, format)
   }
 }
+
+// The fields an address block prints, the recipient's name first; a block saved without fields
+// prints the name and the address (audit 2026-10-20 S1: the label printed the address only).
+export function addressBlockFields(fields: readonly ShippingLabelField[]): ShippingLabelField[] {
+  const own = fields.length > 0 ? [...fields] : ['customerName', 'address'] as ShippingLabelField[]
+  return [...own.filter(field => field === 'customerName'), ...own.filter(field => field !== 'customerName')]
+}
+
+// The printed page: a sticker prints on a page of its own size without margins, A4 on A4 (audit 2026-10-20 S25).
+export function shippingLabelPageCss(format: ShippingLabelFormat, settings: Pick<ShippingLabelSettings, 'stickerWidthMm' | 'stickerHeightMm'>) {
+  const size = format === 'sticker' ? `${settings.stickerWidthMm}mm ${settings.stickerHeightMm}mm` : 'A4 portrait'
+  return `@media print { @page { size: ${size}; margin: ${format === 'sticker' ? '0' : '8mm'}; } }`
+}

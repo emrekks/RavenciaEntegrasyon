@@ -37,7 +37,8 @@ public static class PackageLineProjectionPolicy
         // parent's allocation as cancelled.
         var currentPackages = packageByExternalId.Values
             .Where(package => !replacedExternalIds.Contains(package.ExternalPackageId)
-                && !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus));
+                && !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus)
+                && !ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus));
         var result = new Dictionary<Guid, NormalizedPackageAllocation>();
 
         foreach (var package in currentPackages)
@@ -128,7 +129,27 @@ public static class PackageIngestionSafety
         incoming is ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned
         && !ShipmentPackageSupersession.IsSplitParentRawStatus(incomingRawStatus);
 
+    // A package already at its own end (cancelled or returned) keeps it: an
+    // older or contradicting end state from the marketplace is recorded as a
+    // refused event, never turned into a manual review of a closed package.
+    public static bool IsTerminalConflict(ShipmentPackageStatus current, ShipmentPackageStatus incoming, string? incomingRawStatus) =>
+        current is not (ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned)
+        && IsTerminalConflict(incoming, incomingRawStatus);
+
     public static string RejectedEventId(string eventId) => $"REJECTED:{eventId}";
+
+    // The history marker the panel's instant picking writes (MarketplaceSalesService).
+    public const string InstantPickingRawStatus = "PICKING_REQUESTED";
+
+    // How long after an instant picking a remote "Created" is taken as a read made before
+    // the marketplace applied it.
+    public static readonly TimeSpan InstantPickingGrace = TimeSpan.FromMinutes(30);
+
+    public static bool IsCreatedEchoAfterInstantPicking(ShipmentPackageStatus current, ShipmentPackageStatus incoming, DateTimeOffset? instantPickingAt, DateTimeOffset now) =>
+        current == ShipmentPackageStatus.Processing
+        && incoming == ShipmentPackageStatus.New
+        && instantPickingAt is { } pickedAt
+        && now - pickedAt <= InstantPickingGrace;
 
     // Kept as raw status while a terminal conflict waits for review. It maps to
     // ManualReview, so the ManualReview repair does not flip it back on the

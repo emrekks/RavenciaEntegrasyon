@@ -3,7 +3,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
-import { allocateStock, totalUnits } from './return-stock-allocation'
+import { allocateStock, stockedUnits, totalUnits, type ApprovedReturn } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
 import { versionedIdempotencyKey } from '../../shared/idempotency'
 
@@ -103,17 +103,20 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   async function run() {
     setRunning(true)
     const results: Outcome[] = []
+    // Units the server reports as put back in stock, summed over the returns that went through.
+    let stocked = 0
     for (const [index, item] of items.entries()) {
       try {
         const stockLines = (allGroups[index] ?? []).filter(group => stockKeys.includes(group.key) && group.mapped).flatMap(group => allocateStock(group.lines, unitsFor(group)))
         const body = JSON.stringify(approving
           ? { action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], finalizedWith: item.platformCode.toUpperCase() === 'HEPSIBURADA' ? 'Refund' : null, stockLines }
           : { action: 'REJECT', reasonCode: reasonId, explanation: explanation.trim(), evidenceAssetIds: [], finalizedWith: null })
-        await hubApi(`/returns/${item.id}/actions`, {
+        const answer = await hubApi<ApprovedReturn>(`/returns/${item.id}/actions`, {
           method: 'POST',
           headers: { 'Idempotency-Key': versionedIdempotencyKey('return-action', item.id, item.version, body), 'If-Match': `"v${item.version}"` },
           body
         })
+        if (approving) stocked += stockedUnits(answer, stockLines.map(line => line.returnLineId))
         results.push({ id: item.id, ok: true, message: approving ? 'Onaylandı' : 'Reddedildi' })
       } catch (reason) {
         results.push({ id: item.id, ok: false, message: reason instanceof Error ? reason.message : approving ? 'İade onaylanamadı.' : 'İade reddedilemedi.' })
@@ -121,19 +124,20 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       setOutcomes([...results])
     }
     setRunning(false)
-    await client.invalidateQueries({ queryKey: ['returns'] })
+    await Promise.all([client.invalidateQueries({ queryKey: ['returns'] }), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])])
     const okCount = results.filter(outcome => outcome.ok).length
     const failCount = results.length - okCount
     const noun = approving ? 'onaylandı' : 'reddedildi'
+    const stockText = approving && stockTotal > 0 ? ` Stok ${stocked.toLocaleString('tr-TR')} adet artırıldı${stocked < stockTotal ? ` (istenen ${stockTotal.toLocaleString('tr-TR')})` : ''}.` : ''
     onDone(failCount === 0
-      ? `${okCount} iadenin ${approving ? 'kabul' : 'ret'} kararı pazar yerine iletildi.${approving && stockTotal > 0 ? ` Stok ${stockTotal.toLocaleString('tr-TR')} adet artırıldı.` : ''}`
-      : `Toplu ${approving ? 'iade kabulünde' : 'iade retinde'} ${okCount} iade ${noun}, ${failCount} iade tamamlanamadı. Ayrıntılar bildirimde listelendi.`, failCount === 0 ? 'success' : 'error',
+      ? `${okCount} iadenin ${approving ? 'kabul' : 'ret'} kararı pazar yerine iletildi.${stockText}`
+      : `Toplu ${approving ? 'iade kabulünde' : 'iade retinde'} ${okCount}/${results.length} iade ${noun}, ${failCount} iade tamamlanamadı.${stockText} Ayrıntılar bildirimde listelendi.`, failCount === 0 && stocked >= (approving ? stockTotal : 0) ? 'success' : failCount === results.length ? 'error' : 'info',
       [
         ...items.map(item => {
           const result = results.find(entry => entry.id === item.id)
           return { label: item.orderNumber, value: `${item.customerName} · ${item.platformName} · ${result?.ok ? (approving ? 'Onaylandı' : 'Reddedildi') : result?.message ?? 'Gönderilmedi'}`, tone: result?.ok ? 'success' as const : 'error' as const }
         }),
-        ...(approving && stockTotal > 0 ? [{ label: 'Stok', value: `+${stockTotal.toLocaleString('tr-TR')} adet stoğa eklendi` }] : []),
+        ...(approving && stockTotal > 0 ? [{ label: 'Stok', value: `+${stocked.toLocaleString('tr-TR')} / ${stockTotal.toLocaleString('tr-TR')} adet stoğa eklendi`, tone: stocked < stockTotal ? 'error' as const : 'success' as const }] : []),
         ...(!approving ? [{ label: 'Ret Nedeni', value: usableReasons.find(reason => reason.id === reasonId)?.name ?? reasonId }] : [])
       ], bulkTarget(results))
   }

@@ -75,10 +75,27 @@ public sealed partial class MarketplaceSalesService
             .Any(candidate => candidate?.ToLower(TurkishCulture).Contains(needle, StringComparison.Ordinal) == true);
     }
 
+    // The platform, cargo and reason choices of the page as a database filter (MatchesReturnRefinements).
+    private void ApplyReturnRefinements(ref IQueryable<ReturnClaim> query, Guid tenantId, ReturnListQuery options)
+    {
+        var platforms = options.Platforms?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim()).Distinct().ToArray() ?? [];
+        if (platforms.Length > 0)
+            query = query.Where(claim => db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId && platforms.Contains(connection.PlatformCode)));
+        var cargo = options.Cargo?.Trim();
+        if (!string.IsNullOrEmpty(cargo) && cargo != "ALL")
+            query = query.Where(claim => claim.CargoProviderName != null && claim.CargoProviderName.Trim() == cargo);
+        var reason = options.ReasonKey?.Trim();
+        if (!string.IsNullOrEmpty(reason) && reason != "ALL")
+            query = query.Where(claim => (claim.ReasonCode != null && claim.ReasonCode.Trim() != "" ? claim.ReasonCode.Trim() : (claim.ReasonText ?? "").Trim()) == reason);
+    }
+
     private async Task<ReturnCardScan> ScanReturnCardsAsync(Guid tenantId, ReturnListQuery options, bool applyTab, bool applyRefinements, CancellationToken cancellationToken)
     {
         var query = ReturnBaseQuery(tenantId);
         ApplyReturnFilters(ref query, applyTab ? options : options with { Status = null });
+        // Platform, cargo and reason are decided by the database (audit 2026-10-20 G8); the card
+        // check below repeats them on the loaded rows.
+        if (applyRefinements) ApplyReturnRefinements(ref query, tenantId, options);
         var rows = await query.OrderBy(x => x.Id)
             .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt))
             .ToListAsync(cancellationToken);
@@ -90,9 +107,13 @@ public sealed partial class MarketplaceSalesService
             .Select(x => new { x.Id, x.PlatformCode, x.DisplayName }).ToDictionaryAsync(x => x.Id, cancellationToken);
         var claimIds = rows.Select(x => x.Id).ToArray();
         var lines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId))
-            .Select(x => new { x.ClaimId, x.OrderLineId, x.RawStatus, HasOrderLine = db.OrderLines.Any(line => line.TenantId == tenantId && line.Id == x.OrderLineId) })
+            .Select(x => new { x.ClaimId, x.OrderLineId, x.RawStatus })
             .ToListAsync(cancellationToken);
-        var linesByClaim = lines.ToLookup(x => x.ClaimId);
+        // One lookup of the order lines that still exist instead of one sub-query per return line.
+        var referencedLineIds = lines.Select(x => x.OrderLineId).Distinct().ToArray();
+        var existingLineIds = (await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && referencedLineIds.Contains(x.Id))
+            .Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var linesByClaim = lines.Select(x => new { x.ClaimId, x.OrderLineId, x.RawStatus, HasOrderLine = existingLineIds.Contains(x.OrderLineId) }).ToLookup(x => x.ClaimId);
 
         var cards = new List<ReturnCard>();
         foreach (var row in rows)
@@ -108,10 +129,12 @@ public sealed partial class MarketplaceSalesService
                 cards.Add(new(row.Id, kind, kind == ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
         }
 
-        // A split card belongs only to the tab of its own group.
+        // Every card belongs only to the tab of its own group: the database filter of a tab is
+        // broader (Onaylanan also reads claims still waiting with an accepted line), and a whole
+        // card of such a claim waits for an action (audit 2026-10-20 G9).
         var tab = applyTab ? options.Status?.Trim().ToUpperInvariant() : null;
         if (!string.IsNullOrEmpty(tab) && tab != "ALL")
-            cards = cards.Where(card => card.Kind == WholeCard || ReturnTabGroup(card.Status) == tab).ToList();
+            cards = cards.Where(card => ReturnTabGroup(card.Status) == tab).ToList();
 
         IReadOnlyDictionary<Guid, ReturnListView>? views = null;
         if (!string.IsNullOrWhiteSpace(options.Search) && cards.Count > 0)
@@ -261,10 +284,32 @@ public sealed partial class MarketplaceSalesService
         };
     }
 
+    // The page polls its summary; while no claim of the tenant changed (same count and latest
+    // change) the same summary is answered for a short while instead of scanning every claim again.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, (int Count, DateTimeOffset? Changed) Stamp, ReturnSummaryView View)> ReturnSummaryCache = new();
+    internal static readonly TimeSpan ReturnSummaryCacheLifetime = TimeSpan.FromSeconds(30);
+
     public async Task<ReturnSummaryView> ReturnSummaryAsync(Guid tenantId, ReturnListQuery options, CancellationToken cancellationToken)
     {
         var counts = ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal);
         if (!await HasOperationalReturnConnectionAsync(tenantId, cancellationToken)) return new(counts, [], [], [], [], 0);
+
+        var now = timeProvider.GetUtcNow();
+        var stamp = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .GroupBy(_ => 1).Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) })
+            .SingleOrDefaultAsync(cancellationToken);
+        var currentStamp = (stamp?.Count ?? 0, stamp?.Changed);
+        var cacheKey = $"{tenantId:N}|{System.Text.Json.JsonSerializer.Serialize(options)}|{now.UtcDateTime:yyyyMMdd}";
+        if (ReturnSummaryCache.TryGetValue(cacheKey, out var cached) && cached.Stamp == currentStamp && now - cached.At < ReturnSummaryCacheLifetime)
+            return cached.View;
+        var view = await BuildReturnSummaryAsync(tenantId, options, counts, cancellationToken);
+        if (ReturnSummaryCache.Count > 1000) ReturnSummaryCache.Clear();
+        ReturnSummaryCache[cacheKey] = (now, currentStamp, view);
+        return view;
+    }
+
+    private async Task<ReturnSummaryView> BuildReturnSummaryAsync(Guid tenantId, ReturnListQuery options, Dictionary<string, int> counts, CancellationToken cancellationToken)
+    {
 
         var counted = await ScanReturnCardsAsync(tenantId, options, applyTab: false, applyRefinements: true, cancellationToken);
         foreach (var card in counted.Cards)

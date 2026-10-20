@@ -357,39 +357,19 @@ public sealed class IdempotencyKeyTests
 public sealed class HubSessionTests
 {
     [Fact]
-    public void ConnectionsOfEndedSessionsAreAborted()
+    public async Task AConnectionFromAnotherSiteIsAborted_APanelOneGoesOn()
     {
-        var monitor = new HubSessionMonitor(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<HubSessionMonitor>.Instance);
-        var live = new FakeCaller("live"); var ended = new FakeCaller("ended");
-        var liveSession = Guid.CreateVersion7();
-        monitor.Track(live, liveSession);
-        monitor.Track(ended, Guid.CreateVersion7());
-
-        Assert.Equal(1, monitor.AbortAllExcept(new HashSet<Guid> { liveSession }));
-
-        Assert.False(live.Aborted);
-        Assert.True(ended.Aborted);
-        Assert.Equal(1, monitor.Count);
-        monitor.Forget("live");
-        Assert.Equal(0, monitor.Count);
-    }
-
-    [Fact]
-    public async Task AConnectionFromAnotherSiteIsAborted_APanelOneIsTracked()
-    {
-        var monitor = new HubSessionMonitor(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<HubSessionMonitor>.Instance);
-        var filter = new HubSessionFilter(monitor);
+        var filter = new HubOriginFilter();
         var foreign = new FakeCaller("foreign", "https://evil.example", Guid.CreateVersion7());
         var own = new FakeCaller("own", "https://panel.example", Guid.CreateVersion7());
         var nextCalls = 0;
 
-        await filter.OnConnectedAsync(new HubLifetimeContext(foreign, new ServiceCollection().BuildServiceProvider(), new OperationsHub()), _ => { nextCalls++; return Task.CompletedTask; });
-        await filter.OnConnectedAsync(new HubLifetimeContext(own, new ServiceCollection().BuildServiceProvider(), new OperationsHub()), _ => { nextCalls++; return Task.CompletedTask; });
+        await filter.OnConnectedAsync(new HubLifetimeContext(foreign, new ServiceCollection().BuildServiceProvider(), new OperationsHub(new OperationsHubConnections())), _ => { nextCalls++; return Task.CompletedTask; });
+        await filter.OnConnectedAsync(new HubLifetimeContext(own, new ServiceCollection().BuildServiceProvider(), new OperationsHub(new OperationsHubConnections())), _ => { nextCalls++; return Task.CompletedTask; });
 
         Assert.True(foreign.Aborted);
         Assert.False(own.Aborted);
         Assert.Equal(1, nextCalls);
-        Assert.Equal(1, monitor.Count);
     }
 
     private sealed class FakeCaller(string id, string? origin = null, Guid? sessionId = null) : HubCallerContext

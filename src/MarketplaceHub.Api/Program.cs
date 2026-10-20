@@ -53,9 +53,7 @@ builder.Services.AddProblemDetails();
 // answer them with 400 in the panel's error shape.
 builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-builder.Services.AddSingleton<HubSessionMonitor>();
-builder.Services.AddHostedService(services => services.GetRequiredService<HubSessionMonitor>());
-builder.Services.AddSignalR(options => options.AddFilter<HubSessionFilter>());
+builder.Services.AddSignalR(options => options.AddFilter<HubOriginFilter>());
 builder.Services.AddHostedService<OperationsRealtimeBroadcaster>();
 builder.Services.AddSingleton<OperationsHubConnections>();
 builder.Services.AddHostedService<OperationsHubSessionWatcher>();
