@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the question fixture is reshaped freely per test
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, templates: [] as Array<{ id: string; title: string; text: string; version: number; updatedAt: string }>, detail: null as any, answerFailure: false, staleOnce: false, templateId: 1, totalCount: 1 }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, templates: [] as Array<{ id: string; title: string; text: string; version: number; updatedAt: string }>, detail: null as any, answerFailure: false, staleOnce: false, templateId: 1, totalCount: 1, freshSync: false, emptyList: false }))
 
 vi.mock('../../shared/api', () => ({
   loadAllPages: vi.fn(async () => ({ items: [
@@ -16,6 +16,9 @@ vi.mock('../../shared/api', () => ({
     const method = init?.method ?? 'GET'
     const body = typeof init?.body === 'string' ? init.body : undefined
     apiState.calls.push({ path, method, body })
+    if (path === '/questions/sync-state' && apiState.freshSync) return [
+      { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol Mağazası', historyImported: true, importedCount: 25, progressStatus: 'IDLE', lastSuccessAt: new Date().toISOString() },
+    ]
     if (path === '/questions/sync-state') return [
       { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol Mağazası', historyImported: true, importedCount: 25, progressStatus: 'COMPLETED', lastSuccessAt: '2026-10-05T10:00:00Z' },
       { connectionId: 'hb-store', platformCode: 'HEPSIBURADA', storeName: 'Hepsiburada Mağazası', historyImported: false, importedCount: 3, progressStatus: 'INITIAL', lastSuccessAt: null },
@@ -55,14 +58,15 @@ vi.mock('../../shared/api', () => ({
       const status = params.get('status')
       const statusByFilter: Record<string, string> = { WAITING: 'WAITING_FOR_ANSWER', ANSWERED: 'ANSWERED', EXPIRED: 'EXPIRED', OTHER: 'REJECTED', ALL: 'WAITING_FOR_ANSWER' }
       const row = kind === 'ORDER' ? { ...apiState.detail, id: 'q-order', kind: 'ORDER', platformCode: 'HEPSIBURADA', storeName: 'Hepsiburada Mağazası', externalOrderNumber: 'HB-12345' } : { ...apiState.detail, id: 'q-product', kind: 'PRODUCT' }
-      const rowStatus = status === 'WAITING' && row.status === 'ANSWER_SUBMITTED' ? row.status : statusByFilter[status ?? 'WAITING']
+      const rowStatus = status === 'WAITING' && ['ANSWER_SUBMITTED', 'REJECTED'].includes(row.status) ? row.status : statusByFilter[status ?? 'WAITING']
+      if (apiState.emptyList && params.get('limit') === '50') return { items: [], page: 1, limit: 50, totalCount: 0 }
       return { items: [{ ...row, status: rowStatus }], page: Number(params.get('page') ?? 1), limit: Number(params.get('limit') ?? 50), totalCount: apiState.totalCount }
     }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }),
 }))
 
-import { QuestionsPage } from './QuestionsPage'
+import { QuestionsPage, questionSyncIsStale, syncSummary } from './QuestionsPage'
 
 const createQuestion = () => ({
   id: 'q-product', connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol Mağazası', externalQuestionId: 'ext-1', kind: 'PRODUCT', status: 'WAITING_FOR_ANSWER',
@@ -94,8 +98,8 @@ function input(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   })
 }
 
-async function settle() {
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+async function settle(ms = 15) {
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
 }
 
 function lastQuestionRequest() {
@@ -120,6 +124,8 @@ beforeEach(() => {
   apiState.staleOnce = false
   apiState.templateId = 2
   apiState.totalCount = 1
+  apiState.freshSync = false
+  apiState.emptyList = false
   container = document.createElement('div')
   document.body.append(container)
   vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
@@ -194,6 +200,9 @@ describe('QuestionsPage workspace flows', () => {
     const endDate = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button')).find(day => day.getAttribute('aria-label') === '5 Ekim 2026')!
     act(() => endDate.click())
     input(container.querySelector<HTMLInputElement>('.rv-questions-search input')!, 'bluz 01')
+    // The search waits until typing stops.
+    expect(apiState.calls.some(call => call.path.includes('search=bluz'))).toBe(false)
+    await settle(350)
     await settle()
     let params = lastQuestionRequest()
     expect(params.get('connectionId')).toBe('ty-store')
@@ -251,6 +260,11 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.textContent).toContain('Kargo güncellemesi')
 
     act(() => container.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[3].click())
+    await settle()
+    // One click only asks; nothing is deleted until the dialog is confirmed.
+    expect(apiState.calls.some(call => call.method === 'DELETE')).toBe(false)
+    expect(document.querySelector('.qi-template-delete-modal')?.textContent).toContain('Kargo güncellemesi')
+    act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('.qi-template-delete-modal button')).find(item => item.textContent?.includes('Hazır Cevabı Sil'))!.click())
     await settle()
     expect(apiState.calls.some(call => call.path.startsWith('/question-templates/template-') && call.method === 'DELETE')).toBe(true)
     expect(container.textContent).not.toContain('Kargo güncellemesi')
@@ -378,7 +392,57 @@ describe('QuestionsPage workspace flows', () => {
     input(composer(), 'Ürün uzunluğu 65 cm. Ayrıntılar sayfada yazıyor.')
     act(() => button('Gönder').click())
     await settle()
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Pazaryeri cevabı kabul etmedi.')
+    expect(container.querySelector('.rv-question-send-error')?.textContent).toBe('Pazaryeri cevabı kabul etmedi.')
+    // The marketplace's own words do not decide the tone: a failure is a red failure toast, not a green success.
+    const toast = container.querySelector('.app-toast')
+    expect(toast?.classList.contains('app-toast-error')).toBe(true)
+    expect(toast?.textContent).toContain('İşlem Başarısız')
+  })
+
+  it('lets a rejected answer be written again and shows why it was rejected', async () => {
+    apiState.detail = { ...createQuestion(), status: 'REJECTED' }
+    await renderPage()
+
+    expect(container.querySelector('.qi-composer')).not.toBeNull()
+    expect(container.querySelector('.qi-composer .rv-question-rejection')?.textContent).toContain('Yanıt eksik bilgi içeriyor.')
+    input(composer(), 'Ürün uzunluğu 65 cm. Ayrıntılar ürün sayfasında.')
+    act(() => button('Gönder').click())
+    await settle()
+    expect(apiState.calls.some(call => call.path === '/questions/q-product/answer' && call.method === 'POST')).toBe(true)
+  })
+
+  it('puts an answer that never reached the marketplace back as the draft', async () => {
+    apiState.detail = { ...createQuestion(), answerSubmissionStatus: 'NOT_DELIVERED', pendingAnswerText: 'Ürün uzunluğu 65 cm olarak ölçülmüştür.' }
+    await renderPage()
+
+    expect(composer().value).toBe('Ürün uzunluğu 65 cm olarak ölçülmüştür.')
+    expect(container.querySelector('.qi-composer')?.textContent).toContain('pazaryerine ulaşmadı')
+  })
+
+  it('says a failing store sync failed even after its history was imported', () => {
+    const failed = { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol', historyImported: true, importedCount: 3, progressStatus: 'FAILED' }
+    expect(syncSummary(failed, 'PRODUCT').state).toBe('Son aktarım başarısız')
+    expect(syncSummary({ ...failed, progressStatus: 'IDLE' }, 'PRODUCT').state).toBe('Geçmiş tamamlandı')
+    expect(questionSyncIsStale([{ progressStatus: 'IDLE', lastSuccessAt: new Date(Date.now() - 20 * 60_000).toISOString() }], Date.now())).toBe(true)
+    expect(questionSyncIsStale([{ progressStatus: 'IDLE', lastSuccessAt: new Date().toISOString() }], Date.now())).toBe(false)
+  })
+
+  it('does not start a sync on every visit when the stores were read recently', async () => {
+    apiState.freshSync = true
+    await renderPage()
+
+    expect(apiState.calls.some(call => call.path === '/questions/sync')).toBe(false)
+  })
+
+  it('keeps the open question when it leaves the current list', async () => {
+    await renderPage()
+    expect(container.querySelector('.qi-detail')?.textContent).toContain('Ürün boyu kaç santimetredir?')
+    apiState.emptyList = true
+    await act(async () => { await client.invalidateQueries({ queryKey: ['questions'] }) })
+    await settle()
+
+    expect(container.querySelector('.qi-detail')?.textContent).toContain('Ürün boyu kaç santimetredir?')
+    expect(apiState.calls.some(call => call.path === '/questions/q-product')).toBe(true)
   })
 
   it('sends the answer again with the current version when the question was refreshed in the background', async () => {

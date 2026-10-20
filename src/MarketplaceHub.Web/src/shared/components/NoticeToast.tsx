@@ -45,9 +45,11 @@ export function NoticeToast({ kind, message, title, onClose, durationMs, classNa
   </div>
 }
 
-// A plain message: the tone comes from its wording, the same way the notification history reads it.
-export function MessageToast({ message, onClose }: { message: string; onClose: () => void }) {
-  const kind = normalizeNotificationKind(message, 'success')
+// A plain message: the tone is the one the caller names, or else comes from its wording the way the notification
+// history reads it. A caller that knows it is reporting a failure says so: a marketplace's own error text rarely
+// contains the words the wording check looks for and would otherwise show as a green success.
+export function MessageToast({ message, onClose, kind: explicitKind }: { message: string; onClose: () => void; kind?: 'success' | 'error' | 'info' }) {
+  const kind = explicitKind ?? normalizeNotificationKind(message, 'success')
   const durationMs = kind === 'info' ? 7000 : 5500
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose })
