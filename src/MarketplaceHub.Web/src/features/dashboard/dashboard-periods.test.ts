@@ -49,11 +49,11 @@ describe('dashboard performance', () => {
     expect(totals.map(item => [item.connectionId, item.name, item.amount, item.previousAmount])).toEqual([['ty-1', 'Trendyol Ana', 500, 0], ['ty-2', 'Trendyol İkinci', 200, 100]])
   })
 
-  it('filters by the picked store and carries returns separately', () => {
+  it('filters by the picked store and counts returns inside the revenue', () => {
     const rows = [row('2026-10-20', 'ty-1', 500, { returnedAmount: 80, returnedOrderCount: 1 }), row('2026-10-20', 'ty-2', 200)]
     const [, day] = daySeries(rows, '2026-10-19', '2026-10-20', 'ty-1', 'TRY')
 
-    expect(day.amount).toBe(500)
+    expect(day.amount).toBe(580)
     expect(day.returnedAmount).toBe(80)
     expect(day.returnedOrderCount).toBe(1)
   })
@@ -65,7 +65,7 @@ describe('dashboard performance', () => {
     expect(report.content.charCodeAt(0)).toBe(0xfeff)
     const lines = report.content.slice(1).split('\r\n')
     expect(lines[0]).toBe('"Tarih";"Para Birimi";"Ciro";"Sipariş";"Ürün Adedi";"Paket";"İade Tutarı";"İade Sipariş"')
-    expect(lines[2]).toBe('"2026-10-20";"TRY";"1.234,50";"3";"4";"2";"10,00";"1"')
+    expect(lines[2]).toBe('"2026-10-20";"TRY";"1.244,50";"3";"4";"2";"10,00";"1"')
     expect(revenueReport(performance([]), 'ALL', '').name).toBe('ravencia-ciro-2026-10-19_2026-10-20-tum-platformlar.csv')
   })
 })

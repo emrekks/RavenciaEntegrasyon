@@ -1,6 +1,8 @@
 // The performance panel's arithmetic, kept apart from the page so it can be tested. The server sends one row per
 // Istanbul calendar day × store × currency for the chosen period and the previous one of equal elapsed time
 // (GET /dashboard/performance); everything here only adds those rows up.
+// The server's amount leaves returned orders out; the panel's revenue (ciro) is everything sold, returns included,
+// with the returned part still shown apart.
 
 export type PerformanceRow = { day: string; connectionId: string; currency: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
 export type DashboardChannel = { connectionId: string; platformCode: string; displayName: string; status: string }
@@ -44,13 +46,14 @@ export function periodDays(range: Range, custom: { from: string; to: string }, t
   return { from: addDays(today, 1 - Number(range)), to: today }
 }
 
+const revenue = (row: { amount: number; returnedAmount: number }) => row.amount + row.returnedAmount
 const inChannel = (row: { connectionId: string }, channel: string) => channel === 'ALL' || row.connectionId === channel
 
 /** The currency the panel totals in: Turkish lira whenever there is any, otherwise the largest one. Others are listed apart. */
 export function primaryCurrency(rows: PerformanceRow[]) {
   if (!rows.length || rows.some(row => row.currency === 'TRY')) return 'TRY'
   const totals = new Map<string, number>()
-  for (const row of rows) totals.set(row.currency, (totals.get(row.currency) ?? 0) + row.amount)
+  for (const row of rows) totals.set(row.currency, (totals.get(row.currency) ?? 0) + revenue(row))
   return [...totals.entries()].sort((left, right) => right[1] - left[1])[0][0]
 }
 
@@ -60,7 +63,7 @@ export function daySeries(rows: PerformanceRow[], from: string, to: string, chan
   for (const row of rows) {
     if (!inChannel(row, channel) || row.currency !== currency) continue
     const point = byDay.get(row.day) ?? { day: row.day, amount: 0, orderCount: 0, productQuantity: 0, packageCount: 0, returnedAmount: 0, returnedOrderCount: 0 }
-    point.amount += row.amount; point.orderCount += row.orderCount; point.productQuantity += row.productQuantity
+    point.amount += revenue(row); point.orderCount += row.orderCount; point.productQuantity += row.productQuantity
     point.packageCount += row.packageCount; point.returnedAmount += row.returnedAmount; point.returnedOrderCount += row.returnedOrderCount
     byDay.set(row.day, point)
   }
@@ -73,7 +76,7 @@ export function otherCurrencies(rows: PerformanceRow[], channel: string, primary
   for (const row of rows) {
     if (!inChannel(row, channel) || row.currency === primary) continue
     const total = totals.get(row.currency) ?? { amount: 0, orders: 0 }
-    total.amount += row.amount; total.orders += row.orderCount
+    total.amount += revenue(row); total.orders += row.orderCount
     totals.set(row.currency, total)
   }
   return [...totals.entries()].filter(([, total]) => total.amount > 0 || total.orders > 0).map(([currency, total]) => ({ currency, ...total }))
@@ -93,9 +96,9 @@ export function channelTotals(performance: Performance, currency: string): Chann
       connectionId,
       platformCode: channel?.platformCode ?? '',
       name: channel?.displayName ?? 'Kaldırılmış mağaza',
-      amount: current.reduce((total, row) => total + row.amount, 0),
+      amount: current.reduce((total, row) => total + revenue(row), 0),
       orders: current.reduce((total, row) => total + row.orderCount, 0),
-      previousAmount: sum(performance.previous, connectionId).reduce((total, row) => total + row.amount, 0),
+      previousAmount: sum(performance.previous, connectionId).reduce((total, row) => total + revenue(row), 0),
     }
   }).filter(channel => channel.amount > 0 || channel.orders > 0).sort((left, right) => right.amount - left.amount || right.orders - left.orders)
 }
@@ -123,7 +126,7 @@ export function hourSeries(rows: HourRow[], day: string, channel: string, curren
   for (const row of rows) {
     if (!inChannel(row, channel) || row.currency !== currency) continue
     const point = byHour.get(row.hour) ?? { day: row.hour, amount: 0, orderCount: 0, productQuantity: 0, packageCount: 0, returnedAmount: 0, returnedOrderCount: 0 }
-    point.amount += row.amount; point.orderCount += row.orderCount; point.productQuantity += row.productQuantity
+    point.amount += revenue(row); point.orderCount += row.orderCount; point.productQuantity += row.productQuantity
     point.packageCount += row.packageCount; point.returnedAmount += row.returnedAmount; point.returnedOrderCount += row.returnedOrderCount
     byHour.set(row.hour, point)
   }

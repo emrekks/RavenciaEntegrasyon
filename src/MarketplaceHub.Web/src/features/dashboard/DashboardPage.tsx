@@ -131,9 +131,8 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
       <tr><td>Sipariş</td><td className="rr-num">{count(point.orderCount)}</td><td className="rr-num">{before ? count(before.orderCount) : '—'}</td></tr>
       <tr><td>Ürün (Adet)</td><td className="rr-num">{count(point.productQuantity)}</td><td className="rr-num">{before ? count(before.productQuantity) : '—'}</td></tr>
       <tr><td>Kargo (Paket)</td><td className="rr-num">{count(point.packageCount)}</td><td className="rr-num">{before ? count(before.packageCount) : '—'}</td></tr>
-      {(point.returnedOrderCount > 0 || (before?.returnedOrderCount ?? 0) > 0) && <><tr><td>Brüt Ciro</td><td className="rr-num">{money(point.amount + point.returnedAmount, currency)}</td><td className="rr-num">{before ? money(before.amount + before.returnedAmount, currency) : '—'}</td></tr>
-      <tr><td>İade</td><td className="rr-num">−{money(point.returnedAmount, currency)}</td><td className="rr-num">{before ? `−${money(before.returnedAmount, currency)}` : '—'}</td></tr></>}
-      <tr><td>{point.returnedOrderCount > 0 || (before?.returnedOrderCount ?? 0) > 0 ? 'Net Ciro' : 'Ciro'}</td><td className="rr-num"><b>{money(point.amount, currency)}</b></td><td className="rr-num">{before ? money(before.amount, currency) : '—'}</td></tr>
+      <tr><td>Ciro</td><td className="rr-num"><b>{money(point.amount, currency)}</b></td><td className="rr-num">{before ? money(before.amount, currency) : '—'}</td></tr>
+      {(point.returnedOrderCount > 0 || (before?.returnedOrderCount ?? 0) > 0) && <tr><td>Ciroya Dahil İade</td><td className="rr-num">{money(point.returnedAmount, currency)}</td><td className="rr-num">{before ? money(before.returnedAmount, currency) : '—'}</td></tr>}
     </tbody></table></div>}
   </div>
 }
@@ -259,14 +258,14 @@ export function DashboardPage() {
       </div></div>
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell loading={loading} label={returnedOrders > 0 ? 'Net Gelir' : 'Toplam Gelir'} avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell loading={loading} label="Ciro" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
         <KpiCell loading={loading} label="Toplam Sipariş" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
         <KpiCell loading={loading} label="Ortalama Sepet" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
       {!loading && (returnedOrders > 0 || foreign.length > 0) && <p className="rr-pf-note">
-        {/* Revenue is net: sold minus what went back. Gross is what was sold before the returns. */}
-        {returnedOrders > 0 && <span className="rr-pf-net">Brüt: <b className="rr-num">{money(total + returnedAmount, currency)}</b> · İade: <b className="rr-num">−{money(returnedAmount, currency)}</b> ({count(returnedOrders)} sipariş) · Net: <b className="rr-num">{money(total, currency)}</b></span>}
+        {/* Revenue (ciro) is everything sold, returns included; the returned part and what remains without it are shown here. */}
+        {returnedOrders > 0 && <span className="rr-pf-net">Ciroya dahil iade: <b className="rr-num">{money(returnedAmount, currency)}</b> ({count(returnedOrders)} sipariş) · İadeler düşülünce: <b className="rr-num">{money(total - returnedAmount, currency)}</b></span>}
         {foreign.length > 0 && <span>Diğer para birimleri: {foreign.map(item => <b key={item.currency} className="rr-num">{money(item.amount, item.currency)} ({count(item.orders)} sipariş) </b>)}</span>}
       </p>}
       <div className="rr-pf-body">
