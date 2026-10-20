@@ -10,7 +10,7 @@ RUN npm run typecheck \
  && npm run build \
  && npm run check:bundle
 
-FROM caddy:2.11.3@sha256:ec18ee54aab3315c22e25f3b2babda73ff8007d39b13b3bd1bfffa2f0444c7d9
+FROM caddy:2.11.7@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
 COPY deploy/caddy/Caddyfile.production /etc/caddy/Caddyfile
 # Fail the image build (CI and server) on a Caddyfile that does not parse.
 RUN MARKETPLACEHUB_SITE_ADDRESS=https://build-check.invalid caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
