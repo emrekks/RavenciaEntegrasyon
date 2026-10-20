@@ -279,11 +279,14 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await db.SaveChangesAsync();
         }
 
+        // The dispatcher publishes every unpublished event in the database (job leases add one each), so only
+        // the deliveries of this test's event are counted.
         var deliveredIds = new System.Collections.Concurrent.ConcurrentQueue<Guid>();
         using var firstStop = new CancellationTokenSource();
         var firstHub = new RecordingOperationsHubContext((arguments, _) =>
         {
-            deliveredIds.Enqueue(ReadFirstOutboxEventId(arguments));
+            if (!SendsOutboxEvent(arguments, outboxEvent.Id)) return;
+            deliveredIds.Enqueue(outboxEvent.Id);
             firstStop.Cancel();
         });
 
@@ -307,7 +310,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             using var secondStop = new CancellationTokenSource();
             var secondHub = new RecordingOperationsHubContext((arguments, _) =>
-                deliveredIds.Enqueue(ReadFirstOutboxEventId(arguments)));
+            {
+                if (SendsOutboxEvent(arguments, outboxEvent.Id)) deliveredIds.Enqueue(outboxEvent.Id);
+            });
             await using (var secondServices = CreateOutboxDispatcherServices())
             {
                 var secondDispatcher = CreateOutboxDispatcher(secondServices, secondHub);
@@ -1534,37 +1539,29 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var deadOnce = Effect("sweep-dead-once");
         var exhausted = Effect("sweep-exhausted");
         var exhaustedKeys = ExternalEffectSweep.VerificationKeys(exhausted.Id);
-        await using (var seedDb = fixture.CreateContext())
-        {
-            seedDb.Tenants.Add(tenant);
-            seedDb.PlatformConnections.Add(connection);
-            seedDb.ExternalEffectRecords.AddRange(deadOnce, exhausted);
-            seedDb.IntegrationJobs.Add(Ended(deadOnce, ExternalEffectReconcilePolicy.JobDedupKey(deadOnce.Id), JobStatus.Dead));
-            seedDb.IntegrationJobs.AddRange(exhaustedKeys.Select(key => Ended(exhausted, key, JobStatus.Blocked)));
-            await seedDb.SaveChangesAsync();
-        }
+        // The sweep looks at every tenant's open records; the transaction keeps the jobs it would queue for
+        // records other tests left behind from ever being committed (and leased by the lease tests).
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.ExternalEffectRecords.AddRange(deadOnce, exhausted);
+        db.IntegrationJobs.Add(Ended(deadOnce, ExternalEffectReconcilePolicy.JobDedupKey(deadOnce.Id), JobStatus.Dead));
+        db.IntegrationJobs.AddRange(exhaustedKeys.Select(key => Ended(exhausted, key, JobStatus.Blocked)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
 
-        try
-        {
-            await using (var db = fixture.CreateContext())
-                Assert.Equal(2, await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None));
+        Assert.True(await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None) >= 2);
 
-            await using var check = fixture.CreateContext();
-            var retry = await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.JobDedupKey == $"{ExternalEffectReconcilePolicy.JobDedupKey(deadOnce.Id)}:2");
-            Assert.Equal(JobStatus.Pending, retry.Status);
-            Assert.Null((await check.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == deadOnce.Id)).CompletedAt);
-            var closed = await check.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == exhausted.Id);
-            Assert.Equal("UNRESOLVED", closed.Outcome);
-            Assert.NotNull(closed.CompletedAt);
-            Assert.True(await check.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.DedupeKey == $"external-effect:{exhausted.Id}" && x.Status == IssueStatus.Open));
-        }
-        finally
-        {
-            await using var cleanupDb = fixture.CreateContext();
-            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
-            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
-            await DeleteInvoiceTestTenantAsync(tenant.Id);
-        }
+        db.ChangeTracker.Clear();
+        var retry = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.JobDedupKey == $"{ExternalEffectReconcilePolicy.JobDedupKey(deadOnce.Id)}:2");
+        Assert.Equal(JobStatus.Pending, retry.Status);
+        Assert.Null((await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == deadOnce.Id)).CompletedAt);
+        var closed = await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == exhausted.Id);
+        Assert.Equal("UNRESOLVED", closed.Outcome);
+        Assert.NotNull(closed.CompletedAt);
+        Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.DedupeKey == $"external-effect:{exhausted.Id}" && x.Status == IssueStatus.Open));
+        await transaction.RollbackAsync();
     }
 
     [PostgreSqlFact]
@@ -1655,38 +1652,29 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var userOrders = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "ORDERS", IntervalSeconds = 180, OverlapSeconds = 600, JitterSeconds = 5, Enabled = true, UserDefined = true, Version = 1 };
         // An untouched historical default is upgraded.
         var defaultReturns = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "RETURNS", IntervalSeconds = 60, OverlapSeconds = 900, JitterSeconds = 5, Enabled = true, Version = 1 };
-        await using (var seedDb = fixture.CreateContext())
-        {
-            seedDb.Tenants.Add(tenant);
-            seedDb.PlatformConnections.Add(connection);
-            seedDb.ConnectionSyncPolicies.AddRange(userOrders, defaultReturns);
-            await seedDb.SaveChangesAsync();
-        }
+        // The scheduler works on every operational connection in the database. Inside a transaction that is
+        // rolled back, the policies and jobs it would create for connections other tests left behind are never
+        // committed, so no other test can lease them.
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.ConnectionSyncPolicies.AddRange(userOrders, defaultReturns);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
 
-        try
-        {
-            await using (var db = fixture.CreateContext())
-            {
-                var producer = new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build());
-                await producer.MaintainPoliciesAsync(includeDefaults: true, CancellationToken.None);
-                await producer.EnqueueDueAsync(CancellationToken.None);
-            }
+        var producer = new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build());
+        await producer.MaintainPoliciesAsync(includeDefaults: true, CancellationToken.None);
+        await producer.EnqueueDueAsync(CancellationToken.None);
 
-            await using var check = fixture.CreateContext();
-            var orders = await check.ConnectionSyncPolicies.AsNoTracking().SingleAsync(x => x.Id == userOrders.Id);
-            Assert.Equal(180, orders.IntervalSeconds);
-            Assert.Equal(1, orders.Version);
-            Assert.NotEqual(60, (await check.ConnectionSyncPolicies.AsNoTracking().SingleAsync(x => x.Id == defaultReturns.Id)).IntervalSeconds);
-            var queued = await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.OrderSync);
-            Assert.Equal(queued.AvailableAt, orders.LastScheduledAt);
-        }
-        finally
-        {
-            await using var cleanupDb = fixture.CreateContext();
-            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
-            await cleanupDb.ConnectionSyncPolicies.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
-            await DeleteInvoiceTestTenantAsync(tenant.Id);
-        }
+        db.ChangeTracker.Clear();
+        var orders = await db.ConnectionSyncPolicies.AsNoTracking().SingleAsync(x => x.Id == userOrders.Id);
+        Assert.Equal(180, orders.IntervalSeconds);
+        Assert.Equal(1, orders.Version);
+        Assert.NotEqual(60, (await db.ConnectionSyncPolicies.AsNoTracking().SingleAsync(x => x.Id == defaultReturns.Id)).IntervalSeconds);
+        var queued = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.OrderSync);
+        Assert.Equal(queued.AvailableAt, orders.LastScheduledAt);
+        await transaction.RollbackAsync();
     }
 
     [PostgreSqlFact]
@@ -2185,7 +2173,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task InvoiceReconciliation_AdvancesPastBusyReturnOrderAndReadsNextPackage()
+    public async Task InvoiceReconciliation_WaitsWithoutReadingWhileAnOrderJobHoldsTheOrdersLock()
     {
         var tenant = NewTenant("invoice-return-lock-fairness");
         var connection = NewQuestionConnection(tenant);
@@ -2232,23 +2220,20 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 "invoice-return-lock-fairness",
                 CancellationToken.None);
 
-            Assert.True(result.Succeeded);
+            // The invoice check shares the "orders" lock with the order reads (audit Q2: in a lane of its own it
+            // raced their writes). While an order job holds the lock it waits, attempt refunded, without reading.
+            Assert.False(result.Succeeded);
+            Assert.Equal(JobCompletionKind.Retry, result.Kind);
+            Assert.True(result.RefundAttempt);
+            Assert.Equal("ORDER_INVOICE_RECONCILIATION_BUSY", result.ErrorCode);
             Assert.Equal(0, orderPort.OrderReadCalls);
-            Assert.Equal(["regular-package"], orderPort.PackageReadCalls);
-            Assert.Contains(processorDb.OperationalIssues.Local, issue => issue.Code == "RETURN_ORDER_HYDRATION_BUSY");
-
-            // Both sweep orders were taken, so the sweep is complete and the next starts six hours later.
-            var persistedCursor = await processorDb.SyncCursors.SingleAsync(cursor => cursor.TenantId == tenant.Id
-                && cursor.ConnectionId == connection.Id
-                && cursor.ResourceType == TrendyolInvoiceReconciliationPolicy.SweepCursorResource);
-            Assert.Null(persistedCursor.OpaqueCursor);
-            Assert.NotNull(persistedCursor.LastSuccessAt);
+            Assert.Empty(orderPort.PackageReadCalls);
 
             var persistedPackages = await processorDb.ShipmentPackages.AsNoTracking()
                 .Where(package => package.TenantId == tenant.Id && package.ConnectionId == connection.Id)
                 .ToDictionaryAsync(package => package.ExternalPackageId);
             Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["partial-package"].MarketplaceInvoiceStatus);
-            Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["regular-package"].MarketplaceInvoiceStatus);
+            Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["regular-package"].MarketplaceInvoiceStatus);
         }
         finally
         {
@@ -6266,12 +6251,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     private OperationsRealtimeBroadcaster CreateOutboxDispatcher(IServiceProvider services, IHubContext<OperationsHub> hub) =>
         new(services.GetRequiredService<IServiceScopeFactory>(), hub, fixture.TimeProvider, NullLogger<OperationsRealtimeBroadcaster>.Instance);
 
-    private static Guid ReadFirstOutboxEventId(object?[] arguments)
-    {
-        Assert.Single(arguments);
-        var events = JsonSerializer.SerializeToElement(arguments[0]).GetProperty("events");
-        return events[0].GetProperty("eventId").GetGuid();
-    }
+    private static bool SendsOutboxEvent(object?[] arguments, Guid eventId) =>
+        arguments.Length == 1
+        && JsonSerializer.SerializeToElement(arguments[0]).GetProperty("events").EnumerateArray()
+            .Any(sent => sent.GetProperty("eventId").GetGuid() == eventId);
+
 
     private static async Task WaitForCountAsync(System.Collections.Concurrent.ConcurrentQueue<Guid> values, int expectedCount)
     {
