@@ -211,7 +211,13 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
 }
 function QuickEditVariantControls({ variant, connections, onChanged, onSelect, showPrice = true }: { variant: Variant; connections: MarketplaceConnection[]; onChanged: () => Promise<unknown>; onSelect: () => void; showPrice?: boolean }) {
   const [price, setPrice] = useState(variant.salePrice ?? variant.listPrice ?? '')
-  const [stock, setStock] = useState(variant.onHand)
+  // The stock field follows the server while it is untouched; only a value the person typed is saved, as the
+  // difference from the stock they saw when they started typing (audit 2026-10-20 W2: an untouched stale field
+  // sent "old − latest" and put a sold unit back).
+  const [stock, setStock] = useState(String(variant.onHand))
+  const [stockBase, setStockBase] = useState<number | null>(null)
+  const [stockError, setStockError] = useState('')
+  useEffect(() => { if (stockBase === null) setStock(String(variant.onHand)) }, [variant.onHand, stockBase])
   const [savingPrice, setSavingPrice] = useState(false); const [savingStock, setSavingStock] = useState(false)
   async function savePrice() {
     const salePrice = Number(price); if (savingPrice || price === '' || !Number.isFinite(salePrice) || salePrice < 0 || salePrice === (variant.salePrice ?? variant.listPrice ?? 0)) return
@@ -222,11 +228,17 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect, s
     try { if (variant.offerId) { if (variant.offerVersion == null) return; await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) }) } else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }); await onChanged() } finally { setSavingPrice(false) }
   }
   async function saveStock() {
-    const target = Number(stock); const delta = target - variant.onHand; if (savingStock || !Number.isFinite(target) || target < 0 || delta === 0) return
-    setSavingStock(true)
-    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Hızlı varyant stok düzenleme', sourceEventId: newIdempotencyKey() }) }); await onChanged() } finally { setSavingStock(false) }
+    if (savingStock || stockBase === null) return
+    const target = Number(stock)
+    if (stock.trim() === '' || !Number.isInteger(target) || target < 0) { setStockError('Stok 0 veya daha büyük bir tam sayı olmalıdır.'); setStock(String(variant.onHand)); setStockBase(null); return }
+    const delta = target - stockBase
+    if (delta === 0) { setStockBase(null); return }
+    setSavingStock(true); setStockError('')
+    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Hızlı varyant stok düzenleme', sourceEventId: newIdempotencyKey() }) }); await onChanged() }
+    catch (reason) { setStockError(reason instanceof Error ? reason.message : 'Stok kaydedilemedi.') }
+    finally { setSavingStock(false); setStockBase(null) }
   }
-  return <><label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label>{showPrice && <label className="rr-mini"><small>Fiyat</small><input className="rr-in rr-num" aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label>}</>
+  return <><label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); if (stockBase === null) setStockBase(variant.onHand); setStockError(''); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} aria-invalid={stockError ? true : undefined} title={stockError || undefined} /></label>{showPrice && <label className="rr-mini"><small>Fiyat</small><input className="rr-in rr-num" aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label>}</>
 }
 function lowStockModelCode(group: ProductGroup) {
   return group.products.map(product => product.modelCode).find(value => value?.trim())
