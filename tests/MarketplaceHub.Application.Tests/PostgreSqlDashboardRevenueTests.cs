@@ -127,6 +127,47 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
         }
     }
 
+    // O19: a rebuild that moves the badge counts is announced, so open panels re-read the snapshot; an unchanged
+    // rebuild is not, and the announcement is no data change for the refresher.
+    [PostgreSqlFact]
+    public async Task A_rebuild_that_moves_the_counts_is_announced_once()
+    {
+        var tenant = NewTenant("dash-ann");
+        var store = NewConnection(tenant.Id, "TRENDYOL", "ACTIVE");
+        var order = NewOrder(tenant.Id, store.Id, "ann", Noon, 100m, "DELIVERED");
+        try
+        {
+            await SeedAsync(tenant, [store], db =>
+            {
+                db.Orders.Add(order);
+                db.DashboardSnapshots.Add(new DashboardSnapshot { TenantId = tenant.Id, UpdatedAt = Now.AddMinutes(-1), PendingByPlatformJson = "{}", Version = 1 });
+            });
+            await using (var db = fixture.CreateContext())
+            {
+                db.ReturnClaims.Add(new ReturnClaim
+                {
+                    Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = store.Id, OrderId = order.Id, ExternalClaimId = "claim-ann",
+                    Status = ReturnClaimStatus.ActionRequired, RawStatus = "WaitingInAction", LastRemoteModifiedAt = Now, CreatedAt = Now, UpdatedAt = Now
+                });
+                await db.SaveChangesAsync();
+            }
+
+            await using (var db = fixture.CreateContext())
+                await new DashboardReadService(db, new FixedClock(Now)).RebuildTenantAsync(tenant.Id, CancellationToken.None);
+            await using (var db = fixture.CreateContext())
+                await new DashboardReadService(db, new FixedClock(Now.AddMinutes(1))).RebuildTenantAsync(tenant.Id, CancellationToken.None);
+
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(1, (await verification.DashboardSnapshots.SingleAsync(x => x.TenantId == tenant.Id)).PendingReturns);
+            var announcement = Assert.Single(await verification.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id && x.AggregateType == DashboardSnapshotRefreshPolicy.SnapshotAggregateType).ToListAsync());
+            Assert.Equal("dashboard", announcement.ResourceType);
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task<Application.DashboardPerformanceView> PerformanceAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();

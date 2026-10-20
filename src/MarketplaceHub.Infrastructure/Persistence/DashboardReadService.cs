@@ -272,26 +272,56 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             late.ToDictionary(x => x.Key.ToString("D"), x => x.Count),
             returns.ToDictionary(x => x.Key.ToString("D"), x => x.Count));
         var snapshot = await db.DashboardSnapshots.SingleOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
+        var existed = snapshot is not null;
         if (snapshot is null)
         {
             snapshot = new DashboardSnapshot { TenantId = tenantId, Version = 1 };
             db.DashboardSnapshots.Add(snapshot);
         }
         else snapshot.Version++;
+        var breakdownJson = JsonSerializer.Serialize(breakdown, BreakdownJson);
+        var badgesChanged = snapshot.PendingOrders != pending.Sum(x => x.Count) || snapshot.LateOrders != late.Sum(x => x.Count)
+            || snapshot.PendingReturns != returns.Sum(x => x.Count) || !SameBreakdown(ReadBreakdown(snapshot.PendingByPlatformJson), breakdown)
+            || snapshot.DeadJobCount != deadJobCount || snapshot.ManualReviewJobCount != manualReviewJobCount;
         snapshot.PendingOrders = pending.Sum(x => x.Count);
         snapshot.LateOrders = late.Sum(x => x.Count);
         snapshot.PendingReturns = returns.Sum(x => x.Count);
-        snapshot.PendingByPlatformJson = JsonSerializer.Serialize(breakdown, BreakdownJson);
+        snapshot.PendingByPlatformJson = breakdownJson;
         snapshot.DeadJobCount = deadJobCount;
         snapshot.ManualReviewJobCount = manualReviewJobCount;
         snapshot.RecentJobCount = recentJobCount;
         snapshot.UpdatedAt = now;
+        // The data change that made this rebuild was announced before it ran, so open panels read the old counts.
+        // When the counts the menu badges and cards show moved, the rebuilt snapshot is announced too (O19). The
+        // refresher does not take this event for a data change, so it cannot start another rebuild.
+        if (existed && badgesChanged)
+            db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ResourceType = DashboardSnapshotRefreshPolicy.ResourceType,
+                OperationType = "updated",
+                AggregateType = DashboardSnapshotRefreshPolicy.SnapshotAggregateType,
+                AggregateId = tenantId,
+                AggregateVersion = snapshot.Version,
+                PayloadJson = JsonSerializer.Serialize(new { aggregateType = DashboardSnapshotRefreshPolicy.SnapshotAggregateType, aggregateId = tenantId, version = snapshot.Version }),
+                CreatedAt = now,
+                NextAttemptAt = now
+            });
         await db.SaveChangesAsync(cancellationToken);
     }
 
     // The three per-store breakdowns live in the snapshot's one JSON column. A snapshot written before they were
     // grouped by store holds a flat name → count map; it is ignored until the next rebuild.
     internal sealed record DashboardBreakdown(IReadOnlyDictionary<string, int> Pending, IReadOnlyDictionary<string, int> Late, IReadOnlyDictionary<string, int> Returns);
+
+    // The column is jsonb, so PostgreSQL hands it back in its own key order and spacing: compared as counts, not text.
+    internal static bool SameBreakdown(DashboardBreakdown left, DashboardBreakdown right)
+    {
+        static bool Same(IReadOnlyDictionary<string, int> a, IReadOnlyDictionary<string, int> b) =>
+            a.Count == b.Count && a.All(item => b.TryGetValue(item.Key, out var value) && value == item.Value);
+        return Same(left.Pending, right.Pending) && Same(left.Late, right.Late) && Same(left.Returns, right.Returns);
+    }
 
     internal static DashboardBreakdown ReadBreakdown(string? json)
     {
@@ -300,7 +330,9 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("pending", out var pendingElement) || pendingElement.ValueKind != JsonValueKind.Object)
+            // The snapshot is written with the record's own names ("Pending"); the name is matched without case.
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || document.RootElement.EnumerateObject().FirstOrDefault(property => string.Equals(property.Name, "pending", StringComparison.OrdinalIgnoreCase)).Value.ValueKind != JsonValueKind.Object)
                 return new(empty, empty, empty);
             var parsed = JsonSerializer.Deserialize<DashboardBreakdown>(json, BreakdownJson);
             return new(parsed?.Pending ?? empty, parsed?.Late ?? empty, parsed?.Returns ?? empty);

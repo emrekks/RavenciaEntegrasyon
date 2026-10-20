@@ -14,6 +14,10 @@ public static class DashboardSnapshotRefreshPolicy
     public static readonly TimeSpan Debounce = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan Reconciliation = TimeSpan.FromMinutes(5);
     public const string JobAggregateType = "IntegrationJob";
+    // The announcement of a rebuilt snapshot: it tells open panels to re-read their counts and is never itself a
+    // data change that calls for another rebuild.
+    public const string SnapshotAggregateType = "DashboardSnapshot";
+    public const string ResourceType = "dashboard";
 
     public static bool IsDue(DateTimeOffset? updatedAt, bool changedSinceUpdate, DateTimeOffset now) =>
         updatedAt is not { } updated
@@ -54,7 +58,8 @@ public sealed class DashboardSnapshotRefresher(IServiceScopeFactory scopes, Time
                                      UpdatedAt = snapshot == null ? (DateTimeOffset?)null : snapshot.UpdatedAt,
                                      Changed = snapshot != null && db.IntegrationOutboxEvents.Any(change => change.TenantId == tenant.Id
                                          && change.CreatedAt > snapshot.UpdatedAt
-                                         && change.AggregateType != DashboardSnapshotRefreshPolicy.JobAggregateType)
+                                         && change.AggregateType != DashboardSnapshotRefreshPolicy.JobAggregateType
+                                         && change.AggregateType != DashboardSnapshotRefreshPolicy.SnapshotAggregateType)
                                  }).ToListAsync(cancellationToken);
             due = tenants.Where(x => DashboardSnapshotRefreshPolicy.IsDue(x.UpdatedAt, x.Changed, now)).Select(x => x.Id).ToList();
         }

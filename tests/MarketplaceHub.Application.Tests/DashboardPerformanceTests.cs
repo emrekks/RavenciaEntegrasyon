@@ -161,6 +161,10 @@ public sealed class DashboardPerformanceTests
         Assert.Empty(current.Returns);
         Assert.Empty(old.Pending);
         Assert.Empty(DashboardReadService.ReadBreakdown("not json").Late);
+        // What the rebuild writes (the record's own names) reads back too.
+        var written = DashboardReadService.ReadBreakdown($"{{\"Pending\":{{\"{store}\":2}},\"Late\":{{}},\"Returns\":{{\"{store}\":1}}}}");
+        Assert.Equal(2, written.Pending[store]);
+        Assert.Equal(1, written.Returns[store]);
     }
 
     [Fact]
