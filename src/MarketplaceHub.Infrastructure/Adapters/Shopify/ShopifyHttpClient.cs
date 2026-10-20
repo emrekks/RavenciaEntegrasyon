@@ -926,7 +926,7 @@ public sealed partial class ShopifyHttpClient(
     }
     private async Task<AdapterResult<JsonDocument>> QueryAsync(ShopifyRequestContext context, string query, object? variables = null, CancellationToken cancellationToken = default)
     {
-        var client = clients.CreateClient("Shopify");
+        var client = clients.CreateBoundedClient("Shopify");
         var endpoint = new Uri($"https://{context.Shop}.myshopify.com/admin/api/{context.ApiVersion}/graphql.json");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = new StringContent(JsonSerializer.Serialize(new { query, variables }), Encoding.UTF8, "application/json") };
         request.Headers.TryAddWithoutValidation("X-Shopify-Access-Token", context.AccessToken);

@@ -61,8 +61,15 @@ public sealed class TrendyolAuthenticationHandler(AppDbContext db, IDataProtecti
         return request;
     }
 
-    private sealed record CredentialPayload(string ApiKey, string ApiSecret);
+    private sealed record CredentialPayload(string ApiKey, string ApiSecret)
+    {
+        public override string ToString() => nameof(CredentialPayload);
+    }
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled);
 }
 
-public sealed record TrendyolRequestContext(PlatformConnection Connection, Uri BaseAddress, string ApiKey, string ApiSecret, string UserAgentIdentity, bool ExternalWritesEnabled);
+public sealed record TrendyolRequestContext(PlatformConnection Connection, Uri BaseAddress, string ApiKey, string ApiSecret, string UserAgentIdentity, bool ExternalWritesEnabled)
+{
+    // The generated ToString would print the key pair; a logged or thrown context must not leak it.
+    public override string ToString() => $"TrendyolRequestContext {{ ConnectionId = {Connection.Id} }}";
+}

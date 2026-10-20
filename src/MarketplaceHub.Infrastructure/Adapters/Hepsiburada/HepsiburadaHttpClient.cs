@@ -1210,7 +1210,7 @@ public sealed partial class HepsiburadaHttpClient(
     {
         if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar bağlantı isteği gönderilmedi.", null, null, null));
-        var client = clients.CreateClient("Hepsiburada");
+        var client = clients.CreateBoundedClient("Hepsiburada");
         using var request = new HttpRequestMessage(method, new Uri(baseAddress, path));
         request.Content = content;
         if (!ApplyAuthentication(request, context))

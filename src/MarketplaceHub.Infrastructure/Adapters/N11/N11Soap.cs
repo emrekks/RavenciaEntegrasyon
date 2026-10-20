@@ -34,7 +34,7 @@ public sealed partial class N11HttpClient
         using var timeout = new QuotaAwareTimeout(request, N11RateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
-            using var response = await clients.CreateClient("N11").SendAsync(request, timeout.Token);
+            using var response = await clients.CreateBoundedClient("N11").SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(60), null));

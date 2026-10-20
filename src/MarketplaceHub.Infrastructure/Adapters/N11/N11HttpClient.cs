@@ -103,7 +103,7 @@ public sealed partial class N11HttpClient(
             };
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
-            using var response = await clients.CreateClient("N11").SendAsync(request, timeout.Token);
+            using var response = await clients.CreateBoundedClient("N11").SendAsync(request, timeout.Token);
             return SoapResultStatus(await response.Content.ReadAsStringAsync(timeout.Token));
         }
         catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
@@ -161,7 +161,7 @@ public sealed partial class N11HttpClient(
     {
         if (N11CredentialFormat.Normalize(context.AppKey) is null || N11CredentialFormat.Normalize(context.AppSecret) is null)
             return Failure<JsonDocument>(AdapterErrorClass.Authentication, "N11_CREDENTIAL_FORMAT_INVALID", "Kayıtlı N11 App Key veya App Secret değerinde geçersiz karakter var. Değerleri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayıp kaydedin.", HttpStatusCode.UnprocessableEntity);
-        var client = clients.CreateClient("N11");
+        var client = clients.CreateBoundedClient("N11");
         using var request = new HttpRequestMessage(method, new Uri(settings.BaseAddress, path)) { Content = content };
         ApplyAuthentication(request, context);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));

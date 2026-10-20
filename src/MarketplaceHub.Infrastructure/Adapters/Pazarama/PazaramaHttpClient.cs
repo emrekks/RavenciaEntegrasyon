@@ -158,7 +158,7 @@ public sealed partial class PazaramaHttpClient(
             request.Options.Set(PazaramaRateLimitHandler.QuotaAcquiredKey, () => { quotaAcquired = true; timeout.CancelAfter(requestTimeout); });
             try
             {
-                using var response = await clients.CreateClient(ClientName).SendAsync(request, timeout.Token);
+                using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
                 var text = await response.Content.ReadAsStringAsync(timeout.Token);
                 var retryAfter = response.Headers.RetryAfter?.Delta
                     ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
@@ -222,7 +222,7 @@ public sealed partial class PazaramaHttpClient(
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
-            using var response = await clients.CreateClient(ClientName).SendAsync(request, timeout.Token);
+            using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
             var token = TokenResponse(response.StatusCode, await response.Content.ReadAsStringAsync(timeout.Token));
             if (!token.IsSuccess) logger.LogWarning("Pazarama token alınamadı. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}", account.Connection.Id, (int)response.StatusCode, token.Error?.Code);
             return token;

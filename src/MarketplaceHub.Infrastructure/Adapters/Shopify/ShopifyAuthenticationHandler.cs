@@ -72,7 +72,7 @@ public sealed class ShopifyAuthenticationHandler(
         if (Tokens.TryGetValue(key, out var cached) && cached.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1)) return cached;
 
         var endpoint = new Uri($"https://{shop}.myshopify.com/admin/oauth/access_token");
-        using var client = clients.CreateClient("Shopify");
+        using var client = clients.CreateBoundedClient("Shopify");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -117,8 +117,16 @@ public sealed class ShopifyAuthenticationHandler(
     {
         public string? ResolvedClientId => ClientId ?? ApiKey;
         public string? ResolvedClientSecret => ClientSecret ?? ApiSecret;
+        public override string ToString() => nameof(ShopifyCredentialPayload);
     }
-    private sealed record CachedToken(string Token, DateTimeOffset ExpiresAt);
+    private sealed record CachedToken(string Token, DateTimeOffset ExpiresAt)
+    {
+        public override string ToString() => $"CachedToken {{ ExpiresAt = {ExpiresAt:O} }}";
+    }
 }
 
-public sealed record ShopifyRequestContext(PlatformConnection Connection, string Shop, string ApiVersion, string AccessToken, DateTimeOffset ExpiresAt);
+public sealed record ShopifyRequestContext(PlatformConnection Connection, string Shop, string ApiVersion, string AccessToken, DateTimeOffset ExpiresAt)
+{
+    // The generated ToString would print the access token; a logged or thrown context must not leak it.
+    public override string ToString() => $"ShopifyRequestContext {{ ConnectionId = {Connection.Id}, Shop = {Shop} }}";
+}

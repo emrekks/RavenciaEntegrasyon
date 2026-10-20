@@ -1685,19 +1685,11 @@ internal static class HepsiburadaJsonMapper
     // order dated 14:19 was already stored by the panel at 11:21 UTC. A value with an offset or Z keeps it.
     internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
 
-    internal static DateTimeOffset? TurkeyDate(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var text = value.Trim();
-        if (HasOffset(text))
-            return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var withOffset) ? withOffset.ToUniversalTime() : null;
-        return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TurkeyOffset).ToUniversalTime()
-            : null;
-    }
+    // The Hepsiburada policy for every text timestamp (orders, packages, questions): see TurkeyTime.
+    internal static DateTimeOffset? TurkeyDate(string? value) => TurkeyTime.Parse(value);
 
     // True when the text ends with Z or an offset such as +03:00 / +0300.
-    internal static bool HasOffset(string text) => System.Text.RegularExpressions.Regex.IsMatch(text, @"(Z|[+-]\d{2}:?\d{2})$");
+    internal static bool HasOffset(string text) => TurkeyTime.HasOffset(text);
 
     // A query date the way Hepsiburada reads it: Turkey time, minutes.
     internal static string QueryTime(DateTimeOffset value) =>

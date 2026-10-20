@@ -175,16 +175,7 @@ public static class PazaramaQuestionMapper
     private static string KindOf(string? orderNumber) => orderNumber is null or "0" ? "PRODUCT" : "ORDER";
 
     // "2023-12-28T09:12:16.333": Turkey time without an offset, stored as UTC.
-    public static DateTimeOffset? Instant(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var text = value.Trim();
-        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var withOffset) && System.Text.RegularExpressions.Regex.IsMatch(text, @"(Z|[+-]\d\d:?\d\d)$"))
-            return withOffset.ToUniversalTime();
-        return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime()
-            : null;
-    }
+    public static DateTimeOffset? Instant(string? value) => TurkeyTime.Parse(value);
 
     private static string? Text(JsonElement element, string property)
     {

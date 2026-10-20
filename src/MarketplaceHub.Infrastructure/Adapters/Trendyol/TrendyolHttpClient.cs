@@ -949,10 +949,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = RetryAfterDelay(response.Headers.RetryAfter, timeProvider.GetUtcNow()); var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
             if (!response.IsSuccessStatusCode)
             {
-                var vendorCode = TrendyolErrorMapper.SafeVendorCode(await response.Content.ReadAsStringAsync(linked.Token));
+                var vendorCode = TrendyolErrorMapper.SafeVendorCode(await response.Content.ReadBoundedStringAsync(linked.Token));
                 return AdapterResult<string>.Failure(TrendyolErrorMapper.FromStatus(response.StatusCode, retryAfter, remoteRequestId, vendorCode), rate);
             }
-            return AdapterResult<string>.Success(await response.Content.ReadAsStringAsync(linked.Token), rate);
+            return AdapterResult<string>.Success(await response.Content.ReadBoundedStringAsync(linked.Token), rate);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
