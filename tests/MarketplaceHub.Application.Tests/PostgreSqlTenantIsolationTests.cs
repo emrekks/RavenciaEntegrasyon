@@ -4467,9 +4467,21 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         claim.RawStatus = "AwaitingAction";
         var key = $"unresolved-effect:{Guid.NewGuid():N}";
         var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = key, Status = "MANUAL_REVIEW", ErrorCode = "EXTERNAL_EFFECT_VERIFYING", ActorUserId = Guid.NewGuid(), CreatedAt = fixture.Now.AddMinutes(-31) };
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = "HEPSIBURADA_INSTANT_RETURN_ACTION", IdempotencyKey = key, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-31), ConnectionId = connection.Id, TargetId = claim.Id, Action = "RETURN_APPROVE",
+        var effect = new ExternalEffectRecord
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            EffectType = "HEPSIBURADA_INSTANT_RETURN_ACTION",
+            IdempotencyKey = key,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-31),
+            ConnectionId = connection.Id,
+            TargetId = claim.Id,
+            Action = "RETURN_APPROVE",
             // Four unclear reads over 30 min of verification already happened (Q5); this read is the fifth.
-            UnclearChecks = 4, VerificationSeconds = 30 * 60, LastCheckedAt = DateTimeOffset.UtcNow.AddMinutes(-1) };
+            UnclearChecks = 4,
+            VerificationSeconds = 30 * 60,
+            LastCheckedAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+        };
 
         await using (var seedDb = fixture.CreateContext())
         {

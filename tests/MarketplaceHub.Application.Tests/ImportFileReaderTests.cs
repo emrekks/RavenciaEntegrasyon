@@ -10,7 +10,10 @@ public sealed class ImportFileReaderTests
 {
     private static readonly Dictionary<string, string> Mappings = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Ürün"] = "title", ["SKU"] = "sku", ["Açıklama"] = "description", ["Stok"] = "stock"
+        ["Ürün"] = "title",
+        ["SKU"] = "sku",
+        ["Açıklama"] = "description",
+        ["Stok"] = "stock"
     };
 
     private static List<ParsedImportRow> Read(byte[] bytes) => ImportFileReader.ReadCsv(new MemoryStream(bytes), Mappings).ToList();
