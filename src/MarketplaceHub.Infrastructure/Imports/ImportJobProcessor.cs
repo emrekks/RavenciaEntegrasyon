@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -15,6 +16,10 @@ public sealed class ImportJobProcessor(
     TimeProvider timeProvider,
     IConfiguration configuration) : IImportJobProcessor
 {
+    // Rows are written in batches of this size inside one transaction, so a large file neither keeps every
+    // entity in the change tracker nor leaves half of the rows applied when a later batch fails.
+    internal const int BatchSize = 500;
+    private const int LookupChunk = 1000;
     private readonly long _maximumBytes = configuration.GetValue<long?>("Storage:MaxUploadBytes") ?? 10 * 1024 * 1024;
 
     public Task<bool> ProcessAsync(Guid tenantId, Guid sessionId, string operation, CancellationToken cancellationToken) =>
@@ -42,61 +47,73 @@ public sealed class ImportJobProcessor(
                 .Where(x => x.TenantId == tenantId && x.ProfileId == session.ColumnProfileId)
                 .OrderBy(x => x.SortOrder)
                 .ToDictionaryAsync(x => x.SourceColumn, x => x.TargetField, StringComparer.OrdinalIgnoreCase, cancellationToken);
-            await using var source = await files.OpenReadAsync(tenantId, asset.RelativePath, cancellationToken);
-            var parsed = session.SourceType == ImportSourceType.Csv
-                ? ImportFileReader.ReadCsv(source, mappings)
-                : ImportFileReader.ReadXlsx(source, mappings, _maximumBytes);
+            List<ParsedImportRow> parsed;
+            await using (var source = await files.OpenReadAsync(tenantId, asset.RelativePath, cancellationToken))
+            {
+                parsed = (session.SourceType == ImportSourceType.Csv
+                    ? ImportFileReader.ReadCsv(source, mappings)
+                    : ImportFileReader.ReadXlsx(source, mappings, _maximumBytes)).ToList();
+            }
 
-            var oldCandidates = await db.ImportMatchCandidates.Where(x => x.TenantId == tenantId && x.SessionId == sessionId).ToListAsync(cancellationToken);
-            var oldStaging = await db.ImportStagingRecords.Where(x => x.TenantId == tenantId && x.SessionId == sessionId).ToListAsync(cancellationToken);
-            db.ImportMatchCandidates.RemoveRange(oldCandidates);
-            db.ImportStagingRecords.RemoveRange(oldStaging);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            await db.ImportMatchCandidates.Where(x => x.TenantId == tenantId && x.SessionId == sessionId).ExecuteDeleteAsync(cancellationToken);
+            await db.ImportStagingRecords.Where(x => x.TenantId == tenantId && x.SessionId == sessionId).ExecuteDeleteAsync(cancellationToken);
 
             var total = 0;
             var valid = 0;
             var errors = 0;
             var reviews = 0;
-            foreach (var row in parsed)
+            foreach (var batch in parsed.Chunk(BatchSize))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                total++;
-                var rawJson = JsonSerializer.Serialize(row.Values);
-                var safeValues = SanitizeImportedValues(row.Values);
-                var safeJson = JsonSerializer.Serialize(safeValues);
-                var rowHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(safeJson)));
-                var staging = new ImportStagingRecord
+                var stagingRows = new List<(ImportStagingRecord Staging, IReadOnlyDictionary<string, string> Values)>(batch.Length);
+                foreach (var row in batch)
                 {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    SessionId = sessionId,
-                    RowNumber = row.RowNumber,
-                    ExternalRecordId = Value(safeValues, "externalId"),
-                    RawJson = rawJson,
-                    SafeValuesJson = safeJson,
-                    ValidationErrorsJson = JsonSerializer.Serialize(row.Errors),
-                    RowHash = rowHash,
-                    SkuNormalized = Normalize(Value(safeValues, "sku")),
-                    BarcodeNormalized = Normalize(Value(safeValues, "barcode")),
-                    ReviewStatus = row.Errors.Count == 0 ? "PENDING" : "INVALID"
-                };
-                db.ImportStagingRecords.Add(staging);
-                if (row.Errors.Count != 0) { errors++; continue; }
+                    total++;
+                    var rawJson = JsonSerializer.Serialize(row.Values);
+                    var safeValues = SanitizeImportedValues(row.Values);
+                    var safeJson = JsonSerializer.Serialize(safeValues);
+                    var staging = new ImportStagingRecord
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        SessionId = sessionId,
+                        RowNumber = row.RowNumber,
+                        ExternalRecordId = Value(safeValues, "externalId"),
+                        RawJson = rawJson,
+                        SafeValuesJson = safeJson,
+                        ValidationErrorsJson = JsonSerializer.Serialize(row.Errors),
+                        RowHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(safeJson))),
+                        SkuNormalized = Normalize(Value(safeValues, "sku")),
+                        BarcodeNormalized = Normalize(Value(safeValues, "barcode")),
+                        ReviewStatus = row.Errors.Count == 0 ? "PENDING" : "INVALID"
+                    };
+                    db.ImportStagingRecords.Add(staging);
+                    if (row.Errors.Count != 0) { errors++; continue; }
+                    valid++;
+                    stagingRows.Add((staging, safeValues));
+                }
 
-                valid++;
-                var match = await MatchAsync(tenantId, session.ConnectionId, staging, cancellationToken);
-                db.ImportMatchCandidates.Add(new ImportMatchCandidate
+                var matches = await MatchAsync(tenantId, session.ConnectionId, stagingRows.Select(row => row.Staging).ToList(), cancellationToken);
+                foreach (var (staging, values) in stagingRows)
                 {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    SessionId = sessionId,
-                    StagingRecordId = staging.Id,
-                    ProductId = match.ProductId,
-                    VariantId = match.VariantId,
-                    MatchRule = match.Rule,
-                    Status = "REVIEW_REQUIRED",
-                    SafeSummary = SafeSummary(safeValues)
-                });
-                reviews++;
+                    var match = matches[staging.Id];
+                    db.ImportMatchCandidates.Add(new ImportMatchCandidate
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        SessionId = sessionId,
+                        StagingRecordId = staging.Id,
+                        ProductId = match.ProductId,
+                        VariantId = match.VariantId,
+                        MatchRule = match.Rule,
+                        Status = "REVIEW_REQUIRED",
+                        SafeSummary = SafeSummary(values)
+                    });
+                    reviews++;
+                }
+                await db.SaveChangesAsync(cancellationToken);
+                DetachAllExcept(session);
             }
 
             session.TotalRows = total;
@@ -107,14 +124,12 @@ public sealed class ImportJobProcessor(
             session.UpdatedAt = timeProvider.GetUtcNow();
             session.Version++;
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return true;
         }
         catch
         {
-            ImportStateMachine.Transition(session, ImportSessionStatus.Failed);
-            session.UpdatedAt = timeProvider.GetUtcNow();
-            session.Version++;
-            await db.SaveChangesAsync(CancellationToken.None);
+            await MarkFailedAsync(tenantId, sessionId);
             throw;
         }
     }
@@ -131,160 +146,348 @@ public sealed class ImportJobProcessor(
         var failed = session.ErrorRows;
         try
         {
-            var rows = await (from candidate in db.ImportMatchCandidates
-                              join staging in db.ImportStagingRecords on new { candidate.TenantId, Id = candidate.StagingRecordId } equals new { staging.TenantId, staging.Id }
-                              join decision in db.ImportDecisions on new { candidate.TenantId, Id = candidate.Id } equals new { decision.TenantId, Id = decision.CandidateId }
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var rows = await (from candidate in db.ImportMatchCandidates.AsNoTracking()
+                              join staging in db.ImportStagingRecords.AsNoTracking() on new { candidate.TenantId, Id = candidate.StagingRecordId } equals new { staging.TenantId, staging.Id }
+                              join decision in db.ImportDecisions.AsNoTracking() on new { candidate.TenantId, Id = candidate.Id } equals new { decision.TenantId, Id = decision.CandidateId }
                               where candidate.TenantId == tenantId && candidate.SessionId == sessionId
                               orderby staging.RowNumber
                               select new { candidate, staging, decision }).ToListAsync(cancellationToken);
+            var valuesByStaging = rows.ToDictionary(row => row.staging.Id, row => (IReadOnlyDictionary<string, string>)(JsonSerializer.Deserialize<Dictionary<string, string>>(row.staging.SafeValuesJson) ?? []));
+            var createRows = rows.Where(row => row.decision.Decision == ImportDecisionKind.Create).ToList();
+
+            // One lookup per chunk instead of one query per row: codes already in the catalog (in either
+            // stored key form), brands and leaf categories named by the file, and the connection.
+            var existingSkuKeys = await ExistingKeysAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "sku")), barcode: false, cancellationToken);
+            var existingBarcodeKeys = await ExistingKeysAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "barcode")), barcode: true, cancellationToken);
+            var brands = await BrandsAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "brand")), cancellationToken);
+            var categories = await LeafCategoriesAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "category")), cancellationToken);
+            var connection = session.ConnectionId is Guid connectionId
+                ? await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)
+                : null;
 
             var appliedSkus = new HashSet<string>(StringComparer.Ordinal);
             var appliedBarcodes = new HashSet<string>(StringComparer.Ordinal);
-            var productsByGroup = new Dictionary<string, Product>(StringComparer.Ordinal);
+            var productsByGroup = new Dictionary<string, Guid>(StringComparer.Ordinal);
+            var optionsByProduct = new Dictionary<(Guid ProductId, string Key), ProductOption>();
+            var optionValuesByOption = new Dictionary<(Guid OptionId, string Key), ProductOptionValue>();
             if (!await db.InventoryLocations.AnyAsync(x => x.TenantId == tenantId && x.Code == "MAIN", cancellationToken))
                 db.InventoryLocations.Add(new InventoryLocation { Id = Guid.CreateVersion7(), TenantId = tenantId, Code = "MAIN", Name = "Ana Depo", Status = "ACTIVE", Priority = 1 });
+            var pending = 0;
             foreach (var row in rows)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (row.decision.Decision == ImportDecisionKind.Skip) continue;
-                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.staging.SafeValuesJson) ?? [];
+                var values = valuesByStaging[row.staging.Id];
                 if (row.decision.Decision == ImportDecisionKind.Link)
                 {
                     if (row.decision.LinkProductId is null || row.decision.LinkVariantId is null) { failed++; continue; }
                     await AddExternalLinksAsync(session, row.staging, row.decision.LinkProductId.Value, row.decision.LinkVariantId.Value, cancellationToken);
-                    await AddProvenanceAsync(tenantId, sessionId, row.staging, row.decision.LinkProductId.Value, row.decision.LinkVariantId, values, cancellationToken);
-                    continue;
+                    AddProvenance(tenantId, sessionId, row.staging, row.decision.LinkProductId.Value, row.decision.LinkVariantId, values);
                 }
-
-                var sku = Value(values, "sku")!;
-                var barcode = Value(values, "barcode");
-                var skuNormalized = Normalize(sku)!;
-                var barcodeNormalized = Normalize(barcode);
-                var duplicate = appliedSkus.Contains(skuNormalized) || (barcodeNormalized is not null && appliedBarcodes.Contains(barcodeNormalized)) || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId &&
-                    (x.SkuNormalized == skuNormalized || (barcodeNormalized != null && x.BarcodeNormalized == barcodeNormalized)), cancellationToken);
-                if (duplicate) { failed++; continue; }
-                appliedSkus.Add(skuNormalized); if (barcodeNormalized is not null) appliedBarcodes.Add(barcodeNormalized);
-
-                var now = timeProvider.GetUtcNow();
-                var groupKey = Normalize(Value(values, "variantGroupKey")) ?? row.staging.RowHash;
-                if (!productsByGroup.TryGetValue(groupKey, out var product))
+                else
                 {
-                    product = new Product
+                    var sku = Value(values, "sku")!;
+                    var barcode = Value(values, "barcode");
+                    var skuNormalized = Normalize(sku)!;
+                    var barcodeNormalized = Normalize(barcode);
+                    var duplicate = appliedSkus.Contains(skuNormalized) || existingSkuKeys.Contains(skuNormalized)
+                        || (barcodeNormalized is not null && (appliedBarcodes.Contains(barcodeNormalized) || existingBarcodeKeys.Contains(barcodeNormalized)));
+                    if (duplicate) { failed++; continue; }
+                    appliedSkus.Add(skuNormalized); if (barcodeNormalized is not null) appliedBarcodes.Add(barcodeNormalized);
+
+                    var now = timeProvider.GetUtcNow();
+                    var listPrice = ParsePrice(Value(values, "listPrice"));
+                    var salePrice = ParsePrice(Value(values, "salePrice"));
+                    if (listPrice is decimal list && salePrice is decimal sale && list < sale) listPrice = sale;
+                    var groupKey = Normalize(Value(values, "variantGroupKey")) ?? row.staging.RowHash;
+                    if (!productsByGroup.TryGetValue(groupKey, out var productId))
+                    {
+                        var product = new Product
+                        {
+                            Id = Guid.CreateVersion7(),
+                            TenantId = tenantId,
+                            Title = Value(values, "title")!,
+                            Description = Value(values, "description") ?? string.Empty,
+                            BrandId = Value(values, "brand") is { } brandName ? BrandFor(tenantId, brands, brandName, now)?.Id : null,
+                            CategoryId = Value(values, "category") is { } categoryName ? categories.GetValueOrDefault(Normalize(categoryName)!) : null,
+                            DefaultListPrice = listPrice,
+                            DefaultSalePrice = salePrice,
+                            CreatedAt = now,
+                            UpdatedAt = now
+                        };
+                        productId = product.Id;
+                        productsByGroup.Add(groupKey, productId);
+                        db.Products.Add(product);
+                    }
+                    var options = ImportOptions(values);
+                    var variant = new ProductVariant
                     {
                         Id = Guid.CreateVersion7(),
                         TenantId = tenantId,
-                        Title = Value(values, "title")!,
-                        Description = Value(values, "description") ?? string.Empty,
+                        ProductId = productId,
+                        Sku = sku,
+                        SkuNormalized = skuNormalized,
+                        Barcode = barcode,
+                        BarcodeNormalized = barcodeNormalized,
+                        ModelCode = Value(values, "modelCode"),
+                        OptionSignature = VariantOptionSignature.Build(options, empty: "-"),
+                        DefaultListPrice = listPrice,
+                        DefaultSalePrice = salePrice,
                         CreatedAt = now,
                         UpdatedAt = now
                     };
-                    productsByGroup.Add(groupKey, product);
-                    db.Products.Add(product);
-                }
-                var variant = new ProductVariant
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    ProductId = product.Id,
-                    Sku = sku,
-                    SkuNormalized = skuNormalized,
-                    Barcode = barcode,
-                    BarcodeNormalized = barcodeNormalized,
-                    ModelCode = Value(values, "modelCode"),
-                    OptionSignature = "DEFAULT",
-                    CreatedAt = now,
-                    UpdatedAt = now
-                };
-                db.ProductVariants.Add(variant);
-                var stock = ParseNonNegative(Value(values, "stock"));
-                var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variant.Id, LocationCode = "MAIN", OnHand = stock, Reserved = 0, Available = stock };
-                db.InventoryItems.Add(item);
-                if (stock != 0)
-                {
-                    db.StockLedgerEntries.Add(new StockLedgerEntry
+                    db.ProductVariants.Add(variant);
+                    AddOptions(tenantId, productId, variant.Id, options, optionsByProduct, optionValuesByOption);
+                    var stock = ParseNonNegative(Value(values, "stock"));
+                    var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variant.Id, LocationCode = "MAIN", OnHand = stock, Reserved = 0, Available = stock };
+                    db.InventoryItems.Add(item);
+                    if (stock != 0)
                     {
-                        Id = Guid.CreateVersion7(),
-                        TenantId = tenantId,
-                        InventoryItemId = item.Id,
-                        MovementType = "IMPORT_OPENING",
-                        QuantityDelta = stock,
-                        SourceType = "IMPORT",
-                        SourceId = sessionId.ToString("D"),
-                        SourceEventId = row.staging.RowHash,
-                        IdempotencyKey = $"import:{sessionId:D}:{row.staging.RowHash}",
-                        OccurredAt = now,
-                        RecordedAt = now,
-                        CorrelationId = $"import-{sessionId:N}"
-                    });
+                        db.StockLedgerEntries.Add(new StockLedgerEntry
+                        {
+                            Id = Guid.CreateVersion7(),
+                            TenantId = tenantId,
+                            InventoryItemId = item.Id,
+                            MovementType = "IMPORT_OPENING",
+                            QuantityDelta = stock,
+                            SourceType = "IMPORT",
+                            SourceId = sessionId.ToString("D"),
+                            SourceEventId = row.staging.RowHash,
+                            IdempotencyKey = $"import:{sessionId:D}:{row.staging.RowHash}",
+                            OccurredAt = now,
+                            RecordedAt = now,
+                            CorrelationId = $"import-{sessionId:N}"
+                        });
+                    }
+                    AddOffer(tenantId, connection, variant.Id, values, listPrice, salePrice, now);
+                    await AddExternalLinksAsync(session, row.staging, productId, variant.Id, cancellationToken);
+                    AddProvenance(tenantId, sessionId, row.staging, productId, variant.Id, values);
                 }
-                await AddExternalLinksAsync(session, row.staging, product.Id, variant.Id, cancellationToken);
-                await AddProvenanceAsync(tenantId, sessionId, row.staging, product.Id, variant.Id, values, cancellationToken);
+
+                if (++pending >= BatchSize)
+                {
+                    // Products, options and values of a group can continue in the next batch; their ids stay
+                    // valid after the entities are detached.
+                    await db.SaveChangesAsync(cancellationToken);
+                    DetachAllExcept(session);
+                    pending = 0;
+                }
             }
 
             ImportStateMachine.Transition(session, failed > 0 ? ImportSessionStatus.PartiallyCompleted : ImportSessionStatus.Completed);
             session.UpdatedAt = timeProvider.GetUtcNow();
             session.Version++;
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return true;
         }
         catch
         {
-            ImportStateMachine.Transition(session, ImportSessionStatus.Failed);
-            session.UpdatedAt = timeProvider.GetUtcNow();
-            session.Version++;
-            await db.SaveChangesAsync(CancellationToken.None);
+            await MarkFailedAsync(tenantId, sessionId);
             throw;
         }
     }
 
-    private async Task<MatchResult> MatchAsync(Guid tenantId, Guid? connectionId, ImportStagingRecord row, CancellationToken cancellationToken)
+    // The failing entities are still tracked after an exception; saving the session through the same change
+    // tracker would repeat the failure and leave the session in Matching/Applying. Start from a clean tracker,
+    // reload the session and persist Failed.
+    private async Task MarkFailedAsync(Guid tenantId, Guid sessionId)
     {
-        if (connectionId is Guid connection && row.ExternalRecordId is { Length: > 0 } externalId)
+        db.ChangeTracker.Clear();
+        var session = await db.ImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sessionId, CancellationToken.None);
+        if (session is null || !ImportStateMachine.CanTransition(session.Status, ImportSessionStatus.Failed)) return;
+        ImportStateMachine.Transition(session, ImportSessionStatus.Failed);
+        session.UpdatedAt = timeProvider.GetUtcNow();
+        session.Version++;
+        await db.SaveChangesAsync(CancellationToken.None);
+    }
+
+    private void DetachAllExcept(ImportSession session)
+    {
+        foreach (var entry in db.ChangeTracker.Entries().Where(entry => !ReferenceEquals(entry.Entity, session)).ToList())
+            entry.State = EntityState.Detached;
+    }
+
+    private async Task<Dictionary<Guid, MatchResult>> MatchAsync(Guid tenantId, Guid? connectionId, IReadOnlyList<ImportStagingRecord> rows, CancellationToken cancellationToken)
+    {
+        var results = new Dictionary<Guid, MatchResult>();
+        if (rows.Count == 0) return results;
+        var linkedVariants = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var aliasedVariants = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        if (connectionId is Guid connection)
         {
-            var link = await db.MarketplaceVariantLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connection && x.ExternalId == externalId, cancellationToken);
-            if (link is not null)
+            var externalIds = rows.Select(row => row.ExternalRecordId).OfType<string>().Where(id => id.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+            foreach (var chunk in externalIds.Chunk(LookupChunk))
             {
-                var productId = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.Id == link.VariantId).Select(x => x.ProductId).SingleAsync(cancellationToken);
-                return new("EXISTING_LINK", productId, link.VariantId);
-            }
-            var alias = await db.ExternalIdentifierAliases.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connection && x.ExternalId == externalId && x.EntityType == "VARIANT", cancellationToken);
-            if (alias is not null)
-            {
-                var productId = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.Id == alias.LocalId).Select(x => x.ProductId).SingleAsync(cancellationToken);
-                return new("EXTERNAL_ID_ALIAS", productId, alias.LocalId);
+                foreach (var link in await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connection && chunk.Contains(x.ExternalId)).Select(x => new { x.ExternalId, x.VariantId }).ToListAsync(cancellationToken))
+                    linkedVariants.TryAdd(link.ExternalId, link.VariantId);
+                foreach (var alias in await db.ExternalIdentifierAliases.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connection && x.EntityType == "VARIANT" && chunk.Contains(x.ExternalId)).Select(x => new { x.ExternalId, x.LocalId }).ToListAsync(cancellationToken))
+                    aliasedVariants.TryAdd(alias.ExternalId, alias.LocalId);
             }
         }
 
-        if (row.BarcodeNormalized is { Length: > 0 } barcode)
+        // Look up the codes as typed in the file: the stored legacy forms can only be derived from the raw value,
+        // not from the shared key kept on the staging row.
+        var rawValues = rows.ToDictionary(row => row.Id, row => (IReadOnlyDictionary<string, string>)(JsonSerializer.Deserialize<Dictionary<string, string>>(row.SafeValuesJson) ?? []));
+        var byBarcode = await VariantsByKeyAsync(tenantId, rows.Select(row => Value(rawValues[row.Id], "barcode")), barcode: true, cancellationToken);
+        var bySku = await VariantsByKeyAsync(tenantId, rows.Select(row => Value(rawValues[row.Id], "sku")), barcode: false, cancellationToken);
+        var referencedIds = linkedVariants.Values.Concat(aliasedVariants.Values).Distinct().ToArray();
+        var productByVariant = new Dictionary<Guid, Guid>();
+        foreach (var chunk in referencedIds.Chunk(LookupChunk))
+            foreach (var variant in await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && chunk.Contains(x.Id)).Select(x => new { x.Id, x.ProductId }).ToListAsync(cancellationToken))
+                productByVariant[variant.Id] = variant.ProductId;
+
+        foreach (var row in rows)
         {
-            var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized == barcode).Take(2).ToListAsync(cancellationToken);
-            if (variants.Count == 1) return new("UNIQUE_BARCODE", variants[0].ProductId, variants[0].Id);
-            if (variants.Count > 1) return new("BARCODE_CONFLICT", null, null);
+            if (row.ExternalRecordId is { Length: > 0 } externalId)
+            {
+                if (linkedVariants.TryGetValue(externalId, out var linked) && productByVariant.TryGetValue(linked, out var linkedProduct)) { results[row.Id] = new("EXISTING_LINK", linkedProduct, linked); continue; }
+                if (aliasedVariants.TryGetValue(externalId, out var aliased) && productByVariant.TryGetValue(aliased, out var aliasedProduct)) { results[row.Id] = new("EXTERNAL_ID_ALIAS", aliasedProduct, aliased); continue; }
+            }
+            if (row.BarcodeNormalized is { Length: > 0 } barcode && byBarcode.TryGetValue(barcode, out var barcodeMatches))
+            {
+                results[row.Id] = barcodeMatches.Count == 1 ? new("UNIQUE_BARCODE", barcodeMatches[0].ProductId, barcodeMatches[0].Id) : new("BARCODE_CONFLICT", null, null);
+                continue;
+            }
+            if (row.SkuNormalized is { Length: > 0 } sku && bySku.TryGetValue(sku, out var skuMatches))
+            {
+                results[row.Id] = skuMatches.Count == 1 ? new("UNIQUE_SKU", skuMatches[0].ProductId, skuMatches[0].Id) : new("SKU_CONFLICT", null, null);
+                continue;
+            }
+            results[row.Id] = new("NEW", null, null);
         }
-        if (row.SkuNormalized is { Length: > 0 } sku)
+        return results;
+    }
+
+    // Catalog variants grouped by the shared key of their stored code (either stored form).
+    private async Task<Dictionary<string, List<(Guid Id, Guid ProductId)>>> VariantsByKeyAsync(Guid tenantId, IEnumerable<string?> keys, bool barcode, CancellationToken cancellationToken)
+    {
+        var lookup = CatalogKeyNormalizer.LookupKeys(keys);
+        var result = new Dictionary<string, List<(Guid, Guid)>>(StringComparer.Ordinal);
+        foreach (var chunk in lookup.Chunk(LookupChunk))
         {
-            var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.SkuNormalized == sku).Take(2).ToListAsync(cancellationToken);
-            if (variants.Count == 1) return new("UNIQUE_SKU", variants[0].ProductId, variants[0].Id);
-            if (variants.Count > 1) return new("SKU_CONFLICT", null, null);
+            var rows = barcode
+                ? await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null && chunk.Contains(x.BarcodeNormalized)).Select(x => new { x.Id, x.ProductId, Code = x.BarcodeNormalized! }).ToListAsync(cancellationToken)
+                : await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && chunk.Contains(x.SkuNormalized)).Select(x => new { x.Id, x.ProductId, Code = x.SkuNormalized }).ToListAsync(cancellationToken);
+            foreach (var row in rows)
+            {
+                var key = CatalogKeyNormalizer.Key(row.Code);
+                if (!result.TryGetValue(key, out var list)) result[key] = list = [];
+                if (!list.Any(item => item.Item1 == row.Id)) list.Add((row.Id, row.ProductId));
+            }
         }
-        return new("NEW", null, null);
+        return result;
+    }
+
+    private async Task<HashSet<string>> ExistingKeysAsync(Guid tenantId, IEnumerable<string?> values, bool barcode, CancellationToken cancellationToken) =>
+        (await VariantsByKeyAsync(tenantId, values, barcode, cancellationToken)).Keys.ToHashSet(StringComparer.Ordinal);
+
+    private async Task<Dictionary<string, Brand>> BrandsAsync(Guid tenantId, IEnumerable<string?> names, CancellationToken cancellationToken)
+    {
+        var keys = CatalogKeyNormalizer.LookupKeys(names);
+        var brands = keys.Length == 0 ? [] : await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && keys.Contains(x.NormalizedName)).ToListAsync(cancellationToken);
+        return brands.OrderByDescending(x => x.IsActive).GroupBy(x => CatalogKeyNormalizer.Key(x.NormalizedName)).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+    }
+
+    // A brand named by the file is reused when it exists (active or not) and created otherwise.
+    private Brand? BrandFor(Guid tenantId, Dictionary<string, Brand> brands, string name, DateTimeOffset now)
+    {
+        var key = Normalize(name);
+        if (key is null) return null;
+        if (brands.TryGetValue(key, out var brand)) return brand;
+        brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = name.Trim()[..Math.Min(name.Trim().Length, 160)], NormalizedName = key, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        db.Brands.Add(brand);
+        brands[key] = brand;
+        return brand;
+    }
+
+    // Categories are a managed tree, so the file may only name an existing active leaf.
+    private async Task<Dictionary<string, Guid?>> LeafCategoriesAsync(Guid tenantId, IEnumerable<string?> names, CancellationToken cancellationToken)
+    {
+        var keys = CatalogKeyNormalizer.LookupKeys(names);
+        var categories = keys.Length == 0 ? [] : await db.Categories.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsLeaf && keys.Contains(x.NormalizedName)).Select(x => new { x.Id, x.NormalizedName }).ToListAsync(cancellationToken);
+        return categories.GroupBy(x => CatalogKeyNormalizer.Key(x.NormalizedName))
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => (Guid?)group.Single().Id, StringComparer.Ordinal);
+    }
+
+    private static Dictionary<string, string> ImportOptions(IReadOnlyDictionary<string, string> values)
+    {
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (Value(values, "color") is { } color) options["Renk"] = color;
+        if (Value(values, "size") is { } size) options["Beden"] = size;
+        return options;
+    }
+
+    private void AddOptions(Guid tenantId, Guid productId, Guid variantId, IReadOnlyDictionary<string, string> options, Dictionary<(Guid, string), ProductOption> optionsByProduct, Dictionary<(Guid, string), ProductOptionValue> valuesByOption)
+    {
+        var order = 0;
+        foreach (var (label, valueLabel) in options)
+        {
+            var optionKey = CatalogKeyNormalizer.Key(label);
+            if (!optionsByProduct.TryGetValue((productId, optionKey), out var option))
+            {
+                option = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = label, NormalizedKey = optionKey, SortOrder = order };
+                db.ProductOptions.Add(option);
+                optionsByProduct[(productId, optionKey)] = option;
+            }
+            var valueKey = CatalogKeyNormalizer.Key(valueLabel);
+            if (!valuesByOption.TryGetValue((option.Id, valueKey), out var value))
+            {
+                value = new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, OptionId = option.Id, Label = valueLabel[..Math.Min(valueLabel.Length, 160)], NormalizedKey = valueKey, SortOrder = valuesByOption.Keys.Count(key => key.Item1 == option.Id) };
+                db.ProductOptionValues.Add(value);
+                valuesByOption[(option.Id, valueKey)] = value;
+            }
+            db.VariantOptionValues.Add(new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variantId, OptionId = option.Id, OptionValueId = value.Id });
+            order++;
+        }
+    }
+
+    // An import for a connection also seeds the offer on that connection. VAT comes from the file or from
+    // the connection default (K26); without either the offer is not created rather than sent with 0 % VAT.
+    private void AddOffer(Guid tenantId, PlatformConnection? connection, Guid variantId, IReadOnlyDictionary<string, string> values, decimal? listPrice, decimal? salePrice, DateTimeOffset now)
+    {
+        if (connection is null || salePrice is not > 0) return;
+        var vatRate = ParsePrice(Value(values, "vatRate")) ?? ConnectionDefaults.VatRate(connection.SettingsJson);
+        if (vatRate is null) return;
+        var currency = Value(values, "currency")?.ToUpperInvariant() is { Length: 3 } code ? code : "TRY";
+        var offer = new ChannelOffer
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ConnectionId = connection.Id,
+            VariantId = variantId,
+            ListPrice = Math.Max(listPrice ?? salePrice.Value, salePrice.Value),
+            SalePrice = salePrice.Value,
+            Currency = currency,
+            VatRate = vatRate.Value,
+            VatInclusion = "INCLUDED",
+            RoundingMode = "HALF_EVEN",
+            SafetyStock = 0,
+            Status = "ACTIVE",
+            PriceVersion = 1,
+            Version = 1
+        };
+        db.ChannelOffers.Add(offer);
+        db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OfferId = offer.Id, PriceVersion = 1, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = "IMPORT", ActorSource = "SYSTEM:IMPORT", EffectiveAt = now });
     }
 
     private async Task AddExternalLinksAsync(ImportSession session, ImportStagingRecord staging, Guid productId, Guid variantId, CancellationToken cancellationToken)
     {
         if (session.ConnectionId is not Guid connectionId || staging.ExternalRecordId is not { Length: > 0 } externalId) return;
-        if (!await db.MarketplaceVariantLinks.AnyAsync(x => x.TenantId == session.TenantId && x.ConnectionId == connectionId && x.ExternalId == externalId, cancellationToken))
+        if (!db.MarketplaceVariantLinks.Local.Any(x => x.ConnectionId == connectionId && x.ExternalId == externalId) && !await db.MarketplaceVariantLinks.AnyAsync(x => x.TenantId == session.TenantId && x.ConnectionId == connectionId && x.ExternalId == externalId, cancellationToken))
             db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = session.TenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = externalId });
-        if (!await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == session.TenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken))
+        if (!db.MarketplaceProductLinks.Local.Any(x => x.ConnectionId == connectionId && x.ProductId == productId) && !await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == session.TenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken))
             db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = session.TenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = externalId });
     }
 
-    private async Task AddProvenanceAsync(Guid tenantId, Guid sessionId, ImportStagingRecord staging, Guid productId, Guid? variantId, IReadOnlyDictionary<string, string> values, CancellationToken cancellationToken)
+    // Each staging record is applied once per session, so its provenance rows are new.
+    private void AddProvenance(Guid tenantId, Guid sessionId, ImportStagingRecord staging, Guid productId, Guid? variantId, IReadOnlyDictionary<string, string> values)
     {
         foreach (var field in new[] { "title", "sku", "barcode" })
         {
             if (!values.TryGetValue(field, out var value) || string.IsNullOrWhiteSpace(value)) continue;
-            if (await db.FieldProvenance.AnyAsync(x => x.TenantId == tenantId && x.SessionId == sessionId && x.StagingRecordId == staging.Id && x.FieldName == field, cancellationToken)) continue;
             db.FieldProvenance.Add(new FieldProvenance
             {
                 Id = Guid.CreateVersion7(),
@@ -300,8 +503,22 @@ public sealed class ImportJobProcessor(
         }
     }
 
-    private static decimal ParseNonNegative(string? value) => decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? Math.Max(0, decimal.Round(parsed, 4)) : 0;
-    private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
+    private static decimal ParseNonNegative(string? value) => ParseDecimal(value) is decimal parsed ? Math.Max(0, decimal.Round(parsed, 4)) : 0;
+    private static decimal? ParsePrice(string? value) => ParseDecimal(value) is decimal parsed && parsed >= 0 ? decimal.Round(parsed, 4) : null;
+
+    // Accepts "1234.5", "1234,5", "1.234,50" and "1,234.50".
+    internal static decimal? ParseDecimal(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var text = value.Trim().Replace(" ", "", StringComparison.Ordinal);
+        var lastComma = text.LastIndexOf(',');
+        var lastDot = text.LastIndexOf('.');
+        if (lastComma > lastDot) text = text.Replace(".", "", StringComparison.Ordinal).Replace(',', '.');
+        else if (lastDot > lastComma && lastComma >= 0) text = text.Replace(",", "", StringComparison.Ordinal);
+        return decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+    }
+
+    private static string? Normalize(string? value) => CatalogKeyNormalizer.Key(value) is { Length: > 0 } key ? key : null;
     private static string? Value(IReadOnlyDictionary<string, string> values, string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
     private static IReadOnlyDictionary<string, string> SanitizeImportedValues(IReadOnlyDictionary<string, string> values)
     {

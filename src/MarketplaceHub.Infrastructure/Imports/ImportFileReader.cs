@@ -9,15 +9,21 @@ public sealed record ParsedImportRow(int RowNumber, IReadOnlyDictionary<string, 
 
 public static class ImportFileReader
 {
+    // Excel in Turkish locales saves CSV as Windows-1254 with ';' between fields. The reader accepts UTF-8
+    // (with or without BOM) and falls back to Windows-1254 when the bytes are not valid UTF-8; the
+    // delimiter is the one of ',', ';' or tab that the header uses most. Quoted fields may span lines.
     public static IEnumerable<ParsedImportRow> ReadCsv(Stream stream, IReadOnlyDictionary<string, string> mappings)
     {
-        using var reader = new StreamReader(stream, new UTF8Encoding(false, true), true, 81920, leaveOpen: true);
-        var headerLine = reader.ReadLine() ?? throw new InvalidDataException("CSV başlık satırı yok.");
-        var headers = ParseCsvLine(headerLine); if (headers.Count == 0 || headers.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("CSV başlıkları geçersiz.");
-        var rowNumber = 1;
-        while (reader.ReadLine() is { } line)
+        var text = DecodeCsv(stream);
+        var records = ParseCsvRecords(text, SniffDelimiter(text)).GetEnumerator();
+        if (!records.MoveNext()) throw new InvalidDataException("CSV başlık satırı yok.");
+        var headers = records.Current.Cells.Select(header => header.Trim()).ToList();
+        if (headers.Count == 0 || headers.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("CSV başlıkları geçersiz.");
+        while (records.MoveNext())
         {
-            rowNumber++; var cells = ParseCsvLine(line); var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); var errors = new List<string>();
+            var (rowNumber, cells) = records.Current;
+            if (cells.All(string.IsNullOrWhiteSpace)) continue;
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); var errors = new List<string>();
             for (var index = 0; index < headers.Count; index++)
             {
                 var source = headers[index]; if (!mappings.TryGetValue(source, out var target)) continue; var value = index < cells.Count ? cells[index].Trim() : string.Empty;
@@ -45,6 +51,75 @@ public static class ImportFileReader
             }
             ValidateRequired(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
         }
+    }
+
+    internal static string DecodeCsv(Stream stream)
+    {
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        var bytes = buffer.ToArray();
+        var offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+        try { return new UTF8Encoding(false, true).GetString(bytes, offset, bytes.Length - offset); }
+        catch (DecoderFallbackException) { return Windows1254.GetString(bytes); }
+    }
+
+    private static readonly Encoding Windows1254 = CreateWindows1254();
+
+    private static Encoding CreateWindows1254()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(1254);
+    }
+
+    internal static char SniffDelimiter(string text)
+    {
+        var counts = new Dictionary<char, int> { [','] = 0, [';'] = 0, ['\t'] = 0 };
+        var quoted = false;
+        foreach (var character in text)
+        {
+            if (character == '"') quoted = !quoted;
+            else if (!quoted && character is '\r' or '\n') break;
+            else if (!quoted && counts.ContainsKey(character)) counts[character]++;
+        }
+        var best = counts.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key == ',' ? 0 : pair.Key == ';' ? 1 : 2).First();
+        return best.Value == 0 ? ',' : best.Key;
+    }
+
+    // One record per CSV row; a quoted field may contain the delimiter, doubled quotes and line breaks.
+    // RowNumber is the line on which the record starts, so error reports point at the right line.
+    internal static IEnumerable<(int RowNumber, List<string> Cells)> ParseCsvRecords(string text, char delimiter)
+    {
+        var cells = new List<string>(); var current = new StringBuilder(); var quoted = false; var line = 1; var recordStart = 1; var hasContent = false;
+        for (var index = 0; index < text.Length; index++)
+        {
+            var character = text[index];
+            if (quoted)
+            {
+                if (character == '"')
+                {
+                    if (index + 1 < text.Length && text[index + 1] == '"') { current.Append('"'); index++; }
+                    else quoted = false;
+                }
+                else
+                {
+                    if (character == '\n') line++;
+                    current.Append(character);
+                }
+                continue;
+            }
+            if (character == '"') { quoted = true; hasContent = true; continue; }
+            if (character == delimiter) { cells.Add(current.ToString()); current.Clear(); hasContent = true; continue; }
+            if (character is '\r' or '\n')
+            {
+                if (character == '\r' && index + 1 < text.Length && text[index + 1] == '\n') index++;
+                if (hasContent || current.Length > 0) { cells.Add(current.ToString()); yield return (recordStart, cells); }
+                cells = []; current.Clear(); hasContent = false; line++; recordStart = line;
+                continue;
+            }
+            current.Append(character); hasContent = true;
+        }
+        if (quoted) throw new InvalidDataException($"CSV tırnak yapısı geçersiz (satır {recordStart}).");
+        if (hasContent || current.Length > 0) { cells.Add(current.ToString()); yield return (recordStart, cells); }
     }
 
     private static void ValidateArchive(ZipArchive archive, long maximumBytes)
@@ -90,13 +165,18 @@ public static class ImportFileReader
     private static int ColumnIndex(string reference) { var index = 0; foreach (var character in reference.TakeWhile(char.IsLetter)) index = checked(index * 26 + char.ToUpperInvariant(character) - 'A' + 1); return Math.Max(0, index - 1); }
     private static List<string> Dense(Dictionary<int, XlsxCell> cells) { var result = new List<string>(); for (var index = 0; index <= cells.Keys.DefaultIfEmpty(-1).Max(); index++) result.Add(cells.TryGetValue(index, out var cell) ? cell.Value.Trim() : string.Empty); return result; }
     private static void ValidateRequired(IReadOnlyDictionary<string, string> values, ICollection<string> errors) { if (!values.TryGetValue("title", out var title) || string.IsNullOrWhiteSpace(title)) errors.Add("title: zorunlu"); if (!values.TryGetValue("sku", out var sku) || string.IsNullOrWhiteSpace(sku)) errors.Add("sku: zorunlu"); }
-    private static bool LooksLikeFormula(string value) => value.TrimStart().StartsWith('=') || value.TrimStart().StartsWith('+') || value.TrimStart().StartsWith('-') || value.TrimStart().StartsWith('@');
 
-    private static List<string> ParseCsvLine(string line)
+    // A spreadsheet runs a cell that starts with '=', '@', or '+'/'-' followed by something that is not a
+    // number. Plain signed numbers ("-5", "+90 532 000 00 00", "-12,5") and a lone "-" placeholder stay
+    // importable.
+    internal static bool LooksLikeFormula(string value)
     {
-        var result = new List<string>(); var current = new StringBuilder(); var quoted = false;
-        for (var index = 0; index < line.Length; index++) { var character = line[index]; if (character == '"') { if (quoted && index + 1 < line.Length && line[index + 1] == '"') { current.Append('"'); index++; } else quoted = !quoted; } else if (character == ',' && !quoted) { result.Add(current.ToString()); current.Clear(); } else current.Append(character); }
-        if (quoted) throw new InvalidDataException("CSV tırnak yapısı geçersiz."); result.Add(current.ToString()); return result;
+        var trimmed = value.TrimStart();
+        if (trimmed.Length == 0) return false;
+        if (trimmed[0] is '=' or '@') return true;
+        if (trimmed[0] is not ('+' or '-')) return false;
+        var rest = trimmed[1..].Trim();
+        return rest.Length > 0 && !rest.All(character => char.IsAsciiDigit(character) || character is ' ' or '.' or ',' or '(' or ')');
     }
 
     private sealed record XlsxCell(string Value, bool IsFormula);

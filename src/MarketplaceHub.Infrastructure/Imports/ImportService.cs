@@ -12,7 +12,7 @@ namespace MarketplaceHub.Infrastructure.Imports;
 public sealed class ImportService(AppDbContext db, IPrivateFileStorage files, CursorCodec cursors, TimeProvider timeProvider, IConfiguration configuration) : IImportService
 {
     private readonly long _maximumBytes = configuration.GetValue<long?>("Storage:MaxUploadBytes") ?? 10 * 1024 * 1024;
-    private static readonly HashSet<string> TargetFields = new(StringComparer.Ordinal) { "title", "description", "sku", "barcode", "modelCode", "stock", "listPrice", "salePrice", "currency", "externalId", "variantGroupKey" };
+    private static readonly HashSet<string> TargetFields = new(StringComparer.Ordinal) { "title", "description", "sku", "barcode", "modelCode", "stock", "listPrice", "salePrice", "currency", "externalId", "variantGroupKey", "color", "size", "brand", "category", "vatRate" };
 
     public async Task<PageResult<ImportSessionView>> ListAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
