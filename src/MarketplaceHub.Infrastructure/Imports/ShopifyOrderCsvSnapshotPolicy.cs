@@ -41,6 +41,19 @@ internal static class ShopifyOrderCsvSnapshotPolicy
         return root.ToJsonString();
     }
 
+    // Two snapshots that differ only in the import marker's time say the same thing.
+    public static bool SameIgnoringImportTime(string left, string? right)
+    {
+        if (string.Equals(left, right, StringComparison.Ordinal)) return true;
+        static string Stripped(string? json)
+        {
+            var root = ParseObject(json);
+            if (root[ImportKey] is JsonObject marker) marker.Remove("importedAt");
+            return root.ToJsonString();
+        }
+        return string.Equals(Stripped(left), Stripped(right), StringComparison.Ordinal);
+    }
+
     public static string ImportAddress(string currentJson, ShopifyOrderCsvAddress address)
     {
         var root = ParseObject(currentJson);

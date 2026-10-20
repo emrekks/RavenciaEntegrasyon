@@ -36,6 +36,20 @@ public sealed class PazaramaOrderMapperTests
         return PazaramaOrderMapper.Page(json.RootElement, 100).Items.Single();
     }
 
+    // Deep audit 2026-10-20 S21: a cancelled item counts neither in the order value nor in its deadline.
+    [Fact]
+    public void CancelledItemsLeaveTheOrderValueWhileAnotherItemIsLive()
+    {
+        var live = Single(Item("a1", 3) + "," + Item("a2", 6, productCode: "p2", stockCode: "s2").Replace("2026-02-18T19:00:00+03:00", "2026-02-18T09:00:00+03:00"));
+
+        Assert.Equal((7m, 0m, 7m), (live.GrossAmount, live.DiscountAmount, live.NetAmount));
+        Assert.Equal(new DateTimeOffset(2026, 2, 18, 19, 0, 0, TimeSpan.FromHours(3)), live.ShipmentDueAt);
+
+        var allCancelled = Single(Item("a1", 6) + "," + Item("a2", 13, productCode: "p2", stockCode: "s2"));
+        Assert.Equal(14m, allCancelled.GrossAmount);
+        Assert.Equal(14m, allCancelled.NetAmount);
+    }
+
     [Fact]
     public void AnOrderBecomesOneRemoteOrderWithOnePackage()
     {

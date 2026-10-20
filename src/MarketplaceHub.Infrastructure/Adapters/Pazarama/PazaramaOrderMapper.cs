@@ -55,9 +55,12 @@ public static class PazaramaOrderMapper
         var lines = new List<RemoteOrderLine>();
         var allocations = new List<RemotePackageAllocation>();
         var itemStatuses = new List<string>();
-        decimal gross = 0, discount = 0, net = 0;
+        // Cancelled items are no part of the order value or its deadline while another item is live;
+        // a fully cancelled order keeps the value it was placed with (audit 2026-10-20 S21).
+        decimal gross = 0, discount = 0, net = 0, liveGross = 0, liveDiscount = 0, liveNet = 0;
         var hasItemTotals = true;
-        DateTimeOffset? lastItemChange = null, dueAt = null;
+        var hasLiveItem = false;
+        DateTimeOffset? lastItemChange = null, dueAt = null, liveDueAt = null;
         string? shipmentCode = null, carrierName = null, trackingNumber = null;
 
         if (order.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
@@ -86,8 +89,18 @@ public static class PazaramaOrderMapper
                 gross += unitPrice.Value * quantity.Value;
                 var itemDiscount = Money(item, "discountAmount") ?? 0;
                 discount += itemDiscount;
-                if (Money(item, "totalPrice") is { } total) net += total;
+                var itemNet = Money(item, "totalPrice");
+                if (itemNet is { } total) net += total;
                 else hasItemTotals = false;
+                var estimate = Instant(item, "estimatedShippingDate");
+                if (raw != "Cancelled")
+                {
+                    hasLiveItem = true;
+                    liveGross += unitPrice.Value * quantity.Value;
+                    liveDiscount += itemDiscount;
+                    liveNet += itemNet ?? 0;
+                    if (estimate is { } liveEstimate && (liveDueAt is null || liveEstimate < liveDueAt)) liveDueAt = liveEstimate;
+                }
 
                 shipmentCode ??= Text(item, "shipmentCode");
                 if (item.TryGetProperty("cargo", out var cargo) && cargo.ValueKind == JsonValueKind.Object)
@@ -95,12 +108,13 @@ public static class PazaramaOrderMapper
                     carrierName ??= Text(cargo, "companyName");
                     trackingNumber ??= Text(cargo, "trackingNumber");
                 }
-                if (Instant(item, "estimatedShippingDate") is { } estimate && (dueAt is null || estimate < dueAt)) dueAt = estimate;
+                if (estimate is { } anyEstimate && (dueAt is null || anyEstimate < dueAt)) dueAt = anyEstimate;
                 if (LatestHistory(item) is { } changed && (lastItemChange is null || changed > lastItemChange)) lastItemChange = changed;
             }
         }
         if (lines.Count == 0) throw new JsonException("order has no usable item");
 
+        if (hasLiveItem) (gross, discount, net, dueAt) = (liveGross, liveDiscount, liveNet, liveDueAt);
         if (!hasItemTotals) net = gross - discount;
         net = Math.Clamp(net, 0, gross);
         var ordered = OrderDate(order) ?? lastItemChange ?? DateTimeOffset.UnixEpoch;
