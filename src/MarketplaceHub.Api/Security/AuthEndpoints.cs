@@ -48,9 +48,9 @@ public static class AuthEndpoints
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password)) return InvalidBody("E-posta ve parola zorunludur.");
         var user = await users.FindByEmailAsync(request.Email.Trim());
         var now = time.GetUtcNow();
-        // One account takes a bounded number of attempts per minute from all networks together.
-        if (user is not null && context.RequestServices.GetService<SignInThrottle>() is { } throttle && !throttle.TryTakeAccountAttempt(user.Id))
-            return Problem("RATE_LIMITED", "Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.", 429);
+        // A blocked network, an unknown or inactive account and a wrong password all get the same answer
+        // (and take as long). Nothing is counted for an attempt that never reaches the password, so
+        // attempts from elsewhere cannot use up the owner's (see SignInThrottle).
         if (user is null || user.Status != "ACTIVE" || await PasswordCheck.IsBlockedAsync(context, users, user))
         {
             // The answer takes as long as a wrong password: it does not tell which accounts exist.
@@ -62,17 +62,19 @@ public static class AuthEndpoints
         }
         if (!await users.CheckPasswordAsync(user, request.Password))
         {
-            var blocked = await PasswordCheck.RegisterFailureAsync(context, users, user);
+            var failure = await PasswordCheck.RegisterFailureAsync(context, users, user);
             AuthAudit.Record(db, context, AuthAudit.LoginFailed, user.Id, null, "wrong-password", now);
-            if (blocked) AuthAudit.Record(db, context, AuthAudit.AccountLockedOut, user.Id, null, "failed-sign-ins", now);
+            if (failure.Any) AuthAudit.Record(db, context, AuthAudit.AccountLockedOut, user.Id, null, "failed-sign-ins", now);
             await db.SaveChangesAsync(context.RequestAborted);
             return InvalidCredentials();
         }
-        await PasswordCheck.RegisterSuccessAsync(context, users, user);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         // The second factor comes before a forced password change: a stolen password alone must not be
         // enough to set a new one.
         var state = security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : user.ForcePasswordChange ? SessionState.PasswordChangeRequired : SessionState.Active;
+        // Without an authenticator the password completes the sign-in; with one, the counters are reset
+        // only when the code passes (MfaChallengeAsync), so codes cannot be guessed by signing in again.
+        if (state != SessionState.MfaChallenge) await PasswordCheck.RegisterSuccessAsync(context, users, user);
         var memberships = await ActiveTenantMemberships(db, user.Id).OrderBy(x => x.CreatedAt).ToListAsync(context.RequestAborted);
         var membership = request.TenantId is Guid requestedTenant
             ? memberships.SingleOrDefault(x => x.TenantId == requestedTenant)
@@ -148,6 +150,7 @@ public static class AuthEndpoints
         var secondFactorPassed = security.TotpState != TotpState.Enabled || await db.AuditLogs.AsNoTracking()
             .AnyAsync(x => x.Action == AuthAudit.MfaSucceeded && x.TargetId == session.Id.ToString("D"), context.RequestAborted);
         session.SessionVersion = user.SessionVersion; session.ReauthenticatedAt = time.GetUtcNow(); session.State = secondFactorPassed ? SessionState.Active : SessionState.MfaChallenge;
+        if (secondFactorPassed) await PasswordCheck.RegisterSuccessAsync(context, users, user);
         if (session.TenantId is null)
         {
             var membership = await ActiveTenantMemberships(db, user.Id).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
@@ -167,6 +170,7 @@ public static class AuthEndpoints
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
         MfaAttemptPolicy.RegisterSuccess(session);
+        await PasswordCheck.RegisterSuccessAsync(context, users, user);
         session.ReauthenticatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(context.RequestAborted);
         return Results.Ok(new { reauthenticatedAt = session.ReauthenticatedAt });
@@ -211,6 +215,7 @@ public static class AuthEndpoints
         if (replacing && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
         MfaAttemptPolicy.RegisterSuccess(session);
+        await PasswordCheck.RegisterSuccessAsync(context, users, user);
         var now = time.GetUtcNow();
         session.ReauthenticatedAt = now;
         var secret = totp.NewSecret(); var base32 = Base32(secret); var expires = now.AddMinutes(10);
@@ -270,8 +275,9 @@ public static class AuthEndpoints
         if (session.TenantId is Guid currentTenantId && !await HasActiveTenantMembershipAsync(db, session.UserId, currentTenantId, context.RequestAborted))
             return Problem("TENANT_NOT_AVAILABLE", "Aktif çalışma alanı bulunamadı.", 403);
         var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null) return Forbidden(context);
-        // An account locked meanwhile (wrong passwords or codes elsewhere) cannot finish signing in.
-        if (await PasswordCheck.IsBlockedAsync(context, users, user)) return await EndSessionAfterFailuresAsync(session, db, context, time, "account-locked-out");
+        // The password already passed from this network: only this network's own block (wrong codes or
+        // passwords from it) stops the sign-in here, not failures from elsewhere.
+        if (await PasswordCheck.IsBlockedAsync(context, users, user, signedIn: true)) return await EndSessionAfterFailuresAsync(session, db, context, time, "network-blocked");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var accepted = false;
         if (request.RecoveryCode is { Length: > 0 })
@@ -313,6 +319,7 @@ public static class AuthEndpoints
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
         MfaAttemptPolicy.RegisterSuccess(session);
+        await PasswordCheck.RegisterSuccessAsync(context, users, user);
         session.ReauthenticatedAt = time.GetUtcNow();
         AuthAudit.Record(db, context, AuthAudit.MfaDisabled, user.Id, session.TenantId, "other-sessions-revoked", session.ReauthenticatedAt.Value, session.Id);
         security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null; security.Version++;
@@ -330,6 +337,7 @@ public static class AuthEndpoints
         if (!await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
         MfaAttemptPolicy.RegisterSuccess(session);
+        await PasswordCheck.RegisterSuccessAsync(context, users, user);
         session.ReauthenticatedAt = time.GetUtcNow();
         AuthAudit.Record(db, context, AuthAudit.RecoveryCodesRegenerated, user.Id, session.TenantId, "previous-codes-invalidated", session.ReauthenticatedAt.Value, session.Id);
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
@@ -376,16 +384,17 @@ public static class AuthEndpoints
     }
 
     // A wrong TOTP or recovery code counts in the session (the fifth ends it) and towards the account and
-    // network limits. A sign-in still at the MFA step also ends when the account gets blocked.
+    // network limits. A sign-in still at the MFA step also ends when its network gets blocked; failures
+    // from other networks never end a session.
     private static async Task<IResult> SecondFactorFailedAsync(UserSession session, ApplicationUser user, UserManager<ApplicationUser> users, AppDbContext db, HttpContext context, TimeProvider time, string method, IResult? refusal = null)
     {
         var now = time.GetUtcNow();
         var challenge = session.State == SessionState.MfaChallenge;
-        var lockedOut = await PasswordCheck.RegisterFailureAsync(context, users, user);
+        var failure = await PasswordCheck.RegisterFailureAsync(context, users, user);
         var ended = MfaAttemptPolicy.RegisterFailure(session, now);
         AuthAudit.Record(db, context, AuthAudit.MfaFailed, session.UserId, session.TenantId, $"{method}; attempt={session.MfaFailedAttempts}", now, session.Id);
-        if (lockedOut) AuthAudit.Record(db, context, AuthAudit.AccountLockedOut, session.UserId, session.TenantId, "failed-second-factor", now);
-        if (ended || lockedOut && challenge) return await EndSessionAfterFailuresAsync(session, db, context, time, ended ? "too-many-second-factor-failures" : "account-locked-out");
+        if (failure.Any) AuthAudit.Record(db, context, AuthAudit.AccountLockedOut, session.UserId, session.TenantId, "failed-second-factor", now);
+        if (ended || failure.NetworkBlocked && challenge) return await EndSessionAfterFailuresAsync(session, db, context, time, ended ? "too-many-second-factor-failures" : "network-blocked");
         await db.SaveChangesAsync(CancellationToken.None);
         return refusal ?? Problem("SECOND_FACTOR_FAILED", "İkinci doğrulama kodu kabul edilmedi.", 401);
     }

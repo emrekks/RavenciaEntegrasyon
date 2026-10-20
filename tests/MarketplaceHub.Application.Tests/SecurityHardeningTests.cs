@@ -76,15 +76,38 @@ public sealed class ClientNetworkAndRateLimitTests
         leases.ForEach(lease => lease.Dispose());
     }
 
+    // One marketplace address delivers for every connection: the address limit must not be the one that
+    // refuses a real burst on a single connection.
     [Fact]
-    public void WebhookAddressLimit_Is600PerMinute()
+    public void WebhookAddressLimit_IsAboveTheConnectionLimit()
     {
-        Assert.Equal(600, WebhookRateLimits.PerAddressPerMinute);
+        Assert.True(WebhookRateLimits.PerAddressPerMinute >= 2 * WebhookRateLimits.PerConnectionPerMinute);
+        Assert.True(WebhookRateLimits.QueuedDeliveries >= 4 * WebhookRateLimits.ConcurrentDeliveries);
     }
 
-    private static DefaultHttpContext Request(string path, string address, string? cookie = null)
+    [Fact]
+    public void ProductImageContent_HasItsOwnLimit_AndDoesNotUseUpTheGeneralOne()
+    {
+        using var limiter = RateLimitPolicies.PerNetwork(2, mediaPerMinute: 3);
+        const string address = "203.0.113.40";
+        var asset = Guid.NewGuid();
+        for (var index = 0; index < 2; index++) Assert.True(limiter.AttemptAcquire(Request("/api/v1/orders", address)).IsAcquired);
+        Assert.False(limiter.AttemptAcquire(Request("/api/v1/orders", address)).IsAcquired);
+
+        Assert.True(limiter.AttemptAcquire(Request($"/api/v1/public/product-media/{asset:D}/content", address)).IsAcquired);
+        Assert.True(limiter.AttemptAcquire(Request($"/api/v1/files/product-media/{asset:D}/content", address)).IsAcquired);
+        Assert.True(limiter.AttemptAcquire(Request($"/api/v1/public/product-media/{asset:D}/content", address)).IsAcquired);
+        Assert.False(limiter.AttemptAcquire(Request($"/api/v1/public/product-media/{asset:D}/content", address)).IsAcquired);
+
+        Assert.True(RateLimitPolicies.IsMediaContent(Request($"/api/v1/files/product-media/{asset:D}/content", address).Request));
+        Assert.False(RateLimitPolicies.IsMediaContent(Request("/api/v1/files/product-media-url", address).Request));
+        Assert.False(RateLimitPolicies.IsMediaContent(Request($"/api/v1/files/product-media/{asset:D}/content", address, method: "POST").Request));
+    }
+
+    private static DefaultHttpContext Request(string path, string address, string? cookie = null, string method = "GET")
     {
         var context = new DefaultHttpContext { RequestServices = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build()).BuildServiceProvider() };
+        context.Request.Method = method;
         context.Request.Path = path;
         context.Connection.RemoteIpAddress = IPAddress.Parse(address);
         if (cookie is not null) context.Request.Headers.Cookie = $"{SessionAuthMiddleware.ProductionCookieName}={cookie}";
@@ -144,18 +167,59 @@ public sealed class SignInThrottleTests
         Assert.False(throttle.IsBlocked(user, "net"));
     }
 
+    // Failures spread over many networks put the account "under attack": networks that failed are refused,
+    // but the owner's trusted network and a network that never failed still get in.
     [Fact]
-    public void AnAccountTakesALimitedNumberOfSignInAttemptsPerMinute()
+    public void AnAccountUnderAttack_RefusesOnlyNetworksThatFailed()
     {
         var clock = new Clock(Start);
         var throttle = new SignInThrottle(clock);
         var user = Guid.CreateVersion7();
-        for (var attempt = 0; attempt < SignInThrottle.AccountAttemptsPerMinute; attempt++) Assert.True(throttle.TryTakeAccountAttempt(user));
+        throttle.RegisterSuccess(user, "198.51.100.10");
+        for (var failure = 0; failure < SignInThrottle.AccountFailuresPerWindow; failure++) throttle.RegisterFailure(user, $"203.0.113.{failure / 2}");
 
-        Assert.False(throttle.TryTakeAccountAttempt(user));
-        Assert.True(throttle.TryTakeAccountAttempt(Guid.CreateVersion7()));
-        clock.Now += TimeSpan.FromMinutes(1);
-        Assert.True(throttle.TryTakeAccountAttempt(user));
+        Assert.True(throttle.IsAccountUnderAttack(user));
+        Assert.False(throttle.IsAccountUnderAttack(Guid.CreateVersion7()));
+        Assert.True(throttle.RefusesWhileUnderAttack(user, "203.0.113.0"));
+        Assert.False(throttle.IsBlocked(user, "203.0.113.0"));
+        Assert.False(throttle.RefusesWhileUnderAttack(user, "198.51.100.10"));
+        Assert.False(throttle.RefusesWhileUnderAttack(user, "192.0.2.50"));
+        throttle.RegisterFailure(user, "198.51.100.10");
+        Assert.False(throttle.RefusesWhileUnderAttack(user, "198.51.100.10"));
+
+        clock.Now += SignInThrottle.AccountWindow;
+        Assert.False(throttle.IsAccountUnderAttack(user));
+    }
+
+    [Fact]
+    public void AnIPv6SenderThatFailedIsRememberedForItsWhole48()
+    {
+        var throttle = new SignInThrottle(new Clock(Start));
+        var user = Guid.CreateVersion7();
+        var first = ClientNetwork.PartitionKey(System.Net.IPAddress.Parse("2001:db8:1:1::5"));
+        var sibling = ClientNetwork.PartitionKey(System.Net.IPAddress.Parse("2001:db8:1:2::9"));
+        var other = ClientNetwork.PartitionKey(System.Net.IPAddress.Parse("2001:db8:2:1::9"));
+
+        throttle.RegisterFailure(user, first);
+
+        Assert.Equal("2001:db8:1::/48", ClientNetwork.WideGroup(first));
+        Assert.Equal("203.0.113.7", ClientNetwork.WideGroup("203.0.113.7"));
+        Assert.True(throttle.HasFailedRecently(user, sibling));
+        Assert.False(throttle.HasFailedRecently(user, other));
+    }
+
+    [Fact]
+    public void TrustLastsThirtyDays()
+    {
+        var clock = new Clock(Start);
+        var throttle = new SignInThrottle(clock);
+        var user = Guid.CreateVersion7();
+        throttle.RegisterSuccess(user, "198.51.100.10");
+
+        Assert.True(throttle.IsTrusted(user, "198.51.100.10"));
+        Assert.False(throttle.IsTrusted(user, "198.51.100.11"));
+        clock.Now += SignInThrottle.TrustFor;
+        Assert.False(throttle.IsTrusted(user, "198.51.100.10"));
     }
 
     internal sealed class Clock(DateTimeOffset now) : TimeProvider

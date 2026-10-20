@@ -609,7 +609,7 @@ public static class InvoicingEndpoints
         if (connection is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Fatura bulunamadı.", 404));
         if (!IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)) return null;
         var user = await users.FindByIdAsync(tenant.UserId.ToString());
-        return await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(users, user, password ?? string.Empty)
+        return await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(http, users, user, password ?? string.Empty)
             ? null
             : Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
     }

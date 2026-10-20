@@ -311,6 +311,31 @@ public sealed class ApiEndToEndTests(ApiEndToEndFixture fixture) : IClassFixture
         }
     }
 
+    // A record written before keys were scoped to the user (raw key) whose outcome is unknown still stops
+    // a blind replay of the same key.
+    [PostgreSqlFact]
+    public async Task AnUnfinishedRecordUnderTheOldKeyFormat_StillBlocksTheReplay()
+    {
+        var (client, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        using (client)
+        using (signIn)
+        {
+            var key = Guid.NewGuid().ToString();
+            await using (var scope = fixture.Host!.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var now = DateTimeOffset.UtcNow;
+                db.ApiIdempotencyRecords.Add(new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = fixture.TenantId, RouteTemplate = "/api/v1/settings/shipping-label", IdempotencyKey = key, RequestHash = "legacy-sha256", State = "UNKNOWN", CreatedAt = now.AddHours(-1), ExpiresAt = now.AddDays(6) });
+                await db.SaveChangesAsync();
+            }
+
+            using var replay = await client.SendAsync(Keyed(HttpMethod.Put, "/api/v1/settings/shipping-label", csrf, key, new { printer = $"legacy-{fixture.Run}" }));
+
+            Assert.Equal(HttpStatusCode.Conflict, replay.StatusCode);
+            Assert.Equal("IDEMPOTENCY_RESULT_UNKNOWN", (await ApiTestHost.ProblemAsync(replay)).GetProperty("code").GetString());
+        }
+    }
+
     [PostgreSqlFact]
     public async Task RoleMatrix_ReadOnlyReadsOnly_OperationsWorksOrdersButNotSettings()
     {
