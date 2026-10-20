@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobCountsQueryString, jobDetailPollInterval, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions } from './job-list-query'
+import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -63,5 +63,24 @@ describe('poll intervals (W22, G24)', () => {
     expect(jobDetailPollInterval('LEASED')).toBe(10_000)
     expect(jobDetailPollInterval('SUCCEEDED')).toBe(false)
     expect(jobDetailPollInterval('DEAD')).toBe(false)
+  })
+})
+
+describe('a list with older pages loaded', () => {
+  it('polls only its first page and puts it in front of the older ones', () => {
+    expect(jobListHeadPollInterval(1)).toBe(false)
+    expect(jobListHeadPollInterval(2)).toBe(15_000)
+    const loaded = { pages: ['old-1', 'old-2', 'old-3'], pageParams: [null, 'a', 'b'] }
+    expect(withFreshFirstPage(loaded, 'new-1')).toEqual({ pages: ['new-1', 'old-2', 'old-3'], pageParams: [null, 'a', 'b'] })
+    expect(withFreshFirstPage({ pages: ['only'], pageParams: [null] }, 'new')).toEqual({ pages: ['only'], pageParams: [null] })
+    expect(withFreshFirstPage(undefined, 'new')).toBeUndefined()
+  })
+
+  it('reads server pages towards a ?sayfa=N link until the page has rows, within a bound', () => {
+    expect(shouldLoadTowardsPage(5, 2, true, 1, false)).toBe(true)
+    expect(shouldLoadTowardsPage(5, 2, true, 1, true)).toBe(false)
+    expect(shouldLoadTowardsPage(2, 2, true, 1, false)).toBe(false)
+    expect(shouldLoadTowardsPage(5, 2, false, 1, false)).toBe(false)
+    expect(shouldLoadTowardsPage(500, 2, true, jobListMaximumAutoPages, false)).toBe(false)
   })
 })

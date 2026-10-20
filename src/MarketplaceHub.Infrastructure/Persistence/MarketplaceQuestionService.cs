@@ -256,6 +256,19 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                     : "Önceki cevap isteğinin sonucu hâlâ belirsiz. Yinelenen cevap oluşmaması için yeni gönderim yapılmadı.",
                 409);
         }
+        // An answer counted as not delivered may have reached the marketplace late: when the question there shows it,
+        // it is settled as delivered and nothing is sent again (O18).
+        if (question.AnswerSubmissionStatus == "NOT_DELIVERED")
+        {
+            var previousVersion = question.Version;
+            await UpsertAsync(tenantId, question.ConnectionId, current.Value!, timeProvider.GetUtcNow(), cancellationToken);
+            if (question.AnswerSubmissionStatus is "SUBMITTED" or "CONFIRMED")
+            {
+                if (question.Version == previousVersion) question.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_RECONCILED", "Önceki cevap pazaryerinde bulundu; yeni cevap gönderilmedi.", 409);
+            }
+        }
         if (!current.Value!.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase)
             && !current.Value.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase))
         {
@@ -492,8 +505,10 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             return;
         }
 
+        // An answer counted as not delivered can still turn up on the marketplace later (O18): it is settled like any
+        // other submission, so the panel stops offering it for a resend that would give the customer two answers.
         if (resolution == QuestionAnswerSubmissionReconciliation.Rejected
-            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
+            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED" or "NOT_DELIVERED")
         {
             // The answer was refused: the submission ends and the seller can
             // write a new one; the question keeps the marketplace's status.
@@ -503,7 +518,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         }
 
         if (resolution == QuestionAnswerSubmissionReconciliation.Submitted
-            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
+            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED" or "NOT_DELIVERED")
         {
             row.AnswerSubmissionStatus = "SUBMITTED";
             row.PendingAnswerText = null;

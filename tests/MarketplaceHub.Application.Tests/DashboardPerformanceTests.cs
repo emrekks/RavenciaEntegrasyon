@@ -134,7 +134,7 @@ public sealed class DashboardPerformanceTests
         var day = new DateTime(2026, 10, 20);
         var store = Guid.NewGuid();
         var rows = DashboardReadService.MergePerformanceRows(
-            [new(day, store, "TRY", false, 900m, 3), new(day, store, "TRY", true, 150m, 1), new(day, store, "USD", false, 20m, 1)],
+            [new(day, store, "TRY", 900m, 3, 0m, 0), new(day, store, "TRY", 0m, 0, 150m, 1), new(day, store, "USD", 20m, 1, 0m, 0)],
             [new(day, store, "TRY", 5m)],
             [new(day, store, "TRY", 3)]);
 
@@ -161,6 +161,10 @@ public sealed class DashboardPerformanceTests
         Assert.Empty(current.Returns);
         Assert.Empty(old.Pending);
         Assert.Empty(DashboardReadService.ReadBreakdown("not json").Late);
+        // What the rebuild writes (the record's own names) reads back too.
+        var written = DashboardReadService.ReadBreakdown($"{{\"Pending\":{{\"{store}\":2}},\"Late\":{{}},\"Returns\":{{\"{store}\":1}}}}");
+        Assert.Equal(2, written.Pending[store]);
+        Assert.Equal(1, written.Returns[store]);
     }
 
     // Live 20 Oct 2026: the worker writes "Pending"/"Late"/"Returns"; the reader looked for "pending" only and every

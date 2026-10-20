@@ -8,6 +8,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvider) : IDashboardReadService
 {
     private static readonly JsonSerializerOptions BreakdownJson = new() { PropertyNameCaseInsensitive = true };
+    private static readonly ReturnClaimStatus[] AcceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
+    private static readonly string[] AcceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
 
     public async Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -80,7 +82,13 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         if (!resolved.Succeeded) return ServiceResult<DashboardPerformanceView>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status);
         var period = resolved.Value!;
         var rows = await PerformanceRowsAsync(tenantId, period, IanaId(timezone), cancellationToken);
-        var channels = await ChannelsAsync(tenantId, cancellationToken);
+        // Every store the report can hold a row for, so a store waiting for credentials or switched off keeps its name.
+        var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
+        var channels = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status))
+            .OrderBy(x => x.DisplayName)
+            .Select(x => new DashboardChannelView(x.Id, x.PlatformCode, x.DisplayName, x.Status))
+            .ToListAsync(cancellationToken);
         var current = rows.Where(x => x.Day >= period.From && x.Day <= period.To).ToList();
         var previous = rows.Where(x => x.Day >= period.PreviousFrom && x.Day <= period.PreviousTo).ToList();
         return ServiceResult<DashboardPerformanceView>.Ok(new(period.From, period.To, period.PreviousFrom, period.PreviousTo,
@@ -98,27 +106,49 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         return MergePerformanceRows(revenue, units, packages);
     }
 
-    internal sealed record RevenueGroup(DateTime Day, Guid ConnectionId, string Currency, bool Returned, decimal Amount, int Orders);
+    // Amount is what was sold and kept; ReturnedAmount what went back (a whole returned order, or the returned part of one).
+    internal sealed record RevenueGroup(DateTime Day, Guid ConnectionId, string Currency, decimal Amount, int Orders, decimal ReturnedAmount, int ReturnedOrders);
     internal sealed record UnitGroup(DateTime Day, Guid ConnectionId, string Currency, decimal Quantity);
     internal sealed record PackageGroup(DateTime Day, Guid ConnectionId, string Currency, int Count);
 
     internal static IQueryable<RevenueGroup> RevenueQuery(IQueryable<PerformanceOrderRow> orders) => orders
-        .GroupBy(x => new { x.Day, x.ConnectionId, x.Currency, x.Returned })
-        .Select(group => new RevenueGroup(group.Key.Day, group.Key.ConnectionId, group.Key.Currency, group.Key.Returned, group.Sum(x => x.Amount), group.Count()));
+        .Select(x => new
+        {
+            x.Day,
+            x.ConnectionId,
+            x.Currency,
+            Kept = x.Returned ? 0m : (x.Amount > x.ReturnedAmount ? x.Amount - x.ReturnedAmount : 0m),
+            Counted = !x.Returned && x.Amount > 0 ? 1 : 0,
+            Back = x.Returned ? x.Amount : (x.ReturnedAmount < x.Amount ? x.ReturnedAmount : x.Amount),
+            BackCounted = x.Returned || x.ReturnedAmount > 0 ? 1 : 0
+        })
+        .GroupBy(x => new { x.Day, x.ConnectionId, x.Currency })
+        .Select(group => new RevenueGroup(group.Key.Day, group.Key.ConnectionId, group.Key.Currency,
+            group.Sum(x => x.Kept), group.Sum(x => x.Counted), group.Sum(x => x.Back), group.Sum(x => x.BackCounted)));
 
-    // Units still ordered: a line's cancelled quantity is not a sold product.
+    // Units still ordered and kept: a line's cancelled and returned quantities are not sold products.
     internal static IQueryable<UnitGroup> UnitQuery(AppDbContext db, IQueryable<PerformanceOrderRow> orders) =>
         from row in orders
         join line in db.OrderLines.AsNoTracking() on new { row.TenantId, OrderId = row.Id } equals new { line.TenantId, line.OrderId }
         where !row.Returned
-        group line by new { row.Day, row.ConnectionId, row.Currency } into grouped
-        select new UnitGroup(grouped.Key.Day, grouped.Key.ConnectionId, grouped.Key.Currency, grouped.Sum(line => line.OrderedQuantity - line.CancelledQuantity));
+        let active = line.OrderedQuantity - line.CancelledQuantity
+        let accepted = db.ReturnLines.Where(returned => returned.TenantId == line.TenantId && returned.OrderLineId == line.Id
+                && db.ReturnClaims.Any(claim => claim.TenantId == returned.TenantId && claim.Id == returned.ClaimId
+                    && (returned.RawStatus == null || returned.RawStatus == ""
+                        ? AcceptedClaims.Contains(claim.Status)
+                        : AcceptedLines.Contains(returned.RawStatus.ToUpper()))))
+            .Sum(returned => (decimal?)returned.Quantity) ?? 0m
+        let back = line.ReturnedQuantity > accepted ? line.ReturnedQuantity : accepted
+        group new { active, back } by new { row.Day, row.ConnectionId, row.Currency } into grouped
+        select new UnitGroup(grouped.Key.Day, grouped.Key.ConnectionId, grouped.Key.Currency,
+            grouped.Sum(x => x.active > x.back ? x.active - x.back : 0m));
 
-    // Packages as the order screens count them: current packages only (no split parents or placeholders), not cancelled.
+    // Packages as the order screens count them: current packages only (no split parents or placeholders), not cancelled
+    // and not sent back.
     internal static IQueryable<PackageGroup> PackageQuery(AppDbContext db, IQueryable<PerformanceOrderRow> orders) =>
         from row in orders
         join package in MarketplaceSalesService.CurrentShipmentPackages(db) on new { row.TenantId, OrderId = row.Id } equals new { package.TenantId, package.OrderId }
-        where !row.Returned && package.Status != ShipmentPackageStatus.Cancelled
+        where !row.Returned && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
         group package by new { row.Day, row.ConnectionId, row.Currency } into grouped
         select new PackageGroup(grouped.Key.Day, grouped.Key.ConnectionId, grouped.Key.Currency, grouped.Count());
 
@@ -128,15 +158,13 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .GroupBy(x => (Day: DateOnly.FromDateTime(x.Day), x.ConnectionId, x.Currency))
             .Select(group =>
             {
-                var sold = group.Where(x => !x.Returned).ToArray();
-                var returned = group.Where(x => x.Returned).ToArray();
                 var key = group.Key;
                 return new DashboardPerformanceRowView(
                     key.Day, key.ConnectionId, key.Currency,
-                    sold.Sum(x => x.Amount), sold.Sum(x => x.Orders),
+                    group.Sum(x => x.Amount), group.Sum(x => x.Orders),
                     units.Where(x => DateOnly.FromDateTime(x.Day) == key.Day && x.ConnectionId == key.ConnectionId && x.Currency == key.Currency).Sum(x => x.Quantity),
                     packages.Where(x => DateOnly.FromDateTime(x.Day) == key.Day && x.ConnectionId == key.ConnectionId && x.Currency == key.Currency).Sum(x => x.Count),
-                    returned.Sum(x => x.Amount), returned.Sum(x => x.Orders));
+                    group.Sum(x => x.ReturnedAmount), group.Sum(x => x.ReturnedOrders));
             })
             .OrderBy(x => x.Day).ThenBy(x => x.ConnectionId).ThenBy(x => x.Currency)
             .ToList();
@@ -150,38 +178,76 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         public Guid ConnectionId { get; init; }
         public string Currency { get; init; } = "TRY";
         public decimal Amount { get; init; }
+        public decimal ReturnedAmount { get; init; }
         public bool Returned { get; init; }
         public DateTime Day { get; init; }
     }
 
+    // One row per order of both periods. The amount is the order's current packages that are not cancelled (a
+    // Trendyol order total also holds its cancelled packages); an order whose packages carry no amount keeps the
+    // order total. The returned amount is the larger of the packages sent back and the returned share of the lines
+    // (returned quantities and accepted return claims), so a partial return is taken off too.
     internal static IQueryable<PerformanceOrderRow> PerformanceOrders(AppDbContext db, Guid tenantId, DashboardPerformancePeriod period, string timezone)
     {
         var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
         var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
         var cancelled = DashboardRevenuePolicy.CancelledStatuses;
         var returnedStatuses = DashboardRevenuePolicy.ReturnedStatuses;
+        var excludedConnections = DashboardRevenuePolicy.ExcludedConnectionStatuses;
+        var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
+        var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
         var previousStart = period.PreviousStart;
         var previousEnd = period.PreviousEnd;
         var currentStart = period.CurrentStart;
         var currentEnd = period.CurrentEnd;
         var scanEnd = period.CurrentEnd + ahead;
+        var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
+        var lines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
         return from order in db.Orders.AsNoTracking()
                join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
+               // Every store the tenant had counts, also one waiting for new credentials or switched off; only stores
+               // whose data was hidden or deleted are left out.
                where order.TenantId == tenantId
-                   && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status)
+                   && !excludedConnections.Contains(connection.Status)
                    && order.OrderedAt >= previousStart && order.OrderedAt < scanEnd
                    && !cancelled.Contains(order.DerivedStatus)
                    && (order.NetAmount > 0 || order.GrossAmount > 0)
                let realAt = wallClockPlatforms.Contains(connection.PlatformCode) ? order.OrderedAt - ahead : order.OrderedAt
                where (realAt >= previousStart && realAt < previousEnd) || (realAt >= currentStart && realAt < currentEnd)
+               let priced = currentPackages.Any(package => package.OrderId == order.Id && (package.NetAmount > 0 || package.GrossAmount > 0))
                // DashboardRevenuePolicy.Amount: what the customer paid; the price before discounts only when no net is known.
+               let amount = priced
+                   ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
+                       .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
+                   : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
+               let packagesBack = priced
+                   ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
+                       .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
+                   : 0m
+               let lineValue = lines.Where(line => line.OrderId == order.Id).Sum(line => line.UnitPrice * (line.OrderedQuantity - line.CancelledQuantity))
+               let lineBack = lines.Where(line => line.OrderId == order.Id)
+                   .Select(line => new
+                   {
+                       line.UnitPrice,
+                       Active = line.OrderedQuantity - line.CancelledQuantity,
+                       line.ReturnedQuantity,
+                       Accepted = db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
+                               && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
+                                   && (returned.RawStatus == null || returned.RawStatus == ""
+                                       ? acceptedClaims.Contains(claim.Status)
+                                       : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
+                           .Sum(returned => (decimal?)returned.Quantity) ?? 0m
+                   })
+                   .Sum(line => line.UnitPrice * Math.Min(line.Active, Math.Max(line.ReturnedQuantity, line.Accepted)))
+               let linesBack = lineValue > 0 ? amount * lineBack / lineValue : 0m
                select new PerformanceOrderRow
                {
                    Id = order.Id,
                    TenantId = order.TenantId,
                    ConnectionId = order.ConnectionId,
                    Currency = order.Currency,
-                   Amount = order.NetAmount > 0 ? order.NetAmount : order.GrossAmount,
+                   Amount = amount,
+                   ReturnedAmount = packagesBack > linesBack ? packagesBack : linesBack,
                    Returned = returnedStatuses.Contains(order.DerivedStatus),
                    Day = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Date
                };
@@ -206,20 +272,42 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             late.ToDictionary(x => x.Key.ToString("D"), x => x.Count),
             returns.ToDictionary(x => x.Key.ToString("D"), x => x.Count));
         var snapshot = await db.DashboardSnapshots.SingleOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
+        var existed = snapshot is not null;
         if (snapshot is null)
         {
             snapshot = new DashboardSnapshot { TenantId = tenantId, Version = 1 };
             db.DashboardSnapshots.Add(snapshot);
         }
         else snapshot.Version++;
+        var breakdownJson = WriteBreakdown(breakdown);
+        var badgesChanged = snapshot.PendingOrders != pending.Sum(x => x.Count) || snapshot.LateOrders != late.Sum(x => x.Count)
+            || snapshot.PendingReturns != returns.Sum(x => x.Count) || !SameBreakdown(ReadBreakdown(snapshot.PendingByPlatformJson), breakdown)
+            || snapshot.DeadJobCount != deadJobCount || snapshot.ManualReviewJobCount != manualReviewJobCount;
         snapshot.PendingOrders = pending.Sum(x => x.Count);
         snapshot.LateOrders = late.Sum(x => x.Count);
         snapshot.PendingReturns = returns.Sum(x => x.Count);
-        snapshot.PendingByPlatformJson = WriteBreakdown(breakdown);
+        snapshot.PendingByPlatformJson = breakdownJson;
         snapshot.DeadJobCount = deadJobCount;
         snapshot.ManualReviewJobCount = manualReviewJobCount;
         snapshot.RecentJobCount = recentJobCount;
         snapshot.UpdatedAt = now;
+        // The data change that made this rebuild was announced before it ran, so open panels read the old counts.
+        // When the counts the menu badges and cards show moved, the rebuilt snapshot is announced too (O19). The
+        // refresher does not take this event for a data change, so it cannot start another rebuild.
+        if (existed && badgesChanged)
+            db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ResourceType = DashboardSnapshotRefreshPolicy.ResourceType,
+                OperationType = "updated",
+                AggregateType = DashboardSnapshotRefreshPolicy.SnapshotAggregateType,
+                AggregateId = tenantId,
+                AggregateVersion = snapshot.Version,
+                PayloadJson = JsonSerializer.Serialize(new { aggregateType = DashboardSnapshotRefreshPolicy.SnapshotAggregateType, aggregateId = tenantId, version = snapshot.Version }),
+                CreatedAt = now,
+                NextAttemptAt = now
+            });
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -229,8 +317,14 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
 
     internal static string WriteBreakdown(DashboardBreakdown breakdown) => JsonSerializer.Serialize(breakdown, BreakdownJson);
 
-    // The writer keeps the record's property names ("Pending"); the check for the per-store shape must not depend on
-    // their case (live 20 Oct 2026: it looked for "pending" only, so every card's hover breakdown came back empty).
+    // The column is jsonb, so PostgreSQL hands it back in its own key order and spacing: compared as counts, not text.
+    internal static bool SameBreakdown(DashboardBreakdown left, DashboardBreakdown right)
+    {
+        static bool Same(IReadOnlyDictionary<string, int> a, IReadOnlyDictionary<string, int> b) =>
+            a.Count == b.Count && a.All(item => b.TryGetValue(item.Key, out var value) && value == item.Value);
+        return Same(left.Pending, right.Pending) && Same(left.Late, right.Late) && Same(left.Returns, right.Returns);
+    }
+
     internal static DashboardBreakdown ReadBreakdown(string? json)
     {
         var empty = new Dictionary<string, int>();
@@ -238,8 +332,9 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         try
         {
             using var document = JsonDocument.Parse(json);
+            // The snapshot is written with the record's own names ("Pending"); the name is matched without case.
             if (document.RootElement.ValueKind != JsonValueKind.Object
-                || !document.RootElement.EnumerateObject().Any(property => string.Equals(property.Name, "pending", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Object))
+                || document.RootElement.EnumerateObject().FirstOrDefault(property => string.Equals(property.Name, "pending", StringComparison.OrdinalIgnoreCase)).Value.ValueKind != JsonValueKind.Object)
                 return new(empty, empty, empty);
             var parsed = JsonSerializer.Deserialize<DashboardBreakdown>(json, BreakdownJson);
             return new(parsed?.Pending ?? empty, parsed?.Late ?? empty, parsed?.Returns ?? empty);
@@ -270,11 +365,18 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
 }
 
 // What the performance panel counts as revenue. Owner decision (20 Oct 2026): revenue is what the customer paid
-// (net); cancelled orders are left out; returned orders are left out of revenue and shown on their own line.
+// (net); cancelled orders and packages are left out; what was returned is left out of revenue and shown on its own line.
 public static class DashboardRevenuePolicy
 {
     public static readonly string[] CancelledStatuses = ["CANCELLED", "CANCELED"];
     public static readonly string[] ReturnedStatuses = ["RETURNED"];
+    // A store's past sales stay in the report while it waits for new credentials or is switched off; only a
+    // store whose data the owner hid, or deleted, leaves it.
+    public static readonly string[] ExcludedConnectionStatuses = ["DELETED", "HIDDEN"];
+    // A return claim takes its units off the sale once the return is accepted.
+    public static readonly ReturnClaimStatus[] AcceptedReturnStatuses = [ReturnClaimStatus.Approved, ReturnClaimStatus.Completed];
+    // The marketplace's own per-line words for an accepted return (upper case), which decide over the claim's status.
+    public static readonly string[] AcceptedReturnLineRawStatuses = ["ACCEPTED", "APPROVED", "COMPLETED", "REFUNDED"];
 
     public static decimal Amount(decimal netAmount, decimal grossAmount) => netAmount > 0 ? netAmount : grossAmount;
 }

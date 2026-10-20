@@ -14,6 +14,8 @@ export const realtimeQueryKeysByResource: Record<string, readonly (readonly stri
   invoices: [['invoice'], ['invoice-viewer'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['orders'], ['dashboard-bootstrap']],
   connections: [['connections'], ['connection'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap'], ['dashboard']],
   questions: [['questions']],
+  // The worker rebuilt the dashboard snapshot after a change was already announced: the menu badges and cards re-read it.
+  dashboard: [['dashboard-bootstrap']],
   jobs: [['jobs'], ['job']],
 }
 

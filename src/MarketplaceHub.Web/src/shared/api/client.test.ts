@@ -104,6 +104,28 @@ describe('polls on a timer (W1)', () => {
     const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit
     expect(new Headers(init.headers).get('X-Background-Poll')).toBe('1')
   })
+
+  // O6: a timer or a realtime invalidation that reads through plain hubApi must not keep an idle session alive either.
+  it('mark every plain hubApi read as automatic while nobody is there, but never a write or a read the person just asked for', async () => {
+    const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith('/auth/csrf') ? { token: 'csrf' } : { ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const header = (url: string) => {
+      const call = [...fetchMock.mock.calls].reverse().find(([called]) => called === `/api/v1${url}`) as unknown[]
+      return new Headers((call[1] as RequestInit).headers).get('X-Background-Poll')
+    }
+
+    noteUserActivity(0)
+    await hubApi('/returns?limit=50')
+    await hubApi('/questions/sync-state', { cache: 'no-store' })
+    await hubApi('/jobs/1/retry', { method: 'POST' })
+    expect(header('/returns?limit=50')).toBe('1')
+    expect(header('/questions/sync-state')).toBe('1')
+    expect(header('/jobs/1/retry')).toBeNull()
+
+    noteUserActivity()
+    await hubApi('/returns?limit=50')
+    expect(header('/returns?limit=50')).toBeNull()
+  })
 })
 
 describe('errors a repeat cannot fix', () => {

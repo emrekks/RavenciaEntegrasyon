@@ -29,6 +29,8 @@ describe('realtime refresh map', () => {
     expect(roots('orders')).toContain('dashboard-bootstrap')
     // The revenue panel reads a whole period; one order event must not refetch it.
     expect(roots('orders')).not.toContain('dashboard')
+    // O19: the worker announces a rebuilt snapshot, so the menu badges re-read it instead of keeping the old counts.
+    expect(roots('dashboard')).toContain('dashboard-bootstrap')
   })
 
   it('names each key once, also after a reconnect, and always refreshes the job list', () => {

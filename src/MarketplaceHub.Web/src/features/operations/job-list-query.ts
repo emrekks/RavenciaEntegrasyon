@@ -54,14 +54,32 @@ export function jobPlatformOptions(connectionPlatforms: readonly string[], selec
   return [...codes].sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
 }
 
-// How often the page polls. The list polls every 15 s and only while just its first page is loaded: once older pages
-// are read it stops (refetching every loaded page every 5 s cost one request per page, W22/G24); Yenile and the
-// realtime events still refresh it. The counts follow the same 15 s. An open job detail polls until the job finished.
+// How often the page polls. The list polls every 15 s while just its first page is loaded; once older pages are read
+// only the first page is polled and put in front of them (refetching every loaded page cost one request per page,
+// W22/G24), so a queued job that no realtime event announces still shows up. Yenile and realtime events refresh it all. The counts follow the same 15 s. An open job detail polls until the job finished.
 export const jobListPollMs = 15_000
 const terminalJobStatuses: ReadonlySet<string> = new Set(['SUCCEEDED', 'DEAD', 'CANCELLED'])
 
 export function jobListPollInterval(loadedPages: number): number | false {
   return loadedPages > 1 ? false : jobListPollMs
+}
+
+/** While older pages are loaded, only the first page is polled (jobListHeadPollInterval) and put in front of them. */
+export function jobListHeadPollInterval(loadedPages: number): number | false {
+  return loadedPages > 1 ? jobListPollMs : false
+}
+
+/** The loaded pages with a fresh first page in front; the page rows are deduplicated where they are shown. */
+export function withFreshFirstPage<Page, Param>(current: { pages: Page[]; pageParams: Param[] } | undefined, first: Page) {
+  return current && current.pages.length > 1 ? { ...current, pages: [first, ...current.pages.slice(1)] } : current
+}
+
+// A ?sayfa=N link opens page N: server pages are read until that page has rows or the server has no more, at most
+// this many server pages so a filter that matches nothing cannot read the whole history.
+export const jobListMaximumAutoPages = 25
+
+export function shouldLoadTowardsPage(requestedPage: number, totalPages: number, hasNextPage: boolean, loadedPages: number, busy: boolean) {
+  return requestedPage > totalPages && hasNextPage && !busy && loadedPages < jobListMaximumAutoPages
 }
 
 export function jobDetailPollInterval(status: string | undefined): number | false {
