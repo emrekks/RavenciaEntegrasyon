@@ -42,6 +42,10 @@ updates:
     directory: /src/MarketplaceHub.Web
     schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Istanbul }
     open-pull-requests-limit: 5
+    ignore:
+      # typescript-eslint does not run on TypeScript 7 yet (lint stops with "does not support TS 7.0").
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     groups:
       web-minor-patch:
         patterns: ["*"]

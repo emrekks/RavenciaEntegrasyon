@@ -43,7 +43,7 @@ x-app: &app
 
 services:
   postgres:
-    image: postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
     restart: unless-stopped
     init: true
     networks: [backend]
@@ -126,12 +126,6 @@ services:
     restart: unless-stopped
     init: true
     networks: [edge, backend]
-    # The client address reaches the API as Caddy's X-Forwarded-For (Caddy trusts no proxy, so it writes the
-    # peer address; the API trusts only the backend network, see Program.cs). IPv4 keeps the real address
-    # (DNAT). The edge network has no IPv6, so if the host answers on IPv6 (AAAA record), those connections go
-    # through Docker's userland proxy and every IPv6 visitor arrives as the edge gateway address: one shared
-    # rate-limit/sign-in bucket, and a "private" address for the /health/* rule. Before publishing an AAAA
-    # record, give the edge network IPv6 (enable_ipv6, Docker >= 27 with ip6tables) and check Caddy's log.
     ports: ["80:80", "443:443", "443:443/udp"]
     environment: { MARKETPLACEHUB_SITE_ADDRESS: "${MARKETPLACEHUB_SITE_ADDRESS:-https://localhost}" }
     volumes: [caddy_data:/data, caddy_config:/config]
@@ -148,7 +142,7 @@ services:
         limits: { memory: 256M, cpus: "0.50" }
 
   backup:
-    image: postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
     profiles: ["operations"]
     restart: "no"
     networks: [backend]
@@ -168,7 +162,7 @@ services:
       postgres: { condition: service_healthy }
 
   validation-postgres:
-    image: postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
     profiles: ["validation"]
     restart: "no"
     networks: [validation]

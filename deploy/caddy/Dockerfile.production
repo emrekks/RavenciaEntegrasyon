@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:24.18.1-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c9899119b03f7af7a6b3 AS web
+FROM node:26.12.0-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5 AS web
 WORKDIR /web
 COPY src/MarketplaceHub.Web/package.json src/MarketplaceHub.Web/package-lock.json ./
 RUN npm install --global npm@11.12.1 \
@@ -10,7 +10,7 @@ RUN npm run typecheck \
  && npm run build \
  && npm run check:bundle
 
-FROM caddy:2.11.3@sha256:ec18ee54aab3315c22e25f3b2babda73ff8007d39b13b3bd1bfffa2f0444c7d9
+FROM caddy:2.11.7@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
 COPY deploy/caddy/Caddyfile.production /etc/caddy/Caddyfile
 # Fail the image build (CI and server) on a Caddyfile that does not parse.
 RUN MARKETPLACEHUB_SITE_ADDRESS=https://build-check.invalid caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null

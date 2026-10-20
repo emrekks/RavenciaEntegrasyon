@@ -67,7 +67,7 @@ Son gözlenen imajlar:
 
 - Edge: `marketplacehub-edge:manual-95d54ce`
 - API/Worker: `marketplacehub-app:manual-d9fdb0e`
-- PostgreSQL: `postgres:18.4`
+- PostgreSQL: `postgres:18.6`
 
 Son gözlemde kök disk yaklaşık 72 GB toplam, 29 GB kullanılmış ve 44 GB boştu. Bu bilgi kapasite planlaması içindir; disk kullanımı büyüdükçe ayrıca kontrol edilmelidir.
 

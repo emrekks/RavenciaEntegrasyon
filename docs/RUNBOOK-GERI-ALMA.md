@@ -93,7 +93,7 @@ silinir — yani bir haftadan eski bir noktaya dönüş her zaman garanti değil
    sudo docker run --rm --network marketplacehub_backend -v marketplacehub_backup_staging:/backup:ro \
      -e PGHOST=postgres -e PGUSER=marketplacehub -e PGDATABASE=marketplacehub \
      -e PGPASSWORD="$(sudo cat deploy/secrets/postgres_password.txt)" \
-     postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a \
+     postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 \
      pg_restore --exit-on-error --no-owner --dbname=marketplacehub "/backup/$SET/database.dump"
    ```
    Dosya/anahtar volume'leri (`app_files`, `dp_keys`) gerekiyorsa `private-volumes.tar.gz`'den aynı
