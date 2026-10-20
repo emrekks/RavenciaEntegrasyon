@@ -38,6 +38,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     }
 
     internal const string OrdersGroup = "orders";
+    internal const string OrderInvoicesGroup = "order-invoices";
     private static readonly TimeSpan GroupPollInterval = TimeSpan.FromMilliseconds(200);
 
     // The API's instant actions project an accepted marketplace write onto the same orders and
@@ -111,10 +112,12 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // Historical cargo lookups can scan many pages; keep them out of the
         // lifecycle lane so a slow metadata repair cannot hold up status polling.
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return "order-cargo-info";
-        // Trendyol invoice reconciliation writes the same packages and orders (their versions) as the order
-        // reads, webhooks and status scans, so it shares their "orders" lock: in a lane of its own it hit
-        // version conflicts that threw away a 200-order page. While the lane is busy it waits (deferred,
-        // attempt refunded) instead of coalescing.
+        // Trendyol invoice reconciliation has its own group again: it writes only the packages' invoice columns
+        // and the order snapshot of partial return-claim orders, without checking or bumping their versions
+        // (ExecuteUpdate), so it neither waits behind the long order reads nor makes them conflict. The partial
+        // order it completes from a full order read is written under the "orders" lock it takes for that.
+        // Shopify and Hepsiburada invoice checks project whole orders and stay with the order reads.
+        if (type == MarketplaceJobTypes.OrderInvoiceReconciliation) return OrderInvoicesGroup;
         // Webhook deliveries and the read-back of uncertain marketplace writes update the same orders
         // and packages as the order reads; sharing their lock avoids version conflicts and the
         // retries (and quota) those cost.
@@ -145,7 +148,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         catch (JsonException) { return null; }
     }
 
-    internal static JobExecutionResult ContentionResult(string jobType, string payloadJson, string? triggerType = null)
+    // sameTypeRunning: a job of the same type of the connection holds the lock now. Only then does a recurring
+    // read coalesce into it (that run reads the same thing); behind another job of the group it waits instead
+    // of being reported as done without running.
+    internal static JobExecutionResult ContentionResult(string jobType, string payloadJson, string? triggerType = null, bool sameTypeRunning = true)
     {
         // Work a user asked for is never folded into a run that happens to hold the lock.
         if (triggerType == "user")
@@ -173,7 +179,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // Only recurring read syncs may coalesce: the job already holding the lock performs the
         // same read. Writes, actions, webhooks, imports and targeted requests carry their own work
         // and must wait for the lock instead of being reported as done.
-        return IsCoalescableRead(jobType)
+        return IsCoalescableRead(jobType) && sameTypeRunning
             ? JobExecutionResult.Success()
             : JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY",
                 "Bu bağlantıda aynı türde başka bir işlem sürüyor; işlem tamamlanınca otomatik çalıştırılacak.", TimeSpan.FromSeconds(30));

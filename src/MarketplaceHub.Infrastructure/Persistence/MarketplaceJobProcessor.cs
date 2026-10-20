@@ -53,7 +53,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             && await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId
                 && x.JobDedupKey.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix)
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken))
-            return JobExecutionResult.Retry("INITIAL_SYNC_PENDING", "İlk kapsamlı veri aktarımı tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
+            // Waiting for the first full import is not a failure: the job keeps its attempts (a day at most,
+            // like any deferral) instead of ending Dead while the bootstrap runs.
+            return JobExecutionResult.Deferred("INITIAL_SYNC_PENDING", "İlk kapsamlı veri aktarımı tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
         // A disabled connection may still be tested so it can be reactivated, but
         // no data sync or marketplace operation may execute while it is passive.
         if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
@@ -66,7 +68,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var triggerType = jobId is { } leasedJobId
                 ? await db.IntegrationJobs.AsNoTracking().Where(x => x.Id == leasedJobId).Select(x => x.TriggerType).FirstOrDefaultAsync(cancellationToken)
                 : null;
-            return MarketplaceSyncExecutionLock.ContentionResult(jobType, payloadJson, triggerType);
+            // A recurring read is folded into the run holding the lock only when that run reads the same thing
+            // (a job of the same type of the connection is running); otherwise it waits its turn.
+            var sameTypeRunning = MarketplaceSyncExecutionLock.IsCoalescableRead(jobType)
+                && await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                    && x.JobType == jobType && x.Status == JobStatus.Leased && x.Id != jobId, cancellationToken);
+            var contention = MarketplaceSyncExecutionLock.ContentionResult(jobType, payloadJson, triggerType, sameTypeRunning);
+            MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.JobLockContention.Add(1, new System.Diagnostics.TagList
+            {
+                { "job.type", jobType },
+                { "lock.group", MarketplaceSyncExecutionLock.GroupFor(jobType) },
+                { "result", contention.Succeeded ? "coalesced" : "deferred" }
+            });
+            return contention;
         }
         await using (syncLock)
         {
@@ -106,15 +120,22 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         : JobExecutionResult.Success();
                 if (directResult is not null)
                 {
-                    // A finished slice of a long job is progress, not a failure.
-                    var completedSlice = directResult.Succeeded || directResult.Continues;
-                    if (!completedSlice)
+                    // A finished slice of a long job is progress, not a failure; it is recorded as a slice, and
+                    // only the run's last slice moves the last success and resets the failure count.
+                    if (directResult.Continues)
                     {
-                        telemetryFailedCount++;
-                        if (directResult.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
+                        if (telemetryResource is not null) await RecordSyncSlice(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, cancellationToken);
+                        return directResult;
                     }
-                    if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, completedSlice, completedSlice ? null : directResult.ErrorCode, cancellationToken);
-                    if (!completedSlice) await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, directResult, cancellationToken);
+                    if (directResult.Succeeded)
+                    {
+                        if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);
+                        return directResult;
+                    }
+                    telemetryFailedCount++;
+                    if (directResult.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
+                    if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, directResult.ErrorCode, cancellationToken);
+                    await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, directResult, cancellationToken);
                     return directResult;
                 }
                 var succeeded = jobType switch
@@ -139,13 +160,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     MarketplaceJobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     _ => false
                 };
-                if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, succeeded, succeeded ? null : "F3_JOB_REJECTED", cancellationToken);
+                if (telemetryResource is not null)
+                {
+                    if (succeeded) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);
+                    else await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, "F3_JOB_REJECTED", cancellationToken);
+                }
                 return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("F3_JOB_REJECTED", "Job payload, capability or current entity state did not permit the operation.");
             }
             catch (JobProcessingException exception) when (exception.Result.Continues)
             {
-                // A finished slice of a long read is progress, not a failure.
-                if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);
+                // A finished slice of a long read is progress, not a failure, and not yet a completed run.
+                if (telemetryResource is not null) await RecordSyncSlice(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, cancellationToken);
                 return exception.Result;
             }
             catch (JobProcessingException exception)
@@ -280,6 +305,30 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // Telemetry only; the original failure is what the job reports.
             db.ChangeTracker.Clear();
         }
+    }
+
+    // A finished slice of a long run: its duration and counts are shown, but the last success, the last error
+    // and the failure count wait for the run's end, so a run that keeps slicing is not shown as healthy.
+    private async Task RecordSyncSlice(Guid tenantId, Guid connectionId, string resourceType, TimeSpan duration, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
+        ApplySliceTelemetry(cursor, timeProvider.GetUtcNow(), duration);
+        cursor.LastRequestCount = telemetryRequestCount;
+        cursor.LastReceivedCount = telemetryReceivedCount;
+        cursor.LastChangedCount = telemetryChangedCount;
+        cursor.LastInsertedCount = telemetryInsertedCount;
+        cursor.LastUpdatedCount = telemetryUpdatedCount;
+        cursor.LastSkippedCount = telemetrySkippedCount;
+        cursor.LastRetryCount = telemetryRetryCount;
+        cursor.LastRateLimitCount = telemetryRateLimitCount;
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    internal static void ApplySliceTelemetry(SyncCursor cursor, DateTimeOffset now, TimeSpan duration)
+    {
+        cursor.LastSliceAt = now;
+        cursor.LastDurationMs = Math.Max(0, (long)duration.TotalMilliseconds);
     }
 
     private async Task RecordSyncCompletion(Guid tenantId, Guid connectionId, string resourceType, TimeSpan duration, bool succeeded, string? error, CancellationToken cancellationToken)
@@ -3064,10 +3113,52 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // read through Order V2 fifty at a time, grouped by storefront and date window; older open
     // packages once a day, one order at a time from the stream around their last change. The
     // order stream already brings every status change, so this is the safety net.
+    // The scan runs in slices (audit 2026-10-20 Q1): the "orders" lock it shares with webhook ingests,
+    // new-order reads and effect verifications is held for one slice of about twenty seconds, not for the
+    // whole scan (up to twenty minutes). Each chunk's results are written and its position saved before the
+    // next one, so a timeout loses one chunk instead of everything read; between slices the job is requeued
+    // (Continue) and the waiting order jobs of the connection run first. Slicing keeps the shared, versioned
+    // order projection and its lock; a separate lock with version-free writes would need a second projection.
+    internal const string TrendyolOpenScanCursorPrefix = "trendyol-open-v1:";
+    internal const int TrendyolOpenScanRecentChunk = 250;
+    internal const int TrendyolOpenScanOlderChunk = 25;
+
+    internal sealed record TrendyolOpenScanPosition(bool Older, string? After);
+
+    internal static string TrendyolOpenScanCursor(TrendyolOpenScanPosition position) =>
+        $"{TrendyolOpenScanCursorPrefix}{(position.Older ? "older" : "recent")}:{position.After}";
+
+    // A position saved by this scan, or the start of a new scan (any other cursor value, null included).
+    internal static TrendyolOpenScanPosition ReadTrendyolOpenScanCursor(string? value)
+    {
+        if (value is null || !value.StartsWith(TrendyolOpenScanCursorPrefix, StringComparison.Ordinal)) return new(false, null);
+        var rest = value[TrendyolOpenScanCursorPrefix.Length..];
+        var separator = rest.IndexOf(':', StringComparison.Ordinal);
+        if (separator < 0) return new(false, null);
+        var phase = rest[..separator];
+        var after = rest[(separator + 1)..];
+        return phase switch
+        {
+            "older" => new(true, after.Length == 0 ? null : after),
+            "recent" => new(false, after.Length == 0 ? null : after),
+            _ => new(false, null)
+        };
+    }
+
+    // The ids still to read in this phase, in a stable order, after the saved position.
+    internal static IReadOnlyList<string> TrendyolOpenScanRemaining(IEnumerable<string> ids, string? after) =>
+        [.. ids.Distinct(StringComparer.Ordinal).Where(id => after is null || string.CompareOrdinal(id, after) > 0).Order(StringComparer.Ordinal)];
+
+    private TimeSpan TrendyolOpenScanSliceBudget() =>
+        TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:TrendyolSliceSeconds", 20), 5, 300));
+
     private async Task<bool> SyncTrendyolOpenPackages(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
+        var sliceStarted = Stopwatch.StartNew();
+        var budget = TrendyolOpenScanSliceBudget();
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
+        var position = ReadTrendyolOpenScanCursor(cursor.OpaqueCursor);
         var open = await (from package in db.ShipmentPackages.AsNoTracking()
                           join order in db.Orders.AsNoTracking()
                               on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
@@ -3079,51 +3170,78 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                           select new { package.ExternalPackageId, order.ExternalOrderId, order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode })
             .ToListAsync(cancellationToken);
         var v2Cutoff = now - TrendyolLookupPolicy.V2History;
-        var received = new List<RemoteOrder>();
-        var recent = open.Where(package => package.OrderedAt >= v2Cutoff).ToList();
-        foreach (var (packageIds, hint) in TrendyolLookupPolicy.PackageBatches(recent.Select(package => new TrendyolPackageRef(package.ExternalPackageId, package.OrderedAt, package.StoreFrontCode)), now))
+
+        // Saves the chunk's results and the position, then hands the lock back when the slice is used up.
+        async Task CheckpointAsync(List<RemoteOrder> received, TrendyolOpenScanPosition next)
         {
-            TrackRequest();
-            var batch = await orders.GetShipmentPackagesAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle-batch:{packageIds[0]}"), packageIds, hint, cancellationToken);
-            if (batch.IsSuccess)
+            if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
+            cursor.OpaqueCursor = TrendyolOpenScanCursor(next);
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            if (sliceStarted.Elapsed >= budget)
+                throw new JobProcessingException(JobExecutionResult.Continue("Açık paket taraması kaldığı paketten birkaç saniye içinde devam edecek."));
+        }
+
+        if (!position.Older)
+        {
+            var recent = open.Where(package => package.OrderedAt >= v2Cutoff).ToList();
+            var byPackage = recent.GroupBy(package => package.ExternalPackageId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            foreach (var chunk in TrendyolOpenScanRemaining(byPackage.Keys, position.After).Chunk(TrendyolOpenScanRecentChunk))
             {
-                foreach (var _ in batch.Value!) TrackReceived();
-                received.AddRange(batch.Value!);
-                await ResolveIssue(tenantId, $"order-lifecycle-batch:{connectionId}", cancellationToken);
-                continue;
+                var received = new List<RemoteOrder>();
+                foreach (var (packageIds, hint) in TrendyolLookupPolicy.PackageBatches(chunk.Select(id => byPackage[id]).Select(package => new TrendyolPackageRef(package.ExternalPackageId, package.OrderedAt, package.StoreFrontCode)), now))
+                {
+                    TrackRequest();
+                    var batch = await orders.GetShipmentPackagesAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle-batch:{packageIds[0]}"), packageIds, hint, cancellationToken);
+                    if (batch.IsSuccess)
+                    {
+                        foreach (var _ in batch.Value!) TrackReceived();
+                        received.AddRange(batch.Value!);
+                        await ResolveIssue(tenantId, $"order-lifecycle-batch:{connectionId}", cancellationToken);
+                        continue;
+                    }
+                    if (batch.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(batch.Error); throw JobProcessingException.FromAdapter(batch.Error); }
+                    TrackResultFailure(batch.Error);
+                    await RecordIssue(tenantId, $"order-lifecycle-batch:{connectionId}", batch.Error!.Code,
+                        $"Açık Trendyol paketleri toplu okunamadı; sonraki taramada tekrar denenecek. {batch.Error.SafeMessage}", cancellationToken);
+                }
+                await CheckpointAsync(received, new(false, chunk[^1]));
             }
-            if (batch.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(batch.Error); throw JobProcessingException.FromAdapter(batch.Error); }
-            TrackResultFailure(batch.Error);
-            await RecordIssue(tenantId, $"order-lifecycle-batch:{connectionId}", batch.Error!.Code,
-                $"Açık Trendyol paketleri toplu okunamadı; sonraki taramada tekrar denenecek. {batch.Error.SafeMessage}", cancellationToken);
+            position = new(true, null);
         }
 
         var olderCursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE_OLDER", cancellationToken);
-        if (olderCursor.LastSuccessAt is not { } lastOlderRead || now - lastOlderRead >= TimeSpan.FromDays(1))
+        // The daily pass over older packages; one that is under way (a saved position) is finished first.
+        if (position.After is not null || olderCursor.LastSuccessAt is not { } lastOlderRead || now - lastOlderRead >= TimeSpan.FromDays(1))
         {
-            foreach (var order in open.Where(package => package.OrderedAt < v2Cutoff).GroupBy(package => package.ExternalOrderId).Select(group => group.First()))
+            var older = open.Where(package => package.OrderedAt < v2Cutoff).GroupBy(package => package.ExternalOrderId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            foreach (var chunk in TrendyolOpenScanRemaining(older.Keys, position.After).Chunk(TrendyolOpenScanOlderChunk))
             {
-                TrackRequest();
-                var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{order.ExternalOrderId}"), order.ExternalOrderId,
-                    new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode), cancellationToken);
-                if (result.IsSuccess)
+                var received = new List<RemoteOrder>();
+                foreach (var order in chunk.Select(id => older[id]))
                 {
-                    TrackReceived();
-                    received.Add(result.Value!);
-                    await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", cancellationToken);
-                    continue;
+                    TrackRequest();
+                    var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{order.ExternalOrderId}"), order.ExternalOrderId,
+                        new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode), cancellationToken);
+                    if (result.IsSuccess)
+                    {
+                        TrackReceived();
+                        received.Add(result.Value!);
+                        await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", cancellationToken);
+                        continue;
+                    }
+                    if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
+                    if (result.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error); }
+                    TrackResultFailure(result.Error);
+                    await RecordIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", result.Error!.Code,
+                        $"Sipariş yaşam döngüsü yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
                 }
-                if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
-                if (result.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error); }
-                TrackResultFailure(result.Error);
-                await RecordIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", result.Error!.Code,
-                    $"Sipariş yaşam döngüsü yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
+                await CheckpointAsync(received, new(true, chunk[^1]));
             }
             olderCursor.LastSuccessAt = now;
             olderCursor.Version++;
         }
 
-        if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
         cursor.OpaqueCursor = null;
         cursor.LastModifiedWatermark = now;
         cursor.Version++;
@@ -3834,11 +3952,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 invoiceCursor.OpaqueCursor = position;
                 invoiceCursor.Version++;
-                await db.SaveChangesAsync(cancellationToken);
+                await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken);
             }
             else if (isTrendyol)
             {
-                await db.SaveChangesAsync(cancellationToken);
+                await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken);
             }
         }
 
@@ -3859,7 +3977,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         if (invoiceCursor is not null || isTrendyol)
-            await db.SaveChangesAsync(cancellationToken);
+            await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken);
 
         await UpdateOrderInvoiceReconciliationProgressAsync(
             tenantId,
@@ -3953,7 +4071,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 observed.Add(localId);
             }
         }
-        await db.SaveChangesAsync(cancellationToken);
+        await SaveOrderInvoiceCheckpointAsync(isTrendyol: true, cancellationToken);
         return observed;
     }
 
@@ -4028,6 +4146,91 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .SetProperty(job => job.ProgressFailed, telemetryFailedCount), cancellationToken);
     }
 
+    // The columns the Trendyol invoice check may change on a package (invoice state) and on an order (the
+    // snapshots of a partial return-claim order). Version is listed because the shared merge bumps it.
+    internal static readonly IReadOnlySet<string> PackageInvoiceColumns = new HashSet<string>(StringComparer.Ordinal)
+    {
+        nameof(ShipmentPackage.MarketplaceInvoiceNumber), nameof(ShipmentPackage.MarketplaceInvoiceUrl), nameof(ShipmentPackage.MarketplaceInvoiceStatus),
+        nameof(ShipmentPackage.MarketplaceInvoiceRawStatus), nameof(ShipmentPackage.MarketplaceInvoiceSourceUpdatedAt), nameof(ShipmentPackage.MarketplaceInvoiceObservedAt),
+        nameof(ShipmentPackage.UpdatedAt), nameof(ShipmentPackage.Version)
+    };
+
+    internal static readonly IReadOnlySet<string> OrderSnapshotColumns = new HashSet<string>(StringComparer.Ordinal)
+    {
+        nameof(Order.CustomerSnapshotJson), nameof(Order.ShipmentAddressSnapshotJson), nameof(Order.InvoiceAddressSnapshotJson),
+        nameof(Order.LastRemoteModifiedAt), nameof(Order.UpdatedAt), nameof(Order.Version)
+    };
+
+    internal static bool OnlyChanges(IEnumerable<string> modifiedProperties, IReadOnlySet<string> allowed) => modifiedProperties.All(allowed.Contains);
+
+    // The Trendyol invoice check runs under its own lock group ("order-invoices"), next to the order reads.
+    // It writes the package invoice columns and the order snapshots it changed without checking or bumping
+    // their versions (ExecuteUpdate), so an order read that changes the same rows meanwhile neither fails this
+    // check nor is failed by it. Everything else it changed (invoice delivery states, history, its cursor) is
+    // saved normally in the same transaction. A package or order with any other change is saved normally.
+    private async Task SaveOrderInvoiceCheckpointAsync(bool isTrendyol, CancellationToken cancellationToken)
+    {
+        if (!isTrendyol) { await db.SaveChangesAsync(cancellationToken); return; }
+        var packages = db.ChangeTracker.Entries<ShipmentPackage>()
+            .Where(entry => entry.State == EntityState.Modified && OnlyChanges(entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name), PackageInvoiceColumns))
+            .ToList();
+        var orderEntries = db.ChangeTracker.Entries<Order>()
+            .Where(entry => entry.State == EntityState.Modified && OnlyChanges(entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name), OrderSnapshotColumns))
+            .ToList();
+        if (packages.Count == 0 && orderEntries.Count == 0) { await db.SaveChangesAsync(cancellationToken); return; }
+
+        await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        var now = timeProvider.GetUtcNow();
+        foreach (var entry in packages)
+        {
+            var package = entry.Entity;
+            await db.ShipmentPackages.Where(x => x.TenantId == package.TenantId && x.Id == package.Id).ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.MarketplaceInvoiceNumber, package.MarketplaceInvoiceNumber)
+                .SetProperty(x => x.MarketplaceInvoiceUrl, package.MarketplaceInvoiceUrl)
+                .SetProperty(x => x.MarketplaceInvoiceStatus, package.MarketplaceInvoiceStatus)
+                .SetProperty(x => x.MarketplaceInvoiceRawStatus, package.MarketplaceInvoiceRawStatus)
+                .SetProperty(x => x.MarketplaceInvoiceSourceUpdatedAt, package.MarketplaceInvoiceSourceUpdatedAt)
+                .SetProperty(x => x.MarketplaceInvoiceObservedAt, package.MarketplaceInvoiceObservedAt)
+                .SetProperty(x => x.UpdatedAt, package.UpdatedAt), cancellationToken);
+            package.Version = entry.Property(x => x.Version).OriginalValue;
+            entry.OriginalValues.SetValues(entry.CurrentValues);
+            entry.State = EntityState.Unchanged;
+            AddOrderDataChangeEvent(package.TenantId, "ShipmentPackage", package.Id, package.Version, now);
+        }
+        foreach (var entry in orderEntries)
+        {
+            var order = entry.Entity;
+            await db.Orders.Where(x => x.TenantId == order.TenantId && x.Id == order.Id).ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.CustomerSnapshotJson, order.CustomerSnapshotJson)
+                .SetProperty(x => x.ShipmentAddressSnapshotJson, order.ShipmentAddressSnapshotJson)
+                .SetProperty(x => x.InvoiceAddressSnapshotJson, order.InvoiceAddressSnapshotJson)
+                .SetProperty(x => x.LastRemoteModifiedAt, order.LastRemoteModifiedAt)
+                .SetProperty(x => x.UpdatedAt, order.UpdatedAt), cancellationToken);
+            order.Version = entry.Property(x => x.Version).OriginalValue;
+            entry.OriginalValues.SetValues(entry.CurrentValues);
+            entry.State = EntityState.Unchanged;
+            AddOrderDataChangeEvent(order.TenantId, "Order", order.Id, order.Version, now);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    }
+
+    // The screens learn about a row written outside the change tracker the same way as about a saved one.
+    private void AddOrderDataChangeEvent(Guid tenantId, string aggregateType, Guid aggregateId, long version, DateTimeOffset now) =>
+        db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ResourceType = "orders",
+            OperationType = "updated",
+            AggregateType = aggregateType,
+            AggregateId = aggregateId,
+            AggregateVersion = version,
+            PayloadJson = JsonSerializer.Serialize(new { aggregateType, aggregateId, version }),
+            CreatedAt = now,
+            NextAttemptAt = now
+        });
+
     private async Task<bool> HydrateTrendyolReturnClaimOrder(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
     {
         var customerSnapshot = await db.Orders.AsNoTracking()
@@ -4051,6 +4254,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         // Hydration is opportunistic. A busy order lane must defer only this
         // candidate; the invoice cursor still advances and will wrap around.
+        // The invoice check holds its own "order-invoices" lock, so this "orders" lock is a real guard: the
+        // full order projection below is a versioned write that must not race the order reads.
         await using var orderSyncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(
             db, connectionId, MarketplaceJobTypes.OrderSync, cancellationToken);
         if (orderSyncLock is null)
@@ -8874,14 +9079,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(x => (int?)x.OverlapSeconds)
             .SingleOrDefaultAsync(cancellationToken) ?? 900;
         var overlap = TimeSpan.FromSeconds(Math.Clamp(configuredOverlapSeconds, 60, 86_400));
-        // A failed sync can leave a valid-looking watermark even though the
-        // remote read never completed (for example after an auth outage). The
-        // next successful run must backfill the bounded baseline instead of
-        // advancing from that stale watermark and silently skipping older
-        // claims.
-        var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
-        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap, ReadBoolean(payloadJson, "forceFull") || retryAfterFailure);
+        // A failed run resumes its saved state: the watermark moves only when a whole run completes, and the
+        // saved window and page say where the failed run stopped, so nothing is skipped and nothing is read
+        // twice. (The run used to restart from the three-month baseline after any failure; the failure count
+        // it looked at is the telemetry of the same "RETURNS" row, so one quota error meant a full re-read.)
+        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap, ReadBoolean(payloadJson, "forceFull"));
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var pagesThisSlice = 0;
         do
         {
             var storefront = TrendyolReadStorefronts.ReturnCodes[state.StoreFrontIndex];
@@ -8913,6 +9117,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+            pagesThisSlice++;
+            var nextStorefront = false;
             if (result.Value.HasMore)
             {
                 state = NextReturnPage(state, result.Value.NextCursor);
@@ -8920,11 +9126,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             else if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.ReturnCodes.Length)
             {
                 state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0, PageCursor = null };
+                nextStorefront = true;
             }
             else
             {
                 cursor.OpaqueCursor = null;
-                cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
+                // The window's end (when the run started) is the next run's start, so claims changed while
+                // this run read are not skipped.
+                cursor.LastModifiedWatermark = state.EndAt ?? timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
@@ -8932,9 +9141,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.OpaqueCursor = SerializeReturnSyncState(state);
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
+            // The read hands its lock and slot back between storefronts and every few pages; the saved state
+            // continues it right after, so a long baseline no longer holds the returns lane in one piece.
+            if (ReturnSyncSliceEnds(nextStorefront, pagesThisSlice))
+                throw new JobProcessingException(JobExecutionResult.Continue("İade okuması kaldığı sayfadan birkaç saniye içinde devam edecek."));
         } while (!cancellationToken.IsCancellationRequested);
         return true;
     }
+
+    internal const int ReturnSyncPagesPerSlice = 5;
+
+    internal static bool ReturnSyncSliceEnds(bool movedToNextStorefront, int pagesThisSlice) =>
+        movedToNextStorefront || pagesThisSlice >= ReturnSyncPagesPerSlice;
 
     private async Task<bool> SyncShopifyReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {

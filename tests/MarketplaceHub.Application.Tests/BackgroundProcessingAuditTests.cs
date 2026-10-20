@@ -276,6 +276,100 @@ public sealed class BackgroundProcessingAuditTests
     }
 
     [Fact]
+    public void AVerificationBlockedOnlyByTheConnectionDoesNotCountTowardTheCap()
+    {
+        var effectId = Guid.CreateVersion7();
+        var keys = ExternalEffectSweep.VerificationKeys(effectId);
+        var blocked = new ExternalEffectSweep.VerificationJob(JobStatus.Blocked, "CONNECTION_INACTIVE", 1, 6);
+        var dead = new ExternalEffectSweep.VerificationJob(JobStatus.Dead, "REMOTE_TIMEOUT", 6, 6);
+
+        // The connection is back: the blocked job runs again under its own key instead of using up the next one.
+        var revive = ExternalEffectSweep.Decide(effectId, new Dictionary<string, ExternalEffectSweep.VerificationJob> { [keys[0]] = blocked }, connectionOperational: true);
+        Assert.Equal(keys[0], revive.ReviveKey);
+        Assert.False(revive.Close);
+        Assert.Null(revive.NextKey);
+        // Still passive: the record waits.
+        var wait = ExternalEffectSweep.Decide(effectId, new Dictionary<string, ExternalEffectSweep.VerificationJob> { [keys[0]] = blocked }, connectionOperational: false);
+        Assert.True(wait.Wait);
+        Assert.False(wait.Close);
+        // Every key used by real failures: closed.
+        var close = ExternalEffectSweep.Decide(effectId, keys.ToDictionary(key => key, _ => dead), connectionOperational: true);
+        Assert.True(close.Close);
+        // A writes-off block counts the same way; a blocked job without attempts left does not come back.
+        Assert.Equal(keys[1], ExternalEffectSweep.Decide(effectId, new Dictionary<string, ExternalEffectSweep.VerificationJob> { [keys[0]] = dead, [keys[1]] = blocked with { ErrorCode = "EXTERNAL_WRITES_DISABLED" } }, true).ReviveKey);
+        Assert.Equal(keys[1], ExternalEffectSweep.Decide(effectId, new Dictionary<string, ExternalEffectSweep.VerificationJob> { [keys[0]] = blocked with { AttemptCount = 6 } }, true).NextKey);
+    }
+
+    [Fact]
+    public void TheOpenPackageScanResumesFromItsSavedPosition()
+    {
+        var recent = new MarketplaceJobProcessor.TrendyolOpenScanPosition(false, "3345");
+        var older = new MarketplaceJobProcessor.TrendyolOpenScanPosition(true, "11697863999");
+
+        Assert.Equal(recent, MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.TrendyolOpenScanCursor(recent)));
+        Assert.Equal(older, MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.TrendyolOpenScanCursor(older)));
+        Assert.Equal(new MarketplaceJobProcessor.TrendyolOpenScanPosition(true, null), MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.TrendyolOpenScanCursor(new(true, null))));
+        // Another cursor (none, or the Hepsiburada lifecycle cursor) starts a new scan.
+        Assert.Equal(new MarketplaceJobProcessor.TrendyolOpenScanPosition(false, null), MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(null));
+        Assert.Equal(new MarketplaceJobProcessor.TrendyolOpenScanPosition(false, null), MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.HepsiburadaLifecycleCursor("4736002251")));
+        Assert.Equal(["3346", "3400"], MarketplaceJobProcessor.TrendyolOpenScanRemaining(["3400", "3345", "3100", "3346", "3346"], "3345"));
+        Assert.Equal(["1", "2"], MarketplaceJobProcessor.TrendyolOpenScanRemaining(["2", "1"], null));
+    }
+
+    [Fact]
+    public void TheTrendyolReturnReadHandsBackItsSlotBetweenStorefrontsAndEveryFewPages()
+    {
+        Assert.True(MarketplaceJobProcessor.ReturnSyncSliceEnds(movedToNextStorefront: true, pagesThisSlice: 1));
+        Assert.False(MarketplaceJobProcessor.ReturnSyncSliceEnds(movedToNextStorefront: false, pagesThisSlice: MarketplaceJobProcessor.ReturnSyncPagesPerSlice - 1));
+        Assert.True(MarketplaceJobProcessor.ReturnSyncSliceEnds(movedToNextStorefront: false, pagesThisSlice: MarketplaceJobProcessor.ReturnSyncPagesPerSlice));
+    }
+
+    [Fact]
+    public void AFailedReturnRunResumesItsSavedStateInsteadOfStartingOver()
+    {
+        var saved = new MarketplaceJobProcessor.ReturnSyncState(MarketplaceJobProcessor.ReturnSyncStateVersion, 0, 7, false, Now.AddHours(-3), Now.AddHours(-1));
+        var cursor = new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = MarketplaceJobProcessor.SerializeReturnSyncState(saved), ConsecutiveFailureCount = 3, LastError = "TRENDYOL_RATE_LIMITED", LastModifiedWatermark = Now.AddHours(-4) };
+
+        Assert.Equal(saved, MarketplaceJobProcessor.ReadReturnSyncState(cursor, Now, TimeSpan.FromMinutes(15)));
+    }
+
+    [Fact]
+    public void ASliceIsRecordedWithoutMovingTheLastSuccess()
+    {
+        var cursor = new SyncCursor { ResourceType = "RETURNS", LastSuccessAt = Now.AddHours(-2), ConsecutiveFailureCount = 2, LastError = "X" };
+
+        MarketplaceJobProcessor.ApplySliceTelemetry(cursor, Now, TimeSpan.FromSeconds(12));
+
+        Assert.Equal(Now, cursor.LastSliceAt);
+        Assert.Equal(12_000, cursor.LastDurationMs);
+        Assert.Equal(Now.AddHours(-2), cursor.LastSuccessAt);
+        Assert.Equal(2, cursor.ConsecutiveFailureCount);
+        Assert.Equal("X", cursor.LastError);
+    }
+
+    [Fact]
+    public void ARecurringReadCoalescesOnlyIntoARunOfTheSameType()
+    {
+        Assert.True(MarketplaceSyncExecutionLock.ContentionResult(MarketplaceJobTypes.OrderRecoverySync, "{}", null, sameTypeRunning: true).Succeeded);
+        var behindOther = MarketplaceSyncExecutionLock.ContentionResult(MarketplaceJobTypes.OrderRecoverySync, "{}", null, sameTypeRunning: false);
+        Assert.False(behindOther.Succeeded);
+        Assert.True(behindOther.RefundAttempt);
+        Assert.Equal("CONNECTION_OPERATION_BUSY", behindOther.ErrorCode);
+    }
+
+    [Fact]
+    public void TheTrendyolInvoiceCheckHasItsOwnLockAndWritesOnlyInvoiceColumns()
+    {
+        Assert.Equal("order-invoices", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderInvoiceReconciliation));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation));
+        Assert.True(MarketplaceJobProcessor.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Version)], MarketplaceJobProcessor.PackageInvoiceColumns));
+        Assert.False(MarketplaceJobProcessor.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Status)], MarketplaceJobProcessor.PackageInvoiceColumns));
+        Assert.True(MarketplaceJobProcessor.OnlyChanges([nameof(Order.CustomerSnapshotJson), nameof(Order.Version)], MarketplaceJobProcessor.OrderSnapshotColumns));
+        Assert.False(MarketplaceJobProcessor.OnlyChanges([nameof(Order.DerivedStatus)], MarketplaceJobProcessor.OrderSnapshotColumns));
+    }
+
+    [Fact]
     public void TheRequiredPoolSizeFollowsTheLaneSlots()
     {
         var defaultSlots = WorkerLanes.All().Sum(lane => lane.DefaultSlots);
