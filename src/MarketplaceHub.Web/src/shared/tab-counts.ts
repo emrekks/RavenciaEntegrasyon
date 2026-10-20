@@ -1,4 +1,5 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
+import { scopedStorageKey } from './storage-scope'
 
 // Tab counts arrive a moment after the tabs; until then the badge was missing or showed "…", so the tabs after it
 // jumped sideways when the number came in. The last count each tab showed is remembered per tab set and shown while
@@ -9,7 +10,7 @@ const pending = (count: ReactNode) => count === undefined || count === null || c
 const remembered = (count: ReactNode): count is string | number => typeof count === 'number' || (typeof count === 'string' && /\d/.test(count))
 
 export function useRememberedTabCounts<T extends CountedItem>(scope: string, items: T[]): T[] {
-  const key = `rv-tab-counts:${scope}`
+  const key = scopedStorageKey(`rv-tab-counts:${scope}`)
   const stored = useMemo<Record<string, string | number>>(() => {
     try { return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, string | number> } catch { return {} }
   }, [key])
