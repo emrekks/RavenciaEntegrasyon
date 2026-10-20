@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
@@ -106,19 +107,22 @@ public static class InvoicingEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } failure) return failure;
+            // The server's budget bounds the work, not the browser's connection (see InlineExecutionBudget).
+            var budget = InlineExecutionBudget.Current(http)!;
             var result = await service.ConfirmWorkspaceInvoicesAsync(tenant.TenantId, request,
-                http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
+                http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, budget.Token);
             if (!result.Succeeded) return Problem(http, result.Error!);
-            // These are immediate writes: run the queued job now and answer with its real outcome instead of leaving it for the worker.
-            var items = new List<InvoiceWorkspaceConfirmItemResult>();
-            foreach (var item in result.Value!.Items)
-            {
-                if (item.Status != "QUEUED" || item.JobId is not { } jobId || item.InvoiceId is not { } invoiceId) { items.Add(item); continue; }
-                var outcome = await inline.RunAsync(tenant.TenantId, invoiceId, jobId, http.RequestAborted);
-                items.Add(item with { Status = outcome.Status == "IN_PROGRESS" ? "QUEUED" : outcome.Status, Message = outcome.Message });
-            }
+            // These are immediate writes: the first queued jobs run now and are answered with their real outcome;
+            // the rest stay QUEUED with their job ids for the worker.
+            var items = await budget.RunAsync(result.Value!.Items,
+                item => item.Status == "QUEUED" && item.JobId is not null && item.InvoiceId is not null,
+                async (item, cancellationToken) =>
+                {
+                    var outcome = await inline.RunAsync(tenant.TenantId, item.InvoiceId!.Value, item.JobId!.Value, budget.Deadline, cancellationToken);
+                    return item with { Status = outcome.Status == "IN_PROGRESS" ? "QUEUED" : outcome.Status, Message = outcome.Message };
+                });
             return Results.Ok(new InvoiceWorkspaceConfirmResult(items));
-        });
+        }).WithServerBudget();
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/invoices/{id:guid}/validate", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ValidateAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
