@@ -44,16 +44,24 @@ public sealed record JobExecutionResult(
     {
         // A quota rejection is not the job's fault: it keeps its attempt and the connection backs off.
         AdapterErrorClass.RateLimit =>
-            new(JobCompletionKind.Retry, error.Code, Safe(error.SafeMessage), error.RetryAfter is { } wait && wait > TimeSpan.Zero ? wait : TimeSpan.FromSeconds(30), error.RemoteRequestId, RefundAttempt: true, BackOffConnection: true),
+            new(JobCompletionKind.Retry, error.Code, Safe(error.SafeMessage), BoundedRemoteWait(error.RetryAfter) ?? TimeSpan.FromSeconds(30), error.RemoteRequestId, RefundAttempt: true, BackOffConnection: true),
         AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx =>
-            Retry(error.Code, error.SafeMessage, error.RetryAfter, error.RemoteRequestId),
+            Retry(error.Code, error.SafeMessage, BoundedRemoteWait(error.RetryAfter), error.RemoteRequestId),
         AdapterErrorClass.InternalBug or AdapterErrorClass.ContractViolation => ManualReview(error.Code, error.SafeMessage, error.RemoteRequestId),
         // Refused credentials or access do not change from one minute to the next: the connection's other jobs of
         // the same group wait (five minutes unless the marketplace said how long) instead of each hitting the same wall.
         AdapterErrorClass.Authentication =>
-            new(JobCompletionKind.Blocked, error.Code, Safe(error.SafeMessage), error.RetryAfter is { } wait && wait > TimeSpan.Zero ? wait : TimeSpan.FromMinutes(5), error.RemoteRequestId, BackOffConnection: true),
+            new(JobCompletionKind.Blocked, error.Code, Safe(error.SafeMessage), BoundedRemoteWait(error.RetryAfter) ?? TimeSpan.FromMinutes(5), error.RemoteRequestId, BackOffConnection: true),
         _ => Blocked(error.Code, error.SafeMessage, error.RemoteRequestId)
     };
+
+    // A wait a marketplace asked for is never trusted beyond a quarter hour: a misread header (an epoch taken
+    // as seconds, a far-future date) must not park the job and its connection for years.
+    public static readonly TimeSpan MaximumRemoteWait = TimeSpan.FromMinutes(15);
+
+    private static TimeSpan? BoundedRemoteWait(TimeSpan? wait) => wait is { } value && value > TimeSpan.Zero
+        ? value > MaximumRemoteWait ? MaximumRemoteWait : value
+        : null;
 
     private static string? Safe(string? value) => string.IsNullOrWhiteSpace(value)
         ? null

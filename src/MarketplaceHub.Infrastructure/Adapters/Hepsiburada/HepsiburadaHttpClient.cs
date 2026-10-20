@@ -1403,12 +1403,24 @@ public sealed partial class HepsiburadaHttpClient(
         int? remaining = response.Headers.TryGetValues("X-RateLimit-Remaining", out var values) && int.TryParse(values.FirstOrDefault(), out var parsedRemaining) ? parsedRemaining : null;
         DateTimeOffset? resetAt = null;
         TimeSpan? retryAfter = response.Headers.RetryAfter?.Delta;
-        if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) && int.TryParse(resets.FirstOrDefault(), out var resetSeconds))
+        if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) && long.TryParse(resets.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var reset))
         {
-            retryAfter ??= TimeSpan.FromSeconds(Math.Max(0, resetSeconds));
-            resetAt = timeProvider.GetUtcNow().AddSeconds(Math.Max(0, resetSeconds));
+            var wait = ResetWait(reset, timeProvider.GetUtcNow());
+            retryAfter ??= wait;
+            resetAt = timeProvider.GetUtcNow().Add(wait);
         }
         return limit is null && remaining is null && resetAt is null && retryAfter is null ? null : new(remaining, resetAt, retryAfter, limit);
+    }
+
+    // X-RateLimit-Reset is documented as seconds until the window resets, but a value past 1e9 can only be a
+    // Unix time (seconds) of the reset; read as a delay it would park the connection for half a century.
+    internal static TimeSpan ResetWait(long reset, DateTimeOffset now)
+    {
+        if (reset <= 0) return TimeSpan.Zero;
+        if (reset <= 1_000_000_000) return TimeSpan.FromSeconds(reset);
+        if (reset > DateTimeOffset.MaxValue.ToUnixTimeSeconds()) return TimeSpan.Zero;
+        var wait = DateTimeOffset.FromUnixTimeSeconds(reset) - now;
+        return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
     }
 
     internal static AdapterError Error(HttpStatusCode status, TimeSpan? retryAfter, string? requestId) => status switch
