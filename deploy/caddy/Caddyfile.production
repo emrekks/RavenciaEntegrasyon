@@ -22,6 +22,9 @@
 		max_size 10MB
 	}
 	log_skip @webhook
+	# Public invoice links carry their access token in the path: they are not written to the access log.
+	@public_documents path /api/v1/public/*
+	log_skip @public_documents
 
 	# /health/live stays public (process liveness only, for external uptime
 	# monitors and the Deploy workflow). Readiness and queue state answer only to
@@ -67,8 +70,18 @@
 		try_files {path} /index.html
 		file_server
 	}
+	# The access log keeps no request secrets: the CSRF token and idempotency keys are dropped and query
+	# strings (search terms, cursors) are cut. Caddy already leaves cookies and Authorization out.
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Csrf-Token delete
+				request>headers>Idempotency-Key delete
+				request>headers>X-Idempotency-Key delete
+				request>uri regexp \?.*$ ?redacted
+			}
+		}
 	}
 }

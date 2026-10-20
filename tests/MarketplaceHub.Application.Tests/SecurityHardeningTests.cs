@@ -421,6 +421,19 @@ public sealed class HubSessionTests
     }
 }
 
+public sealed class SettingsSaveConflictTests
+{
+    [Fact]
+    public void AConcurrentFirstSaveIsRecognisedAsAConflict()
+    {
+        var unique = new Microsoft.EntityFrameworkCore.DbUpdateException("save failed", new Npgsql.PostgresException("duplicate key", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.UniqueViolation));
+        var other = new Microsoft.EntityFrameworkCore.DbUpdateException("save failed", new Npgsql.PostgresException("not null", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.NotNullViolation));
+
+        Assert.True(SettingsEndpoints.IsUniqueViolation(unique));
+        Assert.False(SettingsEndpoints.IsUniqueViolation(other));
+    }
+}
+
 public sealed class ShippingLabelSettingsSchemaTests
 {
     [Fact]
