@@ -380,6 +380,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             case "CANCELLED":
                 invoice.Status = InvoiceStatus.Cancelled;
                 invoice.LastErrorCode = null;
+                // The cancelled invoice's link stays on the marketplace until it is removed there.
+                await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, timeProvider.GetUtcNow(), cancellationToken);
                 break;
             case "PENDING" when !remote.IsTerminal:
                 invoice.Status = cancellationPending ? InvoiceStatus.CancellationPending : InvoiceStatus.Submitted;
@@ -1361,37 +1363,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private sealed record PermanentInvoiceDocument(string? PermanentUrl, string? MimeType);
 
-    private MarketplaceDelivery AppendDeliveryHistory(MarketplaceDeliveryState state, string status, string? externalReference, string? errorCode, DateTimeOffset now)
-    {
-        var sequence = state.AttemptNumber + 1;
-        var entry = new MarketplaceDelivery
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = state.TenantId,
-            InvoiceId = state.InvoiceId,
-            ConnectionId = state.ConnectionId,
-            PackageId = state.PackageId,
-            AttemptNumber = sequence,
-            IdempotencyKey = $"delivery-event:{state.Id:N}:{sequence}",
-            ExternalIdempotencyKey = state.ExternalIdempotencyKey,
-            RequestHash = state.RequestHash,
-            DeliveryType = state.DeliveryType,
-            Status = status,
-            ExternalReference = externalReference ?? state.ExternalReference,
-            ErrorCode = errorCode,
-            CreatedAt = now,
-            CompletedAt = status == "STARTED" ? null : now
-        };
-        db.MarketplaceDeliveries.Add(entry);
-        state.AttemptNumber = sequence;
-        state.Status = status;
-        state.ExternalReference = entry.ExternalReference;
-        state.ErrorCode = errorCode;
-        state.CompletedAt = status is "FAILED" or "CONFIRMED" ? now : null;
-        state.UpdatedAt = now;
-        state.Version++;
-        return entry;
-    }
+    private MarketplaceDelivery AppendDeliveryHistory(MarketplaceDeliveryState state, string status, string? externalReference, string? errorCode, DateTimeOffset now) =>
+        InvoiceAdjustmentTracking.AppendDeliveryHistory(db, state, status, externalReference, errorCode, now);
 
     private async Task<bool> ConfirmDelivery(Guid tenantId, Invoice invoice, ShipmentPackage package, MarketplaceDeliveryState state, string correlationId, CancellationToken cancellationToken, InvoiceDeliveryResult? submittedResult = null)
     {
@@ -1613,13 +1586,15 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private async Task<bool> ScanDue(Guid tenantId, CancellationToken cancellationToken)
     {
-        var now = timeProvider.GetUtcNow(); var due = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.DueAt != null && x.DueAt < now && x.Status != InvoiceStatus.Cancelled && x.Status != InvoiceStatus.CancelledLocal && x.Status != InvoiceStatus.Rejected).Select(x => x.Id).ToListAsync(cancellationToken);
+        // DueAt is the issuing deadline (delivery + InvoiceDueDays), so only sale invoices the provider does not hold yet are overdue.
+        var now = timeProvider.GetUtcNow(); var due = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.SequencePurpose == "SALE" && x.ExternalReference == null && x.DueAt != null && x.DueAt < now && x.Status != InvoiceStatus.Cancelled && x.Status != InvoiceStatus.CancelledLocal && x.Status != InvoiceStatus.Rejected).Select(x => x.Id).ToListAsync(cancellationToken);
         foreach (var invoiceId in due)
         {
             var key = $"invoice-due:{invoiceId:N}"; var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken);
             if (issue is null) db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = "INVOICE_DUE_REVIEW", Summary = "Vadesi geçen fatura manuel inceleme bekliyor.", Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
             else { issue.LastSeenAt = now; issue.OccurrenceCount++; }
         }
+        await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, tenantId, now, cancellationToken);
         await QueuePendingMarketplaceDeliveryRecovery(tenantId, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return true;
     }
@@ -1649,22 +1624,33 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                 select new { invoice.Id, PackageId = package.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
 
         var bucket = now.ToUnixTimeSeconds() / 300;
-        var neverQueued = await (from invoice in db.Invoices.AsNoTracking()
-                                 join package in db.ShipmentPackages.AsNoTracking()
-                                     on new { invoice.TenantId, Id = invoice.PackageId!.Value } equals new { package.TenantId, package.Id }
-                                 join connection in db.PlatformConnections.AsNoTracking()
-                                     on new { package.TenantId, Id = package.ConnectionId } equals new { connection.TenantId, connection.Id }
-                                 where invoice.TenantId == tenantId
-                                     && invoice.SequencePurpose == "SALE"
-                                     && invoice.PackageId != null
-                                     && invoice.Status == InvoiceStatus.Accepted
-                                     && invoice.UpdatedAt <= now.AddMinutes(-2)
-                                     && connection.Status == "ACTIVE"
-                                     && connection.Environment == "PRODUCTION"
-                                     && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA")
-                                     && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == invoice.TenantId && state.InvoiceId == invoice.Id)
-                                     && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
-                                 select new { InvoiceId = invoice.Id, ConnectionId = package.ConnectionId }).ToListAsync(cancellationToken);
+        // Sale invoices are order level (PackageId null): their targets are the order's non-cancelled packages,
+        // resolved the same way EnqueueDeliveryAsync does, and they must all sit on one marketplace connection.
+        var acceptedNeverDelivered = await db.Invoices.AsNoTracking()
+            .Where(invoice => invoice.TenantId == tenantId
+                && invoice.SequencePurpose == "SALE"
+                && invoice.Status == InvoiceStatus.Accepted
+                && invoice.UpdatedAt <= now.AddMinutes(-2)
+                && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == invoice.TenantId && state.InvoiceId == invoice.Id)
+                && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null))
+            .Select(invoice => new { invoice.Id, invoice.OrderId, invoice.PackageId })
+            .ToListAsync(cancellationToken);
+        var neverQueued = new List<(Guid InvoiceId, Guid ConnectionId)>();
+        foreach (var invoice in acceptedNeverDelivered)
+        {
+            var targetConnections = await db.ShipmentPackages.AsNoTracking()
+                .Where(package => package.TenantId == tenantId && (invoice.PackageId == null
+                    ? package.OrderId == invoice.OrderId && package.Status != ShipmentPackageStatus.Cancelled
+                    : package.Id == invoice.PackageId.Value))
+                .Select(package => package.ConnectionId).Distinct().ToListAsync(cancellationToken);
+            if (targetConnections.Count != 1) continue;
+            var connectionId = targetConnections[0];
+            var deliverable = await db.PlatformConnections.AsNoTracking().AnyAsync(connection => connection.TenantId == tenantId && connection.Id == connectionId
+                && connection.Status == "ACTIVE"
+                && connection.Environment == "PRODUCTION"
+                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA"), cancellationToken);
+            if (deliverable) neverQueued.Add((invoice.Id, connectionId));
+        }
         foreach (var undelivered in neverQueued)
         {
             var payload = $"\"{undelivered.InvoiceId}\"";

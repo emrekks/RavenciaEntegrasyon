@@ -18,7 +18,8 @@ public sealed partial class InvoicingBillingService(
     IDataProtectionProvider dataProtection,
     IPrivateFileStorage files,
     IConfiguration configuration,
-    TimeProvider timeProvider) : IInvoicingBillingService
+    TimeProvider timeProvider,
+    IInvoiceProviderPort invoiceProvider) : IInvoicingBillingService
 {
     private const int WorkspaceCandidateScanBatchSize = 100_000;
     private static readonly CultureInfo WorkspaceSearchCulture = CultureInfo.GetCultureInfo("tr-TR");
@@ -1036,6 +1037,19 @@ public sealed partial class InvoicingBillingService(
     internal static string? ResolveInvoiceNumber(string? invoiceNumber, string? marketplaceInvoiceNumber) =>
         !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : null;
 
+    // The invoice detail is about the fiscal document itself: its own number comes first, so a different
+    // number seen on the marketplace is not hidden behind it (the workspace lists the marketplace's).
+    internal static string? DetailInvoiceNumber(string? invoiceNumber, string? marketplaceInvoiceNumber) =>
+        !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : null;
+
+    // The issuing deadline of an order-level sale invoice: InvoiceDueDays after the first delivered package
+    // (the stricter one); none before anything is delivered.
+    internal static DateTimeOffset? InvoiceIssueDueAt(IEnumerable<(ShipmentPackageStatus Status, DateTimeOffset StatusOccurredAt)> activePackages)
+    {
+        var delivered = activePackages.Where(item => item.Status == ShipmentPackageStatus.Delivered).Select(item => item.StatusOccurredAt).ToArray();
+        return delivered.Length == 0 ? null : delivered.Min().AddDays(DashboardMetricPolicy.InvoiceDueDays);
+    }
+
     internal static string InvoiceWorkspaceCustomerName(string customerJson, string invoiceAddressJson, string shipmentAddressJson = "{}")
     {
         static string? Find(JsonElement element, params string[] names)
@@ -1195,6 +1209,7 @@ public sealed partial class InvoicingBillingService(
             Currency = order.Currency,
             Note = string.Empty,
             IncludeInternetSalesInfo = command.IncludeInternetSalesInfo,
+            DueAt = InvoiceIssueDueAt(activePackagesForOrder.Select(item => (item.Status, item.StatusOccurredAt))),
             IdempotencyKey = idempotencyKey,
             OriginalInvoiceId = command.OriginalInvoiceId,
             Status = InvoiceStatus.Draft,
@@ -1303,7 +1318,7 @@ public sealed partial class InvoicingBillingService(
         var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new InvoiceAttemptView(x.AttemptNumber, x.Outcome, x.ErrorCode, x.StartedAt, x.CompletedAt)).ToListAsync(cancellationToken);
         var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new MarketplaceDeliveryView(x.Id, x.DeliveryType, x.Status, x.ExternalReference, x.ErrorCode, x.CreatedAt)).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
-        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, ResolveInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)));
+        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)));
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
@@ -1442,7 +1457,7 @@ public sealed partial class InvoicingBillingService(
         if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış iptal işlemi yapılamaz.", 422);
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
-        return await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed], InvoiceStatus.CancellationPending, cancellationToken);
+        return await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired], InvoiceStatus.CancellationPending, cancellationToken);
     }
 
     public async Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1558,7 +1573,7 @@ public sealed partial class InvoicingBillingService(
             }
             if (permanentLinkReady && allConnectionsReady) actions.Add("DELIVER");
         }
-        if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
+        if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.AdjustmentRequired) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         if (invoice.Status == InvoiceStatus.CancellationPending && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         return actions;
     }

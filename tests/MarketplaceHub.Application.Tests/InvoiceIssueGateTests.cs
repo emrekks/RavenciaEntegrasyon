@@ -104,7 +104,7 @@ public sealed class InvoiceIssueGateTests
         await using var db = new AppDbContext(options);
         var dataProtection = new EphemeralDataProtectionProvider();
         var service = new InvoicingBillingService(db, new CursorCodec(dataProtection, TimeProvider.System), dataProtection, null!,
-            new ConfigurationBuilder().Build(), TimeProvider.System);
+            new ConfigurationBuilder().Build(), TimeProvider.System, null!);
 
         var result = await service.CreateDraftAsync(Guid.NewGuid(),
             new CreateInvoiceCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true),

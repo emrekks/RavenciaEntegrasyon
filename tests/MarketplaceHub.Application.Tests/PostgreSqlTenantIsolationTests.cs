@@ -3195,7 +3195,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 dataProtection,
                 null!,
                 new ConfigurationBuilder().Build(),
-                fixture.TimeProvider);
+                fixture.TimeProvider,
+                null!);
 
             var items = await service.WorkspaceAsync(tenant.Id, CancellationToken.None);
             var summary = await service.WorkspaceSummaryAsync(tenant.Id, CancellationToken.None);
@@ -3254,7 +3255,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 dataProtection,
                 null!,
                 new ConfigurationBuilder().Build(),
-                fixture.TimeProvider);
+                fixture.TimeProvider,
+                null!);
 
             var firstPage = await service.WorkspacePageAsync(tenant.Id,
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON"), CancellationToken.None);
@@ -3343,7 +3345,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 dataProtection,
                 null!,
                 new ConfigurationBuilder().Build(),
-                fixture.TimeProvider);
+                fixture.TimeProvider,
+                null!);
 
             var page = await service.WorkspacePageAsync(tenant.Id,
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "UNINVOICED"),
@@ -3438,7 +3441,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 dataProtection,
                 null!,
                 new ConfigurationBuilder().Build(),
-                fixture.TimeProvider);
+                fixture.TimeProvider,
+                null!);
             var request = new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON");
             var sampleDurations = new long[5];
             InvoiceWorkspacePageView? page = null;

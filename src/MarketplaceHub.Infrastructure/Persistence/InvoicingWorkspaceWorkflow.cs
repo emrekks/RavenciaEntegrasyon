@@ -181,6 +181,9 @@ public sealed partial class InvoicingBillingService
             catch (DbUpdateException)
             {
                 await transaction.RollbackAsync(cancellationToken);
+                // The failed item's entities are still tracked as Added/Modified; without this the next
+                // item's SaveChanges would write them again (and fail, so every remaining item became CONFLICT).
+                db.ChangeTracker.Clear();
                 results.Add(new(confirmation.PackageId, null, null, "CONFLICT", "REFRESH_PREVIEW", "Bu paket için eşzamanlı bir fatura işlemi oluştu. Güncel durumu yenileyin; tekrar mali fatura oluşturulmadı."));
             }
         }
@@ -471,6 +474,9 @@ public sealed partial class InvoicingBillingService
         var activeJob = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)
             && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
         if (activeJob) return ServiceResult<bool>.Fail("INVOICE_JOB_STILL_RUNNING", "Bu fatura için işlem hâlâ sürüyor. Birkaç dakika bekleyip tekrar deneyin.", 409);
+        // Freeing the order's fiscal slot on the operator's word alone could issue a second invoice for goods
+        // whose first invoice is still valid: when the provider can be asked, it must report the cancellation.
+        if (await VerifyProviderCancellationAsync(invoice, correlationId, now, cancellationToken) is { } refusal) return refusal;
         invoice.SequencePurpose = "REPLACED";
         invoice.IdempotencyKey = $"replaced:{invoice.Id:N}";
         invoice.OrderFiscalGuarded = false;
@@ -479,8 +485,27 @@ public sealed partial class InvoicingBillingService
         invoice.UpdatedAt = now;
         invoice.Version++;
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "INVOICE_REPLACED_AFTER_PROVIDER_CANCELLATION", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"operator-cancelled-in-provider-portal:{invoice.InvoiceNumber}", CorrelationId = correlationId, CreatedAt = now });
+        await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<bool>.Ok(true);
+    }
+
+    private async Task<ServiceResult<bool>?> VerifyProviderCancellationAsync(Invoice invoice, string correlationId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (invoice.Status == InvoiceStatus.Cancelled) return null;
+        var remoteId = !string.IsNullOrWhiteSpace(invoice.ExternalReference) ? invoice.ExternalReference : invoice.EttnUuid;
+        // Without any provider identifier the existing operator confirmation is all there is.
+        if (string.IsNullOrWhiteSpace(remoteId)) return null;
+        if (!await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken))
+            return ServiceResult<bool>.Fail("INVOICE_PROVIDER_STATUS_UNAVAILABLE", "Fatura sağlayıcısı bağlantısı durum sorgusuna uygun değil; iptal doğrulanamadığı için kayıt değiştirilmedi.", 409);
+        var remote = await invoiceProvider.QueryStatusAsync(
+            new AdapterContext(invoice.TenantId, invoice.ProviderConnectionId, correlationId, $"replace-cancelled-check:{invoice.Id:N}", now.AddMinutes(1)),
+            new ExternalInvoiceReference(remoteId, invoice.EttnUuid, invoice.InvoiceType), cancellationToken);
+        if (!remote.IsSuccess)
+            return ServiceResult<bool>.Fail("INVOICE_PROVIDER_STATUS_UNAVAILABLE", $"Faturanın sağlayıcıdaki durumu okunamadı ({remote.Error!.Code}); iptal doğrulanamadığı için kayıt değiştirilmedi.", 409);
+        return string.Equals(remote.Value!.CanonicalStatus, "CANCELLED", StringComparison.Ordinal)
+            ? null
+            : ServiceResult<bool>.Fail("INVOICE_NOT_CANCELLED_AT_PROVIDER", "E-Faturam bu faturayı iptal edilmiş göstermiyor. Portalda iptal tamamlanmadan yeni fatura kesilemez.", 409);
     }
 
     // The operator checked the provider portal and saw no invoice for a submission whose result was lost; only then may it be sent again.

@@ -1,5 +1,6 @@
 using System.Globalization;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -12,14 +13,20 @@ public sealed class InvoicingReconciliationService(AppDbContext db) : IInvoicing
         if (invoice is null) return ServiceResult<InvoiceReconciliationView>.Fail("RESOURCE_NOT_FOUND", "Fatura bulunamadı.", 404);
 
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId).ToListAsync(cancellationToken);
+        var differences = LocalDifferences(invoice, lines);
+        return ServiceResult<InvoiceReconciliationView>.Ok(new(invoice.Id, differences.Count == 0 ? "COMPLETED_LOCAL_DRY" : "DIFFERENCES_FOUND", differences));
+    }
+
+    internal static IReadOnlyList<ReconciliationDifferenceView> LocalDifferences(Invoice invoice, IReadOnlyCollection<InvoiceLine> lines)
+    {
         var differences = new List<ReconciliationDifferenceView>();
         var calculated = lines.Sum(x => x.LineTotal);
         if (calculated != invoice.PayableTotal)
             differences.Add(new("INVOICE", invoice.Id.ToString("D"), "PAYABLE_TOTAL", Money(invoice.PayableTotal), Money(calculated), "LOCAL_REVIEW_REQUIRED"));
-        if (invoice.TaxExclusiveTotal + invoice.TaxTotal - invoice.DiscountTotal != invoice.PayableTotal)
-            differences.Add(new("INVOICE", invoice.Id.ToString("D"), "TOTAL_EQUATION", Money(invoice.PayableTotal), Money(invoice.TaxExclusiveTotal + invoice.TaxTotal - invoice.DiscountTotal), "LOCAL_REVIEW_REQUIRED"));
-
-        return ServiceResult<InvoiceReconciliationView>.Ok(new(invoice.Id, differences.Count == 0 ? "COMPLETED_LOCAL_DRY" : "DIFFERENCES_FOUND", differences));
+        // TaxExclusiveTotal is already net of discount (see InvoiceAmounts.TryCalculatePackage), so the discount is not subtracted again.
+        if (invoice.TaxExclusiveTotal + invoice.TaxTotal != invoice.PayableTotal)
+            differences.Add(new("INVOICE", invoice.Id.ToString("D"), "TOTAL_EQUATION", Money(invoice.PayableTotal), Money(invoice.TaxExclusiveTotal + invoice.TaxTotal), "LOCAL_REVIEW_REQUIRED"));
+        return differences;
     }
 
     private static string Money(decimal value) => value.ToString("0.####", CultureInfo.InvariantCulture);
