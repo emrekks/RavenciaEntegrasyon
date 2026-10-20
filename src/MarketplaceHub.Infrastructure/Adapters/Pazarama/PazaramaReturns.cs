@@ -74,7 +74,10 @@ public sealed partial class PazaramaHttpClient : IReturnPort
 
 public static class PazaramaReturnMapper
 {
-    // Every reason needs photos except "return package was empty" (10) and "never reached me" (11).
+    // Pazarama has no endpoint that lists rejection reasons; RefundRejectType is a documented enum (checked 20 Oct 2026):
+    // https://isortagim.pazarama.com/auth/integration/iade-durum-guncelleme
+    // Every reason needs photos except "return package was empty" (10) and "never reached me" (11):
+    // https://isortagim.pazarama.com/auth/integration/apiye-incelemeye-gonder-gorsel-ekleme
     public static readonly IReadOnlyList<ReturnIssueReason> RejectReasons =
     [
         new("1", "Gelen ürün bana ait değil", true), new("2", "Gelen ürün defolu/zarar görmüş", true), new("3", "Gelen ürün adedi eksik", true),

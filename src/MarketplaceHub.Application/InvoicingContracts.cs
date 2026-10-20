@@ -232,6 +232,73 @@ public interface IInvoiceMarketplacePort
 {
     Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken);
     Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken);
+
+    // Removes the invoice link a cancelled invoice left on a package. Only a marketplace with a documented
+    // delete endpoint overrides this (Trendyol); the others keep the manual step in the seller panel.
+    Task<AdapterResult<InvoiceLinkRevocationResult>> RevokeLinkAsync(AdapterContext context, InvoiceLinkRevocationCommand command, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<InvoiceLinkRevocationResult>.Failure(new(AdapterErrorClass.NotSupported, MarketplaceInvoiceLinkRevocationPolicy.UnsupportedCode,
+            "Bu pazaryeri fatura linkini silme servisi sunmuyor; link satıcı panelinden kaldırılmalıdır.", null, null, null)));
+}
+
+// The links and the number this panel sent for the invoice: a package link is removed only when it is one of them.
+public sealed record InvoiceLinkRevocationCommand(ExternalInvoiceDeliveryReference Reference, IReadOnlyList<string> ExpectedInvoiceLinks, string? ExpectedInvoiceNumber);
+// AlreadyAbsent: the package held no invoice before the request, so nothing was sent.
+public sealed record InvoiceLinkRevocationResult(string ExternalReference, bool AlreadyAbsent, string ObservedRawStatus);
+
+/// <summary>
+/// What a delivery state left behind by a cancelled invoice can do. AUTOMATIC: the marketplace documents a delete
+/// endpoint and the panel removes the link on the operator's request (Trendyol, "Fatura Linki Silme":
+/// https://developers.trendyol.com/v2.0/docs/delete-customer-invoice-link). VERIFY_ONLY: there is no delete endpoint
+/// but the package can be read back, so the operator removes the link in the seller panel and the panel checks it
+/// (Hepsiburada: only PUT .../invoice exists, 409 when the package already has an invoice). MANUAL: neither (n11's
+/// SaveLinkSellerInvoice only replaces the link, Pazarama's order/invoice-link only updates it; no delete, no read-back).
+/// </summary>
+public static class MarketplaceInvoiceLinkRevocationPolicy
+{
+    public const string Required = "REVOCATION_REQUIRED";
+    public const string Started = "REVOCATION_STARTED";
+    public const string Unknown = "REVOCATION_UNKNOWN";
+    public const string Removed = "LINK_REMOVED";
+    public const string Automatic = "AUTOMATIC";
+    public const string VerifyOnly = "VERIFY_ONLY";
+    public const string Manual = "MANUAL";
+    public const string UnsupportedCode = "INVOICE_LINK_REVOCATION_UNSUPPORTED";
+    public const string ReadbackPendingCode = "INVOICE_LINK_REVOCATION_READBACK_PENDING";
+    public const string NotOursCode = "INVOICE_LINK_NOT_FROM_THIS_INVOICE";
+    // A request that never came back (process stopped mid-call) may be started again after this long; the adapter
+    // reads the package first, so a link that is already gone is not deleted twice.
+    public static readonly TimeSpan StaleStart = TimeSpan.FromMinutes(5);
+
+    public static bool IsOpen(string? status) => status is Required or Started or Unknown;
+
+    public static bool CanStart(string? status, DateTimeOffset updatedAt, DateTimeOffset now) =>
+        status is Required or Unknown || (status == Started && now - updatedAt >= StaleStart);
+
+    public static string ModeFor(string? platformCode) => platformCode?.Trim().ToUpperInvariant() switch
+    {
+        "TRENDYOL" => Automatic,
+        "HEPSIBURADA" => VerifyOnly,
+        _ => Manual
+    };
+
+    // A timeout, a server error, a rate limit or an accepted request whose effect is not yet visible: the link may be
+    // gone or not, so the state waits for the next attempt (which reads first) instead of going back to "required".
+    public static bool LeavesOutcomeUnknown(AdapterError error) =>
+        error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.RateLimit
+        || string.Equals(error.Code, ReadbackPendingCode, StringComparison.Ordinal);
+
+    public static string Instructions(string? platformCode, string? packageNumber)
+    {
+        var package = string.IsNullOrWhiteSpace(packageNumber) ? "ilgili" : packageNumber.Trim();
+        return platformCode?.Trim().ToUpperInvariant() switch
+        {
+            "TRENDYOL" => $"Trendyol fatura linkini silme servisi sunuyor. “Fatura Linkini Kaldır” {package} paketindeki linki siler ve paketi yeniden okuyarak kalktığını doğrular. Servis çalışmazsa Trendyol Satıcı Paneli’nde siparişi açıp faturayı silin.",
+            "HEPSIBURADA" => $"Hepsiburada gönderilen fatura linkini silme veya değiştirme servisi sunmuyor. Hepsiburada Satıcı Paneli’nde {package} paketinin faturasını kaldırın; panelde bu seçenek yoksa Hepsiburada’ya satıcı destek talebi açıp faturanın silinmesini isteyin. Sonra “Kaldırıldığını Kontrol Et” ile paneli güncelleyin.",
+            "N11" => "n11 fatura linkini silme servisi sunmuyor. Siparişte tek aktif link olur; aynı siparişe yeni fatura linki gönderildiğinde eskisinin yerine geçer. Yeni fatura kesilmeyecekse linkin kaldırılmasını n11 satıcı desteğinden isteyin.",
+            "PAZARAMA" => "Pazarama fatura linkini silme servisi sunmuyor; link yalnız yeni bir linkle güncellenebilir. Yeni fatura kesilmeyecekse linkin kaldırılmasını Pazarama satıcı desteğinden isteyin.",
+            _ => "Bu pazaryeri için fatura linkini kaldırma servisi yok. Linki pazaryerinin satıcı panelinden kaldırın."
+        };
+    }
 }
 
 public interface IHepsiburadaInvoiceStatusPort
@@ -417,7 +484,10 @@ public sealed record InvoiceLineView(Guid Id, int LineSequence, string Descripti
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);
 public sealed record MarketplaceDeliveryView(Guid Id, string DeliveryType, string Status, string? ExternalReference, string? ErrorCode, DateTimeOffset CreatedAt);
-public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation);
+public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation, IReadOnlyList<MarketplaceLinkRevocationView>? LinkRevocations = null);
+// A marketplace link a cancelled invoice left behind. Mode is AUTOMATIC, VERIFY_ONLY or MANUAL
+// (MarketplaceInvoiceLinkRevocationPolicy); Instructions tell the operator what to do on the marketplace.
+public sealed record MarketplaceLinkRevocationView(Guid DeliveryStateId, Guid? PackageId, string PlatformCode, string PlatformName, string? PackageNumber, string Status, string? ErrorCode, string Mode, string Instructions, bool CanAct, string? BlockedReason, DateTimeOffset UpdatedAt);
 
 public interface IInvoicingBillingService
 {
@@ -441,6 +511,8 @@ public interface IInvoicingBillingService
     Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueCancellationAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    // Operator-triggered only: removes (Trendyol) or verifies the removal of (Hepsiburada) the link a cancelled invoice left on a package.
+    Task<ServiceResult<MarketplaceLinkRevocationView>> RevokeMarketplaceLinkAsync(Guid tenantId, Guid invoiceId, Guid deliveryStateId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<(Stream Content, string MimeType, string FileName)>> OpenDocumentAsync(Guid tenantId, Guid invoiceId, Guid documentId, CancellationToken cancellationToken);
 }
 

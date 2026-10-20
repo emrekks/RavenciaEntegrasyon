@@ -60,6 +60,9 @@ internal static class TrendyolEndpoints
     public const string ClaimIssueReasons = "order/claim-issue-reasons";
     public static string RejectClaim(string sellerId, string claimId, string reasonId, IReadOnlyList<string> lineIds, string description) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims/{Uri.EscapeDataString(claimId)}/issue?claimIssueReasonId={Uri.EscapeDataString(reasonId)}&claimItemIdList={Uri.EscapeDataString(string.Join(',', lineIds))}&description={Uri.EscapeDataString(description)}";
     public static string InvoiceLinks(string sellerId) => $"sellers/{Uri.EscapeDataString(sellerId)}/seller-invoice-links";
+    // "Fatura Linki Silme": POST {serviceSourceId, channelId: 1, customerId}, 202 when accepted, 404 when no link is found.
+    // https://developers.trendyol.com/v2.0/docs/delete-customer-invoice-link
+    public static string InvoiceLinkDelete(string sellerId) => $"{InvoiceLinks(sellerId)}/delete";
     public const string Categories = "product/product-categories";
     public const string Brands = "product/brands";
     public static string CategoryAttributes(string categoryId) => $"product/categories/{Uri.EscapeDataString(categoryId)}/attributes";

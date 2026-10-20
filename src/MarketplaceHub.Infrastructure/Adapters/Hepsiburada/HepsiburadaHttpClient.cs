@@ -25,7 +25,12 @@ public sealed partial class HepsiburadaHttpClient(
     private readonly HepsiburadaOptions settings = options.Value;
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
     private static readonly string[] ClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
-    private static readonly ReturnIssueReason[] ClaimRejectionReasons =
+    // Hepsiburada has no endpoint that lists rejection reasons; the values below are the documented
+    // ClaimRejectionReason list ("Talep Reddetme" > "Reddetme Sebepleri", checked 20 Oct 2026):
+    // https://developers.hepsiburada.com/tr/companies/hepsiburada?guide=talep-onemli-bilgiler-2&product=talep-entegrasyonu&view=guide
+    // The reject body (POST claims/number/{claimNumber}/reject) accepts optional Reports/UploadedReportsUrls, but the
+    // documentation does not require evidence for any reason, so EvidenceRequired stays false for all of them.
+    internal static readonly ReturnIssueReason[] ClaimRejectionReasons =
     [
         new("CustomerReturnedWrongItem", "İade edilen ürün siparişteki ürün değil", false),
         new("ProductIsDamaged", "İade edilen ürün kusurlu veya hasarlı", false),

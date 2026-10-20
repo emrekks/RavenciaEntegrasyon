@@ -19,7 +19,8 @@ public sealed partial class InvoicingBillingService(
     IPrivateFileStorage files,
     IConfiguration configuration,
     TimeProvider timeProvider,
-    IInvoiceProviderPort invoiceProvider) : IInvoicingBillingService
+    IInvoiceProviderPort invoiceProvider,
+    IInvoiceMarketplacePort? marketplace = null) : IInvoicingBillingService
 {
     private const int WorkspaceCandidateScanBatchSize = 100_000;
     private static readonly CultureInfo WorkspaceSearchCulture = CultureInfo.GetCultureInfo("tr-TR");
@@ -1318,7 +1319,7 @@ public sealed partial class InvoicingBillingService(
         var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new InvoiceAttemptView(x.AttemptNumber, x.Outcome, x.ErrorCode, x.StartedAt, x.CompletedAt)).ToListAsync(cancellationToken);
         var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new MarketplaceDeliveryView(x.Id, x.DeliveryType, x.Status, x.ExternalReference, x.ErrorCode, x.CreatedAt)).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
-        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)));
+        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection), await LinkRevocationViewsAsync(invoice, cancellationToken)));
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
