@@ -28,16 +28,19 @@ public sealed class DataFreshnessService(AppDbContext db, TimeProvider timeProvi
             .ToListAsync(cancellationToken);
         var instant = await InstantConnectionsAsync(tenantId, ids, cancellationToken);
 
-        // The oldest store decides: "updated 40 s ago" must hold for every store read so far.
-        static DateTimeOffset? Oldest(IEnumerable<Guid> scope, Func<Guid, DateTimeOffset?> read) => scope.Select(read).Where(x => x is not null).Min();
         var questionScope = connections.Where(x => x.PlatformCode != "SHOPIFY").Select(x => x.Id).ToArray();
         return new DataFreshnessView(
         [
-            new("ORDERS", Oldest(ids, id => cursors.FirstOrDefault(x => x.ConnectionId == id && x.ResourceType == "ORDERS_HOT")?.LastSuccessAt), ids.Length > 0 && ids.All(instant.Contains), ids.Length),
-            new("RETURNS", Oldest(ids, id => cursors.FirstOrDefault(x => x.ConnectionId == id && x.ResourceType == "RETURNS")?.LastSuccessAt), false, ids.Length),
-            new("QUESTIONS", Oldest(questionScope, id => questions.FirstOrDefault(x => x.ConnectionId == id)?.LastSuccessAt), false, questionScope.Length)
+            Part("ORDERS", ids.Select(id => cursors.FirstOrDefault(x => x.ConnectionId == id && x.ResourceType == "ORDERS_HOT")?.LastSuccessAt).ToArray(), ids.Length > 0 && ids.All(instant.Contains)),
+            Part("RETURNS", ids.Select(id => cursors.FirstOrDefault(x => x.ConnectionId == id && x.ResourceType == "RETURNS")?.LastSuccessAt).ToArray(), false),
+            Part("QUESTIONS", questionScope.Select(id => questions.FirstOrDefault(x => x.ConnectionId == id)?.LastSuccessAt).ToArray(), false)
         ]);
     }
+
+    // The oldest store decides: "updated 40 s ago" must hold for every store read so far. A store never read
+    // is not skipped silently: it is counted, so the page can say that one store has no data yet.
+    internal static DataFreshnessPart Part(string kind, IReadOnlyList<DateTimeOffset?> lastSuccessByStore, bool instant) =>
+        new(kind, lastSuccessByStore.Where(x => x is not null).Min(), instant, lastSuccessByStore.Count, lastSuccessByStore.Count(x => x is null));
 
     public async Task<ServiceResult<InitialImportView>> InitialImportAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {

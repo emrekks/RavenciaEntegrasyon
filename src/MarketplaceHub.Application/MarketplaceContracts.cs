@@ -810,7 +810,8 @@ public interface IInstantNotificationService
 }
 // Kind is ORDERS, RETURNS or QUESTIONS. LastSuccessAt is the oldest last read among the stores
 // (null before any read); Instant is true when every store sends order notifications.
-public sealed record DataFreshnessPart(string Kind, DateTimeOffset? LastSuccessAt, bool Instant, int Connections);
+// NeverSynced: stores in scope that were never read; LastSuccessAt is the oldest of the stores that were.
+public sealed record DataFreshnessPart(string Kind, DateTimeOffset? LastSuccessAt, bool Instant, int Connections, int NeverSynced = 0);
 public sealed record DataFreshnessView(IReadOnlyList<DataFreshnessPart> Parts);
 // State is DONE, RUNNING or QUEUED; Percent is known for order histories read window by window.
 public sealed record InitialImportPart(string Kind, string State, int? Percent);

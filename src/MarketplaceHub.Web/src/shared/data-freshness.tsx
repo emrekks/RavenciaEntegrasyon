@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { hubApi } from './api'
 
 export type FreshnessKind = 'ORDERS' | 'RETURNS' | 'QUESTIONS'
-type FreshnessPart = { kind: FreshnessKind; lastSuccessAt: string | null; instant: boolean; connections: number }
+type FreshnessPart = { kind: FreshnessKind; lastSuccessAt: string | null; instant: boolean; connections: number; neverSynced?: number }
 type FreshnessView = { parts: FreshnessPart[] }
 
 // "35 sn önce", "4 dk önce", "2 sa önce": how long ago the stores were last read.
@@ -17,9 +17,13 @@ export function freshnessAge(lastSuccessAt: string, now: number): string {
   return `${Math.floor(hours / 24)} gün önce`
 }
 
+// A store that was never read is named, not hidden behind the time of the stores that were.
 export function freshnessText(part: FreshnessPart | undefined, now: number): string | null {
-  if (!part?.lastSuccessAt || part.connections === 0) return null
-  return `Son güncelleme ${freshnessAge(part.lastSuccessAt, now)}${part.instant ? ' · Webhook açık' : ''}`
+  if (!part || part.connections === 0) return null
+  const never = part.neverSynced ?? 0
+  const waiting = never > 0 ? `${never} mağaza henüz okunmadı` : ''
+  if (!part.lastSuccessAt) return waiting ? `Henüz güncellenmedi · ${waiting}` : null
+  return `Son güncelleme ${freshnessAge(part.lastSuccessAt, now)}${part.instant ? ' · Webhook açık' : ''}${waiting ? ` · ${waiting}` : ''}`
 }
 
 // One line under a page title telling when its data was last read from the marketplaces.
