@@ -431,6 +431,8 @@ public sealed class Order
     public DateTimeOffset LastRemoteModifiedAt { get; set; }
     // The marketplace storefront the order was read under (Trendyol: TR, DE, SA…); null until first seen.
     public string? StoreFrontCode { get; set; }
+    // When a shipping label of the order was first printed from the panel; null until then.
+    public DateTimeOffset? LabelPrintedAt { get; set; }
     public required string CustomerSnapshotJson { get; set; }
     public required string ShipmentAddressSnapshotJson { get; set; }
     public required string InvoiceAddressSnapshotJson { get; set; }

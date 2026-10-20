@@ -76,9 +76,14 @@ public static class MarketplaceEndpoints
         api.MapGet("/connections/{id:guid}/webhooks", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.WebhooksAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/connections/{id:guid}/webhooks", async (Guid id, CreateWebhookSubscriptionCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateWebhookAsync(tenant.TenantId, id, command, http.RequestAborted), $"/api/v1/connections/{id:D}/webhooks") : MissingContext(http));
 
-        api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort) =>
+        api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, new(status, search, platform, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)), http.RequestAborted))
+                ? Results.Ok(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, new(status, search, platform, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), labelPrinted), http.RequestAborted))
+                : Unauthorized(http));
+        // Records that a shipping label of the order was printed, so every computer sees it.
+        api.MapPost("/orders/{id:guid}/label-printed", async (Guid id, HttpContext http, IMarketplaceSalesService service) =>
+            Tenant(http) is { } tenant
+                ? await service.MarkLabelPrintedAsync(tenant.TenantId, id, http.RequestAborted) ? Results.NoContent() : Results.NotFound()
                 : Unauthorized(http));
         api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? platform) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, platform, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();

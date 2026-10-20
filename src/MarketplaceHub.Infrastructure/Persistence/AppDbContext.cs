@@ -231,6 +231,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         MarketplaceDelivery value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
         MarketplaceDeliveryState value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, value.Version),
         PlatformConnection value => (value.TenantId, "connections", "PlatformConnection", value.Id, value.Version),
+        MarketplaceQuestion value => (value.TenantId, "questions", "MarketplaceQuestion", value.Id, value.Version),
         _ => null
     };
 

@@ -897,7 +897,9 @@ public sealed record OrderListView(
     string? InvoiceDocumentUrl = null,
     IReadOnlyList<OrderInfoItem>? PlatformInfo = null,
     // When the order first reached the carrier (its first "shipped" status); null when not seen.
-    DateTimeOffset? ShippedAt = null);
+    DateTimeOffset? ShippedAt = null,
+    // When a shipping label of the order was first printed from the panel (any computer).
+    DateTimeOffset? LabelPrintedAt = null);
 public sealed record OrderAddressView(
     string? FullName,
     string? FullAddress,
@@ -924,7 +926,8 @@ public sealed record OrderListQuery(
     DateTimeOffset? DateFrom = null,
     DateTimeOffset? DateTo = null,
     string? Sort = null,
-    IReadOnlyList<string>? Platforms = null);
+    IReadOnlyList<string>? Platforms = null,
+    bool? LabelPrinted = null);
 public sealed record OrderSummaryView(
     int All,
     int New,
@@ -1093,6 +1096,7 @@ public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposit
 public interface IMarketplaceSalesService
 {
     Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery query, CancellationToken cancellationToken);
+    Task<bool> MarkLabelPrintedAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken);
     Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, string? platform, CancellationToken cancellationToken);
     Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null);
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);

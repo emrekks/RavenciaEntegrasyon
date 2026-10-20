@@ -373,6 +373,8 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
 function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }: { items: Order[]; settings: ShippingLabelSettings; format: ShippingLabelFormat; onClose: () => void; onPrinted: () => void }) {
   function printLabels() {
     items.forEach(item => markShippingLabelPrinted(item.id, format))
+    // The server keeps the first print per order so every computer sees it; a failed call leaves the local mark.
+    void Promise.allSettled(items.map(item => hubApi<void>(`/orders/${item.id}/label-printed`, { method: 'POST' }))).then(() => onPrinted())
     onPrinted()
     window.print()
   }

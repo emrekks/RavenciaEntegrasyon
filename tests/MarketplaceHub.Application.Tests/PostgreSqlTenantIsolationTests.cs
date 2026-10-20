@@ -1250,6 +1250,50 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task Orders_KeepTheFirstLabelPrintAndFilterByIt()
+    {
+        var tenant = NewTenant("label-printed");
+        var connection = NewQuestionConnection(tenant);
+        var now = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.ToUnixTimeSeconds());
+        var printed = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "label-printed", isReturnClaim: false, now);
+        var waiting = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "label-waiting", isReturnClaim: false, now);
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.AddRange(printed, waiting);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var sales = new MarketplaceSalesService(db,
+                new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider),
+                new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
+
+            Assert.True(await sales.MarkLabelPrintedAsync(tenant.Id, printed.Id, CancellationToken.None));
+            var firstPrint = (await db.Orders.AsNoTracking().SingleAsync(x => x.Id == printed.Id)).LabelPrintedAt;
+            Assert.NotNull(firstPrint);
+            // Printing again keeps the first time; an unknown order is reported as missing.
+            Assert.True(await sales.MarkLabelPrintedAsync(tenant.Id, printed.Id, CancellationToken.None));
+            Assert.Equal(firstPrint, (await db.Orders.AsNoTracking().SingleAsync(x => x.Id == printed.Id)).LabelPrintedAt);
+            Assert.False(await sales.MarkLabelPrintedAsync(tenant.Id, Guid.CreateVersion7(), CancellationToken.None));
+
+            var onlyPrinted = await sales.OrdersAsync(tenant.Id, 20, 1, null, new OrderListQuery(LabelPrinted: true), CancellationToken.None);
+            Assert.Equal(["label-printed"], onlyPrinted.Items.Select(order => order.OrderNumber));
+            Assert.NotNull(onlyPrinted.Items[0].LabelPrintedAt);
+            Assert.Contains("labelPrinted", onlyPrinted.SupportedFilters!);
+            var notPrinted = await sales.OrdersAsync(tenant.Id, 20, 1, null, new OrderListQuery(LabelPrinted: false), CancellationToken.None);
+            Assert.Equal(["label-waiting"], notPrinted.Items.Select(order => order.OrderNumber));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task EffectSweep_ReachesANewRecordBehindAHundredAlreadyQueued()
     {
         var tenant = NewTenant("effect-sweep");

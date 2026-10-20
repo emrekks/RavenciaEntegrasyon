@@ -219,7 +219,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 ListAddress(order.ShipmentAddressSnapshotJson), order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, invoiceDocumentUrl,
                 connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null,
-                shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null);
+                shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null,
+                order.LabelPrintedAt);
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -227,11 +228,27 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var next = hasMore && last is not null
             ? cursors.EncodeOrder(sort, sort is "SHIP_ASC" or "SHIP_DESC" ? shippedAtByOrder.TryGetValue(last.Id, out var lastShippedAt) ? lastShippedAt : null : last.ShipmentDueAt, last.OrderedAt, last.Id)
             : null;
-        return new(pageRows, next, hasMore, totalCount);
+        return new(pageRows, next, hasMore, totalCount, OrderListSupportedFilters);
+    }
+
+    private static readonly string[] OrderListSupportedFilters = ["labelPrinted"];
+
+    // The first print is kept; printing again later does not move it. A plain column update: the
+    // order's version and the worker's concurrent writes are not touched.
+    public async Task<bool> MarkLabelPrintedAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var exists = await db.Orders.AnyAsync(x => x.TenantId == tenantId && x.Id == orderId, cancellationToken);
+        if (!exists) return false;
+        await db.Orders.Where(x => x.TenantId == tenantId && x.Id == orderId && x.LabelPrintedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LabelPrintedAt, now), cancellationToken);
+        return true;
     }
 
     internal void ApplyOrderFilters(ref IQueryable<Order> query, OrderListQuery options, Guid tenantId)
     {
+        if (options.LabelPrinted is { } printed)
+            query = printed ? query.Where(x => x.LabelPrintedAt != null) : query.Where(x => x.LabelPrintedAt == null);
         // Superseded packages (split parents, resent originals, the zero-ID
         // placeholder) neither match a tab nor count as invoice targets.
         var currentPackages = CurrentShipmentPackages();

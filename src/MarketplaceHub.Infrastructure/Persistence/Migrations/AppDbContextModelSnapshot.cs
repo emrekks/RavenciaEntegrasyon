@@ -3500,6 +3500,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("LabelPrintedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("LastRemoteModifiedAt")
                         .HasColumnType("timestamp with time zone");
 

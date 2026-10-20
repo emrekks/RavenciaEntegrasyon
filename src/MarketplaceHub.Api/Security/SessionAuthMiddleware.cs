@@ -36,7 +36,9 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
                 }
                 context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "ServerSession"));
                 context.Items["UserSession"] = session;
-                if (session.LastSeenAt is null || session.LastSeenAt < now.AddMinutes(-5)) { session.LastSeenAt = now; session.ExpiresAt = Min(now.AddMinutes(30), session.AbsoluteExpiresAt); await db.SaveChangesAsync(context.RequestAborted); }
+                // A background poll (menu counters in a hidden tab) is not activity: it must not keep an idle session alive.
+                var backgroundPoll = context.Request.Headers["X-Background-Poll"] == "1";
+                if (!backgroundPoll && (session.LastSeenAt is null || session.LastSeenAt < now.AddMinutes(-5))) { session.LastSeenAt = now; session.ExpiresAt = Min(now.AddMinutes(30), session.AbsoluteExpiresAt); await db.SaveChangesAsync(context.RequestAborted); }
             }
         }
         await next(context);
