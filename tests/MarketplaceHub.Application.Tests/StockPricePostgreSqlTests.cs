@@ -9,8 +9,23 @@ namespace MarketplaceHub.Application.Tests;
 
 // Stock, price and publishing behaviour that needs the real schema (audit 2026-10-19, section 4.3).
 [Collection("postgres-integration")]
-public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
+public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>, IAsyncLifetime
 {
+    // Jobs these tests queue (dispatches, price/stock pushes) stay PENDING; the lease tests in the same
+    // database take any pending job, so every test removes the jobs of the tenants it created.
+    private static readonly System.Collections.Concurrent.ConcurrentBag<Guid> CreatedTenants = [];
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
+    {
+        var tenantIds = CreatedTenants.ToArray();
+        if (tenantIds.Length == 0) return;
+        await using var db = fixture.CreateContext();
+        await db.JobAttempts.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+        await db.IntegrationJobs.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+    }
+
     // K1: a manual adjustment reaches every connection with an ACTIVE offer for the variant.
     [PostgreSqlFact]
     public async Task ManualStockAdjustment_QueuesADispatchForEveryConnectionSellingTheVariant()
@@ -191,7 +206,14 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     private static IConfiguration WritesOnConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
 
-    private static Tenant NewTenant(string code) => new()
+    private static Tenant NewTenant(string code)
+    {
+        var tenant = NewTenantRow(code);
+        CreatedTenants.Add(tenant.Id);
+        return tenant;
+    }
+
+    private static Tenant NewTenantRow(string code) => new()
     {
         Id = Guid.CreateVersion7(),
         Code = $"{code}-{Guid.NewGuid():N}",
