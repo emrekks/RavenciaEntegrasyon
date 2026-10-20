@@ -88,6 +88,25 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
                 existing.ExpiresAt = now.AddDays(7);
             }
         }
+        if (existing is null)
+        {
+            // Records written before keys were scoped to the user hold the raw key. An unfinished one of those
+            // (the request was running, or failed, across the deploy) must still stop a blind replay; its
+            // request digest may be of an older form, so its state alone decides.
+            var legacy = await db.ApiIdempotencyRecords.AsNoTracking()
+                .Where(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == key && (x.State == "IN_PROGRESS" || x.State == "UNKNOWN"))
+                .Select(x => new { x.State, x.ResponseStatus, x.ResourceId, x.JobId, x.ExpiresAt })
+                .FirstOrDefaultAsync(context.RequestAborted);
+            if (legacy is not null)
+            {
+                var running = legacy.State == "IN_PROGRESS" && legacy.ExpiresAt > now;
+                var earlierLegacy = new Dictionary<string, object?> { ["responseStatus"] = legacy.ResponseStatus, ["resourceId"] = legacy.ResourceId, ["jobId"] = legacy.JobId };
+                await ApiProblems.WriteAsync(context, running
+                    ? new ServiceError("IDEMPOTENCY_IN_PROGRESS", "Aynı idempotent istek eşzamanlı olarak işleniyor.", StatusCodes.Status409Conflict)
+                    : new ServiceError("IDEMPOTENCY_RESULT_UNKNOWN", "İşlemin sonucu kesinleşmedi; aynı anahtarla körlemesine tekrar çalıştırılamaz.", StatusCodes.Status409Conflict), earlierLegacy);
+                return;
+            }
+        }
         if (existing is not null)
         {
             var decision = ApiIdempotencyPolicy.Resolve(existing.State, existing.RequestHash, hash);

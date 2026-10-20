@@ -4,7 +4,9 @@ import { api, ApiRequestError, onUnauthorized, setStepUpHandler } from '../share
 import { Button, Callout, Modal, TextField } from '../shared/components'
 
 type SecurityStatus = { totpState: string }
-// 'unknown': the status could not be read; the code field appears if the server asks for the second factor.
+// 'unknown': the status could not be read. The code field is shown (optional) and an empty one makes the window read
+// the status again before sending: a password sent alone to an account with an authenticator would cost one of the
+// session's five code attempts.
 type FactorState = 'loading' | 'off' | 'on' | 'unknown'
 
 // Irreversible work (emptying data, deleting a connection, changing its credentials) answers 403 REAUTHENTICATION_REQUIRED
@@ -24,7 +26,7 @@ export function StepUpPrompt() {
     pending.current?.(false)
     pending.current = resolve
     setError(''); setUseRecoveryCode(false); setFactor('loading'); setOpen(true)
-    api<SecurityStatus>('/security-status').then(status => setFactor(status.totpState === 'ENABLED' ? 'on' : 'off')).catch(() => setFactor('unknown'))
+    void readFactor().then(setFactor)
   })), [])
 
   // A prompt left open when the app unmounts (sign-out) gives up instead of leaving the request hanging.
@@ -41,7 +43,16 @@ export function StepUpPrompt() {
     if (factor === 'loading') return
     const data = new FormData(event.currentTarget)
     const secondFactor = String(data.get('factor') ?? '').trim()
-    const withFactor = factor === 'on' && secondFactor.length > 0
+    let known: FactorState = factor
+    if (known === 'unknown' && secondFactor.length === 0) {
+      setBusy(true); setError('')
+      known = await readFactor()
+      setBusy(false)
+      setFactor(known)
+      if (known === 'unknown') { setError('Güvenlik durumu okunamadı. Doğrulayıcınız açıksa kodu da girin ya da biraz sonra yeniden deneyin.'); return }
+      if (known === 'on') { setError('Doğrulayıcı kodunu da girin.'); return }
+    }
+    const withFactor = (known === 'on' || known === 'unknown') && secondFactor.length > 0
     setBusy(true); setError('')
     try {
       await api('/reauthenticate', { method: 'POST', body: JSON.stringify({ password: data.get('password'), code: withFactor && !useRecoveryCode ? secondFactor : null, recoveryCode: withFactor && useRecoveryCode ? secondFactor : null }) })
@@ -64,10 +75,20 @@ export function StepUpPrompt() {
     <form id={formId} className="rv-step-up-form" onSubmit={submit}>
       <TextField label="Parola" name="password" type="password" autoComplete="current-password" required data-autofocus />
       {factor === 'on' && <TextField key={useRecoveryCode ? 'recovery' : 'code'} label={useRecoveryCode ? 'Kurtarma kodu' : 'Doğrulayıcı kodu'} name="factor" autoComplete="one-time-code" inputMode={useRecoveryCode ? 'text' : 'numeric'} required />}
-      {factor === 'on' && <Button variant="ghost" size="sm" onClick={() => setUseRecoveryCode(value => !value)}>{useRecoveryCode ? 'Doğrulayıcı kodu kullan' : 'Kurtarma kodu kullan'}</Button>}
+      {factor === 'unknown' && <TextField key={useRecoveryCode ? 'recovery-optional' : 'code-optional'} label={useRecoveryCode ? 'Kurtarma kodu (doğrulayıcı açıksa)' : 'Doğrulayıcı kodu (doğrulayıcı açıksa)'} name="factor" autoComplete="one-time-code" inputMode={useRecoveryCode ? 'text' : 'numeric'} />}
+      {(factor === 'on' || factor === 'unknown') && <Button variant="ghost" size="sm" onClick={() => setUseRecoveryCode(value => !value)}>{useRecoveryCode ? 'Doğrulayıcı kodu kullan' : 'Kurtarma kodu kullan'}</Button>}
       {error && <Callout tone="danger" role="alert">{error}</Callout>}
     </form>
   </Modal>, document.body)
+}
+
+async function readFactor(): Promise<FactorState> {
+  try {
+    const status = await api<SecurityStatus>('/security-status')
+    return status.totpState === 'ENABLED' ? 'on' : 'off'
+  } catch {
+    return 'unknown'
+  }
 }
 
 export function stepUpErrorMessage(reason: unknown) {
