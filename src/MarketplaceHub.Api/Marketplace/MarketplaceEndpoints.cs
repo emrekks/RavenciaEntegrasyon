@@ -288,7 +288,7 @@ public static class MarketplaceEndpoints
         if (!detail.Succeeded) return Problem(http, detail.Error!);
         if (detail.Value!.Packages.Any(package => package.Status == "PAYMENT_PENDING"))
             return Problem(http, new("SHIPMENT_PAYMENT_PENDING", "Trendyol ödeme onayı vermeden sipariş işleme alınamaz.", 409));
-        var package = detail.Value!.Packages.FirstOrDefault();
+        var package = PickingTarget(detail.Value!.Packages);
         if (package is null)
         {
             if (detail.Value.ConnectionId is not { } connectionId)
@@ -317,7 +317,7 @@ public static class MarketplaceEndpoints
             if (!detail.Succeeded) return Problem(http, detail.Error!);
             if (detail.Value!.Packages.Any(package => package.Status == "PAYMENT_PENDING"))
                 return Problem(http, new("SHIPMENT_PAYMENT_PENDING", "Trendyol ödeme onayı vermeden sipariş işleme alınamaz.", 409));
-            package = detail.Value!.Packages.FirstOrDefault();
+            package = PickingTarget(detail.Value!.Packages);
         }
 
         if (package is null)
@@ -335,6 +335,11 @@ public static class MarketplaceEndpoints
             return Results.Ok(value);
         });
     }
+
+    // The order-level "İşleme Al" works on the package that is still new (a split order may hold
+    // shipped or cancelled packages first); without one, the first package answers why not.
+    internal static ShipmentView? PickingTarget(IReadOnlyList<ShipmentView> packages) =>
+        packages.FirstOrDefault(package => package.Status == "NEW") ?? packages.FirstOrDefault();
 
     internal static Task<IResult> ReceiveWebhookEvent(Guid connectionPublicId, string routeToken, string? eventPath, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate) =>
         ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, eventPath);

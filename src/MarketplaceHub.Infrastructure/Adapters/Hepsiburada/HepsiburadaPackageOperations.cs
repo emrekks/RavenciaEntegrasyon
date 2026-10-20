@@ -139,19 +139,22 @@ public sealed partial class HepsiburadaHttpClient
             return Failure<CommonLabelDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_LABEL_FORMAT_UNSUPPORTED", "Etiket biçimi ZPL, BASE64ZPL, PDF, PNG veya JPG olmalıdır.", HttpStatusCode.BadRequest);
         var response = await SendBytesAsync(account, account.OmsBaseAddress, PackageLabel(account.Connection.ExternalStoreId, cargoTrackingNumber, normalizedFormat), cancellationToken);
         if (!response.IsSuccess) return AdapterResult<CommonLabelDocument>.Failure(response.Error!, response.RateLimit);
+        // A PDF/PNG/JPG answer holds one file per parcel; only ZPL joins them into one print job.
+        // Returning the first file alone would leave the other parcels without a label.
+        if (normalizedFormat is "PDF" or "PNG" or "JPG" && LabelParcelCount(response.Value!) is > 1 and var parcels)
+            return Failure<CommonLabelDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_LABEL_MULTI_PARCEL", $"Bu paketin {parcels} parça etiketi var; {normalizedFormat} biçimi tek dosya döner. Tüm parçaların etiketi için ZPL veya Base64 ZPL biçimini seçin.", HttpStatusCode.UnprocessableEntity);
         var label = LabelContent(response.Value!, normalizedFormat);
         if (label is null || label.Length is 0 or > 5 * 1024 * 1024) return Failure<CommonLabelDocument>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_LABEL_CONTRACT_INVALID", "Hepsiburada etiket içeriği boş, okunamadı veya 5 MiB sınırını aşıyor.", HttpStatusCode.BadGateway);
         return AdapterResult<CommonLabelDocument>.Success(new(cargoTrackingNumber, normalizedFormat, label), response.RateLimit);
     }
 
-    // The label service may answer with the file itself or with JSON {"format": ..., "data": [...]}
-    // whose entries are base64 (PDF, PNG, JPG, BASE64ZPL) or ZPL text, one per parcel. ZPL parcels are
-    // joined into one print job; for a binary format the first parcel is returned. Null when the JSON
-    // carries no usable label.
-    internal static byte[]? LabelContent(byte[] body, string format)
+    // How many parcel labels a JSON answer carries (1 for a plain file).
+    internal static int LabelParcelCount(byte[] body) => LabelEntries(body)?.Length ?? 1;
+
+    private static string[]? LabelEntries(byte[] body)
     {
         var start = Array.FindIndex(body, value => !char.IsWhiteSpace((char)value));
-        if (start < 0 || body[start] != (byte)'{') return body;
+        if (start < 0 || body[start] != (byte)'{') return null;
         try
         {
             using var document = JsonDocument.Parse(body);
@@ -165,8 +168,27 @@ public sealed partial class HepsiburadaHttpClient
                 JsonValueKind.String => [data.GetString()!],
                 _ => []
             };
-            entries = entries.Where(entry => !string.IsNullOrWhiteSpace(entry)).ToArray();
+            return entries.Where(entry => !string.IsNullOrWhiteSpace(entry)).ToArray();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    // The label service may answer with the file itself or with JSON {"format": ..., "data": [...]}
+    // whose entries are base64 (PDF, PNG, JPG, BASE64ZPL) or ZPL text, one per parcel. ZPL parcels are
+    // joined into one print job; a binary format holds one parcel only (several are refused before
+    // this). Null when the JSON carries no usable label.
+    internal static byte[]? LabelContent(byte[] body, string format)
+    {
+        var start = Array.FindIndex(body, value => !char.IsWhiteSpace((char)value));
+        if (start < 0 || body[start] != (byte)'{') return body;
+        try
+        {
+            var entries = LabelEntries(body) ?? [];
             if (entries.Length == 0) return null;
+            if (format is "PDF" or "PNG" or "JPG" && entries.Length > 1) return null;
             if (format == "BASE64ZPL") return System.Text.Encoding.ASCII.GetBytes(string.Join(string.Empty, entries));
             if (format == "ZPL")
                 return System.Text.Encoding.UTF8.GetBytes(string.Join('\n', entries.Select(entry =>

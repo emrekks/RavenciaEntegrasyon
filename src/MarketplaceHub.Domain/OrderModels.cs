@@ -199,16 +199,16 @@ public static class OpenOrderLifecyclePolicy
         DateTimeOffset now,
         bool claimOnlyWithoutPackage = false)
     {
-        var platform = platformCode?.Trim().ToUpperInvariant();
-        var status = derivedStatus?.Trim().ToUpperInvariant();
-        var terminal = status is "DELIVERED" or "CANCELLED" or "RETURNED";
-        var undeliveredHepsiburadaOrder = platform == "HEPSIBURADA" && status == "ON_HOLD";
-        return !terminal
-            && !undeliveredHepsiburadaOrder
+        // Only an order the seller still has to ship can be late: returned,
+        // in-review, held or shipped orders never show a shipping deadline.
+        return IsShipmentDeadlineStatus(derivedStatus)
             && !claimOnlyWithoutPackage
             && dueAt is { } deadline
             && deadline <= now.AddHours(24);
     }
+
+    public static bool IsShipmentDeadlineStatus(string? derivedStatus) =>
+        derivedStatus?.Trim().ToUpperInvariant() is "NEW" or "PROCESSING" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED";
 
     public static bool IsHepsiburadaClaimOnlyWithoutPackage(
         string? platformCode,
@@ -300,13 +300,26 @@ public static class ShipmentPackageStatusPolicy
         _ => ShipmentPackageStatus.ManualReview
     };
 
+    // Packages the seller still has to work on, in the order they are worked.
+    // Waiting for payment comes last: nothing can be done on it yet.
+    public static bool NeedsWork(ShipmentPackageStatus status) =>
+        status is ShipmentPackageStatus.New or ShipmentPackageStatus.PartiallyCancelled or ShipmentPackageStatus.Processing
+            or ShipmentPackageStatus.OnHold or ShipmentPackageStatus.ReadyToShip or ShipmentPackageStatus.PaymentPending;
+
     public static ShipmentPackageStatus Aggregate(IEnumerable<ShipmentPackageStatus> statuses)
     {
         var values = statuses.ToArray();
         if (values.Length == 0) return ShipmentPackageStatus.New;
         if (values.Contains(ShipmentPackageStatus.ManualReview)) return ShipmentPackageStatus.ManualReview;
 
-        // An order remains operational while any package still needs work. A
+        // A split order with one package delivered and another still new is a
+        // new order: the package that needs work decides, the earliest step
+        // first, so it stays in its tab and keeps its deadline warning.
+        var open = values.Where(status => NeedsWork(status) && status != ShipmentPackageStatus.PaymentPending).ToList();
+        if (open.Count > 0) return open.OrderBy(Rank).First();
+        if (values.Contains(ShipmentPackageStatus.PaymentPending)) return ShipmentPackageStatus.PaymentPending;
+
+        // An order remains operational while any package still moves. A
         // cancelled split package must not hide another package that is being
         // shipped or delivered.
         var operational = values.Where(status => status is not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned);
@@ -330,6 +343,20 @@ public static class ShipmentPackageStatusPolicy
         ShipmentPackageStatus.PaymentPending => 5,
         ShipmentPackageStatus.Cancelled => 0,
         _ => 110
+    };
+}
+
+// Shopify's fulfillment statuses as the adapter names them: the synthetic
+// remainder package is UNFULFILLED, an open fulfillment PROCESSING, and a
+// failed or unreadable one FULFILLMENT_FAILED / UNKNOWN.
+public static class ShopifyShipmentPackageStatusPolicy
+{
+    public static ShipmentPackageStatus FromRemote(string? rawStatus) => (rawStatus ?? string.Empty).Trim().ToUpperInvariant() switch
+    {
+        "UNFULFILLED" => ShipmentPackageStatus.New,
+        "PROCESSING" => ShipmentPackageStatus.Processing,
+        "FULFILLMENT_FAILED" or "UNKNOWN" => ShipmentPackageStatus.ManualReview,
+        _ => ShipmentPackageStatusPolicy.FromRemote(rawStatus)
     };
 }
 
@@ -377,8 +404,15 @@ public static class TrendyolShipmentPackageStatusPolicy
 // its history but no longer counts for status, counters, amounts or invoices.
 public static class ShipmentPackageSupersession
 {
+    // A Hepsiburada package the panel unpacked: its lines went back to the order and the
+    // marketplace no longer lists it. It is history only, superseded without a successor.
+    public const string LocallyUnpackedRawStatus = "UNPACKED_BY_PANEL";
+
     public static bool IsSplitParentRawStatus(string? rawStatus) =>
         string.Equals((rawStatus ?? string.Empty).Trim().Replace("_", string.Empty, StringComparison.Ordinal), "UNPACKED", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsLocallyUnpacked(string? rawStatus) =>
+        string.Equals(rawStatus, LocallyUnpackedRawStatus, StringComparison.Ordinal);
 
     public static IReadOnlySet<string> SupersededExternalIds(IEnumerable<ShipmentPackage> packages)
     {
@@ -389,6 +423,7 @@ public static class ShipmentPackageSupersession
                 && !string.Equals(package.OriginExternalPackageId, package.ExternalPackageId, StringComparison.Ordinal)
                 && ids.Contains(package.OriginExternalPackageId!))
             .Select(package => package.OriginExternalPackageId!)
+            .Concat(rows.Where(package => IsLocallyUnpacked(package.RawStatus)).Select(package => package.ExternalPackageId))
             .ToHashSet(StringComparer.Ordinal);
     }
 

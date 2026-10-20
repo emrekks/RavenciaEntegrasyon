@@ -140,9 +140,12 @@ internal static class HepsiburadaStaleOrderEnrichmentPolicy
             }
 
             var targetValue = target[targetKey];
+            // The read is older than what the order holds: it only fills a fact the order does not
+            // know yet ("UNKNOWN" is not knowledge); it never rolls a known invoice status or carrier back.
             if (refreshableFacts.Contains(remoteKey))
             {
-                target[targetKey] = remoteValue?.DeepClone();
+                if (IsEmpty(targetValue) || targetValue is JsonValue placeholder && placeholder.TryGetValue<string>(out var known) && string.Equals(known.Trim(), "UNKNOWN", StringComparison.OrdinalIgnoreCase))
+                    target[targetKey] = remoteValue?.DeepClone();
                 continue;
             }
 

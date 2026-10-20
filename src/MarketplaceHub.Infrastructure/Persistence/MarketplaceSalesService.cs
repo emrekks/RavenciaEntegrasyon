@@ -18,6 +18,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // resent original) is superseded by it. Retain their history without
     // displaying, counting or invoicing them as live packages.
     internal IQueryable<ShipmentPackage> CurrentShipmentPackages() => db.ShipmentPackages.AsNoTracking()
+        .Where(package => package.RawStatus != ShipmentPackageSupersession.LocallyUnpackedRawStatus)
         .Where(package => (package.ExternalPackageId != "0"
             || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
                 && connection.Id == package.ConnectionId && connection.PlatformCode == "TRENDYOL")
@@ -694,12 +695,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var activeOrderLines = orderLines.Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity)).ToList();
         var activeLineIds = activeOrderLines.Select(line => line.Id).ToArray();
-        var allocationRows = await db.PackageLineAllocations.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && activeLineIds.Contains(x.OrderLineId))
-            .Select(x => new { x.OrderLineId, x.AllocatedQuantity, x.CancelledQuantity })
-            .ToListAsync(cancellationToken);
-        var allocatedQuantities = allocationRows.GroupBy(row => row.OrderLineId)
-            .ToDictionary(group => group.Key, group => group.Sum(row => Math.Max(0m, row.AllocatedQuantity - row.CancelledQuantity)));
+        var allocatedQuantities = await ActiveAllocatedQuantitiesAsync(tenantId, activeLineIds, cancellationToken);
         var variantIds = activeOrderLines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = activeOrderLines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineSkuKeys = activeOrderLines.Select(x => NormalizeCatalogKey(x.Sku, 160)).Where(x => x.Length > 0).Distinct().ToArray();
@@ -1013,9 +1009,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (selectedIds.Distinct().Count() != selectedIds.Length) return Invalid<CreateOrderPackageResult>("lineItems", "Aynı sipariş kalemi pakette bir kez bulunabilir.");
         var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId && selectedIds.Contains(x.Id)).ToListAsync(cancellationToken);
         if (lines.Count != selectedIds.Length) return ServiceResult<CreateOrderPackageResult>.Fail("ORDER_PACKAGE_LINES_INVALID", "Seçili sipariş kalemlerinden biri bu siparişe ait değil.", 422);
-        var allocationRows = await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && selectedIds.Contains(x.OrderLineId))
-            .Select(x => new { x.OrderLineId, x.AllocatedQuantity, x.CancelledQuantity }).ToListAsync(cancellationToken);
-        var allocations = allocationRows.GroupBy(item => item.OrderLineId).ToDictionary(group => group.Key, group => group.Sum(item => Math.Max(0m, item.AllocatedQuantity - item.CancelledQuantity)));
+        var allocations = await ActiveAllocatedQuantitiesAsync(tenantId, selectedIds, cancellationToken);
         var remoteLines = new List<RemotePackageCreateLineRequest>();
         foreach (var requested in command.LineItems)
         {
@@ -1062,6 +1056,17 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 return !knownPackageNumbers.Contains(packageNumber, StringComparer.Ordinal);
             });
             if (readbackPending) return ServiceResult<CreateOrderPackageResult>.Fail("PACKAGE_CREATE_READBACK_REQUIRED", "Önceki paket Hepsiburada’da oluşturuldu; sipariş/paket eşitlemesi tamamlanmadan başka paket açılamaz.", 409);
+        }
+        // A reservation the effect check (or the sweep) settled keeps its row as history under its
+        // own name; left under the reservation key it would make every later package request on
+        // this order collide with it.
+        var settledReservations = await db.ExternalEffectRecords
+            .Where(x => x.TenantId == tenantId && x.EffectType == effectPrefix && x.IdempotencyKey == effectPrefix && x.CompletedAt != null)
+            .ToListAsync(cancellationToken);
+        if (settledReservations.Count > 0)
+        {
+            foreach (var settled in settledReservations) settled.IdempotencyKey = HepsiburadaPackageReservationSettledKey(effectPrefix, settled.Id);
+            await db.SaveChangesAsync(cancellationToken);
         }
         var pendingReservation = await db.ExternalEffectRecords.AsNoTracking().AnyAsync(
             x => x.TenantId == tenantId && x.IdempotencyKey == effectPrefix && x.EffectType == effectPrefix && x.CompletedAt == null,
@@ -1110,6 +1115,54 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         await db.SaveChangesAsync(cancellationToken);
         _ = await EnqueueOrderSyncAsync(tenantId, connection.Id, order.OrderNumber, false, correlationId, cancellationToken);
         return ServiceResult<CreateOrderPackageResult>.Ok(result.Value!);
+    }
+
+    internal static string HepsiburadaPackageReservationSettledKey(string effectPrefix, Guid effectId) => $"{effectPrefix}:reconciled:{effectId:N}";
+
+    internal sealed record PackageLineAllocationRow(Guid PackageId, Guid OrderLineId, string SourceEventId, decimal AllocatedQuantity, decimal CancelledQuantity);
+
+    // An order read stores a package line's allocation once per source event; the line's current
+    // allocation in that package is the latest of them, never their sum.
+    internal static IReadOnlyList<PackageLineAllocationRow> LatestPackageLineAllocations(IEnumerable<PackageLineAllocationRow> rows) => rows
+        .GroupBy(row => (row.PackageId, row.OrderLineId))
+        .Select(group => group.OrderByDescending(row => SourceEventInstant(row.SourceEventId)).ThenByDescending(row => row.SourceEventId, StringComparer.Ordinal).First())
+        .ToList();
+
+    // Source events are "{packageId}:{unix ms}"; anything else sorts first.
+    private static long SourceEventInstant(string sourceEventId)
+    {
+        var separator = sourceEventId.LastIndexOf(':');
+        return separator >= 0 && long.TryParse(sourceEventId.AsSpan(separator + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var milliseconds) ? milliseconds : long.MinValue;
+    }
+
+    // Units of each line already in a live package of the order: cancelled and superseded
+    // packages (split parents, resent originals) hold none.
+    private async Task<Dictionary<Guid, decimal>> ActiveAllocatedQuantitiesAsync(Guid tenantId, Guid[] orderLineIds, CancellationToken cancellationToken)
+    {
+        if (orderLineIds.Length == 0) return [];
+        var livePackages = CurrentShipmentPackages().Where(package => package.TenantId == tenantId && package.Status != ShipmentPackageStatus.Cancelled);
+        var rows = await db.PackageLineAllocations.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.OrderLineId) && livePackages.Any(package => package.Id == x.PackageId))
+            .Select(x => new PackageLineAllocationRow(x.PackageId, x.OrderLineId, x.SourceEventId, x.AllocatedQuantity, x.CancelledQuantity))
+            .ToListAsync(cancellationToken);
+        return LatestPackageLineAllocations(rows).GroupBy(row => row.OrderLineId)
+            .ToDictionary(group => group.Key, group => group.Sum(row => Math.Max(0m, row.AllocatedQuantity - row.CancelledQuantity)));
+    }
+
+    // The lines of one package with their current allocated units, as a picking request sends them.
+    private async Task<List<(string ExternalLineId, decimal AllocatedQuantity)>> PackageLinesAsync(Guid tenantId, Guid packageId, CancellationToken cancellationToken)
+    {
+        var rows = await db.PackageLineAllocations.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.PackageId == packageId)
+            .Select(x => new PackageLineAllocationRow(x.PackageId, x.OrderLineId, x.SourceEventId, x.AllocatedQuantity, x.CancelledQuantity))
+            .ToListAsync(cancellationToken);
+        var latest = LatestPackageLineAllocations(rows).Where(row => row.AllocatedQuantity > 0).ToList();
+        var lineIds = latest.Select(row => row.OrderLineId).ToArray();
+        var externalIds = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && lineIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.ExternalLineId, cancellationToken);
+        return latest.Where(row => externalIds.ContainsKey(row.OrderLineId))
+            .OrderBy(row => externalIds[row.OrderLineId], StringComparer.Ordinal)
+            .Select(row => (externalIds[row.OrderLineId], row.AllocatedQuantity)).ToList();
     }
 
     public async Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken, string? packageNumber = null)
@@ -1259,20 +1312,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (platform == "PAZARAMA" && action is "PICKING" or "NOT_SUPPLIED" && IsEmptyJsonObject(commandPayload))
         {
             // Pazarama order items are GUIDs; the adapter sends one status request per item.
-            var pazaramaLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
-                                       where allocation.TenantId == tenantId && allocation.PackageId == package.Id && allocation.AllocatedQuantity > 0
-                                       join line in db.OrderLines.AsNoTracking() on new { allocation.TenantId, Id = allocation.OrderLineId } equals new { line.TenantId, line.Id }
-                                       select new { line.ExternalLineId, allocation.AllocatedQuantity }).ToListAsync(cancellationToken);
+            var pazaramaLines = await PackageLinesAsync(tenantId, package.Id, cancellationToken);
             if (pazaramaLines.Count == 0)
                 return ServiceResult<Guid>.Fail("PICKING_LINES_REQUIRED", "Pazarama işlemi için pakette sipariş kalemi bulunamadı.", 422);
             commandPayload = JsonSerializer.Serialize(new { lines = pazaramaLines.Select(line => new { lineId = line.ExternalLineId, quantity = (int)line.AllocatedQuantity }), status = action == "PICKING" ? "Picking" : "NotSupplied" });
         }
         if (platform != "PAZARAMA" && action == "PICKING" && IsEmptyJsonObject(commandPayload))
         {
-            var packageLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
-                                      where allocation.TenantId == tenantId && allocation.PackageId == package.Id && allocation.AllocatedQuantity > 0
-                                      join line in db.OrderLines.AsNoTracking() on new { allocation.TenantId, Id = allocation.OrderLineId } equals new { line.TenantId, line.Id }
-                                      select new { line.ExternalLineId, allocation.AllocatedQuantity }).ToListAsync(cancellationToken);
+            var packageLines = await PackageLinesAsync(tenantId, package.Id, cancellationToken);
             if (packageLines.Count == 0 || packageLines.Any(line => !long.TryParse(line.ExternalLineId, out _) || line.AllocatedQuantity != decimal.Truncate(line.AllocatedQuantity) || line.AllocatedQuantity > int.MaxValue))
                 return ServiceResult<Guid>.Fail("PICKING_LINES_REQUIRED", "Paket satırları Trendyol Picking isteği için hazırlanamadı.", 422);
             commandPayload = JsonSerializer.Serialize(new { lines = packageLines.Select(line => new { lineId = long.Parse(line.ExternalLineId), quantity = (int)line.AllocatedQuantity }), @params = new { }, status = "Picking" });
@@ -1302,17 +1349,25 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         const string action = "PICKING";
         var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
         if (package is null) return NotFound<ShipmentView>();
-        if (package.Version != expectedVersion) return Precondition<ShipmentView>(package.Version);
-        if (package.Status != ShipmentPackageStatus.New) return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_NOT_ALLOWED", "Yalnız yeni durumdaki paketler işleme alınabilir.", 409);
         var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (platform is not ("TRENDYOL" or "N11" or "PAZARAMA"))
             return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_UNSUPPORTED", "Bu pazaryerinde siparişler panelden anlık işleme alınamıyor.", 422);
         var effectType = $"{platform}_INSTANT_PICKING";
+        var normalizedKey = idempotencyKey.Trim();
+        // A resend of a request that already went through answers with the package as it is now,
+        // before the version and state checks the first request itself moved on.
+        var existing = await db.ExternalEffectRecords.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu Idempotency-Key başka bir paket için kullanılmış.", 409);
+            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
+            var replayOrderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
+            return replayOrderNumber is null ? NotFound<ShipmentView>() : ServiceResult<ShipmentView>.Ok(Map(package, replayOrderNumber));
+        }
+        if (package.Version != expectedVersion) return Precondition<ShipmentView>(package.Version);
+        if (package.Status != ShipmentPackageStatus.New) return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_NOT_ALLOWED", "Yalnız yeni durumdaki paketler işleme alınabilir.", 409);
 
-        var packageLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
-                                  where allocation.TenantId == tenantId && allocation.PackageId == package.Id && allocation.AllocatedQuantity > 0
-                                  join line in db.OrderLines.AsNoTracking() on new { allocation.TenantId, Id = allocation.OrderLineId } equals new { line.TenantId, line.Id }
-                                  select new { line.ExternalLineId, allocation.AllocatedQuantity }).ToListAsync(cancellationToken);
+        var packageLines = await PackageLinesAsync(tenantId, package.Id, cancellationToken);
         string payload;
         ServiceError? validation;
         if (platform == "PAZARAMA")
@@ -1339,13 +1394,6 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (order is null) return NotFound<ShipmentView>();
         var orderNumber = order.OrderNumber;
 
-        var normalizedKey = idempotencyKey.Trim();
-        var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
-        if (existing is not null)
-        {
-            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
-            return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
-        }
         var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "PICKING" };
         db.ExternalEffectRecords.Add(effect);
         await db.SaveChangesAsync(cancellationToken);
@@ -1385,7 +1433,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 // (with its cargo and invoice fields) look older and be dropped.
                 package.UpdatedAt = appliedAt;
                 package.Version++;
-                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "PROCESSING", RawStatus = "PICKING_REQUESTED", SourceEventId = $"instant-picking:{effect.Id:N}", OccurredAt = appliedAt, RecordedAt = appliedAt });
+                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "PROCESSING", RawStatus = PackageIngestionSafety.InstantPickingRawStatus, SourceEventId = $"instant-picking:{effect.Id:N}", OccurredAt = appliedAt, RecordedAt = appliedAt });
             }
             // Orders are filtered by DerivedStatus while the counters are calculated
             // from shipment packages. Keep both read models in sync before returning
