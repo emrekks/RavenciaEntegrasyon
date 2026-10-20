@@ -9,4 +9,5 @@ RUN npm run build
 
 FROM caddy:2.11.3@sha256:ec18ee54aab3315c22e25f3b2babda73ff8007d39b13b3bd1bfffa2f0444c7d9
 COPY deploy/caddy/Caddyfile /etc/caddy/Caddyfile
+RUN caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 COPY --from=web /web/dist /srv

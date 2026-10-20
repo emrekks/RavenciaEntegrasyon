@@ -2,6 +2,11 @@
 .codex-deploy-backups/
 .codex-live-patch/
 .codex-release-*/
+.codex-*
+.release-*
+/*.jpg
+/*.jpeg
+/*.png
 .env
 .env.*
 !.env.example

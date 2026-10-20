@@ -1,4 +1,16 @@
+# Production logging: journald instead of json-file. Every deploy re-creates the
+# containers, which deleted their json-file logs; journald keeps them across
+# releases. Read with e.g.
+#   journalctl CONTAINER_NAME=marketplacehub-api-1 --since -1h
+#   journalctl CONTAINER_NAME=marketplacehub-worker-1 -f
+# Retention follows the host journald limits (docs/CI-CD-DEPLOY.md).
+# `!override` replaces the base json-file block (its max-size/max-file options
+# are invalid for journald) instead of merging into it.
 services:
+  postgres:
+    logging: !override
+      driver: journald
+      options: { tag: "{{.Name}}" }
   migrate:
     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
     build: null
@@ -14,21 +26,33 @@ services:
       DataProtection__CertificatePath: /run/secrets/dp_certificate
       DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
     secrets: &production_secrets [app_db_connection, credential_key, dp_certificate, dp_certificate_password]
+    logging: !override
+      driver: journald
+      options: { tag: "{{.Name}}" }
   api:
     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
     build: null
     environment: *production_environment
     secrets: *production_secrets
+    logging: !override
+      driver: journald
+      options: { tag: "{{.Name}}" }
   worker:
     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
     build: null
     environment: *production_environment
     secrets: *production_secrets
+    logging: !override
+      driver: journald
+      options: { tag: "{{.Name}}" }
   caddy:
     image: ${MARKETPLACEHUB_EDGE_IMAGE:?set immutable edge image with digest}
     build: null
     environment:
       MARKETPLACEHUB_SITE_ADDRESS: ${MARKETPLACEHUB_SITE_ADDRESS:?set production https address}
+    logging: !override
+      driver: journald
+      options: { tag: "{{.Name}}" }
 
 secrets:
   dp_certificate: { file: ../secrets/dp_certificate.pfx }

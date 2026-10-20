@@ -2,9 +2,12 @@
 Description=Run the verified Ravencia backup once per day
 
 [Timer]
-OnCalendar=*-*-* 03:00:00 UTC
+# 23:30 Istanbul: after the working day, before the host is stopped at 00:30.
+# Persistent=true catches up a missed run after the next boot; daily-backup.sh
+# then waits for the stack to come up.
+OnCalendar=*-*-* 20:30:00 UTC
 Persistent=true
-RandomizedDelaySec=15m
+RandomizedDelaySec=10m
 Unit=ravencia-backup.service
 
 [Install]
