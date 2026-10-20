@@ -6426,7 +6426,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var brand = observeOnly ? null : await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
         await EnsureImportedBrandMapping(tenantId, connectionId, brand, snapshot.BrandExternalId, brandReferenceSnapshotId, now, cancellationToken);
+        // K13: a mapped panel category the user switched off or split into sub-categories cannot take
+        // products, the same rule UpsertCatalogCategory applies; the product stays without a category and
+        // the mapping is reported once per category.
         var category = observeOnly ? null : categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
+        if (category is { } mappedCategory && categoryContext is not null && (!mappedCategory.IsActive || !mappedCategory.IsLeaf))
+        {
+            await RecordIssue(tenantId, $"category-mapping-unusable:{connectionId:D}:{mappedCategory.Id:D}", "CATEGORY_MAPPING_UNUSABLE", $"Pazaryeri kategorisinin eşlendiği \"{Short(mappedCategory.Name, 120)}\" kategorisi {(mappedCategory.IsActive ? "alt kategorilere bölünmüş" : "kapalı")}; ürünler kategorisiz aktarıldı. Eşleştirmeyi etkin bir yaprak kategoriye çevirin.", cancellationToken);
+            category = null;
+        }
         if (!preserveLocal && !onlyNewVariants)
         {
             product.BrandId = brand?.Id;
