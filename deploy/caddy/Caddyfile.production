@@ -3,7 +3,11 @@
 }
 
 {$MARKETPLACEHUB_SITE_ADDRESS} {
-	encode zstd gzip
+	# API and SignalR responses are not compressed: compressing secrets (CSRF
+	# token, session-bound data) next to attacker-influenced input in the same
+	# response is the BREACH class. Static assets and the SPA shell still are.
+	@compressible not path /api/* /hubs/*
+	encode @compressible zstd gzip
 	header {
 		-Server
 		X-Content-Type-Options "nosniff"
@@ -19,9 +23,23 @@
 	}
 	log_skip @webhook
 
-	# SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
-	@backend path /api/* /health/* /hubs/*
-	handle @backend {
+	# /health/live stays public (process liveness only, for external uptime
+	# monitors and the Deploy workflow). Readiness and queue state answer only to
+	# private sources: the host itself (deploy scripts and the health watch enter
+	# through loopback, which reaches the container from a Docker bridge address)
+	# and the compose networks. Everyone else gets a plain 404.
+	@health_private_only {
+		path /health/*
+		not path /health/live
+		not remote_ip private_ranges
+	}
+	handle @health_private_only {
+		respond 404
+	}
+
+	# Only a 401 from the authentication endpoints clears the browser cache; a 401
+	# elsewhere (expired session on a data call) must not wipe the whole site cache.
+	handle /api/v1/auth/* {
 		reverse_proxy api:8080 {
 			@unauthenticated status 401
 			handle_response @unauthenticated {
@@ -29,6 +47,12 @@
 				copy_response
 			}
 		}
+	}
+
+	# SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
+	@backend path /api/* /health/* /hubs/*
+	handle @backend {
+		reverse_proxy api:8080
 	}
 	handle {
 		root * /srv

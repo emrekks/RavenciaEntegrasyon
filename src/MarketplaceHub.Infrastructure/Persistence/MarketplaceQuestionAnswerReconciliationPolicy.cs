@@ -6,7 +6,8 @@ internal enum QuestionAnswerSubmissionReconciliation
 {
     Pending,
     Submitted,
-    Confirmed
+    Confirmed,
+    Rejected
 }
 
 internal static class MarketplaceQuestionAnswerReconciliationPolicy
@@ -16,17 +17,24 @@ internal static class MarketplaceQuestionAnswerReconciliationPolicy
         if (remote.Status.Equals("ANSWERED", StringComparison.OrdinalIgnoreCase))
             return QuestionAnswerSubmissionReconciliation.Confirmed;
 
+        // The marketplace refused the answer that was sent: the submission is
+        // over and the seller may answer again.
+        if (remote.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase))
+            return QuestionAnswerSubmissionReconciliation.Rejected;
+
         if (!remote.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase)
             || string.IsNullOrWhiteSpace(pendingAnswer))
             return QuestionAnswerSubmissionReconciliation.Pending;
 
-        var matchingMerchantAnswer = remote.Conversations.Any(conversation =>
-            IsMerchant(conversation.Author)
-            && string.IsNullOrWhiteSpace(conversation.RejectionReason)
-            && string.Equals(conversation.Text.Trim(), pendingAnswer.Trim(), StringComparison.Ordinal));
+        var matchingMerchantAnswers = remote.Conversations
+            .Where(conversation => IsMerchant(conversation.Author)
+                && string.Equals(conversation.Text.Trim(), pendingAnswer.Trim(), StringComparison.Ordinal))
+            .ToList();
 
-        return matchingMerchantAnswer
-            ? QuestionAnswerSubmissionReconciliation.Submitted
+        if (matchingMerchantAnswers.Any(conversation => string.IsNullOrWhiteSpace(conversation.RejectionReason)))
+            return QuestionAnswerSubmissionReconciliation.Submitted;
+        return matchingMerchantAnswers.Count > 0
+            ? QuestionAnswerSubmissionReconciliation.Rejected
             : QuestionAnswerSubmissionReconciliation.Pending;
     }
 

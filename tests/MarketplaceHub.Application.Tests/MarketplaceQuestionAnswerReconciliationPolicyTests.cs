@@ -42,14 +42,49 @@ public sealed class MarketplaceQuestionAnswerReconciliationPolicyTests
     }
 
     [Fact]
-    public void RejectedMerchantConversationDoesNotResolveUncertainSubmission()
+    public void RejectedMerchantConversationEndsTheSubmission()
     {
         var remote = Question("WAITING_FOR_ANSWER", [new("Merchant", "Merhaba", CreatedAt, "Cevap reddedildi")]);
 
         Assert.Equal(
-            QuestionAnswerSubmissionReconciliation.Pending,
+            QuestionAnswerSubmissionReconciliation.Rejected,
             MarketplaceQuestionAnswerReconciliationPolicy.Evaluate(remote, "Merhaba"));
     }
+
+    [Fact]
+    public void RejectedQuestionStatusEndsTheSubmissionEvenWithoutPendingText()
+    {
+        var remote = Question("REJECTED", []);
+
+        Assert.Equal(
+            QuestionAnswerSubmissionReconciliation.Rejected,
+            MarketplaceQuestionAnswerReconciliationPolicy.Evaluate(remote, null));
+    }
+
+    [Fact]
+    public void AnUnrejectedCopyOfTheAnswerStillCountsAsSubmitted()
+    {
+        var remote = Question("WAITING_FOR_ANSWER", [new("Merchant", "Merhaba", CreatedAt, "Cevap reddedildi"), new("Merchant", "Merhaba", CreatedAt.AddMinutes(5))]);
+
+        Assert.Equal(
+            QuestionAnswerSubmissionReconciliation.Submitted,
+            MarketplaceQuestionAnswerReconciliationPolicy.Evaluate(remote, "Merhaba"));
+    }
+
+    [Theory]
+    [InlineData("TRENDYOL", "Kısa", "QUESTION_ANSWER_LENGTH")]
+    [InlineData("HEPSIBURADA", "Evet", null)]
+    [InlineData("TRENDYOL", "Detaylar için https://ornek.com adresine bakın.", "QUESTION_ANSWER_CONTENT")]
+    [InlineData("N11", "Bize destek@ornek.com adresinden yazın.", "QUESTION_ANSWER_CONTENT")]
+    [InlineData("PAZARAMA", "Bizi 0532 123 45 67 numarasından arayın.", "QUESTION_ANSWER_CONTENT")]
+    [InlineData("TRENDYOL", "Bizi 5321234567 numarasından arayın.", "QUESTION_ANSWER_CONTENT")]
+    [InlineData("TRENDYOL", "Merkezimizi 444 1 234 numarasından arayın.", "QUESTION_ANSWER_CONTENT")]
+    [InlineData("TRENDYOL", "11697863851 numaralı siparişiniz yarın kargoda.", null)]
+    [InlineData("HEPSIBURADA", "5000031618 numaralı paketiniz yarın kargoda.", null)]
+    [InlineData("HEPSIBURADA", "Bizi 0500 003 16 18 numarasından arayın.", "QUESTION_ANSWER_CONTENT")]
+    [InlineData("TRENDYOL", "Ürünün ölçüsü 42 x 30 cm, ağırlığı 1,5 kg.", null)]
+    public void AnswerPolicyChecksLengthAndContactDetails(string platform, string answer, string? expectedCode) =>
+        Assert.Equal(expectedCode, QuestionAnswerPolicy.Validate(platform, answer)?.Code);
 
     private static RemoteMarketplaceQuestion Question(string status, IReadOnlyList<RemoteQuestionConversation> conversations) =>
         new("external-1", "PRODUCT", status, "Soru", null, null, null, null, null, null, null, CreatedAt, null, CreatedAt, conversations);

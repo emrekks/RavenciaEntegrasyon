@@ -261,10 +261,12 @@ public static class OrderInventoryReservationPolicy
         return Math.Max(0m, afterCancellation - consumed);
     }
 
+    // NOT APPLIED, intentionally: order projection does not call this. ReservationMode,
+    // ReserveOnStatuses and ReleaseOnStatuses are stored but have no effect; order-line reservations
+    // are unconditional (ReservedQuantity). Live connections hold reservations under a DISABLED or
+    // missing policy that was never applied, and wiring this in would release them and oversell.
     public static bool IsReservationEnabled(ConnectionInventoryPolicy? policy, string? rawStatus)
     {
-        // Reservations are opt-in. Without an explicit connection policy,
-        // order synchronization must not create reserved stock implicitly.
         if (policy is null) return false;
         if (string.Equals(policy.ReservationMode?.Trim(), "NONE", StringComparison.OrdinalIgnoreCase)
             || string.Equals(policy.ReservationMode?.Trim(), "DISABLED", StringComparison.OrdinalIgnoreCase))
@@ -275,6 +277,16 @@ public static class OrderInventoryReservationPolicy
         return string.IsNullOrWhiteSpace(policy.ReserveOnStatuses)
             || ContainsStatus(policy.ReserveOnStatuses, status);
     }
+
+    // An order-line reservation holds the units an order could not take from physical stock.
+    // ExpiresAt is set when the reservation is created or its quantity changes, and cleared on release.
+    // It is informational: nothing expires a reservation on its own.
+    public static readonly TimeSpan ReservationLifetime = TimeSpan.FromDays(14);
+
+    public static DateTimeOffset ExpiresAt(DateTimeOffset refreshedAt) => refreshedAt.Add(ReservationLifetime);
+
+    // The whole shortfall stays reserved, independent of the connection's inventory policy.
+    public static decimal ReservedQuantity(decimal shortfall) => Math.Max(0m, shortfall);
 
     private static bool ContainsStatus(string? configuredStatuses, string rawStatus)
     {
@@ -414,14 +426,62 @@ public static class ProductUpdatePollingPolicy
     }
 }
 
+public sealed record StockProjectionChange(Guid VariantId, long ProjectionVersion, string SourceEventId);
+public sealed record StockProjectionTarget(Guid ConnectionId, Guid VariantId, string SourceEventId, string DedupKey);
+
+public enum StockProjectionDispatchDecision { Skip, HoldForPricePolicy, Dispatch }
+
 public static class StockProjectionOutboxPolicy
 {
     public static string DedupKey(Guid connectionId, Guid variantId, long projectionVersion) =>
         $"stock-projection:{connectionId:N}:{variantId:N}:v{projectionVersion}";
+
+    // A stock change reaches every connection that sells the variant (an ACTIVE offer), not only the
+    // connection whose order caused it; a manual adjustment or a return restock has no connection of
+    // its own. The dispatch sends the current projection, so the latest version per variant is enough.
+    public static IReadOnlyList<StockProjectionTarget> FanOut(IEnumerable<StockProjectionChange> changes, IEnumerable<(Guid ConnectionId, Guid VariantId)> activeOffers)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        ArgumentNullException.ThrowIfNull(activeOffers);
+        var latest = changes
+            .GroupBy(change => change.VariantId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(change => change.ProjectionVersion).First());
+        return activeOffers
+            .Distinct()
+            .Where(offer => latest.ContainsKey(offer.VariantId))
+            .OrderBy(offer => offer.ConnectionId)
+            .ThenBy(offer => offer.VariantId)
+            .Select(offer =>
+            {
+                var change = latest[offer.VariantId];
+                return new StockProjectionTarget(offer.ConnectionId, offer.VariantId, change.SourceEventId, DedupKey(offer.ConnectionId, offer.VariantId, change.ProjectionVersion));
+            })
+            .ToList();
+    }
+
+    // Build outcomes meaning there is nothing to send for this variant on this connection (already
+    // sent, not live there, or an offer the user must fix): the dispatch is finished, and a reconcile
+    // scan moves on to the next candidate instead of stopping.
+    public static bool IsSettledBuildFailure(string? code) =>
+        code is "NO_EXTERNAL_CHANGES" or "LIVE_OFFER_REQUIRED" or "CHANNEL_OFFER_INVALID";
+
+    // Every automatic price-and-stock request carries the price as well, so a stock dispatch needs
+    // both write policies. With the price policy off the stock is held (and reported) instead of
+    // being sent with a price the seller may be managing on the marketplace.
+    public static StockProjectionDispatchDecision Decide(bool stockWriteEnabled, bool priceWriteEnabled) =>
+        !stockWriteEnabled ? StockProjectionDispatchDecision.Skip
+        : !priceWriteEnabled ? StockProjectionDispatchDecision.HoldForPricePolicy
+        : StockProjectionDispatchDecision.Dispatch;
 }
 
 public static class PriceInventoryOutboxPolicy
 {
+    // A price-and-stock request writes both values on every marketplace (Trendyol's included), so an
+    // automatic send needs both write policies; a send started from the panel is guarded by the
+    // connection switch alone.
+    public static IReadOnlyList<string> RequiredWritePolicies(bool manual) =>
+        manual ? [] : [MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock];
+
     public static bool IsCurrent(PriceInventoryPushLine line, long projectionVersion, long priceVersion) =>
         line.ProjectionVersion == projectionVersion && line.PriceVersion == priceVersion;
 
@@ -622,6 +682,17 @@ public static class WebhookPollingPolicy
 
     // Trendyol order times are stored as Turkey wall time (three hours ahead of UTC), so the cut-off moves with them.
     public static DateTimeOffset MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead) => now - DeliveryGrace + storedClockAhead;
+
+    // Only an order placed before the notifications' last delivery is a miss: notifications arrived after it,
+    // yet not its own. Orders placed while nothing was delivered (the server was shut for the night, the
+    // webhook passive) are an outage, which the silence rule judges; counting them would spend one of the
+    // day's two allowed misses every morning. Without any delivery yet nothing counts as missed.
+    public static DateTimeOffset? MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead, DateTimeOffset? lastReceivedAt)
+    {
+        if (lastReceivedAt is not { } lastDelivery) return null;
+        var cutoff = now - DeliveryGrace;
+        return (lastDelivery < cutoff ? lastDelivery : cutoff) + storedClockAhead;
+    }
 }
 
 // A connection whose credentials were just entered or renewed is a draft until a test passes. When that test fails
@@ -640,8 +711,27 @@ public static class ConnectionRetestPolicy
             || errorCode.EndsWith("_NETWORK_ERROR", StringComparison.Ordinal)
             || errorCode is "REMOTE_TIMEOUT" or "REMOTE_UNAVAILABLE" or "REMOTE_RATE_LIMITED");
 
-    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now) =>
-        status == "DRAFT" && lastTestedAt is { } tested && IsTransient(lastErrorCode) && now - tested >= Interval;
+    // A marketplace's identity service can refuse good credentials while it is itself failing (Pazarama answered
+    // "Oturum bilgileriniz alınamadı" with HTTP 400 during a Cloudflare outage). Such a refusal is retried once an
+    // hour, but only while the credential the test used is still the active one and for at most a day after it was
+    // saved (the first refusal follows its save); after that the seller has to look at the credentials.
+    public static readonly TimeSpan AuthRefusalInterval = TimeSpan.FromHours(1);
+    public static readonly TimeSpan AuthRefusalWindow = TimeSpan.FromHours(24);
+
+    public static bool IsAuthRefusal(string? errorCode) =>
+        errorCode is not null && (errorCode.EndsWith("_CREDENTIALS_REJECTED", StringComparison.Ordinal)
+            || errorCode.EndsWith("_ACCESS_DENIED", StringComparison.Ordinal)
+            || errorCode is "CREDENTIALS_REJECTED" or "ACCESS_DENIED");
+
+    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now, DateTimeOffset? credentialSavedAt = null)
+    {
+        if (status != "DRAFT" || lastTestedAt is not { } tested) return false;
+        if (IsTransient(lastErrorCode)) return now - tested >= Interval;
+        return IsAuthRefusal(lastErrorCode)
+            && credentialSavedAt is { } saved && saved <= tested
+            && now - saved < AuthRefusalWindow
+            && now - tested >= AuthRefusalInterval;
+    }
 }
 
 public enum EffectVerdict { Applied, NotApplied, Unknown }

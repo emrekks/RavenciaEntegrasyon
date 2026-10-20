@@ -8,7 +8,8 @@ namespace MarketplaceHub.Infrastructure.Adapters;
 // Shopify). Five consecutive failures (5xx, 408, network errors) open the circuit for 30 s; a 429
 // with Retry-After opens it for that long (at most 15 min). While open, calls are answered locally:
 // 429 for a quota stop, so the job is deferred without losing an attempt, otherwise 503. After the
-// break one probe request is let through; its result closes or reopens the circuit.
+// break one probe request is let through; its result closes or reopens the circuit. It sits outside the
+// marketplace's rate-limit handler, so a call refused by an open circuit never takes a quota token.
 public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerState state, TimeProvider timeProvider) : DelegatingHandler
 {
     internal const int FailureThreshold = 5;

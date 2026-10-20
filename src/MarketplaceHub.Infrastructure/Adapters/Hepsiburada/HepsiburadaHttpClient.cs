@@ -632,6 +632,13 @@ public sealed partial class HepsiburadaHttpClient(
             var items = new List<RemoteOrderPackage>(deduplicated.Count);
             foreach (var item in deduplicated)
             {
+                // A package the lists already show as delivered, undelivered, cancelled or returned cannot move on
+                // through the tracking read; asking for it anyway made every page cost one extra request per row.
+                if (HasTerminalListStatus(item))
+                {
+                    items.Add(item);
+                    continue;
+                }
                 var trackingRead = await ReadPackageTrackingInfoAsync(account, item, cancellationToken);
                 items.Add(trackingRead.Package);
                 if (trackingRead.Issue is not null) issues.Add(trackingRead.Issue);
@@ -750,6 +757,12 @@ public sealed partial class HepsiburadaHttpClient(
         if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(before)));
         return string.Join('&', query);
     }
+
+    internal static bool HasTerminalListStatus(RemoteOrderPackage package) =>
+        ShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered
+            or ShipmentPackageStatus.Undelivered
+            or ShipmentPackageStatus.Cancelled
+            or ShipmentPackageStatus.Returned;
 
     private static RemoteOrderPackage MergePackageStatusObservation(IGrouping<(string ExternalOrderId, string ExternalPackageId), RemoteOrderPackage> group)
     {
@@ -1197,17 +1210,16 @@ public sealed partial class HepsiburadaHttpClient(
     {
         if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar bağlantı isteği gönderilmedi.", null, null, null));
-        var client = clients.CreateClient("Hepsiburada");
+        var client = clients.CreateBoundedClient("Hepsiburada");
         using var request = new HttpRequestMessage(method, new Uri(baseAddress, path));
         request.Content = content;
         if (!ApplyAuthentication(request, context))
             return Failure<JsonDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_INTEGRATOR_NAME_INVALID", "Hepsiburada entegratör adı geçerli bir User-Agent kimliği olmalıdır.", HttpStatusCode.UnprocessableEntity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         configure?.Invoke(request);
+        using var timeout = new QuotaAwareTimeout(request, HepsiburadaRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
             using var response = await client.SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             var rate = RateLimit(response);
@@ -1234,6 +1246,8 @@ public sealed partial class HepsiburadaHttpClient(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            // Never sent: the shared quota stayed full. This is not an "outcome unknown" call.
+            if (!timeout.QuotaAcquired) return LocalQuotaWait<JsonDocument>();
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_TIMEOUT", "Hepsiburada isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)
@@ -1242,6 +1256,11 @@ public sealed partial class HepsiburadaHttpClient(
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
         }
     }
+
+    private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
+
+    private static AdapterResult<T> LocalQuotaWait<T>() =>
+        AdapterResult<T>.Failure(new(AdapterErrorClass.RateLimit, "HEPSIBURADA_LOCAL_QUOTA_WAIT", "Hepsiburada istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
 
     internal static string? SafeInvoiceErrorDetails(string body)
     {
@@ -1403,12 +1422,24 @@ public sealed partial class HepsiburadaHttpClient(
         int? remaining = response.Headers.TryGetValues("X-RateLimit-Remaining", out var values) && int.TryParse(values.FirstOrDefault(), out var parsedRemaining) ? parsedRemaining : null;
         DateTimeOffset? resetAt = null;
         TimeSpan? retryAfter = response.Headers.RetryAfter?.Delta;
-        if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) && int.TryParse(resets.FirstOrDefault(), out var resetSeconds))
+        if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) && long.TryParse(resets.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var reset))
         {
-            retryAfter ??= TimeSpan.FromSeconds(Math.Max(0, resetSeconds));
-            resetAt = timeProvider.GetUtcNow().AddSeconds(Math.Max(0, resetSeconds));
+            var wait = ResetWait(reset, timeProvider.GetUtcNow());
+            retryAfter ??= wait;
+            resetAt = timeProvider.GetUtcNow().Add(wait);
         }
         return limit is null && remaining is null && resetAt is null && retryAfter is null ? null : new(remaining, resetAt, retryAfter, limit);
+    }
+
+    // X-RateLimit-Reset is documented as seconds until the window resets, but a value past 1e9 can only be a
+    // Unix time (seconds) of the reset; read as a delay it would park the connection for half a century.
+    internal static TimeSpan ResetWait(long reset, DateTimeOffset now)
+    {
+        if (reset <= 0) return TimeSpan.Zero;
+        if (reset <= 1_000_000_000) return TimeSpan.FromSeconds(reset);
+        if (reset > DateTimeOffset.MaxValue.ToUnixTimeSeconds()) return TimeSpan.Zero;
+        var wait = DateTimeOffset.FromUnixTimeSeconds(reset) - now;
+        return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
     }
 
     internal static AdapterError Error(HttpStatusCode status, TimeSpan? retryAfter, string? requestId) => status switch
@@ -1417,6 +1448,8 @@ public sealed partial class HepsiburadaHttpClient(
         HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "HEPSIBURADA_ACCESS_FORBIDDEN", "Hepsiburada HTTP 403: mağaza veya endpoint erişim yetkisi reddedildi. Mağaza ID’sini ve entegratör erişim yetkisini kontrol edin.", (int)status, null, requestId),
         HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "HEPSIBURADA_RATE_LIMITED", "Hepsiburada istek sınırına ulaşıldı.", 429, retryAfter ?? TimeSpan.FromSeconds(5), requestId),
         HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "HEPSIBURADA_RESOURCE_NOT_FOUND", "Hepsiburada kaynağı bulunamadı.", 404, null, requestId),
+        HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_REMOTE_TIMEOUT", "Hepsiburada isteği kendi tarafında zaman aşımına uğrattı; yeniden denenecek.", 408, retryAfter ?? TimeSpan.FromSeconds(15), requestId),
+        HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_CONFLICT", "Hepsiburada isteği kaydın mevcut durumuyla çakıştığı için reddetti.", 409, null, requestId),
         >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "HEPSIBURADA_REMOTE_ERROR", "Hepsiburada geçici sunucu hatası verdi.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), requestId),
         _ => new(AdapterErrorClass.Validation, "HEPSIBURADA_REQUEST_REJECTED", "Hepsiburada isteği doğrulama nedeniyle reddedildi.", (int)status, null, requestId)
     };

@@ -11,14 +11,27 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvider, IConfiguration configuration) : IScheduledJobProducer
 {
+    // The policy passes run on their own slower timer (the worker calls this every five minutes and at
+    // startup); the default upgrades only when asked, which the worker does at startup and hourly.
+    public async Task MaintainPoliciesAsync(bool includeDefaults, CancellationToken cancellationToken)
+    {
+        await DisableProductAutomationAsync(cancellationToken);
+        if (includeDefaults) await EnsureDefaultPoliciesAsync(cancellationToken);
+        await DisableExternalWriteAutomationAsync(cancellationToken);
+        db.ChangeTracker.Clear();
+    }
+
     public async Task<int> EnqueueDueAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var added = 0;
-        await DisableProductAutomationAsync(cancellationToken);
-        await EnsureDefaultPoliciesAsync(cancellationToken);
-        await DisableExternalWriteAutomationAsync(cancellationToken);
+        // A connection that has just become operational gets its policies at once instead of waiting
+        // for the hourly defaults pass; the check is a single EXISTS query.
+        if (await ConnectionsWithoutPoliciesExistAsync(cancellationToken)) await EnsureDefaultPoliciesAsync(cancellationToken);
         added += await RetestTransientDraftsAsync(now, cancellationToken);
+        // Jobs and policy timestamps of this pass are saved together below; nothing tracked by the
+        // passes above may ride along.
+        db.ChangeTracker.Clear();
         var policies = (await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
@@ -43,6 +56,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var webhookHealthy = await HealthyWebhookConnectionsAsync(now, cancellationToken);
         var reservedExecutionGroups = new HashSet<string>(StringComparer.Ordinal);
         var backgroundOrderReservations = new HashSet<Guid>();
+        var activeJobTypesByConnection = new Dictionary<Guid, List<string>>();
 
         foreach (var row in policies)
         {
@@ -66,13 +80,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
             // the execution group keeps the queue coalesced before it reaches
-            // the worker's advisory lock.
-            var activeJobTypes = await db.IntegrationJobs.AsNoTracking()
-                .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id
-                    && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
-                .Select(x => x.JobType)
-                .Distinct()
-                .ToListAsync(cancellationToken);
+            // the worker's advisory lock. The queued job types are read once per connection: jobs this pass
+            // adds are not saved yet, the reservations below cover them.
+            if (!activeJobTypesByConnection.TryGetValue(row.Connection.Id, out var activeJobTypes))
+            {
+                activeJobTypes = await db.IntegrationJobs.AsNoTracking()
+                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id
+                        && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+                    .Select(x => x.JobType)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+                activeJobTypesByConnection[row.Connection.Id] = activeJobTypes;
+            }
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
             var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
             var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync;
@@ -104,7 +123,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var reservationKey = $"{row.Policy.TenantId:N}:{row.Connection.Id:N}:{executionGroup}";
             if ((active && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)
                 || (reservedExecutionGroups.Contains(reservationKey) && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) continue;
-            var latest = await db.IntegrationJobs.AsNoTracking()
+            // The policy remembers when its job was last queued; only a policy that has not queued since the
+            // column was added looks the time up in the job table.
+            var latest = row.Policy.LastScheduledAt ?? await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
             var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
@@ -122,10 +143,17 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             reservedExecutionGroups.Add(reservationKey);
             if (canQueueOrderBackgroundBehindOrderLane) backgroundOrderReservations.Add(row.Connection.Id);
             db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, definition.Value.PayloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
+            // Saved together with the job; the policy row was read untracked, so only this column is written.
+            db.ConnectionSyncPolicies.Attach(row.Policy);
+            row.Policy.LastScheduledAt = now;
             added++;
         }
 
-        var dueTenants = await db.Invoices.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
+        // Tenants that have invoices (an EXISTS per tenant instead of a DISTINCT over every invoice).
+        var dueTenants = await db.Tenants.AsNoTracking()
+            .Where(tenant => db.Invoices.Any(invoice => invoice.TenantId == tenant.Id))
+            .Select(tenant => tenant.Id)
+            .ToListAsync(cancellationToken);
         const int invoiceScanInterval = 300;
         var invoiceBucket = now.ToUnixTimeSeconds() / invoiceScanInterval;
         foreach (var tenantId in dueTenants)
@@ -142,14 +170,19 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             await db.SaveChangesAsync(cancellationToken);
             return added;
         }
-        catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
+        catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException || IsExpectedDedupRace(exception))
         {
-            // Another worker may have won the unique dedup race. Clear pending tracked rows;
-            // the next scheduler pass will observe the committed jobs.
-            foreach (var entry in db.ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added)) entry.State = EntityState.Detached;
+            // Another worker may have won the unique dedup race, or a user saved a policy meanwhile.
+            // Clear the pending rows; the next scheduler pass will observe the committed state.
+            db.ChangeTracker.Clear();
             return 0;
         }
     }
+
+    internal Task<bool> ConnectionsWithoutPoliciesExistAsync(CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking().AnyAsync(connection => (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+            && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA")
+            && !db.ConnectionSyncPolicies.Any(policy => policy.TenantId == connection.TenantId && policy.ConnectionId == connection.Id && policy.ResourceType == "ORDERS"), cancellationToken);
 
     internal async Task<HashSet<Guid>> HealthyWebhookConnectionsAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -286,19 +319,29 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     }
 
     // A draft connection whose last test failed on a passing fault (gateway block, quota, marketplace fault, timeout)
-    // is tested again every quarter hour, so it verifies itself once the marketplace recovers; see ConnectionRetestPolicy.
+    // is tested again every quarter hour, so it verifies itself once the marketplace recovers. One whose credentials
+    // were refused is tested again hourly for a day while its credential stays unchanged; see ConnectionRetestPolicy.
     internal async Task<int> RetestTransientDraftsAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         var drafts = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.Status == "DRAFT" && x.LastTestedAt != null && x.LastErrorCode != null
                 && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
                 && db.PlatformCredentials.Any(credential => credential.ConnectionId == x.Id && credential.RevokedAt == null))
-            .Select(x => new { x.TenantId, x.Id, x.PlatformCode, x.Status, x.LastTestedAt, x.LastErrorCode })
+            .Select(x => new
+            {
+                x.TenantId,
+                x.Id,
+                x.PlatformCode,
+                x.Status,
+                x.LastTestedAt,
+                x.LastErrorCode,
+                CredentialSavedAt = db.PlatformCredentials.Where(credential => credential.ConnectionId == x.Id && credential.RevokedAt == null).Max(credential => (DateTimeOffset?)credential.CreatedAt)
+            })
             .ToListAsync(cancellationToken);
         var added = 0;
         foreach (var draft in drafts)
         {
-            if (!ConnectionRetestPolicy.ShouldRetest(draft.Status, draft.LastTestedAt, draft.LastErrorCode, now)) continue;
+            if (!ConnectionRetestPolicy.ShouldRetest(draft.Status, draft.LastTestedAt, draft.LastErrorCode, now, draft.CredentialSavedAt)) continue;
             var jobType = MarketplaceJobTypes.ForPlatform(draft.PlatformCode, MarketplaceJobTypes.ConnectionTest);
             var dedupPrefix = $"scheduled:connection-retest:{draft.Id:N}:";
             var pending = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == draft.TenantId && x.ConnectionId == draft.Id
@@ -361,8 +404,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 var current = existing.SingleOrDefault(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.ConnectionId && x.ResourceType == defaults.ResourceType);
                 if (current is not null)
                 {
-                    // Upgrade only exact application defaults. Explicit user choices remain untouched.
-                    if (IsKnownDefault(current, connection.PlatformCode)
+                    // Upgrade only exact application defaults. A policy a user saved is never touched, even
+                    // when its values equal a historical default.
+                    if (ShouldUpgradeToDefault(current, connection.PlatformCode)
                         && (current.IntervalSeconds != defaults.IntervalSeconds
                             || current.OverlapSeconds != defaults.OverlapSeconds
                             || current.JitterSeconds != defaults.JitterSeconds))
@@ -418,9 +462,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new(MarketplaceExternalWritePolicies.Return, 0, 0, 0)
     ];
 
+    internal static bool ShouldUpgradeToDefault(ConnectionSyncPolicy current, string platformCode) =>
+        !current.UserDefined && IsKnownDefault(current, platformCode);
+
     internal static bool IsKnownDefault(ConnectionSyncPolicy current, string platformCode)
     {
-        if (current.IntervalSeconds == 300 && (current.OverlapSeconds == 60 || current.OverlapSeconds == 120) && current.JitterSeconds == 15) return true;
+        // The first generic read default; write flows never had it (theirs is "immediately", 0/0/0).
+        if (current.IntervalSeconds == 300 && (current.OverlapSeconds == 60 || current.OverlapSeconds == 120) && current.JitterSeconds == 15)
+            return !MarketplaceExternalWritePolicies.IsPolicy(current.ResourceType);
         return current.ResourceType switch
         {
             "ORDERS" => current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2

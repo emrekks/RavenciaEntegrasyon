@@ -341,9 +341,12 @@ public static class TrendyolShipmentPackageStatusPolicy
         // not shipment holds, and must stay out of order processing until the
         // platform advances the package to Created.
         "AWAITING" or "VERIFIED" => ShipmentPackageStatus.PaymentPending,
-        // UNPACKED denotes a split package; AT_COLLECTION_POINT means the
-        // parcel has reached a pickup point and is already in transit.
-        "UNPACKED" => ShipmentPackageStatus.New,
+        // UNPACKED denotes a package that was split into new packages: it is
+        // superseded and never ships, so it is non-operational (Cancelled; a
+        // separate enum member would ripple through every status consumer).
+        // AT_COLLECTION_POINT means the parcel has reached a pickup point and
+        // is already in transit.
+        "UNPACKED" => ShipmentPackageStatus.Cancelled,
         "ATCOLLECTIONPOINT" => ShipmentPackageStatus.Shipped,
         _ => ShipmentPackageStatusPolicy.FromRemote(rawStatus)
     };
@@ -367,6 +370,49 @@ public static class TrendyolShipmentPackageStatusPolicy
 
     private static string Normalize(string? rawStatus) =>
         (rawStatus ?? string.Empty).Trim().ToUpperInvariant().Replace("_", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal).Replace(" ", string.Empty, StringComparison.Ordinal);
+}
+
+// A package is superseded once another package of the same order names it as
+// its origin (a split UnPacked parent, or the original of a resend). It keeps
+// its history but no longer counts for status, counters, amounts or invoices.
+public static class ShipmentPackageSupersession
+{
+    public static bool IsSplitParentRawStatus(string? rawStatus) =>
+        string.Equals((rawStatus ?? string.Empty).Trim().Replace("_", string.Empty, StringComparison.Ordinal), "UNPACKED", StringComparison.OrdinalIgnoreCase);
+
+    public static IReadOnlySet<string> SupersededExternalIds(IEnumerable<ShipmentPackage> packages)
+    {
+        var rows = packages.ToList();
+        var ids = rows.Select(package => package.ExternalPackageId).ToHashSet(StringComparer.Ordinal);
+        return rows
+            .Where(package => !string.IsNullOrWhiteSpace(package.OriginExternalPackageId)
+                && !string.Equals(package.OriginExternalPackageId, package.ExternalPackageId, StringComparison.Ordinal)
+                && ids.Contains(package.OriginExternalPackageId!))
+            .Select(package => package.OriginExternalPackageId!)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    public static IReadOnlyList<ShipmentPackage> Current(IEnumerable<ShipmentPackage> packages)
+    {
+        var rows = packages.ToList();
+        var superseded = SupersededExternalIds(rows);
+        return rows.Where(package => !superseded.Contains(package.ExternalPackageId)).ToList();
+    }
+
+    // The package statuses that decide the order. Null while the only live
+    // packages are split parents whose children have not been read yet: the
+    // order then keeps its last derived status instead of turning cancelled.
+    public static IReadOnlyList<ShipmentPackageStatus>? StatusSources(IEnumerable<ShipmentPackage> packages)
+    {
+        var current = Current(packages);
+        if (current.Count > 0 && current.All(package => IsSplitParentRawStatus(package.RawStatus))) return null;
+        return current.Select(package => package.Status).ToList();
+    }
+
+    // A split parent leaves every open state: it is replaced by its children
+    // and must never stay in an operational tab.
+    public static bool CanSupersede(ShipmentPackageStatus current) =>
+        current is not (ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Cancelled);
 }
 
 public sealed class Order

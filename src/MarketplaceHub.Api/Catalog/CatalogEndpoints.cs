@@ -311,7 +311,7 @@ public static class CatalogEndpoints
         if (form.ContainsKey("sortOrder") && (!int.TryParse(form["sortOrder"], out sortOrder) || sortOrder is < 0 or > 999))
             return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
         var isCustomProductGallery = variantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
-        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : string.IsNullOrWhiteSpace(form["mediaRole"]) ? "GALLERY" : form["mediaRole"].ToString().Trim();
+        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(form["mediaRole"].ToString());
         var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.SortOrder == sortOrder, http.RequestAborted);
         if (media is null) { media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(), Status = "ACTIVE" }; db.ProductMedia.Add(media); }
         else { media.FileAssetId = asset.Id; media.MediaRole = mediaRole; media.AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(); media.Status = "ACTIVE"; }
@@ -973,7 +973,7 @@ public static class CatalogEndpoints
         return true;
     }
 
-    private static string MediaRole(string? value)
+    internal static string MediaRole(string? value)
     {
         var role = string.IsNullOrWhiteSpace(value) ? "GALLERY" : value.Trim().ToUpperInvariant();
         return role[..Math.Min(role.Length, 32)];
@@ -992,13 +992,12 @@ public static class CatalogEndpoints
     private static bool TryIfMatch(HttpContext http, out long version, out IResult? failure) { var parsed = OptionalIfMatch(http, out failure); version = parsed ?? 0; if (failure is null && parsed is null) failure = Problem(http, new("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428)); return failure is null; }
     private static long? OptionalIfMatch(HttpContext http, out IResult? failure) { failure = null; var value = http.Request.Headers.IfMatch.ToString(); if (string.IsNullOrWhiteSpace(value)) return null; if (value.Length >= 4 && value.StartsWith("\"v", StringComparison.Ordinal) && value.EndsWith('"') && long.TryParse(value[2..^1], out var version) && version > 0) return version; failure = Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400)); return null; }
     private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
-    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json"); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
-    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
-    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
+    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
+    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!);
+    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!);
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
-    private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(ToProblem(error, http.TraceIdentifier), statusCode: error.Status, contentType: "application/problem+json");
-    private static object ToProblem(ServiceError error, string? correlationId) => new { type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}", title = error.Message, status = error.Status, code = error.Code, correlationId, retryable = error.Status is 429 or >= 500, fieldErrors = error.FieldErrors };
+    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
     public sealed record PublicationRequest(Guid ConnectionId);
     public sealed record ProductArchiveRequest(Guid ConnectionId, bool Archived);
     public sealed record PazaramaSaleStatusRequest(IReadOnlyList<string>? Barcodes, bool Close);

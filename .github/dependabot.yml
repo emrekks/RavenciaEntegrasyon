@@ -1,0 +1,58 @@
+# Weekly update proposals. Every PR runs Validate; nothing is merged or deployed
+# automatically. Minor/patch updates are grouped per ecosystem to keep the PR count low.
+version: 2
+updates:
+  # Actions are pinned by commit SHA in .github/workflows; Dependabot bumps the SHA and the version comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Istanbul }
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # SDK/ASP.NET base images (Dockerfile, pinned by digest).
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Istanbul }
+    groups:
+      dotnet-images:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Node build stage and Caddy (deploy/caddy/Dockerfile*, pinned by digest).
+  - package-ecosystem: docker
+    directory: /deploy/caddy
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Istanbul }
+    groups:
+      edge-images:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # PostgreSQL image in deploy/compose/compose.yaml. Keep the CI service digest
+  # (.github/workflows/ci.yml) and deploy/backup/restore-drill.sh in step by hand.
+  - package-ecosystem: docker-compose
+    directory: /deploy/compose
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Istanbul }
+    ignore:
+      # A PostgreSQL major upgrade needs a dump/restore plan, not a PR.
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /src/MarketplaceHub.Web
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Istanbul }
+    open-pull-requests-limit: 5
+    groups:
+      web-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Central package management (Directory.Packages.props) with packages.lock.json files.
+  - package-ecosystem: nuget
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Istanbul }
+    open-pull-requests-limit: 5
+    groups:
+      nuget-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]

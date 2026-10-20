@@ -89,7 +89,9 @@ credential_key="$(openssl rand -base64 32 | tr -d '\r\n')"
 certificate_password="$(openssl rand -base64 32 | tr -d '\r\n')"
 
 printf '%s' "$postgres_password" > "$staging_root/postgres_password.txt"
-printf 'Host=postgres;Port=5432;Database=marketplacehub;Username=marketplacehub;Password=%s' "$postgres_password" > "$staging_root/app_db_connection.txt"
+# API and Worker each open an EF pool, a NpgsqlDataSource and a LISTEN connection:
+# 25 per pool keeps the total well under PostgreSQL's max_connections=150 (compose.yaml).
+printf 'Host=postgres;Port=5432;Database=marketplacehub;Username=marketplacehub;Password=%s;Maximum Pool Size=25;Timeout=15;Command Timeout=120' "$postgres_password" > "$staging_root/app_db_connection.txt"
 printf '%s' "$credential_key" > "$staging_root/credential_key.txt"
 printf '%s' "$owner_password" > "$staging_root/bootstrap_owner_password.txt"
 printf '%s' "$certificate_password" > "$staging_root/dp_certificate_password.txt"

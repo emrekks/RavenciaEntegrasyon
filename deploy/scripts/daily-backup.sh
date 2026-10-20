@@ -1,45 +1,40 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Nightly verified backup (ravencia-backup.timer, 20:30 UTC = 23:30 Istanbul).
+# After a boot the timer may fire before the stack is up (Persistent=true), so
+# the running API and Caddy containers are awaited for up to five minutes; their
+# images are needed to resolve the production Compose file.
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repository_root="$(cd -- "$script_dir/../.." && pwd -P)"
 environment_file="$repository_root/deploy/secrets/production.env"
 base_compose="$repository_root/deploy/compose/compose.yaml"
 production_compose="$repository_root/deploy/compose/compose.production.yaml"
 
-for required in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt production.env; do
-  [[ -s "$repository_root/deploy/secrets/$required" ]] || { echo "Required deployment file is missing: deploy/secrets/$required" >&2; exit 1; }
+sudo_cmd=(sudo -n)
+# shellcheck source=/dev/null
+source "$script_dir/lib.sh"
+require_secret_files
+
+wait_seconds="${RAVENCIA_BACKUP_WAIT_SECONDS:-300}"
+app_image=""
+edge_image=""
+for ((waited = 0; ; waited += 10)); do
+  app_image="$(running_service_image api)"
+  edge_image="$(running_service_image caddy)"
+  [[ -z "$app_image" || -z "$edge_image" ]] || break
+  (( waited < wait_seconds )) || { echo "API and Caddy containers were not running after ${wait_seconds}s; the backup was not taken." >&2; exit 1; }
+  (( waited > 0 )) || echo "Waiting up to ${wait_seconds}s for the API and Caddy containers."
+  sleep 10
 done
 
-service_container_id() {
-  sudo -n docker ps -q \
-    --filter label=com.docker.compose.project=marketplacehub \
-    --filter "label=com.docker.compose.service=$1"
-}
+external_writes_enabled="$(read_env_or MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED true)"
+require_boolean MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED "$external_writes_enabled"
 
-app_container="$(service_container_id api)"
-edge_container="$(service_container_id caddy)"
-[[ -n "$app_container" && -n "$edge_container" ]] || { echo "Healthy API and Caddy containers are required to resolve the current Compose images." >&2; exit 1; }
-app_image="$(sudo -n docker inspect --format '{{.Config.Image}}' "$app_container")"
-edge_image="$(sudo -n docker inspect --format '{{.Config.Image}}' "$edge_container")"
-external_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
-[[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
-
-compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+compose=("${sudo_cmd[@]}" env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 "${compose[@]}" --profile operations config --quiet
-backup_output="$("${compose[@]}" --profile operations run --rm backup)"
-printf '%s\n' "$backup_output"
-backup_set="$(printf '%s\n' "$backup_output" | sed -nE 's#^Backup set created at /backup/([0-9]{8}T[0-9]{6}Z);.*$#\1#p' | tail -n 1)"
-[[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup job did not return a valid backup-set name." >&2; exit 1; }
-
-# Keep the script literal here so its variables expand inside the backup container.
-# shellcheck disable=SC2016
-"${compose[@]}" --profile operations run --rm --entrypoint /bin/sh backup -ceu '
-  cd "/backup/$1"
-  test -s manifest.json
-  test -s database.dump
-  test -s private-volumes.tar.gz
-  sha256sum -c SHA256SUMS
-  pg_restore --list database.dump >/dev/null
-' sh "$backup_set"
-echo "Daily backup verified: $backup_set"
+# Always a new set: the nightly restore point must include the evening, not
+# reuse a set a deploy took earlier the same day.
+run_verified_backup
+echo "Daily backup verified."

@@ -88,6 +88,10 @@ public sealed class ConnectionSyncPolicy
     public int OverlapSeconds { get; set; }
     public int JitterSeconds { get; set; }
     public bool Enabled { get; set; }
+    // Set when a user saved the policy: the scheduler then never replaces its values with newer defaults.
+    public bool UserDefined { get; set; }
+    // When the scheduler last queued this policy's job, so it need not search the job table every pass.
+    public DateTimeOffset? LastScheduledAt { get; set; }
     public long Version { get; set; } = 1;
 }
 

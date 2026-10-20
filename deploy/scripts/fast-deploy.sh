@@ -22,22 +22,19 @@ environment_file="$repository_root/deploy/secrets/production.env"
 base_compose="$repository_root/deploy/compose/compose.yaml"
 production_compose="$repository_root/deploy/compose/compose.production.yaml"
 
-for required in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt production.env; do
-  [[ -s "$repository_root/deploy/secrets/$required" ]] || { echo "Required deployment file is missing: deploy/secrets/$required" >&2; exit 1; }
-done
+sudo_cmd=(sudo -n)
+# shellcheck source=/dev/null
+source "$script_dir/lib.sh"
+require_secret_files
 
-read_env() {
-  local key="$1"
-  sudo -n awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) exit 1 }' "$environment_file"
-}
-external_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
+external_writes_enabled="$(read_env_or MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED true)"
 if [[ "$disable_external_writes" == true ]]; then external_writes_enabled=false; fi
-[[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
+require_boolean MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED "$external_writes_enabled"
 # Marketplace invoice delivery follows the per-connection external write switch; production.env can still force it off.
-invoice_marketplace_delivery_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
+invoice_marketplace_delivery_writes_enabled="$(read_env_or MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED true)"
 if [[ "$enable_invoice_marketplace_delivery" == true ]]; then invoice_marketplace_delivery_writes_enabled=true; fi
 if [[ "$disable_external_writes" == true ]]; then invoice_marketplace_delivery_writes_enabled=false; fi
-[[ "$invoice_marketplace_delivery_writes_enabled" == true || "$invoice_marketplace_delivery_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED must be true or false." >&2; exit 1; }
+require_boolean MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED "$invoice_marketplace_delivery_writes_enabled"
 
 cd "$repository_root"
 if [[ -n "${DEPLOY_REVISION:-}" ]]; then
@@ -46,13 +43,14 @@ if [[ -n "${DEPLOY_REVISION:-}" ]]; then
 else
   git pull --ff-only origin main
 fi
-revision="$(git rev-parse --short=12 HEAD)"
+full_revision="$(git rev-parse HEAD)"
+revision="${full_revision:0:12}"
 app_image="marketplacehub-app:manual-$revision"
 edge_image="marketplacehub-edge:manual-$revision"
 
-compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED=$invoice_marketplace_delivery_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+compose=("${sudo_cmd[@]}" env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED=$invoice_marketplace_delivery_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 # Validation must never inherit the production marketplace-write setting.
-validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=false" "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED=false" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+validation_compose=("${sudo_cmd[@]}" env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=false" "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED=false" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 
 # Resolve every production and one-shot profile before building or changing
 # containers. This catches missing variables, secret files, and invalid merged
@@ -60,6 +58,7 @@ validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLA
 "${compose[@]}" config --quiet
 "${validation_compose[@]}" config --quiet
 "${compose[@]}" --profile operations config --quiet
+warn_on_unbounded_connection_pool
 
 sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
@@ -92,28 +91,16 @@ else
   sudo -n docker builder prune --all --force --filter until=168h
 fi
 
-run_verified_backup() {
-  local backup_output backup_set
-  backup_output="$("${compose[@]}" --profile operations run --rm backup)"
-  printf '%s\n' "$backup_output"
-  backup_set="$(printf '%s\n' "$backup_output" | sed -nE 's#^Backup set created at /backup/([0-9]{8}T[0-9]{6}Z);.*$#\1#p' | tail -n 1)"
-  [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup job did not return a valid backup-set name." >&2; return 1; }
-  # The quoted script runs in the backup container, where its variables expand.
-  # shellcheck disable=SC2016
-  "${compose[@]}" --profile operations run --rm --entrypoint /bin/sh backup -ceu '
-    backup_set="$1"
-    cd "/backup/$backup_set"
-    test -s manifest.json
-    test -s database.dump
-    test -s private-volumes.tar.gz
-    sha256sum -c SHA256SUMS
-    pg_restore --list database.dump >/dev/null
-  ' sh "$backup_set"
-}
+# A fresh set (BACKUP_FORCE=true inside run_verified_backup), never the one taken
+# earlier today: a broken migration must not cost the hours since that set.
 run_verified_backup
 
-# Keep a daily, verified restore point and prune backup sets older than 72 hours.
+# Install/refresh the backup, restore-drill, health-watch and alert units.
 bash "$repository_root/deploy/scripts/install-backup-timer.sh"
+
+# The images serving right now become the rollback target of this release.
+previous_app_image="$(running_service_image api)"
+previous_edge_image="$(running_service_image caddy)"
 
 # Keep the currently serving API/worker/edge alive until the new database
 # migration has completed successfully. Compose's depends_on condition also
@@ -141,39 +128,17 @@ done
 "${compose[@]}" up -d --no-build api worker caddy
 
 if [[ "$verify" == true ]]; then
-  site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
-  status="000"
-  readiness_attempts=30
-  for ((attempt = 1; attempt <= readiness_attempts; attempt++)); do
-    if status="$(curl --connect-timeout 3 --max-time 10 --silent --show-error --fail --output /dev/null --write-out '%{http_code}' "$site_address/health/ready")" && [[ "$status" == "200" ]]; then
-      break
-    fi
-    (( attempt == readiness_attempts )) || sleep 2
-  done
-  [[ "$status" == "200" ]] || { echo "Readiness did not return HTTP 200 after $readiness_attempts attempts; last status was $status." >&2; exit 1; }
-
-  worker_id="$("${compose[@]}" ps -q worker)"
-  [[ -n "$worker_id" ]] || { echo "Worker container was not created." >&2; exit 1; }
-  worker_health="missing"
-  for ((attempt = 1; attempt <= 30; attempt++)); do
-    worker_health="$(sudo -n docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
-    [[ "$worker_health" == "healthy" ]] && break
-    (( attempt == 30 )) || sleep 2
-  done
-  [[ "$worker_health" == "healthy" ]] || { echo "Worker is not healthy: $worker_health" >&2; exit 1; }
-
-  html="$(curl --connect-timeout 3 --max-time 10 --silent --show-error --fail "$site_address/")"
-  [[ "$html" == *'<div id="root">'* ]] || { echo "Frontend root marker was not served." >&2; exit 1; }
-  asset_path="$(printf '%s' "$html" | grep -oE 'src="/[^"]+\.js"' | head -1 | cut -d'"' -f2)"
-  [[ -n "$asset_path" ]] || { echo "Frontend JavaScript asset could not be identified." >&2; exit 1; }
-  curl --connect-timeout 3 --max-time 10 --silent --show-error --fail --output /dev/null "$site_address$asset_path"
+  verify_stack "${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
 fi
+record_release deploy "$full_revision" "$app_image" "$edge_image"
+record_last_success "$full_revision"
 
-# Keep the current manual images and remove only older tags produced by this
-# script. Docker refuses removal while a stopped container still references an
-# image, so this remains recoverable for active containers.
-for old_image in $(sudo -n docker image ls --format '{{.Repository}}:{{.Tag}}' | awk -v app="$app_image" -v edge="$edge_image" '$0 ~ /^marketplacehub-(app|edge):manual-/ && $0 != app && $0 != edge'); do
-  sudo -n docker image rm "$old_image" >/dev/null 2>&1 || true
-done
+# Keep this release and the one it replaced (N-1, for deploy/scripts/rollback.sh);
+# remove older manual-* tags. Docker refuses removal while a container still
+# references an image, so active containers stay recoverable.
+prune_manual_images_except "$app_image" "$edge_image" "$previous_app_image" "$previous_edge_image"
+if [[ "$previous_app_image" == marketplacehub-app:manual-* && "$previous_app_image" != "$app_image" ]]; then
+  echo "Rollback target kept: $previous_app_image / $previous_edge_image (deploy/scripts/rollback.sh ${previous_app_image##*:manual-})"
+fi
 
 echo "Fast deploy completed: $revision"

@@ -88,6 +88,36 @@ public sealed class ConnectionRetestPolicyTests
         Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-1), "PAZARAMA_CREDENTIALS_REJECTED", Now));
         Assert.False(ConnectionRetestPolicy.ShouldRetest("VERIFIED", Now.AddHours(-1), "PAZARAMA_GATEWAY_BLOCKED", Now));
     }
+
+    [Theory]
+    [InlineData("PAZARAMA_CREDENTIALS_REJECTED", true)]
+    [InlineData("N11_CREDENTIALS_REJECTED", true)]
+    [InlineData("PAZARAMA_ACCESS_DENIED", true)]
+    [InlineData("ACCESS_DENIED", true)]
+    [InlineData("SHOPIFY_REQUIRED_READ_SCOPE", false)]
+    [InlineData("PAZARAMA_GATEWAY_BLOCKED", false)]
+    [InlineData(null, false)]
+    public void CredentialAndAccessRefusalsAreKnown(string? code, bool refusal) =>
+        Assert.Equal(refusal, ConnectionRetestPolicy.IsAuthRefusal(code));
+
+    [Fact]
+    public void ARefusedButUnchangedCredentialIsRetestedHourlyForADay()
+    {
+        // The identity service refused the credentials saved three hours ago; the last test was an hour ago.
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-61), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-3)));
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-61), "PAZARAMA_ACCESS_DENIED", Now, Now.AddHours(-3)));
+        // Hourly, not every quarter hour.
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-30), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-3)));
+        // A day after the credential was saved the retries stop.
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-2), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-25)));
+        // Credentials changed after the refused test: the new ones get their own test, not a retry.
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-2), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddMinutes(-30)));
+        // Without a known credential nothing is retried; a scope the seller must grant is never retried.
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-2), "PAZARAMA_CREDENTIALS_REJECTED", Now));
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-2), "SHOPIFY_REQUIRED_READ_SCOPE", Now, Now.AddHours(-3)));
+        // Passing faults keep the quarter-hour cadence whatever the credential's age.
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-16), "PAZARAMA_GATEWAY_BLOCKED", Now, Now.AddDays(-10)));
+    }
 }
 
 public sealed class QuestionCadencePolicyTests

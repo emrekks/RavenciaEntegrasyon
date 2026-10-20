@@ -404,8 +404,9 @@ function MfaChallenge() {
     try {
       await api('/mfa/challenge', { method: 'POST', body: JSON.stringify({ code: mode === 'code' ? data.get('code') : null, recoveryCode: mode === 'recovery' ? data.get('recovery') : null }) })
       await client.invalidateQueries({ queryKey: ['me'] })
-    } catch {
-      setError(mode === 'code' ? 'Doğrulama kodu geçersiz veya süresi dolmuş.' : 'Kurtarma kodu geçersiz veya daha önce kullanılmış.')
+    } catch (reason) {
+      if (reason instanceof ApiRequestError && reason.code === 'MFA_ATTEMPTS_EXCEEDED') setError('Çok fazla hatalı kod girildi; güvenliğiniz için oturum kapatıldı. Giriş ekranına dönüp yeniden giriş yapın.')
+      else setError(mode === 'code' ? 'Doğrulama kodu geçersiz veya süresi dolmuş.' : 'Kurtarma kodu geçersiz veya daha önce kullanılmış.')
     } finally {
       setLoading(false)
     }

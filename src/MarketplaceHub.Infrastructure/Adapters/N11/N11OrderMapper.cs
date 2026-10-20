@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
@@ -106,7 +107,26 @@ public static class N11OrderMapper
             .ToList();
     }
 
-    private static bool IsUnpacked(string rawStatus) => string.Equals(rawStatus.Trim(), "UnPacked", StringComparison.OrdinalIgnoreCase);
+    // The same rule on the packages stored for one order: a page may carry the
+    // UnPacked parent and its children apart, so the link is persisted on the
+    // children once both are known. Returns the packages that were linked.
+    public static IReadOnlyList<ShipmentPackage> LinkStoredSplitPackages(IReadOnlyCollection<ShipmentPackage> packages)
+    {
+        var parents = packages.Where(package => IsUnpacked(package.RawStatus)).ToList();
+        if (parents.Count != 1) return [];
+        var parent = parents[0];
+        var linked = new List<ShipmentPackage>();
+        foreach (var child in packages)
+        {
+            if (ReferenceEquals(child, parent) || IsUnpacked(child.RawStatus) || !string.IsNullOrWhiteSpace(child.OriginExternalPackageId)
+                || string.Equals(child.ExternalPackageId, parent.ExternalPackageId, StringComparison.Ordinal)) continue;
+            child.OriginExternalPackageId = parent.ExternalPackageId;
+            linked.Add(child);
+        }
+        return linked;
+    }
+
+    private static bool IsUnpacked(string rawStatus) => ShipmentPackageSupersession.IsSplitParentRawStatus(rawStatus);
 
     private static DateTimeOffset? CreatedAt(JsonElement package)
     {

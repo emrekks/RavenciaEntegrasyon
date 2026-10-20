@@ -4,13 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }> }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }> }))
 
-vi.mock('../../shared/api', () => {
+vi.mock('../../shared/api', async importOriginal => {
   const respond = async (path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     const body = typeof init?.body === 'string' ? init.body : undefined
-    apiState.calls.push({ path, method, body })
+    apiState.calls.push({ path, method, body, headers: Object.fromEntries(new Headers(init?.headers).entries()) })
     if (path === '/security-status') return { totpState: 'DISABLED', recoveryCodesRemaining: 0 }
     if (path === '/sessions') return [
       { id: 's1', state: 'ACTIVE', current: true, issuedAt: '2026-10-16T08:00:00Z', lastSeenAt: '2026-10-16T18:42:00Z', expiresAt: '2026-10-23T18:42:00Z' },
@@ -18,12 +18,12 @@ vi.mock('../../shared/api', () => {
       { id: 's3', state: 'REVOKED', current: false, issuedAt: '2026-10-10T08:00:00Z', lastSeenAt: '2026-10-12T09:31:00Z', expiresAt: '2026-10-19T09:31:00Z' }
     ]
     if (path === '/sessions/revoke-others') return undefined
-    if (path === '/settings/shipping-label') return { settings: method === 'PUT' ? JSON.parse(body ?? 'null') : null }
-    if (path === '/settings/appearance') return { settings: null }
+    if (path === '/settings/shipping-label') return { settings: method === 'PUT' ? JSON.parse(body ?? 'null') : null, version: method === 'PUT' ? 4 : 3 }
+    if (path === '/settings/appearance') return { settings: null, version: 0 }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }
-  return { api: vi.fn(respond), hubApi: vi.fn(respond) }
+  return { ...(await importOriginal<typeof import('../../shared/api')>()), api: vi.fn(respond), hubApi: vi.fn(respond) }
 })
 
 import { SystemSettingsPage } from './SystemSettingsPage'
@@ -122,6 +122,8 @@ describe('SystemSettingsPage', () => {
     expect(container.querySelector('.ss-bar-copy .is-dirty')?.textContent).toBe('Kaydedilmemiş değişiklikler var')
     click(button('Ayarları Kaydet'))
     await settle()
-    expect(apiState.calls.some(call => call.path === '/settings/shipping-label' && call.method === 'PUT')).toBe(true)
+    const saved = apiState.calls.find(call => call.path === '/settings/shipping-label' && call.method === 'PUT')
+    // the save names the version it was made on, so a change made meanwhile elsewhere is refused (412)
+    expect(saved?.headers?.['if-match']).toBe('"v3"')
   })
 })

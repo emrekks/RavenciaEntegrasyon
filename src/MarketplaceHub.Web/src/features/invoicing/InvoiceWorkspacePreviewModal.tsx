@@ -86,13 +86,18 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
       .then(response => {
         let succeeded = 0
         let failedCount = 0
+        // The server finishes at most five invoices while the window waits; the rest are queued as jobs and finish in
+        // the background (the lists refresh as they complete), so they get one line instead of one notice each.
+        const queued = response.items.filter(result => result.status === 'QUEUED')
         for (const result of response.items) {
+          if (result.status === 'QUEUED') continue
           const label = labels.get(result.packageId) ?? '#?'
           const failed = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT'].includes(result.status)
           if (failed) { failedCount++; onNotice(`${label} nolu siparişin faturası oluşturulamadı: ${result.message}`, 'error') }
           else if (result.status === 'COMPLETED') { succeeded++; onNotice(/^Fatura (kesildi|E-Faturam)/u.test(result.message) ? `${label} nolu siparişin faturası ${result.message.replace(/^Fatura /u, '')}` : `${label} nolu sipariş: ${result.message}`, 'success') }
           else onNotice(`${label} nolu siparişin faturası: ${result.message}`, 'info')
         }
+        if (queued.length) onNotice(`${queued.length} siparişin faturası sıraya alındı; arka planda kesilecek. İlerlemeyi İşlem Takibi’nde görebilirsiniz.`, 'info')
         if (response.items.length > 1) onNotice(`${response.items.length} siparişin faturası işlendi: ${succeeded} başarılı, ${failedCount} başarısız${response.items.length - succeeded - failedCount > 0 ? `, ${response.items.length - succeeded - failedCount} devam ediyor` : ''}.`, failedCount > 0 ? 'error' : succeeded > 0 ? 'success' : 'info')
       })
       .catch(reason => onNotice(`${eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası` : 'Faturalar'} oluşturulamadı: ${reason instanceof Error ? reason.message : 'Bilinmeyen hata'}`, 'error'))

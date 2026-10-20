@@ -26,6 +26,14 @@ Thumbs.db
 **/pgdata/
 Ravencia_Entegrasyon_v*_Nihai_Uygulama_Surumu.pdf
 
+# Local release/patch work folders and screenshots dropped at the repository root
+# (brand and platform images live under src/MarketplaceHub.Web/public/ and stay tracked).
+.codex-*
+.release-*
+/*.jpg
+/*.jpeg
+/*.png
+
 **/__pycache__/
 *.py[cod]
 .pytest_cache/

@@ -13,6 +13,10 @@ public sealed class HepsiburadaRateLimitHandler(
     ISharedRateLimiter? sharedLimiter = null,
     ILogger<HepsiburadaRateLimitHandler>? logger = null) : DelegatingHandler
 {
+    // Invoked once the request has its quota token, right before it is sent; the caller starts the request
+    // timeout there, so time spent waiting for the quota is not counted as a timeout.
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.Hepsiburada.QuotaAcquired");
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         if (sharedLimiter is not null && BucketFor(request.RequestUri) is { } bucket)
@@ -28,6 +32,7 @@ public sealed class HepsiburadaRateLimitHandler(
                 logger?.LogWarning(exception, "Shared Hepsiburada rate limiter unavailable; sending without the shared quota");
             }
         }
+        if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
         return await base.SendAsync(request, cancellationToken);
     }
 

@@ -14,7 +14,9 @@ backup_volume="${4:-marketplacehub_backup_staging}"
 postgres_image="postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a"
 
 [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup set must be a UTC timestamp directory name." >&2; exit 1; }
-[[ "$app_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Application image must be immutable name@sha256." >&2; exit 1; }
+# name@sha256:<digest> for registry images, or the local image ID sha256:<id>
+# (what the monthly drill passes for the locally built manual-* release).
+[[ "$app_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ || "$app_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Application image must be immutable: name@sha256:<digest> or sha256:<image id>." >&2; exit 1; }
 [[ -d "$secrets_root" ]] || { echo "Secrets root does not exist: $secrets_root" >&2; exit 1; }
 secrets_root="$(cd -- "$secrets_root" && pwd -P)"
 for secret in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt; do

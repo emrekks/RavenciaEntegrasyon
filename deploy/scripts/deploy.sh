@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Registry-digest deploy (first installation and immutable-image releases).
+# The day-to-day CI path is fast-deploy.sh; both share deploy/scripts/lib.sh.
+
 validate_only=false
 bootstrap=false
 while (($#)); do
@@ -19,25 +22,26 @@ bootstrap_compose="$repository_root/deploy/compose/compose.bootstrap.yaml"
 secrets_root="$repository_root/deploy/secrets"
 environment_file="$secrets_root/production.env"
 
-required=(postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt production.env)
-[[ "$bootstrap" == true ]] && required+=(bootstrap_owner_password.txt)
-for name in "${required[@]}"; do
-  [[ -s "$secrets_root/$name" ]] || { echo "Required deployment file is missing or empty: deploy/secrets/$name" >&2; exit 1; }
-done
-
-read_env() {
-  local key="$1"
-  sudo -n awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) exit 1 }' "$environment_file"
-}
+# The first installation runs interactively and may prompt for sudo once.
+# Read by lib.sh:
+# shellcheck disable=SC2034
+sudo_cmd=(sudo)
+# shellcheck source=/dev/null
+source "$script_dir/lib.sh"
+if [[ "$bootstrap" == true ]]; then
+  require_secret_files bootstrap_owner_password.txt
+else
+  require_secret_files
+fi
 
 app_image="$(read_env MARKETPLACEHUB_APP_IMAGE)"
 edge_image="$(read_env MARKETPLACEHUB_EDGE_IMAGE)"
 site_address="$(read_env MARKETPLACEHUB_SITE_ADDRESS)"
-external_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
+external_writes_enabled="$(read_env_or MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED true)"
 [[ "$app_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Application image is not immutable." >&2; exit 1; }
 [[ "$edge_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Edge image is not immutable." >&2; exit 1; }
 [[ "$site_address" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || { echo "Production site address is invalid." >&2; exit 1; }
-[[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
+require_boolean MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED "$external_writes_enabled"
 
 credential_key="$(<"$secrets_root/credential_key.txt")"
 decoded_bytes="$(printf '%s' "$credential_key" | base64 --decode | wc -c)"
@@ -50,35 +54,18 @@ unset credential_key connection
 
 compose=(sudo env "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 
-run_verified_backup() {
-  local backup_output backup_set
-  backup_output="$("${compose[@]}" --profile operations run --rm backup)"
-  printf '%s\n' "$backup_output"
-  backup_set="$(printf '%s\n' "$backup_output" | sed -nE 's#^Backup set created at /backup/([0-9]{8}T[0-9]{6}Z);.*$#\1#p' | tail -n 1)"
-  [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup job did not return a valid backup-set name." >&2; return 1; }
-  # The quoted script runs in the backup container, where its variables expand.
-  # shellcheck disable=SC2016
-  "${compose[@]}" --profile operations run --rm --entrypoint /bin/sh backup -ceu '
-    backup_set="$1"
-    cd "/backup/$backup_set"
-    test -s manifest.json
-    test -s database.dump
-    test -s private-volumes.tar.gz
-    sha256sum -c SHA256SUMS
-    pg_restore --list database.dump >/dev/null
-  ' sh "$backup_set"
-}
-
 compose_version="$(sudo docker compose version --short)"
 [[ "$compose_version" == "2.40.2" ]] || { echo "Exact Docker Compose 2.40.2 is required; detected $compose_version." >&2; exit 1; }
 "${compose[@]}" config --quiet
+warn_on_unbounded_connection_pool
 echo "Production configuration passed fail-closed validation."
 [[ "$validate_only" == true ]] && exit 0
 
 "${compose[@]}" pull postgres migrate api worker caddy
+# A fresh set (BACKUP_FORCE=true inside run_verified_backup), never the one taken earlier today.
 run_verified_backup
 
-# Keep a daily, verified restore point and prune backup sets older than 72 hours.
+# Install/refresh the backup, restore-drill, health-watch and alert units.
 bash "$repository_root/deploy/scripts/install-backup-timer.sh"
 "${compose[@]}" up -d postgres migrate api worker caddy
 if [[ "$bootstrap" == true ]]; then
@@ -88,26 +75,8 @@ if [[ "$bootstrap" == true ]]; then
   echo "One-time bootstrap secret was removed after successful use."
 fi
 
-status="000"
-readiness_attempts=30
-for ((attempt = 1; attempt <= readiness_attempts; attempt++)); do
-  if status="$(curl --connect-timeout 3 --max-time 8 --silent --show-error --fail --output /dev/null --write-out '%{http_code}' "$site_address/health/ready")" && [[ "$status" == "200" ]]; then
-    break
-  fi
-  (( attempt == readiness_attempts )) || sleep 2
-done
-[[ "$status" == "200" ]] || { echo "Readiness did not return HTTP 200 after $readiness_attempts attempts; last status was $status." >&2; exit 1; }
-
-worker_id="$("${compose[@]}" ps -q worker)"
-[[ -n "$worker_id" ]] || { echo "Worker container was not created." >&2; exit 1; }
-worker_health="$(sudo docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
-[[ "$worker_health" == "healthy" ]] || { echo "Worker is not healthy: $worker_health" >&2; exit 1; }
-
-html="$(curl --connect-timeout 3 --max-time 8 --silent --show-error --fail "$site_address/")"
-[[ "$html" == *'<div id="root">'* ]] || { echo "Frontend root marker was not served." >&2; exit 1; }
-asset_path="$(printf '%s' "$html" | grep -oE 'src="/[^"]+\.js"' | head -1 | cut -d'"' -f2)"
-[[ -n "$asset_path" ]] || { echo "Frontend JavaScript asset could not be identified." >&2; exit 1; }
-curl --connect-timeout 3 --max-time 8 --silent --show-error --fail --output /dev/null "$site_address$asset_path"
+verify_stack "$site_address"
+record_release registry "$(git -C "$repository_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$app_image" "$edge_image"
 
 "${compose[@]}" ps
 echo "Deployment completed; API readiness, Worker health and frontend assets were verified."

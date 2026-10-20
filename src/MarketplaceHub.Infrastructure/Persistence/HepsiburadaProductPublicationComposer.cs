@@ -79,6 +79,8 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek Hepsiburada yayın isteğinde en fazla 1000 varyant gönderilebilir.");
         if (variants.Any(x => !IsValidEan13(x.Barcode))) return Fail("BARCODE_INVALID", "Hepsiburada ürün aktarımında tüm varyantların geçerli 13 haneli EAN-13 barkodu olmalıdır.");
         if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.Ordinal).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Hepsiburada ürün aktarımındaki EAN-13 barkodları benzersiz olmalıdır.");
+        if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), variants.Select(x => x.Barcode!.Trim()).ToArray(), [], cancellationToken) is { } takenBarcode)
+            return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenBarcode), status: 409);
         var sellerSkus = variants.Select(x => NormalizeMerchantSku(x.Sku)).ToArray();
         if (sellerSkus.Any(x => x is null)) return Fail("MERCHANT_SKU_INVALID", "Hepsiburada merchantSku boş olmamalı ve boşluk yerine noktalama kullanılmalıdır.");
         if (sellerSkus.Distinct(StringComparer.Ordinal).Count() != sellerSkus.Length) return Fail("MERCHANT_SKU_DUPLICATE", "Büyük harf/boşluksuz dönüşüm sonrası merchantSku değerleri benzersiz olmalıdır.");
@@ -119,7 +121,9 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             var inventory = inventories[variant.Id];
             if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || offer.SalePrice <= 0 || offer.ListPrice < offer.SalePrice)
                 return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.");
-            if (offer.SalePrice != decimal.Round(offer.SalePrice, 2)) return Fail("CHANNEL_OFFER_PRECISION_INVALID", $"'{variant.Sku}' satış fiyatı en fazla iki ondalık basamak içermelidir.");
+            // The outbound price carries VAT for an offer kept without it and is rounded to the two
+            // decimals Hepsiburada accepts, so a four-decimal panel price no longer blocks the import.
+            var salePrice = PriceInventoryComposer.OutboundSalePrice(offer);
             if (offer.VatRate < 0 || offer.VatRate > 100 || decimal.Truncate(offer.VatRate) != offer.VatRate)
                 return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı 0-100 arasında tam sayı olmalıdır.");
 
@@ -141,7 +145,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                 ["UrunAciklamasi"] = description,
                 ["Marka"] = brandName,
                 ["tax_vat_rate"] = ((int)offer.VatRate).ToString(CultureInfo.InvariantCulture),
-                ["price"] = offer.SalePrice.ToString("0.00", CultureInfo.GetCultureInfo("tr-TR")),
+                ["price"] = salePrice.ToString("0.00", CultureInfo.GetCultureInfo("tr-TR")),
                 ["stock"] = checked((int)Math.Min(int.MaxValue, Math.Floor(Math.Max(0, inventory.Available - offer.SafetyStock)))).ToString(CultureInfo.InvariantCulture)
             };
             if (!string.IsNullOrWhiteSpace(profile.Warranty))

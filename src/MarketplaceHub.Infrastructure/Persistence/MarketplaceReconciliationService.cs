@@ -30,7 +30,7 @@ public sealed class MarketplaceReconciliationService(AppDbContext db, TimeProvid
             var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).ToListAsync(cancellationToken); compared += orders.Count;
             foreach (var order in orders)
             {
-                var packageStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken); var derived = Wire(ShipmentPackageStatusPolicy.Aggregate(packageStatuses));
+                var orderPackages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).ToListAsync(cancellationToken); var statusSources = ShipmentPackageSupersession.StatusSources(orderPackages); if (statusSources is null) continue; var derived = Wire(ShipmentPackageStatusPolicy.Aggregate(statusSources));
                 if (derived != order.DerivedStatus) differences.Add(Difference(tenantId, run.Id, "ORDER", order.ExternalOrderId, "DERIVED_STATUS", order.DerivedStatus, derived, "LOCAL_RECOMPUTE_REQUIRED"));
             }
         }

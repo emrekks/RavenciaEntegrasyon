@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi } from '../../shared/api'
+import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
@@ -239,10 +239,15 @@ export function useAppearanceSettings() {
 
   async function save(next: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)
-    const saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', {
-      method: 'PUT',
-      body: JSON.stringify(normalized)
-    })
+    const current = client.getQueryData<AppearanceSettingsEnvelope>(appearanceSettingsQueryKey)
+    let saved: AppearanceSettingsEnvelope
+    try {
+      saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify(normalized) })
+    } catch (error) {
+      // changed elsewhere meanwhile: read the current settings so the next save is made on them
+      if (error instanceof ApiRequestError && error.status === 412) void client.invalidateQueries({ queryKey: appearanceSettingsQueryKey })
+      throw error
+    }
     client.setQueryData(appearanceSettingsQueryKey, saved)
     setDraft(normalizeAppearanceSettings(saved.settings))
   }

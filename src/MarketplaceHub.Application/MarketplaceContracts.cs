@@ -566,7 +566,8 @@ public sealed record ReturnPollWindow(
     DateTimeOffset? StatusModifiedAfter = null,
     DateTimeOffset? StatusModifiedBefore = null);
 public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null, string? RawStatus = null);
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null);
+// ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
@@ -883,9 +884,11 @@ public sealed record OrderListView(
     string? PrimaryImageUrl = null,
     decimal ProductQuantity = 0,
     string? CustomerEmail = null,
+    // Masked (***1234): the full identity or tax number is only in the order detail.
     string? CustomerTaxOrIdentityNumber = null,
-    string ShipmentAddressJson = "{}",
-    string InvoiceAddressJson = "{}",
+    // The delivery address fields a shipping label needs; the raw address
+    // snapshots (phones, identity numbers) are only in the order detail.
+    OrderAddressView? ShipmentAddress = null,
     decimal GrossAmount = 0,
     decimal DiscountAmount = 0,
     IReadOnlyList<OrderLineView>? Lines = null,
@@ -895,6 +898,18 @@ public sealed record OrderListView(
     IReadOnlyList<OrderInfoItem>? PlatformInfo = null,
     // When the order first reached the carrier (its first "shipped" status); null when not seen.
     DateTimeOffset? ShippedAt = null);
+public sealed record OrderAddressView(
+    string? FullName,
+    string? FullAddress,
+    string? Address1,
+    string? Address2,
+    string? Neighborhood,
+    string? District,
+    string? City,
+    string? PostalCode,
+    string? CountryCode,
+    bool IsDeliveryPoint = false,
+    string? DeliveryPointType = null);
 // A label/value fact a marketplace adds to the order detail (n11 commission, tracking link, ...).
 public sealed record OrderInfoItem(string Label, string Value, string? Url = null);
 public sealed record OrderListQuery(
@@ -1034,7 +1049,8 @@ public sealed record ReturnListView(
     string? ReasonCode = null,
     DateTimeOffset? ApprovedAt = null,
     string? CargoTrackingLink = null,
-    IReadOnlyDictionary<Guid, string>? LineStatuses = null);
+    IReadOnlyDictionary<Guid, string>? LineStatuses = null,
+    bool ActionDueAtEstimated = false);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1068,7 +1084,8 @@ public sealed record ReturnDetailView(
     bool ExternalWritesEnabled = false,
     bool DecisionPending = false,
     string? PlatformCode = null,
-    string? CargoTrackingLink = null);
+    string? CargoTrackingLink = null,
+    bool ActionDueAtEstimated = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);

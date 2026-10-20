@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore the newest Ravencia backup into isolated containers and verify it
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+OnFailure=ravencia-alert@%n.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
+ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/monthly-restore-drill.sh
+TimeoutStartSec=60min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

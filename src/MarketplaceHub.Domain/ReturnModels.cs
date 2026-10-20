@@ -71,6 +71,15 @@ public static class ReturnClaimStateMachine
 
     public static bool CanTransition(ReturnClaimStatus current, ReturnClaimStatus next) =>
         current == next || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
+
+    // The marketplace decides a claim's outcome: a newer Approved, Rejected or
+    // Completed applies even where the local workflow would not reach it (a
+    // claim approved here and rejected there). Completed or cancelled claims
+    // are not reopened.
+    public static bool IsAuthoritativeRemoteOutcome(ReturnClaimStatus current, ReturnClaimStatus next) =>
+        current != next
+        && next is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Completed
+        && current is not (ReturnClaimStatus.Completed or ReturnClaimStatus.Cancelled);
 }
 
 public static class ReturnClaimDecisionPolicy
@@ -114,6 +123,10 @@ public sealed class ReturnClaim
     public string? ReasonCode { get; set; }
     public string? ReasonText { get; set; }
     public DateTimeOffset? ActionDueAt { get; set; }
+    // True when the marketplace sent no deadline and ActionDueAt was derived
+    // from its usual rule (Trendyol: 48 hours after WaitingInAction, a week
+    // after the claim); shown as an estimate, never as the marketplace's date.
+    public bool ActionDueAtEstimated { get; set; }
     public DateTimeOffset LastRemoteModifiedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

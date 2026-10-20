@@ -18,7 +18,8 @@ public sealed partial class InvoicingBillingService(
     IDataProtectionProvider dataProtection,
     IPrivateFileStorage files,
     IConfiguration configuration,
-    TimeProvider timeProvider) : IInvoicingBillingService
+    TimeProvider timeProvider,
+    IInvoiceProviderPort invoiceProvider) : IInvoicingBillingService
 {
     private const int WorkspaceCandidateScanBatchSize = 100_000;
     private static readonly CultureInfo WorkspaceSearchCulture = CultureInfo.GetCultureInfo("tr-TR");
@@ -397,7 +398,7 @@ public sealed partial class InvoicingBillingService(
                     else selectedInvoiced++;
                     if (candidate.IsDueSoon) selectedDueSoon++;
                     if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-                        && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"))
+                        && (candidate.CanCreateInvoice || candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ"))
                         hasPendingMarketplaceInvoices = true;
                 }
 
@@ -544,7 +545,7 @@ public sealed partial class InvoicingBillingService(
                     && connection.Id == invoice.ProviderConnectionId
                     && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
             .OrderByDescending(invoice => invoice.CreatedAt)
-            .Select(invoice => new WorkspaceInvoiceProjection(invoice.Id, invoice.OrderId, invoice.PackageId, invoice.Status, invoice.InvoiceNumber, invoice.LastErrorCode, invoice.CreatedAt,
+            .Select(invoice => new WorkspaceInvoiceProjection(invoice.Id, invoice.OrderId, invoice.PackageId, invoice.Status, invoice.InvoiceNumber, invoice.LastErrorCode, invoice.ExternalReference, invoice.CreatedAt,
                 null,
                 false))
             .ToListAsync(cancellationToken);
@@ -662,7 +663,7 @@ public sealed partial class InvoicingBillingService(
     // confirmed one carries the marketplace observation and is handled by the first condition.
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
-            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
+            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
 
     private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
         candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
@@ -920,7 +921,7 @@ public sealed partial class InvoicingBillingService(
     {
         if (HasMarketplaceInvoiceObservation(candidate)) return "FATURA_KONTROLDE";
         if (candidate.Invoice is null || candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
-        if (candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED") return candidate.InvoiceStatus;
+        if (candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED") return candidate.InvoiceStatus;
         if (candidate.InvoiceStatus is "FATURA_YUKLENDI" or "FATURA_KESILDI" or "COMPLETED") return "FATURA_KONTROLDE";
         if (candidate.InvoiceStatus == "FATURA_PLATFORMA_BEKLIYOR") return "FATURA_ISLENIYOR";
         return string.IsNullOrWhiteSpace(candidate.InvoiceStatus) ? "FATURA_BILINMIYOR" : candidate.InvoiceStatus;
@@ -969,10 +970,8 @@ public sealed partial class InvoicingBillingService(
                 || InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode);
             return deliveryProblem ? "FATURA_PLATFORMA_AKTARILMADI" : "FATURA_ISLENIYOR";
         }
-        if (invoice.Status == InvoiceStatus.Submitting)
-            return "FATURA_ISLENIYOR";
-        if (invoice.Status == InvoiceStatus.UnknownResult)
-            return "FATURA_REDDEDILDI";
+        if (invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult)
+            return FiscalSubmissionLabel(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
         if (invoice.Status == InvoiceStatus.Completed)
             return "FATURA_KONTROLDE";
 
@@ -985,6 +984,15 @@ public sealed partial class InvoicingBillingService(
             connection.PlatformCode,
             invoice?.HasConfirmedMarketplaceDelivery == true);
     }
+
+    // A submission the provider refused before creating anything is an error the operator can retry, not
+    // work in progress; a submission whose answer was lost is uncertain, not rejected.
+    internal static string FiscalSubmissionLabel(InvoiceStatus status, string? lastErrorCode, string? externalReference) => status switch
+    {
+        InvoiceStatus.UnknownResult => "FATURA_BELIRSIZ",
+        InvoiceStatus.Submitting when IsStoppedBeforeProvider(status, lastErrorCode, externalReference) => "FATURA_REDDEDILDI",
+        _ => "FATURA_ISLENIYOR"
+    };
 
     private static bool WorkspaceMatchesInvoiceAction(WorkspaceCandidate candidate, string? filter, bool providerHasCredential)
     {
@@ -1007,7 +1015,7 @@ public sealed partial class InvoicingBillingService(
         Guid Id, string OrderNumber, DateTimeOffset OrderedAt,
         string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson);
     private sealed record WorkspaceConnectionProjection(Guid Id, string PlatformCode, string DisplayName, bool InvoiceCreationEnabled, string Environment);
-    private sealed record WorkspaceInvoiceProjection(Guid Id, Guid OrderId, Guid? PackageId, InvoiceStatus Status, string? InvoiceNumber, string? LastErrorCode, DateTimeOffset CreatedAt, string? CurrentDeliveryStateStatus, bool HasConfirmedHistoricalAttempt)
+    private sealed record WorkspaceInvoiceProjection(Guid Id, Guid OrderId, Guid? PackageId, InvoiceStatus Status, string? InvoiceNumber, string? LastErrorCode, string? ExternalReference, DateTimeOffset CreatedAt, string? CurrentDeliveryStateStatus, bool HasConfirmedHistoricalAttempt)
     {
         public bool HasConfirmedMarketplaceDelivery => MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(CurrentDeliveryStateStatus, HasConfirmedHistoricalAttempt);
     }
@@ -1028,6 +1036,19 @@ public sealed partial class InvoicingBillingService(
 
     internal static string? ResolveInvoiceNumber(string? invoiceNumber, string? marketplaceInvoiceNumber) =>
         !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : null;
+
+    // The invoice detail is about the fiscal document itself: its own number comes first, so a different
+    // number seen on the marketplace is not hidden behind it (the workspace lists the marketplace's).
+    internal static string? DetailInvoiceNumber(string? invoiceNumber, string? marketplaceInvoiceNumber) =>
+        !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : null;
+
+    // The issuing deadline of an order-level sale invoice: InvoiceDueDays after the first delivered package
+    // (the stricter one); none before anything is delivered.
+    internal static DateTimeOffset? InvoiceIssueDueAt(IEnumerable<(ShipmentPackageStatus Status, DateTimeOffset StatusOccurredAt)> activePackages)
+    {
+        var delivered = activePackages.Where(item => item.Status == ShipmentPackageStatus.Delivered).Select(item => item.StatusOccurredAt).ToArray();
+        return delivered.Length == 0 ? null : delivered.Min().AddDays(DashboardMetricPolicy.InvoiceDueDays);
+    }
 
     internal static string InvoiceWorkspaceCustomerName(string customerJson, string invoiceAddressJson, string shipmentAddressJson = "{}")
     {
@@ -1077,6 +1098,11 @@ public sealed partial class InvoicingBillingService(
 
     public async Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken)
     {
+        // An adjustment would still be sent as a full SATIS e-Archive outside the order's one-invoice guard,
+        // so a second fiscal invoice for the same goods could reach the tax authority. Refused until a real
+        // IADE flow (IADE type, original number/date, accepted original) exists.
+        if (command.OriginalInvoiceId is not null)
+            return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.AdjustmentFlowUnavailable);
         var existing = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
         if (existing is not null) return await GetAsync(tenantId, existing.Id, cancellationToken);
         await using var mutationTransaction = command.OriginalInvoiceId is null && db.Database.CurrentTransaction is null
@@ -1127,6 +1153,8 @@ public sealed partial class InvoicingBillingService(
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .ToListAsync(cancellationToken);
         var invoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson) is { } refusal)
+            return Refuse<InvoiceDetailView>(refusal);
         if (command.OriginalInvoiceId is null && invoiceType == "EARSIVFATURA")
         {
             if (!IsValidFiscalDeliveryPackage(selectedPackage is null ? null : new(
@@ -1181,6 +1209,7 @@ public sealed partial class InvoicingBillingService(
             Currency = order.Currency,
             Note = string.Empty,
             IncludeInternetSalesInfo = command.IncludeInternetSalesInfo,
+            DueAt = InvoiceIssueDueAt(activePackagesForOrder.Select(item => (item.Status, item.StatusOccurredAt))),
             IdempotencyKey = idempotencyKey,
             OriginalInvoiceId = command.OriginalInvoiceId,
             Status = InvoiceStatus.Draft,
@@ -1289,7 +1318,7 @@ public sealed partial class InvoicingBillingService(
         var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new InvoiceAttemptView(x.AttemptNumber, x.Outcome, x.ErrorCode, x.StartedAt, x.CompletedAt)).ToListAsync(cancellationToken);
         var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new MarketplaceDeliveryView(x.Id, x.DeliveryType, x.Status, x.ExternalReference, x.ErrorCode, x.CreatedAt)).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
-        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, ResolveInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)));
+        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)));
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
@@ -1300,6 +1329,18 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<InvoiceDetailView>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify belge kayıtları mali taslak olarak doğrulanamaz; panelde yalnızca yüklenen belge ve manuel durum izlenir.", 422);
         if (!InvoiceStateMachine.CanTransition(invoice.Status, InvoiceStatus.Validating)) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan doğrulanamaz.", 409);
         invoice.Status = InvoiceStatus.Validating; invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
+        var orderCustomerJson = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
+        var issueRefusal = invoice.OriginalInvoiceId is not null
+            ? InvoiceIssuePolicy.AdjustmentFlowUnavailable
+            : InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, orderCustomerJson);
+        if (issueRefusal is not null)
+        {
+            // The draft keeps the reason so the workspace shows it; nothing reaches the provider.
+            invoice.Status = InvoiceStatus.ValidationFailed; invoice.LastErrorCode = issueRefusal.Code; invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync(cancellationToken);
+            return Refuse<InvoiceDetailView>(issueRefusal);
+        }
         var policy = await db.InvoicePolicies.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == invoice.InvoicePolicyId, cancellationToken);
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).ToListAsync(cancellationToken);
         var failures = new List<string>();
@@ -1311,24 +1352,26 @@ public sealed partial class InvoicingBillingService(
         if (providerConnection is null) failures.Add("ACTIVE_CONNECTION_REQUIRED");
         else if (!IntegrationRuntimePolicy.IsStage(providerConnection) && (Unapproved(policy.RoundingRule) || Unapproved(policy.DueRule) || Unapproved(policy.AdjustmentRule))) failures.Add("FISCAL_POLICY_UNAPPROVED");
         if (invoice.InvoiceType is not ("TEMELFATURA" or "EARSIVFATURA")) failures.Add("INVOICE_TYPE_INVALID");
+        InvoiceFiscalDeliveryPackageSnapshot? deliveryPackage = null;
+        var receiverSnapshot = await db.InvoicePartySnapshots.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Role == "RECEIVER", cancellationToken);
+        if (receiverSnapshot is not null)
+        {
+            try
+            {
+                using var snapshot = JsonDocument.Parse(_partyProtector.Unprotect(receiverSnapshot.ProtectedContent));
+                deliveryPackage = ReadFiscalDeliveryPackage(snapshot.RootElement);
+                // The identifier checked here is the one the provider payload will carry.
+                if (!RecipientTaxIdentityIsValid(invoice.InvoiceType, SnapshotString(snapshot.RootElement, "CustomerSnapshotJson"), SnapshotString(snapshot.RootElement, "InvoiceAddressSnapshotJson")))
+                    failures.Add(InvoiceIssuePolicy.RecipientTaxIdInvalidCode);
+            }
+            catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or JsonException)
+            {
+                failures.Add("INVOICE_PARTY_SNAPSHOT_INVALID");
+            }
+        }
         if (invoice.InvoiceType == "EARSIVFATURA")
         {
-            InvoiceFiscalDeliveryPackageSnapshot? deliveryPackage = null;
-            var receiverSnapshot = await db.InvoicePartySnapshots.AsNoTracking()
-                .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Role == "RECEIVER", cancellationToken);
-            if (receiverSnapshot is not null)
-            {
-                try
-                {
-                    using var snapshot = JsonDocument.Parse(_partyProtector.Unprotect(receiverSnapshot.ProtectedContent));
-                    deliveryPackage = ReadFiscalDeliveryPackage(snapshot.RootElement);
-                }
-                catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or JsonException)
-                {
-                    failures.Add("INVOICE_PARTY_SNAPSHOT_INVALID");
-                }
-            }
-
             // Order-level invoices intentionally keep PackageId null so the
             // order's one-invoice guard and all-package marketplace delivery
             // remain intact. E-Archive delivery data is frozen in the receiver
@@ -1362,9 +1405,24 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları E-Faturam’a gönderilemez.", 422);
         if (await IsMarketplaceInvoiceCreationDisabledAsync(tenantId, invoice.OrderId, cancellationToken))
             return ServiceResult<Guid>.Fail(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, MarketplaceInvoiceCreationPolicy.DisabledMessage, 422);
+        // Drafts validated before these gates existed must not reach the provider either.
+        var submitCustomerJson = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
+        if ((invoice.OriginalInvoiceId is not null ? InvoiceIssuePolicy.AdjustmentFlowUnavailable : InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, submitCustomerJson)) is { } submitRefusal)
+            return Refuse<Guid>(submitRefusal);
         var safePreProviderRetry = CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
         if (invoice.Status != InvoiceStatus.Ready && !safePreProviderRetry)
             return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan E-Faturam gönderimine geçemez.", 409);
+        if (invoice.Status == InvoiceStatus.Submitting)
+        {
+            // A retryable refusal (sign-in, quota) leaves its own job scheduled; a second job would race it.
+            var needle = invoice.Id.ToString();
+            var activeSubmitJobId = await db.IntegrationJobs.AsNoTracking()
+                .Where(job => job.TenantId == tenantId && (job.JobType == InvoicingJobTypes.InvoiceSubmit || job.JobType == InvoicingJobTypes.StageCapabilityProbe)
+                    && job.PayloadJson.Contains(needle) && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled))
+                .Select(job => (Guid?)job.Id).FirstOrDefaultAsync(cancellationToken);
+            if (activeSubmitJobId is { } activeJobId) return ServiceResult<Guid>.Ok(activeJobId);
+        }
         if (!await WriteGates(tenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceSubmit, cancellationToken)) return CapabilityUnknown<Guid>(InvoicingCapabilities.InvoiceSubmit);
         var now = timeProvider.GetUtcNow();
         var previousErrorCode = invoice.LastErrorCode;
@@ -1399,7 +1457,7 @@ public sealed partial class InvoicingBillingService(
         if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış iptal işlemi yapılamaz.", 422);
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
-        return await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed], InvoiceStatus.CancellationPending, cancellationToken);
+        return await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired], InvoiceStatus.CancellationPending, cancellationToken);
     }
 
     public async Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1407,6 +1465,9 @@ public sealed partial class InvoicingBillingService(
         var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları için dış provider eşitlemesi kullanılamaz.", 422);
         if (invoice.Status is not (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.CancellationPending)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Bu durumda provider reconciliation çalıştırılamaz.", 409);
+        // Without a provider reference the status query cannot run; the job would only be rejected.
+        if (!CanReconcileWithProvider(invoice.Status, invoice.ExternalReference))
+            return ServiceResult<Guid>.Fail("INVOICE_REMOTE_REFERENCE_MISSING", "Sağlayıcıdan fatura referansı alınmadığı için durum sorgulanamaz. E-Faturam portalında bu faturanın olmadığını doğruladıysanız 'Sağlayıcıda Fatura Yok, Yeniden Gönder' işlemini kullanın.", 409);
         if (!await ReadGate(tenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) return CapabilityUnknown<Guid>(InvoicingCapabilities.InvoiceStatusRead);
         return await AddJob(invoice, InvoicingJobTypes.InvoiceReconcile, idempotencyKey, correlationId, cancellationToken);
     }
@@ -1493,7 +1554,7 @@ public sealed partial class InvoicingBillingService(
         var actions = new List<string>(); if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.ValidationFailed) actions.Add("VALIDATE");
         if ((invoice.Status == InvoiceStatus.Ready || CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference)) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
         if (AllowsStageCapabilityProbe(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference, invoice.InvoiceType, connection)) actions.Add("STAGE_CAPABILITY_PROBE");
-        if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
+        if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && CanReconcileWithProvider(invoice.Status, invoice.ExternalReference) && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed))
         {
             var packageConnections = await db.ShipmentPackages.AsNoTracking()
@@ -1512,7 +1573,7 @@ public sealed partial class InvoicingBillingService(
             }
             if (permanentLinkReady && allConnectionsReady) actions.Add("DELIVER");
         }
-        if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
+        if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.AdjustmentRequired) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         if (invoice.Status == InvoiceStatus.CancellationPending && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         return actions;
     }
@@ -1550,6 +1611,20 @@ public sealed partial class InvoicingBillingService(
         && sentAt != default
         && TrendyolCarrierCatalog.TryResolve(package.CargoProviderExternalId, out _);
 
+    // A consumer e-Archive carries the fixed 11111111111 identifier; every other recipient must hold a
+    // TCKN or VKN whose check digits are right, otherwise the provider or the tax authority rejects it later.
+    internal static bool RecipientTaxIdentityIsValid(string invoiceType, string customerSnapshotJson, string invoiceAddressSnapshotJson)
+    {
+        var (taxId, isCorporate) = TrendyolEFaturamCanonicalPayload.ResolveRecipientTaxIdentity(customerSnapshotJson, invoiceAddressSnapshotJson, invoiceType);
+        if (invoiceType == "EARSIVFATURA" && !isCorporate) return true;
+        return TurkishTaxIdentity.IsValid(taxId);
+    }
+
+    private static string SnapshotString(JsonElement root, string property) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? "{}"
+            : "{}";
+
     internal static InvoiceFiscalDeliveryPackageSnapshot? ReadFiscalDeliveryPackage(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object
@@ -1574,8 +1649,20 @@ public sealed partial class InvoicingBillingService(
     internal static bool CanRetryPreProviderFailure(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
         string.IsNullOrWhiteSpace(externalReference)
         && (CanRetryLocalPayloadFailure(status, lastErrorCode, externalReference)
-            || (status == InvoiceStatus.Submitting && lastErrorCode is "EFATURAM_AUTHENTICATION_FAILED" or "EFATURAM_ACCESS_TOKEN_REJECTED" or "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING" or MarketplaceInvoiceCreationPolicy.DisabledErrorCode)
+            || IsStoppedBeforeProvider(status, lastErrorCode, externalReference)
             || (status == InvoiceStatus.ManualReview && lastErrorCode is "MARKETPLACE_INVOICE_PRECHECK_FAILED" or "PLATFORM_INVOICE_STATUS_NOT_CLEAR" or OperatorConfirmedNoRemoteInvoiceCode));
+
+    // Submit leaves an invoice in Submitting with an error code only when the provider definitely did not
+    // create it: a refusal before or at the fiscal request (authorization, capability, sign-in, quota, gate).
+    // Outcome-unknown answers move to UnknownResult instead, and the code is cleared while a request is in flight.
+    internal static bool IsStoppedBeforeProvider(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
+        status == InvoiceStatus.Submitting
+        && string.IsNullOrWhiteSpace(externalReference)
+        && !string.IsNullOrWhiteSpace(lastErrorCode);
+
+    internal static bool CanReconcileWithProvider(InvoiceStatus status, string? externalReference) =>
+        !string.IsNullOrWhiteSpace(externalReference)
+        && status is InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.CancellationPending;
 
     internal const string OperatorConfirmedNoRemoteInvoiceCode = "OPERATOR_CONFIRMED_NO_REMOTE_INVOICE";
 
@@ -1780,6 +1867,7 @@ public sealed partial class InvoicingBillingService(
     }
     private static InvoicePolicyView Map(InvoicePolicy value) => new(value.Id, value.ProviderConnectionId, value.TriggerState, value.PackageScope, value.DueRule, value.RoundingRule, value.AdjustmentRule, value.AutoSubmit, value.Version);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
+    private static ServiceResult<T> Refuse<T>(InvoiceIssueRefusal refusal) => ServiceResult<T>.Fail(refusal.Code, refusal.Message, 422);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
     private static ServiceResult<T> PreconditionRequired<T>() => ServiceResult<T>.Fail("PRECONDITION_REQUIRED", "Mevcut kayıt için If-Match gereklidir.", 428);

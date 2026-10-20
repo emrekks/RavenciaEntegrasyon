@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
@@ -13,6 +14,33 @@ public static class TrendyolEFaturamCanonicalPayload
             return IsCorporateRecipient(customer.RootElement, address.RootElement, taxId);
         }
         catch (JsonException) { return taxId.Length == 10 && taxId.All(char.IsAsciiDigit); }
+    }
+
+    /// <summary>
+    /// The recipient tax identifier exactly as <see cref="Create"/> sends it, for validation before submission.
+    /// Returns an empty identifier when the snapshots cannot be read.
+    /// </summary>
+    public static (string TaxId, bool IsCorporate) ResolveRecipientTaxIdentity(string customerSnapshotJson, string invoiceAddressSnapshotJson, string invoiceType)
+    {
+        try
+        {
+            using var customer = JsonDocument.Parse(customerSnapshotJson);
+            using var addressSnapshot = JsonDocument.Parse(invoiceAddressSnapshotJson);
+            using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
+            return RecipientTaxIdentity(customer.RootElement, normalizedAddress.RootElement, invoiceType);
+        }
+        catch (JsonException) { return ("", false); }
+    }
+
+    private static (string TaxId, bool IsCorporate) RecipientTaxIdentity(JsonElement customer, JsonElement addressRoot, string invoiceType)
+    {
+        var taxId = FindTaxId(addressRoot);
+        if (!ValidTaxId(taxId))
+            taxId = FindTaxId(customer);
+        var isCorporate = IsCorporateRecipient(customer, addressRoot, taxId);
+        // Apply the consumer e-Archive identifier uniformly to orders from every supported marketplace.
+        if (invoiceType == "EARSIVFATURA" && !isCorporate) taxId = "11111111111";
+        return (taxId, isCorporate);
     }
 
     public static string Create(EfaturamFiscalAccount account, string canonicalJson)
@@ -39,20 +67,9 @@ public static class TrendyolEFaturamCanonicalPayload
                 address = wrappedAddress;
             }
             var invoiceType = RequiredText(root, "InvoiceType");
-            var taxId = FindTaxId(addressRoot);
+            var (taxId, isCorporate) = RecipientTaxIdentity(customer.RootElement, addressRoot, invoiceType);
             if (!ValidTaxId(taxId))
-                taxId = FindTaxId(customer.RootElement);
-            var isCorporate = IsCorporateRecipient(customer.RootElement, addressRoot, taxId);
-            if (invoiceType == "EARSIVFATURA" && !isCorporate)
-            {
-                // Apply the consumer e-Archive identifier uniformly to orders
-                // from every supported marketplace.
-                taxId = "11111111111";
-            }
-            else if (!ValidTaxId(taxId))
-            {
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
-            }
 
             // E-Faturam requires recipientInfo.name. Hepsiburada stores the
             // recipient's full name as `name` on the flat invoice-address snapshot,
@@ -89,7 +106,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     decimal.Round(total - vat, 2, MidpointRounding.AwayFromZero), vat, Decimal(line, "VatRate"), Decimal(line, "DiscountAmount"), total);
             }).ToArray();
 
-            var orderedAt = DateTimeOffset.Parse(RequiredText(order, "OrderedAt"));
+            var orderedAt = DateTimeOffset.Parse(RequiredText(order, "OrderedAt"), CultureInfo.InvariantCulture);
             var includeInternetSalesInfo = OptionalBoolean(root, "IncludeInternetSalesInfo", true);
             EfaturamPayment? payment = null;
             EfaturamDelivery? delivery = null;
@@ -99,15 +116,16 @@ public static class TrendyolEFaturamCanonicalPayload
                 var cargoProvider = RequiredText(package, "CargoProviderExternalId");
                 if (!TrendyolCarrierCatalog.TryResolve(cargoProvider, out var carrier))
                     throw new JsonException("EFATURAM_CARRIER_CATALOG_MISS");
-                var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"));
+                var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"), CultureInfo.InvariantCulture);
                 if (includeInternetSalesInfo)
                     payment = MarketplacePayment(root, orderedAt);
-                delivery = new(carrier.TaxId, carrier.Name, null, DateOnly.FromDateTime(sentAt.Date));
+                // Stored instants are UTC; 01:30 in Istanbul is still the previous UTC day.
+                delivery = new(carrier.TaxId, carrier.Name, null, EfaturamTurkeyTime.Day(sentAt));
             }
 
             var source = new EfaturamInvoicePayloadSource(
                 RequiredText(root, "Id"), invoiceType, RequiredText(root, "Currency"), RequiredText(root, "Note"), RequiredText(order, "OrderNumber"),
-                DateOnly.FromDateTime(orderedAt.Date), DateTimeOffset.Parse(RequiredText(root, "IssuedAt")),
+                EfaturamTurkeyTime.Day(orderedAt), DateTimeOffset.Parse(RequiredText(root, "IssuedAt"), CultureInfo.InvariantCulture),
                 new(taxId, Text(address, "countryCode") is { Length: > 0 } country ? country : "TR", Text(address, "city"), Text(address, "district"),
                     WithoutMarketplaceIds(Text(address, "fullAddress", "address1", "addressText", "address")), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,
@@ -186,8 +204,10 @@ public static class TrendyolEFaturamCanonicalPayload
             foreach (var property in source.EnumerateObject())
             {
                 var name = property.Name;
+                // Trendyol marks a corporate buyer with commercial=true on the order package.
                 if (name.Equals("isCorporate", StringComparison.OrdinalIgnoreCase)
                     || name.Equals("corporate", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("commercial", StringComparison.OrdinalIgnoreCase)
                     || name.Equals("isCompany", StringComparison.OrdinalIgnoreCase)
                     || name.Equals("company", StringComparison.OrdinalIgnoreCase)
                     || name.Equals("isBusiness", StringComparison.OrdinalIgnoreCase)

@@ -41,7 +41,7 @@ public sealed class TrendyolEFaturamAuthenticationHandler(AppDbContext db, IData
             || string.IsNullOrWhiteSpace(payload.Email)
             || string.IsNullOrWhiteSpace(payload.Password)) return null;
         if (!IntegrationRuntimePolicy.TryResolveBaseAddress(connection.Environment, options.Value.StageBaseAddress, options.Value.ProductionBaseAddress, out var baseAddress)) return null;
-        return new(connection, baseAddress, payload, settings);
+        return new(connection, baseAddress, payload, settings, credential.Id);
     }
 }
 
@@ -49,7 +49,9 @@ public sealed record TrendyolEFaturamRequestContext(
     PlatformConnection Connection,
     Uri BaseAddress,
     TrendyolEFaturamCredentialPayload Credential,
-    TrendyolEFaturamConnectionSettings Settings)
+    TrendyolEFaturamConnectionSettings Settings,
+    // Keys the access-token cache: a rotated credential gets a new id and never reuses the old token.
+    Guid CredentialId)
 {
     public bool ExternalWritesEnabled => Settings.ExternalWritesEnabled;
 }
@@ -64,4 +66,8 @@ public sealed record TrendyolEFaturamAccessContext(
     string? Issuer = null,
     string? Audience = null,
     bool? HasInvoiceCreatePrivilege = null,
-    bool? HasInvoiceReadPrivilege = null);
+    bool? HasInvoiceReadPrivilege = null)
+{
+    // The generated ToString would print the bearer token.
+    public override string ToString() => $"TrendyolEFaturamAccessContext {{ CompanyId = {CompanyId}, ExpiresAt = {ExpiresAt:O} }}";
+}

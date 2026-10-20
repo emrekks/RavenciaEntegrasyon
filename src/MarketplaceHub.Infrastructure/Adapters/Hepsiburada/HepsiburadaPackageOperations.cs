@@ -233,10 +233,9 @@ public sealed partial class HepsiburadaHttpClient
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/png"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/jpeg"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
+        using var timeout = new QuotaAwareTimeout(request, HepsiburadaRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             var rate = RateLimit(response);
             var requestId = response.Headers.TryGetValues("X-Request-Id", out var ids) ? ids.FirstOrDefault() : null;
@@ -262,6 +261,7 @@ public sealed partial class HepsiburadaHttpClient
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            if (!timeout.QuotaAcquired) return LocalQuotaWait<byte[]>();
             return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_TIMEOUT", "Hepsiburada isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)

@@ -49,8 +49,13 @@ builder.Services.AddScoped<BreakGlassService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
 builder.Services.AddProblemDetails();
+// Unreadable bodies and parameters are thrown (also outside Development) so ApiExceptionHandler can
+// answer them with 400 in the panel's error shape.
+builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<OperationsRealtimeBroadcaster>();
+builder.Services.AddHostedService<ApiIdempotencyRetentionService>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -70,15 +75,14 @@ builder.Services.AddHttpClient(PublicNetwork.ClientName, client =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, _) => new ValueTask(ApiProblems.WriteAsync(context.HttpContext, "RATE_LIMITED", "Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.", StatusCodes.Status429TooManyRequests));
     options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    // Marketplaces deliver from a few shared addresses, so the limit is per connection rather than per
-    // IP; a campaign burst must not be answered with 429 (Hepsiburada blacklists a slow or failing feed).
-    options.AddPolicy("webhook", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.GetRouteValue("connectionPublicId")?.ToString() ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 1200, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // Webhook deliveries: per sending address, then per connection (see WebhookRateLimits).
+    options.GlobalLimiter = WebhookRateLimits.Create();
 });
+builder.Services.AddScoped<IWebhookRouteGate, WebhookRouteGate>();
 
 var app = builder.Build();
 var isAdministrativeCommand = args.Any(argument => argument is "migrate" or "bootstrap" or "healthcheck");
@@ -92,6 +96,17 @@ if (args is ["bootstrap"]) { await using var scope = app.Services.CreateAsyncSco
 if (args is ["identity", "reset-mfa", var email, var reason]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BreakGlassService>().ResetMfaAsync(email, reason, CancellationToken.None); return; }
 
 app.UseForwardedHeaders();
+// Queue monitoring is for the server's own network (see FetchMetadata.IsFromServerNetwork); /health/live
+// and /health/ready stay reachable because the deploy scripts probe /health/ready through the edge.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/health/queues") && !FetchMetadata.IsFromServerNetwork(context))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
 app.UseExceptionHandler();
 app.Use(async (context, next) =>
 {
@@ -104,6 +119,7 @@ app.UseMiddleware<RequestSecurityMiddleware>();
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<SessionStateBoundaryMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
+app.UseMiddleware<ElevatedRoleMfaMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.UseRateLimiter();
 app.MapAuthEndpoints();

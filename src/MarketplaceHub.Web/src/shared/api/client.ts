@@ -87,6 +87,12 @@ export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   return readSuccessJson<T>(response)
 }
 
+// Settings answer with the strong ETag "v{version}" and the same version in their envelope; a save sends it back so a
+// change made meanwhile in another tab or session is refused (412) instead of overwritten. Version 0 = never saved.
+export function settingsIfMatch(version: number | null | undefined): Record<string, string> {
+  return version && version > 0 ? { 'If-Match': `"v${version}"` } : {}
+}
+
 export type CursorPage<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 
 /** Reads every cursor page. The server still keeps each individual request bounded. */

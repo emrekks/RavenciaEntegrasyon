@@ -34,7 +34,9 @@ public sealed partial class MarketplaceJobProcessor
             "RETURN_APPROVE" or "RETURN_REJECT" => await ReturnEffectVerdictAsync(tenantId, connectionId, effect, correlationId, cancellationToken),
             _ => EffectVerdict.Unknown
         };
-        var decision = effect.Action is "RETURN_APPROVE" or "RETURN_REJECT"
+        // Every return action (approve, reject, Hepsiburada's send-for-review)
+        // has a decision row that must leave its in-progress state with the effect.
+        var decision = effect.Action?.StartsWith("RETURN_", StringComparison.Ordinal) == true
             ? await db.ReturnDecisions.Where(x => x.TenantId == tenantId && x.IdempotencyKey == effect.IdempotencyKey).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken)
             : null;
         var outcome = ExternalEffectReconcilePolicy.Decide(verdict, now - effect.CreatedAt);
@@ -57,6 +59,9 @@ public sealed partial class MarketplaceJobProcessor
             case ExternalEffectOutcome.Unresolved:
                 effect.CompletedAt = now;
                 effect.Outcome = "UNRESOLVED";
+                // The decision must not stay "in progress" forever: it fails
+                // with a code the next claim read can still upgrade to success.
+                if (decision is not null) { decision.Status = "FAILED"; decision.ErrorCode = "EXTERNAL_EFFECT_UNRESOLVED"; decision.CompletedAt = now; }
                 await RecordIssue(tenantId, $"external-effect:{effect.Id}", "EXTERNAL_EFFECT_UNRESOLVED",
                     "Pazaryerine gönderilen işlemin sonucu 30 dakikada doğrulanamadı; pazaryeri panelinden kontrol edin.", cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);

@@ -11,6 +11,12 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
+    // The cursor-progress and outbox times follow the same clock as the rest
+    // of the application (and tests); TimeProvider.System when none is given.
+    private readonly TimeProvider _timeProvider = TimeProvider.System;
+
+    public AppDbContext(DbContextOptions<AppDbContext> options, TimeProvider timeProvider) : this(options) => _timeProvider = timeProvider;
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantSetting> TenantSettings => Set<TenantSetting>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
@@ -137,7 +143,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     private void TrackSyncCursorProgress()
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
         foreach (var entry in ChangeTracker.Entries<SyncCursor>().Where(x => x.State is EntityState.Added or EntityState.Modified))
         {
             if (entry.State == EntityState.Added)
@@ -185,7 +191,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             var change = OutboxChange(entry.Entity);
             if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
-            var now = DateTimeOffset.UtcNow;
+            var now = _timeProvider.GetUtcNow();
             IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
             {
                 Id = Guid.CreateVersion7(),
@@ -342,6 +348,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("inbox_messages", "integration"); entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.TenantId, x.Source, x.ExternalMessageId }).IsUnique();
+            // The hourly retention deletes processed rows older than a month.
+            entity.HasIndex(x => x.ProcessedAt).HasFilter("\"ProcessedAt\" IS NOT NULL");
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ExternalEffectRecord>(entity =>

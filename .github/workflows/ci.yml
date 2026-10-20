@@ -14,12 +14,15 @@ concurrency:
   group: validate-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Actions are pinned by commit SHA (the comment names the release); Dependabot
+# (.github/dependabot.yml) proposes updates.
 jobs:
   # A backend or frontend check is skipped only when the exact same content
   # (git tree hashes) already passed it, so a CSS-only push does not rerun the
   # backend and an earlier failing backend commit can never be skipped.
   plan:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       backend_hash: ${{ steps.hash.outputs.backend }}
       frontend_hash: ${{ steps.hash.outputs.frontend }}
@@ -27,21 +30,23 @@ jobs:
       frontend_needed: ${{ steps.frontend-marker.outputs.cache-hit != 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The image inputs are part of each hash, so a Dockerfile change reruns the
+      # matching image build (and its tests) instead of being skipped.
       - name: Hash validated inputs
         id: hash
         run: |
           set -Eeuo pipefail
-          backend="$(git ls-tree -r HEAD -- src tests global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln .editorconfig .config .github/workflows/ci.yml \
+          backend="$(git ls-tree -r HEAD -- src tests global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln .editorconfig .config .github/workflows/ci.yml Dockerfile .dockerignore \
             | awk -F'\t' '$2 !~ /^src\/MarketplaceHub\.Web\//' | sha256sum | cut -d' ' -f1)"
-          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web .github/workflows/ci.yml | sha256sum | cut -d' ' -f1)"
+          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web .github/workflows/ci.yml deploy/caddy .dockerignore | sha256sum | cut -d' ' -f1)"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
 
       - name: Look up backend marker
         id: backend-marker
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-marker
           key: validated-backend-${{ steps.hash.outputs.backend }}
@@ -49,7 +54,7 @@ jobs:
 
       - name: Look up frontend marker
         id: frontend-marker
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-marker
           key: validated-frontend-${{ steps.hash.outputs.frontend }}
@@ -57,14 +62,36 @@ jobs:
 
   ops:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate deployment shell scripts
         run: |
-          bash -n deploy/backup/*.sh deploy/scripts/*.sh
+          for script in deploy/backup/*.sh deploy/scripts/*.sh; do bash -n "$script"; done
           shellcheck deploy/backup/*.sh deploy/scripts/*.sh
+
+      - name: Validate systemd timer schedules
+        run: |
+          set -Eeuo pipefail
+          grep -h '^OnCalendar=' deploy/systemd/*.timer | cut -d= -f2- | while IFS= read -r calendar; do
+            systemd-analyze calendar "$calendar" >/dev/null || { echo "Invalid OnCalendar: $calendar" >&2; exit 1; }
+          done
+
+      # Production requires exactly the Compose release install-marketplacehub.sh pins.
+      - name: Install pinned Docker Compose 2.40.2
+        run: |
+          set -Eeuo pipefail
+          plugin_dir="$HOME/.docker/cli-plugins"
+          mkdir -p "$plugin_dir"
+          curl --fail --silent --show-error --location \
+            https://github.com/docker/compose/releases/download/v2.40.2/docker-compose-linux-x86_64 \
+            --output "$plugin_dir/docker-compose"
+          echo "6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88  $plugin_dir/docker-compose" | sha256sum -c -
+          chmod 0755 "$plugin_dir/docker-compose"
+          version="$(docker compose version --short)"
+          [[ "$version" == "2.40.2" ]] || { echo "Docker CLI selected Compose $version, not the pinned 2.40.2." >&2; exit 1; }
 
       - name: Validate merged Compose manifests
         env:
@@ -94,17 +121,21 @@ jobs:
           "${compose[@]}" config --quiet
           "${compose[@]}" --profile validation config --quiet
           "${compose[@]}" --profile operations config --quiet
+          # Production services must log to journald (logs survive container re-creation).
+          drivers="$("${compose[@]}" config --format json | jq -r '[.services.postgres, .services.api, .services.worker, .services.caddy] | map(.logging.driver) | unique | join(",")')"
+          [[ "$drivers" == "journald" ]] || { echo "Production logging drivers are '$drivers', expected journald." >&2; exit 1; }
 
   backend-format:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
 
@@ -118,9 +149,11 @@ jobs:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18.4
+        # Same digest as deploy/compose/compose.yaml.
+        image: postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
         env:
           POSTGRES_DB: marketplacehub_test
           POSTGRES_USER: marketplacehub
@@ -134,10 +167,10 @@ jobs:
           --health-retries 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
 
@@ -162,16 +195,54 @@ jobs:
       - name: Audit NuGet dependencies
         run: dotnet list MarketplaceHub.sln package --vulnerable --include-transitive
 
+  # The production images are built on the server during deploy; building them
+  # here first means a Dockerfile/project-layout break turns Validate red instead
+  # of failing on the 2-vCPU host in the middle of a deploy. Images are not pushed
+  # (GHCR publishing is a later step, see docs/CI-CD-DEPLOY.md).
+  image-app:
+    needs: plan
+    if: needs.plan.outputs.backend_needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build application image (restore + publish stage)
+        run: docker build --target build --tag marketplacehub-app:ci-build .
+
+      - name: Development settings stay out of the published API
+        run: |
+          set -Eeuo pipefail
+          if docker run --rm --entrypoint sh marketplacehub-app:ci-build -c 'test -e /out/api/appsettings.Development.json'; then
+            echo "appsettings.Development.json reached the published API output." >&2
+            exit 1
+          fi
+
+  image-edge:
+    needs: plan
+    if: needs.plan.outputs.frontend_needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Runs the frontend typecheck/tests/build/bundle budget and `caddy adapt` on the Caddyfile.
+      - name: Build edge image
+        run: docker build --file deploy/caddy/Dockerfile.production --tag marketplacehub-edge:ci-build .
+
   frontend:
     needs: plan
     if: needs.plan.outputs.frontend_needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.18.1
           cache: npm
@@ -208,9 +279,10 @@ jobs:
   # Single required result for the Deploy workflow: skipped jobs count as passed,
   # failed or cancelled ones do not. Markers are written only for content that passed.
   gate:
-    needs: [plan, ops, backend-format, backend, frontend]
+    needs: [plan, ops, backend-format, backend, image-app, image-edge, frontend]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Prepare markers
         run: |
@@ -218,15 +290,15 @@ jobs:
           echo ok > .ci-marker/validated
 
       - name: Remember passed backend
-        if: needs.backend.result == 'success' && needs.backend-format.result == 'success'
-        uses: actions/cache/save@v6
+        if: needs.backend.result == 'success' && needs.backend-format.result == 'success' && needs.image-app.result == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-marker
           key: validated-backend-${{ needs.plan.outputs.backend_hash }}
 
       - name: Remember passed frontend
-        if: needs.frontend.result == 'success'
-        uses: actions/cache/save@v6
+        if: needs.frontend.result == 'success' && needs.image-edge.result == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-marker
           key: validated-frontend-${{ needs.plan.outputs.frontend_hash }}
@@ -236,3 +308,24 @@ jobs:
         run: |
           echo "At least one validation job failed or was cancelled." >&2
           exit 1
+
+      # Optional: repository secret ALERT_WEBHOOK_URL (same URL as the server's
+      # deploy/secrets/alert_webhook_url.txt). Without it the step does nothing.
+      - name: Notify failure on main
+        if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          ALERT_TEXT: "[Ravencia CI] Validate failed on main (${{ github.sha }}): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$ALERT_WEBHOOK_URL" ]] || { echo "ALERT_WEBHOOK_URL is not configured; no notification sent."; exit 0; }
+          if [[ "$ALERT_WEBHOOK_URL" == https://api.telegram.org/* ]]; then
+            chat_id="$(sed -nE 's/.*[?&]chat_id=([^&]+).*/\1/p' <<<"$ALERT_WEBHOOK_URL")"
+            curl --silent --show-error --fail --max-time 15 --output /dev/null \
+              --data-urlencode "chat_id=$chat_id" --data-urlencode "text=$ALERT_TEXT" "${ALERT_WEBHOOK_URL%%\?*}" \
+              || echo "::warning::Failure notification could not be delivered."
+          else
+            curl --silent --show-error --fail --max-time 15 --output /dev/null -H 'Content-Type: application/json' \
+              --data "$(jq -n --arg text "$ALERT_TEXT" '{text: $text}')" "$ALERT_WEBHOOK_URL" \
+              || echo "::warning::Failure notification could not be delivered."
+          fi

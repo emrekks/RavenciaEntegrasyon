@@ -1,0 +1,14 @@
+[Unit]
+Description=Check Ravencia readiness, queues and Worker health; restart an unhealthy API; alert
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
+ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/healthwatch.sh
+# Failure counters and alert throttling survive between runs here.
+StateDirectory=ravencia-healthwatch
+TimeoutStartSec=4min

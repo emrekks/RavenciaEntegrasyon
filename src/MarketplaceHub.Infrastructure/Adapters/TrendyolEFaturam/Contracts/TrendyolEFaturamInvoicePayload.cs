@@ -85,9 +85,9 @@ public static class TrendyolEFaturamInvoicePayload
                 payableAmount = Kurus(payable),
                 allowanceTotalAmount = Kurus(discountTotal)
             },
-            orderInfo = new { orderId = source.OrderNumber, orderDate = source.OrderDate.ToString("yyyy-MM-dd") },
+            orderInfo = new { orderId = source.OrderNumber, orderDate = source.OrderDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) },
             issuedAt = ProviderDateTime(source.IssuedAt),
-            deliveryInfo = source.Delivery is null ? null : new { source.Delivery.CarrierTaxId, source.Delivery.CarrierName, source.Delivery.CarrierSurname, sentAt = source.Delivery.SentAt.ToString("yyyy-MM-dd") },
+            deliveryInfo = source.Delivery is null ? null : new { source.Delivery.CarrierTaxId, source.Delivery.CarrierName, source.Delivery.CarrierSurname, sentAt = source.Delivery.SentAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) },
             paymentInfo = source.Payment is null ? null : new { source.Payment.PurchaseUrl, source.Payment.PaymentAgentName, source.Payment.PaymentType, paymentDate = ProviderDateTime(source.Payment.PaymentDate), source.Payment.PaymentMeans }
         };
         return JsonSerializer.Serialize(payload, JsonOptions);
@@ -205,9 +205,19 @@ public static class TrendyolEFaturamInvoicePayload
     private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     private static long Kurus(decimal value) => decimal.ToInt64(Money(value) * 100m);
     private static decimal KurusDecimal(decimal value) => decimal.Round(value * 100m, 4, MidpointRounding.AwayFromZero);
+    private static string ProviderDateTime(DateTimeOffset value) => EfaturamTurkeyTime.ProviderDateTime(value);
+}
+
+/// <summary>Every date and time sent to E-Faturam is Istanbul time (UTC+3 all year, no daylight saving since 2016).</summary>
+public static class EfaturamTurkeyTime
+{
+    public static readonly TimeSpan Offset = TimeSpan.FromHours(3);
+
+    /// <summary>The Istanbul calendar day of an instant (order date, shipment date).</summary>
+    public static DateOnly Day(DateTimeOffset value) => DateOnly.FromDateTime(value.ToOffset(Offset).DateTime);
+
     // The gateway only reads values with a trailing Z (an offset such as +03:00 gets "Failed to read request") and prints the clock digits
-    // as written without converting them, so the Turkey clock (UTC+3, no daylight saving) is written in that shape to print Istanbul time.
-    private static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
-    private static string ProviderDateTime(DateTimeOffset value) =>
-        value.ToOffset(TurkeyOffset).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+    // as written without converting them, so the Istanbul wall-clock time is written in that shape to print Istanbul time.
+    public static string ProviderDateTime(DateTimeOffset value) =>
+        value.ToOffset(Offset).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
 }

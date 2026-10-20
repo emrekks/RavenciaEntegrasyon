@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the Ravencia restore drill once a month
+
+[Timer]
+# First Sunday of the month, 22:00 Istanbul: quiet hours, after the evening
+# work and before the 23:30 nightly backup.
+OnCalendar=Sun *-*-01..07 19:00:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+Unit=ravencia-restore-drill.service
+
+[Install]
+WantedBy=timers.target

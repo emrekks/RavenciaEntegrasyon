@@ -70,16 +70,7 @@ public static class JobEndpoints
             : null;
     private static IResult Result<T>(HttpContext http, ServiceResult<T> result) => result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(new
-    {
-        type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}",
-        title = error.Message,
-        status = error.Status,
-        code = error.Code,
-        correlationId = http.TraceIdentifier,
-        retryable = error.Status is 429 or >= 500,
-        fieldErrors = error.FieldErrors
-    }, statusCode: error.Status, contentType: "application/problem+json");
+    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
 
     public sealed record OneTimeInvoiceDeliveryAction(bool Confirmed, string OrderNumber);
 }

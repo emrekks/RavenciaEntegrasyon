@@ -30,7 +30,7 @@ public static class DependencyInjection
         var filesRoot = configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "private-files");
         var keysRoot = configuration["DataProtection:KeysRoot"] ?? Path.Combine(AppContext.BaseDirectory, "dp-keys");
 
-        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connection));
+        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connection, npgsql => npgsql.CommandTimeout(120)));
         services.AddMemoryCache(options => options.SizeLimit = 10_000);
         services.AddIdentityCore<ApplicationUser>(options =>
         {
@@ -93,16 +93,16 @@ public static class DependencyInjection
         services.AddScoped<ShopifyWebhookVerifier>();
         services.AddTransient<HepsiburadaRateLimitHandler>();
         services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .AddHttpMessageHandler<HepsiburadaRateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler<HepsiburadaRateLimitHandler>()
             .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Hepsiburada"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<HepsiburadaAuthenticationHandler>();
         services.AddScoped<HepsiburadaHttpClient>();
         services.AddTransient<N11RateLimitHandler>();
         services.AddHttpClient("N11", client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .AddHttpMessageHandler<N11RateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler<N11RateLimitHandler>()
             .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("N11"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<N11AuthenticationHandler>();
@@ -110,8 +110,8 @@ public static class DependencyInjection
         services.AddSingleton<PazaramaTokenCache>();
         services.AddTransient<PazaramaRateLimitHandler>();
         services.AddHttpClient(PazaramaHttpClient.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .AddHttpMessageHandler<PazaramaRateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler<PazaramaRateLimitHandler>()
             .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Pazarama"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<PazaramaAuthenticationHandler>();
@@ -155,6 +155,7 @@ public static class DependencyInjection
         });
         services.AddScoped<SafeRemoteDocumentDownloader>();
         services.AddScoped<TrendyolEFaturamAuthenticationHandler>();
+        services.AddSingleton<TrendyolEFaturamTokenCache>();
         services.AddScoped<TrendyolEFaturamHttpClient>();
         services.AddScoped<IInvoiceProviderPort>(provider => provider.GetRequiredService<TrendyolEFaturamHttpClient>());
         services.AddScoped<IInvoiceMarketplacePort>(provider => provider.GetRequiredService<MarketplacePortRouter>());

@@ -53,6 +53,15 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("ResponseBody")
                         .HasColumnType("text");
 
+                    b.Property<string>("ResponseContentType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResponseETag")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResponseLocation")
+                        .HasColumnType("text");
+
                     b.Property<int?>("ResponseStatus")
                         .HasColumnType("integer");
 
@@ -1117,6 +1126,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("JitterSeconds")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("LastScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("OverlapSeconds")
                         .HasColumnType("integer");
 
@@ -1127,6 +1139,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("UserDefined")
+                        .HasColumnType("boolean");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
@@ -1826,6 +1841,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ProcessedAt")
+                        .HasFilter("\"ProcessedAt\" IS NOT NULL");
 
                     b.HasIndex("TenantId", "Source", "ExternalMessageId")
                         .IsUnique();
@@ -3520,6 +3538,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "ConnectionId", "CreatedAt");
+
                     b.HasIndex("TenantId", "ConnectionId", "ExternalOrderId")
                         .IsUnique();
 
@@ -3848,6 +3868,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
@@ -4676,6 +4699,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("ActionDueAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ActionDueAtEstimated")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("CargoProviderName")
                         .HasMaxLength(128)
@@ -5549,6 +5575,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MfaFailedAttempts")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("ReauthenticatedAt")
                         .HasColumnType("timestamp with time zone");

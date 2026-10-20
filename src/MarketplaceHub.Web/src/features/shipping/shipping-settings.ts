@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi } from '../../shared/api'
+import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 import { hasStoredShippingLabelSettings, loadShippingLabelSettings, normalizeShippingLabelSettings, type ShippingLabelSettings } from './shipping-label'
 
 export const shippingLabelSettingsQueryKey = ['shipping-label-settings'] as const
@@ -39,6 +39,7 @@ export function useShippingLabelSettings() {
     if (!hasStoredShippingLabelSettings()) return
     void hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', {
       method: 'PUT',
+      headers: settingsIfMatch(query.data.version),
       body: JSON.stringify(legacySettings)
     }).then(saved => {
       client.setQueryData(shippingLabelSettingsQueryKey, saved)
@@ -47,10 +48,14 @@ export function useShippingLabelSettings() {
 
   async function save(next: ShippingLabelSettings) {
     const normalized = normalizeShippingLabelSettings(next)
-    const saved = await hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', {
-      method: 'PUT',
-      body: JSON.stringify(normalized)
-    })
+    let saved: ShippingLabelSettingsEnvelope
+    try {
+      saved = await hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { method: 'PUT', headers: settingsIfMatch(query.data?.version), body: JSON.stringify(normalized) })
+    } catch (error) {
+      // changed elsewhere meanwhile: read the current settings so the next save is made on them
+      if (error instanceof ApiRequestError && error.status === 412) void client.invalidateQueries({ queryKey: shippingLabelSettingsQueryKey })
+      throw error
+    }
     setSettings(normalized)
     client.setQueryData(shippingLabelSettingsQueryKey, saved)
   }

@@ -103,7 +103,7 @@ public sealed partial class N11HttpClient(
             };
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
-            using var response = await clients.CreateClient("N11").SendAsync(request, timeout.Token);
+            using var response = await clients.CreateBoundedClient("N11").SendAsync(request, timeout.Token);
             return SoapResultStatus(await response.Content.ReadAsStringAsync(timeout.Token));
         }
         catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
@@ -161,14 +161,13 @@ public sealed partial class N11HttpClient(
     {
         if (N11CredentialFormat.Normalize(context.AppKey) is null || N11CredentialFormat.Normalize(context.AppSecret) is null)
             return Failure<JsonDocument>(AdapterErrorClass.Authentication, "N11_CREDENTIAL_FORMAT_INVALID", "Kayıtlı N11 App Key veya App Secret değerinde geçersiz karakter var. Değerleri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayıp kaydedin.", HttpStatusCode.UnprocessableEntity);
-        var client = clients.CreateClient("N11");
+        var client = clients.CreateBoundedClient("N11");
         using var request = new HttpRequestMessage(method, new Uri(settings.BaseAddress, path)) { Content = content };
         ApplyAuthentication(request, context);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        using var timeout = new QuotaAwareTimeout(request, N11RateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
             using var response = await client.SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             var retryAfter = response.Headers.RetryAfter?.Delta
@@ -188,6 +187,8 @@ public sealed partial class N11HttpClient(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            // Never sent: the shared quota stayed full. This is not an "outcome unknown" call.
+            if (!timeout.QuotaAcquired) return LocalQuotaWait<JsonDocument>();
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_TIMEOUT", "N11 isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)
@@ -196,6 +197,11 @@ public sealed partial class N11HttpClient(
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR", "N11 bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
         }
     }
+
+    private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
+
+    private static AdapterResult<T> LocalQuotaWait<T>() =>
+        AdapterResult<T>.Failure(new(AdapterErrorClass.RateLimit, "N11_LOCAL_QUOTA_WAIT", "N11 istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
 
     internal static void ApplyAuthentication(HttpRequestMessage request, N11RequestContext context)
     {
@@ -211,6 +217,8 @@ public sealed partial class N11HttpClient(
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", (int)status, null, null),
             HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "N11_NOT_FOUND", remote is null ? "N11 istenen kaydı bulamadı." : $"N11 kaydı bulamadı: {remote}", (int)status, null, null),
+            HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "N11_REMOTE_TIMEOUT", "N11 isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), null),
+            HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "N11_CONFLICT", remote is null ? "N11 isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"N11 isteği reddetti: {remote}", (int)status, null, null),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR", "N11 servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
             _ => new(AdapterErrorClass.Validation, "N11_REQUEST_REJECTED", remote is null ? "N11 isteği reddetti." : $"N11 isteği reddetti: {remote}", (int)status, null, null)
         };
