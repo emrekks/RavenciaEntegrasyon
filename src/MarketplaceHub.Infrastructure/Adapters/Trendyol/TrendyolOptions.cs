@@ -1,3 +1,7 @@
+using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed class TrendyolOptions
@@ -74,7 +78,27 @@ internal static class TrendyolReadStorefronts
     // The seller panel exposes Türkiye and international/micro-export packages
     // under separate storefront headers. Reads are intentionally broader than
     // writes; the latter remain guarded by IntegrationRuntimePolicy.
+    // Every storefront code ever read (candidates). C28: only Trendyol's documented storefronts
+    // (TrendyolStorefrontPolicy.Listed) are read by default; an undocumented one (QA, OM, BH, AZ) is read only
+    // while the connection has stored orders from it (AZ has live orders), see For/ForConnectionAsync.
     public static readonly string[] Codes = ["TR", "AE", "SA", "GR", "DE", "BG", "QA", "KW", "OM", "BH", "AZ", "SK", "RO", "CZ"];
+
+    public static IReadOnlyList<string> For(IEnumerable<string?> storedStoreFrontCodes)
+    {
+        var stored = storedStoreFrontCodes.Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!.Trim().ToUpperInvariant()).ToHashSet(StringComparer.Ordinal);
+        return Codes.Where(code => TrendyolStorefrontPolicy.IsListed(code) || stored.Contains(code)).ToArray();
+    }
+
+    public static async Task<IReadOnlyList<string>> ForConnectionAsync(AppDbContext db, Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var unlisted = Codes.Where(code => !TrendyolStorefrontPolicy.IsListed(code)).ToArray();
+        var stored = await db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.StoreFrontCode != null && unlisted.Contains(order.StoreFrontCode))
+            .Select(order => order.StoreFrontCode)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        return For(stored);
+    }
     // getClaims is a global claims endpoint in the documented V2 contract; the
     // storefront header is required for order stream reads, not claims reads.
     public static readonly string[] ReturnCodes = ["TR"];

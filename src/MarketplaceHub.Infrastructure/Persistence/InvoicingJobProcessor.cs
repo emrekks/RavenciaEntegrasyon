@@ -598,7 +598,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 IsExplicitManualInvoiceDelivery = true
             };
             submitted = await marketplace.DeliverAsync(explicitContext,
-                new(package.ExternalPackageId, "LINK", payloadJsonValue, deliveryRequestHash), cancellationToken);
+                new(package.ExternalPackageId, "LINK", payloadJsonValue, deliveryRequestHash, order.StoreFrontCode), cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -1120,7 +1120,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     IsOneTimeInvoiceDeliveryAuthorized = true,
                     OneTimeInvoiceDeliveryOrderNumber = oneTimeAuthorization.OrderNumber
                 };
-            result = await marketplace.DeliverAsync(context, new(package.ExternalPackageId, state.DeliveryType, payload, state.RequestHash), cancellationToken);
+            result = await marketplace.DeliverAsync(context, new(package.ExternalPackageId, state.DeliveryType, payload, state.RequestHash, order?.StoreFrontCode), cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

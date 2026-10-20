@@ -42,6 +42,13 @@ public sealed class TrendyolAuthenticationHandler(AppDbContext db, IDataProtecti
             logger.LogWarning("Trendyol bağlantı ayarları eksik veya User-Agent kimliği boş. ConnectionId: {ConnectionId}", connectionId);
             return null;
         }
+        if (!TrendyolUserAgentPolicy.IsHeaderSafe(settings.UserAgentIdentity))
+        {
+            logger.LogWarning("Trendyol User-Agent kimliği yalnız ASCII harf, rakam ve işaret içerebilir; istek gönderilmedi. ConnectionId: {ConnectionId}", connectionId);
+            return null;
+        }
+        if (!TrendyolUserAgentPolicy.MatchesDocumentedFormat(settings.UserAgentIdentity, connection.ExternalStoreId))
+            logger.LogWarning("Trendyol User-Agent kimliği belgelenen '{{satıcıId}} - {{EntegratörAdı}}' biçiminde değil. ConnectionId: {ConnectionId}", connectionId);
         if (!IntegrationRuntimePolicy.TryResolveBaseAddress(connection.Environment, options.Value.StageBaseAddress, options.Value.ProductionBaseAddress, out var baseAddress))
         {
             logger.LogWarning("Trendyol bağlantısı için geçersiz environment yapılandırması: {Environment}. ConnectionId: {ConnectionId}", connection.Environment, connectionId);
@@ -51,11 +58,16 @@ public sealed class TrendyolAuthenticationHandler(AppDbContext db, IDataProtecti
         return new(connection, baseAddress, payload.ApiKey, payload.ApiSecret, settings.UserAgentIdentity, settings.ExternalWritesEnabled);
     }
 
+    // C28: documented storefronts plus any undocumented one the connection has stored orders from.
+    public Task<IReadOnlyList<string>> ReadStorefrontsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        TrendyolReadStorefronts.ForConnectionAsync(db, tenantId, connectionId, cancellationToken);
+
     public static HttpRequestMessage Create(TrendyolRequestContext context, HttpMethod method, string relativePath, HttpContent? content = null, bool includeStoreFrontCode = true, string? storeFrontCode = "TR")
     {
         var request = new HttpRequestMessage(method, new Uri(context.BaseAddress, relativePath)) { Content = content };
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.ApiKey}:{context.ApiSecret}")));
-        request.Headers.UserAgent.ParseAdd(context.UserAgentIdentity);
+        // "{sellerId} - {Name}" is not a product/comment token list, so the typed parser is skipped (C12).
+        request.Headers.TryAddWithoutValidation("User-Agent", context.UserAgentIdentity.Trim());
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (includeStoreFrontCode && !string.IsNullOrWhiteSpace(storeFrontCode)) request.Headers.TryAddWithoutValidation("storeFrontCode", storeFrontCode.Trim().ToUpperInvariant());
         return request;

@@ -24,6 +24,8 @@ public sealed partial class HepsiburadaHttpClient(
 {
     private readonly HepsiburadaOptions settings = options.Value;
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
+    // C19: the known clients upload at most 1,000 items per inventory-upload; 4,000 was never confirmed.
+    internal const int MaxInventoryUploadItems = 1000;
     private static readonly string[] ClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
     // Hepsiburada has no endpoint that lists rejection reasons; the values below are the documented
     // ClaimRejectionReason list ("Talep Reddetme" > "Reddetme Sebepleri", checked 20 Oct 2026):
@@ -1121,7 +1123,7 @@ public sealed partial class HepsiburadaHttpClient(
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("merchantId", out var merchant) || merchant.ValueKind != JsonValueKind.String
                 || !string.Equals(merchant.GetString(), merchantId, StringComparison.Ordinal)
-                || !root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() is < 1 or > 4000) return false;
+                || !root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() < 1 || items.GetArrayLength() > MaxInventoryUploadItems) return false;
             var merchantSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var hbSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in items.EnumerateArray())

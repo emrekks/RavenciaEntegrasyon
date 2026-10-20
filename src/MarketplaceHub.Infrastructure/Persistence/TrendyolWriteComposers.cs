@@ -5,7 +5,9 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -130,6 +132,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
             return await BuildPazaramaAsync(tenantId, connectionId, cancellationToken, variantId, productId);
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
+        var isTrendyol = string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
                           join listingState in db.MarketplaceListingStates.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { listingState.TenantId, listingState.ConnectionId, listingState.VariantId }
@@ -159,7 +162,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             if (isHepsiburada && (string.IsNullOrWhiteSpace(row.MerchantSku) || !string.Equals(row.MerchantSku, row.Variant.Sku, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(row.HepsiburadaSku)))
                 return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_LISTING_LINK_REQUIRED", $"'{row.Variant.Sku}' için doğrulanmış merchantSku ve hbSku eşleştirmesi gerekir.", 409);
             var publishable = Math.Max(0, row.Inventory!.Available - row.Offer.SafetyStock);
-            var quantity = decimal.Floor(publishable);
+            // C10: Trendyol stock is capped at 20,000; the capped quantity is what the payload (and its hash) carries.
+            var quantity = isTrendyol ? TrendyolStockRules.Quantity(publishable) : decimal.Floor(publishable);
             var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
             lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim()));
@@ -168,7 +172,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         // Dirty filtering must happen before the provider batch limit. A large
         // catalog with only a few changed offers is a valid request, while a
         // larger dirty set is drained deterministically in follow-up passes.
-        lines = lines.Take(isHepsiburada ? 4000 : MaximumBatchSize).ToList();
+        lines = lines.Take(isHepsiburada ? HepsiburadaHttpClient.MaxInventoryUploadItems : MaximumBatchSize).ToList();
         var payload = isHepsiburada
             ? JsonSerializer.Serialize(new
             {
