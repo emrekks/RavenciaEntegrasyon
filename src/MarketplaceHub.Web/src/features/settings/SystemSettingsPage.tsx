@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useEffectEvent, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, hubApi } from '../../shared/api'
@@ -399,7 +399,8 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
   const dirty = JSON.stringify(appearance.draft) !== JSON.stringify(appearance.settings)
   const themeCount = appearance.draft.colorThemes.length
 
-  useEffect(() => { onStatus({ dirty, themeCount }) }, [dirty, themeCount])
+  const reportStatus = useEffectEvent(() => onStatus({ dirty, themeCount }))
+  useEffect(() => reportStatus(), [dirty, themeCount])
 
   useEffect(() => {
     const syncVisualTheme = (event: Event) => {
@@ -637,10 +638,12 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   const activeBlock = layout.find(block => block.id === selectedId) ?? layout[0] ?? null
   const selectedTemplate = templates.find(item => item.id === selectedTemplateId)
 
-  useEffect(() => { setSelectedId(settings.layout[format][0]?.id ?? null) }, [format])
+  const selectFirstBlock = useEffectEvent(() => setSelectedId(settings.layout[format][0]?.id ?? null))
+  useEffect(() => selectFirstBlock(), [format])
   useEffect(() => { setStickerWidthDraft(String(settings.stickerWidthMm)) }, [settings.stickerWidthMm])
   useEffect(() => { setStickerHeightDraft(String(settings.stickerHeightMm)) }, [settings.stickerHeightMm])
-  useEffect(() => { setFontSizeDraft(activeBlock ? String(activeBlock.fontSize ?? 14) : '') }, [format, activeBlock?.id])
+  const showBlockFontSize = useEffectEvent(() => setFontSizeDraft(activeBlock ? String(activeBlock.fontSize ?? 14) : ''))
+  useEffect(() => showBlockFontSize(), [format, activeBlock?.id])
 
   function update<K extends keyof ShippingLabelSettings>(key: K, value: ShippingLabelSettings[K]) {
     onChange({ ...settings, [key]: value })

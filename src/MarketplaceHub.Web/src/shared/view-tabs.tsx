@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRememberedTabCounts } from './tab-counts'
 import { createPortal } from 'react-dom'
 import './view-tabs.css'
@@ -76,7 +76,7 @@ export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ari
     list.addEventListener('change', update); window.addEventListener('resize', update)
     return () => { list.removeEventListener('change', update); window.removeEventListener('resize', update) }
   }, [])
-  const moved = phone ? [] : [...overflow, ...more]
+  const moved = useMemo(() => phone ? [] : [...overflow, ...more], [phone, overflow, more])
   const main = items.filter(item => !moved.includes(item.value))
   const extra = items.filter(item => moved.includes(item.value))
   useLayoutEffect(() => {
@@ -84,7 +84,7 @@ export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ari
     if (phone || !element || element.scrollWidth <= element.clientWidth + 1) return
     const next = items.map(item => item.value).filter((candidate, index) => index > 0 && !moved.includes(candidate) && candidate !== value).pop()
     if (next) setOverflow(current => [next, ...current])
-  })
+  }, [phone, items, moved, value])
   useEffect(() => {
     const element = row.current
     if (!element || typeof ResizeObserver === 'undefined') return

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
@@ -137,6 +137,7 @@ export function useOutsideClose(open: boolean, ref: RefObject<HTMLElement | null
 // sheet above its field (below only when there is no room above), in a table below its trigger (above when there is
 // no room below). It closes once anything scrolls.
 function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void) {
+  const closePopover = useEffectEvent(() => close())
   useLayoutEffect(() => {
     const host = ref.current
     if (!open || !host) return
@@ -161,11 +162,12 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', width: `${width}px`, transform: 'none', 'z-index': '1000' })
     // A tall list (İade Sebebi) stays inside the screen and scrolls within itself instead of running off the bottom.
     if (!sheet && top + box.height > window.innerHeight - 8) pin({ 'max-height': `${Math.max(160, window.innerHeight - top - 12)}px`, 'overflow-y': 'auto' })
-    const onScroll = (event: Event) => { if (!(event.target instanceof Node && pop.contains(event.target))) close() }
+    const onScroll = (event: Event) => { if (!(event.target instanceof Node && pop.contains(event.target))) closePopover() }
+    const onResize = () => closePopover()
     window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', close)
-    return () => { window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', close) }
-  }, [open])
+    window.addEventListener('resize', onResize)
+    return () => { window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onResize) }
+  }, [open, ref])
 }
 
 export function RrAnchor({ trigger, children, className }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; className?: string }) {

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
 
@@ -54,9 +54,10 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
     }
   }, [])
 
+  const repositionCompactMenu = useEffectEvent(() => updateCompactMenuPosition())
   useEffect(() => {
     if (!open || !compact) return
-    const repositionOnViewportChange = () => updateCompactMenuPosition()
+    const repositionOnViewportChange = () => repositionCompactMenu()
     window.addEventListener('scroll', repositionOnViewportChange, { passive: true, capture: true })
     window.addEventListener('resize', repositionOnViewportChange)
     return () => {
@@ -66,7 +67,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
   }, [open, compact])
 
   useLayoutEffect(() => {
-    if (open && compact) updateCompactMenuPosition()
+    if (open && compact) repositionCompactMenu()
   }, [open, compact, selectedCodes])
 
   function toggleOption(value: string, checked: boolean) {

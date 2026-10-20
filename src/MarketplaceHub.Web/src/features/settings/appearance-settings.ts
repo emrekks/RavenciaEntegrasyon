@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 
@@ -234,7 +234,8 @@ export function useAppearanceSettings() {
   const settingsColorsKey = JSON.stringify(settings.colors)
   const settingsThemesKey = JSON.stringify(settings.colorThemes)
 
-  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey, settingsThemesKey])
+  const resetDraft = useEffectEvent(() => setDraft(settings))
+  useEffect(() => resetDraft(), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey, settingsThemesKey])
 
   async function save(next: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)

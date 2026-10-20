@@ -481,7 +481,7 @@ export function JobsPage({ me }: { me: Me }) {
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'Tek seferlik fatura işlemi başlatılamadı.', tone: 'danger' })
   })
-  const rawJobs = list.data ?? []
+  const rawJobs = useMemo(() => list.data ?? [], [list.data])
   const rangeFiltered = useMemo(() => {
     if (timeRange === 'all') return rawJobs
     const rangeMs = timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000

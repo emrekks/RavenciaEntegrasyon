@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
 import { formatDateRange, selectDateRangeDay, type DateRange } from './date-range'
@@ -50,9 +50,10 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
     if (position) setPopoverPosition(position)
     setOpen(true)
   }
+  const showSelectedMonth = useEffectEvent(() => setMonth(firstShownMonth(from)))
   useEffect(() => {
     if (!open) return
-    setMonth(firstShownMonth(from))
+    showSelectedMonth()
     const closeOnOutside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !popover.current?.contains(event.target as Node)) setOpen(false) }
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     // The popover is fixed to the viewport, so it follows its field whenever the page scrolls or resizes.

@@ -1,6 +1,7 @@
 // Invisible control characters (C0 except tab and line breaks, DEL and the C1 block) carry no meaning in the panel but
 // draw as boxes; one slipped into an imported colour name ("Sarı" + U+008D). They are dropped from every text the
 // server sends.
+// eslint-disable-next-line no-control-regex -- matching control characters is the point of this pattern
 const invisibleControls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
 const dropInvisibleControls = (_key: string, value: unknown) => typeof value === 'string' ? value.replace(invisibleControls, '') : value
 

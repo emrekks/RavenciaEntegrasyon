@@ -1,6 +1,6 @@
 import { marketplaceProductSearchUrl } from '../questions/marketplace-product-link'
 import { useRememberedHeight } from '../../shared/remembered-height'
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -915,7 +915,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   const resetData = useMutation({ mutationFn: () => hubApi(`/connections/${item.id}/data-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation }) }), onSuccess: () => { const labels = connectionDataResetOptions(item.platformCode).filter(option => resetScopes.includes(option.scope)).map(option => option.label.toLocaleLowerCase('tr-TR')).join(', '); setResetOpen(false); setResetScopes([]); setResetConfirmation(''); onFeedback({ kind: 'success', message: `${item.displayName} bağlantısında seçilen veriler sıfırlandı: ${labels}. Otomatik eşitleme açıksa kayıtlar yeniden çekilebilir.` }); onSaved() }, onError: reason => onFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Seçilen bağlantı verileri sıfırlanamadı.' }) })
   const menuActions = [
     { key: 'settings', label: 'Bağlantı ayarlarını aç', disabled: false, run: () => { setMenuOpen(false); setSettingsOpen(true) } },
-    { key: 'connection', label: connected ? 'Bağlantıyı pasife al' : 'Bağlantıyı aktifleştir', disabled: disconnect.isPending || activate.isPending, run: () => { setMenuOpen(false); connected ? setDisconnectOpen(true) : activate.mutate() } },
+    { key: 'connection', label: connected ? 'Bağlantıyı pasife al' : 'Bağlantıyı aktifleştir', disabled: disconnect.isPending || activate.isPending, run: () => { setMenuOpen(false); if (connected) setDisconnectOpen(true); else activate.mutate() } },
     { key: 'test', label: 'Bağlantıyı kontrol et', displayLabel: test.isPending ? 'Kontrol ediliyor…' : 'Bağlantıyı kontrol et', disabled: test.isPending, run: () => { setMenuOpen(false); test.mutate() } },
     { key: 'delete', label: 'Bağlantıyı sil', disabled: false, run: () => { setMenuOpen(false); setDeleteOpen(true) } },
     ...(supportsInitialDataSync ? [{ key: 'initial-sync', label: 'Verileri çek', displayLabel: initialDataSync.isPending ? 'Kuyruğa alınıyor…' : 'Verileri çek', disabled: !connected || !item.hasCredential || initialDataSync.isPending, run: () => { setMenuOpen(false); initialDataSync.mutate() } }] : []),
@@ -933,6 +933,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
     setMenuPlacement(next)
     setMenuMaxHeight(Math.min(420, available))
   }
+  const placeMenu = useEffectEvent((trigger: HTMLButtonElement) => updateMenuPlacement(trigger))
   useLayoutEffect(() => {
     if (!menuOpen) {
       setMenuMaxHeight(null)
@@ -940,7 +941,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
     }
     const updatePlacement = () => {
       const trigger = referenceMenuRef.current?.querySelector<HTMLButtonElement>('.reference-menu-trigger')
-      if (trigger) updateMenuPlacement(trigger)
+      if (trigger) placeMenu(trigger)
     }
     updatePlacement()
     window.addEventListener('resize', updatePlacement)
@@ -1337,9 +1338,12 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
    const [displayName, setDisplayName] = useState('')
   const [settingsSection, setSettingsSection] = useState('genel')
   const [flowFilter, setFlowFilter] = useState<'all' | 'issue' | 'wait' | 'off'>('all')
-  useEffect(() => { if (connection.data) setExternalWritesEnabled(connection.data.externalWritesEnabled) }, [connection.data?.externalWritesEnabled])
-   useEffect(() => { if (connection.data) setExternalStoreId(connection.data.platformCode === 'SHOPIFY' ? shopifyStoreDisplayName(connection.data.externalStoreId) : connection.data.externalStoreId) }, [connection.data?.externalStoreId])
-   useEffect(() => { if (connection.data) setDisplayName(connection.data.displayName) }, [connection.data?.displayName])
+  const savedExternalWrites = connection.data?.externalWritesEnabled
+  useEffect(() => { if (savedExternalWrites !== undefined) setExternalWritesEnabled(savedExternalWrites) }, [savedExternalWrites])
+  const savedStoreId = connection.data?.externalStoreId; const savedPlatformCode = connection.data?.platformCode
+  useEffect(() => { if (savedPlatformCode !== undefined && savedStoreId !== undefined) setExternalStoreId(savedPlatformCode === 'SHOPIFY' ? shopifyStoreDisplayName(savedStoreId) : savedStoreId) }, [savedPlatformCode, savedStoreId])
+   const savedDisplayName = connection.data?.displayName
+  useEffect(() => { if (savedDisplayName !== undefined) setDisplayName(savedDisplayName) }, [savedDisplayName])
   const saveConnectionDetails = useMutation({ mutationFn: () => { if (!connection.data) throw new Error('Bağlantı bilgisi yükleniyor.'); const name = displayName.trim(); const store = externalStoreId.trim(); if (!name) throw new Error('Kayıt adı zorunludur.'); if (!store) throw new Error('Mağaza adı zorunludur.'); return hubApi<Connection>(`/connections/${id}`, { method: 'PATCH', headers: { 'If-Match': `"v${connection.data.version}"` }, body: JSON.stringify({ displayName: name, externalStoreId: store }) }) }, onSuccess: async result => { setDisplayName(result.displayName); setExternalStoreId(result.platformCode === 'SHOPIFY' ? shopifyStoreDisplayName(result.externalStoreId) : result.externalStoreId); setFeedback({ kind: 'success', message: 'Kayıt adı ve mağaza bilgileri güncellendi. Yeniden bağlantı testi gerekiyor.' }); await client.invalidateQueries({ queryKey: ['connection', id] }); await client.invalidateQueries({ queryKey: ['connections'] }) }, onError: reason => setFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Bağlantı bilgileri güncellenemedi.' }) })
   const saveExternalWrites = useMutation({ mutationFn: (enabled: boolean) => { if (!connection.data) throw new Error('Bağlantı bilgisi yükleniyor.'); return hubApi<Connection>(`/connections/${id}`, { method: 'PATCH', headers: { 'If-Match': `"v${connection.data.version}"` }, body: JSON.stringify({ displayName: connection.data.displayName, externalWritesEnabled: enabled }) }) }, onSuccess: async (_, enabled) => { setExternalWritesEnabled(enabled); setFeedback({ kind: 'success', message: enabled ? `${connection.data?.displayName ?? 'Entegrasyon'} için dış yazma açıldı.` : `${connection.data?.displayName ?? 'Entegrasyon'} salt-okunur moda alındı; dış yazma ve bağlı otomatik akışlar kapatıldı.`, details: [{ label: 'Entegrasyon', value: `${connection.data?.platformCode ?? ''} · ${connection.data?.displayName ?? id}` }], target: { href: `/integrations/${id}`, label: 'Entegrasyona Git' } }); await client.invalidateQueries({ queryKey: ['connection', id] }); await client.invalidateQueries({ queryKey: ['capabilities', id] }); await client.invalidateQueries({ queryKey: ['connections'] }); await client.invalidateQueries({ queryKey: ['sync-policies', id] }) }, onError: reason => setFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Dış yazma ayarı güncellenemedi.' }) })
   const saveInvoiceCreation = useMutation({ mutationFn: (enabled: boolean) => { if (!connection.data) throw new Error('Bağlantı bilgisi yükleniyor.'); return hubApi<Connection>(`/connections/${id}`, { method: 'PATCH', headers: { 'If-Match': `"v${connection.data.version}"` }, body: JSON.stringify({ displayName: connection.data.displayName, invoiceCreationEnabled: enabled }) }) }, onSuccess: async result => { client.setQueryData(['connection', id], result); setFeedback({ kind: 'success', message: result.invoiceCreationEnabled ? 'Bu bağlantı için fatura oluşturma açıldı.' : 'Bu bağlantı için fatura oluşturma kapatıldı; mevcut belgeler ve fatura kayıtları korunuyor.' }); await Promise.all([client.invalidateQueries({ queryKey: ['connections'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })]) }, onError: reason => setFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Fatura oluşturma ayarı güncellenemedi.' }) })
@@ -1654,7 +1658,7 @@ export function OrdersPage() {
     if (!bulkNotice || bulkNoticeKind === 'pending') return
     const timeout = window.setTimeout(() => setBulkNotice(''), 5000)
     return () => window.clearTimeout(timeout)
-  }, [bulkNoticeVersion])
+  }, [bulkNotice, bulkNoticeKind, bulkNoticeVersion])
   const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
   // "Etiket Durumu" is filtered by the server once it reports the filter (labelPrintedAt kept per package); until then the
   // whole order history is read and filtered here, with the print marks of this browser.
@@ -1824,6 +1828,9 @@ export function OrdersPage() {
   const pageItemsKey = JSON.stringify(pageItems)
   // The order cards are kept while their own inputs stay the same, so opening or closing a window (a label preview, an
   // invoice) does not redraw every card on the page first.
+  // pageItems is rebuilt on every render, so the rows are memoised by its content (pageItemsKey); the handlers read only
+  // state that is listed here or that their setters keep current.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by pageItemsKey on purpose (see above)
   const orderRows = useMemo(() => pageItems.map(item => <OrderReferenceRow item={item} key={item.id} noBuyer={noBuyer} selectionMode={selectionMode} selected={selectedIds.includes(item.id)} processing={processingOrderId === item.id} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); if (item.platformCode === 'SHOPIFY') setInvoiceUploadOrder(item); else setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder({ item, items: [item] }) }} onOrderStatusChange={() => { setMenu(null); setShopifyStatusOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} onCreatePackage={() => { setMenu(null); setHepsiburadaPackageOrder(item) }} onPrintLabel={format => { if (isMicroExportLabelBlocked(item)) { showBulkNotice('Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.', 'error'); return } setMenu(null); setShippingLabel({ item, format }) }} onPreviewImage={setPreviewImage} labelSettings={labelSettings} printedLabels={printedLabels} />), [pageItemsKey, noBuyer, selectionMode, selectedIds, processingOrderId, menu, labelSettings, printedLabels])
   return <section className="content f3 rr rr-orders">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>Siparişler</h1><p>Tüm pazaryerlerinden gelen siparişleri tek yerden hazırlayın, etiketleyin ve takip edin.</p><DataFreshnessNote kind="ORDERS" /></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={!items.length || exporting} aria-busy={exporting} title={exporting ? 'Dışa aktarılıyor…' : undefined} onClick={() => void exportOrders()}><RrIcon name="export" />Dışa Aktar</button><button type="button" className="rr-btn" onClick={() => setShopifyCsvImportOpen(true)}><RrIcon name="import" />İçe Aktar</button><button type="button" className="rr-btn rr-primary" onClick={() => setSingleSyncOpen(true)}><RrIcon name="refresh" /><span className="rr-long">Sipariş Senkronizasyonu</span><span className="rr-short">Senkronize Et</span></button></div></div>
@@ -2009,7 +2016,7 @@ function ReturnInvoiceRing({ status, isMicroExport }: { status: string; isMicroE
   // Short states ("Faturası Mevcut") stay on one line; long ones break only between word pairs, so
   // "Mikro İhracat Faturası Bekliyor" takes two lines in the narrow column instead of three.
   const words = label.split(' ')
-  const shown = label.length <= 18 ? label.replace(/ /g, ' ') : words.length >= 4 ? words.reduce<string[]>((pairs, word, index) => index % 2 ? [...pairs.slice(0, -1), `${pairs[pairs.length - 1]} ${word}`] : [...pairs, word], []).join(' ') : label
+  const shown = label.length <= 18 ? label.replace(/ /g, ' ') : words.length >= 4 ? words.reduce<string[]>((pairs, word, index) => index % 2 ? [...pairs.slice(0, -1), `${pairs[pairs.length - 1]}\u00a0${word}`] : [...pairs, word], []).join(' ') : label
   const ring = <RrRing tone={tone} progress={progress} label={shown} />
   // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read why the invoice failed
   return invoiceFailureText[base] ? <span className="rr-reason-tip" tabIndex={0}>{ring}<span className="rr-reason-pop" role="tooltip"><b>{label}</b>{invoiceFailureText[base]}</span></span> : ring
@@ -2081,10 +2088,11 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const canPrint = canPrintReturnLabel(item.status, hasOutboundShipment)
   const [ringTone, ringProgress] = returnRingTone(item.status)
   const customer = order?.customerName ?? item.customerName
-  useEffect(() => {
+  const selectActionableLines = useEffectEvent(() => {
     if (!dialogMode || !detailQuery.data) return
     setSelectedReturnLineIds(detailQuery.data.lines?.filter(isActionableReturnLine).map(line => line.id) ?? [])
-  }, [dialogMode, detailQuery.data?.id])
+  })
+  useEffect(() => selectActionableLines(), [dialogMode, detailQuery.data?.id])
   // Each unit price sits level with its product line (desktop table only).
   useLayoutEffect(() => {
     const row = rowRef.current
@@ -2222,7 +2230,8 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
   const client = useQueryClient(); const lines = (item.lines ?? []).filter(isActionableReturnLine); const isHepsiburada = item.platformCode?.toUpperCase() === 'HEPSIBURADA'; const isAwaitingPreApproval = isHepsiburada && item.rawStatus.replace(/[_-]/gu, '').toUpperCase() === 'AWAITINGPREAPPROVAL'; const [action, setAction] = useState<ReturnDecisionDraft['action']>(() => initialAction ?? (isAwaitingPreApproval ? 'PREAPPROVAL_CONFIRM' : 'APPROVE')); const [reasonId, setReasonId] = useState(''); const [finalizedWith, setFinalizedWith] = useState<'Refund' | 'Change' | ''>(''); const [evidenceAssetIds, setEvidenceAssetIds] = useState<string[]>([]); const [localSelectedLineIds, setLocalSelectedLineIds] = useState<string[]>(() => lines.map(line => line.id)); const [confirmation, setConfirmation] = useState<ReturnDecisionDraft | null>(null); const isControlled = controlledSelectedLineIds !== undefined; const selectedLineIds = controlledSelectedLineIds ?? localSelectedLineIds; const updateSelectedLineIds = onSelectedLineIdsChange ?? setLocalSelectedLineIds; const externalWritesDisabled = item.externalWritesEnabled !== true
   const marketplaceName = returnPlatformName(item.platformCode)
   const fileInput = useRef<HTMLInputElement>(null)
-  useEffect(() => { if (!isControlled) setLocalSelectedLineIds(lines.map(line => line.id)); setConfirmation(null); setAction(initialAction ?? (isAwaitingPreApproval ? 'PREAPPROVAL_CONFIRM' : 'APPROVE')) }, [item.id, item.version, item.lines, isControlled, isAwaitingPreApproval, initialAction])
+  const resetDecision = useEffectEvent(() => { if (!isControlled) setLocalSelectedLineIds(lines.map(line => line.id)); setConfirmation(null); setAction(initialAction ?? (isAwaitingPreApproval ? 'PREAPPROVAL_CONFIRM' : 'APPROVE')) })
+  useEffect(() => resetDecision(), [item.id, item.version, item.lines, isControlled, isAwaitingPreApproval, initialAction])
   const reasons = useQuery({ queryKey: ['return-reasons', item.id], queryFn: () => hubApi<ReturnIssueReason[]>(`/returns/${item.id}/rejection-reasons`), enabled: item.allowedActions.includes('REJECT'), retry: false })
   const decision = useMutation({
     mutationFn: (payload: ReturnDecisionDraft) => hubApi<ReturnDetail>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds, finalizedWith: payload.finalizedWith }) }),
@@ -2851,15 +2860,17 @@ function AttributeCategoryAssignmentModal({ attribute, role, categories, onClose
 
   useScrollLock(true, true)
 
+  const currentActiveCategories = useEffectEvent(() => activeCategories)
   useEffect(() => {
     let cancelled = false
+    const categoriesNow = currentActiveCategories()
     setLoading(true)
     setError('')
-    void Promise.all(activeCategories.map(async category => [category.id, await hubApi<CategoryRequirementView[]>(`/catalog/categories/${category.id}/attribute-requirements`)] as const))
+    void Promise.all(categoriesNow.map(async category => [category.id, await hubApi<CategoryRequirementView[]>(`/catalog/categories/${category.id}/attribute-requirements`)] as const))
       .then(entries => {
         if (cancelled) return
         const nextRequirements = Object.fromEntries(entries) as Record<string, CategoryRequirementView[]>
-        const nextSelected = activeCategories.filter(category => nextRequirements[category.id]?.some(item => item.attributeId === attribute.id)).map(category => category.id)
+        const nextSelected = categoriesNow.filter(category => nextRequirements[category.id]?.some(item => item.attributeId === attribute.id)).map(category => category.id)
         setRequirementsByCategory(nextRequirements)
         setSelectedCategoryIds(nextSelected)
         setInitialCategoryIds(nextSelected)
@@ -3014,13 +3025,16 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     return category ? [{ category, mapping }] : []
   })
   const matchedCategoryIds = matchedCategories.map(item => item.category.id).join(',')
-  useEffect(() => {
+  // matchedCategories is rebuilt every render; its ids (matchedCategoryIds) say when it really changed
+  const keepAttributeCategoryMatched = useEffectEvent(() => {
     if (!matchedCategories.length) { if (attributeCategoryId) setAttributeCategoryId(''); return }
     if (!matchedCategories.some(item => item.category.id === attributeCategoryId)) setAttributeCategoryId(matchedCategories[0].category.id)
-  }, [attributeCategoryId, matchedCategoryIds])
-  useEffect(() => {
+  })
+  useEffect(() => keepAttributeCategoryMatched(), [attributeCategoryId, matchedCategoryIds])
+  const followLocalCategory = useEffectEvent(() => {
     if (localCategoryId && matchedCategories.some(item => item.category.id === localCategoryId)) setAttributeCategoryId(localCategoryId)
-  }, [localCategoryId, matchedCategoryIds])
+  })
+  useEffect(() => followLocalCategory(), [localCategoryId, matchedCategoryIds])
   const categoryRequirements = useQuery({ queryKey: ['category-requirements', attributeCategoryId, 'attribute-workspace'], queryFn: () => hubApi<CategoryRequirementView[]>(`/catalog/categories/${attributeCategoryId}/attribute-requirements`), enabled: !!attributeCategoryId })
   const categoryMapping = useQuery({ queryKey: ['category-mapping', attributeCategoryId, connectionId, 'embedded'], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/categories/${attributeCategoryId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!attributeCategoryId && !!connectionId, retry: false })
   const categoryScope = categoryMapping.data?.externalId ?? ''
@@ -3669,7 +3683,7 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
     if (!references.data) return
     setSaving(true); setNotice('')
     try {
-      var changed = 0
+      let changed = 0
       for (const localValue of localValues) {
         const externalId = selections[localValue.id] ?? ''
         const existing = mappingByLocal.get(localValue.id)
@@ -3708,23 +3722,25 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const sync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }), onSuccess: result => { setSyncJobId(result.jobId); setNotice(`${platformLabel} değer listesi salt-okunur olarak eşitleniyor…`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
   const syncJob = useQuery({ queryKey: ['reference-value-sync-job', syncJobId], queryFn: () => hubApi<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${syncJobId}`, { cache: 'no-store' }), enabled: Boolean(syncJobId), refetchInterval: query => query.state.data && isReferenceSyncJobTerminal(query.state.data.job.status) ? false : 1000, refetchIntervalInBackground: true, retry: 1 })
   const syncBusy = sync.isPending || Boolean(syncJobId)
+  const startValueSync = sync.mutate
   useEffect(() => {
     if (!autoSyncMissingValues || !references.isError || !(references.error instanceof ApiRequestError) || references.error.code !== 'REFERENCE_SNAPSHOT_UNAVAILABLE') return
     const autoSyncKey = `${connectionId}:${valueScope}`
     if (!shouldAutoSyncHepsiburadaValues({ allowsCustomValue: false, snapshotMissing: true, syncPending: syncBusy, alreadyRequested: autoQueuedHepsiburadaValueSyncs.has(autoSyncKey) })) return
     autoQueuedHepsiburadaValueSyncs.add(autoSyncKey)
-    sync.mutate()
-  }, [autoSyncMissingValues, connectionId, references.isError, references.error, valueScope, syncBusy, sync.mutate])
+    startValueSync()
+  }, [autoSyncMissingValues, connectionId, references.isError, references.error, valueScope, syncBusy, startValueSync])
   useEffect(() => {
+    const referenceQueryKey = ['reference-attribute-values', connectionId, valueScope] as const
     const jobId = syncJobId
     const job = syncJob.data?.job
     if (!jobId || !job || !isReferenceSyncJobTerminal(job.status) || handledSyncJobs.current.has(jobId)) return
     handledSyncJobs.current.add(jobId)
     setSyncJobId(null)
     if (job.status === 'SUCCEEDED') {
-      void client.invalidateQueries({ queryKey: referenceKey }).then(() => {
-        const latest = client.getQueryData<ReferenceData>(referenceKey)
-        const latestQuery = client.getQueryState<ReferenceData>(referenceKey)
+      void client.invalidateQueries({ queryKey: referenceQueryKey }).then(() => {
+        const latest = client.getQueryData<ReferenceData>(referenceQueryKey)
+        const latestQuery = client.getQueryState<ReferenceData>(referenceQueryKey)
         setNotice(latestQuery?.status === 'error'
           ? `${platformLabel} eşitleme işi tamamlandı ancak güncel değer snapshot’ı tekrar okunamadı.`
           : latest?.items.length
@@ -3793,7 +3809,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     if (!references.data || !selectionsReady) return
     setSaving(true); setNotice('')
     try {
-      var changed = 0
+      let changed = 0
       for (const remoteValue of remoteValues) {
         const wanted = selections[remoteValue.externalId] ?? []
         for (const existing of mappingsByExternal.get(remoteValue.externalId) ?? []) {
@@ -4048,7 +4064,7 @@ export function BrandMappingPage() {
   const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error('Bağlantı, panel markası ve Trendyol markası zorunludur.'); return hubApi<CatalogMapping>(`/mappings/brands/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Marka eşlemesi doğrulandı ve kaydedildi.'); setExternalId(value.externalId); setBrandEditOpen(false); setEditingBrandMappingId(''); client.setQueryData(['brand-mapping', localId, connectionId], value); client.setQueryData<CatalogMapping[]>(['brand-mappings', connectionId], current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })]) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })
   const createBrand = useMutation({ mutationFn: () => { if (!brandName.trim()) throw new Error('Marka adı zorunludur.'); return hubApi<LocalBrand>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: brandName.trim() }) }) }, onSuccess: async brand => { await client.invalidateQueries({ queryKey: ['brands', 'mapping'] }); setLocalId(brand.id); setExternalId(''); setBrandName(''); setNotice(`“${brand.name}” panel markası oluşturuldu ve seçildi.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka oluşturulamadı.') })
   useEffect(() => { setExternalId(mapping.data?.externalId ?? '') }, [mapping.data])
-  const trendyolConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? []
+  const trendyolConnections = useMemo(() => connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? [], [connections.data])
   useEffect(() => { if (!connectionId && trendyolConnections.length) setConnectionId(trendyolConnections[0].id) }, [connectionId, trendyolConnections])
   const activeLocalBrands = localBrands.data?.items.filter(item => item.isActive) ?? []
   const externalBrands = references.data?.items.filter(item => item.isActive) ?? []

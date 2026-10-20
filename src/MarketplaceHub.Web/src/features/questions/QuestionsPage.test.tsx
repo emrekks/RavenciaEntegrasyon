@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the question fixture is reshaped freely per test
 const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, templates: [] as Array<{ id: string; title: string; text: string; version: number; updatedAt: string }>, detail: null as any, answerFailure: false, staleOnce: false, templateId: 1, totalCount: 1 }))
 
 vi.mock('../../shared/api', () => ({

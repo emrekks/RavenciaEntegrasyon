@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { variantOptionParts } from './variant-option-label'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
@@ -656,7 +656,7 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect, s
     if (!variant.offerId && !connectionId) return
     const body = { connectionId, variantId: variant.id, listPrice, salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Hızlı varyant fiyat düzenleme' }
     setSavingPrice(true)
-    try { if (variant.offerId) { if (variant.offerVersion == null) return; await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `\"v${variant.offerVersion}\"` }, body: JSON.stringify(body) }) } else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }); await onChanged() } finally { setSavingPrice(false) }
+    try { if (variant.offerId) { if (variant.offerVersion == null) return; await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) }) } else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }); await onChanged() } finally { setSavingPrice(false) }
   }
   async function saveStock() {
     const target = Number(stock); const delta = target - variant.onHand; if (savingStock || !Number.isFinite(target) || target < 0 || delta === 0) return
@@ -885,14 +885,14 @@ export function ProductsPage() {
   const lowStockQuery = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
   const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store' }), enabled: productImportOpen, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
-  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const selectedImportHasHepsiburada = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const selectedImportOnlyHepsiburada = selectedImportPlatforms.length > 0 && selectedImportPlatforms.every(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
+  const products = useMemo(() => query.data?.items ?? [], [query.data]); const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const selectedImportHasHepsiburada = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const selectedImportOnlyHepsiburada = selectedImportPlatforms.length > 0 && selectedImportPlatforms.every(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
   const selectedImportHasTrendyol = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'TRENDYOL')
   const productImportSupportsPendingApproval = productImportMethod === 'BULK' && selectedImportHasTrendyol && (productImportMode === 'FULL' || productImportMode === 'NEW_ONLY' || productImportMode === 'MAPPING_ONLY')
   const productImportOptions = getProductImportOptionVisibility({ method: productImportMethod, mode: productImportMode, onlyHepsiburada: selectedImportOnlyHepsiburada, hasHepsiburada: selectedImportHasHepsiburada, supportsPendingApproval: productImportSupportsPendingApproval })
   useEffect(() => { if (selectedImportOnlyHepsiburada && productImportMode === 'EXISTING_ONLY') setProductImportMode('MAPPING_ONLY') }, [selectedImportOnlyHepsiburada, productImportMode])
   const selectedPlatformFilter = productPlatformFilterGroups.flatMap(group => group.options.map(option => ({ ...option, group: group.label }))).find(option => option.value === platform)
   const selectedPlatformLabel = selectedPlatformFilter ? `${selectedPlatformFilter.group} · ${selectedPlatformFilter.label}` : platform || 'Tüm Platformlar'
-  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => sortProductGroups(productRowsAsCards(pageProducts), catalogSort), [pageProducts, catalogSort])
+  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = useMemo(() => currentPage === pageNumber ? products : [], [currentPage, pageNumber, products]); const pageProductGroups = useMemo(() => sortProductGroups(productRowsAsCards(pageProducts), catalogSort), [pageProducts, catalogSort])
   const activeProductSyncJobs = useMemo(() => filterActiveProductSyncJobs(productSyncJobsQuery.data ?? []), [productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
   const quickEditProducts = quickEdit
@@ -1112,7 +1112,7 @@ export function ProductsPage() {
     setDeletingProducts(true)
     try {
       if (request.product && request.productIds.length === 1) {
-        await hubApi(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `\"v${request.product.version}\"`, 'Idempotency-Key': newIdempotencyKey() } })
+        await hubApi(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${request.product.version}"`, 'Idempotency-Key': newIdempotencyKey() } })
       } else {
         for (let index = 0; index < request.productIds.length; index += 500) {
           const productIds = request.productIds.slice(index, index + 500)
@@ -1269,7 +1269,8 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
   const [dirtyMatrixDraftKeys, setDirtyMatrixDraftKeys] = useState<string[]>([])
   const [matrixBulkEdit, setMatrixBulkEdit] = useState<{ platform: VariantPlatformStatus; field: keyof ChannelPricingDraft; label: string; value: string; error: string } | null>(null)
   const [filterSelections, setFilterSelections] = useState<VariantOptionFilterSelections>({})
-  useEffect(() => { setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([]) }, [row.key, rows, platforms, savedDrafts])
+  const resetMatrixDrafts = useEffectEvent(() => { setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([]) })
+  useEffect(() => resetMatrixDrafts(), [row.key, rows, platforms, savedDrafts])
   const matchingRows = filterVariantsByOptions(sortedRows, filterGroups, filterSelections, matchesFilterValue)
   const matrixDraft = (item: VariantDraft, platform: VariantPlatformStatus) => matrixDrafts[`${item.key}:${platformKey(platform)}`] ?? { listPrice: '', salePrice: '' }
   const updateMatrixDraft = (item: VariantDraft, platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, value: string) => {
@@ -1380,9 +1381,9 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
     lastValue.current = value
   }, [htmlMode, value])
 
-  useEffect(() => {
-    if (!htmlMode && visualEditor.current) visualEditor.current.innerHTML = sanitizeRichText(value)
-  }, [htmlMode])
+  // Back from HTML mode the visual editor shows the current text again.
+  const showVisualValue = useEffectEvent(() => { if (!htmlMode && visualEditor.current) visualEditor.current.innerHTML = sanitizeRichText(value) })
+  useEffect(() => showVisualValue(), [htmlMode])
 
   function syncVisualValue() {
     const next = sanitizeRichText(visualEditor.current?.innerHTML ?? '')
@@ -1942,6 +1943,28 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
   </div>
 }
 
+// Variant option helpers: pure functions of a draft row, shared by the variant media and filter memos.
+function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
+  const groupName = normalizeVariantOptionName(group.name)
+  const optionRank = (name: string) => {
+    const normalized = normalizeVariantOptionName(name)
+    if (normalized === groupName) return 3
+    if (!isColorOptionName(name) || !isColorOptionName(group.name)) return -1
+    return isWebColorOptionName(name) ? 1 : 2
+  }
+  const options = [
+    ...Object.entries(row.options).map(([name, value]) => ({ name, value })),
+    ...parseVariantOptionSignature(row.optionSignature)
+  ]
+  return options
+    .filter(option => option.value.trim())
+    .sort((left, right) => optionRank(right.name) - optionRank(left.name))
+    .find(option => optionRank(option.name) >= 0)?.value ?? ''
+}
+function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
+  return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || normalizeVariantOptionValue(rowOptionValue(row, group)) === normalizeVariantOptionValue(value.value))
+}
+
 export function NewProductPage({ editProductId }: { editProductId?: string } = {}) {
   const client = useQueryClient();
   const location = useLocation()
@@ -2093,7 +2116,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }, [optionRequirements])
   const visibleOptionRequirements = optionRequirements
 
-  useLayoutEffect(() => {
+  const seedForm = useEffectEvent(() => {
     const product = seedProduct
     if (!product) return
     const productKey = `${editProductId ? 'edit' : 'copy'}:${product.id}:${product.version}`
@@ -2127,7 +2150,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
-  }, [editProductId, seedProduct?.id, seedProduct?.version])
+  })
+  useLayoutEffect(() => seedForm(), [editProductId, seedProduct?.id, seedProduct?.version])
 
   useEffect(() => {
     const product = seedProduct
@@ -2899,37 +2923,18 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     })))
     setVariantMediaModal({ mode: 'bulk', draftsBySelection, groupId: group.id, valueId: group.values[0]?.id ?? '' })
   }
-  function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
-    const groupName = normalizeVariantOptionName(group.name)
-    const optionRank = (name: string) => {
-      const normalized = normalizeVariantOptionName(name)
-      if (normalized === groupName) return 3
-      if (!isColorOptionName(name) || !isColorOptionName(group.name)) return -1
-      return isWebColorOptionName(name) ? 1 : 2
-    }
-    const options = [
-      ...Object.entries(row.options).map(([name, value]) => ({ name, value })),
-      ...parseVariantOptionSignature(row.optionSignature)
-    ]
-    return options
-      .filter(option => option.value.trim())
-      .sort((left, right) => optionRank(right.name) - optionRank(left.name))
-      .find(option => optionRank(option.name) >= 0)?.value ?? ''
-  }
-  function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
-    return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || normalizeVariantOptionValue(rowOptionValue(row, group)) === normalizeVariantOptionValue(value.value))
-  }
   function rowMatchesVariantFilters(row: VariantDraft) {
     return filterVariantsByOptions([row], variantFilterGroups, variantFilterSelections, rowMatchesVariantMediaValue).length > 0
   }
   // Media assignments made in the modal are persisted right away on the edit page;
   // the effect runs after variantRows state has committed so the save sees the new refs.
-  useEffect(() => {
+  const autoSaveMedia = useEffectEvent(() => {
     if (!mediaAutoSaveTick || !editProductId) return
     const form = document.getElementById('product-creation-form') as HTMLFormElement | null
     const saveButton = form?.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')
     if (form && saveButton && !saveButton.disabled) form.requestSubmit(saveButton)
-  }, [mediaAutoSaveTick])
+  })
+  useEffect(() => autoSaveMedia(), [mediaAutoSaveTick])
 
   function applyVariantMediaSelection() {
     if (!variantMediaModal) return

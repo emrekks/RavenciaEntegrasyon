@@ -188,6 +188,7 @@ export function QuestionsPage() {
     onSuccess: async () => { setNotice(''); await Promise.all([client.invalidateQueries({ queryKey: ['questions'] }), client.invalidateQueries({ queryKey: ['questions', 'sync-state'] })]) },
     onError: error => setNotice(error instanceof Error ? error.message : 'Senkronizasyon kuyruğa alınamadı.'),
   })
+  const startSync = sync.mutate
   const saveTemplate = useMutation({
     mutationFn: () => hubApi<Template>(editingTemplate ? `/question-templates/${editingTemplate.id}` : '/question-templates', { method: editingTemplate ? 'PUT' : 'POST', headers: editingTemplate ? { 'If-Match': `"v${editingTemplate.version}"` } : undefined, body: JSON.stringify({ title: templateTitle, text: templateText }) }),
     onSuccess: async () => { setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(''); await client.invalidateQueries({ queryKey: ['question-templates'] }) },
@@ -218,8 +219,8 @@ export function QuestionsPage() {
   useEffect(() => {
     if (tab === 'TEMPLATES' || requestedSync.current || !connections.isSuccess) return
     requestedSync.current = true
-    sync.mutate({ kind: 'ALL' })
-  }, [tab, kind, connections.isSuccess])
+    startSync({ kind: 'ALL' })
+  }, [tab, kind, connections.isSuccess, startSync])
 
   useEffect(() => {
     if (!filterOpen && !statusOpen) return

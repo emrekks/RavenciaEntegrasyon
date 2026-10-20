@@ -185,6 +185,10 @@ jobs:
         working-directory: src/MarketplaceHub.Web
         run: npm run typecheck
 
+      - name: Lint frontend
+        working-directory: src/MarketplaceHub.Web
+        run: npm run lint
+
       - name: Test frontend
         working-directory: src/MarketplaceHub.Web
         run: npm test

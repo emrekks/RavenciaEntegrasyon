@@ -230,7 +230,7 @@ export function DashboardPage() {
   function downloadReport() {
     const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
     const csvRows = [['Tarih', 'Ciro', 'Sipariş', 'Para Birimi'], ...series.map(point => [formatDate(point.day), point.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 }), point.orderCount, point.currency])]
-    const url = URL.createObjectURL(new Blob([`﻿${csvRows.map(row => row.map(escape).join(';')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' }))
+    const url = URL.createObjectURL(new Blob([`\ufeff${csvRows.map(row => row.map(escape).join(';')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
     const name = `ravencia-rapor-${dateKey(new Date())}.csv`
     link.href = url
