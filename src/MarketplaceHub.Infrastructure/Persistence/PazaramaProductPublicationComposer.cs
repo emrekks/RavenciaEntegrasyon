@@ -124,8 +124,8 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         {
             var barcode = variant.Barcode!.Trim();
             var offer = offers[variant.Id];
-            var salePrice = PazaramaPriceInventoryRules.Price(offer.SalePrice);
-            var listPrice = PazaramaPriceInventoryRules.Price(offer.ListPrice);
+            var salePrice = PazaramaPriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer));
+            var listPrice = PazaramaPriceInventoryRules.Price(PriceInventoryComposer.OutboundListPrice(offer));
             if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0 || listPrice < salePrice)
                 return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.");
             if (offer.VatRate != decimal.Truncate(offer.VatRate) || !VatRates.Contains((int)offer.VatRate))

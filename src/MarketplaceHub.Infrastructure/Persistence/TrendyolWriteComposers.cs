@@ -145,15 +145,17 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var lines = new List<PriceInventoryPushLine>();
         foreach (var row in rows)
         {
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || row.Offer.SalePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice)
+            var salePrice = OutboundSalePrice(row.Offer);
+            var listPrice = OutboundListPrice(row.Offer);
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.", 422);
             if (isHepsiburada && (string.IsNullOrWhiteSpace(row.MerchantSku) || !string.Equals(row.MerchantSku, row.Variant.Sku, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(row.HepsiburadaSku)))
                 return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_LISTING_LINK_REQUIRED", $"'{row.Variant.Sku}' için doğrulanmış merchantSku ve hbSku eşleştirmesi gerekir.", 409);
             var publishable = Math.Max(0, row.Inventory.Available - row.Offer.SafetyStock);
             var quantity = decimal.Floor(publishable);
-            var priceHash = Hash($"{row.Offer.ListPrice:0.####}|{row.Offer.SalePrice:0.####}|TRY|{row.Offer.PriceVersion}");
+            var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, row.Offer.ListPrice, row.Offer.SalePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim()));
+            lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim()));
         }
         if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Pazaryerine gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
         // Dirty filtering must happen before the provider batch limit. A large
@@ -190,8 +192,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var lines = new List<PriceInventoryPushLine>();
         foreach (var row in rows)
         {
-            var salePrice = N11PriceInventoryRules.Price(row.Offer.SalePrice);
-            var listPrice = Math.Max(N11PriceInventoryRules.Price(row.Offer.ListPrice), salePrice);
+            var salePrice = N11PriceInventoryRules.Price(OutboundSalePrice(row.Offer));
+            var listPrice = Math.Max(N11PriceInventoryRules.Price(OutboundListPrice(row.Offer)), salePrice);
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.", 422);
             var quantity = N11PriceInventoryRules.Quantity(row.Inventory.Available - row.Offer.SafetyStock);
@@ -225,8 +227,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var lines = new List<(PriceInventoryPushLine Line, bool Price, bool Stock)>();
         foreach (var row in rows)
         {
-            var salePrice = PazaramaPriceInventoryRules.Price(row.Offer.SalePrice);
-            var listPrice = Math.Max(PazaramaPriceInventoryRules.Price(row.Offer.ListPrice), salePrice);
+            var salePrice = PazaramaPriceInventoryRules.Price(OutboundSalePrice(row.Offer));
+            var listPrice = Math.Max(PazaramaPriceInventoryRules.Price(OutboundListPrice(row.Offer)), salePrice);
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.", 422);
             var barcode = row.Barcode.Trim();
@@ -245,6 +247,21 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var payload = PazaramaPriceInventoryRules.Payload(lines);
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines.Select(x => x.Line).ToList()));
     }
+
+    // The prices that leave the panel: VAT added for an offer kept without VAT, two decimals.
+    internal static decimal OutboundSalePrice(ChannelOffer offer) =>
+        ChannelOfferPricePolicy.Outbound(offer.SalePrice, offer.VatRate, offer.VatInclusion, offer.RoundingMode);
+
+    internal static decimal OutboundListPrice(ChannelOffer offer) =>
+        Math.Max(ChannelOfferPricePolicy.Outbound(offer.ListPrice, offer.VatRate, offer.VatInclusion, offer.RoundingMode), OutboundSalePrice(offer));
+
+    // The sent-price marker of the Trendyol, Hepsiburada and Shopify requests, over the outbound prices.
+    // A two-decimal price keeps the marker it had before outbound rounding, so no offer is resent for it.
+    internal static string StandardPriceHash(decimal listPrice, decimal salePrice, long priceVersion) =>
+        Hash($"{listPrice:0.####}|{salePrice:0.####}|TRY|{priceVersion}");
+
+    internal static string StandardPriceHash(ChannelOffer offer) =>
+        StandardPriceHash(OutboundListPrice(offer), OutboundSalePrice(offer), offer.PriceVersion);
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }

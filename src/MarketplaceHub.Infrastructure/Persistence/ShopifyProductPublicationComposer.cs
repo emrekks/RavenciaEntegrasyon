@@ -128,12 +128,14 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
                 : optionValuesByVariant[variant.Id].Select(value => new { optionName = value.Label.Trim(), name = value.ValueLabel.Trim() }).ToArray();
             var sku = variant.Sku.Trim();
             var barcode = variant.Barcode?.Trim();
+            var salePrice = PriceInventoryComposer.OutboundSalePrice(offer);
+            var listPrice = PriceInventoryComposer.OutboundListPrice(offer);
             productVariants.Add(new()
             {
                 ["sku"] = sku,
                 ["barcode"] = string.IsNullOrWhiteSpace(barcode) ? null : barcode,
-                ["price"] = offer.SalePrice.ToString("0.00##", CultureInfo.InvariantCulture),
-                ["compareAtPrice"] = offer.ListPrice > offer.SalePrice ? offer.ListPrice.ToString("0.00##", CultureInfo.InvariantCulture) : null,
+                ["price"] = salePrice.ToString("0.00", CultureInfo.InvariantCulture),
+                ["compareAtPrice"] = listPrice > salePrice ? listPrice.ToString("0.00", CultureInfo.InvariantCulture) : null,
                 ["inventoryItem"] = new { tracked = true, requiresShipping = true },
                 ["inventoryQuantity"] = decimal.ToInt32(decimal.Truncate(publishable)),
                 ["optionValues"] = variantOptionValues

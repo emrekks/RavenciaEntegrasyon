@@ -6732,6 +6732,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 PriceVersion = 1,
                 Version = 1
             };
+            // The price came from the marketplace, so it counts as already sent there.
+            offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
             db.ChannelOffers.Add(offer);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
             {
@@ -6749,6 +6751,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return;
         }
 
+        // The marketplace reports VAT-inclusive prices; an offer kept without VAT stores the net
+        // amount that grosses up to the same price again.
+        salePrice = ChannelOfferPricePolicy.StoredFromGross(salePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
+        listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(listPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
         var priceChanged = offer.ListPrice != listPrice || offer.SalePrice != salePrice || !string.Equals(offer.Currency, currency, StringComparison.OrdinalIgnoreCase) || offer.VatRate != vatRate;
         var statusChanged = offer.Status != status;
         if (!priceChanged && !statusChanged) return;
@@ -6761,6 +6767,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (priceChanged)
         {
             offer.PriceVersion++;
+            // The new price is the one the marketplace already holds; without this marker the next
+            // price-and-stock send would push it back as a local change.
+            offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
             {
                 Id = Guid.CreateVersion7(),

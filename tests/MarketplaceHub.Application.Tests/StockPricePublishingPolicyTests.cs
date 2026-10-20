@@ -1,4 +1,5 @@
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -60,6 +61,38 @@ public sealed class StockPricePublishingPolicyTests
         Assert.Equal(StockProjectionDispatchDecision.Dispatch, StockProjectionOutboxPolicy.Decide(stockWriteEnabled: true, priceWriteEnabled: true));
     }
 
+    // K5: an offer stored without VAT is sent grossed up with its own VAT rate.
+    [Fact]
+    public void VatExcludedOffer_IsGrossedUpWhenSent()
+    {
+        Assert.Equal(120.00m, ChannelOfferPricePolicy.Outbound(100m, 20m, "EXCLUDED", "HALF_EVEN"));
+        Assert.Equal(100.00m, ChannelOfferPricePolicy.Outbound(100m, 20m, "INCLUDED", "HALF_EVEN"));
+        Assert.Equal(110.00m, ChannelOfferPricePolicy.Outbound(100m, 10m, "excluded", null));
+
+        var offer = Offer(listPrice: 150m, salePrice: 100m, vatInclusion: "EXCLUDED", vatRate: 20m);
+        Assert.Equal(120.00m, PriceInventoryComposer.OutboundSalePrice(offer));
+        Assert.Equal(180.00m, PriceInventoryComposer.OutboundListPrice(offer));
+    }
+
+    [Theory]
+    [InlineData("HALF_EVEN", 10.12)]
+    [InlineData("HALF_UP", 10.13)]
+    [InlineData("DOWN", 10.12)]
+    [InlineData("CEILING", 10.13)]
+    public void OutboundPrice_UsesTheOfferRoundingMode(string roundingMode, double expected)
+    {
+        Assert.Equal((decimal)expected, ChannelOfferPricePolicy.Outbound(10.125m, 0m, "INCLUDED", roundingMode));
+    }
+
+    [Fact]
+    public void OfferPricingModes_AreValidated()
+    {
+        Assert.True(ChannelOfferPricePolicy.IsKnownVatInclusion("EXCLUDED"));
+        Assert.False(ChannelOfferPricePolicy.IsKnownVatInclusion("NET"));
+        Assert.True(ChannelOfferPricePolicy.IsKnownRoundingMode("half_up"));
+        Assert.False(ChannelOfferPricePolicy.IsKnownRoundingMode("BANKERS"));
+    }
+
     // K6: the order shortfall is reserved only where the connection policy reserves the status.
     [Fact]
     public void OrderShortfall_IsReservedOnlyWhenThePolicyReservesTheStatus()
@@ -79,4 +112,51 @@ public sealed class StockPricePublishingPolicyTests
         var at = DateTimeOffset.Parse("2026-10-20T10:00:00Z");
         Assert.Equal(at.AddDays(14), OrderInventoryReservationPolicy.ExpiresAt(at));
     }
+
+    // K7: outbound prices have two decimals and the sent-price marker is taken over them; a price that
+    // already had two decimals keeps the marker it had, so no offer is resent because of the change.
+    [Fact]
+    public void OutboundPrice_HasTwoDecimalsAndKeepsTheExistingMarkerForTwoDecimalPrices()
+    {
+        var fourDecimals = Offer(listPrice: 120.4567m, salePrice: 99.9951m);
+        Assert.Equal(100.00m, PriceInventoryComposer.OutboundSalePrice(fourDecimals));
+        Assert.Equal(120.46m, PriceInventoryComposer.OutboundListPrice(fourDecimals));
+        Assert.Equal(PriceInventoryComposer.StandardPriceHash(120.46m, 100.00m, 3), PriceInventoryComposer.StandardPriceHash(fourDecimals));
+
+        var twoDecimals = Offer(listPrice: 120.5000m, salePrice: 100.0000m);
+        Assert.Equal(PriceInventoryComposer.StandardPriceHash(120.5m, 100m, 3), PriceInventoryComposer.StandardPriceHash(twoDecimals));
+    }
+
+    // K9: a marketplace price stored on an offer kept without VAT grosses up to the same price, so the
+    // marker written at import matches what the next send computes and the price is not pushed back.
+    [Theory]
+    [InlineData("HALF_EVEN")]
+    [InlineData("DOWN")]
+    [InlineData("CEILING")]
+    public void ImportedGrossPrice_RoundTripsThroughAVatExcludedOffer(string roundingMode)
+    {
+        var sale = ChannelOfferPricePolicy.StoredFromGross(119.99m, 20m, "EXCLUDED", roundingMode);
+        var list = ChannelOfferPricePolicy.StoredFromGross(149.90m, 20m, "EXCLUDED", roundingMode);
+        var offer = Offer(listPrice: list, salePrice: sale, vatInclusion: "EXCLUDED", vatRate: 20m, roundingMode: roundingMode);
+
+        Assert.Equal(119.99m, PriceInventoryComposer.OutboundSalePrice(offer));
+        Assert.Equal(149.90m, PriceInventoryComposer.OutboundListPrice(offer));
+        Assert.Equal(PriceInventoryComposer.StandardPriceHash(149.90m, 119.99m, offer.PriceVersion), PriceInventoryComposer.StandardPriceHash(offer));
+        Assert.Equal(119.99m, ChannelOfferPricePolicy.StoredFromGross(119.99m, 20m, "INCLUDED", roundingMode));
+    }
+
+    private static ChannelOffer Offer(decimal listPrice, decimal salePrice, string vatInclusion = "INCLUDED", decimal vatRate = 20m, string roundingMode = "HALF_EVEN") => new()
+    {
+        Id = Guid.Parse("30000000-0000-0000-0000-000000000001"),
+        ConnectionId = OrderConnection,
+        VariantId = Variant,
+        ListPrice = listPrice,
+        SalePrice = salePrice,
+        Currency = "TRY",
+        VatRate = vatRate,
+        VatInclusion = vatInclusion,
+        RoundingMode = roundingMode,
+        Status = "ACTIVE",
+        PriceVersion = 3
+    };
 }

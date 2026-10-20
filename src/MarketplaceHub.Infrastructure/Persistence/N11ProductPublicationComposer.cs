@@ -129,8 +129,8 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         {
             var stockCode = variant.Sku.Trim();
             var offer = offers[variant.Id];
-            var salePrice = N11PriceInventoryRules.Price(offer.SalePrice);
-            var listPrice = N11PriceInventoryRules.Price(offer.ListPrice);
+            var salePrice = N11PriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer));
+            var listPrice = N11PriceInventoryRules.Price(PriceInventoryComposer.OutboundListPrice(offer));
             if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0 || listPrice < salePrice)
                 return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.");
             if (VatRate(offer.VatRate) is not int vatRate)
