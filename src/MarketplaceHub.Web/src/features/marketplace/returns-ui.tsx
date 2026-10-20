@@ -246,7 +246,7 @@ export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, 
 
 // Loading and error states inside popups (same as the panel's).
 export function RrLoading({ text = 'Veriler yükleniyor…' }: { text?: string }) {
-  return <div className="rr-state rr-loading" role="status" aria-live="polite"><span className="rr-mark"><img src="/pack/brand/ravencia-symbol-transparent.png" alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} /></span><strong>{text}</strong><p>Bu birkaç saniye sürebilir.</p><span className="rr-bar"><i /></span></div>
+  return <div className="rr-state rr-loading" role="status" aria-live="polite"><span className="rr-mark"><img src="/pack/brand/ravencia-symbol-128.webp" alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} /></span><strong>{text}</strong><p>Bu birkaç saniye sürebilir.</p><span className="rr-bar"><i /></span></div>
 }
 export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const retry = useAutoRetry(error, onRetry)

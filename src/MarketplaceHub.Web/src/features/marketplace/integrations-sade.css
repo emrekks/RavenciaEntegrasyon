@@ -1,6 +1,4 @@
-/* Integrations page in the Sade design language (docs/TASARIM-DILI.md): flat cards with 1px lines, status by shape,
-   one violet accent for the main action only. */
-.app-shell.stitch-shell main .integrations-reference-page { --sade-control: 34px; }
+
 
 /* Head: title with the page actions; "Filtrele" is secondary, "Ekle" is the one primary action. */
 .app-shell.stitch-shell main .integrations-reference-page .integration-reference-heading h1 { font-size: 22px; font-weight: 600; letter-spacing: 0; }
@@ -33,7 +31,6 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; line-height: 1.3; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 6px; font-size: 12px; font-weight: 500; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state .cm-glyph { width: 14px; height: 14px; color: var(--rv-color-subtle); }
-.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected .cm-glyph { color: var(--rv-color-accent); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-menu-trigger { width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-menu-trigger:hover,
@@ -69,15 +66,6 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 12px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { display: grid; width: 36px; height: 36px; margin: 0; place-items: center; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 9px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-private-icon svg { width: 18px; height: 18px; }
-
-/* Audit against docs/TASARIM-DILI.md — corrections:
-   - status by shape: the "done" glyph is ink, not green (accent is reserved for success notices);
-   - tags 20px / radius 5, tiles and logos on the control/table radii (7 / 8), logo frame on the plain border;
-   - buttons and tabs in sentence case (only titles are capitalised);
-   - card name at the emphasised-value size 16/600;
-   - button icons follow the button text colour;
-   - focus: violet edge with a soft halo. */
-.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected .cm-glyph { color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { height: 20px; border-radius: 5px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { border-color: var(--rv-color-border); border-radius: 8px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { border-radius: 7px; }

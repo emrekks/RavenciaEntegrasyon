@@ -273,7 +273,6 @@
       "actions actions actions";
   }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(n + 2) { display: none; }
-  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { margin-top: 8px; }
 
   .app-shell.stitch-shell main .orders-page .order-reference-products > article > div { display: block; }
   .app-shell.stitch-shell main .orders-page .order-reference-products > article > div > strong { display: block; margin-bottom: 4px; }
@@ -422,7 +421,6 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-meta { display: contents; }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { grid-area: platform; align-self: center; }
-  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-number { grid-area: number; align-self: center; margin: 0; }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(1) { grid-area: date; align-self: center; margin: 0; }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { grid-area: delivery; grid-column: 1 / -1; margin: 4px -12px 8px; padding: 8px 12px; }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-buyer { grid-area: buyer; padding: 8px 0 6px; }
@@ -511,7 +509,6 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head { display: none; }
   .app-shell.stitch-shell main .orders-page .orders-reference-filter-shell { margin-bottom: 10px; }
   .app-shell.stitch-shell main .orders-page .orders-control-bar.mfs:not(.is-open) { margin-bottom: 0; }
-  .app-shell.stitch-shell main .orders-page .order-reference-table { margin-top: 0; }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row { margin-bottom: 10px; }
   .app-shell.stitch-shell main .orders-page .orders-selection-bar {
     position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
@@ -533,7 +530,6 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .orders-page { gap: 10px; }
   .app-shell.stitch-shell main .orders-page > .page-heading { position: relative; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 0 0 10px; }
-  .app-shell.stitch-shell main .orders-page > .page-heading > div:first-child { min-width: 0; }
   .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions { display: block; width: auto; flex: 0 0 auto; }
   .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions > :is(.orders-export-action, .orders-import-action, .orders-sync-action) { display: none; }
   .app-shell.stitch-shell main .orders-page .orders-heading-more { position: relative; display: block; }

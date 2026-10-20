@@ -198,7 +198,6 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-body { display: grid; grid-auto-rows: max-content; gap: 16px; padding: 20px 24px; background: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 0; overflow: hidden; background: none; border: 1px solid var(--rv-color-border); border-radius: 10px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div { display: grid; gap: 4px; align-content: start; justify-items: start; min-width: 0; margin: 0; padding: 12px 14px; background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:first-child { border-left: 0; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary strong { font-size: 14px; font-weight: 600; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary :is(small:not(:first-child), code) { padding: 0; color: var(--rv-color-muted); background: none; font-family: inherit; font-size: 12px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary .cargo-provider-icon { width: 112px; height: 28px; object-fit: contain; object-position: left center; }

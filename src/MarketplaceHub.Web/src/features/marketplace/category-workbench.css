@@ -310,7 +310,6 @@
 .app-shell.stitch-shell main .cm-webcolor .web-color-panel-value > span { font-size: 13px; font-weight: 400; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; margin: 0; padding: 8px 0; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p:first-child { border-top: 0; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p span { font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p small { color: var(--rv-color-muted); font-size: 12px; }
 .panel.mapping-step.cm-card .cm-context > .cm-context-link { align-self: flex-end; width: 28px; height: 36px; margin-inline: -16px; }

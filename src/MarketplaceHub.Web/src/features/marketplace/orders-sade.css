@@ -22,7 +22,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-inv-trigger { gap: 4px; font-size: 12.5px; font-weight: 600; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-inv-trigger .rr-ico { width: 14px; height: 14px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-anchor > .rr-menu { left: 0; right: auto; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl { max-width: 100%; height: 30px; padding: 0 8px; gap: 5px; font-size: 12.5px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl { max-width: 100%; height: 36px; padding: 0 8px; gap: 5px; font-size: 12.5px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl .rr-ico { width: 14px; height: 14px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl.rr-printed { color: var(--rr-muted); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-muted-note { color: var(--rr-subtle); font-size: 12px; }
@@ -149,7 +149,7 @@
    identity · time strip · buyer and carrier · products · invoice and total · two actions */
 @media (max-width: 760px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f { flex-wrap: nowrap; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn { min-width: 0; flex: none; height: 40px; padding-inline: 10px; gap: 6px; font-size: 13px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn { min-width: 0; flex: none; height: 36px; padding-inline: 10px; gap: 6px; font-size: 13px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn:not(.rr-primary) > .rr-ico:first-child { display: none; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn.rr-primary { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-panel { background: none; border: 0; }
@@ -197,7 +197,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell > .rr-anchor { grid-column: 1 / -1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell.rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell.rr-actcell > *, :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell.rr-actcell > .rr-anchor > .rr-trigger { width: 100% !important; min-width: 0; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell :is(.rr-btn, .rr-trigger) { width: 100%; height: 40px !important; justify-content: center; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell :is(.rr-btn, .rr-trigger) { width: 100%; height: 36px; justify-content: center; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell > :only-child { grid-column: 1 / -1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-trigger > span { flex: none; }
 }

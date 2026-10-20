@@ -946,7 +946,6 @@
   .order-invoice-payable > strong { font-size: var(--rv-font-size-md); font-variant-numeric: tabular-nums; }
   .return-detail-trigger, .return-cargo-track, .cargo-track-action { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: var(--rv-space-1); padding: 0 var(--rv-space-3); color: var(--rv-color-info); background: color-mix(in srgb, var(--rv-color-info) 13%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-info) 55%, transparent); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 600; text-decoration: none; }
   .return-detail-trigger:hover, .return-cargo-track:hover, .cargo-track-action:hover { color: #fff; background: var(--rv-color-info); border-color: var(--rv-color-info); }
-  .return-reference-status > .badge { width: fit-content; max-width: 100%; justify-content: center; }
   .invoice-status-label { width: fit-content; max-width: 100%; }
   .order-reference-invoice .invoice-status-label { min-height: 26px; padding: 4px 7px; font-size: 12px; line-height: 1.25; }
   .return-reference-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rv-space-3); align-items: end; padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
@@ -2384,7 +2383,6 @@
   .order-reference-table { overflow: visible; }
   .return-reference-table { overflow-x: auto; overflow-y: visible; }
   .order-reference-head, .order-reference-row, .order-reference-grid { min-width: 1180px; }
-  .return-reference-head, .return-reference-row { min-width: 1240px; }
   .order-reference-head > *, .return-reference-head > * { white-space: nowrap; }
   .order-reference-grid > *, .return-reference-row > * { overflow-wrap: anywhere; }
   .order-reference-products > article { width: 100%; min-height: 130px; }
@@ -2403,7 +2401,6 @@
   .return-reference-workspace { min-width: 0; overflow: visible; }
   .return-reference-head, .return-reference-row { min-width: 1240px; }
   .return-reference-row > * { overflow-wrap: anywhere; }
-  .return-reference-status { min-width: 0; align-content: center; justify-items: start; gap: 12px; padding: 8px; background: transparent; border: 0; }
   .mapping-local-manager > summary { display: flex; width: 100%; height: var(--rv-control-height-md); min-height: var(--rv-control-height-md); box-sizing: border-box; align-items: center; justify-content: flex-start; gap: var(--rv-space-3); padding: 0 var(--rv-space-4); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); list-style: none; }
   .mapping-local-manager > summary::-webkit-details-marker { display: none; }
   .mapping-local-manager > summary > span { display: grid; min-width: 0; flex: 1 1 auto; gap: 2px; overflow: hidden; }
@@ -2521,7 +2518,6 @@
   .panel-library-section .panel-attribute-records > .mapping-empty-row { grid-column: 1 / -1; }
 
   .mapping-saved-header-tools { row-gap: var(--rv-space-3); column-gap: var(--rv-space-3); }
-  .mapping-saved-card > header h2 { margin: 0; }
   .mapping-saved-table table { border-collapse: separate; border-spacing: 0; }
   .mapping-saved-table th, .mapping-saved-table td { vertical-align: middle; }
   .mapping-saved-table th:last-child, .mapping-saved-table td:last-child { text-align: right; }
@@ -2830,7 +2826,6 @@
   .mapping-action { align-items: stretch; flex-direction: column; }
   .product-toolbar { grid-template-columns: 1fr 1fr; }
   .product-toolbar .order-search { grid-column: 1 / -1; }
-  .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .return-reference-filters .return-filter-actions { grid-column: 1 / -1; }
   .invoice-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .invoice-reference-filters > label:first-child { grid-column: 1 / -1; }
@@ -2853,7 +2848,6 @@
   .app-shell.stitch-shell > aside .sidebar-brand-row { justify-content: flex-start; padding: 0 0 var(--rv-space-2); border-bottom: 0; }
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row { display: flex; min-height: 48px; align-content: initial; justify-content: flex-start; justify-items: initial; grid-template-rows: none; row-gap: 0; padding: 0 0 var(--rv-space-2); }
   .app-shell.stitch-shell > aside .brand.wordmark, .app-shell.stitch-shell.sidebar-collapsed > aside .brand.wordmark { display: grid; }
-  .app-shell.stitch-shell > aside .sidebar-pin-toggle { display: inline-grid; }
   .app-shell.stitch-shell > aside .nav-label, .app-shell.stitch-shell.sidebar-collapsed > aside .nav-label { display: inline; }
   .app-shell.stitch-shell > aside .sidebar-pin-toggle { display: inline-grid; }
   .app-shell.stitch-shell > aside nav, .app-shell.stitch-shell > aside .settings-nav { display: flex; gap: var(--rv-space-2); margin: 0; padding: 0; overflow-x: auto; border: 0; }
@@ -3057,10 +3051,6 @@
 .content > .jobs-reference-heading,
 .content > .mapping-reference-heading { margin-bottom: 0; }
 .content > :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { margin-bottom: 0; }
-
-.app-shell.stitch-shell > aside nav,
-.app-shell.stitch-shell > aside .settings-nav,
-.app-shell.stitch-shell > aside nav .nav-group { gap: var(--rv-space-2); }
 .sidebar-profile-copy { justify-items: center; text-align: center; }
 .sidebar-profile-copy strong { font-size: var(--rv-font-size-md); }
 
@@ -3157,7 +3147,6 @@
 .mapping-section-heading h2, .mapping-saved-card > header h2 { display: inline-flex; align-items: center; gap: var(--rv-space-2); }
 .mapping-section-heading h2 .ui-icon, .mapping-saved-card > header h2 .ui-icon { flex: 0 0 18px; }
 .mapping-saved-card > header { margin-bottom: 0; }
-.mapping-saved-table { margin-top: var(--rv-space-5); }
 
 :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) {
   color: var(--rv-color-ink);
@@ -3883,14 +3872,6 @@ button,
     column-gap: var(--rv-space-4);
   }
 
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-count {
-    display: inline-flex;
-  }
-
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-pin-toggle {
-    display: inline-grid;
-  }
-
   .app-shell.stitch-shell:not(.sidebar-collapsed) > aside .sidebar-profile,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
     justify-content: flex-start;
@@ -4154,10 +4135,6 @@ button,
     gap: 0;
     padding-inline: 0;
     grid-template-columns: none;
-  }
-
-  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) .nav-icon-slot {
-    margin-inline: auto;
   }
 }
 
@@ -5286,8 +5263,6 @@ small,
   line-height: 1.5;
 }
 
-.app-shell.stitch-shell main textarea { min-height: 96px; }
-
 .app-shell.stitch-shell main select { padding-right: 38px; }
 
 .app-shell.stitch-shell main input[type="checkbox"],
@@ -5518,19 +5493,9 @@ small,
    only toward the right. Links keep the same layout in both states; the
    aside clips the unused part of the link when it is collapsed. */
 @media (min-width: 701px) {
-  .app-shell.stitch-shell,
-  .app-shell.stitch-shell.sidebar-collapsed,
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded,
-  .app-shell.stitch-shell.sidebar-pinned {
-    transition: grid-template-columns 620ms var(--rv-ease-standard);
-  }
 
   .app-shell.stitch-shell > aside {
     transition: width 620ms var(--rv-ease-standard), padding-inline 620ms var(--rv-ease-standard), box-shadow 620ms var(--rv-ease-standard);
-  }
-
-  .app-shell.stitch-shell .rv-topbar {
-    transition: left 620ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside,
@@ -7883,11 +7848,6 @@ small,
 @media (max-width: 700px) {
   .app-shell.stitch-shell main .product-metrics article {
     grid-template-columns: 42px minmax(0, 1fr);
-  }
-
-  .app-shell.stitch-shell main .product-metrics .product-metric-icon {
-    width: 42px;
-    height: 42px;
   }
 
   .app-shell.stitch-shell main .product-metrics .product-metric-icon .ui-icon {
@@ -11345,7 +11305,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 
 @media (max-width: 1200px) {
   .rv-questions-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .rv-questions-search { grid-column: 1 / -1; }
 }
 
 /* Keep ambient auth labels from widening the page when the text changes. */
@@ -12079,11 +12038,6 @@ h1, h2, h3, h4, :is(.orders-control-bar, .invoice-reference-filters, .return-ref
    when the content grows past the screen. The lane is invisible like the bar itself. */
 html { scrollbar-gutter: stable; }
 @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: transparent transparent; } .is-scrolling, .is-scrollbar-hover { scrollbar-color: var(--rv-color-border-strong) transparent; } }
-
-
-/* One page gutter for every screen, as on the new-design pages: 28px top and bottom, 24px sides. */
-.app-shell.stitch-shell > main > .content { padding: 28px 24px !important; }
-@media (max-width: 760px) { .app-shell.stitch-shell > main > .content { padding: 16px !important; } }
 
 /* One page gutter for every screen, as on the new-design pages: 28px top and bottom, 24px sides. */
 .app-shell.stitch-shell > main > .content { padding: 28px 24px !important; }

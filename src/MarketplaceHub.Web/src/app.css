@@ -3,4 +3,9 @@
 @import './styles/design-system.css';
 @import './styles/notifications.css';
 
-@layer reset, tokens, base, components, layouts, features, utilities;
+/*
+ * Cascade layers, lowest first (the bundler hoists this order). `pages` and `responsive` are reserved for page and
+ * breakpoint rules moved out of unlayered feature files: a rule placed there no longer needs !important to beat a
+ * component rule. Unlayered rules (most feature CSS today) still win over every layer.
+ */
+@layer reset, tokens, base, components, layouts, features, pages, responsive, utilities;

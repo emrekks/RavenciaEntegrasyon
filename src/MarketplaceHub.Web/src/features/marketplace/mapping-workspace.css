@@ -348,7 +348,6 @@
 }
 /* Mapping backup actions on phones: the standard secondary button look, two equal columns. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .mapping-reference-heading-actions { width: 100%; justify-items: stretch; }
   .app-shell.stitch-shell main .mapping-reference-heading-actions > span { justify-self: start; }
   .app-shell.stitch-shell main .mapping-transfer-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .app-shell.stitch-shell main .mapping-transfer-actions > :is(button, .mapping-transfer-upload) {

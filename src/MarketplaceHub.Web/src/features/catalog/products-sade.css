@@ -269,7 +269,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-pmarks { justify-content: flex-start; flex-wrap: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell > *, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell > .rr-anchor > .rr-trigger { width: 100% !important; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell :is(.rr-btn, .rr-trigger) { height: 40px !important; justify-content: center; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell :is(.rr-btn, .rr-trigger) { height: 36px; justify-content: center; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell .rr-btn.rr-link { border: 1px solid var(--rr-line-strong); border-radius: 10px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtip { left: 0; transform: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-actcell .rr-trigger > span { flex: none; }

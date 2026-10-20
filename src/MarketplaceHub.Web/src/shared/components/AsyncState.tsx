@@ -5,7 +5,7 @@ import { autoRetryLine, useAutoRetry, type AutoRetry } from '../hooks/useAutoRet
 // the brand mark in a turning ring, a title, a short line and the loading bar; errors use the same frame.
 export function Busy({ text = 'Veriler yükleniyor…' }: { text?: string }) {
   return <div className="rv-state rv-loading-feedback" role="status" aria-live="polite">
-    <span className="rv-state-mark" aria-hidden="true"><img src="/pack/brand/ravencia-symbol-transparent.png" alt="" /></span>
+    <span className="rv-state-mark" aria-hidden="true"><img src="/pack/brand/ravencia-symbol-128.webp" alt="" /></span>
     <strong>{text}</strong>
     <p>Bu birkaç saniye sürebilir.</p>
     <span className="rv-splash-loading-bar" aria-hidden="true"><span className="rv-splash-loading-progress" /></span>
