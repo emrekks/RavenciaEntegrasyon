@@ -1271,7 +1271,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var draft = draftResult.Value!;
         var dedup = $"product-create:{connectionId:N}:{productId:N}:{draft.PayloadHash}";
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null && ReusePublicationJob(existing))
+        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: true, cancellationToken))
         {
             await transaction.CommitAsync(cancellationToken);
             return ServiceResult<Guid>.Ok(existing.Id);
@@ -1362,7 +1362,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var draft = build.Value!;
         var dedup = $"product-update:{connectionId:N}:{productId:N}:{draft.Publication.PayloadHash}";
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductUpdate && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null && ReusePublicationJob(existing)) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
+        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: false, cancellationToken)) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
 
         var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId, cancellationToken);
         profile.DesiredStatus = "LIVE"; profile.ActualStatus = "UPDATE_QUEUED"; profile.LastRejectionCode = null; profile.Version++;
@@ -1374,7 +1374,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var phase = draft.Publication.Mode == "APPROVED" ? "SUBMIT_CONTENT" : "SUBMIT_UNAPPROVED";
         var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null));
         db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
-        await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+        return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductUpdate, dedup, jobId, cancellationToken);
     }
 
     public async Task<ServiceResult<Guid>> EnqueueProductArchiveAsync(Guid tenantId, Guid productId, Guid connectionId, bool archived, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1388,7 +1388,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = $"product-archive:{connectionId:N}:{productId:N}:{archived}:{draft.PayloadHash}";
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductArchive && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null && ReusePublicationJob(existing)) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
+        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: false, cancellationToken)) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
         var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId, cancellationToken);
         profile.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; profile.ActualStatus = archived ? "ARCHIVE_QUEUED" : "UNARCHIVE_QUEUED"; profile.LastRejectionCode = null; profile.Version++;
         var listingVariants = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
@@ -1398,7 +1398,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new ProductArchiveJobPayload(jobId, productId, profile.Id, archived, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, now, now.AddHours(24)));
         db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 20, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
-        await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+        return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductArchive, dedup, jobId, cancellationToken);
     }
 
     // Pazarama: close (or reopen) mapped products for sale by barcode. There is no listing profile behind a
@@ -1410,8 +1410,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var normalized = barcodes.Select(x => x?.Trim() ?? "").Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.Ordinal).ToList();
         if (normalized.Count is < 1 or > 100) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Bir istekte 1-100 barkod gönderilebilir.", 422);
-        var linked = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && normalized.Contains(x.ExternalId)).Select(x => x.ExternalId).ToListAsync(cancellationToken);
-        var unknown = normalized.Where(code => !linked.Contains(code, StringComparer.OrdinalIgnoreCase)).ToList();
+        // K28: the stored barcode may differ in case from the one sent; compare upper-cased on both sides.
+        var upperBarcodes = normalized.Select(code => code.ToUpperInvariant()).ToArray();
+        var linked = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && upperBarcodes.Contains(x.ExternalId.Trim().ToUpper())).Select(x => x.ExternalId).ToListAsync(cancellationToken);
+        var unknown = normalized.Where(code => !linked.Any(external => string.Equals(external.Trim(), code, StringComparison.OrdinalIgnoreCase))).ToList();
         if (unknown.Count > 0) return ServiceResult<Guid>.Fail("PAZARAMA_BARCODE_NOT_LINKED", $"Şu barkodlar panelde bir varyanta bağlı değil: {string.Join(", ", unknown.Take(5))}{(unknown.Count > 5 ? " …" : "")}. Önce Pazarama ürün eşleştirmesini çalıştırın.", 404);
 
         var dedup = $"pazarama-sale:{connectionId:N}:{close}:{Hash(string.Join('|', normalized))}";
@@ -1594,7 +1596,39 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     }
     private static string NormalizeKey(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim())));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static bool ReusePublicationJob(IntegrationJob job) => job.Status is not JobStatus.Blocked and not JobStatus.Cancelled;
+    // K6: a queued or running job with the same payload is reused. A finished one (blocked, cancelled, dead,
+    // manual review, or a succeeded update/archive) gives up its dedup key ("...:retired:{id}") so the same
+    // payload can be queued again; before, a Blocked or Cancelled create was returned forever and an update
+    // or archive hit the unique (TenantId, JobType, JobDedupKey) index with a 500. A succeeded create is still
+    // reused, so the same product payload is never submitted twice.
+    private async Task<bool> ReuseOrRetirePublicationJobAsync(IntegrationJob job, string dedup, bool reuseSucceeded, CancellationToken cancellationToken)
+    {
+        if (job.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled || reuseSucceeded && job.Status == JobStatus.Succeeded) return true;
+        var retiredKey = $"{dedup}:retired:{job.Id:N}";
+        await db.IntegrationJobs
+            .Where(x => x.TenantId == job.TenantId && x.Id == job.Id && x.JobDedupKey == dedup)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.JobDedupKey, retiredKey), cancellationToken);
+        return false;
+    }
+
+    // A concurrent request that queued the same payload first wins; its job is returned instead of a 500.
+    private async Task<ServiceResult<Guid>> SavePublicationJobAsync(Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction, Guid tenantId, string jobType, string dedup, Guid jobId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<Guid>.Ok(jobId);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            var concurrent = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken);
+            if (concurrent is not null) return ServiceResult<Guid>.Ok(concurrent.Id);
+            throw;
+        }
+    }
     private static string JobWire(JobStatus value) => value switch { JobStatus.RetryScheduled => "RETRY_SCHEDULED", JobStatus.ManualReview => "MANUAL_REVIEW", _ => value.ToString().ToUpperInvariant() };
 
     private async Task<List<Guid>> ProductFamilyProductIdsAsync(Guid tenantId, Product product, CancellationToken cancellationToken)

@@ -43,7 +43,7 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         if (variants.Any(variant => string.IsNullOrWhiteSpace(variant.Sku) || variant.Sku.Trim().Length > 100)) return Fail("SKU_INVALID", "Tüm Shopify varyantlarda en fazla 100 karakterlik SKU bulunmalıdır.", field: "variants");
         if (variants.Select(variant => variant.Sku.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("SKU_DUPLICATE", "Shopify ürünündeki varyant SKU değerleri benzersiz olmalıdır.", field: "variants");
         if (variants.Any(variant => !string.IsNullOrWhiteSpace(variant.Barcode)
-                && (variant.Barcode.Trim().Length > 40 || !variant.Barcode.Trim().All(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_'))))
+                && (variant.Barcode.Trim().Length > 40 || !variant.Barcode.Trim().All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_'))))
             return Fail("BARCODE_INVALID", "Shopify varyant barkodu en fazla 40 karakter olabilir ve yalnızca harf, rakam, nokta, tire veya alt çizgi içerebilir.", field: "variants");
 
         var variantIds = variants.Select(variant => variant.Id).ToArray();
