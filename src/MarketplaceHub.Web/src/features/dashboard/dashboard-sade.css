@@ -11,12 +11,7 @@
    the whole page past the screen's right edge (narrow desktop windows, 20 Oct 2026). */
 main .rr.rr-dashboard { grid-template-columns: minmax(0, 1fr); }
 main .rr.rr-dashboard > * { min-width: 0; }
-/* Six operation cards: one row where the section has room for six, otherwise two rows of three. */
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect { container-type: inline-size; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-@container (min-width: 960px) {
-  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-}
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; color: var(--rr-ink); text-decoration: none; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rr-hover); border-color: var(--rr-line-strong); }
