@@ -16,14 +16,48 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
     internal static readonly TimeSpan BreakDuration = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan MaximumQuotaBreak = TimeSpan.FromMinutes(15);
 
+    // G11: a request that will first wait for a quota token (its rate-limit handler calls PassProbeGate once the
+    // token is taken) claims the half-open probe only then, so a probe queued for minutes behind the quota no
+    // longer keeps every other request out with 503s.
+    internal static readonly HttpRequestOptionsKey<Func<HttpResponseMessage?>> ProbeGateKey = new("MarketplaceHub.Circuit.ProbeGate");
+
+    // Called by a rate-limit handler right after the quota token: null lets the request go, otherwise the
+    // local open-circuit answer is returned instead of sending it.
+    internal static HttpResponseMessage? PassProbeGate(HttpRequestMessage request) =>
+        request.Options.TryGetValue(ProbeGateKey, out var gate) ? gate() : null;
+
+    private static bool WaitsForQuota(HttpRequestMessage request) =>
+        request.Options.TryGetValue(Hepsiburada.HepsiburadaRateLimitHandler.QuotaAcquiredKey, out _)
+        || request.Options.TryGetValue(N11.N11RateLimitHandler.QuotaAcquiredKey, out _)
+        || request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.QuotaAcquiredKey, out _);
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var circuit = state.For(CircuitKeyFor(request.RequestUri));
-        if (!circuit.TryEnter(timeProvider.GetUtcNow(), out var probe, out var openResponse)) return openResponse!;
+        var deferProbe = WaitsForQuota(request);
+        if (!circuit.TryEnter(timeProvider.GetUtcNow(), deferProbe, out var probe, out var openResponse)) return openResponse!;
+        var refusedAtGate = false;
+        if (deferProbe)
+            request.Options.Set(ProbeGateKey, () =>
+            {
+                if (!circuit.TryClaimDeferredProbe(timeProvider.GetUtcNow(), out var claimed, out var refused))
+                {
+                    refusedAtGate = true;
+                    return refused;
+                }
+                probe = claimed;
+                return null;
+            });
         var recorded = false;
         try
         {
             var response = await base.SendAsync(request, cancellationToken);
+            // Answered locally at the gate: nothing reached the marketplace, so the circuit learns nothing.
+            if (refusedAtGate)
+            {
+                recorded = true;
+                return response;
+            }
             var status = (int)response.StatusCode;
             if (status == 429)
                 circuit.RecordQuota(timeProvider.GetUtcNow(), RetryAfter(response.Headers.RetryAfter));
@@ -82,12 +116,34 @@ internal sealed class MarketplaceCircuit
     private bool openedForQuota;
     private bool probeActive;
 
-    public bool TryEnter(DateTimeOffset now, out bool probe, out HttpResponseMessage? openResponse)
+    // deferProbe: past the break the request is let on towards its quota wait without claiming the probe;
+    // TryClaimDeferredProbe claims it once the token is held.
+    public bool TryEnter(DateTimeOffset now, bool deferProbe, out bool probe, out HttpResponseMessage? openResponse)
     {
         lock (sync)
         {
             probe = false;
             openResponse = null;
+            if (openUntil is null) return true;
+            if (now < openUntil || probeActive)
+            {
+                openResponse = OpenResponse(openedForQuota, openUntil.Value > now ? openUntil.Value - now : TimeSpan.FromSeconds(1));
+                return false;
+            }
+            if (deferProbe) return true;
+            probeActive = true;
+            probe = true;
+            return true;
+        }
+    }
+
+    public bool TryClaimDeferredProbe(DateTimeOffset now, out bool probe, out HttpResponseMessage? openResponse)
+    {
+        lock (sync)
+        {
+            probe = false;
+            openResponse = null;
+            // Another probe closed the circuit while this request waited: it goes as an ordinary request.
             if (openUntil is null) return true;
             if (now < openUntil || probeActive)
             {

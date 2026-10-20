@@ -32,6 +32,8 @@ public sealed class HepsiburadaRateLimitHandler(
                 logger?.LogWarning(exception, "Shared Hepsiburada rate limiter unavailable; sending without the shared quota");
             }
         }
+        // The circuit's half-open probe is claimed only now that the token is held (G11).
+        if (MarketplaceCircuitBreakerHandler.PassProbeGate(request) is { } refused) return refused;
         if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
         return await base.SendAsync(request, cancellationToken);
     }
