@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Api.Operations;
+using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -13,7 +14,7 @@ internal static class HepsiburadaProductMatchEndpoints
 {
     public static RouteGroupBuilder MapHepsiburadaProductMatchEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/connections/{connectionId:guid}/product-matches", ReadPendingAsync);
+        api.MapGet("/connections/{connectionId:guid}/product-matches", ReadPendingAsync).RequireSameOriginFetch();
         api.MapPost("/connections/{connectionId:guid}/product-matches/review", ReviewAsync).WithServerBudget();
         return api;
     }

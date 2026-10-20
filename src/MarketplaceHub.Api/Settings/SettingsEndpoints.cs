@@ -94,7 +94,7 @@ public static class SettingsEndpoints
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ShippingLabelKey, http.RequestAborted);
         var settings = ParseObject(setting?.ValueJson);
-        return Results.Ok(new { settings, version = setting?.Version ?? 0 });
+        return Versioned(http, setting?.Version ?? 0, new { settings, version = setting?.Version ?? 0 });
     }
 
     private static async Task<IResult> SaveShippingLabelSettingsAsync(JsonElement settings, HttpContext http, AppDbContext db, TimeProvider timeProvider)
@@ -105,6 +105,7 @@ public static class SettingsEndpoints
         if (valueJson.Length > MaximumJsonCharacters) return Problem(http, new("SHIPPING_LABEL_SETTINGS_TOO_LARGE", "Kargo etiketi ayarları çok büyük.", 413));
 
         var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ShippingLabelKey, http.RequestAborted);
+        if (Precondition(http, setting) is { } precondition) return precondition;
         if (setting is null)
         {
             setting = new TenantSetting { TenantId = tenant.TenantId, Key = ShippingLabelKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
@@ -118,7 +119,7 @@ public static class SettingsEndpoints
         }
 
         await db.SaveChangesAsync(http.RequestAborted);
-        return Results.Ok(new { settings = ParseObject(valueJson), version = setting.Version });
+        return Versioned(http, setting.Version, new { settings = ParseObject(valueJson), version = setting.Version });
     }
 
     private static async Task<IResult> GetAppearanceSettingsAsync(HttpContext http, AppDbContext db)
@@ -126,7 +127,7 @@ public static class SettingsEndpoints
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == AppearanceKey, http.RequestAborted);
         var settings = NormalizeAppearance(ParseObject(setting?.ValueJson));
-        return Results.Ok(new { settings, version = setting?.Version ?? 0 });
+        return Versioned(http, setting?.Version ?? 0, new { settings, version = setting?.Version ?? 0 });
     }
 
     private static async Task<IResult> SaveAppearanceSettingsAsync(JsonElement settings, HttpContext http, AppDbContext db, TimeProvider timeProvider)
@@ -137,6 +138,7 @@ public static class SettingsEndpoints
 
         var valueJson = JsonSerializer.Serialize(normalized);
         var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == AppearanceKey, http.RequestAborted);
+        if (Precondition(http, setting) is { } precondition) return precondition;
         if (setting is null)
         {
             setting = new TenantSetting { TenantId = tenant.TenantId, Key = AppearanceKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
@@ -150,7 +152,7 @@ public static class SettingsEndpoints
         }
 
         await db.SaveChangesAsync(http.RequestAborted);
-        return Results.Ok(new { settings = normalized, version = setting.Version });
+        return Versioned(http, setting.Version, new { settings = normalized, version = setting.Version });
     }
 
     private static object NormalizeAppearance(JsonElement? value)
@@ -310,4 +312,24 @@ public static class SettingsEndpoints
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
+
+    // Settings answer with the strong ETag "v{version}". A save that sends If-Match is refused with 412
+    // when the setting changed meanwhile (or does not exist yet); a save without it still writes, as
+    // before, so older clients keep working.
+    internal static IResult? Precondition(HttpContext http, TenantSetting? setting)
+    {
+        var value = http.Request.Headers.IfMatch.ToString();
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (value.Length < 4 || !value.StartsWith("\"v", StringComparison.Ordinal) || !value.EndsWith('"') || !long.TryParse(value[2..^1], out var expected) || expected <= 0)
+            return Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400));
+        return setting is not null && setting.Version == expected
+            ? null
+            : Problem(http, new("PRECONDITION_FAILED", "Ayarlar başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", 412));
+    }
+
+    private static IResult Versioned(HttpContext http, long version, object body)
+    {
+        if (version > 0) http.Response.Headers.ETag = $"\"v{version}\"";
+        return Results.Ok(body);
+    }
 }

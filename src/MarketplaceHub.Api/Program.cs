@@ -96,6 +96,17 @@ if (args is ["bootstrap"]) { await using var scope = app.Services.CreateAsyncSco
 if (args is ["identity", "reset-mfa", var email, var reason]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BreakGlassService>().ResetMfaAsync(email, reason, CancellationToken.None); return; }
 
 app.UseForwardedHeaders();
+// Queue monitoring is for the server's own network (see FetchMetadata.IsFromServerNetwork); /health/live
+// and /health/ready stay reachable because the deploy scripts probe /health/ready through the edge.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/health/queues") && !FetchMetadata.IsFromServerNetwork(context))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
 app.UseExceptionHandler();
 app.Use(async (context, next) =>
 {
@@ -108,6 +119,7 @@ app.UseMiddleware<RequestSecurityMiddleware>();
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<SessionStateBoundaryMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
+app.UseMiddleware<ElevatedRoleMfaMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.UseRateLimiter();
 app.MapAuthEndpoints();
