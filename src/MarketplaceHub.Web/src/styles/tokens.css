@@ -116,4 +116,6 @@
   --rv-color-danger-soft: #efd5dc;
   --rv-color-info: #2f5aa8;
   --rv-color-sidebar: #eaedf2;
+  --rv-hover-fill: color-mix(in srgb, var(--rv-color-ink) 6%, transparent);
+  --rv-hover-solid: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-surface));
 }

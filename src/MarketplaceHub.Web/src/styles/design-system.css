@@ -27,9 +27,6 @@
 .rv-topbar-notification-count { position: absolute; top: -5px; right: -5px; display: grid; min-width: 19px; height: 19px; place-items: center; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 10px; font-weight: 850; line-height: 1; }
 @keyframes order-notice-progress { to { transform: scaleX(1); } }
 
-@media (max-width: 600px) {
-  .rv-notification-history { position: fixed; top: 68px; right: 16px; left: 16px; width: auto; max-width: none; }
-}
 
 /* A collapsed sidebar expands above the page on hover; its layout column and
    topbar remain at the compact width so the content never shifts. */
@@ -82,35 +79,6 @@
   min-width: 0;
   justify-items: start;
   gap: var(--rv-space-3);
-}
-
-.app-shell.stitch-shell main .product-heading-back {
-  display: inline-flex;
-  flex: 0 0 auto;
-  min-height: 34px;
-  align-items: center;
-  gap: var(--rv-space-2);
-  padding: 7px 11px;
-  color: var(--rv-color-primary);
-  background: var(--rv-color-primary-soft);
-  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 38%, var(--rv-color-border));
-  border-radius: var(--rv-radius-sm);
-  font-size: var(--rv-font-size-xs);
-  font-weight: 850;
-  line-height: 1;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.app-shell.stitch-shell main .product-heading-back:hover {
-  color: #fff;
-  background: var(--rv-color-primary-fill);
-  border-color: var(--rv-color-primary);
-}
-
-.app-shell.stitch-shell main .product-heading-back .ui-icon {
-  width: 16px;
-  height: 16px;
 }
 
 .app-shell.stitch-shell main .product-page-heading-title {
@@ -3906,10 +3874,6 @@ small,
   padding: var(--rv-space-5) var(--rv-space-6);
 }
 
-.app-shell.stitch-shell main .integration-settings-modal {
-  width: min(960px, 100%);
-}
-
 .app-shell.stitch-shell main .integration-settings-modal > .integration-inline-workspace {
   display: grid;
   align-content: start;
@@ -6453,8 +6417,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   gap: var(--rv-space-3);
   margin-block: var(--rv-space-3);
 }
-.invoice-workspace-upload-modal { width: min(720px, 100%); }
-.invoice-workspace-upload-modal .invoice-dropzone { margin-inline: var(--rv-space-4); }
 .invoice-workspace-preview-modal { width: min(1120px, 100%); }
 .invoice-workspace-internet-sales-toggle { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-size: 13px; cursor: pointer; }
 .invoice-workspace-internet-sales-toggle input { flex: 0 0 auto; accent-color: var(--rv-color-primary); }
@@ -6887,10 +6849,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 
 /* Light theme interaction language. Hovers are quiet tonal changes, colour is kept for the active state and focus:
    list-like items get a faint ink tint, outlined controls darken their border, cards and rows settle on the raised tone. */
-:root[data-theme="light"] {
-  --rv-hover-fill: color-mix(in srgb, var(--rv-color-ink) 6%, transparent);
-  --rv-hover-solid: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-surface));
-}
 :root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled), :root[data-theme="light"] .platform-multi-select-option:hover, :root[data-theme="light"] .row-menu > div button:hover, :root[data-theme="light"] .order-column-filter-popover button:hover, :root[data-theme="light"] .integration-filter-menu button:hover, :root[data-theme="light"] .jobs-reference-range-menu button:hover, :root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled), :root[data-theme="light"] .panel-category-picker [role="option"]:hover, :root[data-theme="light"] .appearance-theme-menu > button:hover, :root[data-theme="light"] .date-range-picker-grid > button:hover, :root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
   color: var(--rv-color-ink); background: var(--rv-hover-fill); border-color: transparent; box-shadow: none;
 }
@@ -7136,7 +7094,6 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.content { row-gap: 12px; }
   .app-shell.stitch-shell main section.content :is(.panel, .rr-panel, .product-step-card) { padding: 12px; }
-  .app-shell.stitch-shell main .ss-page .ss-bar { position: static; }
   .app-shell.stitch-shell main :is(.product-publish-step .publish-selection-footer, .settings-sticky-actions, .shipping-settings-actions) { position: static; box-shadow: none; backdrop-filter: none; }
 }
 

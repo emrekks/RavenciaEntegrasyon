@@ -103,6 +103,8 @@ async function captureOne(browser, server, scenario, width, unhandled) {
     await page.mouse.move(-10, -10)
     await settle(page)
     const name = `${scenario.name}@${width}`
+    // A busy machine can lose the page (a chunk that failed to load reloads it): that capture is tried again.
+    if (scenario.signedIn !== false && !(await page.$('.app-shell main'))) throw new Error('the signed-in shell did not render')
     const data = await page.evaluate(snapshot)
     await writeFile(join(out, `${name}.json`), JSON.stringify({ ...data, errors }))
     await page.screenshot({ path: join(out, `${name}.png`), fullPage: true, animations: 'disabled', caret: 'hide' })

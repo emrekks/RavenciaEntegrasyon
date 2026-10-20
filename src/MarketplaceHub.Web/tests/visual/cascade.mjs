@@ -359,7 +359,11 @@ export function compareCascades(beforeCollection, afterCollection) {
   const removed = [...before.byIdentity.keys()].filter(key => !after.byIdentity.has(key)).flatMap(key => before.byIdentity.get(key)).map(declaration => {
     const covers = other => other.property === declaration.property || (!declaration.property.startsWith('--') && declaration.property.startsWith(`${other.property}-`))
     const dominated = beforeCollection.declarations.some(other => other !== declaration && other.selector === declaration.selector && other.media === declaration.media && covers(other) && after.byIdentity.has(other.identity) && wins(other, declaration) === 1)
-    return { ...declaration, dominated }
+    // …or when an identical declaration (same selector, property, value, importance) that stays wins and loses
+    // against exactly the same competitors (a repeated rule in a sheet that only narrows the media).
+    const twins = dominated ? [] : after.byIdentity.size && beforeCollection.declarations.filter(other => other !== declaration && other.selector === declaration.selector && other.property === declaration.property && other.value === declaration.value && other.important === declaration.important && after.byIdentity.has(other.identity))
+    const redundant = !dominated && twins.some(twin => competitors(before, declaration).every(other => other.value === declaration.value || !competes(other, declaration) || other === twin || wins(other, twin) === wins(other, declaration)))
+    return { ...declaration, dominated: dominated || redundant }
   })
   for (const key of changed) {
     if (!before.byIdentity.has(key) || !after.byIdentity.has(key)) continue

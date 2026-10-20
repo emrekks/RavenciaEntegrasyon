@@ -86,8 +86,7 @@
 
 /* Mobile filter shell: on phones every filter bar collapses to its search field plus one filter
    button; the button opens all fields as a full-screen "Filtrele" sheet with Temizle / Filtrele.
-   Desktop renders the original bar untouched. */
-.mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer { display: none; }
+   Desktop renders the original bar untouched (the shell's parts are hidden by default in design-system.css). */
 @media (max-width: 760px) {
 
   /* Closed: [search][filter button], optional kept action (bulk menu) on its own row. */
@@ -129,10 +128,8 @@
 }
 
 /* Column filters (carrier, invoice, reason, status…) live inside the phone filter sheet, so their
-   table-header chips are hidden on phones; the sheet-only fields exist for desktop-free use. */
-@media (min-width: 761px) {
-  .mfs > .mfs-sheet-only { display: none !important; }
-}
+   table-header chips are hidden on phones; the sheet-only fields exist for desktop-free use (hidden on wider
+   screens by design-system.css). */
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .mfs.is-open > .mfs-sheet-only { display: grid; }
   html body .app-shell.stitch-shell main .mfs .mfs-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }

@@ -35,6 +35,9 @@ Lower level: `node tests/visual/capture.mjs --dist <built folder> --out <folder>
 - The browser is Playwright's Chromium (`npx playwright install chromium`), else the newest one in the Playwright
   cache, else `PLAYWRIGHT_CHROMIUM_EXECUTABLE`. Compare only captures made with the same browser build.
 - A full run (15 scenarios, 54 captures) takes about 45 s with 4 workers, plus the build.
+- On a busy machine a tall full-page screenshot can catch a re-render (identical styles, different pixels). Capture
+  that one again (`--only <scenario> --widths <width>`) before reading anything into it; a capture whose signed-in
+  shell did not render is retried automatically.
 
 ## Cascade check
 

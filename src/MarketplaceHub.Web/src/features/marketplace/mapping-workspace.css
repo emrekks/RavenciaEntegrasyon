@@ -225,10 +225,12 @@
 }
 
 /* Suggestions waiting for approval: aligned columns instead of a loose line per item. */
-.value-mapping-editor .value-mapping-suggestions { gap: 10px; padding: 12px 14px; }
+.value-mapping-editor .value-mapping-suggestions { display: grid; gap: 10px; margin-block: 8px; padding: 12px 14px; background: color-mix(in srgb, var(--rv-color-primary) 5%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 25%, var(--rv-color-border)); border-radius: 8px; }
 .value-mapping-editor .value-mapping-suggestions-head button { min-height: 32px; padding: 0 12px; font-size: var(--rv-font-size-sm); }
-.value-mapping-editor .value-mapping-suggestions ul { gap: 0; }
+.value-mapping-editor .value-mapping-suggestions ul { display: grid; gap: 0; max-height: 220px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
 .value-mapping-editor .value-mapping-suggestions li {
+  flex-wrap: wrap;
+  font-size: var(--rv-font-size-sm);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 88px auto auto;
   align-items: center;
@@ -369,9 +371,6 @@
 .app-shell.stitch-shell main .cm-card .cm-legacy-card:has(> .cm-webcolor) { padding-top: 0; }
 .app-shell.stitch-shell main .cm-card .cm-legacy-card > .cm-form:has(+ .cm-webcolor) { padding-bottom: 0; border-bottom: 0; }
 .app-shell.stitch-shell main .cm-detail .cm-webcolor { margin-top: 16px; padding-top: 0; border-top: 0; }
-.app-shell.stitch-shell main .cm-webcolor .web-color-value-editor { gap: 12px; }
-.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value { box-sizing: border-box; height: 36px; min-height: 36px; }
-.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ============ Mapping settings page (Sade) ============ */
 .app-shell.stitch-shell main section.mapping-page { --mp-control: 36px; }
@@ -497,7 +496,6 @@
 /* Review pass: 36px tab strips, aligned status glyph, plain empty state, category scope skeleton, Web Color actions under the colour field. */
 .app-shell.stitch-shell main section.mapping-page :is(.mapping-saved-tabs, .mapping-category-platform-tabs) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 2px; gap: 2px; align-items: center; }
 .app-shell.stitch-shell main section.mapping-page :is(.mapping-saved-tabs, .mapping-category-platform-tabs) > button { height: 30px !important; min-height: 30px !important; padding: 0 12px !important; font-size: 13px; }
-.app-shell.stitch-shell main .mapping-saved-card .mapping-table-status { align-items: center; line-height: 16px; vertical-align: middle; }
 .app-shell.stitch-shell main .mapping-saved-card .mapping-table-status .cm-glyph { display: block; flex: none; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td.mapping-empty-table-cell { padding: 0; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-table .mapping-table-empty { min-height: 120px; margin: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; font-size: 13px; }
