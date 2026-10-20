@@ -683,11 +683,11 @@ public interface IQuestionPort
     Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken);
 }
 
-public sealed record MarketplaceQuestionView(Guid Id, Guid ConnectionId, string PlatformCode, string StoreName, string ExternalQuestionId, string Kind, string Status, string QuestionText, string? ProductName, string? ProductImageUrl, string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName, string? ExternalOrderNumber, IReadOnlyList<RemoteQuestionConversation> Conversations, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, DateTimeOffset LastRemoteModifiedAt, DateTimeOffset LastSyncedAt, long Version, string? ProductUrl = null);
+public sealed record MarketplaceQuestionView(Guid Id, Guid ConnectionId, string PlatformCode, string StoreName, string ExternalQuestionId, string Kind, string Status, string QuestionText, string? ProductName, string? ProductImageUrl, string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName, string? ExternalOrderNumber, IReadOnlyList<RemoteQuestionConversation> Conversations, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, DateTimeOffset LastRemoteModifiedAt, DateTimeOffset LastSyncedAt, long Version, string? ProductUrl = null, string? AnswerSubmissionStatus = null, string? PendingAnswerText = null);
 public sealed record MarketplaceQuestionTemplateView(Guid Id, string Title, string Text, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long Version);
 public sealed record SaveQuestionTemplateCommand(string Title, string Text);
 public sealed record AnswerQuestionCommand(string Text, long Version);
-public sealed record QuestionSyncView(int Added, int Updated, DateTimeOffset SyncedAt, string? Error = null);
+public sealed record QuestionSyncView(int Added, int Updated, DateTimeOffset SyncedAt, string? Error = null, AdapterError? Failure = null);
 public sealed record MarketplaceQuestionSyncStateView(Guid ConnectionId, string PlatformCode, string StoreName, bool HistoryImported, DateTimeOffset? HistoryStartedAt, string ProgressStatus, int ImportedCount, DateTimeOffset? LastRunStartedAt, DateTimeOffset? LastSuccessAt, string? LastError, int ProductQuestionCount = 0, int OrderQuestionCount = 0);
 public sealed record QuestionListQuery(string Kind, string? Status, string? PlatformCode, Guid? ConnectionId, DateTimeOffset? DateFrom, DateTimeOffset? DateTo, string? Search, int Page = 1, int Limit = 50, string Sort = "NEWEST");
 public sealed record MarketplaceQuestionListPage(IReadOnlyList<MarketplaceQuestionView> Items, int Page, int Limit, int TotalCount);
@@ -813,7 +813,8 @@ public interface IInstantNotificationService
 }
 // Kind is ORDERS, RETURNS or QUESTIONS. LastSuccessAt is the oldest last read among the stores
 // (null before any read); Instant is true when every store sends order notifications.
-public sealed record DataFreshnessPart(string Kind, DateTimeOffset? LastSuccessAt, bool Instant, int Connections);
+// NeverSynced: stores in scope that were never read; LastSuccessAt is the oldest of the stores that were.
+public sealed record DataFreshnessPart(string Kind, DateTimeOffset? LastSuccessAt, bool Instant, int Connections, int NeverSynced = 0);
 public sealed record DataFreshnessView(IReadOnlyList<DataFreshnessPart> Parts);
 // State is DONE, RUNNING or QUEUED; Percent is known for order histories read window by window.
 public sealed record InitialImportPart(string Kind, string State, int? Percent);

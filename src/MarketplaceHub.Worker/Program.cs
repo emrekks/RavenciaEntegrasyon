@@ -21,6 +21,8 @@ builder.Services.AddSerilog(configuration => configuration
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 builder.Services.AddHostedService<Worker>();
+// The dashboard snapshot is rebuilt here, debounced per tenant, instead of in the API's realtime dispatcher.
+builder.Services.AddHostedService<DashboardSnapshotRefresher>();
 var host = builder.Build();
 
 if (args is ["efaturam-connection-test", var publicIdText]

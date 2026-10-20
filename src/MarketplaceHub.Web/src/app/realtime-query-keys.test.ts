@@ -26,7 +26,9 @@ describe('realtime refresh map', () => {
     const roots = (resource: string) => realtimeQueryKeysFor([resource]).map(key => key[0])
     expect(roots('inventory')).toEqual(expect.arrayContaining(['products', 'product']))
     expect(roots('invoices')).toEqual(expect.arrayContaining(['invoice', 'invoice-viewer', 'invoice-workspace-page']))
-    expect(roots('orders')).toContain('dashboard')
+    expect(roots('orders')).toContain('dashboard-bootstrap')
+    // The revenue panel reads a whole period; one order event must not refetch it.
+    expect(roots('orders')).not.toContain('dashboard')
   })
 
   it('names each key once, also after a reconnect, and always refreshes the job list', () => {

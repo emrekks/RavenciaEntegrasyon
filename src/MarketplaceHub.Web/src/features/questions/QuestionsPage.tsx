@@ -20,12 +20,25 @@ import { MessageToast } from '../../shared/components/NoticeToast'
 import './questions-inbox.css'
 import { viewTabLabel } from '../../shared/view-tabs'
 import { formatIstanbul, istanbulDayBoundary } from '../../shared/format-date'
+import { scopedStorageKey } from '../../shared/storage-scope'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
   questionText: string; productName?: string | null; productImageUrl?: string | null; productSku?: string | null; productBarcode?: string | null
   productModelCode?: string | null; productUrl?: string | null; customerName?: string | null; externalOrderNumber?: string | null; conversations: QuestionConversation[]
   createdAt: string; expiresAt?: string | null; lastRemoteModifiedAt: string; lastSyncedAt: string; version: number
+  // NOT_DELIVERED: an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
+  answerSubmissionStatus?: string | null; pendingAnswerText?: string | null
+}
+type Notice = { message: string; kind: 'success' | 'error' | 'info' }
+// A question the seller still has to answer: a new one, or one whose answer the marketplace rejected.
+export const isAnswerable = (status: string) => status === 'WAITING_FOR_ANSWER' || status === 'REJECTED'
+// The latest reason a marketplace gave for rejecting an answer to this question.
+const rejectionReasonOf = (row: MarketplaceQuestion) => [...(row.conversations ?? [])].reverse().find(message => message.rejectionReason)?.rejectionReason ?? null
+// Opening the page refreshes questions only when a store was not read for this long; the scheduled sync does the rest.
+const autoSyncAfterMs = 15 * 60_000
+export function questionSyncIsStale(states: Array<{ lastSuccessAt?: string | null; progressStatus: string }>, now: number) {
+  return states.some(state => state.progressStatus !== 'INITIAL' && (!state.lastSuccessAt || now - new Date(state.lastSuccessAt).getTime() > autoSyncAfterMs))
 }
 type Template = { id: string; title: string; text: string; version: number; updatedAt: string }
 type Connection = { id: string; platformCode: string; displayName: string; status: string }
@@ -81,9 +94,9 @@ function formatDate(value?: string | null) {
 // The sync strip is narrow: a date from this year leaves the year out (the full date stays in the tooltip).
 // The sync strip keeps the height it had last time while the states load (placeholders in the same shape), so the inbox
 // under it does not jump down when the cards arrive.
-const syncCountKey = 'rv-question-sync-count'
-function rememberedSyncCount() { try { return Math.min(8, Math.max(1, Number(localStorage.getItem(syncCountKey)) || 4)) } catch { return 4 } }
-function rememberSyncCount(count: number) { try { if (count > 0) localStorage.setItem(syncCountKey, String(count)) } catch { /* storage unavailable */ } }
+const syncCountKey = () => scopedStorageKey('rv-question-sync-count')
+function rememberedSyncCount() { try { return Math.min(8, Math.max(1, Number(localStorage.getItem(syncCountKey())) || 4)) } catch { return 4 } }
+function rememberSyncCount(count: number) { try { if (count > 0) localStorage.setItem(syncCountKey(), String(count)) } catch { /* storage unavailable */ } }
 
 function formatShortDate(value?: string | null) {
   if (!value) return '—'
@@ -115,12 +128,13 @@ function storeLabel(item: Connection) {
   return item.status === 'ACTIVE' || item.status === 'VERIFIED' ? name : `${name} (pasif)`
 }
 
-function syncSummary(item: SyncState, tab: WorkspaceTab) {
+// A failing sync is said first: a store whose history was imported once can still have stopped reading.
+export function syncSummary(item: SyncState, tab: WorkspaceTab) {
   const count = (tab === 'ORDER' ? item.orderQuestionCount : item.productQuestionCount) ?? item.importedCount
   const records = count.toLocaleString('tr-TR')
+  if (item.progressStatus === 'FAILED') return { records, state: 'Son aktarım başarısız', glyph: 'bad' as Glyph }
   if (item.historyImported) return { records, state: 'Geçmiş tamamlandı', glyph: 'done' as Glyph }
   if (item.progressStatus === 'INITIAL') return { records, state: 'Geçmiş aktarılıyor', glyph: 'partial' as Glyph }
-  if (item.progressStatus === 'FAILED') return { records, state: 'Son aktarım başarısız', glyph: 'bad' as Glyph }
   if (item.progressStatus === 'QUEUED') return { records, state: 'İlk aktarım sırada', glyph: 'partial' as Glyph }
   return { records, state: 'İlk aktarım bekleniyor', glyph: 'none' as Glyph }
 }
@@ -140,14 +154,19 @@ export function QuestionsPage() {
   const [connectionId, setConnectionId] = useState('ALL')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  // What is typed searches a moment after typing stops, not on every key.
+  const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+  useEffect(() => { const timer = window.setTimeout(() => setSearch(searchInput), 300); return () => window.clearTimeout(timer) }, [searchInput])
   const [sort, setSort] = useState('NEWEST')
+  const [deletingTemplate, setDeletingTemplate] = useState<Template | null>(null)
   const [page, setPage] = useState(1)
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({})
   // N11 and Pazarama answers cannot be taken back once sent; the panel's own dialog says why before sending.
   const [confirmAnswer, setConfirmAnswer] = useState<{ id: string; version: number; text: string; title: string; message: string } | null>(null)
   const [now, setNow] = useState(Date.now())
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const fail = (error: unknown, fallback: string) => setNotice({ message: error instanceof Error ? error.message : fallback, kind: 'error' })
   const [templateTitle, setTemplateTitle] = useState('')
   const [templateText, setTemplateText] = useState('')
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
@@ -186,16 +205,16 @@ export function QuestionsPage() {
 
   const sync = useMutation({
     mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
-    onSuccess: async () => { setNotice(''); await Promise.all([client.invalidateQueries({ queryKey: ['questions'] }), client.invalidateQueries({ queryKey: ['questions', 'sync-state'] })]) },
-    onError: error => setNotice(error instanceof Error ? error.message : 'Senkronizasyon kuyruğa alınamadı.'),
+    onSuccess: async () => { setNotice(null); await Promise.all([client.invalidateQueries({ queryKey: ['questions'] }), client.invalidateQueries({ queryKey: ['questions', 'sync-state'] })]) },
+    onError: error => fail(error, 'Senkronizasyon kuyruğa alınamadı.'),
   })
   const startSync = sync.mutate
   const saveTemplate = useMutation({
     mutationFn: () => hubApi<Template>(editingTemplate ? `/question-templates/${editingTemplate.id}` : '/question-templates', { method: editingTemplate ? 'PUT' : 'POST', headers: editingTemplate ? { 'If-Match': `"v${editingTemplate.version}"` } : undefined, body: JSON.stringify({ title: templateTitle, text: templateText }) }),
-    onSuccess: async () => { setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(''); await client.invalidateQueries({ queryKey: ['question-templates'] }) },
-    onError: error => setNotice(error instanceof Error ? error.message : 'Hazır cevap kaydedilemedi.'),
+    onSuccess: async () => { setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(null); await client.invalidateQueries({ queryKey: ['question-templates'] }) },
+    onError: error => fail(error, 'Hazır cevap kaydedilemedi.'),
   })
-  const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(''); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => setNotice(error instanceof Error ? error.message : 'Hazır cevap silinemedi.') })
+  const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })
   const sendAnswer = useMutation({
     mutationFn: async ({ id, version, text }: { id: string; version: number; text: string }) => {
       const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('question-answer', id, current, body) }, body }) }
@@ -206,22 +225,23 @@ export function QuestionsPage() {
         // the marketplace before sending, so the customer never gets it twice).
         if ((error as { code?: string } | null)?.code !== 'QUESTION_STALE') throw error
         const fresh = await hubApi<MarketplaceQuestion>(`/questions/${id}`)
-        if (fresh.status !== 'WAITING_FOR_ANSWER') throw error
+        if (!isAnswerable(fresh.status)) throw error
         return post(fresh.version)
       }
     },
-    onSuccess: async (_data, variables) => { setNotice(''); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: ['questions'] }) },
+    onSuccess: async (_data, variables) => { setNotice(null); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: ['questions'] }) },
     // The draft stays; the list is read again so the screen shows the question as it is now.
-    onError: async error => { setNotice(error instanceof Error ? error.message : 'Cevap gönderilemedi.'); await client.invalidateQueries({ queryKey: ['questions'] }) },
+    onError: async error => { fail(error, 'Cevap gönderilemedi.'); await client.invalidateQueries({ queryKey: ['questions'] }) },
   })
 
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
   useEffect(() => { setPage(1) }, [tab, status, platform, connectionId, dateFrom, dateTo, search, sort])
+  // Opening the page asks for fresh questions only when a store has not been read for a while.
   useEffect(() => {
-    if (tab === 'TEMPLATES' || requestedSync.current || !connections.isSuccess) return
+    if (tab === 'TEMPLATES' || requestedSync.current || !connections.isSuccess || !syncStates.isSuccess) return
     requestedSync.current = true
-    startSync({ kind: 'ALL' })
-  }, [tab, kind, connections.isSuccess, startSync])
+    if (questionSyncIsStale(syncStates.data, Date.now())) startSync({ kind: 'ALL' })
+  }, [tab, kind, connections.isSuccess, syncStates.isSuccess, syncStates.data, startSync])
 
   useEffect(() => {
     if (!filterOpen && !statusOpen) return
@@ -235,7 +255,13 @@ export function QuestionsPage() {
 
   const rows = questions.data?.items ?? []
   const connectionNames = connections.data ?? []
-  const selected = rows.find(item => item.id === selectedId) ?? rows[0]
+  // The open question stays open while the list refreshes: the first one is taken once, and a question that leaves
+  // the current filter or page (answered, moved down by a new one) is read on its own instead of silently giving its
+  // place to another question.
+  if (selectedId === null && rows[0]) setSelectedId(rows[0].id)
+  const listedSelection = rows.find(item => item.id === selectedId)
+  const pinned = useQuery({ queryKey: ['questions', 'detail', selectedId], queryFn: () => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
+  const selected = listedSelection ?? (selectedId && pinned.data?.id === selectedId ? pinned.data : undefined) ?? (selectedId ? undefined : rows[0])
   const totalCount = questions.data?.totalCount ?? 0
   const pageCount = Math.max(1, Math.ceil(totalCount / 50))
   const currentStatus = statusFilters.find(item => item.value === status) ?? statusFilters[0]
@@ -248,17 +274,19 @@ export function QuestionsPage() {
   const codesOf = (row: MarketplaceQuestion) => [row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'
   const isSeller = (author: string) => author.toLowerCase().includes('merchant') || author.toLowerCase().includes('seller')
   const openQuestion = (id: string) => { setSelectedId(id); setDetailOpen(true) }
-  const nextWaiting = (id: string) => { const waiting = rows.filter(item => item.status === 'WAITING_FOR_ANSWER'); const index = waiting.findIndex(item => item.id === id); return waiting[index + 1] ?? waiting.find(item => item.id !== id) }
+  const nextWaiting = (id: string) => { const waiting = rows.filter(item => isAnswerable(item.status)); const index = waiting.findIndex(item => item.id === id); return waiting[index + 1] ?? waiting.find(item => item.id !== id) }
 
   const detail = (() => {
     if (!selected) return <div className="qi-empty"><EmptyState>{questions.isLoading ? 'Sorular yükleniyor…' : 'Soldan bir soru seçin.'}</EmptyState></div>
     const row = selected
     const state = questionStatus(row.status)
-    const waiting = row.status === 'WAITING_FOR_ANSWER'
+    const waiting = isAnswerable(row.status)
     const deadline = waiting ? questionDeadline(row.expiresAt, now) : null
     const previousMessages = visibleQuestionConversation(row.conversations ?? [], row.questionText)
     const productHref = productHrefOf(row)
-    const draft = answerDrafts[row.id] ?? ''
+    // An answer that never reached the marketplace comes back as the draft, so nothing has to be typed again.
+    const draft = answerDrafts[row.id] ?? (row.answerSubmissionStatus === 'NOT_DELIVERED' ? row.pendingAnswerText ?? '' : '')
+    const rejection = row.status === 'REJECTED' ? rejectionReasonOf(row) : null
     const minLength = row.platformCode === 'TRENDYOL' ? 10 : 1
     const length = draft.trim().length
     const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) { const warning = answerWarning(row.platformCode); if (warning) setConfirmAnswer({ id: row.id, version: row.version, text: draft, ...warning }); else sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) } }
@@ -277,6 +305,8 @@ export function QuestionsPage() {
         <p className="qi-note"><UiIcon name="info" size={14} />Cevabınız yalnızca soruyu soran müşteri tarafından görüntülenir.</p>
       </div>
       {waiting ? <div className="qi-composer rv-answer-composer" aria-label={`#${row.externalQuestionId} için cevap`}>
+        {row.status === 'REJECTED' && <p className="qi-note rv-question-rejection" role="status"><UiIcon name="info" size={14} />Önceki cevabınız pazaryerince reddedildi{rejection ? `: ${rejection}` : ''}. Cevabı düzenleyip yeniden gönderebilirsiniz.</p>}
+        {row.answerSubmissionStatus === 'NOT_DELIVERED' && <p className="qi-note" role="status"><UiIcon name="info" size={14} />Önceki cevabınız pazaryerine ulaşmadı; taslağınız geri yüklendi. Kontrol edip yeniden gönderebilirsiniz.</p>}
         <div className="qi-templates-row"><span>Hazır Cevap</span>{templates.data?.length ? <div className="rv-question-bubbles" aria-label="Hazır cevaplar">{templates.data.map(item => <button type="button" key={item.id} title={item.text} onClick={() => setAnswerDrafts(current => ({ ...current, [row.id]: item.text }))}>{item.title}</button>)}</div> : <small>Kayıtlı hazır cevap yok</small>}<button type="button" className="qi-link" onClick={() => setTemplatesOpen(true)}><UiIcon name="edit" size={14} />Yönet</button></div>
         <textarea rows={2} maxLength={2000} value={draft} onChange={event => setAnswerDrafts(current => ({ ...current, [row.id]: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); send() } }} placeholder="Cevabınızı yazın…" aria-label="Soruya cevap" />
         <div className="qi-composer-foot"><span className="rv-answer-bar-meta">{length}/{row.platformCode === 'TRENDYOL' ? '10–2000' : '1–2000'} karakter · Ctrl+Enter ile gönderin{row.platformCode === 'N11' ? ' · N11’de cevap bir kez verilir, değiştirilemez' : ''}</span><div>{next && <Button variant="secondary" onClick={() => setSelectedId(next.id)}>Sonraki Soru</Button>}<Button onClick={send} loading={sendAnswer.isPending} disabled={length < minLength || length > 2000}>Gönder</Button></div></div>
@@ -293,13 +323,13 @@ export function QuestionsPage() {
       {syncStates.isLoading && Array.from({ length: rememberedSyncCount() }, (_, index) => <div className="rv-questions-sync-item is-placeholder" aria-hidden="true" key={`placeholder-${index}`}><span className="rv-question-platform-logo" /><div><b>&nbsp;</b><small>&nbsp;</small><small className="qi-sync-time">&nbsp;</small></div></div>)}
       {!syncStates.isLoading && !syncStates.data?.length && <span className="qi-sync-empty">Soru geçmişi bağlantılarınızdan arka planda alınır. İlk senkronizasyon sonrası aktarım durumu burada görünür.</span>}
     </section>
-    {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
+    {notice && <MessageToast message={notice.message} kind={notice.kind} onClose={() => setNotice(null)} />}
     <div className={`qi-inbox${detailOpen ? ' is-detail' : ''}`}>
       <div className="qi-left">
         <Tabs className="rv-questions-tabs qi-tabs rv-view-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: viewTabLabel('product', 'Ürün Soruları'), count: formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: viewTabLabel('order', 'Sipariş Soruları'), count: formatCount(waitingCounts[1].data) }]} />
         <div className="qi-tools" aria-label="Soru filtreleri">
           <div className="qi-tools-row">
-            <label className="rv-questions-search qi-search"><UiIcon name="search" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" aria-label="Metin ara" /></label>
+            <label className="rv-questions-search qi-search"><UiIcon name="search" size={15} /><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" aria-label="Metin ara" /></label>
             <div className="qi-filter" ref={filterRef}>
               <button type="button" className={`qi-filter-btn${filterOpen || activeFilterCount ? ' is-on' : ''}`} aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><UiIcon name="filter" size={15} />Filtre{activeFilterCount > 0 && <span className="qi-count">{activeFilterCount}</span>}</button>
               {filterOpen && <div className="qi-popover rv-questions-filter-grid" role="dialog" aria-label="Filtreler">
@@ -318,7 +348,7 @@ export function QuestionsPage() {
         <div className="qi-list">
           {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState>Sorular alınamadı. Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <EmptyState>Bu filtrelerde soru bulunamadı. Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</EmptyState> : rows.map(row => {
             const state = questionStatus(row.status)
-            const deadline = row.status === 'WAITING_FOR_ANSWER' ? questionDeadline(row.expiresAt, now) : null
+            const deadline = isAnswerable(row.status) ? questionDeadline(row.expiresAt, now) : null
             return <button type="button" className={`qi-item rv-question-card${selected?.id === row.id ? ' is-on' : ''}`} key={row.id} aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => openQuestion(row.id)}>
               <span className="qi-item-logo"><img className={platformLogoClass(row.platformCode)} src={platformLogoSource(row.platformCode) ?? undefined} alt={displayPlatform(row.platformCode)} /></span>
               <span className="qi-item-top"><b>{row.customerName || 'Müşteri'}</b><span>{row.productName || (row.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span></span>
@@ -338,8 +368,12 @@ export function QuestionsPage() {
     <Modal open={templatesOpen} title="Hazır Cevaplar" description={`${templates.data?.length ?? 0} kayıtlı cevap · Tüm pazaryerlerinde ortak kullanılır.`} className="qi-templates-modal" onClose={() => { setTemplatesOpen(false); setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }}>
       <section className="rv-question-templates">
         <div className="rv-question-template-editor"><h3>{editingTemplate ? 'Hazır Cevabı Düzenle' : 'Yeni Hazır Cevap'}</h3><label>Başlık<input value={templateTitle} maxLength={120} onChange={event => setTemplateTitle(event.target.value)} placeholder="Örn. Ürün ölçü tablosu" /></label><label>Cevap Metni<textarea rows={4} maxLength={2000} value={templateText} onChange={event => setTemplateText(event.target.value)} placeholder="Müşteriye gönderilecek cevabı yazın" /><small>{templateText.length}/2000</small></label><div className="rv-question-template-actions"><Button variant="secondary" onClick={() => { setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }} disabled={!editingTemplate && !templateTitle && !templateText}>Temizle</Button><Button onClick={() => saveTemplate.mutate()} disabled={!templateTitle.trim() || !templateText.trim()} loading={saveTemplate.isPending}>{editingTemplate ? 'Değişiklikleri Kaydet' : 'Hazır Cevabı Oluştur'}</Button></div></div>
-        <div className="rv-question-template-list"><header><h3>Kayıtlı Cevaplar</h3><span className="qi-count">{templates.data?.length ?? 0}</span></header>{templates.isLoading ? <LoadingState>Hazır cevaplar yükleniyor…</LoadingState> : templates.data?.length ? templates.data.map(item => <article className="rv-question-template-card" key={item.id}><div><strong>{item.title}</strong><p>{item.text}</p><small>Güncellendi: {formatDate(item.updatedAt)}</small></div><div><Button size="sm" variant="secondary" onClick={() => { setEditingTemplate(item); setTemplateTitle(item.title); setTemplateText(item.text) }}>Düzenle</Button><Button size="sm" variant="danger" onClick={() => deleteTemplate.mutate(item)} loading={deleteTemplate.isPending}>Sil</Button></div></article>) : <EmptyState>Henüz hazır cevap oluşturulmadı.</EmptyState>}</div>
+        <div className="rv-question-template-list"><header><h3>Kayıtlı Cevaplar</h3><span className="qi-count">{templates.data?.length ?? 0}</span></header>{templates.isLoading ? <LoadingState>Hazır cevaplar yükleniyor…</LoadingState> : templates.data?.length ? templates.data.map(item => <article className="rv-question-template-card" key={item.id}><div><strong>{item.title}</strong><p>{item.text}</p><small>Güncellendi: {formatDate(item.updatedAt)}</small></div><div><Button size="sm" variant="secondary" onClick={() => { setEditingTemplate(item); setTemplateTitle(item.title); setTemplateText(item.text) }}>Düzenle</Button><Button size="sm" variant="danger" onClick={() => setDeletingTemplate(item)} loading={deleteTemplate.isPending && deleteTemplate.variables?.id === item.id}>Sil</Button></div></article>) : <EmptyState>Henüz hazır cevap oluşturulmadı.</EmptyState>}</div>
       </section>
+    </Modal>
+    {/* A quick reply is shared by everyone in the store, so it is removed only after a second click. */}
+    <Modal open={deletingTemplate !== null} title="Hazır Cevap Silinsin mi?" description={deletingTemplate ? `“${deletingTemplate.title}” tüm pazaryerlerinde kullanılan hazır cevaplardan kaldırılacak.` : undefined} className="qi-confirm-modal qi-template-delete-modal" onClose={() => setDeletingTemplate(null)} footer={<><Button variant="secondary" onClick={() => setDeletingTemplate(null)}>Vazgeç</Button><Button variant="danger" loading={deleteTemplate.isPending} onClick={() => { if (deletingTemplate) deleteTemplate.mutate(deletingTemplate) }}>Hazır Cevabı Sil</Button></>}>
+      <p className="qi-confirm-text">{deletingTemplate?.text}</p>
     </Modal>
   </section>
 }

@@ -16,6 +16,11 @@ describe('data freshness', () => {
     expect(freshnessText({ kind: 'QUESTIONS', lastSuccessAt: null, instant: false, connections: 2 }, now)).toBeNull()
   })
 
+  it('names stores that were never read instead of skipping them', () => {
+    expect(freshnessText({ kind: 'ORDERS', lastSuccessAt: '2026-10-18T11:56:00Z', instant: false, connections: 3, neverSynced: 1 }, now)).toBe('Son güncelleme 4 dk önce · 1 mağaza henüz okunmadı')
+    expect(freshnessText({ kind: 'QUESTIONS', lastSuccessAt: null, instant: false, connections: 2, neverSynced: 2 }, now)).toBe('Henüz güncellenmedi · 2 mağaza henüz okunmadı')
+  })
+
   it('summarises a first import per kind of data', () => {
     expect(initialImportSummary([
       { kind: 'ORDERS', state: 'RUNNING', percent: 60 },

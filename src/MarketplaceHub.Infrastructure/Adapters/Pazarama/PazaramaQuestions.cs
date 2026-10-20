@@ -85,16 +85,20 @@ public static class PazaramaQuestionMapper
     {
         "WAITING_FOR_ANSWER" => [0],
         "ANSWERED" => [1, 2],
+        "WAITING_FOR_APPROVE" => [2],
         "REJECTED" => [3],
         _ => [0, 1, 2, 3]
     };
 
+    // An answer in Pazarama's approval is not live yet: it is shown as waiting for approval, not as answered. A code
+    // Pazarama adds later stays visible as itself instead of passing for an open question.
     public static string PanelStatus(int? status) => status switch
     {
-        0 => "WAITING_FOR_ANSWER",
-        1 or 2 => "ANSWERED",
+        null or 0 => "WAITING_FOR_ANSWER",
+        1 => "ANSWERED",
+        2 => "WAITING_FOR_APPROVE",
         3 => "REJECTED",
-        _ => "WAITING_FOR_ANSWER"
+        _ => $"PAZARAMA_STATUS_{status}"
     };
 
     public static object SearchBody(QuestionPollRequest request, int status) => new

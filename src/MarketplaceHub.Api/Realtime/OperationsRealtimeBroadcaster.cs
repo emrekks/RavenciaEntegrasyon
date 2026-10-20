@@ -8,19 +8,19 @@ namespace MarketplaceHub.Api.Realtime;
 /// <summary>
 /// Dispatches durable integration outbox events. A completed job is therefore
 /// visible after the API restarts too; no moving watermark or full jobs scan is
-/// needed. Dashboard projections are rebuilt once per affected tenant batch.
+/// needed. Messages go out on their own: the dashboard snapshot is rebuilt by the
+/// worker (DashboardSnapshotRefresher), debounced per tenant, so a slow or failing
+/// rebuild never holds back or repeats a change announcement.
 /// </summary>
 public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, IHubContext<OperationsHub> hub, TimeProvider timeProvider, ILogger<OperationsRealtimeBroadcaster> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan ReconciliationInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan OutboxCleanupInterval = TimeSpan.FromDays(1);
     private static readonly TimeSpan OutboxCleanupBacklogInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan OutboxCleanupRetryInterval = TimeSpan.FromMinutes(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var nextReconciliation = timeProvider.GetUtcNow();
         var nextOutboxCleanup = timeProvider.GetUtcNow();
         using var timer = new PeriodicTimer(PollInterval, timeProvider);
         while (await timer.WaitForNextTickAsync(stoppingToken))
@@ -36,7 +36,6 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                     ownsDispatchLease = await OperationsRealtimeDispatchLease.TryAcquireAsync(db.Database.GetDbConnection(), stoppingToken);
                     if (!ownsDispatchLease) continue;
 
-                    var dashboard = scope.ServiceProvider.GetRequiredService<IDashboardReadService>();
                     var now = timeProvider.GetUtcNow();
                     var events = await db.IntegrationOutboxEvents.AsNoTracking()
                         .Where(x => x.PublishedAt == null && x.NextAttemptAt <= now)
@@ -49,7 +48,6 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                     {
                         try
                         {
-                            await dashboard.RebuildTenantAsync(tenantEvents.Key, stoppingToken);
                             var resourceEvents = tenantEvents.Select(x => new
                             {
                                 eventId = x.Id,
@@ -72,17 +70,11 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
                         catch (Exception exception)
                         {
+                            // Nothing half-written for this tenant may ride along with the next save.
+                            db.ChangeTracker.Clear();
                             await MarkFailedAsync(db, tenantEvents.Select(x => x.Id).ToArray(), now, exception, stoppingToken);
                             logger.LogWarning(exception, "Realtime outbox olayı yayınlanamadı; tekrar denenecek. TenantId: {TenantId}", tenantEvents.Key);
                         }
-                    }
-
-                    if (now >= nextReconciliation)
-                    {
-                        var tenantIds = await db.Tenants.AsNoTracking().Select(x => x.Id).ToListAsync(stoppingToken);
-                        foreach (var tenantId in tenantIds)
-                            await dashboard.RebuildTenantAsync(tenantId, stoppingToken);
-                        nextReconciliation = now.Add(ReconciliationInterval);
                     }
 
                     if (now >= nextOutboxCleanup)

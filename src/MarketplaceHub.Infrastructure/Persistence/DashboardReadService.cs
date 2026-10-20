@@ -7,87 +7,39 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvider) : IDashboardReadService
 {
-    private static readonly (string ResourceType, string Label, string Kind, string[] JobTypes, bool Required)[] SyncDefinitions =
-    [
-        ("orders", "Siparişler", "orders", [MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.N11OrderRecoverySync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ShopifyOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.PazaramaOrderStatusSync, MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.ShopifyOrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation, MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest, MarketplaceJobTypes.ShipmentAction], true),
-        ("returns", "İadeler", "returns", [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync, MarketplaceJobTypes.ReturnReconciliation, MarketplaceJobTypes.ReturnAction], true),
-        ("inventory", "Stok", "stock", [MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation], true),
-        ("products", "Ürünler", "products", [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile], false),
-        ("invoices", "Faturalar", "invoices", [InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceReconcile, InvoicingJobTypes.InvoiceDocumentFetch, InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.ManualOrderInvoiceDelivery, InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.InvoiceDueScan], false),
-        ("connections", "Bağlantılar", "connections", [MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, MarketplaceJobTypes.HepsiburadaConnectionTest, MarketplaceJobTypes.N11ConnectionTest, MarketplaceJobTypes.PazaramaConnectionTest, InvoicingJobTypes.ConnectionTest, MarketplaceJobTypes.CapabilityProbe, InvoicingJobTypes.StageCapabilityProbe, MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.N11ReferenceSync, MarketplaceJobTypes.PazaramaReferenceSync], false)
-    ];
+    private static readonly JsonSerializerOptions BreakdownJson = new() { PropertyNameCaseInsensitive = true };
 
     public async Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var snapshot = await db.DashboardSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
         if (snapshot is null)
         {
-            await RebuildTenantAsync(tenantId, cancellationToken);
+            // The worker keeps the snapshot fresh; only a tenant that never had one is built here, once.
+            try { await RebuildTenantAsync(tenantId, cancellationToken); }
+            catch (DbUpdateException) { db.ChangeTracker.Clear(); }
             snapshot = await db.DashboardSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
         }
 
-        if (snapshot is null) return EmptyBootstrap();
-        var lowStock = await db.DashboardLowStockProjections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
-            .OrderBy(x => x.TotalStock)
-            .ThenBy(x => x.Title)
-            .Take(8)
-            .Select(x => new DashboardLowStockView(x.ProductId, x.Title, x.TotalStock, x.PrimaryImageUrl))
-            .ToListAsync(cancellationToken);
-        var sync = await db.DashboardSyncStatusProjections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
-            .OrderBy(x => x.ResourceType)
-            .Select(x => new DashboardSyncStatusView(x.ResourceType, x.DisplayName, x.Kind, x.Status, x.LastAttemptAt, x.LastSuccessAt, x.LastErrorCode))
-            .ToListAsync(cancellationToken);
-        var platforms = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
-            .OrderBy(x => x.DisplayName)
-            .Select(x => new DashboardPlatformView(x.DisplayName, x.Status))
-            .ToListAsync(cancellationToken);
-        var now = timeProvider.GetUtcNow();
-        var connectionNames = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status))
-            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
-        var operationalOrderRows = await OperationalOrderMetricsQuery(db, tenantId, now)
-            .Select(x => new { x.ConnectionId, x.DerivedStatus, x.ShipmentDueAt })
-            .ToListAsync(cancellationToken);
-        var newAndProcessingOrders = operationalOrderRows.Count(x => x.DerivedStatus is "NEW" or "PROCESSING");
-        var pendingByPlatform = operationalOrderRows
-            .Where(x => DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus))
-            .GroupBy(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş"))
-            .ToDictionary(x => x.Key, x => x.Count());
-        var lateByPlatform = operationalOrderRows
-            .Where(x => DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus) && x.ShipmentDueAt != null && x.ShipmentDueAt < now)
-            .GroupBy(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş"))
-            .ToDictionary(x => x.Key, x => x.Count());
-        var pendingReturnConnections = await db.ReturnClaims.AsNoTracking()
-            .Where(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-                && DashboardMetricPolicy.PendingReturnStatuses.Contains(x.Status))
-            .Select(x => x.ConnectionId)
-            .ToListAsync(cancellationToken);
-        var pendingReturnsByPlatform = pendingReturnConnections
-            .GroupBy(connectionId => connectionNames.GetValueOrDefault(connectionId, "Belirtilmemiş"))
-            .ToDictionary(x => x.Key, x => x.Count());
+        var channels = await ChannelsAsync(tenantId, cancellationToken);
+        if (snapshot is null) return new(EmptyMetrics(), channels, timeProvider.GetUtcNow(), 0);
+        var breakdown = ReadBreakdown(snapshot.PendingByPlatformJson);
         return new(
-            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.TodayOrders, snapshot.TodayProductQuantity, snapshot.MonthOrders, snapshot.MonthProductQuantity, snapshot.PendingReturns, snapshot.DueSoonInvoices, snapshot.UninvoicedInvoices, snapshot.LowStockProducts, snapshot.ActiveConnections, pendingByPlatform, snapshot.OldestQueuedJobAt, snapshot.LastVerifiedSynchronizationAt, snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, snapshot.RecentRateLimitJobCount, snapshot.OldestStockObservationAt, newAndProcessingOrders, lateByPlatform, pendingReturnsByPlatform),
-            lowStock,
-            sync,
-            platforms,
+            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.PendingReturns, breakdown.Pending, breakdown.Late, breakdown.Returns,
+                snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount),
+            channels,
             snapshot.UpdatedAt,
             snapshot.Version);
     }
 
-    internal static IQueryable<Order> OperationalOrderMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now)
-    {
-        var query = db.Orders.AsNoTracking()
-            .Where(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-                && (DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus)
-                    || (DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus) && x.ShipmentDueAt != null && x.ShipmentDueAt < now)));
-        return query.ExcludeStaleUnpackaged(db, tenantId, now);
-    }
+    private Task<List<DashboardChannelView>> ChannelsAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status))
+            .OrderBy(x => x.DisplayName)
+            .Select(x => new DashboardChannelView(x.Id, x.PlatformCode, x.DisplayName, x.Status))
+            .ToListAsync(cancellationToken);
 
+    // The warehouse queue: orders waiting to be packed or shipped. The same query gives the card total and its
+    // per-store breakdown, and the order list's "pending" count (OrderSummaryView.Pending) uses the same rule.
     internal static IQueryable<Order> PendingOrderMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now)
     {
         var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
@@ -96,223 +48,163 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         return query.ExcludeStaleUnpackaged(db, tenantId, now);
     }
 
-    public async Task<IReadOnlyList<DashboardRevenuePointView>> RevenueSeriesAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, string? platform, CancellationToken cancellationToken)
+    // Pending orders whose ship-by time has passed. Trendyol stores that time three hours ahead (Turkey wall time
+    // labelled UTC), so its orders are late only once the stored value is behind now plus that offset.
+    internal static IQueryable<Order> LateOrderMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now)
     {
-        var snapshotExists = await db.DashboardSnapshots.AsNoTracking().AnyAsync(x => x.TenantId == tenantId, cancellationToken);
-        if (!snapshotExists) await RebuildTenantAsync(tenantId, cancellationToken);
+        var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
+        var wallClockNow = now + MarketplaceStoredClock.TurkeyWallClockAhead;
+        return PendingOrderMetricsQuery(db, tenantId, now).Where(x => DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus)
+            && x.ShipmentDueAt != null
+            && (x.ShipmentDueAt < now
+                || (x.ShipmentDueAt < wallClockNow && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)))));
+    }
 
+    // Returns waiting for the seller's decision, with the same Hepsiburada history rule as the return list: a
+    // Hepsiburada claim whose order is older than the return history the marketplace still serves is not listed.
+    internal static IQueryable<ReturnClaim> PendingReturnMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now)
+    {
+        var lookbackStart = HepsiburadaReturnHistoryPolicy.InitialStatusChangeStart(now);
+        return db.ReturnClaims.AsNoTracking().Where(claim => claim.TenantId == tenantId
+            && DashboardMetricPolicy.PendingReturnStatuses.Contains(claim.Status)
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
+            && (!db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId && connection.PlatformCode == "HEPSIBURADA")
+                || db.Orders.Any(order => order.TenantId == tenantId && order.Id == claim.OrderId && order.OrderedAt >= lookbackStart && order.OrderedAt <= now)));
+    }
+
+    public async Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken)
+    {
         var timezoneId = await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken);
         var timezone = ResolveTimezone(timezoneId);
-        var startDay = TimeZoneInfo.ConvertTime(from, timezone).Date;
-        var endDay = TimeZoneInfo.ConvertTime(to, timezone).Date;
-        if (endDay < startDay) (startDay, endDay) = (endDay, startDay);
-        var rangeStart = UtcOffset(DateTime.SpecifyKind(startDay, DateTimeKind.Unspecified), timezone);
-        var rangeEnd = UtcOffset(DateTime.SpecifyKind(endDay.AddDays(1), DateTimeKind.Unspecified), timezone);
-        var connectionNames = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
-            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
-        var rows = await db.Orders.AsNoTracking()
-            .Where(x => x.TenantId == tenantId
-                && x.OrderedAt >= rangeStart
-                && x.OrderedAt < rangeEnd
-                && !new[] { "CANCELLED", "CANCELED", "RETURNED" }.Contains(x.DerivedStatus)
-                && (x.NetAmount > 0 || x.GrossAmount > 0)
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status)))
-            .Select(x => new
+        var resolved = DashboardPerformancePeriod.Resolve(from, to, timeProvider.GetUtcNow(), timezone);
+        if (!resolved.Succeeded) return ServiceResult<DashboardPerformanceView>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status);
+        var period = resolved.Value!;
+        var rows = await PerformanceRowsAsync(tenantId, period, IanaId(timezone), cancellationToken);
+        var channels = await ChannelsAsync(tenantId, cancellationToken);
+        var current = rows.Where(x => x.Day >= period.From && x.Day <= period.To).ToList();
+        var previous = rows.Where(x => x.Day >= period.PreviousFrom && x.Day <= period.PreviousTo).ToList();
+        return ServiceResult<DashboardPerformanceView>.Ok(new(period.From, period.To, period.PreviousFrom, period.PreviousTo,
+            period.CurrentStart, period.CurrentEnd, period.PreviousStart, period.PreviousEnd, period.PartialDay, channels, current, previous));
+    }
+
+    // Both periods in three grouped queries (revenue, product units, packages), one row per day × store × currency.
+    // A day is the tenant's calendar day of the real order time (Trendyol's stored time minus its offset).
+    internal async Task<List<DashboardPerformanceRowView>> PerformanceRowsAsync(Guid tenantId, DashboardPerformancePeriod period, string timezone, CancellationToken cancellationToken)
+    {
+        var orders = PerformanceOrders(db, tenantId, period, timezone);
+        var revenue = await RevenueQuery(orders).ToListAsync(cancellationToken);
+        var units = await UnitQuery(db, orders).ToListAsync(cancellationToken);
+        var packages = await PackageQuery(db, orders).ToListAsync(cancellationToken);
+        return MergePerformanceRows(revenue, units, packages);
+    }
+
+    internal sealed record RevenueGroup(DateTime Day, Guid ConnectionId, string Currency, bool Returned, decimal Amount, int Orders);
+    internal sealed record UnitGroup(DateTime Day, Guid ConnectionId, string Currency, decimal Quantity);
+    internal sealed record PackageGroup(DateTime Day, Guid ConnectionId, string Currency, int Count);
+
+    internal static IQueryable<RevenueGroup> RevenueQuery(IQueryable<PerformanceOrderRow> orders) => orders
+        .GroupBy(x => new { x.Day, x.ConnectionId, x.Currency, x.Returned })
+        .Select(group => new RevenueGroup(group.Key.Day, group.Key.ConnectionId, group.Key.Currency, group.Key.Returned, group.Sum(x => x.Amount), group.Count()));
+
+    // Units still ordered: a line's cancelled quantity is not a sold product.
+    internal static IQueryable<UnitGroup> UnitQuery(AppDbContext db, IQueryable<PerformanceOrderRow> orders) =>
+        from row in orders
+        join line in db.OrderLines.AsNoTracking() on new { row.TenantId, OrderId = row.Id } equals new { line.TenantId, line.OrderId }
+        where !row.Returned
+        group line by new { row.Day, row.ConnectionId, row.Currency } into grouped
+        select new UnitGroup(grouped.Key.Day, grouped.Key.ConnectionId, grouped.Key.Currency, grouped.Sum(line => line.OrderedQuantity - line.CancelledQuantity));
+
+    // Packages as the order screens count them: current packages only (no split parents or placeholders), not cancelled.
+    internal static IQueryable<PackageGroup> PackageQuery(AppDbContext db, IQueryable<PerformanceOrderRow> orders) =>
+        from row in orders
+        join package in MarketplaceSalesService.CurrentShipmentPackages(db) on new { row.TenantId, OrderId = row.Id } equals new { package.TenantId, package.OrderId }
+        where !row.Returned && package.Status != ShipmentPackageStatus.Cancelled
+        group package by new { row.Day, row.ConnectionId, row.Currency } into grouped
+        select new PackageGroup(grouped.Key.Day, grouped.Key.ConnectionId, grouped.Key.Currency, grouped.Count());
+
+    internal static List<DashboardPerformanceRowView> MergePerformanceRows(IReadOnlyList<RevenueGroup> revenue, IReadOnlyList<UnitGroup> units, IReadOnlyList<PackageGroup> packages)
+    {
+        return revenue
+            .GroupBy(x => (Day: DateOnly.FromDateTime(x.Day), x.ConnectionId, x.Currency))
+            .Select(group =>
             {
-                x.OrderedAt,
-                x.ConnectionId,
-                x.Currency,
-                x.NetAmount,
-                x.GrossAmount,
-                ProductQuantity = db.OrderLines
-                    .Where(line => line.TenantId == x.TenantId && line.OrderId == x.Id)
-                    .Select(line => (decimal?)line.OrderedQuantity)
-                    .Sum() ?? 0,
-                ShipmentCount = db.ShipmentPackages.Count(package => package.TenantId == x.TenantId && package.OrderId == x.Id),
+                var sold = group.Where(x => !x.Returned).ToArray();
+                var returned = group.Where(x => x.Returned).ToArray();
+                var key = group.Key;
+                return new DashboardPerformanceRowView(
+                    key.Day, key.ConnectionId, key.Currency,
+                    sold.Sum(x => x.Amount), sold.Sum(x => x.Orders),
+                    units.Where(x => DateOnly.FromDateTime(x.Day) == key.Day && x.ConnectionId == key.ConnectionId && x.Currency == key.Currency).Sum(x => x.Quantity),
+                    packages.Where(x => DateOnly.FromDateTime(x.Day) == key.Day && x.ConnectionId == key.ConnectionId && x.Currency == key.Currency).Sum(x => x.Count),
+                    returned.Sum(x => x.Amount), returned.Sum(x => x.Orders));
             })
-            .ToListAsync(cancellationToken);
-        if (!string.IsNullOrWhiteSpace(platform) && platform != "ALL")
-            rows = rows.Where(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş") == platform).ToList();
-        var revenueRows = rows.Select(x => new
-        {
-            Day = TimeZoneInfo.ConvertTime(x.OrderedAt, timezone).Date,
-            x.Currency,
-            Amount = x.GrossAmount > 0 ? x.GrossAmount : x.NetAmount,
-            x.ProductQuantity,
-            x.ShipmentCount,
-        });
-        var byDay = revenueRows.GroupBy(x => x.Day).ToDictionary(
-            x => x.Key,
-            x => new DashboardRevenuePointView(
-                x.Key,
-                x.Sum(row => row.Amount),
-                x.Count(),
-                x.Sum(row => row.ProductQuantity),
-                x.Sum(row => row.ShipmentCount),
-                x.Select(row => row.Currency).FirstOrDefault() ?? "TRY"));
-        var result = new List<DashboardRevenuePointView>((endDay - startDay).Days + 1);
-        for (var day = startDay; day <= endDay; day = day.AddDays(1))
-            result.Add(byDay.GetValueOrDefault(day) ?? new DashboardRevenuePointView(day, 0, 0, 0, 0, "TRY"));
-        return result;
+            .OrderBy(x => x.Day).ThenBy(x => x.ConnectionId).ThenBy(x => x.Currency)
+            .ToList();
+    }
+
+    // Set through an object initializer, not a constructor, so the queries composed on it can still be translated.
+    internal sealed class PerformanceOrderRow
+    {
+        public Guid Id { get; init; }
+        public Guid TenantId { get; init; }
+        public Guid ConnectionId { get; init; }
+        public string Currency { get; init; } = "TRY";
+        public decimal Amount { get; init; }
+        public bool Returned { get; init; }
+        public DateTime Day { get; init; }
+    }
+
+    internal static IQueryable<PerformanceOrderRow> PerformanceOrders(AppDbContext db, Guid tenantId, DashboardPerformancePeriod period, string timezone)
+    {
+        var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
+        var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
+        var cancelled = DashboardRevenuePolicy.CancelledStatuses;
+        var returnedStatuses = DashboardRevenuePolicy.ReturnedStatuses;
+        var previousStart = period.PreviousStart;
+        var previousEnd = period.PreviousEnd;
+        var currentStart = period.CurrentStart;
+        var currentEnd = period.CurrentEnd;
+        var scanEnd = period.CurrentEnd + ahead;
+        return from order in db.Orders.AsNoTracking()
+               join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
+               where order.TenantId == tenantId
+                   && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status)
+                   && order.OrderedAt >= previousStart && order.OrderedAt < scanEnd
+                   && !cancelled.Contains(order.DerivedStatus)
+                   && (order.NetAmount > 0 || order.GrossAmount > 0)
+               let realAt = wallClockPlatforms.Contains(connection.PlatformCode) ? order.OrderedAt - ahead : order.OrderedAt
+               where (realAt >= previousStart && realAt < previousEnd) || (realAt >= currentStart && realAt < currentEnd)
+               // DashboardRevenuePolicy.Amount: what the customer paid; the price before discounts only when no net is known.
+               select new PerformanceOrderRow
+               {
+                   Id = order.Id,
+                   TenantId = order.TenantId,
+                   ConnectionId = order.ConnectionId,
+                   Currency = order.Currency,
+                   Amount = order.NetAmount > 0 ? order.NetAmount : order.GrossAmount,
+                   Returned = returnedStatuses.Contains(order.DerivedStatus),
+                   Day = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Date
+               };
     }
 
     public async Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        var tenant = await db.Tenants.AsNoTracking().SingleOrDefaultAsync(x => x.Id == tenantId, cancellationToken);
-        if (tenant is null) return;
-
+        if (!await db.Tenants.AsNoTracking().AnyAsync(x => x.Id == tenantId, cancellationToken)) return;
         var now = timeProvider.GetUtcNow();
-        var timezone = ResolveTimezone(tenant.Timezone);
-        var localNow = TimeZoneInfo.ConvertTime(now, timezone);
         var rateLimitWindowStart = now.AddHours(-DashboardMetricPolicy.OperationalRateLimitWindowHours);
-        var oldestQueuedJobAt = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
-            .OrderBy(x => x.CreatedAt)
-            .Select(x => (DateTimeOffset?)x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        var lastVerifiedSynchronizationAt = await db.SyncCursors.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.LastSuccessAt != null)
-            .OrderByDescending(x => x.LastSuccessAt)
-            .Select(x => x.LastSuccessAt)
-            .FirstOrDefaultAsync(cancellationToken);
+
+        // Counts only: every number is a GROUP BY or COUNT in the database, nothing is loaded row by row.
+        var pending = await PendingOrderMetricsQuery(db, tenantId, now).GroupBy(x => x.ConnectionId).Select(x => new { x.Key, Count = x.Count() }).ToListAsync(cancellationToken);
+        var late = await LateOrderMetricsQuery(db, tenantId, now).GroupBy(x => x.ConnectionId).Select(x => new { x.Key, Count = x.Count() }).ToListAsync(cancellationToken);
+        var returns = await PendingReturnMetricsQuery(db, tenantId, now).GroupBy(x => x.ConnectionId).Select(x => new { x.Key, Count = x.Count() }).ToListAsync(cancellationToken);
         var deadJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.Status == JobStatus.Dead, cancellationToken);
         var manualReviewJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.Status == JobStatus.ManualReview, cancellationToken);
-        // Keep the denominator as all jobs created in the window. Counting
-        // only rows with an error code would turn the rate-limit metric into
-        // an error-only ratio and make a healthy queue look saturated.
-        var recentJobs = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.CreatedAt >= rateLimitWindowStart)
-            .Select(x => x.LastErrorCode)
-            .ToListAsync(cancellationToken);
-        var oldestStockObservationAt = await db.InventoryItems.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ObservedRemoteAt != null)
-            .OrderBy(x => x.ObservedRemoteAt)
-            .Select(x => x.ObservedRemoteAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        var todayStart = UtcOffset(DateTime.SpecifyKind(localNow.Date, DateTimeKind.Unspecified), timezone);
-        var monthStart = UtcOffset(new DateTime(localNow.Year, localNow.Month, 1), timezone);
-        var pendingOrdersQuery = PendingOrderMetricsQuery(db, tenantId, now);
-        var revenueOrders = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-            && !new[] { "CANCELLED", "CANCELED", "RETURNED" }.Contains(x.DerivedStatus) && (x.NetAmount > 0 || x.GrossAmount > 0));
+        var recentJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.CreatedAt >= rateLimitWindowStart, cancellationToken);
 
-        var pendingOrders = await pendingOrdersQuery.CountAsync(cancellationToken);
-        var lateOrders = await pendingOrdersQuery.CountAsync(x => DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus)
-            && x.ShipmentDueAt != null && x.ShipmentDueAt < now, cancellationToken);
-        var todayOrdersQuery = revenueOrders.Where(x => x.OrderedAt >= todayStart && x.OrderedAt < todayStart.AddDays(1));
-        var monthOrdersQuery = revenueOrders.Where(x => x.OrderedAt >= monthStart && x.OrderedAt < monthStart.AddMonths(1));
-        var todayOrders = await todayOrdersQuery.CountAsync(cancellationToken);
-        var monthOrders = await monthOrdersQuery.CountAsync(cancellationToken);
-        var todayProductQuantity = await (from line in db.OrderLines.AsNoTracking()
-                                          join order in todayOrdersQuery on line.OrderId equals order.Id
-                                          select (decimal?)line.OrderedQuantity).SumAsync(cancellationToken) ?? 0m;
-        var monthProductQuantity = await (from line in db.OrderLines.AsNoTracking()
-                                          join order in monthOrdersQuery on line.OrderId equals order.Id
-                                          select (decimal?)line.OrderedQuantity).SumAsync(cancellationToken) ?? 0m;
-
-        var pendingByConnection = await pendingOrdersQuery
-            .GroupBy(x => x.ConnectionId)
-            .Select(x => new { ConnectionId = x.Key, Count = x.Count() })
-            .ToListAsync(cancellationToken);
-        var connectionNames = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED")).ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
-        var pendingByPlatform = pendingByConnection
-            .GroupBy(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş"))
-            .ToDictionary(x => x.Key, x => x.Sum(row => row.Count));
-
-        var pendingReturns = await db.ReturnClaims.AsNoTracking()
-            .CountAsync(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-                && DashboardMetricPolicy.PendingReturnStatuses.Contains(x.Status), cancellationToken);
-        var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.PlatformCode == "TRENDYOL" && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status), cancellationToken);
-        var uninvoicedInvoices = 0;
-        var dueSoonInvoices = 0;
-        if (hasOperationalTrendyol)
-        {
-            var activePackages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-                && x.Status != ShipmentPackageStatus.Cancelled
-                && db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)));
-            var activePackageRows = await activePackages.ToListAsync(cancellationToken);
-            var activeOrderIds = activePackageRows.Select(x => x.OrderId).Distinct().ToArray();
-            var activeOrders = await db.Orders.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && activeOrderIds.Contains(x.Id))
-                .ToDictionaryAsync(x => x.Id, cancellationToken);
-            var activeInvoices = await db.Invoices.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && activeOrderIds.Contains(x.OrderId)
-                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
-                .OrderByDescending(x => x.CreatedAt)
-                .ToListAsync(cancellationToken);
-            var invoicesByOrder = activeInvoices
-                .Where(x => x.PackageId == null)
-                .GroupBy(x => x.OrderId)
-                .ToDictionary(x => x.Key, x => x.First());
-            var invoicesByPackage = activeInvoices
-                .Where(x => x.PackageId != null)
-                .GroupBy(x => x.PackageId!.Value)
-                .ToDictionary(x => x.Key, x => x.First());
-            uninvoicedInvoices = activePackageRows.Count(package =>
-                activeOrders.TryGetValue(package.OrderId, out var order)
-                && MarketplaceSalesService.InvoiceLabel(
-                    invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id),
-                    package.MarketplaceInvoiceStatus,
-                    order.CustomerSnapshotJson,
-                    [package.RawStatus]) == "FATURA_BEKLIYOR");
-            var invoiceDueAt = now.AddDays(-DashboardMetricPolicy.InvoiceDueDays);
-            var invoiceReminderAt = now.AddDays(-DashboardMetricPolicy.InvoiceReminderStartDays);
-            dueSoonInvoices = activePackageRows.Count(package => package.Status == ShipmentPackageStatus.Delivered
-                && package.StatusOccurredAt > invoiceDueAt
-                && package.StatusOccurredAt <= invoiceReminderAt
-                && activeOrders.TryGetValue(package.OrderId, out var order)
-                && MarketplaceSalesService.InvoiceLabel(
-                    invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id),
-                    package.MarketplaceInvoiceStatus,
-                    order.CustomerSnapshotJson,
-                    [package.RawStatus]) == "FATURA_BEKLIYOR");
-        }
-
-        var products = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status == ProductStatus.Active
-            && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == x.Id)
-                || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == x.Id
-                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
-            .Select(x => new { x.Id, x.Title }).ToListAsync(cancellationToken);
-        var productIds = products.Select(x => x.Id).ToArray();
-        var variants = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId))
-            .ToListAsync(cancellationToken);
-        var variantIds = variants.Select(variant => variant.Id).ToArray();
-        var inventoryByVariant = await db.InventoryItems.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
-            .GroupBy(x => x.VariantId)
-            .Select(group => new { VariantId = group.Key, TotalStock = group.Sum(x => x.OnHand) })
-            .ToDictionaryAsync(x => x.VariantId, x => x.TotalStock, cancellationToken);
-        var variantsByProduct = variants
-            .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
-        var stockByProduct = variantsByProduct.ToDictionary(x => x.Key, x => ProductStockPolicy.TotalStock(x.Value, inventoryByVariant));
-        var lowProducts = products.Where(product => stockByProduct.GetValueOrDefault(product.Id) > 0
-            && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(product.Id) ?? [], inventoryByVariant)).ToList();
-        var lowProductIds = lowProducts.Select(x => x.Id).ToArray();
-        var imageRows = await (from media in db.ProductMedia.AsNoTracking()
-                               join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
-                               where media.TenantId == tenantId && lowProductIds.Contains(media.ProductId) && media.Status == "ACTIVE" && asset.Status == "ACTIVE"
-                               orderby media.SortOrder
-                               select new { media.ProductId, Url = asset.RelativePath }).ToListAsync(cancellationToken);
-        var imageByProduct = imageRows.GroupBy(x => x.ProductId).ToDictionary(x => x.Key, x => x.First().Url);
-
-        var revenueRows = await revenueOrders.Select(x => new { x.OrderedAt, x.ConnectionId, x.Currency, x.NetAmount, x.GrossAmount }).ToListAsync(cancellationToken);
-        var revenue = revenueRows
-            .Select(x => new
-            {
-                Day = TimeZoneInfo.ConvertTime(x.OrderedAt, timezone).Date,
-                PlatformName = connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş"),
-                x.Currency,
-                Amount = x.NetAmount > 0 ? x.NetAmount : x.GrossAmount
-            })
-            .GroupBy(x => new { x.Day, x.PlatformName, x.Currency })
-            .Select(x => new DashboardRevenueDaily { TenantId = tenantId, Day = x.Key.Day, PlatformName = x.Key.PlatformName, Currency = x.Key.Currency, Amount = x.Sum(row => row.Amount), OrderCount = x.Count(), UpdatedAt = now })
-            .ToList();
-
+        var breakdown = new DashboardBreakdown(
+            pending.ToDictionary(x => x.Key.ToString("D"), x => x.Count),
+            late.ToDictionary(x => x.Key.ToString("D"), x => x.Count),
+            returns.ToDictionary(x => x.Key.ToString("D"), x => x.Count));
         var snapshot = await db.DashboardSnapshots.SingleOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
         if (snapshot is null)
         {
@@ -320,63 +212,46 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             db.DashboardSnapshots.Add(snapshot);
         }
         else snapshot.Version++;
-        snapshot.PendingOrders = pendingOrders;
-        snapshot.LateOrders = lateOrders;
-        snapshot.TodayOrders = todayOrders;
-        snapshot.TodayProductQuantity = todayProductQuantity;
-        snapshot.MonthOrders = monthOrders;
-        snapshot.MonthProductQuantity = monthProductQuantity;
-        snapshot.PendingReturns = pendingReturns;
-        snapshot.DueSoonInvoices = dueSoonInvoices;
-        snapshot.UninvoicedInvoices = uninvoicedInvoices;
-        snapshot.LowStockProducts = lowProducts.Count;
-        snapshot.ActiveConnections = await db.PlatformConnections.AsNoTracking().CountAsync(x => x.TenantId == tenantId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status), cancellationToken);
-        snapshot.PendingByPlatformJson = JsonSerializer.Serialize(pendingByPlatform);
-        snapshot.OldestQueuedJobAt = oldestQueuedJobAt;
-        snapshot.LastVerifiedSynchronizationAt = lastVerifiedSynchronizationAt;
+        snapshot.PendingOrders = pending.Sum(x => x.Count);
+        snapshot.LateOrders = late.Sum(x => x.Count);
+        snapshot.PendingReturns = returns.Sum(x => x.Count);
+        snapshot.PendingByPlatformJson = JsonSerializer.Serialize(breakdown, BreakdownJson);
         snapshot.DeadJobCount = deadJobCount;
         snapshot.ManualReviewJobCount = manualReviewJobCount;
-        snapshot.RecentJobCount = recentJobs.Count;
-        snapshot.RecentRateLimitJobCount = recentJobs.Count(DashboardMetricPolicy.IsRateLimitError);
-        snapshot.OldestStockObservationAt = oldestStockObservationAt;
+        snapshot.RecentJobCount = recentJobCount;
         snapshot.UpdatedAt = now;
-
-        var oldRevenue = await db.DashboardRevenueDaily.Where(x => x.TenantId == tenantId).ToListAsync(cancellationToken);
-        db.DashboardRevenueDaily.RemoveRange(oldRevenue);
-        db.DashboardRevenueDaily.AddRange(revenue);
-        var oldLowStock = await db.DashboardLowStockProjections.Where(x => x.TenantId == tenantId).ToListAsync(cancellationToken);
-        db.DashboardLowStockProjections.RemoveRange(oldLowStock);
-        db.DashboardLowStockProjections.AddRange(lowProducts.Select(x => new DashboardLowStockProjection { TenantId = tenantId, ProductId = x.Id, Title = x.Title, TotalStock = stockByProduct.GetValueOrDefault(x.Id), PrimaryImageUrl = imageByProduct.GetValueOrDefault(x.Id), UpdatedAt = now }));
-
-        var oldSync = await db.DashboardSyncStatusProjections.Where(x => x.TenantId == tenantId).ToListAsync(cancellationToken);
-        db.DashboardSyncStatusProjections.RemoveRange(oldSync);
-        foreach (var definition in SyncDefinitions)
-        {
-            var recent = await db.IntegrationJobs.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && definition.JobTypes.Contains(x.JobType))
-                .OrderByDescending(x => x.CreatedAt)
-                .Take(20)
-                .Select(x => new { x.Status, x.CreatedAt, x.StartedAt, x.CompletedAt, x.LastErrorCode })
-                .ToListAsync(cancellationToken);
-            var latestAttempt = recent.OrderByDescending(x => x.CompletedAt ?? x.StartedAt ?? x.CreatedAt).FirstOrDefault();
-            var latestSuccess = recent.Where(x => x.Status == JobStatus.Succeeded && x.CompletedAt != null).OrderByDescending(x => x.CompletedAt).FirstOrDefault();
-            if (definition.Required || latestAttempt is not null)
-                db.DashboardSyncStatusProjections.Add(new DashboardSyncStatusProjection { TenantId = tenantId, ResourceType = definition.ResourceType, DisplayName = definition.Label, Kind = definition.Kind, Status = latestAttempt is null ? "UNKNOWN" : JobStatusText(latestAttempt.Status), LastAttemptAt = latestAttempt?.StartedAt ?? latestAttempt?.CreatedAt, LastSuccessAt = latestSuccess?.CompletedAt, LastErrorCode = latestAttempt?.LastErrorCode, UpdatedAt = now, Version = 1 });
-        }
-
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static DashboardBootstrapView EmptyBootstrap() => new(
-        new DashboardMetricsView(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, new Dictionary<string, int>()),
-        [], [], [], DateTimeOffset.UtcNow, 0);
+    // The three per-store breakdowns live in the snapshot's one JSON column. A snapshot written before they were
+    // grouped by store holds a flat name → count map; it is ignored until the next rebuild.
+    internal sealed record DashboardBreakdown(IReadOnlyDictionary<string, int> Pending, IReadOnlyDictionary<string, int> Late, IReadOnlyDictionary<string, int> Returns);
 
-    private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();
+    internal static DashboardBreakdown ReadBreakdown(string? json)
+    {
+        var empty = new Dictionary<string, int>();
+        if (string.IsNullOrWhiteSpace(json)) return new(empty, empty, empty);
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("pending", out var pendingElement) || pendingElement.ValueKind != JsonValueKind.Object)
+                return new(empty, empty, empty);
+            var parsed = JsonSerializer.Deserialize<DashboardBreakdown>(json, BreakdownJson);
+            return new(parsed?.Pending ?? empty, parsed?.Late ?? empty, parsed?.Returns ?? empty);
+        }
+        catch (JsonException) { return new(empty, empty, empty); }
+    }
 
-    private static DateTimeOffset UtcOffset(DateTime localDate, TimeZoneInfo timezone) =>
-        new(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localDate, DateTimeKind.Unspecified), timezone), TimeSpan.Zero);
+    private static DashboardMetricsView EmptyMetrics() => new(0, 0, 0, new Dictionary<string, int>(), new Dictionary<string, int>(), new Dictionary<string, int>());
 
-    private static TimeZoneInfo ResolveTimezone(string? timezone)
+    // PostgreSQL wants the IANA name; a Windows id from an old setting is converted.
+    internal static string IanaId(TimeZoneInfo timezone)
+    {
+        if (timezone.HasIanaId) return timezone.Id;
+        return TimeZoneInfo.TryConvertWindowsIdToIanaId(timezone.Id, out var iana) ? iana : "UTC";
+    }
+
+    internal static TimeZoneInfo ResolveTimezone(string? timezone)
     {
         if (string.IsNullOrWhiteSpace(timezone)) return TimeZoneInfo.Utc;
         try { return TimeZoneInfo.FindSystemTimeZoneById(timezone); }
@@ -387,4 +262,54 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         }
         catch (InvalidTimeZoneException) { return TimeZoneInfo.Utc; }
     }
+}
+
+// What the performance panel counts as revenue. Owner decision (20 Oct 2026): revenue is what the customer paid
+// (net); cancelled orders are left out; returned orders are left out of revenue and shown on their own line.
+public static class DashboardRevenuePolicy
+{
+    public static readonly string[] CancelledStatuses = ["CANCELLED", "CANCELED"];
+    public static readonly string[] ReturnedStatuses = ["RETURNED"];
+
+    public static decimal Amount(decimal netAmount, decimal grossAmount) => netAmount > 0 ? netAmount : grossAmount;
+}
+
+// The chosen calendar days and the previous period of equal elapsed time. A period that ends today runs until now,
+// so the previous one stops at the same time of day: "today until 10:00" is compared with "yesterday until 10:00".
+public sealed record DashboardPerformancePeriod(
+    DateOnly From,
+    DateOnly To,
+    DateOnly PreviousFrom,
+    DateOnly PreviousTo,
+    DateTimeOffset CurrentStart,
+    DateTimeOffset CurrentEnd,
+    DateTimeOffset PreviousStart,
+    DateTimeOffset PreviousEnd,
+    bool PartialDay)
+{
+    public const int MaximumDays = 366;
+
+    public static ServiceResult<DashboardPerformancePeriod> Resolve(DateOnly? from, DateOnly? to, DateTimeOffset now, TimeZoneInfo timezone)
+    {
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, timezone).Date);
+        var end = to ?? today;
+        var start = from ?? end;
+        if (start > end) return ServiceResult<DashboardPerformancePeriod>.Fail("REVENUE_RANGE_INVALID", "Başlangıç tarihi bitiş tarihinden sonra olamaz.", 400);
+        if (start > today) return ServiceResult<DashboardPerformancePeriod>.Fail("REVENUE_RANGE_INVALID", "Rapor dönemi gelecekte başlayamaz.", 400);
+        if (end > today) end = today;
+        var days = end.DayNumber - start.DayNumber + 1;
+        if (days > MaximumDays) return ServiceResult<DashboardPerformancePeriod>.Fail("REVENUE_RANGE_TOO_LARGE", $"Ciro aralığı en fazla {MaximumDays} gün olabilir.", 400);
+
+        var currentStart = LocalMidnight(start, timezone);
+        var dayAfter = LocalMidnight(end.AddDays(1), timezone);
+        var partial = dayAfter > now;
+        var currentEnd = partial ? now : dayAfter;
+        var previousFrom = start.AddDays(-days);
+        var previousStart = LocalMidnight(previousFrom, timezone);
+        return ServiceResult<DashboardPerformancePeriod>.Ok(new(start, end, previousFrom, end.AddDays(-days),
+            currentStart, currentEnd, previousStart, previousStart + (currentEnd - currentStart), partial));
+    }
+
+    private static DateTimeOffset LocalMidnight(DateOnly day, TimeZoneInfo timezone) =>
+        new(TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), timezone), TimeSpan.Zero);
 }

@@ -1,5 +1,8 @@
 export const dashboardOperationalLinks = {
-  pendingOrders: '/orders?status=NEW',
+  // The order list's pending (warehouse queue) and late views; the dashboard counts the same orders.
+  pendingOrders: '/orders?status=PENDING',
+  lateOrders: '/orders?status=LATE',
+  lowStock: '/products?stock=LOW',
   pendingReturns: '/returns?status=ACTION_REQUIRED',
   pendingInvoices: '/invoices?tab=UNINVOICED',
   dueInvoices: '/invoices?tab=DUE_SOON'

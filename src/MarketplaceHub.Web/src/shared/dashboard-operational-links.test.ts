@@ -3,7 +3,9 @@ import { dashboardOperationalLinks, resolveInvoiceTab, resolveReturnStatus } fro
 
 describe('dashboard operational metric destinations', () => {
   it('opens pending orders and action-required returns in their matching views', () => {
-    expect(dashboardOperationalLinks.pendingOrders).toBe('/orders?status=NEW')
+    expect(dashboardOperationalLinks.pendingOrders).toBe('/orders?status=PENDING')
+    expect(dashboardOperationalLinks.lateOrders).toBe('/orders?status=LATE')
+    expect(dashboardOperationalLinks.lowStock).toBe('/products?stock=LOW')
     expect(dashboardOperationalLinks.pendingReturns).toBe('/returns?status=ACTION_REQUIRED')
     expect(resolveReturnStatus(new URL(dashboardOperationalLinks.pendingReturns, 'https://panel.ravencia.com').searchParams.get('status'))).toBe('ACTION_REQUIRED')
   })

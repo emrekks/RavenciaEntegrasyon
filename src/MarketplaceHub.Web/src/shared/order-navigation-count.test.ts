@@ -7,6 +7,11 @@ describe('order navigation count', () => {
     expect(orderNavigationCount({ new: 4, processing: 3 })).toBe(7)
   })
 
+  it('shows the dashboard pending count when the server sends it', () => {
+    expect(orderNavigationCount({ new: 4, processing: 3, pending: 5 })).toBe(5)
+    expect(orderNavigationCount({ new: 4, processing: 3, pending: 0 })).toBe(0)
+  })
+
   it('preserves a zero count and omits the badge while the summary is unavailable', () => {
     expect(orderNavigationCount({ new: 0, processing: 0 })).toBe(0)
     expect(orderNavigationCount(undefined)).toBeUndefined()

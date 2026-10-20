@@ -8,6 +8,9 @@ namespace MarketplaceHub.Api.Marketplace;
 
 public static class QuestionEndpoints
 {
+    // Every marketplace whose questions the panel reads; "Yenile" queues all of them.
+    internal static readonly string[] QuestionPlatforms = ["TRENDYOL", "HEPSIBURADA", "N11", "PAZARAMA"];
+
     public static IEndpointRouteBuilder MapQuestionEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1");
@@ -28,23 +31,26 @@ public static class QuestionEndpoints
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             if (!HasIdempotencyKey(http)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400);
-            if (!string.IsNullOrWhiteSpace(request.PlatformCode) && request.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA"))
+            if (!string.IsNullOrWhiteSpace(request.PlatformCode) && !QuestionPlatforms.Contains(request.PlatformCode))
                 return MarketplaceHub.Api.Security.ApiProblems.Of(http, "QUESTION_SYNC_PLATFORM_INVALID", "Soru aktarımı için desteklenen platformu seçin.", 400);
             var db = http.RequestServices.GetRequiredService<AppDbContext>();
             var sales = http.RequestServices.GetRequiredService<IMarketplaceSalesService>();
             var connections = await db.PlatformConnections.AsNoTracking().Where(row => row.TenantId == tenant.TenantId
-                && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA")
+                && QuestionPlatforms.Contains(row.PlatformCode)
                 && (request.PlatformCode == null || row.PlatformCode == request.PlatformCode)
                 && (row.Status == "ACTIVE" || row.Status == "VERIFIED"))
                 .Select(row => row.Id).ToListAsync(http.RequestAborted);
             var jobs = new List<Guid>();
+            ServiceError? firstError = null;
+            // One store that cannot read questions right now does not keep the others from refreshing.
             foreach (var connectionId in connections)
             {
                 var queued = await sales.EnqueueQuestionSyncAsync(tenant.TenantId, connectionId, request.Kind, http.TraceIdentifier, http.RequestAborted);
-                if (!queued.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, queued.Error!);
-                jobs.Add(queued.Value);
+                if (queued.Succeeded) jobs.Add(queued.Value);
+                else firstError ??= queued.Error;
             }
-            return Results.Accepted(value: new { jobs, queuedConnections = jobs.Count });
+            if (jobs.Count == 0 && firstError is not null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, firstError);
+            return Results.Accepted(value: new { jobs, queuedConnections = jobs.Count, skippedConnections = connections.Count - jobs.Count });
         });
         api.MapGet("/questions/sync-state", async (HttpContext http, IMarketplaceQuestionService service) =>
         {

@@ -12,6 +12,7 @@ import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
 import { readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
+import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
 import { focusOnMount } from '../shared/focus'
@@ -116,7 +117,7 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
   // A failed sign-out request (network, expired session) still leaves the workspace.
-  async function logout() { try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { window.location.replace(`/?signedOut=${Date.now()}`) } }
+  async function logout() { try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { clearPersonalStorage(); window.location.replace(`/?signedOut=${Date.now()}`) } }
   // Hover expansion is an overlay state: the layout column stays collapsed so
   // opening and closing the menu does not move the page underneath it.
   const menuCollapsed = !sidebarPinned
@@ -213,6 +214,8 @@ export function App() {
   // Only "not signed in" asks for the password; a server that is restarting or unreachable shows the error and tries again.
   if (me.isError) return isSignedOut(me.error) ? <Routes><Route path="*" element={<Login />} /></Routes> : <SessionLoadError error={me.error} onRetry={() => void me.refetch()} />
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />
+  // Browser-stored notification history and remembered counts belong to this tenant and user only.
+  setStorageScope(me.data.tenantId, me.data.id)
   if (me.data.state === 'REVOKED') return <Routes><Route path="*" element={<Login notice={sessionExpiredNotice} />} /></Routes>
   if (me.data.state === 'PASSWORD_CHANGE_REQUIRED') return <ChangePassword />
   if (me.data.state === 'MFA_CHALLENGE') return <MfaChallenge />
@@ -395,7 +398,7 @@ function MfaChallenge() {
   const [leaving, setLeaving] = useState(false)
   async function backToLogin() {
     setLeaving(true)
-    try { await api('/logout', { method: 'POST' }) } finally { window.location.replace(`/?signedOut=${Date.now()}`) }
+    try { await api('/logout', { method: 'POST' }) } finally { clearPersonalStorage(); window.location.replace(`/?signedOut=${Date.now()}`) }
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -431,7 +434,7 @@ function LockedSession() {
   const [leaving, setLeaving] = useState(false)
   async function backToLogin() {
     setLeaving(true)
-    try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { window.location.replace(`/?signedOut=${Date.now()}`) }
+    try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { clearPersonalStorage(); window.location.replace(`/?signedOut=${Date.now()}`) }
   }
   return <Status title="Oturum kilitli" detail="Bu oturumla devam edilemiyor. Giriş ekranına dönüp yeniden giriş yapın." action={<button type="button" className="rv-button rv-button-primary rv-button-md" onClick={() => void backToLogin()} disabled={leaving}>{leaving ? 'Giriş ekranına dönülüyor…' : 'Giriş Ekranına Dön'}</button>} />
 }

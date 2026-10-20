@@ -1,3 +1,5 @@
+import { scopedStorageKey } from './storage-scope'
+
 export type NotificationTarget = { href: string; label: string }
 export type NotificationDetail = { label: string; value: string; tone?: 'success' | 'error' }
 
@@ -32,6 +34,7 @@ export function inferNotificationTarget(message: string): NotificationTarget | n
   return null
 }
 
+// Kept per tenant and user (storage-scope.ts): the history of one person is never shown to the next one on this browser.
 const notificationStorageKey = 'ravencia.notification-history'
 const notificationChangeEvent = 'ravencia:notification-change'
 
@@ -82,7 +85,7 @@ export function integrationNotificationTarget(connectionId: string | null | unde
 
 export function readNotificationHistory(): AppNotification[] {
   try {
-    const raw = localStorage.getItem(notificationStorageKey)
+    const raw = localStorage.getItem(scopedStorageKey(notificationStorageKey))
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -116,7 +119,7 @@ export function appendNotification(message: string, kind: AppNotification['kind'
   const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind: normalizeNotificationKind(message, kind), createdAt: new Date().toISOString(), read: false, href: destination?.href, actionLabel: destination?.label, details: details && details.length > 0 ? details.slice(0, 40) : undefined }
   const history = [notification, ...readNotificationHistory()].slice(0, 20)
   try {
-    localStorage.setItem(notificationStorageKey, JSON.stringify(history))
+    localStorage.setItem(scopedStorageKey(notificationStorageKey), JSON.stringify(history))
   } catch {
     // A full or restricted browser store must not break the operation that
     // produced the notification.
@@ -130,7 +133,7 @@ export function markNotificationRead(notificationId: string) {
   const next = history.map(notification => notification.id === notificationId ? { ...notification, read: true } : notification)
   if (next.every((notification, index) => notification.read === history[index]?.read)) return
   try {
-    localStorage.setItem(notificationStorageKey, JSON.stringify(next))
+    localStorage.setItem(scopedStorageKey(notificationStorageKey), JSON.stringify(next))
   } catch {
     return
   }
@@ -142,7 +145,7 @@ export function markAllNotificationsRead() {
   if (!history.some(notification => !notification.read)) return
   const next = history.map(notification => notification.read ? notification : { ...notification, read: true })
   try {
-    localStorage.setItem(notificationStorageKey, JSON.stringify(next))
+    localStorage.setItem(scopedStorageKey(notificationStorageKey), JSON.stringify(next))
   } catch {
     return
   }
@@ -151,7 +154,7 @@ export function markAllNotificationsRead() {
 
 export function clearNotificationHistory() {
   try {
-    localStorage.removeItem(notificationStorageKey)
+    localStorage.removeItem(scopedStorageKey(notificationStorageKey))
   } catch {
     return
   }

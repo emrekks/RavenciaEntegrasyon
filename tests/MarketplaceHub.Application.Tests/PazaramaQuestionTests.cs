@@ -24,6 +24,7 @@ public sealed class PazaramaQuestionTests
     [InlineData("WAITING_FOR_ANSWER", new[] { 0 })]
     [InlineData("ANSWERED", new[] { 1, 2 })]
     [InlineData("REJECTED", new[] { 3 })]
+    [InlineData("WAITING_FOR_APPROVE", new[] { 2 })]
     [InlineData(null, new[] { 0, 1, 2, 3 })]
     [InlineData("EXPIRED", new[] { 0, 1, 2, 3 })]
     public void Panel_states_ask_for_the_matching_pazarama_states(string? panel, int[] expected) =>
@@ -32,7 +33,8 @@ public sealed class PazaramaQuestionTests
     [Theory]
     [InlineData(0, "WAITING_FOR_ANSWER")]
     [InlineData(1, "ANSWERED")]
-    [InlineData(2, "ANSWERED")]
+    [InlineData(2, "WAITING_FOR_APPROVE")]
+    [InlineData(7, "PAZARAMA_STATUS_7")]
     [InlineData(3, "REJECTED")]
     [InlineData(null, "WAITING_FOR_ANSWER")]
     public void Pazarama_states_map_to_panel_states(int? status, string expected) => Assert.Equal(expected, PazaramaQuestionMapper.PanelStatus(status));
@@ -47,7 +49,7 @@ public sealed class PazaramaQuestionTests
 
         Assert.Equal("56643287-ad2c-40be-9088-08dc076bf0d7", question.Id);
         Assert.Equal("PRODUCT", question.Kind);
-        Assert.Equal("ANSWERED", question.Status);
+        Assert.Equal("WAITING_FOR_APPROVE", question.Status);
         Assert.Equal("garanti var mı", question.Text);
         Assert.Equal("Tükenmez Kalem", question.ProductName);
         Assert.Equal("MSTK55550", question.ProductBarcode);
