@@ -1,0 +1,15 @@
+/* The order summary row has five cards: one row of five on desktop, three over two on tablet
+   (761–1100 px), two per row with the last one full width on phone (≤760 px). Builds on the shared
+   .rr-metrics rules in returns-sade.css. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article { grid-column: span 2; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article:nth-child(n + 4) { grid-column: span 3; }
+}
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: 1fr 1fr; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article,
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article:nth-child(n + 4) { grid-column: auto; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article:last-child { grid-column: 1 / -1; }
+}
