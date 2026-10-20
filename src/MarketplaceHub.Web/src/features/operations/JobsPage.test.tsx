@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Me } from '../../shared/api'
 
@@ -17,8 +17,14 @@ function job(id: string, jobType: string, status: string, createdAt: string) {
 }
 
 vi.mock('../../shared/api', () => ({
+  loadAllPages: vi.fn(async () => ({ items: [
+    { id: 'ty', platformCode: 'TRENDYOL', status: 'ACTIVE' },
+    { id: 'ef', platformCode: 'TRENDYOL_EFATURAM', status: 'ACTIVE' },
+    { id: 'n11', platformCode: 'N11', status: 'DISABLED' }
+  ], nextCursor: null, hasMore: false })),
   hubApi: vi.fn(async (path: string) => {
     apiState.calls.push(path)
+    if (path.startsWith('/jobs/counts') && path.includes('platform=TRENDYOL_EFATURAM')) return [{ status: 'DEAD', jobType: 'INVOICE_SUBMIT', count: 4 }]
     if (path.startsWith('/jobs/counts')) return [
       { status: 'SUCCEEDED', jobType: 'TRENDYOL_ORDER_SYNC', count: 2 },
       { status: 'DEAD', jobType: 'TRENDYOL_ORDER_SYNC', count: 1 },
@@ -65,10 +71,16 @@ function rowCount() {
   return container.querySelectorAll('.jobs-reference-row').length
 }
 
-async function renderPage() {
+let currentSearch = ''
+function LocationProbe() {
+  currentSearch = useLocation().search
+  return null
+}
+
+async function renderPage(url = '/jobs') {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
   root = createRoot(container)
-  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><JobsPage me={me} /></MemoryRouter></QueryClientProvider>) })
+  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><JobsPage me={me} /><LocationProbe /></MemoryRouter></QueryClientProvider>) })
   await settle()
   await settle()
 }
@@ -139,5 +151,57 @@ describe('JobsPage cursor paging', () => {
 
     expect(rowCount()).toBe(2)
     expect(container.textContent).toContain('Listenin devamı okunamadı.')
+  })
+})
+
+describe('JobsPage platform filter', () => {
+  function countRequests() {
+    return apiState.calls.filter(path => path.startsWith('/jobs/counts')).map(path => new URLSearchParams(path.slice(path.indexOf('?') + 1)))
+  }
+
+  function openFilters() {
+    act(() => { container.querySelector<HTMLButtonElement>('.jobs-reference-filter-toggle')!.click() })
+    return container.querySelector<HTMLSelectElement>('select[aria-label="Platform"]')!
+  }
+
+  it('offers Tümü and every connected platform, and sends the choice to the list and the counts', async () => {
+    await renderPage()
+    const select = openFilters()
+
+    expect(Array.from(select.options).map(option => option.textContent)).toEqual(['Tümü', 'Trendyol', 'N11', 'E-Faturam'])
+    expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
+
+    await act(async () => { select.value = 'TRENDYOL_EFATURAM'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await settle()
+    await settle()
+
+    expect(currentSearch).toBe('?platform=trendyol_efaturam')
+    expect(pageRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
+    expect(countRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
+    // The status row and the tab counts come from the platform's counts.
+    const summary = container.querySelector('.jobs-reference-status-summary')!.textContent
+    expect(summary).toContain('Hata 4')
+    expect(summary).toContain('Başarılı 0')
+    const invoiceTab = Array.from(container.querySelectorAll('[role="tab"]')).find(tab => tab.textContent?.includes('Faturalar'))!
+    expect(invoiceTab.textContent).toContain('4')
+  })
+
+  it('keeps the platform from the URL on load and through the next page', async () => {
+    await renderPage('/jobs?platform=n11')
+
+    expect(pageRequests().at(-1)!.get('platform')).toBe('N11')
+    expect(countRequests().at(-1)!.get('platform')).toBe('N11')
+    expect(container.querySelector('.jobs-reference-filter-toggle')!.textContent).toContain('N11')
+
+    await act(async () => { button('Daha Fazla Yükle')!.click() })
+    await settle()
+    const next = pageRequests().find(params => params.get('after') === 'cursor-1')!
+    expect(next.get('platform')).toBe('N11')
+
+    const select = openFilters()
+    await act(async () => { select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await settle()
+    expect(currentSearch).toBe('')
+    expect(pageRequests().at(-1)!.get('platform')).toBeNull()
   })
 })

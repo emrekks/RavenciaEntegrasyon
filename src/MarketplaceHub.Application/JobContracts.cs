@@ -164,7 +164,7 @@ public sealed record JobDetailView(
 // The job list returns at most Limit of the newest matching jobs (default 200, max 1,000)
 // instead of the whole history. After is the NextCursor of the previous page (paged list only):
 // the next page continues the same CreatedAt desc, Id desc order with the same filters.
-public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null)
+public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null)
 {
     public const int DefaultLimit = 200;
     public const int MaximumLimit = 1_000;
@@ -229,7 +229,8 @@ public interface IQueueHealthService
 
 public interface IJobOperationsService
 {
-    Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, CancellationToken cancellationToken);
+    // Platforms (connection PlatformCode values) limits the counts to jobs of those connections; jobs without a connection count only without it.
+    Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, IReadOnlyList<string>? platforms, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
     // Cursor-paged list: Items holds at most EffectiveLimit jobs; NextCursor continues after the last one.

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, type Me } from '../../shared/api'
+import { useSearchParams } from 'react-router'
+import { hubApi, loadAllPages, type Me } from '../../shared/api'
+import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { Button, Pagination, Tabs, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
@@ -10,7 +13,10 @@ import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } fr
 import { catalogStructureImportChange, catalogStructureImportPresentation } from './catalog-structure-import'
 import { hasEligibleOneTimeInvoiceSourceFailure } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { jobListQueryString, jobPageQueryString, jobTypesForCategory, type JobListTimeRange } from './job-list-query'
+import { jobCountsQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, jobTypesForCategory, type JobListTimeRange } from './job-list-query'
+
+// E-Faturam is the invoicing provider; every other code is a marketplace.
+const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
 import { JobQueueMetrics } from './JobQueueMetrics'
 import './jobs-responsive.css'
 import './jobs-sade.css'
@@ -414,6 +420,17 @@ export function JobsPage({ me }: { me: Me }) {
   const [filterOpen, setFilterOpen] = useState(false)
   const [timeRange, setTimeRange] = useState<JobTimeRange>('24h')
   const [timeRangeOpen, setTimeRangeOpen] = useState(false)
+  // ?platform=trendyol keeps the platform choice across a refresh; the server filters the list and the counts by it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const platform = jobPlatformFromSearch(searchParams.get('platform'))
+  const setPlatform = (code: string | null) => setSearchParams(current => {
+    const next = new URLSearchParams(current)
+    if (code) next.set('platform', code.toLowerCase())
+    else next.delete('platform')
+    return next
+  }, { replace: true })
+  const connections = useQuery({ queryKey: ['connections', 'job-platforms'], queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
+  const platformOptions = useMemo(() => jobPlatformOptions((connections.data?.items ?? []).map(connection => connection.platformCode), platform), [connections.data, platform])
   useEffect(() => {
     if (!filterOpen && !timeRangeOpen) return
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -451,8 +468,8 @@ export function JobsPage({ me }: { me: Me }) {
   // The list holds only the jobs loaded so far, so the counts come from the server's real totals; until they arrive
   // the loaded list is counted instead.
   const serverCounts = useQuery({
-    queryKey: ['jobs', 'counts', timeRange],
-    queryFn: () => hubApi<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobListQueryString('', timeRange)}`),
+    queryKey: ['jobs', 'counts', timeRange, platform],
+    queryFn: () => hubApi<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`),
     refetchInterval: 5000
   })
   const categoryJobTypes = useMemo(() => jobTypesForCategory(serverCounts.data, categoryTabs.find(tab => tab.key === category)?.match ?? (() => true), category === 'ALL'), [serverCounts.data, category])
@@ -460,10 +477,10 @@ export function JobsPage({ me }: { me: Me }) {
   // A tab with no job in the range needs no request.
   const categoryEmpty = categoryJobTypes !== null && categoryJobTypes.length === 0
   const list = useInfiniteQuery({
-    queryKey: ['jobs', 'page', serverStatus, timeRange, categoryJobTypesKey],
+    queryKey: ['jobs', 'page', serverStatus, timeRange, categoryJobTypesKey, platform],
     queryFn: ({ pageParam }) => categoryEmpty
       ? Promise.resolve<JobPage>({ items: [], nextCursor: null, hasMore: false })
-      : hubApi<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: pageParam })}`),
+      : hubApi<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: pageParam, platform })}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -522,7 +539,7 @@ export function JobsPage({ me }: { me: Me }) {
       return [job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
   }, [rangeFiltered, category, search, statusChips])
-  useEffect(() => { setPageNumber(1) }, [category, status, search, pageSize, timeRange, statusChips])
+  useEffect(() => { setPageNumber(1) }, [category, status, search, pageSize, timeRange, statusChips, platform])
   // A count toggles its filter; several can be on at once and tapping one again takes it off.
   const statusChipProps = (chip: JobStatusChip) => {
     const on = statusChips.includes(chip)
@@ -579,8 +596,9 @@ export function JobsPage({ me }: { me: Me }) {
           </div>}
         </div>
         <div className="jobs-reference-filter-wrap">
-          <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele</button>
+          <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele{platform && <span className="jobs-reference-filter-platform"><PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />{jobPlatformLabel(platform)}</span>}</button>
           {filterOpen && <div className="jobs-reference-filter-panel" role="dialog" aria-label="İşlem filtreleri">
+            <label className="jobs-reference-filter-platform-field">Platform<span className="jobs-reference-platform-select">{platform && <PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />}<select aria-label="Platform" value={platform ?? ''} onChange={event => setPlatform(event.target.value || null)}><option value="">Tümü</option>{platformOptions.map(code => <option key={code} value={code}>{jobPlatformLabel(code)}</option>)}</select></span></label>
             <label>Durum<select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)}>{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select></label>
             <label>Sayfa Başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
           </div>}

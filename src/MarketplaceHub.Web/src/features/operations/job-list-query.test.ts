@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobListQueryString, jobPageQueryString, jobTypesForCategory } from './job-list-query'
+import { jobCountsQueryString, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, jobTypesForCategory } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -28,6 +28,26 @@ describe('jobPageQueryString', () => {
     expect(params.get('jobTypes')).toBe('ORDER_SYNC,SHIPMENT_SYNC')
     expect(params.get('after')).toBe('abc_-1')
     expect(params.get('limit')).toBe('50')
+  })
+})
+
+describe('platform helpers', () => {
+  const now = Date.parse('2026-10-14T12:00:00.000Z')
+
+  it('adds the platform to the page and counts requests', () => {
+    expect(new URLSearchParams(jobPageQueryString('', 'all', { platform: 'N11' }, now).slice(1)).get('platform')).toBe('N11')
+    expect(jobCountsQueryString('all', 'PAZARAMA', now)).toBe('?platform=PAZARAMA')
+    expect(jobCountsQueryString('all', null, now)).toBe('')
+  })
+
+  it('reads the URL value as a platform code and ignores anything else', () => {
+    expect(jobPlatformFromSearch('trendyol_efaturam')).toBe('TRENDYOL_EFATURAM')
+    expect(jobPlatformFromSearch(null)).toBeNull()
+    expect(jobPlatformFromSearch('a,b')).toBeNull()
+  })
+
+  it('orders the connected platforms and keeps the chosen one', () => {
+    expect(jobPlatformOptions(['TRENDYOL_EFATURAM', 'shopify', 'TRENDYOL', 'TRENDYOL'], 'N11')).toEqual(['TRENDYOL', 'N11', 'SHOPIFY', 'TRENDYOL_EFATURAM'])
   })
 })
 

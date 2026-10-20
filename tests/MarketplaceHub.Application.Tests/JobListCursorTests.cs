@@ -32,6 +32,17 @@ public sealed class JobListCursorTests
         Assert.False(JobListCursor.TryDecode(cursor, out _, out _));
     }
 
+    [Theory]
+    [InlineData(null, null, null)]
+    [InlineData("", " , ", null)]
+    [InlineData("trendyol", null, "TRENDYOL")]
+    [InlineData("N11", "n11, trendyol_efaturam", "N11,TRENDYOL_EFATURAM")]
+    public void PlatformParameters_AreMergedUppercasedAndDistinct(string? platform, string? platforms, string? expected)
+    {
+        var codes = MarketplaceHub.Api.Operations.JobEndpoints.Platforms(platform, platforms);
+        Assert.Equal(expected, codes is null ? null : string.Join(',', codes));
+    }
+
     [Fact]
     public void Cursor_RejectsAnOverlongValue()
     {

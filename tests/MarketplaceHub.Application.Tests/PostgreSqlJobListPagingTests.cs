@@ -69,6 +69,76 @@ public sealed class PostgreSqlJobListPagingTests(PostgreSqlTenantIsolationFixtur
         }
     }
 
+    [PostgreSqlFact]
+    public async Task JobPageAndCounts_KeepOnlyTheChosenPlatformsConnections()
+    {
+        var tenant = NewTenant("job-list-platform");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var efaturam = NewConnection(tenant, "TRENDYOL_EFATURAM");
+        var n11 = NewConnection(tenant, "N11");
+        var baseTime = new DateTimeOffset(DateTimeOffset.UtcNow.UtcTicks / TimeSpan.TicksPerSecond * TimeSpan.TicksPerSecond, TimeSpan.Zero).AddHours(-1);
+        var trendyolJobs = Enumerable.Range(0, 3).Select(index => NewJob(tenant.Id, baseTime.AddSeconds(index), JobStatus.Succeeded, trendyol.Id)).ToList();
+        var efaturamJob = NewJob(tenant.Id, baseTime.AddSeconds(10), JobStatus.Dead, efaturam.Id);
+        var n11Job = NewJob(tenant.Id, baseTime.AddSeconds(11), JobStatus.Succeeded, n11.Id);
+        var unconnected = NewJob(tenant.Id, baseTime.AddSeconds(12), JobStatus.Succeeded);
+
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(trendyol, efaturam, n11);
+            seed.IntegrationJobs.AddRange(trendyolJobs);
+            seed.IntegrationJobs.AddRange(efaturamJob, n11Job, unconnected);
+            await seed.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new JobOperationsService(db, fixture.TimeProvider);
+
+            // Paged across two pages, the platform filter holds on the second page too.
+            var trendyolPage = await ReadAllPagesAsync(service, tenant.Id, new JobListQuery(Limit: 2, Platforms: ["trendyol"]));
+            Assert.Equal(trendyolJobs.Select(job => job.Id).Order(), trendyolPage.Select(job => job.Id).Order());
+
+            var twoPlatforms = await ReadAllPagesAsync(service, tenant.Id, new JobListQuery(Platforms: ["TRENDYOL_EFATURAM", "N11"]));
+            Assert.Equal(new[] { efaturamJob.Id, n11Job.Id }.Order(), twoPlatforms.Select(job => job.Id).Order());
+
+            // A job without a connection shows only without a platform choice.
+            var everything = await ReadAllPagesAsync(service, tenant.Id, new JobListQuery());
+            Assert.Contains(everything, job => job.Id == unconnected.Id);
+            Assert.Equal(6, everything.Count);
+
+            var counts = await service.CountAsync(tenant.Id, baseTime.AddMinutes(-1), ["TRENDYOL_EFATURAM"], CancellationToken.None);
+            var count = Assert.Single(counts);
+            Assert.Equal("DEAD", count.Status);
+            Assert.Equal(1, count.Count);
+            var allCounts = await service.CountAsync(tenant.Id, baseTime.AddMinutes(-1), null, CancellationToken.None);
+            Assert.Equal(6, allCounts.Sum(row => row.Count));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.JobAttempts.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.PlatformConnections.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    private static PlatformConnection NewConnection(Tenant tenant, string platformCode) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenant.Id,
+        PublicId = Guid.CreateVersion7(),
+        PlatformCode = platformCode,
+        Environment = "PRODUCTION",
+        DisplayName = $"{platformCode} iş listesi testi",
+        ExternalStoreId = $"store-{Guid.NewGuid():N}",
+        Status = "ACTIVE",
+        ApiVersion = "V1",
+        SettingsJson = "{}"
+    };
+
     private static async Task<List<JobSummaryView>> ReadAllPagesAsync(JobOperationsService service, Guid tenantId, JobListQuery query)
     {
         var items = new List<JobSummaryView>();
@@ -102,13 +172,14 @@ public sealed class PostgreSqlJobListPagingTests(PostgreSqlTenantIsolationFixtur
         Version = 1
     };
 
-    private static IntegrationJob NewJob(Guid tenantId, DateTimeOffset createdAt, JobStatus status)
+    private static IntegrationJob NewJob(Guid tenantId, DateTimeOffset createdAt, JobStatus status, Guid? connectionId = null)
     {
         var suffix = Guid.NewGuid().ToString("N");
         return new IntegrationJob
         {
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
+            ConnectionId = connectionId,
             JobType = "TEST_LIST_PAGE",
             PayloadJson = "{}",
             PayloadVersion = 1,

@@ -12,6 +12,14 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; width: min(340px, calc(100vw - 32px)); min-width: 0; padding: 14px; overflow: visible; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+/* Platform: the whole first row of the filter sheet, with the chosen platform's mark before the select. */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel .jobs-reference-filter-platform-field { grid-column: 1 / -1; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-platform-select { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-platform-select select { flex: 1; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-platform-select, .jobs-reference-filter-platform) .platform-square-mark { flex: none; width: 24px; height: 24px; border-radius: 7px; overflow: hidden; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-platform-select, .jobs-reference-filter-platform) .platform-square-mark img { width: 100%; height: 100%; object-fit: contain; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-platform { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding-left: 8px; border-left: 1px solid var(--rv-color-border); color: var(--rv-color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-platform .platform-square-mark { width: 18px; height: 18px; }
 
 /* Queue metrics card */
 .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics { overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }

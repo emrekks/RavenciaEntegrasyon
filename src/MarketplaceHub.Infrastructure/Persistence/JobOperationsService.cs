@@ -10,10 +10,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvider) : IJobOperationsService
 {
-    public async Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, IReadOnlyList<string>? platforms, CancellationToken cancellationToken)
     {
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (since is { } from) query = query.Where(x => x.CreatedAt >= from);
+        query = OfPlatforms(query, tenantId, platforms);
         var groups = await query
             .GroupBy(x => new { x.Status, x.JobType })
             .Select(group => new { group.Key.Status, group.Key.JobType, Count = group.Count() })
@@ -70,7 +71,17 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var types = jobTypes.Select(type => type.Trim().ToUpperInvariant()).Where(type => type.Length > 0).Distinct().ToArray();
             query = query.Where(x => types.Contains(x.JobType));
         }
-        return query;
+        return OfPlatforms(query, tenantId, listQuery.Platforms);
+    }
+
+    // Jobs whose connection belongs to one of the platforms (PlatformCode, e.g. TRENDYOL, TRENDYOL_EFATURAM). A job
+    // without a connection has no platform, so it is left out whenever a platform is chosen.
+    private IQueryable<IntegrationJob> OfPlatforms(IQueryable<IntegrationJob> query, Guid tenantId, IReadOnlyList<string>? platforms)
+    {
+        var codes = (platforms ?? []).Select(code => code.Trim().ToUpperInvariant()).Where(code => code.Length > 0).Distinct().ToArray();
+        if (codes.Length == 0) return query;
+        return query.Where(x => x.ConnectionId != null && db.PlatformConnections.Any(connection =>
+            connection.TenantId == tenantId && connection.Id == x.ConnectionId && codes.Contains(connection.PlatformCode)));
     }
 
     private async Task<IReadOnlyList<JobSummaryView>> SummariesAsync(Guid tenantId, List<IntegrationJob> jobs, CancellationToken cancellationToken)
