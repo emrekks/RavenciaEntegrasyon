@@ -92,11 +92,10 @@ public sealed class HepsiburadaNamePriorityTests
         Assert.Equal(skipped, HepsiburadaHttpClient.SkipsTrackingRead(new("HB-1", new RemotePackage("PKG", null, rawStatus, DateTimeOffset.UnixEpoch, provider, tracking, []))));
 
     [Fact]
-    public void TheOpenPackageListStartsAtTheDocumentedCapitalOffsetAndTheStatusListsKeepTheirs()
+    public void ThePackageListsKeepTheLowerCaseOffsetProvenLive()
     {
         var window = new PackagePollWindow(null, null);
-        Assert.Equal("Offset=20&limit=10", HepsiburadaHttpClient.PackageListQuery(20, 10, window));
-        Assert.Equal("offset=20&limit=10", HepsiburadaHttpClient.PackageListQuery(20, 10, window, openList: false));
+        Assert.Equal("offset=20&limit=10", HepsiburadaHttpClient.PackageListQuery(20, 10, window));
     }
 
     [Theory]

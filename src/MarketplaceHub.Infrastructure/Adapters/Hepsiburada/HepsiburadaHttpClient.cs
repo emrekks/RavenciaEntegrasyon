@@ -590,7 +590,6 @@ public sealed partial class HepsiburadaHttpClient(
         try
         {
             var query = PackageListQuery(offset, limit, window);
-            var statusListQuery = PackageListQuery(offset, limit, window, openList: false);
             var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Packages(account, query), cancellationToken);
             if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(response.Error!, response.RateLimit);
 
@@ -604,7 +603,7 @@ public sealed partial class HepsiburadaHttpClient(
             // read-only endpoints, each with a 30-day lookback and max limit 50.
             foreach (var status in window.IncludeStatusLists ? new[] { "shipped", "delivered", "undelivered" } : [])
             {
-                var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, statusListQuery), cancellationToken);
+                var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, query), cancellationToken);
                 if (!statusResponse.IsSuccess)
                     return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(statusResponse.Error!, statusResponse.RateLimit ?? rateLimit);
                 var statusPage = HepsiburadaJsonMapper.PackagePage(statusResponse.Value!.RootElement);
@@ -763,14 +762,14 @@ public sealed partial class HepsiburadaHttpClient(
         }
     }
 
-    // C7: the package-list schema copy names the page start "Offset" (capital O); with a lower-case "offset" the
-    // service may ignore it and return the first page again. Confirm on SIT with a read past the first page.
-    // The shipped/delivered/undelivered lists keep the lower-case "offset" they are known to accept.
-    internal static string PackageListQuery(int offset, int limit, PackagePollWindow window, bool openList = true)
+    // The open package list and the shipped/delivered/undelivered lists all take the lower-case "offset" that live
+    // reads have used. A schema copy spells it "Offset"; that spelling was never confirmed against the service, so it
+    // is not sent until a read past the first page proves it on SIT.
+    internal static string PackageListQuery(int offset, int limit, PackagePollWindow window)
     {
         var query = new List<string>
         {
-            $"{(openList ? "Offset" : "offset")}={offset.ToString(CultureInfo.InvariantCulture)}",
+            $"offset={offset.ToString(CultureInfo.InvariantCulture)}",
             $"limit={limit.ToString(CultureInfo.InvariantCulture)}"
         };
         if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(after)));
