@@ -572,9 +572,11 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // A cached answer per tenant, filters and tab set. Every open panel page polls the menu counter; without
     // this, identical counts ran side by side and their memory took the database over its limit (live
     // 20 Oct 2026: PostgreSQL killed by the out-of-memory killer while several 15-tab counts ran).
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, OrderSummaryView View)> OrderSummaryCache = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, string Stamp, OrderSummaryView View)> OrderSummaryCache = new();
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> OrderSummaryGates = new();
-    internal static readonly TimeSpan OrderSummaryCacheLifetime = TimeSpan.FromSeconds(20);
+    // An answer is reused while no order or package of the tenant changed (a cheap stamp read), at most this long.
+    // The full count takes seconds on live data (8 s on 20 Oct 2026), so it runs again only after a change.
+    internal static readonly TimeSpan OrderSummaryCacheLifetime = TimeSpan.FromMinutes(5);
 
     // Each counter is the number of distinct orders its tab lists for the same filters (date,
     // search, platform, cargo, invoice, label): the tab query itself, counted once per tab in a
@@ -586,19 +588,32 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (!allowCached) return await CountOrderSummaryAsync(tenantId, options, requested, cancellationToken);
 
         var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
-        if (OrderSummaryCache.TryGetValue(key, out var cached) && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
+        var stamp = await OrderSummaryStampAsync(tenantId, cancellationToken);
+        if (OrderSummaryCache.TryGetValue(key, out var cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
         var gate = OrderSummaryGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
             // A request that waited behind an identical one takes its answer.
-            if (OrderSummaryCache.TryGetValue(key, out cached) && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
+            if (OrderSummaryCache.TryGetValue(key, out cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
             var view = await CountOrderSummaryAsync(tenantId, options, requested, cancellationToken);
             if (OrderSummaryCache.Count > 1000) OrderSummaryCache.Clear();
-            OrderSummaryCache[key] = (DateTimeOffset.UtcNow, view);
+            OrderSummaryCache[key] = (DateTimeOffset.UtcNow, stamp, view);
             return view;
         }
         finally { gate.Release(); }
+    }
+
+    // Changes of the tenant's orders, packages, return claims or connections: any of them can move a counter.
+    private async Task<string> OrderSummaryStampAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
+        var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
+        var claims = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId).MaxAsync(x => (DateTimeOffset?)x.UpdatedAt, cancellationToken);
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).SumAsync(x => (long)x.Version, cancellationToken);
+        return $"{orders?.Count}|{orders?.Changed:O}|{packages?.Count}|{packages?.Changed:O}|{claims:O}|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}";
     }
 
     private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, CancellationToken cancellationToken)
