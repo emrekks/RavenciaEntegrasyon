@@ -16,6 +16,19 @@ describe('invoice status labels', () => {
     expect(invoiceStatusTone('FATURA_ISLENIYOR')).toBe('info')
   })
 
+  it('shows a lost provider answer as uncertain, not as a failed invoice', () => {
+    expect(invoiceStatusLabel('FATURA_BELIRSIZ')).toBe('Fatura Sonucu Belirsiz')
+    expect(invoiceStatusLabel('UNKNOWN_RESULT')).toBe('Fatura Sonucu Belirsiz')
+    expect(invoiceStatusTone('FATURA_BELIRSIZ')).toBe('warning')
+    expect(statusLabel('FATURA_BELIRSIZ')).toBe('Fatura sonucu belirsiz')
+  })
+
+  it('names invoices that need an adjustment and links that must be removed', () => {
+    expect(invoiceStatusLabel('ADJUSTMENT_REQUIRED')).toBe('Fatura Düzeltme Gerekli')
+    expect(invoiceStatusTone('ADJUSTMENT_REQUIRED')).toBe('warning')
+    expect(statusLabel('REVOCATION_REQUIRED')).toBe('Pazaryerinden kaldırılmalı')
+  })
+
   it('shows a marketplace invoice awaiting reconciliation as issued and successful', () => {
     expect(invoiceStatusLabel('FATURA_KONTROLDE')).toBe('Faturası Mevcut')
     expect(invoiceStatusTone('FATURA_KONTROLDE')).toBe('success')

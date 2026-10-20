@@ -23,6 +23,7 @@ import './manual-invoice-document.css'
 import './invoices-responsive.css'
 import './invoices-sade.css'
 import { InvoiceGlyph, StatusRing, type InvoiceGlyphKind, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from './invoice-state-glyph'
+import { invoiceFailureGuidance, invoiceFailureReason } from './invoice-failure-reasons'
 import { viewTabLabel } from '../../shared/view-tabs'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
@@ -132,50 +133,6 @@ async function uploadManualInvoiceDocument(item: InvoiceWorkspace, file: File | 
   await hubApi('/invoice-workspace/manual-documents', { method: 'POST', headers: { 'Idempotency-Key': `manual-invoice-document:${item.orderId}:${crypto.randomUUID()}` }, body: form })
 }
 function requiresInvoiceAction(item: InvoiceWorkspace) { return item.canCreateInvoice || item.invoiceStatus === 'FATURA_REDDEDILDI' }
-function invoiceFailureReason(code: string | null) {
-  const labels: Record<string, string> = {
-    EFATURAM_FISCAL_PAYLOAD_INVALID: 'Fatura bilgileri sağlayıcının istediği biçimde değil.',
-    EFATURAM_REQUEST_REJECTED: 'E-Faturam isteği reddetti.',
-    EFATURAM_APPLICATION_NOT_ACTIVE: 'E-Faturam fatura uygulaması bu hesap için aktif değil.',
-    EFATURAM_AUTHENTICATION_FAILED: 'E-Faturam kimlik doğrulamasını kabul etmedi.',
-    EFATURAM_ACCESS_TOKEN_REJECTED: 'E-Faturam erişim anahtarını reddetti.',
-    EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING: 'Bu hesapta fatura oluşturma yetkisi bulunmuyor.',
-    EFATURAM_CARRIER_CATALOG_MISS: 'Kargo firmasının fatura bilgisi sağlayıcıya tanımlı değil.',
-    HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500: 'Fatura oluşturuldu; Hepsiburada belge iletiminde tekrarlanan sunucu hatası verdi.',
-    INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'Fatura sağlayıcısı ve pazaryeri farklı ortamlarda. Platform iletimi engellendi.',
-    REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.',
-    INVOICE_SUBMISSION_OUTCOME_UNKNOWN: 'Sağlayıcıya gönderim sonucu alınamadı. Faturanın portalda oluşup oluşmadığını kontrol edin; oluşmadıysa yeniden gönderebilirsiniz.',
-    INVOICE_SUBMISSION_CANCELLED: 'Gönderim sırasında bağlantı kesildi. Faturanın portalda oluşup oluşmadığını kontrol edin.',
-    INVOICE_SUBMISSION_TRANSPORT_UNKNOWN: 'Sağlayıcıdan yanıt alınamadı. Faturanın portalda oluşup oluşmadığını kontrol edin.',
-    REMOTE_INVOICE_NOT_PRESENT: 'Pazaryeri iletilen faturayı göstermedi; iletim yeniden denenecek.',
-    PLATFORM_INVOICE_ALREADY_PRESENT: 'Pazaryerinde bu pakete ait bir fatura zaten görünüyor; üzerine yazılmadı. Pazaryeri panelinde kontrol edin.',
-    MARKETPLACE_INVOICE_IDENTITY_MISMATCH: 'Pazaryeri bir fatura gösteriyor ama bu faturayla eşleştirilemedi. Pazaryeri panelinde kontrol edin.',
-    DELIVERY_RETRY_PAYLOAD_CHANGED: 'Önceki iletim sonucu belirsiz kaldı ve fatura bilgisi değişti. Pazaryeri panelinde kontrol edin.',
-    HEPSIBURADA_INVOICE_DELIVERY_READBACK_MISSING: 'Hepsiburada isteği aldı ama faturayı henüz göstermiyor. Birkaç dakika içinde yeniden kontrol edilir.',
-    HEPSIBURADA_REMOTE_ERROR: 'Hepsiburada fatura iletimini kabul etmedi.',
-    PLATFORM_INVOICE_STATUS_NOT_CLEAR: 'Pazaryeri fatura durumunu net bildirmedi. Pazaryeri panelinde kontrol edin.',
-    OPERATOR_CONFIRMED_NO_REMOTE_INVOICE: 'Portalda fatura olmadığı onaylandı; yeniden gönderilebilir.',
-    REMOTE_INVOICE_NUMBER_MISMATCH: 'Pazaryerinde bu faturayla eşleştirilemeyen bir fatura görünüyor. Pazaryeri panelinde kontrol edin.',
-    HEPSIBURADA_INVOICE_ALREADY_PRESENT: 'Hepsiburada pakette zaten bir fatura gösteriyor; üzerine yazılmadı.',
-    ONE_TIME_INVOICE_DELIVERY_ALREADY_ATTEMPTED: 'Önceki iletim belirsiz kaldı; ikinci kez otomatik gönderilmedi. Pazaryeri panelinde kontrol edin.'
-  }
-  return labels[code ?? ''] ?? (code ? `İletilemedi: ${code}` : 'Ayrıntılar için faturayı açın.')
-}
-function invoiceFailureGuidance(code: string | null) {
-  const labels: Record<string, string> = {
-    EFATURAM_FISCAL_PAYLOAD_INVALID: 'Fatura detaylarını açıp satır, tutar, vergi ve adres bilgilerini kontrol edin.',
-    EFATURAM_REQUEST_REJECTED: 'Provider yanıtını kontrol edin; bilgiler düzeltildikten sonra Tekrar dene seçeneğini kullanın.',
-    EFATURAM_APPLICATION_NOT_ACTIVE: 'Entegrasyonlar ekranından E-Faturam uygulamasını etkinleştirip bağlantıyı yeniden test edin.',
-    EFATURAM_AUTHENTICATION_FAILED: 'Entegrasyonlar ekranından E-Faturam kimlik bilgilerini yenileyip bağlantıyı test edin.',
-    EFATURAM_ACCESS_TOKEN_REJECTED: 'E-Faturam bağlantısını yeniden yetkilendirin, ardından faturayı tekrar deneyin.',
-    EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING: 'E-Faturam hesabında fatura oluşturma yetkisini açtırın.',
-    EFATURAM_CARRIER_CATALOG_MISS: 'Faturayı tekrar deneyin; kargo taşıyıcı bilgisi doğrulamaya eklendi.',
-    HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500: 'Platforma iletimi tekrar dene ile mevcut belgeyi kontrol edin. Yeni mali fatura oluşturulmaz.',
-    INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'İletim önizlemesindeki ortam bilgisini kontrol edin. Canlı sipariş için canlı ortamda düzenlenmiş belge gereklidir.',
-    REMOTE_INVOICE_REJECTED: 'Provider veya pazaryeri ret nedenini kontrol edip gerekli bilgileri düzelttikten sonra tekrar deneyin.'
-  }
-  return labels[code ?? ''] ?? 'Fatura detaylarını açıp son hata kodunu ve provider denemelerini kontrol edin.'
-}
 function Badge({ value, tone, label }: { value: string; tone?: 'good' | 'warn' | 'neutral'; label?: string }) { const normalized = value.trim().toUpperCase(); const resolvedTone = tone ?? (['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS', 'CONFIRMED'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED', 'RETRYABLE_FAILURE', 'MARKETPLACE_FAILED'].includes(normalized) ? 'warn' : 'neutral'); return <span className={`badge ${resolvedTone}`}><InvoiceGlyph kind={badgeGlyphKind(value, resolvedTone)} />{label ?? statusLabel(value)}</span> }
 function isInvoiceFailureStatus(value: string | null | undefined) {
   return ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(value?.trim().toUpperCase() ?? '')
@@ -199,13 +156,14 @@ function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invo
   if (['INVOICED', 'RECEIVED'].includes(item.platformInvoiceStatus?.trim().toUpperCase() ?? '')) return { value: 'FATURA_KONTROLDE', tone: 'success' as const }
   if (!item.invoiceId || item.canCreateInvoice || item.invoiceStatus === 'FATURA_BEKLIYOR') return { value: 'FATURA_BEKLIYOR', tone: 'warning' as const }
   if (isInvoiceFailureStatus(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'danger' as const }
+  if (item.invoiceStatus === 'FATURA_BELIRSIZ') return { value: item.invoiceStatus, tone: 'warning' as const }
   if (item.invoiceStatus === 'FATURA_PLATFORMA_BEKLIYOR') return { value: item.invoiceStatus, tone: 'warning' as const }
   if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED'].includes(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'success' as const }
   return { value: item.invoiceStatus || 'FATURA_BILINMIYOR', tone: 'info' as const }
 }
 function invoiceDeliveryLabel(status: string | null | undefined) {
   if (!status) return 'Platforma aktarım başlatılmadı'
-  return ({ STARTED: 'Aktarım başlatıldı', SUBMITTED: 'Platforma gönderildi', CONFIRMATION_RETRYABLE: 'Platform doğrulaması bekleniyor', CONFIRMED: 'Platformda doğrulandı', RETRYABLE_FAILURE: 'Yeniden denenecek', FAILED: 'Platform aktarımı başarısız', UNKNOWN: 'Aktarım sonucu bekleniyor', REVOKED: 'Platformdaki fatura kaldırıldı', REVIEW_REQUIRED: 'Platformdaki fatura kontrol edilmeli' } as Record<string, string>)[status] ?? statusLabel(status)
+  return ({ STARTED: 'Aktarım başlatıldı', SUBMITTED: 'Platforma gönderildi', CONFIRMATION_RETRYABLE: 'Platform doğrulaması bekleniyor', CONFIRMED: 'Platformda doğrulandı', RETRYABLE_FAILURE: 'Yeniden denenecek', FAILED: 'Platform aktarımı başarısız', UNKNOWN: 'Aktarım sonucu bekleniyor', REVOKED: 'Platformdaki fatura kaldırıldı', REVIEW_REQUIRED: 'Platformdaki fatura kontrol edilmeli', REVOCATION_REQUIRED: 'İptal edilen faturanın bağlantısı pazaryerinden kaldırılmalı' } as Record<string, string>)[status] ?? statusLabel(status)
 }
 function invoiceDeliveryTone(status: string | null | undefined): 'good' | 'warn' | 'neutral' {
   if (status === 'CONFIRMED') return 'good'
@@ -342,7 +300,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
       {item.platformCode === 'SHOPIFY'
         ? <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleHidden() }}><UiIcon name={hidden ? 'eye' : 'eyeOff'} size={16} />{hidden ? 'Gizlemeden Çıkar' : 'Siparişi Gizle'}</button>
         : item.platformCode !== 'TRENDYOL' && <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}><UiIcon name="refresh" size={16} />Sipariş Durumunu Güncelle</button>}
-      {item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}><UiIcon name="sync" size={16} />Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
+      {item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI', 'FATURA_BELIRSIZ'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}><UiIcon name="sync" size={16} />Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
       {item.platformCode !== 'SHOPIFY' && item.invoiceId && item.invoiceNumber && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_REDDEDILDI', 'FATURA_PLATFORMA_BEKLIYOR'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı pazaryerinin satıcı panelinde gördüyseniz tamamlandı olarak işaretler." onClick={() => { setOpen(false); onConfirmDelivered() }}><UiIcon name="circleCheck" size={16} />Pazaryerinde Gördüm, Tamamla</button>}
       {item.platformCode !== 'SHOPIFY' && item.invoiceId && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı E-Faturam portalında iptal ettiyseniz bu kaydı kapatır ve yeni fatura kesmenize izin verir." onClick={() => { setOpen(false); onReplaceCancelledInvoice() }}><UiIcon name="undo" size={16} />Portalda İptal Ettim, Yeni Fatura Kes</button>}
       <hr className="invoice-reference-actions-separator" /><button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}><UiIcon name="upload" size={16} />{hasManualDocument ? 'Manuel Faturayı Değiştir' : 'Manuel Fatura Ekle'}</button>
@@ -577,7 +535,7 @@ export function InvoicesPage() {
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment">{(() => { const kind = badgeGlyphKind(item.shipmentStatus, 'neutral'); return <StatusRing kind={kind} progress={orderStatusProgress(kind)} label={statusLabel(item.shipmentStatus)} detail={orderRingDetail(item, kind)} /> })()}</div>
-          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); const failed = ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI'].includes(invoiceState.value); const due = item.invoiceDueAt ? new Date(item.invoiceDueAt) : null; return <StatusRing kind={invoiceGlyphKind(invoiceState.value)} progress={invoiceStatusProgress(invoiceState.value)} label={invoiceStatusLabel(invoiceState.value)} title={failed ? invoiceFailureReason(item.invoiceErrorCode ?? null) : undefined} detail={invoiceRingDetail(item, invoiceGlyphKind(invoiceState.value), failed)} detailClassName={failed ? 'is-danger' : due && due.getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : undefined} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}</div>
+          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); const failed = ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'FATURA_BELIRSIZ'].includes(invoiceState.value); const due = item.invoiceDueAt ? new Date(item.invoiceDueAt) : null; return <StatusRing kind={invoiceGlyphKind(invoiceState.value)} progress={invoiceStatusProgress(invoiceState.value)} label={invoiceStatusLabel(invoiceState.value)} title={failed ? invoiceFailureReason(item.invoiceErrorCode ?? null) : undefined} detail={invoiceRingDetail(item, invoiceGlyphKind(invoiceState.value), failed)} detailClassName={failed ? 'is-danger' : due && due.getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : undefined} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli Takip' : 'Sipariş Toplamı'}</small></div>
           <div className="invoice-reference-actions">
             <InvoiceReferenceActionsMenu
