@@ -23,4 +23,22 @@ public sealed class MarketplaceQuestionHistoryTests
         Assert.Equal("İlk cevap reddedildi.", history[0].RejectionReason);
         Assert.Equal(createdAt.AddMinutes(2), history[1].CreatedAt);
     }
+
+    [Fact]
+    public void LocalSendAndMarketplaceCopyOfTheSameAnswerAreOneMessage()
+    {
+        var sentAt = DateTimeOffset.Parse("2026-10-05T22:09:00Z");
+        var messages = new[]
+        {
+            new RemoteQuestionConversation("Merchant", "Beden tablosuna bakabilirsiniz.", sentAt),
+            new RemoteQuestionConversation("Satıcı", "Beden tablosuna  bakabilirsiniz.", sentAt.AddHours(-3)),
+            new RemoteQuestionConversation("Merchant", "Beden tablosuna bakabilirsiniz.", sentAt.AddDays(2))
+        };
+
+        var history = MarketplaceQuestionHistory.Deduplicate(messages);
+
+        Assert.Equal(2, history.Count);
+        Assert.Equal(sentAt, history[0].CreatedAt);
+        Assert.Equal(sentAt.AddDays(2), history[1].CreatedAt);
+    }
 }

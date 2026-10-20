@@ -1702,6 +1702,38 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task AnswerAsync_ReleasesASubmissionTheMarketplaceRejectedAndAcceptsANewAnswer()
+    {
+        var tenant = NewTenant("question-answer-rejected");
+        var connection = NewQuestionConnection(tenant);
+        var question = NewUncertainQuestion(tenant.Id, connection.Id, fixture.Now);
+        question.AnswerSubmissionStatus = "SUBMITTED";
+        var remote = NewRemoteQuestion("REJECTED", [new("Merchant", "Önceki cevap", fixture.Now, "Uygunsuz içerik")], fixture.Now);
+        var port = new FixedQuestionPort(remote);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.MarketplaceQuestions.Add(question);
+        await db.SaveChangesAsync();
+
+        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var first = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "yeni cevap metni", Guid.NewGuid().ToString("N"), "question-answer-rejected-1", CancellationToken.None);
+
+        Assert.Equal("QUESTION_ANSWER_REJECTED", first.Error?.Code);
+        Assert.Equal("REJECTED", question.AnswerSubmissionStatus);
+        Assert.Equal("REJECTED", question.Status);
+        Assert.Null(question.PendingAnswerText);
+
+        var second = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "Düzeltilmiş yeni cevap metni", Guid.NewGuid().ToString("N"), "question-answer-rejected-2", CancellationToken.None);
+
+        Assert.Null(second.Error);
+        Assert.Equal(1, port.AnswerCalls);
+        Assert.Equal("SUBMITTED", question.AnswerSubmissionStatus);
+    }
+
+    [PostgreSqlFact]
     public async Task AnswerAsync_LeavesUncertainSubmissionBlockedWhenRemoteHasNoMatchingMerchantMessage()
     {
         var tenant = NewTenant("question-answer-unresolved");
