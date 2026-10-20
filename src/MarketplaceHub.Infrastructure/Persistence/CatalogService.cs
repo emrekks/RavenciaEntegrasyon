@@ -1027,6 +1027,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             if (deletingInventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && deletingInventoryIds.Contains(x.InventoryItemId), cancellationToken))
                 return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", "Varyant iade stok hareketine bağlı olduğu için silinemiyor.");
         }
+        var changedVariantIds = new HashSet<Guid>();
         foreach (var update in variantUpdates)
         {
             var existing = existingVariants.SingleOrDefault(variant => variant.Id == update.Id);
@@ -1059,16 +1060,25 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var proposedBarcodeKeys = CatalogKeyNormalizer.LookupKeys(existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode));
             if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId) && (proposedSkuKeys.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && proposedBarcodeKeys.Contains(x.BarcodeNormalized)), cancellationToken)) return Conflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir varyantla çakışıyor.");
             var updatedAt = timeProvider.GetUtcNow();
+            // O15: the editor sends every row of the model-code family on each save. Only a row whose
+            // data really changes gets a new version, and only such a row makes its product a local edit.
+            var attributeUpdateIds = variantUpdates.Where(update => update.Attributes is not null).Select(update => update.Id).ToArray();
+            var storedVariantAttributes = attributeUpdateIds.Length == 0
+                ? []
+                : await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.VariantId != null && attributeUpdateIds.Contains(x.VariantId.Value)).ToListAsync(cancellationToken);
             foreach (var update in variantUpdates)
             {
                 var variant = existingVariants.Single(x => x.Id == update.Id);
+                var dataChanged = VariantDataChanged(variant, update, storedVariantAttributes.Where(x => x.VariantId == variant.Id));
+                if (dataChanged) changedVariantIds.Add(variant.Id);
+                if (!dataChanged && variant.SortOrder == Math.Max(0, update.SortOrder)) continue;
                 // A stored key in the legacy form that still names the same code is kept until the data
                 // recompute, so an unchanged code never collides with itself under the unique index.
                 variant.Sku = update.Sku.Trim(); if (!CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); if (!CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
-            var optionUpdatesByProduct = variantUpdates.Where(update => update.Options is not null)
+            var optionUpdatesByProduct = variantUpdates.Where(update => update.Options is not null && changedVariantIds.Contains(update.Id))
                 .GroupBy(update => existingVariants.Single(variant => variant.Id == update.Id).ProductId);
             foreach (var productOptionUpdates in optionUpdatesByProduct)
             {
@@ -1079,7 +1089,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 var optionCommands = productOptionUpdates.Select(update => new CreateVariantCommand(update.Sku, update.Barcode, update.ModelCode, update.Options, Attributes: update.Attributes)).ToList();
                 await PersistVariantOptionsAsync(tenantId, productOptionUpdates.Key, updatedRows, optionCommands, cancellationToken);
             }
-            var attributeUpdates = variantUpdates.Where(update => update.Attributes is not null).ToList();
+            var attributeUpdates = variantUpdates.Where(update => update.Attributes is not null && changedVariantIds.Contains(update.Id)).ToList();
             if (attributeUpdates.Count > 0)
             {
                 var updatedIds = attributeUpdates.Select(update => update.Id).ToArray();
@@ -1131,9 +1141,19 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);
             await EnsureMainInventoryAsync(tenantId, newVariants, cancellationToken);
         }
+        // O15: the editor always sends the status it shows, which is the edited product's. A status the
+        // user did not change touches nothing; a changed one moves the edited product, its rows and the
+        // family products that were on the same status, never a sibling that differs (an archived colour
+        // stays archived when the family is activated).
+        var previousStatus = product.Status;
+        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft);
+        var statusChanged = command.Status is not null && productStatus != previousStatus;
+        var familyStatusProductIds = statusChanged
+            ? (await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.Id) && x.Id != id && x.Status == previousStatus).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet()
+            : [];
         // K5: other products of the model-code family whose rows this save changes are local edits too.
         var familyProductIdsToProtect = existingVariants
-            .Where(variant => variant.ProductId != id && (command.Status is not null || variantIdsToDelete.Contains(variant.Id) || variantUpdates.Any(update => update.Id == variant.Id)))
+            .Where(variant => variant.ProductId != id && (familyStatusProductIds.Contains(variant.ProductId) || variantIdsToDelete.Contains(variant.Id) || changedVariantIds.Contains(variant.Id)))
             .Select(variant => variant.ProductId)
             .ToHashSet();
         // A sibling whose every row is deleted keeps no empty ACTIVE product card behind: it is archived.
@@ -1212,7 +1232,6 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 existingVariants.Remove(removed);
             }
         }
-        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft);
         product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId;
         if (command.DefaultListPrice is decimal defaultListPrice) product.DefaultListPrice = defaultListPrice;
         if (command.DefaultSalePrice is decimal defaultSalePrice) product.DefaultSalePrice = defaultSalePrice;
@@ -1220,7 +1239,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (command.Status != null)
         {
             product.Status = productStatus;
-            foreach (var variant in existingVariants) { variant.Status = productStatus; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
+            foreach (var variant in existingVariants.Where(variant => statusChanged && variant.Status != productStatus && (variant.ProductId == id || familyStatusProductIds.Contains(variant.ProductId))))
+            { variant.Status = productStatus; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
         }
         if (command.Attributes is not null)
         {
@@ -1235,7 +1255,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             foreach (var sibling in siblings)
             {
                 if (emptiedFamilyProductIds.Contains(sibling.Id)) { sibling.Status = ProductStatus.Archived; sibling.ArchivedAt ??= product.UpdatedAt; }
-                else if (command.Status is not null) sibling.Status = productStatus;
+                else if (familyStatusProductIds.Contains(sibling.Id)) sibling.Status = productStatus;
                 sibling.UpdatedAt = product.UpdatedAt;
                 sibling.Version++;
             }
@@ -1890,6 +1910,33 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;
     private static decimal? NonNegativeOrNull(decimal? value) => value is >= 0 ? value : null;
+
+    // O15: whether an editor row carries a change to the stored variant's sale data (codes, model
+    // code, prices, options, variant attributes). The row order alone is not a marketplace change.
+    private static bool VariantDataChanged(ProductVariant variant, UpdateVariantCommand update, IEnumerable<ProductAttributeAssignment> storedAttributes)
+    {
+        if (!string.Equals(variant.Sku, update.Sku.Trim(), StringComparison.Ordinal)) return true;
+        if (!string.Equals(variant.Barcode, NullTrim(update.Barcode), StringComparison.Ordinal)) return true;
+        if (!string.Equals(variant.ModelCode, NullTrim(update.ModelCode), StringComparison.Ordinal)) return true;
+        if (variant.CostPrice != NonNegativeOrNull(update.CostPrice)) return true;
+        if (update.DefaultListPrice is decimal listPrice && variant.DefaultListPrice != listPrice) return true;
+        if (update.DefaultSalePrice is decimal salePrice && variant.DefaultSalePrice != salePrice) return true;
+        if (update.Options is not null)
+        {
+            var stored = VariantOptionSignature.ParseKeyed(variant.OptionSignature);
+            var proposed = VariantOptionSignature.ParseKeyed(Signature(update.Options));
+            if (stored.Count != proposed.Count || stored.Any(pair => !proposed.TryGetValue(pair.Key, out var value) || !string.Equals(value, pair.Value, StringComparison.Ordinal))) return true;
+        }
+        if (update.Attributes is not null)
+        {
+            static string AttributeKey(Guid attributeId, Guid? valueId, string? text, decimal? number, bool? boolean) =>
+                $"{attributeId:N}|{valueId:N}|{(string.IsNullOrWhiteSpace(text) ? "" : text.Trim())}|{number?.ToString("G29", System.Globalization.CultureInfo.InvariantCulture)}|{boolean}";
+            var stored = storedAttributes.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal).ToList();
+            var proposed = update.Attributes.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal).ToList();
+            if (!stored.SequenceEqual(proposed, StringComparer.Ordinal)) return true;
+        }
+        return false;
+    }
 
     private async Task<ServiceError?> ValidateProductReferencesAsync(Guid tenantId, string title, Guid? categoryId, Guid? brandId, CancellationToken cancellationToken)
     {
