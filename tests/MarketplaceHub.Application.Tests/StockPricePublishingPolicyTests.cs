@@ -93,22 +93,24 @@ public sealed class StockPricePublishingPolicyTests
         Assert.False(ChannelOfferPricePolicy.IsKnownRoundingMode("BANKERS"));
     }
 
-    // K6: the order shortfall is reserved only where the connection policy reserves the status.
+    // K6: the order shortfall stays reserved whatever the connection's (never applied) reservation
+    // policy says; releasing it would raise available stock and oversell on the other marketplaces.
     [Fact]
-    public void OrderShortfall_IsReservedOnlyWhenThePolicyReservesTheStatus()
+    public void OrderShortfall_IsReservedEvenWhenThePolicyIsDisabledOrMissing()
     {
-        var policy = new ConnectionInventoryPolicy
+        var disabled = new ConnectionInventoryPolicy
         {
             AuthorityMode = InventoryAuthorityPolicy.Central,
-            ReservationMode = "ORDER_LINE",
-            ReserveOnStatuses = "Created",
-            ReleaseOnStatuses = "Cancelled"
+            ReservationMode = "DISABLED",
+            ReserveOnStatuses = "",
+            ReleaseOnStatuses = ""
         };
+        Assert.False(OrderInventoryReservationPolicy.IsReservationEnabled(disabled, "Created"));
+        Assert.False(OrderInventoryReservationPolicy.IsReservationEnabled(null, "Created"));
 
-        Assert.Equal(2m, OrderInventoryReservationPolicy.ReservedQuantity(2m, policy, "Created"));
-        Assert.Equal(0m, OrderInventoryReservationPolicy.ReservedQuantity(2m, policy, "Cancelled"));
-        Assert.Equal(0m, OrderInventoryReservationPolicy.ReservedQuantity(2m, null, "Created"));
-        Assert.Equal(0m, OrderInventoryReservationPolicy.ReservedQuantity(0m, policy, "Created"));
+        Assert.Equal(2m, OrderInventoryReservationPolicy.ReservedQuantity(2m));
+        Assert.Equal(0m, OrderInventoryReservationPolicy.ReservedQuantity(0m));
+        Assert.Equal(0m, OrderInventoryReservationPolicy.ReservedQuantity(-1m));
         var at = DateTimeOffset.Parse("2026-10-20T10:00:00Z");
         Assert.Equal(at.AddDays(14), OrderInventoryReservationPolicy.ExpiresAt(at));
     }

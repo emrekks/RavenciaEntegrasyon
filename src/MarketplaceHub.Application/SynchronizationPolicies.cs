@@ -261,10 +261,12 @@ public static class OrderInventoryReservationPolicy
         return Math.Max(0m, afterCancellation - consumed);
     }
 
+    // NOT APPLIED, intentionally: order projection does not call this. ReservationMode,
+    // ReserveOnStatuses and ReleaseOnStatuses are stored but have no effect; order-line reservations
+    // are unconditional (ReservedQuantity). Live connections hold reservations under a DISABLED or
+    // missing policy that was never applied, and wiring this in would release them and oversell.
     public static bool IsReservationEnabled(ConnectionInventoryPolicy? policy, string? rawStatus)
     {
-        // Reservations are opt-in. Without an explicit connection policy,
-        // order synchronization must not create reserved stock implicitly.
         if (policy is null) return false;
         if (string.Equals(policy.ReservationMode?.Trim(), "NONE", StringComparison.OrdinalIgnoreCase)
             || string.Equals(policy.ReservationMode?.Trim(), "DISABLED", StringComparison.OrdinalIgnoreCase))
@@ -278,14 +280,13 @@ public static class OrderInventoryReservationPolicy
 
     // An order-line reservation holds the units an order could not take from physical stock.
     // ExpiresAt is set when the reservation is created or its quantity changes, and cleared on release.
+    // It is informational: nothing expires a reservation on its own.
     public static readonly TimeSpan ReservationLifetime = TimeSpan.FromDays(14);
 
     public static DateTimeOffset ExpiresAt(DateTimeOffset refreshedAt) => refreshedAt.Add(ReservationLifetime);
 
-    // The shortfall an order line may keep reserved: nothing unless the connection's inventory
-    // policy reserves stock for the line's current status.
-    public static decimal ReservedQuantity(decimal shortfall, ConnectionInventoryPolicy? policy, string? rawStatus) =>
-        shortfall > 0 && IsReservationEnabled(policy, rawStatus) ? shortfall : 0m;
+    // The whole shortfall stays reserved, independent of the connection's inventory policy.
+    public static decimal ReservedQuantity(decimal shortfall) => Math.Max(0m, shortfall);
 
     private static bool ContainsStatus(string? configuredStatuses, string rawStatus)
     {

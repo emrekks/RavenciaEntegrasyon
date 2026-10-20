@@ -83,6 +83,49 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
     }
 
+    // K6: an order line that cannot take its units from physical stock keeps them reserved, also under a
+    // DISABLED or missing connection inventory policy (the policy fields are not applied).
+    [PostgreSqlFact]
+    public async Task OrderShortfall_IsReservedUnderADisabledOrMissingInventoryPolicy()
+    {
+        var tenant = NewTenant("reservation-unconditional");
+        var withDisabledPolicy = NewConnection(tenant, "TRENDYOL");
+        var withoutPolicy = NewConnection(tenant, "N11");
+        var (product, disabledVariant) = NewVariant(tenant, "RES-1", "8690000000073");
+        var missingVariant = NewVariant(tenant, "RES-2", "8690000000080", product.Id).Variant;
+        var disabledInventory = NewInventory(tenant, disabledVariant, 0m);
+        var missingInventory = NewInventory(tenant, missingVariant, 0m);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(withDisabledPolicy, withoutPolicy);
+            seed.ConnectionInventoryPolicies.Add(new ConnectionInventoryPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = withDisabledPolicy.Id, AuthorityMode = InventoryAuthorityPolicy.Central, ReservationMode = "DISABLED", ReserveOnStatuses = "", ReleaseOnStatuses = "" });
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(disabledVariant, missingVariant);
+            seed.InventoryItems.AddRange(disabledInventory, missingInventory);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var project = typeof(MarketplaceJobProcessor).GetMethod("ProjectOrderReservations", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        foreach (var (connection, variant) in new[] { (withDisabledPolicy, disabledVariant), (withoutPolicy, missingVariant) })
+        {
+            var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = Guid.CreateVersion7(), VariantId = variant.Id, ExternalLineId = $"line-{variant.Sku}", Sku = variant.Sku, TitleSnapshot = variant.Sku, OrderedQuantity = 2m, RawStatus = "Created" };
+            await (Task)project.Invoke(processor, [tenant.Id, connection.Id, new List<(OrderLine, DateTimeOffset)> { (line, fixture.Now) }, CancellationToken.None])!;
+        }
+        await db.SaveChangesAsync();
+
+        foreach (var inventory in new[] { disabledInventory, missingInventory })
+        {
+            var reservation = await db.StockReservations.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == inventory.Id);
+            Assert.Equal(ReservationStatus.Active, reservation.Status);
+            Assert.Equal(2m, reservation.Quantity);
+            Assert.NotNull(reservation.ExpiresAt);
+            Assert.Equal(2m, (await db.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == inventory.Id)).Reserved);
+        }
+    }
+
     // K10: a barcode another product already lists on the same connection is refused before create.
     [PostgreSqlFact]
     public async Task Publication_RefusesABarcodeAnotherProductUsesOnTheSameConnection()

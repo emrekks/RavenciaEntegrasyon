@@ -8496,19 +8496,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, stockEventId));
             }
             var committedAfterMovement = Math.Max(0m, baselineQuantity - receivedLedgerDeltas.GetValueOrDefault(sourceId));
-            var shortfall = Math.Max(0m, targetCommitted - committedAfterMovement);
-            // The shortfall is held as a reservation only where the connection's inventory policy
-            // reserves stock for the line's status; reservations are opt-in.
-            var desired = OrderInventoryReservationPolicy.ReservedQuantity(shortfall, inventoryPolicy, line.RawStatus);
-            if (shortfall > 0 && actualOnHandDelta != onHandDelta)
+            // The units the order could not take from physical stock are always held as a reservation,
+            // whatever the connection's inventory policy says (see OrderInventoryReservationPolicy).
+            var desired = OrderInventoryReservationPolicy.ReservedQuantity(Math.Max(0m, targetCommitted - committedAfterMovement));
+            if (desired > 0 && actualOnHandDelta != onHandDelta)
             {
                 await RecordIssue(
                     tenantId,
                     $"stock-order-consumption:{line.Id:N}",
                     "STOCK_ORDER_CONSUMPTION_BLOCKED",
-                    desired > 0
-                        ? "Sipariş stoğu kısmen düşürüldü; kalan miktar rezervasyonda tutuluyor çünkü fiziksel stok yetersiz."
-                        : "Sipariş stoğu kısmen düşürüldü; fiziksel stok yetersiz olduğu için kalan miktar düşülemedi (bağlantının rezervasyon politikası kapalı).",
+                    "Sipariş stoğu kısmen düşürüldü; kalan miktar rezervasyonda tutuluyor çünkü fiziksel stok yetersiz.",
                     cancellationToken);
             }
 
