@@ -100,30 +100,66 @@ public sealed class MarketplaceCircuitBeforeQuotaTests
         Assert.Equal(1, downstream.Requests);
     }
 
-    // G11: the half-open probe is claimed only once the quota token is held, so a probe stuck in the quota queue
-    // does not answer every other request of the family with 503.
+    // The Trendyol half-open probe is claimed before its quota token is taken: a request refused while the probe
+    // is out spends no token of the seller's quota.
     [Fact]
-    public async Task ATrendyolProbeWaitingForItsQuotaDoesNotBlockTheOthers()
+    public async Task TrendyolRequestsRefusedWhileTheProbeIsOutSpendNoQuotaToken()
     {
-        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 4, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1), CircuitFailureThreshold = 1, CircuitBreakDuration = TimeSpan.FromMilliseconds(1) });
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero));
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 4, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1), CircuitFailureThreshold = 1, CircuitBreakDuration = TimeSpan.FromMinutes(1) });
         var limiter = new HoldingLimiter();
-        using var downstream = new FailFirst(1);
-        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), limiter) { InnerHandler = downstream };
+        using var downstream = new FailFirst(2);
+        using var resilience = new TrendyolResilienceHandler(options, clock, new TrendyolResilienceState(options), limiter) { InnerHandler = downstream };
         using var client = new HttpClient(resilience);
+        (await client.GetAsync("https://unit.test/a")).Dispose();
         using var opened = await client.GetAsync("https://unit.test/a");
         Assert.Equal(HttpStatusCode.InternalServerError, opened.StatusCode);
-        await Task.Delay(50);
+        using var refusedWhileOpen = await client.GetAsync("https://unit.test/a");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, refusedWhileOpen.StatusCode);
+        clock.Advance(TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(1));
+
+        var hold = limiter.HoldNext();
+        var probe = client.GetAsync("https://unit.test/a");
+        await limiter.Held.Task;
+        var tokensWithProbe = limiter.Taken;
+        using var refused = await client.GetAsync("https://unit.test/a");
+        using var refusedAgain = await client.GetAsync("https://unit.test/a");
+        hold.SetResult();
+        using var released = await probe;
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, refusedAgain.StatusCode);
+        Assert.Equal(tokensWithProbe, limiter.Taken);
+        Assert.Equal(HttpStatusCode.OK, released.StatusCode);
+        Assert.Equal(3, downstream.Requests);
+    }
+
+    // G11 kept: a probe still queueing for its token after ProbeQuotaWaitLimit no longer keeps the family out;
+    // the next request takes the probe over, and the old one goes as an ordinary request once the circuit closed.
+    [Fact]
+    public async Task ATrendyolProbeQueueingTooLongIsTakenOverByTheNextRequest()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero));
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 4, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1), CircuitFailureThreshold = 1, CircuitBreakDuration = TimeSpan.FromMinutes(1) });
+        var limiter = new HoldingLimiter();
+        using var downstream = new FailFirst(2);
+        using var resilience = new TrendyolResilienceHandler(options, clock, new TrendyolResilienceState(options), limiter) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+        (await client.GetAsync("https://unit.test/a")).Dispose();
+        (await client.GetAsync("https://unit.test/a")).Dispose();
+        clock.Advance(TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(1));
 
         var hold = limiter.HoldNext();
         var waiting = client.GetAsync("https://unit.test/a");
         await limiter.Held.Task;
+        clock.Advance(TrendyolResilienceHandler.ProbeQuotaWaitLimit + TimeSpan.FromSeconds(1));
         using var other = await client.GetAsync("https://unit.test/a");
         hold.SetResult();
         using var released = await waiting;
 
         Assert.Equal(HttpStatusCode.OK, other.StatusCode);
         Assert.Equal(HttpStatusCode.OK, released.StatusCode);
-        Assert.Equal(3, downstream.Requests);
+        Assert.Equal(4, downstream.Requests);
     }
 
     [Fact]
@@ -188,6 +224,8 @@ public sealed class MarketplaceCircuitBeforeQuotaTests
     private sealed class HoldingLimiter : ISharedRateLimiter
     {
         private TaskCompletionSource? hold;
+        private int taken;
+        public int Taken => taken;
         public TaskCompletionSource Held { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource HoldNext()
@@ -200,6 +238,7 @@ public sealed class MarketplaceCircuitBeforeQuotaTests
 
         public async ValueTask<TimeSpan> TryTakeAsync(string key, double capacity, double tokensPerSecond, CancellationToken cancellationToken)
         {
+            Interlocked.Increment(ref taken);
             if (Interlocked.Exchange(ref hold, null) is { } waitFor)
             {
                 Held.TrySetResult();
