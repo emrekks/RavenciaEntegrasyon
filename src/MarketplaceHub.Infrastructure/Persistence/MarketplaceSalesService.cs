@@ -136,7 +136,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
-        var lineSkuKeys = lines.Select(x => NormalizeCatalogKey(x.Sku, 160)).Where(x => x.Length > 0).Distinct().ToArray();
+        var lineSkuKeys = lines.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
         var marketplaceSkuKeys = lines.Select(x => MarketplaceVariantLinkCoverage.Normalize(x.Sku)).Where(x => x.Length > 0).Distinct().ToArray();
         var lineBarcodes = lines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineBarcodeKeys = lines.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -501,26 +501,16 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         _ => "DATE_DESC"
     };
 
-    private static string NormalizeCatalogKey(string? value, int maximum)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return "";
-        var form = value.Trim().Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(form.Length);
-        foreach (var ch in form)
-        {
-            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
-            if (char.IsLetterOrDigit(ch)) builder.Append(char.ToUpperInvariant(ch));
-            else if (builder.Length > 0 && builder[^1] != '-') builder.Append('-');
-        }
-        var normalized = builder.ToString().Trim('-');
-        return normalized[..Math.Min(maximum, normalized.Length)];
-    }
+    // The shared catalog key (CatalogKeyNormalizer), so order and return lines find variants stored by the panel
+    // or the import under the same key (K1).
+    private static string NormalizeCatalogKey(string? value, int maximum) => CatalogKeyNormalizer.Key(value, maximum);
 
     internal static string[] CatalogLookupKeys(string? value, int maximum = 160)
     {
         var normalized = NormalizeCatalogKey(value, maximum);
         if (normalized.Length == 0) return [];
-        var keys = new List<string> { normalized };
+        // Stored variant keys may still be in a legacy form until the deferred recompute; look up those too.
+        var keys = CatalogKeyNormalizer.LookupKeys(value, maximum).ToList();
         var withoutMarketplacePadding = normalized.TrimStart('0');
         if (withoutMarketplacePadding.Length > 0
             && withoutMarketplacePadding.Length < normalized.Length
@@ -702,7 +692,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .ToDictionary(group => group.Key, group => group.Sum(row => Math.Max(0m, row.AllocatedQuantity - row.CancelledQuantity)));
         var variantIds = activeOrderLines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = activeOrderLines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
-        var lineSkuKeys = activeOrderLines.Select(x => NormalizeCatalogKey(x.Sku, 160)).Where(x => x.Length > 0).Distinct().ToArray();
+        var lineSkuKeys = activeOrderLines.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
         var lineBarcodes = activeOrderLines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineBarcodeKeys = activeOrderLines.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId &&

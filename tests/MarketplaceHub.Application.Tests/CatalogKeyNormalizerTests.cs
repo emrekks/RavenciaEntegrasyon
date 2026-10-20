@@ -104,6 +104,28 @@ public sealed class CatalogKeyNormalizerTests
         Assert.Equal(expected, HepsiburadaProductPublicationComposer.StartsWithBrand(title, brand));
 }
 
+// K1 (orders and returns), K23 (catalog search).
+public sealed class CatalogLookupTests
+{
+    [Fact]
+    public void OrderLineLookupKeys_IncludeTheSharedAndTheLegacyForms()
+    {
+        var keys = MarketplaceSalesService.CatalogLookupKeys("abc_01");
+        Assert.Contains("ABC-01", keys);
+        Assert.Contains("ABC_01", keys);
+        Assert.Contains("KIRMIZI-1", MarketplaceSalesService.CatalogLookupKeys("Kırmızı 1"));
+        Assert.Contains("ABC", MarketplaceSalesService.CatalogLookupKeys("000ABC"));
+    }
+
+    [Theory]
+    [InlineData("50%", "50\\%")]
+    [InlineData("a_b", "a\\_b")]
+    [InlineData("x\\y", "x\\\\y")]
+    [InlineData("plain", "plain")]
+    public void SearchText_IsEscapedForLike(string value, string expected) =>
+        Assert.Equal(expected, CatalogService.EscapeLike(value));
+}
+
 // K1: groundwork for the deferred key recompute (not run anywhere yet): this SQL folds values exactly like
 // CatalogKeyNormalizer.Key, so a later migration can recompute the stored columns in the database.
 [Collection("postgres-integration")]
