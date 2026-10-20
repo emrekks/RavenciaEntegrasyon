@@ -166,6 +166,8 @@ public static class CatalogEndpoints
                     var image = await PublicNetwork.GetImageAsync(clients.CreateClient(PublicNetwork.ClientName), remoteUri, MaxUploadBytes, http.RequestAborted);
                     if (image is not { } found) return Results.NotFound();
                     http.Response.Headers.CacheControl = "private, max-age=900";
+                    // Opened on its own the answer is an inert image: no script, no plugins, no same-origin rights (A13).
+                    http.Response.Headers.ContentSecurityPolicy = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
                     return Results.Bytes(found.Bytes, found.ContentType);
                 }
                 catch (HttpRequestException) { return Results.NotFound(); }

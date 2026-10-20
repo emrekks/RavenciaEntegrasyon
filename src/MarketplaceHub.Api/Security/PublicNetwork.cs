@@ -106,8 +106,20 @@ public static class PublicNetwork
                 if (buffer.Length + read > maxBytes) return null;
                 buffer.Write(chunk, 0, read);
             }
-            return buffer.Length == 0 ? null : (buffer.ToArray(), contentType);
+            // The bytes decide the type, not the remote header: only JPEG, PNG, GIF and WebP pass, and they are
+            // served as what they are. SVG (scriptable), HTML or anything else labelled image/* is refused (A13).
+            var bytes = buffer.ToArray();
+            return SniffImageType(bytes) is { } sniffed ? (bytes, sniffed) : null;
         }
+        return null;
+    }
+
+    public static string? SniffImageType(ReadOnlySpan<byte> b)
+    {
+        if (b.Length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return "image/jpeg";
+        if (b.Length >= 8 && b[..8].SequenceEqual((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) return "image/png";
+        if (b.Length >= 6 && b[..4].SequenceEqual("GIF8"u8) && (b[4] == (byte)'7' || b[4] == (byte)'9') && b[5] == (byte)'a') return "image/gif";
+        if (b.Length >= 12 && b[..4].SequenceEqual("RIFF"u8) && b.Slice(8, 4).SequenceEqual("WEBP"u8)) return "image/webp";
         return null;
     }
 }
