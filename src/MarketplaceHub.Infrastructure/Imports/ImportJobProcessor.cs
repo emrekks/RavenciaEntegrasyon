@@ -95,9 +95,16 @@ public sealed class ImportJobProcessor(
                 }
 
                 var matches = await MatchAsync(tenantId, session.ConnectionId, stagingRows.Select(row => row.Staging).ToList(), cancellationToken);
+                // A category or brand the apply step cannot use is shown on the row before the decision.
+                var previewCategories = await LeafCategoriesAsync(tenantId, stagingRows.Select(row => Value(row.Values, "category")), cancellationToken);
+                var previewBrands = await BrandsAsync(tenantId, stagingRows.Select(row => Value(row.Values, "brand")), cancellationToken);
                 foreach (var (staging, values) in stagingRows)
                 {
                     var match = matches[staging.Id];
+                    var warnings = new List<string>();
+                    if (Value(values, "category") is { } categoryName && previewCategories.Resolve(categoryName, out var categoryWarning) is null && categoryWarning is not null) warnings.Add(categoryWarning);
+                    if (Value(values, "brand") is { } brandName && Normalize(brandName) is { } brandKey && previewBrands.TryGetValue(brandKey, out var previewBrand) && !previewBrand.IsActive)
+                        warnings.Add($"\"{brandName}\" markası kapalı; ürün markasız oluşturulur.");
                     db.ImportMatchCandidates.Add(new ImportMatchCandidate
                     {
                         Id = Guid.CreateVersion7(),
@@ -108,7 +115,7 @@ public sealed class ImportJobProcessor(
                         VariantId = match.VariantId,
                         MatchRule = match.Rule,
                         Status = "REVIEW_REQUIRED",
-                        SafeSummary = SafeSummary(values)
+                        SafeSummary = SafeSummary(values, warnings)
                     });
                     reviews++;
                 }
@@ -218,7 +225,7 @@ public sealed class ImportJobProcessor(
                             Title = Value(values, "title")!,
                             Description = Value(values, "description") ?? string.Empty,
                             BrandId = Value(values, "brand") is { } brandName ? BrandFor(tenantId, brands, brandName, now)?.Id : null,
-                            CategoryId = Value(values, "category") is { } categoryName ? categories.GetValueOrDefault(Normalize(categoryName)!) : null,
+                            CategoryId = categories.Resolve(Value(values, "category")),
                             DefaultListPrice = listPrice,
                             DefaultSalePrice = salePrice,
                             CreatedAt = now,
@@ -399,26 +406,74 @@ public sealed class ImportJobProcessor(
         return brands.OrderByDescending(x => x.IsActive).GroupBy(x => CatalogKeyNormalizer.Key(x.NormalizedName)).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
     }
 
-    // A brand named by the file is reused when it exists (active or not) and created otherwise.
+    // A brand named by the file is reused when it exists and created otherwise. Like the marketplace
+    // import, a brand the user switched off is not revived: the product stays without a brand.
     private Brand? BrandFor(Guid tenantId, Dictionary<string, Brand> brands, string name, DateTimeOffset now)
     {
         var key = Normalize(name);
         if (key is null) return null;
-        if (brands.TryGetValue(key, out var brand)) return brand;
+        if (brands.TryGetValue(key, out var brand)) return brand.IsActive ? brand : null;
         brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = name.Trim()[..Math.Min(name.Trim().Length, 160)], NormalizedName = key, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
         db.Brands.Add(brand);
         brands[key] = brand;
         return brand;
     }
 
-    // Categories are a managed tree, so the file may only name an existing active leaf.
-    private async Task<Dictionary<string, Guid?>> LeafCategoriesAsync(Guid tenantId, IEnumerable<string?> names, CancellationToken cancellationToken)
+    // Categories are a managed tree, so the file may only name an existing active leaf. Categories made
+    // in the panel store a name key, marketplace categories a path key ("GIYIM-ALT-GIYIM-TAYT"); the file
+    // may give the leaf name ("Tayt") or the full path ("Giyim / Alt Giyim / Tayt"), so both are matched
+    // against the stored name and path, the full path first.
+    private async Task<ImportCategoryLookup> LeafCategoriesAsync(Guid tenantId, IEnumerable<string?> names, CancellationToken cancellationToken)
     {
-        var keys = CatalogKeyNormalizer.LookupKeys(names);
-        var categories = keys.Length == 0 ? [] : await db.Categories.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsLeaf && keys.Contains(x.NormalizedName)).Select(x => new { x.Id, x.NormalizedName }).ToListAsync(cancellationToken);
-        return categories.GroupBy(x => CatalogKeyNormalizer.Key(x.NormalizedName))
-            .Where(group => group.Count() == 1)
-            .ToDictionary(group => group.Key, group => (Guid?)group.Single().Id, StringComparer.Ordinal);
+        var requested = names.ToList();
+        if (requested.All(string.IsNullOrWhiteSpace)) return ImportCategoryLookup.Build([], requested);
+        var categories = await db.Categories.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsLeaf).Select(x => new ImportCategoryLookup.Leaf(x.Id, x.Name, x.Path, x.NormalizedName)).ToListAsync(cancellationToken);
+        return ImportCategoryLookup.Build(categories, requested);
+    }
+
+    // The active leaf categories a file names, indexed by the shared key of their full path and of their
+    // name (the stored NormalizedName too, which is a name key for panel categories and a path key for
+    // marketplace ones).
+    internal sealed record ImportCategoryLookup(Dictionary<string, HashSet<Guid>> ByPath, Dictionary<string, HashSet<Guid>> ByName)
+    {
+        internal sealed record Leaf(Guid Id, string Name, string Path, string NormalizedName);
+
+        public static ImportCategoryLookup Build(IEnumerable<Leaf> leaves, IEnumerable<string?> names)
+        {
+            var requested = names.Select(name => CatalogKeyNormalizer.Key(name, 1024)).Where(key => key.Length > 0).ToHashSet(StringComparer.Ordinal);
+            var byPath = new Dictionary<string, HashSet<Guid>>(StringComparer.Ordinal);
+            var byName = new Dictionary<string, HashSet<Guid>>(StringComparer.Ordinal);
+            void Add(Dictionary<string, HashSet<Guid>> index, string key, Guid id)
+            {
+                if (!requested.Contains(key)) return;
+                if (!index.TryGetValue(key, out var ids)) index[key] = ids = [];
+                ids.Add(id);
+            }
+            foreach (var leaf in leaves)
+            {
+                Add(byPath, CatalogKeyNormalizer.Key(leaf.Path, 1024), leaf.Id);
+                Add(byName, CatalogKeyNormalizer.Key(leaf.Name), leaf.Id);
+                Add(byName, CatalogKeyNormalizer.Key(leaf.NormalizedName), leaf.Id);
+            }
+            return new(byPath, byName);
+        }
+
+        public Guid? Resolve(string? value) => Resolve(value, out _);
+
+        // The single active leaf the file names, or null with the reason shown on the preview row.
+        public Guid? Resolve(string? value, out string? warning)
+        {
+            warning = null;
+            var key = CatalogKeyNormalizer.Key(value, 1024);
+            if (key.Length == 0) return null;
+            if (ByPath.TryGetValue(key, out var pathIds) && pathIds.Count == 1) return pathIds.Single();
+            if (ByName.TryGetValue(key, out var nameIds) && nameIds.Count == 1 && (pathIds is null || pathIds.SetEquals(nameIds))) return nameIds.Single();
+            var candidates = (pathIds?.Count ?? 0) + (nameIds?.Count ?? 0);
+            warning = candidates > 1
+                ? $"\"{value!.Trim()}\" birden fazla kategoriyle eşleşiyor; ürün kategorisiz oluşturulur. Tam kategori yolunu yazın (ör. Giyim / Alt Giyim / Tayt)."
+                : $"\"{value!.Trim()}\" adında etkin bir yaprak kategori yok; ürün kategorisiz oluşturulur.";
+            return null;
+        }
     }
 
     private static Dictionary<string, string> ImportOptions(IReadOnlyDictionary<string, string> values)
@@ -535,6 +590,8 @@ public sealed class ImportJobProcessor(
         if (safeValues.TryGetValue("description", out var description)) safeValues["description"] = ImportedHtmlSanitizer.Sanitize(description);
         return safeValues;
     }
-    private static string SafeSummary(IReadOnlyDictionary<string, string> values) => JsonSerializer.Serialize(new { title = Value(values, "title"), sku = Value(values, "sku"), barcode = Value(values, "barcode") });
+    private static string SafeSummary(IReadOnlyDictionary<string, string> values, IReadOnlyList<string> warnings) => warnings.Count == 0
+        ? JsonSerializer.Serialize(new { title = Value(values, "title"), sku = Value(values, "sku"), barcode = Value(values, "barcode") })
+        : JsonSerializer.Serialize(new { title = Value(values, "title"), sku = Value(values, "sku"), barcode = Value(values, "barcode"), warnings });
     private sealed record MatchResult(string Rule, Guid? ProductId, Guid? VariantId);
 }

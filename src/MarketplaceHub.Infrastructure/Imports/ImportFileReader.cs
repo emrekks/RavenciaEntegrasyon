@@ -10,7 +10,7 @@ public sealed record ParsedImportRow(int RowNumber, IReadOnlyDictionary<string, 
 public static class ImportFileReader
 {
     // Excel in Turkish locales saves CSV as Windows-1254 with ';' between fields. The reader accepts UTF-8
-    // (with or without BOM) and falls back to Windows-1254 when the bytes are not valid UTF-8; the
+    // (with or without BOM) and UTF-16 with a BOM, and falls back to Windows-1254 when the bytes are not valid UTF-8; the
     // delimiter is the one of ',', ';' or tab that the header uses most. Quoted fields may span lines.
     public static IEnumerable<ParsedImportRow> ReadCsv(Stream stream, IReadOnlyDictionary<string, string> mappings)
     {
@@ -58,9 +58,13 @@ public static class ImportFileReader
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         var bytes = buffer.ToArray();
+        // A byte order mark names the encoding (Excel's "Unicode text" is UTF-16 LE) and is never part
+        // of the first header.
+        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
+        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
         var offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
         try { return new UTF8Encoding(false, true).GetString(bytes, offset, bytes.Length - offset); }
-        catch (DecoderFallbackException) { return Windows1254.GetString(bytes); }
+        catch (DecoderFallbackException) { return Windows1254.GetString(bytes, offset, bytes.Length - offset); }
     }
 
     private static readonly Encoding Windows1254 = CreateWindows1254();
@@ -75,11 +79,14 @@ public static class ImportFileReader
     {
         var counts = new Dictionary<char, int> { [','] = 0, [';'] = 0, ['\t'] = 0 };
         var quoted = false;
+        var fieldStart = true;
         foreach (var character in text)
         {
-            if (character == '"') quoted = !quoted;
+            // As in ParseCsvRecords, only a quote that starts a field opens a quoted field.
+            if (character == '"' && (quoted || fieldStart)) { quoted = !quoted; fieldStart = false; }
             else if (!quoted && character is '\r' or '\n') break;
-            else if (!quoted && counts.ContainsKey(character)) counts[character]++;
+            else if (!quoted && counts.ContainsKey(character)) { counts[character]++; fieldStart = true; }
+            else if (!quoted && character != ' ') fieldStart = false;
         }
         var best = counts.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key == ',' ? 0 : pair.Key == ';' ? 1 : 2).First();
         return best.Value == 0 ? ',' : best.Key;
@@ -87,9 +94,11 @@ public static class ImportFileReader
 
     // One record per CSV row; a quoted field may contain the delimiter, doubled quotes and line breaks.
     // RowNumber is the line on which the record starts, so error reports point at the right line.
+    // As in RFC 4180 a quote opens a quoted field only at the start of the field (leading spaces
+    // allowed); inside an unquoted field (24" Monitör) it is a literal character.
     internal static IEnumerable<(int RowNumber, List<string> Cells)> ParseCsvRecords(string text, char delimiter)
     {
-        var cells = new List<string>(); var current = new StringBuilder(); var quoted = false; var line = 1; var recordStart = 1; var hasContent = false;
+        var cells = new List<string>(); var current = new StringBuilder(); var quoted = false; var fieldQuoted = false; var line = 1; var recordStart = 1; var hasContent = false;
         for (var index = 0; index < text.Length; index++)
         {
             var character = text[index];
@@ -107,19 +116,26 @@ public static class ImportFileReader
                 }
                 continue;
             }
-            if (character == '"') { quoted = true; hasContent = true; continue; }
-            if (character == delimiter) { cells.Add(current.ToString()); current.Clear(); hasContent = true; continue; }
+            if (character == '"' && !fieldQuoted && IsBlank(current)) { current.Clear(); quoted = true; fieldQuoted = true; hasContent = true; continue; }
+            if (character == delimiter) { cells.Add(current.ToString()); current.Clear(); fieldQuoted = false; hasContent = true; continue; }
             if (character is '\r' or '\n')
             {
                 if (character == '\r' && index + 1 < text.Length && text[index + 1] == '\n') index++;
                 if (hasContent || current.Length > 0) { cells.Add(current.ToString()); yield return (recordStart, cells); }
-                cells = []; current.Clear(); hasContent = false; line++; recordStart = line;
+                cells = []; current.Clear(); fieldQuoted = false; hasContent = false; line++; recordStart = line;
                 continue;
             }
             current.Append(character); hasContent = true;
         }
         if (quoted) throw new InvalidDataException($"CSV tırnak yapısı geçersiz (satır {recordStart}).");
         if (hasContent || current.Length > 0) { cells.Add(current.ToString()); yield return (recordStart, cells); }
+    }
+
+    private static bool IsBlank(StringBuilder value)
+    {
+        for (var index = 0; index < value.Length; index++)
+            if (value[index] is not (' ' or '\t')) return false;
+        return true;
     }
 
     private static void ValidateArchive(ZipArchive archive, long maximumBytes)
