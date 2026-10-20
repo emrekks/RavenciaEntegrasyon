@@ -2766,6 +2766,80 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task TrendyolInvoiceCheck_DoesNotOverwriteANewerObservationWrittenMeanwhile()
+    {
+        var tenant = NewTenant("ty-invoice-newer");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "newer-observation-order", isReturnClaim: false, fixture.Now);
+        var packages = Enumerable.Range(0, 2)
+            .Select(index => NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), $"newer-observation-package-{index}", fixture.Now))
+            .ToArray();
+        ReadOnlyOrderTestPort? orderPort = null;
+        orderPort = new ReadOnlyOrderTestPort(
+            new RemotePackage(
+                "newer-observation-package", null, "Delivered", fixture.Now, null, null, [],
+                GrossAmount: 100m, NetAmount: 100m,
+                Invoice: new RemotePackageInvoiceObservation("Invoiced", "INV-OLD", "https://example.test/old.pdf", fixture.Now)),
+            externalOrderId: "newer-observation-order",
+            onPackageRead: () =>
+            {
+                // While the check reads the second package, an order read stores a newer invoice on the first one.
+                if (orderPort!.PackageReadCalls.Count != 2) return;
+                var firstPackage = packages.Single(package => package.ExternalPackageId == orderPort.PackageReadCalls[0]);
+                using var orderReadDb = fixture.CreateContext();
+                orderReadDb.ShipmentPackages
+                    .Where(package => package.TenantId == tenant.Id && package.Id == firstPackage.Id)
+                    .ExecuteUpdate(setters => setters
+                        .SetProperty(package => package.MarketplaceInvoiceStatus, MarketplaceInvoiceStatus.Invoiced)
+                        .SetProperty(package => package.MarketplaceInvoiceNumber, "INV-NEW")
+                        .SetProperty(package => package.MarketplaceInvoiceUrl, "https://example.test/new.pdf")
+                        .SetProperty(package => package.MarketplaceInvoiceSourceUpdatedAt, fixture.Now.AddMinutes(1))
+                        .SetProperty(package => package.MarketplaceInvoiceObservedAt, fixture.Now.AddMinutes(1))
+                        .SetProperty(package => package.Version, package => package.Version + 1));
+            });
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ShipmentPackages.AddRange(packages);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderInvoiceReconciliation, "{}", "trendyol-invoice-newer-observation", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            // The conflicting order was read once more; the newly invoiced package is no longer part of the sweep.
+            Assert.Equal(3, orderPort.PackageReadCalls.Count);
+            await using var verifyDb = fixture.CreateContext();
+            var stored = await verifyDb.ShipmentPackages.AsNoTracking()
+                .Where(package => package.TenantId == tenant.Id)
+                .ToDictionaryAsync(package => package.ExternalPackageId);
+            var first = stored[orderPort.PackageReadCalls[0]];
+            Assert.Equal("INV-NEW", first.MarketplaceInvoiceNumber);
+            Assert.Equal(fixture.Now.AddMinutes(1), first.MarketplaceInvoiceObservedAt!.Value, TimeSpan.FromMilliseconds(1));
+            var second = stored.Values.Single(package => package.Id != first.Id);
+            Assert.Equal(MarketplaceInvoiceStatus.Invoiced, second.MarketplaceInvoiceStatus);
+            Assert.Equal("INV-OLD", second.MarketplaceInvoiceNumber);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task InstantNotifications_RegisterABasicAuthWebhookAndRemoveIt()
     {
         var tenant = NewTenant("trendyol-instant-notifications");

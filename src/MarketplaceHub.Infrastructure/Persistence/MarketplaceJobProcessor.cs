@@ -12,6 +12,7 @@ using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using MarketplaceHub.Infrastructure.Imports;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 
@@ -3949,15 +3950,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
 
             // Checkpoint: the finished order's changes and the cursor position are saved together.
+            var checkpointSaved = true;
             if (invoiceCursor is not null && index < cursorAfterOrder.Count && cursorAfterOrder[index] is { } position)
             {
                 invoiceCursor.OpaqueCursor = position;
                 invoiceCursor.Version++;
-                await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken);
+                checkpointSaved = await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
             }
             else if (isTrendyol)
             {
-                await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken);
+                checkpointSaved = await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
+            }
+
+            // A newer write landed on this order's invoice rows meanwhile: read the order once more against it.
+            if (!checkpointSaved && !cancellationToken.IsCancellationRequested)
+            {
+                await ReconcileOrderInvoiceAsync(externalOrderIds[index]);
+                await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
             }
         }
 
@@ -3978,7 +3987,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         if (invoiceCursor is not null || isTrendyol)
-            await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken);
+            await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
 
         await UpdateOrderInvoiceReconciliationProgressAsync(
             tenantId,
@@ -4069,7 +4078,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 TrackReceived();
                 await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, "reconciliation");
                 await ResolveIssue(tenantId, $"trendyol-invoice-package-read:{connectionId}:{localId}", cancellationToken);
-                observed.Add(localId);
+                // Saved package by package, so the batch's answer is not held while later batches are read; a
+                // package another writer changed meanwhile is left to the per-order pass, which reads it again.
+                if (await SaveOrderInvoiceCheckpointAsync(isTrendyol: true, cancellationToken))
+                    observed.Add(localId);
             }
         }
         await SaveOrderInvoiceCheckpointAsync(isTrendyol: true, cancellationToken);
@@ -4165,37 +4177,84 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static bool OnlyChanges(IEnumerable<string> modifiedProperties, IReadOnlySet<string> allowed) => modifiedProperties.All(allowed.Contains);
 
     // The Trendyol invoice check runs under its own lock group ("order-invoices"), next to the order reads.
-    // It writes the package invoice columns and the order snapshots it changed without checking or bumping
-    // their versions (ExecuteUpdate), so an order read that changes the same rows meanwhile neither fails this
-    // check nor is failed by it. Everything else it changed (invoice delivery states, history, its cursor) is
-    // saved normally in the same transaction. A package or order with any other change is saved normally.
-    private async Task SaveOrderInvoiceCheckpointAsync(bool isTrendyol, CancellationToken cancellationToken)
+    // It writes the package invoice columns and the order snapshots it changed without bumping their versions
+    // (ExecuteUpdate), so an order read that changes other columns of the same rows meanwhile neither fails this
+    // check nor is failed by it. A package invoice write only lands when the stored invoice columns are still the
+    // ones this check read: a newer observation written meanwhile (by an order read or another job) is never
+    // overwritten with the older one held here. On such a conflict, or when an invoice / delivery state changed
+    // under it (version conflict), the checkpoint's changes are rolled back and dropped (the cursor given as
+    // keep stays) and false is returned, so the caller reads that order again instead of failing the batch.
+    // Everything else it changed (invoice delivery states, history, its cursor) is saved in the same transaction.
+    private async Task<bool> SaveOrderInvoiceCheckpointAsync(bool isTrendyol, CancellationToken cancellationToken, object? keep = null)
     {
-        if (!isTrendyol) { await db.SaveChangesAsync(cancellationToken); return; }
+        if (!isTrendyol) { await db.SaveChangesAsync(cancellationToken); return true; }
+        const string savepoint = "order_invoice_checkpoint";
+        var outerTransaction = db.Database.CurrentTransaction;
+        await using var transaction = outerTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (outerTransaction is not null) await outerTransaction.CreateSavepointAsync(savepoint, cancellationToken);
+        var written = new List<EntityEntry>();
+        try
+        {
+            if (await WriteOrderInvoiceCheckpointAsync(written, cancellationToken))
+            {
+                if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+                else await outerTransaction!.ReleaseSavepointAsync(savepoint, cancellationToken);
+                // Written rows are read again from the database the next time they are needed.
+                foreach (var entry in written) entry.State = EntityState.Detached;
+                return true;
+            }
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // An invoice or delivery state changed under this check: handled like a newer package observation.
+        }
+
+        if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+        else await outerTransaction!.RollbackToSavepointAsync(savepoint, cancellationToken);
+        DiscardOrderInvoiceChanges(written, keep);
+        telemetrySkippedCount++;
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(cancellationToken);
+        return false;
+    }
+
+    private async Task<bool> WriteOrderInvoiceCheckpointAsync(List<EntityEntry> written, CancellationToken cancellationToken)
+    {
         var packages = db.ChangeTracker.Entries<ShipmentPackage>()
             .Where(entry => entry.State == EntityState.Modified && OnlyChanges(entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name), PackageInvoiceColumns))
             .ToList();
         var orderEntries = db.ChangeTracker.Entries<Order>()
             .Where(entry => entry.State == EntityState.Modified && OnlyChanges(entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name), OrderSnapshotColumns))
             .ToList();
-        if (packages.Count == 0 && orderEntries.Count == 0) { await db.SaveChangesAsync(cancellationToken); return; }
-
-        await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
         var now = timeProvider.GetUtcNow();
         foreach (var entry in packages)
         {
             var package = entry.Entity;
-            await db.ShipmentPackages.Where(x => x.TenantId == package.TenantId && x.Id == package.Id).ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.MarketplaceInvoiceNumber, package.MarketplaceInvoiceNumber)
-                .SetProperty(x => x.MarketplaceInvoiceUrl, package.MarketplaceInvoiceUrl)
-                .SetProperty(x => x.MarketplaceInvoiceStatus, package.MarketplaceInvoiceStatus)
-                .SetProperty(x => x.MarketplaceInvoiceRawStatus, package.MarketplaceInvoiceRawStatus)
-                .SetProperty(x => x.MarketplaceInvoiceSourceUpdatedAt, package.MarketplaceInvoiceSourceUpdatedAt)
-                .SetProperty(x => x.MarketplaceInvoiceObservedAt, package.MarketplaceInvoiceObservedAt)
-                .SetProperty(x => x.UpdatedAt, package.UpdatedAt), cancellationToken);
+            var readNumber = entry.Property(x => x.MarketplaceInvoiceNumber).OriginalValue;
+            var readUrl = entry.Property(x => x.MarketplaceInvoiceUrl).OriginalValue;
+            var readStatus = entry.Property(x => x.MarketplaceInvoiceStatus).OriginalValue;
+            var readSourceUpdatedAt = entry.Property(x => x.MarketplaceInvoiceSourceUpdatedAt).OriginalValue;
+            var readObservedAt = entry.Property(x => x.MarketplaceInvoiceObservedAt).OriginalValue;
+            var affected = await db.ShipmentPackages
+                .Where(x => x.TenantId == package.TenantId && x.Id == package.Id
+                    && x.MarketplaceInvoiceStatus == readStatus
+                    && x.MarketplaceInvoiceNumber == readNumber
+                    && x.MarketplaceInvoiceUrl == readUrl
+                    && x.MarketplaceInvoiceSourceUpdatedAt == readSourceUpdatedAt
+                    && x.MarketplaceInvoiceObservedAt == readObservedAt)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.MarketplaceInvoiceNumber, package.MarketplaceInvoiceNumber)
+                    .SetProperty(x => x.MarketplaceInvoiceUrl, package.MarketplaceInvoiceUrl)
+                    .SetProperty(x => x.MarketplaceInvoiceStatus, package.MarketplaceInvoiceStatus)
+                    .SetProperty(x => x.MarketplaceInvoiceRawStatus, package.MarketplaceInvoiceRawStatus)
+                    .SetProperty(x => x.MarketplaceInvoiceSourceUpdatedAt, package.MarketplaceInvoiceSourceUpdatedAt)
+                    .SetProperty(x => x.MarketplaceInvoiceObservedAt, package.MarketplaceInvoiceObservedAt)
+                    .SetProperty(x => x.UpdatedAt, package.UpdatedAt), cancellationToken);
+            // Another writer stored a newer invoice observation after this check read the package.
+            if (affected == 0) return false;
             package.Version = entry.Property(x => x.Version).OriginalValue;
             entry.OriginalValues.SetValues(entry.CurrentValues);
             entry.State = EntityState.Unchanged;
+            written.Add(entry);
             AddOrderDataChangeEvent(package.TenantId, "ShipmentPackage", package.Id, package.Version, now);
         }
         foreach (var entry in orderEntries)
@@ -4210,10 +4269,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             order.Version = entry.Property(x => x.Version).OriginalValue;
             entry.OriginalValues.SetValues(entry.CurrentValues);
             entry.State = EntityState.Unchanged;
+            written.Add(entry);
             AddOrderDataChangeEvent(order.TenantId, "Order", order.Id, order.Version, now);
         }
         await db.SaveChangesAsync(cancellationToken);
-        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    // After a rolled-back checkpoint: forget its changes and the invoice rows it read, so a retry reads them fresh.
+    private void DiscardOrderInvoiceChanges(IEnumerable<EntityEntry> written, object? keep)
+    {
+        foreach (var entry in written) entry.State = EntityState.Detached;
+        foreach (var entry in db.ChangeTracker.Entries().ToList())
+        {
+            if (ReferenceEquals(entry.Entity, keep)) continue;
+            if (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted
+                || entry.Entity is ShipmentPackage or Order or Invoice or MarketplaceDeliveryState or MarketplaceDelivery)
+                entry.State = EntityState.Detached;
+        }
     }
 
     // The screens learn about a row written outside the change tracker the same way as about a saved one.
