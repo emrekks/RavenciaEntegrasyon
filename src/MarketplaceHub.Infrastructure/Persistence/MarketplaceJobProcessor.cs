@@ -9165,8 +9165,22 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // PageCursor is the adapter's NextCursor kept as it came (Trendyol: "s:Created=2,Accepted=5", one next page per
     // claim status bucket that still has claims). Page counts the pages read and is the request cursor only when
     // PageCursor is empty (first page, or a state written before PageCursor existed), so old states keep working.
-    internal sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null, string? PageCursor = null);
+    // PermanentFailures counts the permanent refusals (4xx) of the saved page in a row.
+    internal sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null, string? PageCursor = null, int PermanentFailures = 0);
     internal const int MaximumReturnPageCursorLength = 1_000;
+    internal const int ReturnPagePermanentFailureLimit = 3;
+
+    // A permanent refusal of a saved page (400/404/422, or a validation/not-found error) is counted; a quota,
+    // sign-in or server error is not. The read restarts from its baseline at the limit.
+    internal static (int Failures, bool Restart) ReturnPageRefusal(ReturnSyncState state, AdapterError? error)
+    {
+        var permanent = error is not null
+            && (error.Class is AdapterErrorClass.Validation or AdapterErrorClass.NotFound || error.HttpStatus is 400 or 404 or 422)
+            && error.Class is not (AdapterErrorClass.RateLimit or AdapterErrorClass.Authentication or AdapterErrorClass.Remote5xx or AdapterErrorClass.TransientNetwork);
+        if (!permanent) return (state.PermanentFailures, false);
+        var failures = state.PermanentFailures + 1;
+        return (failures, failures >= ReturnPagePermanentFailureLimit);
+    }
 
     internal static string ReturnPageCursor(ReturnSyncState state) =>
         string.IsNullOrWhiteSpace(state.PageCursor) ? state.Page.ToString(System.Globalization.CultureInfo.InvariantCulture) : state.PageCursor;
@@ -9241,10 +9255,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
-            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            if (!result.IsSuccess)
+            {
+                TrackResultFailure(result.Error);
+                // A saved page the marketplace keeps refusing for good (its cursor no longer valid) would hold the
+                // read there forever: after a few such refusals in a row the read starts again from its baseline.
+                if (state.Page > 0 || state.PageCursor is not null)
+                {
+                    var (failures, restart) = ReturnPageRefusal(state, result.Error);
+                    if (failures != state.PermanentFailures)
+                    {
+                        cursor.OpaqueCursor = restart ? null : SerializeReturnSyncState(state with { PermanentFailures = failures });
+                        cursor.Version++;
+                        await db.SaveChangesAsync(cancellationToken);
+                    }
+                }
+                throw JobProcessingException.FromAdapter(result.Error!);
+            }
             foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
             pagesThisSlice++;
+            state = state with { PermanentFailures = 0 };
             var nextStorefront = false;
             if (result.Value.HasMore)
             {
