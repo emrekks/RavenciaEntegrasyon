@@ -167,9 +167,11 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Version = 1
         };
         OrderLine NewLine(Order order, string sku, decimal quantity, decimal price) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = sku, Sku = sku, TitleSnapshot = $"Ürün {sku}", OrderedQuantity = quantity, DeliveredQuantity = quantity, ShippedQuantity = quantity, UnitPrice = price, VatRate = 20m, RawStatus = "Delivered" };
+        // Claims made in the same millisecond get random-order ids; one millisecond apart they sort in the order made.
+        var claimTick = 0;
         ReturnClaim NewClaim(PlatformConnection connection, Order order, ReturnClaimStatus status, string raw, string? cargo, string? reasonCode, string? reasonText) => new()
         {
-            Id = Guid.CreateVersion7(),
+            Id = Guid.CreateVersion7(now.AddMilliseconds(++claimTick)),
             TenantId = tenant.Id,
             ConnectionId = connection.Id,
             OrderId = order.Id,
