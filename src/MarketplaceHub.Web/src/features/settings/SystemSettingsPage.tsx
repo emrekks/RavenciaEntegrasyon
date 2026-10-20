@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useEffectEvent, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, hubApi } from '../../shared/api'
+import { ApiRequestError, hubApi } from '../../shared/api'
 import { LoadingState, Modal } from '../../shared/components'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../shipping'
@@ -15,7 +15,7 @@ import { formatIstanbul } from '../../shared/format-date'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
-type MfaSetup = { otpauthUri: string; qrSvg: string; expiresAt: string }
+type MfaSetup = { otpauthUri: string; secret?: string; qrSvg: string; expiresAt: string }
 type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'delete-closed'; sessionId?: string }
 
 // System settings as a section list (docs/tasarim-onerileri/sistem-ayarlari.html, option 2): the four former tabs are
@@ -162,6 +162,25 @@ const mfaSteps: Array<{ key: 'password' | 'verify' | 'recovery'; label: string; 
 ]
 const emptyOtp = ['', '', '', '', '', '']
 
+// What the server said, in words for the person: a wrong password, a wrong or expired code, too many tries.
+export function mfaErrorMessage(reason: unknown, fallback: string) {
+  if (!(reason instanceof ApiRequestError)) return fallback
+  switch (reason.code) {
+    case 'REAUTHENTICATION_FAILED': return 'Parola doğrulanamadı. Art arda hatalı denemelerde bu ağdan giriş bir süre engellenir.'
+    case 'SECOND_FACTOR_FAILED': return 'Mevcut doğrulayıcı kodu veya kurtarma kodu kabul edilmedi.'
+    case 'MFA_CODE_INVALID': return 'Doğrulama kodu geçersiz. Uygulamadaki güncel 6 haneli kodu girin.'
+    case 'MFA_ENROLLMENT_NOT_PENDING': return 'Kurulumun süresi doldu; parolanızla yeniden başlatın.'
+    case 'RATE_LIMITED': return 'Çok fazla deneme yapıldı. Bir dakika bekleyip yeniden deneyin.'
+    default: return reason.message || fallback
+  }
+}
+
+// The key an authenticator app asks for when the QR code cannot be scanned: the base32 secret, in groups of four.
+export function manualSetupKey(otpauthUri: string) {
+  const secret = /[?&]secret=([A-Z2-7]+)/i.exec(otpauthUri)?.[1]?.toUpperCase() ?? ''
+  return secret.match(/.{1,4}/g)?.join(' ') ?? ''
+}
+
 export function SystemSettingsPage() {
   const client = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -179,8 +198,9 @@ export function SystemSettingsPage() {
   const [resetConfirmation, setResetConfirmation] = useState('')
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetBusy, setResetBusy] = useState(false)
-  const status = useQuery({ queryKey: ['security'], queryFn: () => api<SecurityStatus>('/security-status') })
-  const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => api<SecuritySession[]>('/sessions') })
+  // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
+  const status = useQuery({ queryKey: ['security'], queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
+  const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
   const [sessionCount] = useRememberedTabCounts('Ayarlar oturumlar', [{ value: 'sessions', count: sessions.data?.length }])
   const [mfaStep, setMfaStep] = useState<'closed' | 'password' | 'verify' | 'recovery'>('closed')
   const [setup, setSetup] = useState<MfaSetup | null>(null)
@@ -222,10 +242,10 @@ export function SystemSettingsPage() {
     event.preventDefault(); setBusy(true); setMfaError('')
     const data = new FormData(event.currentTarget)
     try {
-      await api('/reauthenticate', { method: 'POST', body: JSON.stringify({ password: data.get('password') }) })
-      const enrollment = await api<MfaSetup>('/mfa/setup', { method: 'POST' })
+      // The setup takes the password itself (and, when an authenticator is already on, its current code).
+      const enrollment = await hubApi<MfaSetup>('/auth/mfa/setup', { method: 'POST', body: JSON.stringify({ password: data.get('password') }) })
       setSetup(enrollment); setOtp(emptyOtp); setMfaStep('verify')
-    } catch { setMfaError('Parola doğrulanamadı veya güvenli kurulum başlatılamadı.') } finally { setBusy(false) }
+    } catch (reason) { setMfaError(mfaErrorMessage(reason, 'Güvenli kurulum başlatılamadı.')) } finally { setBusy(false) }
   }
   async function confirmMfa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -236,9 +256,15 @@ export function SystemSettingsPage() {
     }
     setBusy(true); setMfaError('')
     try {
-      const result = await api<{ recoveryCodes: string[] }>('/mfa/confirm', { method: 'POST', body: JSON.stringify({ code }) })
+      const result = await hubApi<{ recoveryCodes: string[] }>('/auth/mfa/confirm', { method: 'POST', body: JSON.stringify({ code }) })
       setRecoveryCodes(result.recoveryCodes); setMfaStep('recovery'); await client.invalidateQueries({ queryKey: ['security'] })
-    } catch { setMfaError('Doğrulama kodu geçersiz veya kurulum süresi dolmuş.') } finally { setBusy(false) }
+    } catch (reason) { setMfaError(mfaErrorMessage(reason, 'Doğrulayıcı etkinleştirilemedi.')) } finally { setBusy(false) }
+  }
+  // The recovery codes are shown once: Escape or a click outside does not close this step, only "Kodları Sakladım".
+  function closeMfa() {
+    if (busy) return
+    if (mfaStep === 'recovery') { setMfaError('Kurtarma kodlarını sakladıktan sonra “Kodları Sakladım” ile kapatın; bu kodlar yeniden gösterilmez.'); return }
+    setMfaStep('closed')
   }
   async function copyRecoveryCodes() {
     try {
@@ -252,16 +278,16 @@ export function SystemSettingsPage() {
     setSessionActionBusy(true); setMessage('')
     try {
       if (confirmation.action === 'revoke' && confirmation.sessionId) {
-        await api(`/sessions/${confirmation.sessionId}/revoke`, { method: 'POST' })
+        await hubApi(`/auth/sessions/${confirmation.sessionId}/revoke`, { method: 'POST' })
         setMessage('Oturum sonlandırıldı.')
       } else if (confirmation.action === 'revoke-others') {
-        await api('/sessions/revoke-others', { method: 'POST' })
+        await hubApi('/auth/sessions/revoke-others', { method: 'POST' })
         setMessage('Diğer aktif oturumlar sonlandırıldı.')
       } else if (confirmation.action === 'delete' && confirmation.sessionId) {
-        await api(`/sessions/${confirmation.sessionId}`, { method: 'DELETE' })
+        await hubApi(`/auth/sessions/${confirmation.sessionId}`, { method: 'DELETE' })
         setMessage('Kapalı oturum silindi.')
       } else if (confirmation.action === 'delete-closed') {
-        await api('/sessions/closed', { method: 'DELETE' })
+        await hubApi('/auth/sessions/closed', { method: 'DELETE' })
         setMessage('Kapalı oturumlar silindi.')
       }
       await client.invalidateQueries({ queryKey: ['sessions'] })
@@ -359,14 +385,14 @@ export function SystemSettingsPage() {
       </div>
     </div>
 
-    <Modal open={mfaStep !== 'closed'} title="Authenticator Kurulumu" description={mfaStep === 'password' ? 'Önce hesabın size ait olduğunu doğrulayın.' : mfaStep === 'verify' ? 'QR kodu uygulamanıza ekleyip üretilen kodu girin.' : 'Kurtarma kodlarını şimdi güvenli bir yerde saklayın.'} className="ss-modal is-lg ss-mfa" onClose={() => { if (!busy) setMfaStep('closed') }} footer={mfaStep === 'password' ? <><span className="ss-modal-note">Adım 1 / 3</span><button type="button" className="ss-btn" disabled={busy} onClick={() => setMfaStep('closed')}>Vazgeç</button><button type="submit" form="ss-mfa-password" className="ss-btn is-primary" disabled={busy}>{busy ? 'Doğrulanıyor…' : 'Devam Et'}</button></> : mfaStep === 'verify' ? <><span className="ss-modal-note">Adım 2 / 3</span><button type="button" className="ss-btn" disabled={busy} onClick={() => { setMfaError(''); setMfaStep('password') }}><SettingsIcon name="back" />Geri</button><button type="submit" form="ss-mfa-verify" className="ss-btn is-primary" disabled={busy}>{busy ? 'Kontrol ediliyor…' : 'Etkinleştir'}</button></> : <><button type="button" className="ss-btn is-quiet" onClick={() => void copyRecoveryCodes()}><SettingsIcon name="copy" />Kopyala</button><span className="ss-modal-note" /><button type="button" className="ss-btn is-primary" onClick={() => setMfaStep('closed')}>Kodları Sakladım</button></>}>
+    <Modal open={mfaStep !== 'closed'} title="Authenticator Kurulumu" description={mfaStep === 'password' ? 'Önce hesabın size ait olduğunu doğrulayın.' : mfaStep === 'verify' ? 'QR kodu uygulamanıza ekleyip üretilen kodu girin.' : 'Kurtarma kodlarını şimdi güvenli bir yerde saklayın.'} className="ss-modal is-lg ss-mfa" onClose={closeMfa} footer={mfaStep === 'password' ? <><span className="ss-modal-note">Adım 1 / 3</span><button type="button" className="ss-btn" disabled={busy} onClick={() => setMfaStep('closed')}>Vazgeç</button><button type="submit" form="ss-mfa-password" className="ss-btn is-primary" disabled={busy}>{busy ? 'Doğrulanıyor…' : 'Devam Et'}</button></> : mfaStep === 'verify' ? <><span className="ss-modal-note">Adım 2 / 3</span><button type="button" className="ss-btn" disabled={busy} onClick={() => { setMfaError(''); setMfaStep('password') }}><SettingsIcon name="back" />Geri</button><button type="submit" form="ss-mfa-verify" className="ss-btn is-primary" disabled={busy}>{busy ? 'Kontrol ediliyor…' : 'Etkinleştir'}</button></> : <><button type="button" className="ss-btn is-quiet" onClick={() => void copyRecoveryCodes()}><SettingsIcon name="copy" />Kopyala</button><span className="ss-modal-note" /><button type="button" className="ss-btn is-primary" onClick={() => { setMfaError(''); setMfaStep('closed') }}>Kodları Sakladım</button></>}>
       <div className="ss-mfa-split">
         <nav className="ss-mfa-rail" aria-label="Kurulum adımları">{mfaSteps.map((step, index) => <div key={step.key} className={`ss-mfa-step${index === mfaIndex ? ' is-on' : index < mfaIndex ? ' is-done' : ''}`} aria-current={index === mfaIndex ? 'step' : undefined}><SettingsGlyph state={index < mfaIndex ? 'done' : index === mfaIndex ? 'pending' : 'none'} /><span>{step.label}</span><small>{step.hint}</small></div>)}</nav>
         <div className="ss-mfa-pane">
           {mfaStep === 'password' && <form id="ss-mfa-password" className="ss-stack" onSubmit={prepareMfa}><label className="ss-fld"><small>Mevcut Parola</small><input className="ss-in" name="password" type="password" autoComplete="current-password" required data-autofocus placeholder="••••••••" /></label><p className="ss-lead">Parolanız yalnız bu kurulum için doğrulanır; kaydedilmez.</p></form>}
-          {mfaStep === 'verify' && setup && <form id="ss-mfa-verify" className="ss-qrrow" onSubmit={confirmMfa}><div className="ss-qr"><img src={`data:image/svg+xml;utf8,${encodeURIComponent(setup.qrSvg)}`} alt="Authenticator QR kodu" /></div><div className="ss-qr-copy"><p>QR kodu Google Authenticator, Microsoft Authenticator veya uyumlu uygulamanızla tarayın.</p><details className="ss-man"><summary>Kurulum Anahtarını Elle Göster</summary><code>{setup.otpauthUri}</code></details><div className="ss-fld"><small>6 Haneli Doğrulama Kodu</small><OtpInput digits={otp} onChange={setOtp} /></div></div></form>}
+          {mfaStep === 'verify' && setup && <form id="ss-mfa-verify" className="ss-qrrow" onSubmit={confirmMfa}><div className="ss-qr"><img src={`data:image/svg+xml;utf8,${encodeURIComponent(setup.qrSvg)}`} alt="Authenticator QR kodu" /></div><div className="ss-qr-copy"><p>QR kodu Google Authenticator, Microsoft Authenticator veya uyumlu uygulamanızla tarayın.</p><details className="ss-man"><summary>Kurulum Anahtarını Elle Göster</summary><code>{setup.secret ?? manualSetupKey(setup.otpauthUri)}</code></details><div className="ss-fld"><small>6 Haneli Doğrulama Kodu</small><OtpInput digits={otp} onChange={setOtp} /></div></div></form>}
           {mfaStep === 'recovery' && <><div className="ss-codes">{recoveryCodes.map(code => <code key={code}>{code}</code>)}</div><div className="ss-callout is-warn"><SettingsIcon name="alert" /><span><b>Bu kodlar yalnızca bir kez gösterilir.</b> Her kod tek kullanımlıktır; telefonunuza erişemediğinizde giriş için kullanılır.</span></div></>}
-          {mfaError && mfaStep !== 'recovery' && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{mfaError}</span>}
+          {mfaError && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{mfaError}</span>}
         </div>
       </div>
     </Modal>
