@@ -2602,7 +2602,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var lastNotificationAt = await db.WebhookSubscriptions.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
                 .MaxAsync(x => x.LastReceivedAt, cancellationToken);
-            if (WebhookPollingPolicy.MissedOrderCutoff(now, TimeSpan.FromHours(3), lastNotificationAt) is { } missedOrderCutoff
+            if (WebhookPollingPolicy.MissedOrderCutoff(now, MarketplaceStoredClock.StoredClockAhead("TRENDYOL"), lastNotificationAt) is { } missedOrderCutoff
                 && await db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId
                     && order.CreatedAt >= now && order.OrderedAt <= missedOrderCutoff, cancellationToken))
                 await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);

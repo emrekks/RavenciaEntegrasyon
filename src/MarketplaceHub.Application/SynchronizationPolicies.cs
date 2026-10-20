@@ -643,6 +643,24 @@ public static class TrendyolLookupPolicy
     }
 }
 
+// Trendyol order times (OrderedAt, ShipmentDueAt) are stored as Turkey wall time labelled UTC, so the stored value
+// is three hours ahead of the real instant. Existing rows are not migrated; every read that compares them with a
+// real instant (day buckets, "late" checks, the webhook miss cut-off) subtracts this offset instead.
+public static class MarketplaceStoredClock
+{
+    public static readonly TimeSpan TurkeyWallClockAhead = TimeSpan.FromHours(3);
+
+    // The platforms whose stored order times carry the offset; queries that cannot call StoredClockAhead use it.
+    public static readonly string[] WallClockPlatforms = ["TRENDYOL"];
+
+    public static TimeSpan StoredClockAhead(string? platformCode) =>
+        platformCode is not null && WallClockPlatforms.Contains(platformCode.Trim().ToUpperInvariant(), StringComparer.Ordinal)
+            ? TurkeyWallClockAhead
+            : TimeSpan.Zero;
+
+    public static DateTimeOffset RealInstant(DateTimeOffset stored, string? platformCode) => stored - StoredClockAhead(platformCode);
+}
+
 // While a marketplace's order notifications arrive, polling is only the safety net and runs less
 // often. A notification path is unhealthy when nothing arrived for six hours or when polling found
 // two orders the notifications had missed within a day; polling then returns to its own cadence.

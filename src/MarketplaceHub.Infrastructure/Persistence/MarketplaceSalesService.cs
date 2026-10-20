@@ -17,7 +17,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // package another package names as its origin (a split UnPacked parent, a
     // resent original) is superseded by it. Retain their history without
     // displaying, counting or invoicing them as live packages.
-    internal IQueryable<ShipmentPackage> CurrentShipmentPackages() => db.ShipmentPackages.AsNoTracking()
+    internal IQueryable<ShipmentPackage> CurrentShipmentPackages() => CurrentShipmentPackages(db);
+
+    // Also used by the dashboard, so its package counts follow the same rule as the order screens.
+    internal static IQueryable<ShipmentPackage> CurrentShipmentPackages(AppDbContext db) => db.ShipmentPackages.AsNoTracking()
         .Where(package => (package.ExternalPackageId != "0"
             || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
                 && connection.Id == package.ConnectionId && connection.PlatformCode == "TRENDYOL")
