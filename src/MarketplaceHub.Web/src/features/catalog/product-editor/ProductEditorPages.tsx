@@ -30,6 +30,8 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
+import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, type EditorFieldErrors } from '../product-editor-state'
+import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { productPublicationTargets } from '../product-publication-submit'
@@ -278,8 +280,15 @@ type VariantDraft = {
   listPrice: number
   costPrice: number
   mediaRefs: string[]
+  // The on-hand stock this row was loaded with (edit page only): stock is saved only when the row differs from it,
+  // as an absolute value against it.
+  loadedStock?: number
   persistedAttributes?: ProductAttributeAssignment[]
   platformStatuses?: VariantPlatformStatus[]
+}
+// A message the server attached to one field of a refused save (422 fieldErrors), shown under that field.
+function EditorFieldError({ message }: { message?: string }) {
+  return message ? <small className="product-field-error" role="alert">{message}</small> : null
 }
 const variantBulkEditLabels: Record<VariantBulkEditField, string> = { stock: 'Stok', salePrice: 'Fiyat', costPrice: 'Maliyet', listPrice: 'Liste fiyatı' }
 type ProductAttributePayload = ProductAttributeAssignment
@@ -1045,6 +1054,23 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([])
+  // Unsaved-edit tracking (W6): the snapshot taken right after the form was filled; a differing current snapshot means
+  // the form holds edits a reseed would destroy.
+  const [snapshotRequest, setSnapshotRequest] = useState(0)
+  const [seedSnapshot, setSeedSnapshot] = useState<string | null>(null)
+  const [staleProductVersion, setStaleProductVersion] = useState<number | null>(null)
+  const allowReseedUntil = useRef(0)
+  const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({})
+  const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds }), [attributeSelections, attributeTextValues, familyMediaOrder, form, mediaFiles.length, removedVariantIds, variantRows])
+  const editorDirty = Boolean(editProductId) && seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
+  const captureEditorSnapshot = useEffectEvent(() => setSeedSnapshot(currentEditorSnapshot))
+  useEffect(() => { if (snapshotRequest) captureEditorSnapshot() }, [snapshotRequest])
+  useEffect(() => {
+    if (!editorDirty) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [editorDirty])
   const [variantPlatformPricing, setVariantPlatformPricing] = useState<{ rowKey: string; platform: VariantPlatformStatus } | null>(null)
   const [variantPlatformPricingDraft, setVariantPlatformPricingDraft] = useState<ChannelPricingDraft>({ listPrice: '', salePrice: '' })
   const [variantPlatformPricingSaving, setVariantPlatformPricingSaving] = useState(false)
@@ -1134,8 +1160,15 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const seedForm = useEffectEvent(() => {
     const product = seedProduct
     if (!product) return
-    const productKey = `${editProductId ? 'edit' : 'copy'}:${product.id}:${product.version}`
+    const mode = editProductId ? 'edit' : 'copy'
+    const productKey = editorSeedKey(mode, product.id, product.version)
     if (initializedEditProductKey.current === productKey) return
+    // A newer version (another tab, an order, the importer) must not wipe edits that are not saved yet: the form is
+    // kept and a banner offers to reload it. The editor's own saves allow the next reseed.
+    const alreadySeededThisProduct = initializedEditProductKey.current?.startsWith(`${mode}:${product.id}:`) ?? false
+    if (editProductId && alreadySeededThisProduct && editorDirty && Date.now() > allowReseedUntil.current) { setStaleProductVersion(product.version); return }
+    allowReseedUntil.current = 0
+    setStaleProductVersion(null)
     initializedEditProductKey.current = productKey
     const primary = product.variants[0]
     const initialModelCode = primary?.modelCode ?? product.modelCode ?? ''
@@ -1160,19 +1193,29 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
       const persistedAttributes = variant.attributes ?? []
       const attributeValueIds = Object.fromEntries(persistedAttributes.flatMap(attribute => attribute.valueId ? [[attribute.attributeId, attribute.valueId] as const] : []))
-      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
+      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand } : {}), salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
+    setRemovedVariantIds([])
+    setFieldErrors({})
+    setSnapshotRequest(value => value + 1)
   })
-  useLayoutEffect(() => seedForm(), [editProductId, seedProduct?.id, seedProduct?.version])
+  const [reseedRequest, setReseedRequest] = useState(0)
+  useLayoutEffect(() => seedForm(), [editProductId, seedProduct?.id, seedProduct?.version, reseedRequest])
+  // The banner's "reload": drops the unsaved edits and fills the form from the latest saved product.
+  function reloadEditedProduct() {
+    allowReseedUntil.current = Date.now() + 10_000
+    setStaleProductVersion(null)
+    void productToEdit.refetch().finally(() => setReseedRequest(value => value + 1))
+  }
 
   useEffect(() => {
     const product = seedProduct
     if ((!editProductId && !duplicateProductId) || !product || !webColorRequirement || requirements.isLoading) return
-    const productKey = `${editProductId ? 'edit' : 'copy'}:${product.id}:${product.version}`
-    if (initializedEditWebColorKey.current === productKey) return
+    const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version)
+    if (initializedEditProductKey.current !== productKey || initializedEditWebColorKey.current === productKey) return
     initializedEditWebColorKey.current = productKey
     const savedManualColor = product.attributes?.find(item => item.attributeId === webColorRequirement.attributeId && item.valueId)
     setWebColorAutoEnabled(!savedManualColor)
@@ -1182,8 +1225,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   useEffect(() => {
     const product = seedProduct
     if ((!editProductId && !duplicateProductId) || !product || !allRequirements.length || requirements.isLoading) return
-    const productKey = `${editProductId ? 'edit' : 'copy'}:${product.id}:${product.version}`
-    if (initializedEditOptionsKey.current === productKey) return
+    const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version)
+    if (initializedEditProductKey.current !== productKey || initializedEditOptionsKey.current === productKey) return
     initializedEditOptionsKey.current = productKey
     const inferred: Record<string, string[]> = {}
     for (const requirement of optionRequirements) {
@@ -1206,6 +1249,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }))
       return { ...row, optionSignature: optionSignatureFromOptions(options) || (source.optionSignature && source.optionSignature !== '-' ? source.optionSignature : row.optionSignature), options, attributeValueIds }
     }))
+    setSnapshotRequest(value => value + 1)
   }, [allRequirements, duplicateProductId, editProductId, optionRequirements, requirements.isLoading, seedProduct])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
@@ -1249,7 +1293,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         if (current.length === 1 && current[0].optionSignature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' && generated.length === 1) {
           const existing = current[0]
           const [next] = generated
-          return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, costPrice: existing.costPrice, mediaRefs: existing.mediaRefs }]
+          return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, costPrice: existing.costPrice, mediaRefs: existing.mediaRefs }]
         }
         const existingMap = new Map(current.map(row => [variantSignatureKey(row.optionSignature), row]))
         const knownBarcodes = new Set(current.map(row => row.barcode.trim()).filter(Boolean))
@@ -1462,11 +1506,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
       setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
       setFamilyMediaOrder(current => current.filter(item => mediaImageKey(item) !== targetKey))
+      // The deletion is saved already: a form that had no other edits stays "clean" afterwards.
+      if (!editorDirty) setSnapshotRequest(value => value + 1)
 
       const cachedProduct = client.getQueryData<Product>(['product', product.id]) ?? product
       const cachedMediaUrls = (cachedProduct.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey)
       const productVersion = result.productVersions[product.id] ?? result.version
-      initializedEditProductKey.current = `${product.id}:${productVersion}`
+      initializedEditProductKey.current = editorSeedKey('edit', product.id, productVersion)
       client.setQueryData<Product>(['product', product.id], {
         ...cachedProduct,
         version: productVersion,
@@ -2076,7 +2122,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setWizardStep(2)
       return
     }
-    setError(undefined); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
     try {
       let submitRequirements = requirements.data ?? []
       if (form.categoryId && !requirements.data) {
@@ -2201,12 +2247,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
       const targetConnectionIds = createOnly ? [] : platformUpdate?.connectionIds ?? selectedChannelIds
+      // Only rows whose stock the user changed are sent, as absolute values against the stock loaded into the form;
+      // a stock changed meanwhile (order, return, another tab) is refused for that row instead of being overwritten.
+      const stockResult = await applyVariantStockSets(editorStockUpdates(rows, product.variants), update => setVariantOnHand(update, productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu'))
+      if (stockResult.failed.length) warnings.push(`Stok kaydedilemedi: ${stockResult.failed.map(item => `${item.sku}: ${item.message}`).join(' · ')}`)
       for (const variant of product.variants) {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
         if (!row) continue
-        const currentStock = productToEdit.data?.variants.find(item => item.id === variant.id)?.onHand ?? 0
-        const stockDelta = row.stock - currentStock
-        if (stockDelta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: stockDelta, reason: productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu', sourceEventId: newIdempotencyKey() }) })
         for (const connectionId of targetConnectionIds) {
           const pricing = channelPriceDraft(connectionId)
           const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
@@ -2250,9 +2297,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
       const updateSummary = platformUpdate ? ` Seçilen ${platformUpdate.connectionIds.length} platform için ${platformUpdate.includeProductInformation ? 'ürün bilgisi ve fiyat-stok' : 'fiyat-stok'} güncelleme işi kuyruğa alındı.` : ''
       const versionRetrySummary = productVersionRetryUsed ? ' Daha güncel kayıt sürümüyle güvenli şekilde tekrar denendi.' : ''
-      const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${versionRetrySummary}${updateSummary}${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
+      const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${versionRetrySummary}${updateSummary}${warnings.length ? ` Uyarı: ${warnings.join(' ')}` : ''}`
       setRemovedVariantIds([])
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
+      // The saved form is the new clean state; the refetch below may refill it from the server.
+      allowReseedUntil.current = Date.now() + 10_000
+      setSnapshotRequest(value => value + 1)
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
@@ -2267,6 +2317,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage); showFeedback(feedbackMessage, 'error')
+      if (!productCreated) setFieldErrors(editorFieldErrors(reason))
       if (productCreated && !editProductId) {
         appendNotification(`${feedbackMessage} Ürün sayfası açılıyor; kaldığınız yerden düzenleyebilirsiniz.`, 'error')
         navigate(`/products/${productCreated.id}`)
@@ -2480,23 +2531,24 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorToast error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere dön</Link></Page>
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
+    {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
     <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
         <div className="product-step-grid product-basics-grid">
-          <label className="product-title-field">Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label>
+          <label className="product-title-field">Ürün adı<input value={form.title} aria-invalid={fieldErrors.title ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={fieldErrors.title} /></label>
           <label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label>
-          <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label className="product-category-field">Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setWebColorAutoEnabled(true); setManualWebColorValueId(''); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
+          <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><EditorFieldError message={fieldErrors.brandId} /></label>
+          <label className="product-category-field">Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setWebColorAutoEnabled(true); setManualWebColorValueId(''); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select><EditorFieldError message={fieldErrors.categoryId} /></label>
           <label>Model kodu<input className="technical-field model-code-value" value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
           <div className="product-identifiers-grid">
             <label>{automaticBarcodeGeneration ? 'Stok kodu (varyantlarda manuel)' : 'Stok Kodu'}<input className="technical-field sku-value" value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Varyant satırlarından girin' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration || variantRows.length > 1} /></label>
             <label>{automaticBarcodeGeneration ? 'Tek ürün barkodu (otomatik oluşturuluyor)' : 'Barkod'}<input className="technical-field barcode-value" value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Model kodu ve sıra numarasından oluşturulur' : 'Varyantsız üründe kullanılır'} disabled={automaticBarcodeGeneration || variantRows.length > 1} /></label>
             <label className="desi-input-field">Desi<span className="desi-inline-control"><input value={form.desi} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span></label>
           </div>
-          <div className="wide product-description-field"><span>Açıklama</span><RichTextEditor value={form.description} onChange={value => updateField('description', value)} /></div>
+          <div className="wide product-description-field"><span>Açıklama</span><RichTextEditor value={form.description} onChange={value => updateField('description', value)} /><EditorFieldError message={fieldErrors.description} /></div>
         </div>
       </section>
       <div className="product-top-sidebar">
@@ -2504,7 +2556,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="editor-section-title"><span>2</span><div><h2>Fiyat, stok ve vergi</h2><p>Başlangıç değerleri varyantlara uygulanır.</p></div></div>
           <div className="product-step-grid">
             <label>Liste fiyatı<input value={form.listPrice} disabled={variantRows.length > 1} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
-            <label>Satış fiyatı<input value={form.salePrice} disabled={variantRows.length > 1} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /></label>
+            <label>Satış fiyatı<input value={form.salePrice} disabled={variantRows.length > 1} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /><EditorFieldError message={fieldErrors.prices} /></label>
             {variantRows.length <= 1 && <label>Maliyet<input value={form.costPrice} onChange={event => updateField('costPrice', event.target.value)} type="number" min="0" step="0.01" /></label>}
             <label>Para birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label>
             <label>KDV oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label>
@@ -2664,6 +2716,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         </div>
       <div className="product-variant-groups-section">
         <div className="editor-section-title"><span>6</span><div><h2>Ürün seçenek grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>
+        {(fieldErrors.variants || fieldErrors.stock || fieldErrors.attributes) && <div className="product-field-error-list" role="alert">{[fieldErrors.variants, fieldErrors.stock, fieldErrors.attributes].filter(Boolean).map(message => <p key={message}>{message}</p>)}</div>}
         {variantRows.length > 0 && <>
           <div className={`variant-filter-panel${variantFilterOpen ? ' is-open' : ''}`}>
             <div className="variant-filter-panel-head">

@@ -198,6 +198,8 @@ public interface IImportService
 public sealed record InventoryItemView(Guid Id, Guid VariantId, string Sku, string LocationCode, decimal OnHand, decimal Reserved, decimal Available, long ProjectionVersion, DateTimeOffset? ReconciledAt, long Version, decimal? ObservedRemoteQuantity = null, DateTimeOffset? ObservedRemoteAt = null);
 public sealed record LedgerEntryView(Guid Id, string MovementType, decimal QuantityDelta, string SourceType, string SourceId, DateTimeOffset OccurredAt, string CorrelationId);
 public sealed record StockAdjustmentCommand(decimal QuantityDelta, string Reason, string SourceEventId);
+// Sets MAIN on-hand stock to an absolute value only while it still equals ExpectedOnHand (the value the user saw).
+public sealed record StockSetCommand(decimal OnHand, decimal ExpectedOnHand, string Reason, string SourceEventId);
 public sealed record ChannelOfferView(Guid Id, Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, long PriceVersion, long Version);
 public sealed record UpsertChannelOfferCommand(Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason);
 public sealed record UpdateChannelOfferCommand(decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason);
@@ -207,6 +209,7 @@ public interface IInventoryService
     Task<PageResult<InventoryItemView>> ListAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken);
     Task<PageResult<LedgerEntryView>> LedgerAsync(Guid tenantId, Guid variantId, int limit, string? after, CancellationToken cancellationToken);
     Task<ServiceResult<InventoryItemView>> AdjustAsync(Guid tenantId, Guid userId, Guid variantId, StockAdjustmentCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<InventoryItemView>> SetOnHandAsync(Guid tenantId, Guid userId, Guid variantId, StockSetCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> UpsertOfferAsync(Guid tenantId, Guid userId, UpsertChannelOfferCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> GetOfferAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> UpdateOfferAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, UpdateChannelOfferCommand command, CancellationToken cancellationToken);

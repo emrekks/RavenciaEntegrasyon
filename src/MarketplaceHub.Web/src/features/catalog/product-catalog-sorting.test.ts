@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextProductCatalogSort, productGroupMetric, sortProductGroups } from './product-catalog-sorting'
+import { nextProductCatalogSort, productCatalogSortOptions, productCatalogSortScopeNote, productGroupMetric, sortProductGroups } from './product-catalog-sorting'
 
 const groups = [
   { id: 'medium', products: [{ totalStock: 4, startingPrice: 20 }] },
@@ -9,6 +9,12 @@ const groups = [
 ]
 
 describe('product catalog sorting', () => {
+  it('labels price and stock sorting as current-page only', () => {
+    expect(productCatalogSortOptions.filter(([value]) => value !== 'default').every(([, label]) => label.endsWith('(Bu Sayfada)'))).toBe(true)
+    expect(productCatalogSortScopeNote(null)).toBeNull()
+    expect(productCatalogSortScopeNote({ field: 'stock', direction: 'asc' })).toBe('Stok sıralaması yalnız bu sayfadaki ürünlere uygulanır.')
+  })
+
   it('cycles a column through ascending, descending, and unsorted', () => {
     const stockAscending = nextProductCatalogSort(null, 'stock')
     expect(stockAscending).toEqual({ field: 'stock', direction: 'asc' })

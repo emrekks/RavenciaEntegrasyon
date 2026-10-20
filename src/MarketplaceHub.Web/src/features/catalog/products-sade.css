@@ -319,3 +319,6 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 }
 /* the actions button sits in the middle of its column, over Düzenle */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-actcell { align-items: center; justify-items: center; }
+/* a stock value the server refused or the field could not read (quick edit, W2) */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small.rr-field-error { color: var(--rr-bad); max-width: 140px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-panel-h .rr-sort-scope { color: var(--rr-subtle); font-size: 12px; }

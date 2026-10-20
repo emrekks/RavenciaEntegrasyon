@@ -221,6 +221,11 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return WithEtag(http, await service.AdjustAsync(tenant.TenantId, tenant.UserId, variantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version);
         });
+        api.MapPut("/inventory/{variantId:guid}/on-hand", async (Guid variantId, StockSetCommand command, HttpContext http, IInventoryService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return WithEtag(http, await service.SetOnHandAsync(tenant.TenantId, tenant.UserId, variantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version);
+        });
         api.MapPost("/inventory/stock-sync-jobs", async (HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "STOCK_SYNC", http.RequestAborted)) : MissingContext(http));
         api.MapPost("/channel-offers", async (UpsertChannelOfferCommand command, HttpContext http, IInventoryService service) =>
