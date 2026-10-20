@@ -18,8 +18,9 @@ public static class QuestionEndpoints
         api.MapGet("/questions/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            var question = tenant is null ? null : await service.GetAsync(tenant.TenantId, id, http.RequestAborted);
-            return question is null ? Results.NotFound() : Results.Ok(question);
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            var question = await service.GetAsync(tenant.TenantId, id, http.RequestAborted);
+            return question is null ? MarketplaceHub.Api.Security.ApiProblems.NotFound(http, "Soru bulunamadı.") : Results.Ok(question);
         });
         api.MapPost("/questions/sync", async (QuestionSyncRequest request, HttpContext http, IMarketplaceQuestionService service) =>
         {
@@ -39,7 +40,7 @@ public static class QuestionEndpoints
             foreach (var connectionId in connections)
             {
                 var queued = await sales.EnqueueQuestionSyncAsync(tenant.TenantId, connectionId, request.Kind, http.TraceIdentifier, http.RequestAborted);
-                if (!queued.Succeeded) return Results.Json(new { code = queued.Error!.Code, title = queued.Error.Message }, statusCode: queued.Error.Status);
+                if (!queued.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, queued.Error!);
                 jobs.Add(queued.Value);
             }
             return Results.Accepted(value: new { jobs, queuedConnections = jobs.Count });
@@ -56,7 +57,8 @@ public static class QuestionEndpoints
             if (!ApiIdempotencyHeaderPolicy.TryGetKey(http.Request.Headers, out var key, out var conflictingKeys))
                 return MarketplaceHub.Api.Security.ApiProblems.Of(http, conflictingKeys ? "IDEMPOTENCY_KEY_CONFLICT" : "IDEMPOTENCY_KEY_REQUIRED", conflictingKeys ? "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır." : "Idempotency-Key başlığı zorunludur.", 400);
             var result = await service.AnswerAsync(tenant.TenantId, tenant.UserId, id, command.Version, command.Text ?? "", key, http.TraceIdentifier, http.RequestAborted);
-            if (!result.Succeeded) return Results.Json(new { code = result.Error!.Code, title = result.Error.Message, status = result.Error.Status }, statusCode: result.Error.Status, contentType: "application/problem+json");
+            // The answer is sent to the marketplace live; its status is mapped to the panel's.
+            if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, MarketplaceErrorStatus.ForPanel(result.Error!));
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
         });
@@ -70,7 +72,7 @@ public static class QuestionEndpoints
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.SaveTemplateAsync(tenant.TenantId, null, null, command, http.RequestAborted);
-            return result.Succeeded ? Results.Created($"/api/v1/question-templates/{result.Value!.Id:D}", result.Value) : Results.Json(new { code = result.Error!.Code, title = result.Error.Message }, statusCode: result.Error.Status);
+            return result.Succeeded ? Results.Created($"/api/v1/question-templates/{result.Value!.Id:D}", result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
         api.MapPut("/question-templates/{id:guid}", async (Guid id, SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
@@ -78,7 +80,7 @@ public static class QuestionEndpoints
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IF_MATCH_REQUIRED", "Güncelleme için geçerli If-Match sürümü zorunludur.", 400);
             var result = await service.SaveTemplateAsync(tenant.TenantId, id, version, command, http.RequestAborted);
-            if (!result.Succeeded) return Results.Json(new { code = result.Error!.Code, title = result.Error.Message }, statusCode: result.Error.Status);
+            if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
         });
@@ -88,7 +90,7 @@ public static class QuestionEndpoints
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IF_MATCH_REQUIRED", "Silme için geçerli If-Match sürümü zorunludur.", 400);
             var result = await service.DeleteTemplateAsync(tenant.TenantId, id, version, http.RequestAborted);
-            return result.Succeeded ? Results.NoContent() : Results.Json(new { code = result.Error!.Code, title = result.Error.Message }, statusCode: result.Error.Status);
+            return result.Succeeded ? Results.NoContent() : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
         return endpoints;
     }

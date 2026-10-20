@@ -24,7 +24,7 @@ public static class MarketplaceEndpoints
                 .Where(x => x.TenantId == tenant.TenantId && x.Id == id)
                 .Select(x => x.PlatformCode)
                 .SingleOrDefaultAsync(http.RequestAborted);
-            if (platform is null) return Results.NotFound();
+            if (platform is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404));
 
             var (marketplace, jobType) = MarketplaceConnectionTestDispatchPolicy.Resolve(platform);
             var result = marketplace
@@ -37,10 +37,10 @@ public static class MarketplaceEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var connection = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == id).Select(x => new { x.PlatformCode, x.Status }).SingleOrDefaultAsync(http.RequestAborted);
-            if (connection is null || connection.PlatformCode != "N11") return Results.NotFound();
+            if (connection is null || connection.PlatformCode != "N11") return Problem(http, new("RESOURCE_NOT_FOUND", "N11 bağlantısı bulunamadı.", 404));
             if (connection.Status is not ("ACTIVE" or "VERIFIED")) return Problem(http, new("N11_CONNECTION_INACTIVE", "Kargo şablonları yalnız aktif veya doğrulanmış N11 bağlantısından okunur.", 409));
             var result = await n11.ShipmentTemplatesAsync(tenant.TenantId, id, http.RequestAborted);
-            return result.IsSuccess ? Results.Ok(result.Value) : Problem(http, new(result.Error!.Code, result.Error.SafeMessage, result.Error.HttpStatus is >= 400 and < 600 ? result.Error.HttpStatus.Value : 502));
+            return result.IsSuccess ? Results.Ok(result.Value) : Problem(http, MarketplaceErrorStatus.ToServiceError(result.Error));
         });
         api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
         api.MapPost("/connections/{id:guid}/initial-data-sync-jobs", async (Guid id, HttpContext http, IMarketplaceConnectionService service) =>
@@ -85,7 +85,7 @@ public static class MarketplaceEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == id).Select(x => new { x.ConnectionId, x.OrderNumber, x.OrderedAt }).SingleOrDefaultAsync(http.RequestAborted);
-            if (order is null) return Results.NotFound();
+            if (order is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş bulunamadı.", 404));
             var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
             if (platform != "PAZARAMA") return Problem(http, new("ORDER_FINANCE_UNSUPPORTED", "Finans bilgisi yalnız Pazarama siparişlerinde okunur.", 422));
             var now = clock.GetUtcNow();
@@ -93,7 +93,7 @@ public static class MarketplaceEndpoints
             var result = await finance.GetOrderFinanceAsync(context, order.OrderNumber, order.OrderedAt.AddDays(-1), now.AddDays(1), http.RequestAborted);
             return result.IsSuccess
                 ? Results.Ok(new { readAt = now, transactions = result.Value!.Transactions, commissionInvoices = result.Value.CommissionInvoices })
-                : Problem(http, new(result.Error!.Code, result.Error.SafeMessage, 502));
+                : Problem(http, MarketplaceErrorStatus.ToServiceError(result.Error));
         });
         api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync);
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
@@ -204,7 +204,7 @@ public static class MarketplaceEndpoints
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
 
-        var status = command.Status.Trim().ToUpperInvariant();
+        var status = command.Status?.Trim().ToUpperInvariant();
         if (status is not ("NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "SHIPPED" or "UNDELIVERED" or "DELIVERED" or "RETURN_IN_TRANSIT" or "RETURNED" or "CANCELLED"))
             return Problem(http, new("SHOPIFY_ORDER_STATUS_INVALID", "Shopify sipariş durumu geçersiz.", 422));
 
@@ -378,14 +378,13 @@ public static class MarketplaceEndpoints
     private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"]) ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400)) : http.Request.Headers["Idempotency-Key"].ToString().Length > 256 ? Problem(http, new("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", 400)) : null;
     private static bool TryIfMatch(HttpContext http, out long version, out IResult? failure) { var parsed = OptionalIfMatch(http, out failure); version = parsed ?? 0; if (failure is null && parsed is null) failure = Problem(http, new("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428)); return failure is null; }
     private static long? OptionalIfMatch(HttpContext http, out IResult? failure) { failure = null; var value = http.Request.Headers.IfMatch.ToString(); if (string.IsNullOrWhiteSpace(value)) return null; if (value.Length >= 4 && value.StartsWith("\"v", StringComparison.Ordinal) && value.EndsWith('"') && long.TryParse(value[2..^1], out var version) && version > 0) return version; failure = Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400)); return null; }
-    private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
-    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json"); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
-    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
-    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
+    private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, MarketplaceErrorStatus.ForPanel(result.Error!)); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
+    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!)); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
+    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
+    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
-    private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(ToProblem(error, http.TraceIdentifier), statusCode: error.Status, contentType: "application/problem+json");
-    private static object ToProblem(ServiceError error, string? correlationId) => new { type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}", title = error.Message, status = error.Status, code = error.Code, correlationId, retryable = error.Status is 429 or >= 500, fieldErrors = error.FieldErrors };
+    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
     public sealed record ActiveCommand(bool Active);
     public sealed record InstantNotificationCommand(string? ClientSecret);
     public sealed record OrderSyncCommand(string? ExternalOrderId, bool Full = false, string? PackageNumber = null);

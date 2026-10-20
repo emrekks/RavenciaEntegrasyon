@@ -29,8 +29,7 @@ public sealed class SessionStateBoundaryMiddleware(RequestDelegate next)
             };
             if (!allowed)
             {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(new { type = "https://marketplacehub.invalid/problems/session-state", title = "Session state does not permit this operation", status = 403 }, context.RequestAborted);
+                await ApiProblems.WriteAsync(context, "SESSION_STATE_FORBIDDEN", "Oturumun şu anki adımı bu işleme izin vermiyor.", StatusCodes.Status403Forbidden);
                 return;
             }
         }

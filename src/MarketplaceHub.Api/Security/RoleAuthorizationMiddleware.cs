@@ -43,17 +43,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             return;
         }
 
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        context.Response.ContentType = "application/problem+json";
-        await context.Response.WriteAsJsonAsync(new
-        {
-            type = "https://marketplacehub.invalid/problems/permission-denied",
-            title = "Bu işlem için yeterli yetkiniz yok.",
-            status = 403,
-            code = "PERMISSION_DENIED",
-            correlationId = context.TraceIdentifier,
-            retryable = false
-        }, context.RequestAborted);
+        await ApiProblems.WriteAsync(context, "PERMISSION_DENIED", "Bu işlem için yeterli yetkiniz yok.", StatusCodes.Status403Forbidden);
     }
 
     // Null: any signed-in role may read it.

@@ -49,6 +49,10 @@ builder.Services.AddScoped<BreakGlassService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
 builder.Services.AddProblemDetails();
+// Unreadable bodies and parameters are thrown (also outside Development) so ApiExceptionHandler can
+// answer them with 400 in the panel's error shape.
+builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<OperationsRealtimeBroadcaster>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

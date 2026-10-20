@@ -169,13 +169,10 @@ internal static class HepsiburadaProductMatchEndpoints
         row.MatchReason
     };
 
-    private static IResult AdapterProblem(AdapterError? error)
-    {
-        var status = error?.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502;
-        return Results.Json(new { type = $"https://marketplacehub.invalid/problems/{(error?.Code ?? "ADAPTER_ERROR").ToLowerInvariant().Replace('_', '-')}", title = error?.SafeMessage ?? "Pazaryeri yanıtı alınamadı.", status, code = error?.Code ?? "ADAPTER_ERROR", retryable = error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.RateLimit }, statusCode: status, contentType: "application/problem+json");
-    }
+    private static IResult AdapterProblem(AdapterError? error) =>
+        MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceHub.Api.Marketplace.MarketplaceErrorStatus.ToServiceError(error));
 
-    private static IResult Problem(int status, string code, string message) => Results.Json(new { type = $"https://marketplacehub.invalid/problems/{code.ToLowerInvariant().Replace('_', '-')}", title = message, status, code, retryable = false }, statusCode: status, contentType: "application/problem+json");
+    private static IResult Problem(int status, string code, string message) => MarketplaceHub.Api.Security.ApiProblems.Of(null, code, message, status);
 
     private sealed record CandidateRow(string Key, Guid ProductId, string Title, string Sku, string? Barcode, Guid? BrandId, string MatchReason);
     private sealed record ReviewRequest(int Page, int Limit, bool Approve, IReadOnlyList<string> MerchantSkus);

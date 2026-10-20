@@ -309,14 +309,5 @@ public static class SettingsEndpoints
 
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(new
-    {
-        type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}",
-        title = error.Message,
-        status = error.Status,
-        code = error.Code,
-        correlationId = http.TraceIdentifier,
-        retryable = error.Status is 429 or >= 500,
-        fieldErrors = error.FieldErrors
-    }, statusCode: error.Status, contentType: "application/problem+json");
+    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
 }

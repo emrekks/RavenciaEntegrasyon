@@ -168,11 +168,34 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             responseBuffer.Position = 0;
             await responseBuffer.CopyToAsync(originalResponseBody, context.RequestAborted);
         }
+        catch (BadHttpRequestException)
+        {
+            // The body or parameters could not be read, so the endpoint never ran: the key is released
+            // for the corrected request instead of being held as an unknown outcome.
+            context.Response.Body = originalResponseBody;
+            await ForgetAsync(db, record);
+            throw;
+        }
         catch
         {
             context.Response.Body = originalResponseBody;
             await MarkUnknownAsync(db, record, timeProvider.GetUtcNow());
             throw;
+        }
+    }
+
+    private static async Task ForgetAsync(AppDbContext db, ApiIdempotencyRecord record)
+    {
+        foreach (var entry in db.ChangeTracker.Entries().Where(entry => !ReferenceEquals(entry.Entity, record)).ToList())
+            entry.State = EntityState.Detached;
+        db.Entry(record).State = EntityState.Deleted;
+        try
+        {
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (DbUpdateException)
+        {
+            // The expiry sweep turns a row that could not be removed into an unknown outcome later.
         }
     }
 
