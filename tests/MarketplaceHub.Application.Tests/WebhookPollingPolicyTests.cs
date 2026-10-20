@@ -279,14 +279,27 @@ public sealed class PazaramaOpenOrderPolicyTests
 
 public sealed class QueueLaneTests
 {
+    // The metrics use the worker's real lanes (audit 2026-10-20 Q21); the four earlier codes stay.
     [Theory]
-    [InlineData(-2, "USER")]
-    [InlineData(-1, "INITIAL")]
-    [InlineData(0, "HOT")]
-    [InlineData(2, "HOT")]
-    [InlineData(3, "BACKGROUND")]
-    public void JobsBelongToTheLaneOfTheirPriority(int priority, string lane) =>
-        Assert.Equal(lane, MarketplaceHub.Infrastructure.Persistence.QueueHealthService.LaneFor(priority));
+    [InlineData(-2, MarketplaceJobTypes.ShipmentAction, "USER")]
+    [InlineData(-1, MarketplaceJobTypes.OrderSync, "INITIAL")]
+    [InlineData(0, MarketplaceJobTypes.WebhookIngest, "HOT")]
+    [InlineData(2, MarketplaceJobTypes.ProductCreate, "HOT")]
+    [InlineData(3, MarketplaceJobTypes.OrderReconciliation, "BACKGROUND")]
+    [InlineData(0, MarketplaceJobTypes.OrderStatusSync, "ORDER_STATUS")]
+    [InlineData(2, MarketplaceJobTypes.ReturnSync, "RETURNS_READ")]
+    public void JobsBelongToTheLaneThatLeasesThem(int priority, string jobType, string lane) =>
+        Assert.Equal(lane, MarketplaceHub.Infrastructure.Persistence.QueueHealthService.LaneCode(MarketplaceHub.Infrastructure.Jobs.WorkerLanes.LaneFor(jobType, priority)));
+
+    [Fact]
+    public void TheLaneExpressionFollowsTheWorkerLanesInOrder()
+    {
+        var sql = MarketplaceHub.Infrastructure.Persistence.QueueHealthService.LaneCaseSql(MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All(), out var parameters);
+
+        Assert.StartsWith("CASE WHEN job.\"Priority\" <= -2 AND", sql);
+        Assert.EndsWith("ELSE 'unassigned' END", sql);
+        Assert.Equal(MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All().Count * 3, parameters.Count);
+    }
 }
 
 public sealed class HepsiburadaStatusListCadenceTests

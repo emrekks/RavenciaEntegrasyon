@@ -137,12 +137,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                   WHERE connection."TenantId" = {tenantId} AND connection."Id" = job."ConnectionId" AND connection."PlatformCode" = ANY({codes})))
             GROUP BY job."JobType"
             """).ToListAsync(cancellationToken);
-        var queue = await OfPlatforms(db.IntegrationJobs.AsNoTracking(), tenantId, platforms)
-            .Where(job => job.TenantId == tenantId && (job.Status == JobStatus.Leased
-                || ((job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled) && job.AvailableAt <= now)))
-            .GroupBy(job => job.JobType)
-            .Select(group => new { JobType = group.Key, Queued = group.Count(job => job.Status != JobStatus.Leased), Running = group.Count(job => job.Status == JobStatus.Leased) })
-            .ToDictionaryAsync(row => row.JobType, cancellationToken);
+        // Queued counts only jobs a slot could take now, as the lane metrics do: one waiting for its connection's
+        // busy lock group or quota backoff is not counted.
+        var platformConnections = anyPlatform
+            ? null
+            : (await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId && codes.Contains(connection.PlatformCode)).Select(connection => connection.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var queue = (await QueueHealthService.RunnableDepthAsync(db, tenantId, now, cancellationToken))
+            .Where(row => platformConnections is null || row.ConnectionId is { } connectionId && platformConnections.Contains(connectionId))
+            .GroupBy(row => row.JobType)
+            .Select(group => new { JobType = group.Key, Queued = group.Where(row => !row.Running).Sum(row => row.Count), Running = group.Where(row => row.Running).Sum(row => row.Count) })
+            .ToDictionary(row => row.JobType);
         var rows = attempts.ToDictionary(row => row.JobType);
         return rows.Keys.Union(queue.Keys)
             .Select(jobType =>

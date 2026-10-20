@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { failureRate, formatMetricSeconds, quotaFullness } from './JobQueueMetrics'
+import { failureRate, formatMetricSeconds, laneLabel, quotaFullness } from './JobQueueMetrics'
 
 describe('job queue metrics formatting', () => {
   it('formats seconds into short readable units', () => {
@@ -15,6 +15,12 @@ describe('job queue metrics formatting', () => {
     expect(quotaFullness(usage)).toBe(0.25)
     expect(quotaFullness({ ...usage, averagePerMinute: 30 })).toBe(1)
     expect(quotaFullness({ ...usage, limitPerMinute: 0 })).toBeNull()
+  })
+
+  it('names the worker lanes and shows an unknown lane code as it came', () => {
+    expect(laneLabel('HOT')).toBe('Yeni Veri')
+    expect(laneLabel('ORDER_STATUS')).toBe('Sipariş Durum Taraması')
+    expect(laneLabel('NEW_LANE')).toBe('NEW_LANE')
   })
 
   it('computes the failure rate only when there were attempts', () => {
