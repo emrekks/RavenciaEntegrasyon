@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { Busy, ErrorBox, Modal, Pagination, UiIcon, useConfirmDialog, DialogSurface } from '../../../shared/components'
+import { isStaleMappingError, mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from './mapping-refresh'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { mappingStatusLabel } from '../../../shared/status-labels'
@@ -136,7 +137,7 @@ function CategoryMappingWorkspace() {
       await client.invalidateQueries({ queryKey: ['reference-categories', connectionId] })
     }
   }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori eşitleme başlatılamadı.') })
-  const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error(`Panel kategorisi ve ${mappingPlatformDefinitions.find(item => item.code === selectedPlatformCode)?.label ?? 'platform'} kategorisi zorunludur.`); return hubApi<CatalogMapping>(`/mappings/categories/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Kategori eşleştirmesi kaydedildi.'); setExternalId(value.externalId); client.setQueryData(['category-mapping', localId, connectionId], value); client.setQueryData(['category-mapping', localId, connectionId, 'embedded'], value); client.setQueryData<CatalogMapping[]>(['category-mappings', connectionId], current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId, 'embedded'] }), client.invalidateQueries({ queryKey: ['category-mappings', connectionId] })]) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })
+  const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error(`Panel kategorisi ve ${mappingPlatformDefinitions.find(item => item.code === selectedPlatformCode)?.label ?? 'platform'} kategorisi zorunludur.`); return hubApi<CatalogMapping>(`/mappings/categories/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Kategori eşleştirmesi kaydedildi.'); setExternalId(value.externalId); client.setQueryData(['category-mapping', localId, connectionId], value); client.setQueryData(['category-mapping', localId, connectionId, 'embedded'], value); client.setQueryData<CatalogMapping[]>(['category-mappings', connectionId], current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId, 'embedded'] }), client.invalidateQueries({ queryKey: ['category-mappings', connectionId] })]) }, onError: async reason => { setNotice(mappingSaveErrorMessage(reason, 'Eşleme kaydedilemedi.')); if (isStaleMappingError(reason)) await Promise.all([client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['category-mappings', connectionId] })]) }, onSettled: () => refreshMappingConflicts(client, connectionId) })
   const createCategory = useMutation({ mutationFn: () => { if (!categoryName.trim()) throw new Error('Kategori adı zorunludur.'); return hubApi<LocalCategory>('/catalog/categories', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: categoryName.trim(), parentId: null }) }) }, onSuccess: async category => { client.setQueryData<Page<LocalCategory>>(['categories', 'mapping'], current => current ? { ...current, items: [...current.items.filter(item => item.id !== category.id), category] } : current); setLocalId(category.id); setExternalId(''); setCategoryName(''); setNotice(`“${category.name}” panel kategorisi oluşturuldu ve seçildi.`); await client.invalidateQueries({ queryKey: ['categories', 'mapping'] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori oluşturulamadı.') })
   useEffect(() => { setExternalId(mapping.data?.externalId ?? '') }, [mapping.data])
   useEffect(() => {
@@ -231,7 +232,9 @@ function CategoryMappingWorkspace() {
   const panelPickerItems = localLeaves.filter(item => !panelPickerSearch.trim() || item.path.toLocaleLowerCase('tr-TR').includes(panelPickerSearch.trim().toLocaleLowerCase('tr-TR'))).slice(0, 80)
   const externalLeaves = useMemo(() => references.data?.items.filter(item => item.isActive && item.isLeaf) ?? [], [references.data])
   const archiveCategory = useMutation({ mutationFn: (category: LocalCategory) => hubApi<LocalCategory>(`/catalog/categories/${category.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${category.version}"` }, body: JSON.stringify({ name: category.name, parentId: null, isActive: false }) }), onSuccess: async (_, category) => { if (localId === category.id) { setLocalId(''); setExternalId('') }; await client.invalidateQueries({ queryKey: ['categories', 'mapping'] }); setNotice(`“${category.name}” panel kategorilerinden kaldırıldı.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori kaldırılamadı.') })
-  const removeMapping = useMutation({ mutationFn: (item: CatalogMapping) => hubApi<boolean>(`/mappings/categories/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async (_, item) => { if (localId === item.localId) { setExternalId(''); client.setQueryData(['category-mapping', localId, connectionId], null) }; setNotice('Kategori eşleştirmesi kaldırıldı.'); await client.invalidateQueries({ queryKey: ['category-mappings', connectionId] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleştirme kaldırılamadı.') })
+  // The delete uses the version the server holds now (not the one the list showed), and the lists and the conflict
+  // panel are reloaded whatever the outcome.
+  const removeMapping = useMutation({ mutationFn: async (item: CatalogMapping) => { const current = await hubApi<CatalogMapping | null>(`/mappings/categories/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`); if (!current || current.externalId !== item.externalId) throw new Error('Bu eşleştirme bu sırada değişti veya kaldırıldı. Liste yenilendi.'); return hubApi<boolean>(`/mappings/categories/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${current.version}"` } }) }, onSuccess: (_, item) => { if (localId === item.localId) { setExternalId(''); client.setQueryData(['category-mapping', localId, connectionId], null) }; setNotice('Kategori eşleştirmesi kaldırıldı.') }, onError: reason => setNotice(mappingSaveErrorMessage(reason, 'Eşleştirme kaldırılamadı.')), onSettled: async (_, __, item) => { await Promise.all([client.invalidateQueries({ queryKey: ['category-mappings', connectionId] }), client.invalidateQueries({ queryKey: ['category-mapping', item.localId, connectionId] }), refreshMappingConflicts(client, connectionId)]) } })
   const selectedExternal = externalLeaves.find(item => item.externalId === externalId)
   const selectedLocal = localLeaves.find(item => item.id === localId)
   // Up to three likely marketplace categories for a panel category that has no mapping yet; a click only selects, Save still decides.
@@ -996,31 +999,32 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   async function save() {
     if (!selections || saving) return
     setSaving(true)
-    let changed = 0
+    // Every removal and save is attempted; a refused one is reported and the rest still go out, and the lists are
+    // always reloaded so the form shows what the server now holds.
     try {
+      const operations: Array<() => Promise<unknown>> = []
       for (const [externalId, ids] of Object.entries(saved)) {
         const wanted = selections[externalId] ?? []
         for (const localId of ids) {
           if (wanted.includes(localId)) continue
           const existing = mappings.data!.find(item => item.externalId === externalId && item.localId === localId)
           if (!existing) continue
-          await hubApi<boolean>(`/mappings/attribute-values/${localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}&externalId=${encodeURIComponent(externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } })
-          changed++
+          operations.push(() => hubApi<boolean>(`/mappings/attribute-values/${localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}&externalId=${encodeURIComponent(externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } }))
         }
       }
       for (const planned of planReferencePanelMappings(selections)) {
         if (!knownExternalIds.has(planned.externalId)) continue
         const existing = mappings.data!.find(item => item.externalId === planned.externalId && item.localId === planned.localId)
         if (!attributeValueMappingNeedsSave(existing, planned.localId, planned.externalId, snapshotId)) continue
-        await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED', updateTemplate: true }) })
-        changed++
+        operations.push(() => hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED', updateTemplate: true }) }))
       }
-      onNotice(changed ? `${remote.name}: ${changed} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
-    } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : 'Değer eşlemeleri kaydedilemedi.')
+      const result = await saveAllMappings(operations, operation => operation())
+      if (result.failures.length) onNotice(`${remote.name}: ${result.saved} değer eşlemesi kaydedildi, ${result.failures.length} kaydedilemedi. ${mappingSaveErrorMessage(result.failures[0].error, 'Değer eşlemeleri kaydedilemedi.')}`)
+      else onNotice(result.saved ? `${remote.name}: ${result.saved} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
     } finally {
-      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] }).catch(() => undefined)
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] }).catch(() => undefined)
+      await refreshMappingConflicts(client, connectionId).catch(() => undefined)
       setSelections(null)
       setSaving(false)
     }
@@ -1172,7 +1176,7 @@ export function AttributeMappingPage() {
       setExternalId(value.externalId)
       await client.invalidateQueries({ queryKey: ['attribute-mapping', localId, connectionId, categoryScope] })
     },
-    onError: reason => setNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.')
+    onError: reason => setNotice(mappingSaveErrorMessage(reason, 'Özellik eşlemesi kaydedilemedi.')), onSettled: () => refreshMappingConflicts(client, connectionId)
   })
   useEffect(() => { if (mapping.data) setExternalId(mapping.data.externalId) }, [mapping.data])
   const activeConnections = activeMappingConnectionsForPlatform(connections.data?.items ?? [], selectedPlatformCode)
@@ -1247,24 +1251,28 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
   async function saveAll() {
     if (!references.data) return
     setSaving(true); setNotice('')
+    const snapshotId = references.data.snapshotId
     try {
-      let changed = 0
+      const operations: Array<() => Promise<unknown>> = []
       for (const localValue of localValues) {
         const externalId = selections[localValue.id] ?? ''
         const existing = mappingByLocal.get(localValue.id)
         if (!externalId && existing) {
-          await hubApi<boolean>(`/mappings/attribute-values/${localValue.id}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } })
-          changed++
+          operations.push(() => hubApi<boolean>(`/mappings/attribute-values/${localValue.id}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } }))
           continue
         }
         if (!externalId || existing?.externalId === externalId) continue
-        await hubApi<CatalogMapping>(`/mappings/attribute-values/${localValue.id}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId, status: 'VERIFIED' }) })
-        changed++
+        operations.push(() => hubApi<CatalogMapping>(`/mappings/attribute-values/${localValue.id}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: valueScope, externalId, status: 'VERIFIED' }) }))
       }
-      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      setNotice(changed ? `${changed} Web Color eşlemesi kaydedildi.` : 'Web Color eşlemelerinde değişiklik yok.')
-    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Web Color eşlemeleri kaydedilemedi.') } finally { setSaving(false) }
+      const result = await saveAllMappings(operations, operation => operation())
+      if (result.failures.length) setNotice(`${result.saved} Web Color eşlemesi kaydedildi, ${result.failures.length} kaydedilemedi. ${mappingSaveErrorMessage(result.failures[0].error, 'Web Color eşlemeleri kaydedilemedi.')}`)
+      else setNotice(result.saved ? `${result.saved} Web Color eşlemesi kaydedildi.` : 'Web Color eşlemelerinde değişiklik yok.')
+    } finally {
+      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] }).catch(() => undefined)
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] }).catch(() => undefined)
+      await refreshMappingConflicts(client, connectionId).catch(() => undefined)
+      setSaving(false)
+    }
   }
   if (!localValues.length) return <div className="unknown"><strong>Panel renk değeri bulunamadı</strong><p>Önce Panel Renk özelliğine aktif değerler ekleyin.</p></div>
   if (references.isError) return <div className="unknown"><strong>Güncel Web Color değerleri yok</strong><p>Web Color değer listesini salt-okunur olarak eşitleyin.</p>{notice && <p role="status">{notice}</p>}<button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Web Color değerlerini eşitle'}</button></div>
@@ -1371,27 +1379,34 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   async function saveAll() {
     if (!references.data || !selectionsReady) return
     setSaving(true); setNotice('')
+    const snapshotId = references.data.snapshotId
+    // A partial failure used to stop the loop and skip the reload, so the next attempt reused the old versions and
+    // failed again (412). Now every change is attempted, the lists always reload (fresh versions, kept selections)
+    // and the message says what was saved and what was not.
     try {
-      let changed = 0
+      const operations: Array<() => Promise<unknown>> = []
       for (const remoteValue of remoteValues) {
         const wanted = selections[remoteValue.externalId] ?? []
         for (const existing of mappingsByExternal.get(remoteValue.externalId) ?? []) {
           if (wanted.includes(existing.localId)) continue
-          await hubApi<boolean>(`/mappings/attribute-values/${existing.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}&externalId=${encodeURIComponent(remoteValue.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } })
-          changed++
+          operations.push(() => hubApi<boolean>(`/mappings/attribute-values/${existing.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}&externalId=${encodeURIComponent(remoteValue.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } }))
         }
       }
       for (const planned of planReferencePanelMappings(selections)) {
         if (!remoteValues.some(item => item.externalId === planned.externalId)) continue
         const existing = mappingFor(planned.externalId, planned.localId)
-        if (!attributeValueMappingNeedsSave(existing, planned.localId, planned.externalId, references.data.snapshotId)) continue
-        await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED', updateTemplate: shareWithOtherCategories }) })
-        changed++
+        if (!attributeValueMappingNeedsSave(existing, planned.localId, planned.externalId, snapshotId)) continue
+        operations.push(() => hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED', updateTemplate: shareWithOtherCategories }) }))
       }
-      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      setNotice(changed ? `${changed} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
-    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Değer eşlemeleri kaydedilemedi.') } finally { setSaving(false) }
+      const result = await saveAllMappings(operations, operation => operation())
+      if (result.failures.length) setNotice(`${result.saved} değer eşlemesi kaydedildi, ${result.failures.length} kaydedilemedi. ${mappingSaveErrorMessage(result.failures[0].error, 'Değer eşlemeleri kaydedilemedi.')} Seçimleriniz korundu; yeniden kaydedebilirsiniz.`)
+      else setNotice(result.saved ? `${result.saved} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
+    } finally {
+      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] }).catch(() => undefined)
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] }).catch(() => undefined)
+      await refreshMappingConflicts(client, connectionId).catch(() => undefined)
+      setSaving(false)
+    }
   }
   async function addQuickValues() {
     const requested = quickValueDraft.split(',').map(value => value.trim()).filter(Boolean)
@@ -1500,8 +1515,11 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     } catch (reason) {
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      setNotice(reason instanceof Error ? `Otomatik eşleme tamamlanamadı: ${reason.message}` : 'Otomatik eşleme tamamlanamadı.')
-    } finally { setAutoMapping(false) }
+      setNotice(`Otomatik eşleme tamamlanamadı: ${mappingSaveErrorMessage(reason, 'beklenmeyen hata')}`)
+    } finally {
+      await refreshMappingConflicts(client, connectionId).catch(() => undefined)
+      setAutoMapping(false)
+    }
   }
   // Confidence-based suggestions for the panel values still unmatched: same names, folded letters
   // and synonyms are selected at once; weaker matches wait in a list for approval. Nothing is saved
@@ -1623,7 +1641,7 @@ export function BrandMappingPage() {
     onSuccess: async () => { setNotice('Marka listesi salt-okunur eşitleme kuyruğuna alındı.'); for (const delay of [500, 1000, 2000, 4000]) { await wait(delay); await client.invalidateQueries({ queryKey: ['reference-brands', connectionId] }) } },
     onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka listesi güncellenemedi.')
   })
-  const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error('Bağlantı, panel markası ve Trendyol markası zorunludur.'); return hubApi<CatalogMapping>(`/mappings/brands/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Marka eşlemesi doğrulandı ve kaydedildi.'); setExternalId(value.externalId); setBrandEditOpen(false); setEditingBrandMappingId(''); client.setQueryData(['brand-mapping', localId, connectionId], value); client.setQueryData<CatalogMapping[]>(['brand-mappings', connectionId], current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })]) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })
+  const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error('Bağlantı, panel markası ve Trendyol markası zorunludur.'); return hubApi<CatalogMapping>(`/mappings/brands/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Marka eşlemesi doğrulandı ve kaydedildi.'); setExternalId(value.externalId); setBrandEditOpen(false); setEditingBrandMappingId(''); client.setQueryData(['brand-mapping', localId, connectionId], value); client.setQueryData<CatalogMapping[]>(['brand-mappings', connectionId], current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })]) }, onError: async reason => { setNotice(mappingSaveErrorMessage(reason, 'Eşleme kaydedilemedi.')); if (isStaleMappingError(reason)) await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })]) }, onSettled: () => refreshMappingConflicts(client, connectionId) })
   const createBrand = useMutation({ mutationFn: () => { if (!brandName.trim()) throw new Error('Marka adı zorunludur.'); return hubApi<LocalBrand>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: brandName.trim() }) }) }, onSuccess: async brand => { await client.invalidateQueries({ queryKey: ['brands', 'mapping'] }); setLocalId(brand.id); setExternalId(''); setBrandName(''); setNotice(`“${brand.name}” panel markası oluşturuldu ve seçildi.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka oluşturulamadı.') })
   useEffect(() => { setExternalId(mapping.data?.externalId ?? '') }, [mapping.data])
   const trendyolConnections = useMemo(() => connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? [], [connections.data])
@@ -1638,7 +1656,7 @@ export function BrandMappingPage() {
   const localBrandById = new Map(activeLocalBrands.map(item => [item.id, item]))
   const externalBrandById = new Map(externalBrands.map(item => [item.externalId, item]))
   const archiveBrand = useMutation({ mutationFn: (brand: LocalBrand) => hubApi<LocalBrand>(`/catalog/brands/${brand.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${brand.version}"` }, body: JSON.stringify({ name: brand.name, isActive: false }) }), onSuccess: async (_, brand) => { if (localId === brand.id) { setLocalId(''); setExternalId('') }; await client.invalidateQueries({ queryKey: ['brands', 'mapping'] }); setNotice(`“${brand.name}” panel markalarından kaldırıldı.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka kaldırılamadı.') })
-  const removeMapping = useMutation({ mutationFn: (item: CatalogMapping) => hubApi(`/mappings/brands/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async (_, item) => { if (localId === item.localId) setExternalId(''); await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', item.localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })]); setNotice('Marka eşleştirmesi kaldırıldı.') }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka eşleştirmesi kaldırılamadı.') })
+  const removeMapping = useMutation({ mutationFn: async (item: CatalogMapping) => { const current = await hubApi<CatalogMapping | null>(`/mappings/brands/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`); if (!current || current.externalId !== item.externalId) throw new Error('Bu marka eşleştirmesi bu sırada değişti veya kaldırıldı. Liste yenilendi.'); return hubApi(`/mappings/brands/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${current.version}"` } }) }, onSuccess: (_, item) => { if (localId === item.localId) setExternalId(''); setNotice('Marka eşleştirmesi kaldırıldı.') }, onError: reason => setNotice(mappingSaveErrorMessage(reason, 'Marka eşleştirmesi kaldırılamadı.')), onSettled: async (_, __, item) => { await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', item.localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] }), refreshMappingConflicts(client, connectionId)]) } })
   async function exportBrandMappings() {
     if (!connectionId) { setNotice('Aktarım için önce Trendyol bağlantısı seçin.'); return }
     setBrandTransferBusy(true)

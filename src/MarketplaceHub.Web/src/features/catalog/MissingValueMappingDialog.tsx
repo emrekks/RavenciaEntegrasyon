@@ -5,6 +5,7 @@ import { hubApi } from '../../shared/api'
 import { UiIcon, DialogSurface } from '../../shared/components'
 import type { PublicationValueMappingFix } from './publication-attribute-readiness'
 import { filterValueCandidates, rankValueCandidates, type ValueCandidate } from './value-mapping-suggestions'
+import { mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from '../marketplace/mappings/mapping-refresh'
 import './missing-value-mapping-dialog.css'
 
 type ValueList = { snapshotId: string; items: Array<ValueCandidate & { isActive: boolean }> }
@@ -45,29 +46,33 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
 
   async function save() {
     setSaving(true); setError('')
-    let saved = 0
+    const targets = fixes.flatMap(fix => {
+      const externalId = choices[keyOf(fix)]
+      const list = listFor(fix)?.data
+      return externalId && list ? [{ fix, externalId, snapshotId: list.snapshotId, scope: `${categoryScope}/${fix.externalAttributeId}` }] : []
+    })
+    // Every chosen value is attempted; a refused one is reported by name and the rest are still saved. The version
+    // is read right before each save, so a mapping changed meanwhile is updated from its current version.
+    const result = await saveAllMappings(targets, async target => {
+      const existing = (await hubApi<ValueMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(target.scope)}`))
+        .find(mapping => mapping.localId === target.fix.localValueId && mapping.externalId === target.externalId)
+      await hubApi(`/mappings/attribute-values/${target.fix.localValueId}`, {
+        method: 'PUT',
+        headers: existing ? { 'If-Match': `"v${existing.version}"` } : {},
+        body: JSON.stringify({ connectionId, snapshotId: target.snapshotId, scopeExternalId: target.scope, externalId: target.externalId, status: 'VERIFIED', updateTemplate: true })
+      })
+    })
     try {
-      for (const fix of fixes) {
-        const externalId = choices[keyOf(fix)]
-        const list = listFor(fix)?.data
-        if (!externalId || !list) continue
-        const scope = `${categoryScope}/${fix.externalAttributeId}`
-        const existing = (await hubApi<ValueMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(scope)}`))
-          .find(mapping => mapping.localId === fix.localValueId && mapping.externalId === externalId)
-        await hubApi(`/mappings/attribute-values/${fix.localValueId}`, {
-          method: 'PUT',
-          headers: existing ? { 'If-Match': `"v${existing.version}"` } : {},
-          body: JSON.stringify({ connectionId, snapshotId: list.snapshotId, scopeExternalId: scope, externalId, status: 'VERIFIED', updateTemplate: true })
-        })
-        saved++
-        await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, scope] })
-      }
+      for (const scope of new Set(targets.map(target => target.scope))) await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, scope] })
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      onSaved(saved ? `${saved} değer eşlemesi kaydedildi. Diğer kategoriler de bu eşlemeyi kullanacak.` : 'Kaydedilecek seçim yapılmadı.')
-      onClose()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Değer eşlemeleri kaydedilemedi.')
+      await refreshMappingConflicts(client, connectionId)
     } finally { setSaving(false) }
+    if (result.failures.length) {
+      setError(`${result.saved} eşleme kaydedildi, ${result.failures.length} eşleme kaydedilemedi: ${result.failures.map(failure => `${failure.item.fix.valueLabel || failure.item.fix.attributeName}: ${mappingSaveErrorMessage(failure.error, 'kaydedilemedi')}`).join(' · ')}`)
+      return
+    }
+    onSaved(result.saved ? `${result.saved} değer eşlemesi kaydedildi. Diğer kategoriler de bu eşlemeyi kullanacak.` : 'Kaydedilecek seçim yapılmadı.')
+    onClose()
   }
 
   const chosenCount = fixes.filter(fix => choices[keyOf(fix)]).length

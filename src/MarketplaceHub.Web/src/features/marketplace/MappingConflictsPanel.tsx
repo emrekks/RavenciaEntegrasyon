@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
+import { useConfirmDialog } from '../../shared/components'
+import { mappingSaveErrorMessage } from './mappings/mapping-refresh'
 import './mapping-conflicts-panel.css'
 
 type ConflictOption = { externalId: string; name: string; version: number; verifiedAt: string | null; categories: number }
@@ -13,29 +15,49 @@ type Conflicts = { sameCategory: Conflict[]; crossCategory: Conflict[] }
 export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, expanded = false }: { connectionId: string; platformLabel: string; onNotice: (value: string) => void; expanded?: boolean }) {
   const client = useQueryClient()
   const conflictsKey = ['mapping-conflicts', connectionId] as const
-  const conflicts = useQuery({ queryKey: conflictsKey, queryFn: () => hubApi<Conflicts>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 30_000 })
+  // Always read fresh: any mapping save elsewhere on the page can add or clear a conflict.
+  const conflicts = useQuery({ queryKey: conflictsKey, queryFn: () => hubApi<Conflicts>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 0, refetchOnWindowFocus: true })
   const [busyKey, setBusyKey] = useState('')
+  const [confirm, confirmElement] = useConfirmDialog()
   const same = conflicts.data?.sameCategory ?? []
   const cross = conflicts.data?.crossCategory ?? []
-  if (!same.length && !cross.length) return null
+  if (!same.length && !cross.length) return confirmElement
 
+  // Removing the other mappings is not undoable, so it is confirmed first and then done against the versions the
+  // server holds now, not the ones this list showed when it was loaded.
   async function keep(conflict: Conflict, kept: ConflictOption) {
+    const others = conflict.options.filter(item => item.externalId !== kept.externalId)
+    const confirmed = await confirm({
+      title: 'Diğer eşlemeler kaldırılsın mı?',
+      message: `“${conflict.localValueName}” (${conflict.categoryName} · ${conflict.attributeName}) için yalnızca “${kept.name}” kalacak; ${others.map(option => `“${option.name}”`).join(', ')} bu kategoriden kaldırılacak.`,
+      confirmLabel: 'Kaldır ve Bunu Tut',
+      destructive: true
+    })
+    if (!confirmed) return
     const key = `${conflict.scopeExternalId}:${conflict.localValueId}`
     setBusyKey(key)
     try {
-      for (const option of conflict.options.filter(item => item.externalId !== kept.externalId)) {
-        await hubApi(`/mappings/attribute-values/${conflict.localValueId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(conflict.scopeExternalId)}&externalId=${encodeURIComponent(option.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${option.version}"` } })
+      const fresh = await client.fetchQuery({ queryKey: conflictsKey, queryFn: () => hubApi<Conflicts>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`), staleTime: 0 })
+      const current = fresh.sameCategory.find(item => item.scopeExternalId === conflict.scopeExternalId && item.localValueId === conflict.localValueId)
+      if (!current || !current.options.some(option => option.externalId === kept.externalId)) {
+        onNotice('Bu eşleme bu sırada değişti; liste yenilendi. Güncel duruma göre yeniden seçin.')
+        return
       }
+      for (const option of current.options.filter(item => item.externalId !== kept.externalId)) {
+        await hubApi(`/mappings/attribute-values/${current.localValueId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(current.scopeExternalId)}&externalId=${encodeURIComponent(option.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${option.version}"` } })
+      }
+      onNotice(`“${conflict.localValueName}” için ${conflict.categoryName} kategorisinde yalnızca “${kept.name}” bırakıldı.`)
+    } catch (reason) {
+      onNotice(mappingSaveErrorMessage(reason, 'Çakışan eşleme kaldırılamadı.'))
+    } finally {
+      setBusyKey('')
       await client.invalidateQueries({ queryKey: conflictsKey })
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, conflict.scopeExternalId] })
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      onNotice(`“${conflict.localValueName}” için ${conflict.categoryName} kategorisinde yalnızca “${kept.name}” bırakıldı.`)
-    } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : 'Çakışan eşleme kaldırılamadı.')
-    } finally { setBusyKey('') }
+    }
   }
 
-  return <details className="mapping-conflicts-panel" open={expanded || undefined}>
+  return <>{confirmElement}<details className="mapping-conflicts-panel" open={expanded || undefined}>
     <summary>
       <span className="panel-summary-title">Gözden Geçirilecek Eşlemeler</span>
       <b className="panel-summary-count is-warning" aria-label={`${same.length + cross.length} kayıt`}>{same.length + cross.length}</b>
@@ -72,5 +94,5 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
         </ul>
       </section>}
     </div>
-  </details>
+  </details></>
 }
