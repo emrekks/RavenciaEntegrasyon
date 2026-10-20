@@ -5,6 +5,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
@@ -116,6 +117,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "PAZARAMA" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Pazarama bağlantısı API sürümü V1 ile pinlenmelidir.");
         if (platform == "TRENDYOL_EFATURAM" && !string.Equals(apiVersion, "1.0.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "E-Faturam bağlantısı doğrulanmış doküman sürümü 1.0.0 ile pinlenmelidir.");
         if (string.IsNullOrWhiteSpace(command.DisplayName) || string.IsNullOrWhiteSpace(command.ExternalStoreId) || platform == "TRENDYOL" && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad ve mağaza kapsamı; Trendyol için ayrıca User-Agent kimliği zorunludur.");
+        // Owner decision: a format other than "SatıcıID - FirmaAdı" is only a warning. An identity that cannot be sent
+        // as a header at all (Turkish letters, control characters) is refused, since every request would fail.
+        if (platform == "TRENDYOL" && !TrendyolUserAgentPolicy.IsHeaderSafe(command.UserAgentIdentity!.Trim())) return Invalid<ConnectionView>("userAgentIdentity", UnsendableUserAgentMessage);
         var externalStoreId = platform == "SHOPIFY" ? NormalizeShopifyStore(command.ExternalStoreId) : command.ExternalStoreId.Trim();
         if (platform == "SHOPIFY" && externalStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
         if (platform == "SHOPIFY" && string.IsNullOrWhiteSpace(command.ShopifyAccessToken)) return Invalid<ConnectionView>("shopifyAccessToken", "Shopify uygulama tokenı zorunludur.");
@@ -274,6 +278,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var pazaramaSettings = connection.PlatformCode == "PAZARAMA" ? ReadPazaramaSettings(connection) : null;
         var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? shopifySettings?.ExternalWritesEnabled ?? efaturamSettings?.ExternalWritesEnabled ?? n11Settings?.ExternalWritesEnabled ?? pazaramaSettings?.ExternalWritesEnabled ?? false;
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
+        if (connection.PlatformCode == "TRENDYOL" && requestedUserAgent is not null && !TrendyolUserAgentPolicy.IsHeaderSafe(requestedUserAgent))
+            return Invalid<ConnectionView>("userAgentIdentity", UnsendableUserAgentMessage);
         var externalWritesRequested = (command.ExternalWritesEnabled ?? currentExternalWrites)
             && (currentSettings is not null || hepsiburadaSettings is not null || shopifySettings is not null || efaturamSettings is not null || n11Settings is not null || pazaramaSettings is not null);
         if (command.ExternalWritesEnabled == true && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites"))
@@ -928,6 +934,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         && shop.All(value => value is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-');
     private static string MaskEmail(string value) { var separator = value.IndexOf('@'); return separator <= 1 ? "***" : value[..1] + "***" + value[separator..]; }
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
+    internal const string UnsendableUserAgentMessage = "User-Agent kimliğinde Türkçe karakter (ç, ğ, ı, İ, ö, ş, ü) veya özel/kontrol karakteri kullanılamaz; bu kimlikle Trendyol’a hiçbir istek gönderilemez. Örn. “123456 - Ravencia”.";
+
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> Deferred<T>() => ServiceResult<T>.Fail("PLATFORM_OUT_OF_SCOPE", "Bu platform için işlem henüz desteklenmiyor.", 409);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

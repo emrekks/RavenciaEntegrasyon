@@ -127,4 +127,19 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(currentSearch).toBe('?platform=trendyol')
     expect(container.querySelector('.integration-filter-summary')!.textContent).toContain('1 bağlantı')
   })
+
+  it('blocks a new Trendyol connection only for an identity that cannot be sent; another format is a warning', async () => {
+    await renderList('/integrations')
+    act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })
+    const identity = container.querySelector<HTMLInputElement>('input[name="userAgentIdentity"]')!
+    const submit = () => container.querySelector<HTMLButtonElement>('.im-foot button[type="submit"]')!
+
+    act(() => setValue(identity, '123456 - Gümüş'))
+    expect(submit().disabled).toBe(true)
+    expect(container.querySelector('.im-field-notice.is-error')).not.toBeNull()
+
+    act(() => setValue(identity, 'Firma Entegrasyon'))
+    expect(submit().disabled).toBe(false)
+    expect(container.querySelector('.im-field-notice.is-warning')).not.toBeNull()
+  })
 })
