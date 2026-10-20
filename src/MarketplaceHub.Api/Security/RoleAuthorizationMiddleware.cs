@@ -19,7 +19,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         if (segments.Length < 2
             || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase)
             || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)
-            || segments.Length > 2 && (segments[2].Equals("auth", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("hooks", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("public", StringComparison.OrdinalIgnoreCase)))
+            || segments.Length > 2 && (segments[2].Equals("auth", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("hooks", StringComparison.OrdinalIgnoreCase))
+            // Public document links are read without a session; anything else sent there meets the rules below.
+            || segments.Length > 2 && segments[2].Equals("public", StringComparison.OrdinalIgnoreCase) && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
         {
             await next(context);
             return;
@@ -76,11 +78,16 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         {
             case "billing":
                 return AccountingRoles;
-            case "invoices" or "invoice-workspace":
+            case "invoices":
                 return InvoiceRoles;
-            // Order work (picking, packages, Shopify status, CSV import) is daily operational work.
+            // Overriding what the fiscal records say (a cancelled invoice replaced, no remote invoice, delivered by
+            // the marketplace) is an administrator decision; the rest of the workspace is invoice work.
+            case "invoice-workspace":
+                return last is "replace-cancelled-invoice" or "confirm-no-remote-invoice" or "confirm-marketplace-delivered" ? ElevatedRoles : InvoiceRoles;
+            // Order work (picking, packages, Shopify status, CSV import) is daily operational work; recording that a
+            // label was printed is open to every role that works with orders (accounting prints labels too).
             case "orders":
-                return OperationalRoles;
+                return last == "label-printed" ? WorkingRoles : OperationalRoles;
             case "questions" or "question-templates":
                 return OperationalRoles;
             case "connections":
@@ -88,8 +95,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 if (segments.Length == 3) return ElevatedRoles;
                 if (last == "evidence" && segments.Any(segment => segment.Equals("capabilities", StringComparison.OrdinalIgnoreCase))) return ElevatedRoles;
                 // Credentials, stage test orders, deleting, emptying or hiding a connection's data, and registering
-                // the marketplace's notifications (a setting on the store's side) are for administrators.
-                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "data-visibility" or "instant-notifications"
+                // the marketplace's notifications (a setting on the store's side) and webhook subscriptions (they hold
+                // the verifier secret and hand out the route token) are for administrators.
+                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "data-visibility" or "instant-notifications" or "webhooks"
                     ? ElevatedRoles
                     : OperationalRoles;
             case "shipments":
