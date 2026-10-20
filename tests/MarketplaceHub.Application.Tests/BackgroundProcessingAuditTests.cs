@@ -69,6 +69,25 @@ public sealed class BackgroundProcessingAuditTests
         Assert.Equal(JobConflictPolicy.DuplicateInsert, third.ErrorCode);
     }
 
+    [Fact]
+    public void VersionConflictsAndDuplicateInsertsKeepSeparateRuns()
+    {
+        var violation = new PostgresException("duplicate key value violates unique constraint", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation);
+        var duplicate = WorkerService.ExceptionResult(new DbUpdateException("save failed", violation));
+        var conflict = WorkerService.ExceptionResult(new DbUpdateConcurrencyException("expected to affect 1 row"));
+
+        // Two version conflicts, then a duplicate insert: it still gets its retries.
+        var (_, one) = JobConflictPolicy.Apply(conflict, 0);
+        var (_, two) = JobConflictPolicy.Apply(conflict, one);
+        var (firstDuplicate, afterDuplicate) = JobConflictPolicy.Apply(duplicate, two);
+        Assert.Equal(JobCompletionKind.Retry, firstDuplicate.Kind);
+        var (secondDuplicate, afterSecond) = JobConflictPolicy.Apply(duplicate, afterDuplicate);
+        Assert.Equal(JobCompletionKind.Retry, secondDuplicate.Kind);
+        // And a version conflict after duplicates is deferred again from the start.
+        var (deferred, _) = JobConflictPolicy.Apply(conflict, afterSecond);
+        Assert.True(deferred.RefundAttempt);
+    }
+
     [Theory]
     [InlineData(PostgresErrorCodes.CheckViolation)]
     [InlineData(PostgresErrorCodes.StringDataRightTruncation)]
