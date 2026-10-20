@@ -14,7 +14,9 @@
     "test": "vitest run",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "test:security": "vitest run src/shared/security/sanitizeHtml.test.ts",
-    "lint": "eslint . --max-warnings=0"
+    "lint": "eslint . --max-warnings=0",
+    "test:visual": "node tests/visual/run.mjs",
+    "check:cascade": "node tests/visual/cascade-check.mjs"
   },
   "dependencies": {
     "@microsoft/signalr": "10.0.0",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@playwright/test": "1.64.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
