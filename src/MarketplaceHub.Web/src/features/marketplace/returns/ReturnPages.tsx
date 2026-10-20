@@ -1,7 +1,7 @@
 // İadeler (/returns, /returns/:id).
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../../shared/api'
 import { cargoCarrier, cargoLabel } from '../../../shared/components'
 import { newIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
@@ -10,7 +10,6 @@ import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { DataFreshnessNote } from '../../../shared/data-freshness'
-import { matchesReturnReferenceFilters } from '../return-reference-filters'
 import { returnReasonPresentation } from '../return-reference-presentation'
 import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrLoading, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
 import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, type NotificationDetail, type NotificationTarget } from '../../../shared/notifications'
@@ -20,30 +19,16 @@ import { marketplacePlatformOptions } from '../marketplace-platform-support'
 import { activeReturnSyncConnections, enqueueReturnSyncs } from '../return-sync'
 import { ReturnApproveDialog, type ReturnApproveRow } from '../ReturnApproveDialog'
 import { ReturnBulkDecisionDialog, type BulkDecisionItem } from '../ReturnBulkDecisionDialog'
-import { isActionableReturnLine, splitMixedReturnClaims, visibleReturnClaims } from '../return-claim-visibility'
+import { isActionableReturnLine } from '../return-claim-visibility'
 import { canPrintReturnLabel } from '../return-label-visibility'
-import { formatMarketplaceBarcode, shouldShowReturnCountdown, sortApprovedReturns, type ApprovedReturnSort } from '../return-reference-presentation'
+import { formatMarketplaceBarcode, shouldShowReturnCountdown, type ApprovedReturnSort } from '../return-reference-presentation'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
-import { istanbulDayBoundary } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
+import { returnListParams, returnSummaryParams, type ReturnFilters, type ReturnRefinements, type ReturnSummary } from './return-list-query'
 import { Connection, Order, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnLine, ReturnNoticeKind, ReturnPlatformPop, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnLineFieldValue, returnOptionalValue, returnPlatformName, usableShipmentDueAt } from '../shared'
 
 type ReturnClaim = { id: string; externalClaimId: string; orderNumber: string; status: string; rawStatus: string; reasonText: string | null; reasonCode?: string | null; actionDueAt: string | null; approvedAt?: string | null; systemNote?: string | null; sellerDescription?: string | null; platformApprovalReason?: string | null; platformDescription?: string | null; version: number; customerName: string; orderedAt: string | null; orderAmount: number; currency: string; cargoProviderName: string | null; cargoTrackingNumber: string | null; cargoTrackingLink?: string | null; orderCargoProviderName?: string | null; orderCargoTrackingNumber?: string | null; primaryImageUrl: string | null; productCount: number; primaryBarcode: string | null; lines: OrderLine[] | null; packageNumber: string | null; invoiceStatus: string; grossAmount: number; discountAmount: number; isMicroExport: boolean; connectionId: string | null; platformCode: string; platformDisplayName: string; lineStatuses?: Record<string, string> | null; actionDueAtEstimated?: boolean; refundAmount?: number | null; rowKey?: string }
-type ReturnFilters = { status: string; search: string; from: string; to: string }
-async function loadAllReturns(filters: ReturnFilters): Promise<Page<ReturnClaim>> {
-  const params = new URLSearchParams()
-  if (filters.status !== 'ALL') params.set('status', filters.status)
-  if (filters.search.trim()) params.set('search', filters.search.trim())
-  if (filters.from) params.set('dateFrom', istanbulDayBoundary(filters.from))
-  if (filters.to) params.set('dateTo', istanbulDayBoundary(filters.to, true))
-  return loadAllPages<ReturnClaim>(`/returns?${params.toString()}`)
-}
-function matchesReturnReferenceSearch(item: ReturnClaim, value: string) {
-  const term = value.trim().toLocaleLowerCase('tr-TR')
-  if (!term) return true
-  return [item.customerName, item.orderNumber, item.externalClaimId, item.primaryBarcode, item.reasonText, item.reasonCode, ...(item.lines ?? []).flatMap(line => [line.sku, line.barcode, line.title])]
-    .some(candidate => candidate?.toLocaleLowerCase('tr-TR').includes(term))
-} type ReturnDetail = Omit<ReturnClaim, 'lines'> & { reasonCode: string | null; allowedActions: string[]; lines: ReturnLine[] | null; stockDispositionAvailable: boolean; externalWritesEnabled: boolean; decisionPending?: boolean }; type ReturnIssueReason = { id: string; name: string; evidenceRequired: boolean }
+type ReturnDetail = Omit<ReturnClaim, 'lines'> & { reasonCode: string | null; allowedActions: string[]; lines: ReturnLine[] | null; stockDispositionAvailable: boolean; externalWritesEnabled: boolean; decisionPending?: boolean }; type ReturnIssueReason = { id: string; name: string; evidenceRequired: boolean }
 function isUrgentReturnDeadline(value: string | null) { const usable = usableShipmentDueAt(value); return usable !== null && new Date(usable).getTime() - Date.now() <= 24 * 60 * 60 * 1000 }
 function printReturnLabel(item: ReturnClaim, lines: OrderLine[]) {
   const barcodeValue = item.cargoTrackingNumber?.trim() || item.packageNumber?.trim() || item.externalClaimId
@@ -58,7 +43,7 @@ function printReturnLabel(item: ReturnClaim, lines: OrderLine[]) {
   popup.focus()
   popup.print()
 }
-function returnGroup(status: string) { const value = status.toUpperCase(); if (['APPROVED', 'COMPLETED'].includes(value)) return 'APPROVED'; if (['REJECTED', 'CANCELLED'].includes(value)) return 'REJECTED'; if (['REQUESTED', 'CREATED'].includes(value)) return 'REQUESTED'; if (['ACTION_REQUIRED', 'WAITING_FOR_SELLER_ACTION'].includes(value)) return 'ACTION_REQUIRED'; if (['WAITING_FOR_SHIPMENT', 'IN_TRANSIT', 'RETURN_IN_TRANSIT', 'SHIPPED'].includes(value)) return 'SHIPPING'; if (value === 'DISPUTED') return 'DISPUTED'; if (['SUSPENDED', 'ON_HOLD'].includes(value)) return 'SUSPENDED'; return 'REVIEW' }
+function returnGroup(status: string) { const value = status.toUpperCase(); if (['APPROVED', 'COMPLETED'].includes(value)) return 'APPROVED'; if (['REJECTED', 'CANCELLED'].includes(value)) return 'REJECTED'; if (['REQUESTED', 'CREATED'].includes(value)) return 'REQUESTED'; if (['ACTION_REQUIRED', 'WAITING_FOR_SELLER_ACTION'].includes(value)) return 'ACTION_REQUIRED'; if (['AWAITING_SHIPMENT', 'WAITING_FOR_SHIPMENT', 'IN_TRANSIT', 'RETURN_IN_TRANSIT', 'SHIPPED'].includes(value)) return 'SHIPPING'; if (value === 'DISPUTED') return 'DISPUTED'; if (['SUSPENDED', 'ON_HOLD'].includes(value)) return 'SUSPENDED'; return 'REVIEW' }
 function returnRemaining(value: string | null) { const text = remainingText(value); return /doldu|gelmedi/u.test(text) ? text : `${text.replace(/\s*kaldı$/u, '')} kaldı` }
 function returnRingTone(status: string): [RingTone, number] {
   switch (returnGroup(status)) {
@@ -352,9 +337,18 @@ export function ReturnsPage() {
     setStatus(initialStatus)
     setAppliedFilters(current => current.status === initialStatus ? current : { ...current, status: initialStatus })
   }, [initialStatus])
-  const query = useQuery({ queryKey: ['returns', appliedFilters], queryFn: () => loadAllReturns(appliedFilters), refetchInterval: 30_000 })
-  const countFilters: ReturnFilters = { ...appliedFilters, status: 'ALL' }
-  const countsQuery = useQuery({ queryKey: ['returns', 'counts', countFilters], queryFn: () => loadAllReturns(countFilters), enabled: appliedFilters.status !== 'ALL', refetchInterval: 30_000 })
+  // The server splits, filters, counts and pages the cards; the page reads one page and the summary.
+  const refinements: ReturnRefinements = { platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoiceStatus: invoiceStatusFilter }
+  const sort = appliedFilters.status === 'APPROVED' ? approvedSort : null
+  const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
+  const listKey = JSON.stringify([appliedFilters, refinements, sort, pageSize])
+  const [cursorKey, setCursorKey] = useState(listKey)
+  if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
+  const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
+  const query = useQuery({ queryKey: ['returns', 'list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor], queryFn: () => hubApi<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const summary = useQuery({ queryKey: ['returns', 'summary', appliedFilters, refinements], queryFn: () => hubApi<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const nextCursor = query.data?.nextCursor ?? null
+  if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
   const connections = useQuery({ queryKey: ['connections', 'returns'], queryFn: () => loadAllPages<Connection>('/connections') })
   const returnConnections = activeReturnSyncConnections(connections.data?.items ?? [])
   const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
@@ -362,36 +356,26 @@ export function ReturnsPage() {
   const [bulkMode, setBulkMode] = useState<'APPROVE' | 'REJECT' | null>(null)
   // On 1101-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
   const noBuyer = useMediaQuery('(min-width: 1101px) and (max-width: 1240px)')
-  // A split card belongs only to the tab of its own group.
-  const items = visibleReturnClaims(splitMixedReturnClaims(query.data?.items ?? [])).filter(item => !item.rowKey || appliedFilters.status === 'ALL' || returnGroup(item.status) === appliedFilters.status).filter(item => matchesReturnReferenceSearch(item, appliedFilters.search))
-  const countItems = visibleReturnClaims(splitMixedReturnClaims(appliedFilters.status === 'ALL' ? query.data?.items ?? [] : countsQuery.data?.items ?? [])).filter(item => matchesReturnReferenceSearch(item, appliedFilters.search))
+  // One page of cards: a claim with accepted and waiting lines arrives as two cards, each in its own tab.
+  const visibleItems = query.data?.items ?? []
+  const totalCount = query.data?.totalCount ?? visibleItems.length
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_BELIRSIZ', 'Fatura Sonucu Belirsiz'], ['FATURA_IPTAL', 'Fatura İptal']] as const
-  const reasonOptions = new Map<string, string>()
-  for (const item of items) {
-    const value = item.reasonCode?.trim() || item.reasonText?.trim()
-    if (value) reasonOptions.set(value, returnReasonPresentation(item).label)
-  }
-  const reasons = Array.from(reasonOptions, ([value, label]) => ({ value, label }))
-  const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], items.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName || returnPlatformName(item.platformCode) })))
-  const cargoOptions = Array.from(new Set(items.map(item => item.cargoProviderName?.trim()).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right, 'tr-TR'))
-  const matchesLocalFilters = (item: ReturnClaim) => matchesReturnReferenceFilters(item, { platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter })
-  const matchesInvoiceStatus = (item: ReturnClaim) => (invoiceStatusFilter === 'ALL' || item.invoiceStatus === invoiceStatusFilter) && matchesLocalFilters(item)
-  const filteredCountItems = countItems.filter(matchesInvoiceStatus)
-  const visible = items.filter(matchesInvoiceStatus)
+  // The filter choices come from the current tab (search and dates applied), as before.
+  const reasons = (summary.data?.reasons ?? []).map(reason => ({ value: reason.value, label: returnReasonPresentation(reason).label }))
+  const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], (summary.data?.platforms ?? []).map(platform => ({ platformCode: platform.platformCode, displayName: platform.displayName || returnPlatformName(platform.platformCode) })))
+  const cargoOptions = [...(summary.data?.cargoProviders ?? [])].sort((left, right) => left.localeCompare(right, 'tr-TR'))
   // Bulk approval is offered only for returns that wait for the seller; Hepsiburada's pre-approval review keeps its own step.
   const bulkEligible = (claim: ReturnClaim) => status === 'ACTION_REQUIRED' && returnGroup(claim.status) === 'ACTION_REQUIRED' && claim.rawStatus.replace(/[_-]/gu, '').toUpperCase() !== 'AWAITINGPREAPPROVAL'
-  const bulkItems = visible.filter(bulkEligible)
+  const bulkItems = visibleItems.filter(bulkEligible)
   const bulkSelected = bulkItems.filter(claim => bulkIds.includes(claim.id))
   const allBulkSelected = bulkItems.length > 0 && bulkSelected.length === bulkItems.length
-  useEffect(() => { setPageNumber(1) }, [appliedFilters, pageSize])
-  const sortedVisible = status === 'APPROVED' ? sortApprovedReturns(visible, approvedSort) : visible
-  const totalPages = Math.max(1, Math.ceil(sortedVisible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const visibleItems = sortedVisible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages)
   const firstPage = Math.max(1, Math.min(currentPage - 1, totalPages - 3)); const pageList = Array.from({ length: Math.min(4, totalPages) }, (_, index) => firstPage + index)
   function applyFilters() { setAppliedFilters(returnFilters); setPageNumber(1) }
   function selectStatus(value: string) { const next = { ...returnFilters, status: value }; setStatus(value); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); if (value === 'ALL') params.delete('status'); else params.set('status', value); return params }, { replace: true }); setPageNumber(1) }
   function selectInvoiceStatus(value: string) { setInvoiceStatusFilter(value); setPageNumber(1) }
   function clearFilters() { const next: ReturnFilters = { status: 'ALL', search: '', from: '', to: '' }; setStatus(next.status); setSearch(next.search); setFrom(next.from); setTo(next.to); setSelectedPlatforms([]); setCargoFilter('ALL'); setReasonFilter('ALL'); setInvoiceStatusFilter('ALL'); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('status'); return params }, { replace: true }); setPageNumber(1) }
-  const tabCount = (value: string) => (appliedFilters.status === 'ALL' ? query.isLoading : countsQuery.isLoading) ? '…' : (appliedFilters.status === 'ALL' ? query.isError : countsQuery.isError) ? '—' : value === 'ALL' ? filteredCountItems.length : filteredCountItems.filter(item => returnGroup(item.status) === value).length
+  const tabCount = (value: string) => summary.isLoading ? '…' : summary.isError || !summary.data ? '—' : summary.data.tabCounts[value] ?? 0
   const metric = (value: string) => { const count = tabCount(value); return typeof count === 'number' ? count.toLocaleString('tr-TR') : count }
   const platformTriggerLabel = selectedPlatforms.length === 0 || selectedPlatforms.includes(RETURN_NO_PLATFORM) ? 'Tüm Platformlar' : selectedPlatforms.length === 1 ? platformOptions.find(option => option.value === selectedPlatforms[0])?.label ?? selectedPlatforms[0] : `${selectedPlatforms.length} Platform Seçili`
   const cargoPopOptions = [{ value: 'ALL', label: 'Tüm Kargolar' }, ...cargoOptions.map(value => ({ value, label: cargoLabel(value) }))]
@@ -421,7 +405,7 @@ export function ReturnsPage() {
       </div></RrFilterCard>
     </div>
     {notice && <NoticeToast key={`${noticeKind}:${notice}`} kind={noticeKind} message={notice} onClose={() => setNoticeState('')} durationMs={noticeKind === 'info' ? 7000 : 5500} />}
-    <div className="rr-panel"><div className="rr-panel-h"><div><h2>{tabLabel}</h2><p>Toplam {visible.length.toLocaleString('tr-TR')} iade bilgisi</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100, 200]} onChange={setPageSize} /></div>
+    <div className="rr-panel"><div className="rr-panel-h"><div><h2>{tabLabel}</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} iade bilgisi</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100, 200]} onChange={setPageSize} /></div>
       <div className="rr-tblwrap">{query.isLoading ? <RrLoading /> : query.isError ? <RrError error={query.error} onRetry={() => void query.refetch()} /> : <table className={`rr-tbl${selectColumn ? ' rr-has-select' : ''}${noBuyer ? ' rr-no-buyer' : ''}`}>
         <colgroup><col className="rr-c-order" />{!noBuyer && <col className="rr-c-buyer" />}<col className="rr-c-prod" /><col className="rr-c-price" /><col className="rr-c-cargo" /><col className="rr-c-inv" /><col className="rr-c-reason" /><col className="rr-c-status" /><col className="rr-c-act" /></colgroup>
         <thead><tr>
@@ -435,9 +419,9 @@ export function ReturnsPage() {
           <ReturnHeadCell label="Durum" active={status !== 'ALL'} pop={close => <ReturnColumnPop label="İade Durumu" options={statusPopOptions} value={status} right onPick={value => { selectStatus(value); close() }} />} />
           <ReturnHeadCell label="İşlemler" />
         </tr></thead>
-        <tbody>{visibleItems.map(item => <ReturnReferenceRow key={item.rowKey ?? item.id} selectColumn={selectColumn} noBuyer={noBuyer} selection={bulkEligible(item) ? { checked: bulkIds.includes(item.id), onChange: () => setBulkIds(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id]) } : undefined} item={item} order={null} onNotice={setNotice} />)}{!visible.length && <tr><td className="rr-empty-row" colSpan={noBuyer ? 8 : 9}><div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>{query.data?.items.length ? 'İade Bulunamadı' : 'Henüz İade Yok'}</b><span className="rr-lead">{query.data?.items.length ? 'Seçili filtreyle eşleşen gösterilebilir iade yok.' : 'İadeleri eşitle düğmesiyle güncel talepleri çekin.'}</span>{query.data?.items.length ? <button type="button" className="rr-btn rr-quiet" style={{ marginTop: 4 }} onClick={clearFilters}>Filtreleri Temizle</button> : null}</div></td></tr>}</tbody>
+        <tbody>{visibleItems.map(item => <ReturnReferenceRow key={item.rowKey ?? item.id} selectColumn={selectColumn} noBuyer={noBuyer} selection={bulkEligible(item) ? { checked: bulkIds.includes(item.id), onChange: () => setBulkIds(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id]) } : undefined} item={item} order={null} onNotice={setNotice} />)}{!visibleItems.length && <tr><td className="rr-empty-row" colSpan={noBuyer ? 8 : 9}><div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>{summary.data?.unfilteredCount ? 'İade Bulunamadı' : 'Henüz İade Yok'}</b><span className="rr-lead">{summary.data?.unfilteredCount ? 'Seçili filtreyle eşleşen gösterilebilir iade yok.' : 'İadeleri eşitle düğmesiyle güncel talepleri çekin.'}</span>{summary.data?.unfilteredCount ? <button type="button" className="rr-btn rr-quiet" style={{ marginTop: 4 }} onClick={clearFilters}>Filtreleri Temizle</button> : null}</div></td></tr>}</tbody>
       </table>}</div>
-      {!query.isLoading && !query.isError && visible.length > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{visible.length.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={currentPage <= 1} onClick={() => setPageNumber(Math.max(1, currentPage - 1))}><RrIcon name="left" /></button>{pageList.map(page => <button key={page} type="button" className={page === currentPage ? 'rr-on' : undefined} aria-current={page === currentPage ? 'page' : undefined} onClick={() => setPageNumber(page)}>{page}</button>)}<button type="button" aria-label="Sonraki" disabled={currentPage >= totalPages} onClick={() => setPageNumber(Math.min(totalPages, currentPage + 1))}><RrIcon name="right" /></button></div><label className="rr-jump">Sayfaya Git<input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } } }} /><button type="button" className="rr-btn" onClick={() => { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } }}>Git</button></label></div>}
+      {!query.isLoading && !query.isError && visibleItems.length > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{totalCount.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={currentPage <= 1} onClick={() => setPageNumber(Math.max(1, currentPage - 1))}><RrIcon name="left" /></button>{pageList.map(page => <button key={page} type="button" className={page === currentPage ? 'rr-on' : undefined} aria-current={page === currentPage ? 'page' : undefined} onClick={() => setPageNumber(page)}>{page}</button>)}<button type="button" aria-label="Sonraki" disabled={currentPage >= totalPages} onClick={() => setPageNumber(Math.min(totalPages, currentPage + 1))}><RrIcon name="right" /></button></div><label className="rr-jump">Sayfaya Git<input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } } }} /><button type="button" className="rr-btn" onClick={() => { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } }}>Git</button></label></div>}
     </div>
     {bulkSelected.length > 0 && <div className="rr-bulk" role="group" aria-label="Toplu işlemler"><span className="rr-grow">{bulkSelected.length} iade seçildi</span><button type="button" className="rr-btn rr-quiet" onClick={() => setBulkIds([])}>Vazgeç</button><button type="button" className="rr-btn rr-danger" onClick={() => setBulkMode('REJECT')}><RrIcon name="close" />Reddet</button><button type="button" className="rr-btn rr-primary" onClick={() => setBulkMode('APPROVE')}><RrIcon name="check" />Onayla</button></div>}
     {bulkMode && <ReturnBulkDecisionDialog mode={bulkMode} items={bulkSelected.map((claim): BulkDecisionItem => ({ id: claim.id, version: claim.version, orderNumber: displayOrderNumber(claim.orderNumber), customerName: claim.customerName, orderedAt: claim.orderedAt, packageNumber: claim.packageNumber, connectionId: claim.connectionId, platformCode: claim.platformCode, platformName: claim.platformDisplayName || returnPlatformName(claim.platformCode), lines: (claim.lines ?? []).map(line => ({ id: line.id, title: line.title, imageUrl: line.imageUrl ?? claim.primaryImageUrl, quantity: productLineQuantity(line), sku: line.sku, barcode: formatMarketplaceBarcode(claim.platformCode, line.barcode) ?? line.barcode, color: returnLineFieldValue(line, ['renk', 'color'], 'color') ?? null, size: returnLineFieldValue(line, ['beden', 'size'], 'size') ?? null, modelCode: line.modelCode ?? null })) }))} onClose={() => { setBulkMode(null); setBulkIds([]) }} onDone={(message, kind, details, target) => notifyReturn(handleNotice, message, kind, details, target)} />}

@@ -1061,7 +1061,9 @@ public sealed record ReturnListView(
     IReadOnlyDictionary<Guid, string>? LineStatuses = null,
     bool ActionDueAtEstimated = false,
     // Calculated from the order (quantity × paid unit price), in Currency; null when no line matches its order line.
-    decimal? RefundAmount = null);
+    decimal? RefundAmount = null,
+    // Set when a claim is shown as more than one card (its accepted lines apart from the waiting ones).
+    string? RowKey = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1071,7 +1073,28 @@ public sealed record ReturnListQuery(
     string? Reason = null,
     DateTimeOffset? DateFrom = null,
     DateTimeOffset? DateTo = null,
-    string? Search = null);
+    string? Search = null,
+    // The Returns page's own filters, applied to the cards the way the page applied them before:
+    // platform codes, the trimmed cargo provider name, the reason key (code, else text) and the
+    // invoice label. Sort orders the approved tab (APPROVED_DESC/ASC, ORDERED_DESC/ASC).
+    IReadOnlyList<string>? Platforms = null,
+    string? Cargo = null,
+    string? ReasonKey = null,
+    string? InvoiceStatus = null,
+    string? Sort = null);
+// Tab counts (every filter but the tab applied) and the filter choices of the current tab (search
+// and dates applied, the platform/cargo/reason/invoice filters not), as the Returns page showed them.
+public sealed record ReturnSummaryView(
+    IReadOnlyDictionary<string, int> TabCounts,
+    IReadOnlyList<ReturnPlatformOption> Platforms,
+    IReadOnlyList<string> CargoProviders,
+    IReadOnlyList<ReturnReasonOption> Reasons,
+    IReadOnlyList<string> InvoiceStatuses,
+    // Cards of the current tab before the platform/cargo/reason/invoice filters.
+    int UnfilteredCount);
+public sealed record ReturnPlatformOption(string PlatformCode, string DisplayName);
+// Value is the filter key (reason code, else text); the page labels it from code and text.
+public sealed record ReturnReasonOption(string Value, string? ReasonCode, string? ReasonText);
 public sealed record ReturnDetailView(
     Guid Id,
     string ExternalClaimId,
@@ -1126,7 +1149,8 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string format = "ZPL");
     Task<ServiceResult<Guid>> EnqueueLabelCapabilityProbeAsync(Guid tenantId, Guid actorUserId, Guid packageId, long expectedVersion, string capabilityCode, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueStageTestOrderAsync(Guid tenantId, Guid actorUserId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
-    Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery query, bool latest, CancellationToken cancellationToken);
+    Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery query, bool latest, CancellationToken cancellationToken, int page = 1);
+    Task<ReturnSummaryView> ReturnSummaryAsync(Guid tenantId, ReturnListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);

@@ -35,6 +35,34 @@ public sealed class CursorCodec(IDataProtectionProvider provider, TimeProvider t
         catch (ArgumentOutOfRangeException) { return false; }
     }
 
+    // A return card: the sort, its sort date (or "-"), the claim and which card of the claim.
+    public string EncodeReturn(string sort, DateTimeOffset? sortDate, Guid claimId, int card) =>
+        _protector.Protect($"RETURN|{sort}|{sortDate?.UtcTicks.ToString(CultureInfo.InvariantCulture) ?? "-"}|{claimId:D}|{card.ToString(CultureInfo.InvariantCulture)}", TimeSpan.FromHours(1));
+
+    public bool TryDecodeReturn(string? cursor, out string sort, out DateTimeOffset? sortDate, out Guid claimId, out int card)
+    {
+        sort = string.Empty;
+        sortDate = null;
+        claimId = Guid.Empty;
+        card = 0;
+        if (string.IsNullOrWhiteSpace(cursor)) return false;
+        try
+        {
+            var value = _protector.Unprotect(cursor, out var expiration);
+            var parts = value.Split('|');
+            if (expiration <= timeProvider.GetUtcNow() || parts.Length != 5 || parts[0] != "RETURN" || parts[1].Length == 0) return false;
+            if (parts[2] != "-")
+            {
+                if (!long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks)) return false;
+                sortDate = new DateTimeOffset(ticks, TimeSpan.Zero);
+            }
+            sort = parts[1];
+            return Guid.TryParse(parts[3], out claimId) && int.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out card);
+        }
+        catch (CryptographicException) { return false; }
+        catch (ArgumentOutOfRangeException) { return false; }
+    }
+
     public bool TryDecode(string? cursor, out Guid id)
     {
         id = Guid.Empty;

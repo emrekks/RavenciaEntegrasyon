@@ -11,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
+public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
 {
     // A real Trendyol package supersedes the zero-ID payment placeholder, and a
     // package another package names as its origin (a split UnPacked parent, a
@@ -1653,25 +1653,36 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<Guid>.Ok(jobId);
     }
 
-    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery options, bool latest, CancellationToken cancellationToken)
+    // The Returns page reads cards (a claim with accepted and waiting lines is two cards), filtered,
+    // counted and paged by the server (MarketplaceSalesService.ReturnList.cs). "latest" keeps the
+    // plain claim list by last change, unsplit and unpaged, for tools and tests.
+    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery options, bool latest, CancellationToken cancellationToken, int page = 1)
     {
-        var hasOperationalReturnConnection = await db.PlatformConnections.AsNoTracking()
+        if (!await HasOperationalReturnConnectionAsync(tenantId, cancellationToken)) return new([], null, false);
+        if (!latest) return await ReturnCardPageAsync(tenantId, limit, page, after, options, cancellationToken);
+
+        var query = ReturnBaseQuery(tenantId);
+        ApplyReturnFilters(ref query, options);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var claims = await query.OrderByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var rows = await ReturnViewsAsync(tenantId, claims, cancellationToken);
+        return new(rows.Take(limit).ToList(), null, rows.Count > limit, totalCount);
+    }
+
+    private Task<bool> HasOperationalReturnConnectionAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
                 && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
-        if (!hasOperationalReturnConnection) return new([], null, false);
 
-        var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
+    private IQueryable<ReturnClaim> ReturnBaseQuery(Guid tenantId) =>
+        ExcludeStaleHepsiburadaReturns(db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
             && x.Status != ReturnClaimStatus.Cancelled
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
-        query = ExcludeStaleHepsiburadaReturns(query, tenantId);
-        ApplyReturnFilters(ref query, options);
-        var totalCount = await query.CountAsync(cancellationToken);
-        var afterId = latest ? Guid.Empty : Decode(after);
-        if (!latest && afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
-        var claims = latest
-            ? await query.OrderByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken)
-            : await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))), tenantId);
+
+    // One list view per claim, in the claims' order.
+    private async Task<List<ReturnListView>> ReturnViewsAsync(Guid tenantId, List<ReturnClaim> claims, CancellationToken cancellationToken)
+    {
         var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
         var claimIds = claims.Select(x => x.Id).ToArray();
         var approvedAtByClaim = claimIds.Length == 0
@@ -1791,10 +1802,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 IsEstimatedReturnDueAt(platformCode, claim),
                 ReturnRefundAmounts.ClaimTotal(lineViews.Select(line => line.RefundAmount)));
         }).ToList();
-        var hasMore = rows.Count > limit;
-        var pageRows = rows.Take(limit).ToList();
-        var next = !latest && hasMore && pageRows.Count > 0 ? cursors.Encode(pageRows[^1].Id) : null;
-        return new(pageRows, next, hasMore, totalCount);
+        return rows;
     }
 
     internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
