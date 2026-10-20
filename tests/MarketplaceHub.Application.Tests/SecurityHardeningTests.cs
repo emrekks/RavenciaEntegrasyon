@@ -76,15 +76,38 @@ public sealed class ClientNetworkAndRateLimitTests
         leases.ForEach(lease => lease.Dispose());
     }
 
+    // One marketplace address delivers for every connection: the address limit must not be the one that
+    // refuses a real burst on a single connection.
     [Fact]
-    public void WebhookAddressLimit_Is600PerMinute()
+    public void WebhookAddressLimit_IsAboveTheConnectionLimit()
     {
-        Assert.Equal(600, WebhookRateLimits.PerAddressPerMinute);
+        Assert.True(WebhookRateLimits.PerAddressPerMinute >= 2 * WebhookRateLimits.PerConnectionPerMinute);
+        Assert.True(WebhookRateLimits.QueuedDeliveries >= 4 * WebhookRateLimits.ConcurrentDeliveries);
     }
 
-    private static DefaultHttpContext Request(string path, string address, string? cookie = null)
+    [Fact]
+    public void ProductImageContent_HasItsOwnLimit_AndDoesNotUseUpTheGeneralOne()
+    {
+        using var limiter = RateLimitPolicies.PerNetwork(2, mediaPerMinute: 3);
+        const string address = "203.0.113.40";
+        var asset = Guid.NewGuid();
+        for (var index = 0; index < 2; index++) Assert.True(limiter.AttemptAcquire(Request("/api/v1/orders", address)).IsAcquired);
+        Assert.False(limiter.AttemptAcquire(Request("/api/v1/orders", address)).IsAcquired);
+
+        Assert.True(limiter.AttemptAcquire(Request($"/api/v1/public/product-media/{asset:D}/content", address)).IsAcquired);
+        Assert.True(limiter.AttemptAcquire(Request($"/api/v1/files/product-media/{asset:D}/content", address)).IsAcquired);
+        Assert.True(limiter.AttemptAcquire(Request($"/api/v1/public/product-media/{asset:D}/content", address)).IsAcquired);
+        Assert.False(limiter.AttemptAcquire(Request($"/api/v1/public/product-media/{asset:D}/content", address)).IsAcquired);
+
+        Assert.True(RateLimitPolicies.IsMediaContent(Request($"/api/v1/files/product-media/{asset:D}/content", address).Request));
+        Assert.False(RateLimitPolicies.IsMediaContent(Request("/api/v1/files/product-media-url", address).Request));
+        Assert.False(RateLimitPolicies.IsMediaContent(Request($"/api/v1/files/product-media/{asset:D}/content", address, method: "POST").Request));
+    }
+
+    private static DefaultHttpContext Request(string path, string address, string? cookie = null, string method = "GET")
     {
         var context = new DefaultHttpContext { RequestServices = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build()).BuildServiceProvider() };
+        context.Request.Method = method;
         context.Request.Path = path;
         context.Connection.RemoteIpAddress = IPAddress.Parse(address);
         if (cookie is not null) context.Request.Headers.Cookie = $"{SessionAuthMiddleware.ProductionCookieName}={cookie}";

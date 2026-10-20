@@ -7,14 +7,18 @@ namespace MarketplaceHub.Api.Marketplace;
 // the connection limit is generous and a campaign burst is not answered with 429 (Hepsiburada
 // blacklists a slow or failing feed). The connection id comes from the URL, though, so on its own it
 // let anyone send unlimited requests by changing the id; the per-network limit closes that (an IPv6
-// sender is counted per /64, see ClientNetwork). Separately, at most ConcurrentDeliveries deliveries are
-// read at once (each may buffer up to 10 MiB); the rest wait in a short queue.
+// sender is counted per /64, see ClientNetwork). One marketplace address delivers for every store (and
+// tenant) connected here, so the address limit is several connections' worth: it must never be the one
+// that refuses a real burst, only an id-rotating sender. Memory is guarded separately: at most
+// ConcurrentDeliveries deliveries are read at once (each may buffer up to 10 MiB); the rest wait in a
+// queue long enough for a campaign burst (the limiter runs before any body is read, so a waiting
+// delivery holds only its connection).
 public static class WebhookRateLimits
 {
-    public const int PerAddressPerMinute = 600;
     public const int PerConnectionPerMinute = 1200;
+    public const int PerAddressPerMinute = 4 * PerConnectionPerMinute;
     public const int ConcurrentDeliveries = 32;
-    public const int QueuedDeliveries = 64;
+    public const int QueuedDeliveries = 256;
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
     public static PartitionedRateLimiter<HttpContext> Create() => PartitionedRateLimiter.CreateChained(PerAddress(), PerConnection());
