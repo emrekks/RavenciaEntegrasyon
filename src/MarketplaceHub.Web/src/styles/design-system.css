@@ -1596,6 +1596,8 @@
   .shipping-label-preview-wrap, .shipping-label-batch-preview { display: block; padding: 0; overflow: visible; background: transparent; }
   .shipping-label-print-surface { margin: 0; border: 0; box-shadow: none; page-break-after: always; }
   .shipping-label-print-surface:last-child { page-break-after: auto; }
+  /* The barcode bars are backgrounds: printed only when the browser is told to keep them (audit 2026-10-20 S2). */
+  .shipping-label-print-surface, .shipping-label-print-surface * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 @media (max-width: 480px) {

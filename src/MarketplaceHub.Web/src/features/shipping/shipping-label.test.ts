@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultShippingLabelSettings, normalizeShippingLabelSettings } from './shipping-label'
+import { addressBlockFields, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelPageCss } from './shipping-label'
 
 describe('shipping label settings', () => {
   it('preserves multiple barcode blocks with distinct ids', () => {
@@ -13,5 +13,18 @@ describe('shipping label settings', () => {
 
     expect(settings.layout.sticker.filter(block => block.kind === 'trackingBarcode')).toHaveLength(2)
     expect(settings.layout.sticker.map(block => block.id)).toEqual(['trackingBarcode', 'trackingBarcode-2'])
+  })
+})
+
+describe('shipping label address block', () => {
+  it('prints the recipient name before the address', () => {
+    expect(addressBlockFields(['address', 'customerName'])).toEqual(['customerName', 'address'])
+    expect(addressBlockFields([])).toEqual(['customerName', 'address'])
+    expect(addressBlockFields(['address'])).toEqual(['address'])
+  })
+
+  it('sizes the printed page to the sticker', () => {
+    expect(shippingLabelPageCss('sticker', { stickerWidthMm: 100, stickerHeightMm: 150 })).toContain('size: 100mm 150mm')
+    expect(shippingLabelPageCss('a4', { stickerWidthMm: 100, stickerHeightMm: 150 })).toContain('size: A4 portrait')
   })
 })
