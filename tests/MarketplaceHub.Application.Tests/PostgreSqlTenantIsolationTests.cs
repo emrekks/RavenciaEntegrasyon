@@ -3005,7 +3005,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             // stored status time, and the local step leaves a history row.
             var picked = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == package.Id);
             Assert.Equal(ShipmentPackageStatus.Processing, picked.Status);
-            Assert.Equal(package.StatusOccurredAt, picked.StatusOccurredAt);
+            // PostgreSQL keeps microseconds; the seeded value carries 100 ns ticks.
+            Assert.True((picked.StatusOccurredAt - package.StatusOccurredAt).Duration() < TimeSpan.FromMicroseconds(1), $"{picked.StatusOccurredAt:O} != {package.StatusOccurredAt:O}");
             Assert.True(await db.OrderStatusHistory.AnyAsync(x => x.TenantId == tenant.Id && x.PackageId == package.Id && x.CanonicalStatus == "PROCESSING"));
         }
         finally
@@ -4287,7 +4288,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     [PostgreSqlFact]
     public async Task HepsiburadaCancelledReturn_WithADecisionIsKeptAsCancelled()
     {
-        var tenant = NewTenant("hepsiburada-cancelled-with-history");
+        var tenant = NewTenant("hb-cancelled-with-history");
         var connection = NewQuestionConnection(tenant);
         connection.PlatformCode = "HEPSIBURADA";
         connection.ApiVersion = "V1.0";
@@ -4340,7 +4341,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     [PostgreSqlFact]
     public async Task HepsiburadaClaimSentForReview_IsFollowedUpAndItsDecisionSettled()
     {
-        var tenant = NewTenant("hepsiburada-preapproval-follow-up");
+        var tenant = NewTenant("hb-preapproval-follow-up");
         var connection = NewQuestionConnection(tenant);
         connection.PlatformCode = "HEPSIBURADA";
         connection.ApiVersion = "V1.0";
