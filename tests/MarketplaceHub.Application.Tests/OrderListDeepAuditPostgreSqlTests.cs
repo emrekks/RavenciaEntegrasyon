@@ -30,8 +30,8 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
                 Assert.True(page.TotalCount == count, $"{tab}: list {page.TotalCount}, counter {count}");
             }
             // The split order (one delivered, one new package) is one order, in Yeni and in Teslim Edildi.
-            Assert.Equal(5, summary.All);
-            Assert.Equal(2, summary.New);
+            Assert.Equal(6, summary.All);
+            Assert.Equal(3, summary.New);
             Assert.Equal(1, summary.Delivered);
             Assert.Equal(1, summary.ManualReview);
             Assert.Equal(1, summary.Undelivered);
@@ -45,8 +45,8 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
 
             // The counters follow the list's other filters too.
             var searched = await service.OrderSummaryAsync(tenantId, all with { Search = "ışık" }, CancellationToken.None);
-            Assert.Equal(1, searched.All);
-            Assert.Equal(1, searched.New);
+            Assert.Equal(2, searched.All);
+            Assert.Equal(2, searched.New);
         }
         finally
         {
@@ -63,10 +63,11 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             await using var db = fixture.CreateContext();
             var service = NewService(db);
 
-            foreach (var term in new[] { "ışık", "IŞIK", "Işık", "lamba", "ol-srch-a" })
+            // "IŞIK LAMBA" and "Işıklı Ayna" both hold "ışık", whatever the case or i letter typed.
+            foreach (var (term, expected) in new[] { ("ışık", 2), ("IŞIK", 2), ("Işık", 2), ("işik", 2), ("ışıklı", 1), ("IŞIKLI", 1), ("ayna", 1), ("lamba", 1), ("ol-srch-a", 1) })
             {
                 var page = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Search: term), CancellationToken.None);
-                Assert.True(page.TotalCount == 1, $"{term}: {page.TotalCount}");
+                Assert.True(page.TotalCount == expected, $"{term}: {page.TotalCount}");
             }
             var percent = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Search: "%"), CancellationToken.None);
             Assert.Equal(0, percent.TotalCount);
@@ -107,6 +108,8 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
                 db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = order.Id, ExternalPackageId = $"{code}-{id}", Status = status, RawStatus = raw, StatusOccurredAt = now.AddMinutes(-60 + at++), MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
         }
         AddOrder("a", "NEW", "IŞIK LAMBA", ("a", ShipmentPackageStatus.New, "Created"));
+        // A title in normal case: the database (en_US) lowers "I" to "i", never to "ı" (O3).
+        AddOrder("b", "NEW", "Işıklı Ayna", ("b", ShipmentPackageStatus.New, "Created"));
         // The newer delivered package is listed first by time; the live new one must still be shown.
         AddOrder("split", "NEW", "Kitap", ("split-new", ShipmentPackageStatus.New, "Created"), ("split-done", ShipmentPackageStatus.Delivered, "Delivered"), ("split-cancel", ShipmentPackageStatus.Cancelled, "Cancelled"));
         AddOrder("review", "MANUAL_REVIEW", "Kalem", ("review", ShipmentPackageStatus.ManualReview, "Weird"));

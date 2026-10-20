@@ -456,14 +456,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             // Nor against its e-mail fields: the list no longer shows the e-mail.
             var searchCustomer = SearchesCustomerSnapshot(search);
             var customerPattern = CustomerSnapshotSearchPattern(search);
-            // Case-insensitive, the Turkish way too: the term is also tried in its Turkish lower
-            // and upper forms (ILIKE folds only what the database locale knows).
-            var (asTyped, lower, upper) = SearchPatterns(search);
+            // Case-insensitive, the Turkish way too: the product title and the term are both folded
+            // (TurkishSearchText), so "ışık" finds "Işıklı" on the en_US database.
+            var (asTyped, folded) = SearchPatterns(search);
+            var titleMatches = db.OrderLines.Where(TurkishSearchText.FoldedILike<OrderLine>(line => line.TitleSnapshot, folded, LikeEscape));
             query = query.Where(x => EF.Functions.ILike(x.OrderNumber, asTyped, LikeEscape) || EF.Functions.ILike(x.ExternalOrderId, asTyped, LikeEscape)
                 || (searchCustomer && Regex.IsMatch(x.CustomerSnapshotJson, customerPattern, RegexOptions.IgnoreCase))
+                || titleMatches.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id)
                 || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
-                    && (EF.Functions.ILike(line.TitleSnapshot, asTyped, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, lower, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, upper, LikeEscape)
-                        || EF.Functions.ILike(line.Sku, asTyped, LikeEscape) || (line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)))));
+                    && (EF.Functions.ILike(line.Sku, asTyped, LikeEscape) || (line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)))));
         }
 
         var platforms = options.Platforms?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).Distinct().ToArray() ?? [];
@@ -1964,16 +1965,20 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             // The page's own search ignores case the Turkish way; this database pre-filter must
             // never be narrower than it.
-            var (asTyped, lower, upper) = SearchPatterns(search);
+            // The reason and the product title are folded the Turkish way on both sides (TurkishSearchText).
+            var (asTyped, folded) = SearchPatterns(search);
+            var reasonCodeMatches = db.ReturnClaims.Where(TurkishSearchText.FoldedILike<ReturnClaim>(claim => claim.ReasonCode, folded, LikeEscape));
+            var reasonTextMatches = db.ReturnClaims.Where(TurkishSearchText.FoldedILike<ReturnClaim>(claim => claim.ReasonText, folded, LikeEscape));
+            var titleMatches = db.OrderLines.Where(TurkishSearchText.FoldedILike<OrderLine>(line => line.TitleSnapshot, folded, LikeEscape));
             query = query.Where(claim => EF.Functions.ILike(claim.ExternalClaimId, asTyped, LikeEscape)
-                || (claim.ReasonCode != null && EF.Functions.ILike(claim.ReasonCode, asTyped, LikeEscape))
-                || (claim.ReasonText != null && (EF.Functions.ILike(claim.ReasonText, asTyped, LikeEscape) || EF.Functions.ILike(claim.ReasonText, lower, LikeEscape) || EF.Functions.ILike(claim.ReasonText, upper, LikeEscape)))
+                || reasonCodeMatches.Any(match => match.TenantId == claim.TenantId && match.Id == claim.Id)
+                || reasonTextMatches.Any(match => match.TenantId == claim.TenantId && match.Id == claim.Id)
                 || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
                     && (EF.Functions.ILike(order.OrderNumber, asTyped, LikeEscape) || (searchCustomer && Regex.IsMatch(order.CustomerSnapshotJson, customerPattern, RegexOptions.IgnoreCase))))
                 || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
-                    && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
-                        && ((line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)) || EF.Functions.ILike(line.Sku, asTyped, LikeEscape)
-                            || EF.Functions.ILike(line.TitleSnapshot, asTyped, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, lower, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, upper, LikeEscape)))));
+                    && (titleMatches.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId)
+                        || db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
+                            && ((line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)) || EF.Functions.ILike(line.Sku, asTyped, LikeEscape))))));
         }
 
         var customer = options.Customer?.Trim();
@@ -3121,12 +3126,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     private const string LikeEscape = "\\";
 
-    // "%term%" for ILIKE as typed, in Turkish lower case and in Turkish upper case, with the LIKE
-    // wildcards of the term escaped (a "%" in the term is a percent sign).
-    internal static (string AsTyped, string Lower, string Upper) SearchPatterns(string term)
+    // "%term%" for ILIKE as typed, and Turkish-folded (TurkishSearchText.Fold) for a column folded the
+    // same way (TurkishSearchText.FoldedILike), with the LIKE wildcards of the term escaped (a "%" in
+    // the term is a percent sign).
+    internal static (string AsTyped, string Folded) SearchPatterns(string term)
     {
         static string Pattern(string value) => "%" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%";
-        return (Pattern(term), Pattern(term.ToLower(TurkishCulture)), Pattern(term.ToUpper(TurkishCulture)));
+        return (Pattern(term), Pattern(TurkishSearchText.Fold(term)));
     }
 
     // A PostgreSQL (and .NET) regular expression that finds the term in a customer snapshot value

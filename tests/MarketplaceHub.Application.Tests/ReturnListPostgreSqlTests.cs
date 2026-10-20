@@ -119,6 +119,12 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Empty(byEmail.Items);
             var bySku = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Search: "RET-SKU-3"), false, CancellationToken.None);
             Assert.Equal([seed.TransitClaimId], bySku.Items.Select(x => x.Id));
+            // The reason is searched ignoring case the Turkish way, whatever the database locale (O3).
+            var byReason = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Search: "BEĞENMEDİM"), false, CancellationToken.None);
+            Assert.Equal([seed.TransitClaimId], byReason.Items.Select(x => x.Id));
+            var byReasonText = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Search: "KÜÇÜK"), false, CancellationToken.None);
+            Assert.All(byReasonText.Items, item => Assert.Equal(seed.SplitClaimId, item.Id));
+            Assert.Equal(2, byReasonText.TotalCount);
 
             var filtered = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Platforms: ["TRENDYOL"], Cargo: "Aras Kargo", ReasonKey: "SIZE"), false, CancellationToken.None);
             Assert.Equal(2, filtered.TotalCount);
