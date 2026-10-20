@@ -116,6 +116,21 @@ public sealed class MarketplaceQuestionAnswerReconciliationPolicyTests
     }
 
     [Fact]
+    public void A_not_delivered_answer_that_appears_on_the_marketplace_later_is_settled_and_no_longer_offered_for_resend()
+    {
+        var sent = CreatedAt;
+        var row = UncertainRow(sent);
+        MarketplaceQuestionService.ReconcileAnswerSubmission(row, Question("WAITING_FOR_ANSWER", []), sent.AddMinutes(21));
+        Assert.Equal("NOT_DELIVERED", row.AnswerSubmissionStatus);
+
+        MarketplaceQuestionService.ReconcileAnswerSubmission(row, Question("WAITING_FOR_ANSWER", [new("Merchant", "Merhaba", sent.AddMinutes(25))]), sent.AddMinutes(30));
+
+        Assert.Equal("SUBMITTED", row.AnswerSubmissionStatus);
+        Assert.Equal("ANSWER_SUBMITTED", row.Status);
+        Assert.Null(row.PendingAnswerText);
+    }
+
+    [Fact]
     public void An_answer_held_for_approval_shows_as_waiting_for_approval()
     {
         var row = UncertainRow(CreatedAt);

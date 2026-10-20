@@ -2321,6 +2321,38 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         Assert.Equal("Önceki cevap", view!.PendingAnswerText);
     }
 
+    // O18: an answer counted as not delivered that shows up on the marketplace later is settled, not sent again.
+    [PostgreSqlFact]
+    public async Task AnswerAsync_SettlesANotDeliveredAnswerThatTheMarketplaceShowsInsteadOfSendingItAgain()
+    {
+        var tenant = NewTenant("q-nd-late");
+        var connection = NewQuestionConnection(tenant);
+        var question = NewUncertainQuestion(tenant.Id, connection.Id, fixture.Now);
+        question.AnswerSubmissionKey = QuestionAnswerSubmission.Stamp(Guid.NewGuid().ToString("N"), fixture.Now.AddMinutes(-40));
+        question.AnswerSubmissionStatus = "NOT_DELIVERED";
+        question.Status = "WAITING_FOR_ANSWER";
+        var port = new FixedQuestionPort(NewRemoteQuestion("WAITING_FOR_ANSWER", [new("Merchant", "Önceki cevap", fixture.Now.AddMinutes(-30))], fixture.Now));
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.MarketplaceQuestions.Add(question);
+        await db.SaveChangesAsync();
+
+        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var result = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "Önceki cevap", Guid.NewGuid().ToString("N"), "question-answer-late", CancellationToken.None);
+
+        Assert.Equal("QUESTION_ANSWER_RECONCILED", result.Error?.Code);
+        Assert.Equal(0, port.AnswerCalls);
+        Assert.Equal("SUBMITTED", question.AnswerSubmissionStatus);
+        Assert.Null(question.PendingAnswerText);
+        // The panel no longer offers the draft for a resend.
+        var view = await service.GetAsync(tenant.Id, question.Id, CancellationToken.None);
+        Assert.Null(view!.PendingAnswerText);
+        Assert.Equal("SUBMITTED", view.AnswerSubmissionStatus);
+    }
+
     [PostgreSqlFact]
     public async Task InvoiceReconciliation_RunsBesideAnOrderJobWithoutVersionWritesAndSkipsOnlyThePartialOrder()
     {
