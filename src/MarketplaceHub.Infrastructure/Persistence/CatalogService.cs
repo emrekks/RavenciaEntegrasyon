@@ -1209,16 +1209,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
-    private async Task MarkMarketplaceLinksDirtyAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
-    {
-        var links = await db.MarketplaceProductLinks.Where(x => x.TenantId == tenantId && x.ProductId == productId).ToListAsync(cancellationToken);
-        foreach (var link in links)
-        {
-            link.SyncStatus = "LOCAL_CHANGES_PENDING";
-            link.DirtyFieldsJson = "[\"product\"]";
-            link.Version++;
-        }
-    }
+    private Task MarkMarketplaceLinksDirtyAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken) =>
+        CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, [productId], CatalogLocalEdits.ProductField, cancellationToken);
 
     public async Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {

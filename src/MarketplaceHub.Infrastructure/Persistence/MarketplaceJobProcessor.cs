@@ -6476,6 +6476,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (product is null || !string.Equals(product.Title, ProductTitle(snapshot.Title, snapshot.ExternalProductId), StringComparison.Ordinal) || !string.Equals(product.Description, snapshot.Description ?? "", StringComparison.Ordinal)) return false;
         var variantCount = await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
         if (variantCount < snapshot.Variants.Count) return false;
+        // A gallery the user manages is not compared with the remote one; the import leaves it as it is.
+        if (await MediaIsUserManagedAsync(tenantId, productId, null, cancellationToken)) return true;
 
         var expectedUrls = CatalogImageIdentity.DistinctUrls(snapshot.ImageUrls);
         var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
@@ -7159,8 +7161,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
     }
 
+    // K3: media the user manages is never replaced by an import: a custom gallery order (ORDERED_* roles),
+    // an uploaded file in the scope, or a media edit recorded on a marketplace link of the product.
+    private async Task<bool> MediaIsUserManagedAsync(Guid tenantId, Guid productId, Guid? variantId, CancellationToken cancellationToken)
+    {
+        if (await db.ProductMedia.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), cancellationToken)) return true;
+        if (await (from media in db.ProductMedia.AsNoTracking()
+                   join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                   where media.TenantId == tenantId && media.ProductId == productId && media.VariantId == variantId && media.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA"
+                   select media.Id).AnyAsync(cancellationToken)) return true;
+        var dirtyFields = db.MarketplaceProductLinks.Local.Where(x => x.TenantId == tenantId && x.ProductId == productId).Select(x => x.DirtyFieldsJson).ToList();
+        dirtyFields.AddRange(await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.DirtyFieldsJson != null).Select(x => x.DirtyFieldsJson).ToListAsync(cancellationToken));
+        return dirtyFields.Any(json => CatalogLocalEdits.HasDirtyField(json, CatalogLocalEdits.MediaField));
+    }
+
     private async Task UpsertCatalogMedia(Guid tenantId, Product product, Guid? variantId, IReadOnlyList<string> sourceUrls, string altText, CancellationToken cancellationToken)
     {
+        if (db.Entry(product).State != EntityState.Added && await MediaIsUserManagedAsync(tenantId, product.Id, variantId, cancellationToken)) return;
         var urls = CatalogImageIdentity.DistinctUrls(sourceUrls);
         var existing = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variantId).ToListAsync(cancellationToken);
         var existingAssetIds = existing.Select(x => x.FileAssetId).Distinct().ToArray();

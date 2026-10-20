@@ -305,16 +305,33 @@ public static class CatalogEndpoints
         await using var input = file.OpenReadStream(); await using var buffer = new MemoryStream(); await input.CopyToAsync(buffer, http.RequestAborted); var bytes = buffer.ToArray();
         var validMagic = file.ContentType == "image/jpeg" ? bytes.Length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff : bytes.Length >= 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
         if (!validMagic) return Problem(http, new("VALIDATION_FAILED", "Dosya imzası MIME türüyle eşleşmiyor.", 422));
-        var hash = Convert.ToHexString(SHA256.HashData(bytes)); var asset = await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Classification == "PRODUCT_MEDIA" && x.Sha256 == hash && x.ArchivedAt == null, http.RequestAborted);
-        if (asset is null) { buffer.Position = 0; var id = Guid.CreateVersion7(); var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{(file.ContentType == "image/jpeg" ? ".jpg" : ".png")}", file.ContentType, buffer, MaxUploadBytes, http.RequestAborted); asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = file.ContentType, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() }; db.FileAssets.Add(asset); }
         var sortOrder = 0;
         if (form.ContainsKey("sortOrder") && (!int.TryParse(form["sortOrder"], out sortOrder) || sortOrder is < 0 or > 999))
             return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+        var asset = await FindUploadedAssetAsync(db, tenant.TenantId, hash, http.RequestAborted);
+        if (asset is null)
+        {
+            buffer.Position = 0; var id = Guid.CreateVersion7(); var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{(file.ContentType == "image/jpeg" ? ".jpg" : ".png")}", file.ContentType, buffer, MaxUploadBytes, http.RequestAborted);
+            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = file.ContentType, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+            db.FileAssets.Add(asset);
+            try { await db.SaveChangesAsync(http.RequestAborted); }
+            catch (DbUpdateException)
+            {
+                // K11: a parallel upload of the same image may have stored it first; reuse that asset. This
+                // only triggers once a unique index on active PRODUCT_MEDIA hashes exists (it needs a migration
+                // that first merges the duplicates already stored). The file written here stays unreferenced.
+                db.ChangeTracker.Clear();
+                asset = await FindUploadedAssetAsync(db, tenant.TenantId, hash, http.RequestAborted);
+                if (asset is null) throw;
+            }
+        }
         var isCustomProductGallery = variantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
         var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(form["mediaRole"].ToString());
         var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.SortOrder == sortOrder, http.RequestAborted);
         if (media is null) { media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(), Status = "ACTIVE" }; db.ProductMedia.Add(media); }
         else { media.FileAssetId = asset.Id; media.MediaRole = mediaRole; media.AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(); media.Status = "ACTIVE"; }
+        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [productId], timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Created($"/api/v1/products/{productId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, media.MediaRole, media.SortOrder, media.AltText, media.Status });
     }
@@ -465,8 +482,7 @@ public static class CatalogEndpoints
             desiredMedia.Add(media);
         }
         foreach (var media in availableMedia) media.Status = "ARCHIVED";
-        product.UpdatedAt = now;
-        product.Version++;
+        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [product], now, http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);
         return Results.Ok(new { productId = product.Id, variantId = command.VariantId, mediaCount = desiredMedia.Count });
@@ -636,7 +652,7 @@ public static class CatalogEndpoints
             .Where(product => product.TenantId == tenant.TenantId && changedProductIds.Contains(product.Id))
             .ToListAsync(http.RequestAborted);
         var now = timeProvider.GetUtcNow();
-        foreach (var product in siblingProducts) { product.UpdatedAt = now; product.Version++; }
+        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, siblingProducts, now, http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);
         return Results.Ok(new { changedProductCount = changedProductIds.Count, changedGalleryCount = changedScopes.Length });
@@ -744,11 +760,7 @@ public static class CatalogEndpoints
         }
         var changedProductIds = changedScopes.Select(scope => scope.ProductId).Distinct().ToHashSet();
         var now = timeProvider.GetUtcNow();
-        foreach (var product in siblingProducts.Where(product => changedProductIds.Contains(product.Id)))
-        {
-            product.UpdatedAt = now;
-            product.Version++;
-        }
+        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, siblingProducts.Where(product => changedProductIds.Contains(product.Id)).ToList(), now, http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);
         return Results.Ok(new { changedProductCount = changedProductIds.Count, changedGalleryCount = changedScopes.Count });
@@ -782,24 +794,29 @@ public static class CatalogEndpoints
             asset.ArchivedAt = null;
         }
 
+        // K27: a product gallery the user has ordered keeps its ORDERED_* roles for URL images too, the same
+        // rule the upload path applies.
+        var isCustomProductGallery = command.VariantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
+        var mediaRole = isCustomProductGallery ? command.SortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(command.MediaRole);
         var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == command.VariantId && x.SortOrder == command.SortOrder, http.RequestAborted);
         if (media is null)
         {
-            media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = MediaRole(command.MediaRole), SortOrder = command.SortOrder, AltText = SafeAltText(command.AltText), Status = "ACTIVE" };
+            media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = command.SortOrder, AltText = SafeAltText(command.AltText), Status = "ACTIVE" };
             db.ProductMedia.Add(media);
         }
         else
         {
             media.FileAssetId = asset.Id;
-            media.MediaRole = MediaRole(command.MediaRole);
+            media.MediaRole = mediaRole;
             media.AltText = SafeAltText(command.AltText);
             media.Status = "ACTIVE";
         }
+        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [command.ProductId], timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Created($"/api/v1/products/{command.ProductId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, url, media.MediaRole, media.SortOrder, media.AltText, media.Status });
     }
 
-    private static async Task<IResult> ClearProductVariantMediaAsync(Guid productId, Guid variantId, HttpContext http, AppDbContext db)
+    private static async Task<IResult> ClearProductVariantMediaAsync(Guid productId, Guid variantId, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
@@ -811,11 +828,12 @@ public static class CatalogEndpoints
             .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.Status == "ACTIVE")
             .ToListAsync(http.RequestAborted);
         foreach (var item in media) item.Status = "ARCHIVED";
+        if (media.Count > 0) await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [productId], timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.NoContent();
     }
 
-    private static async Task<IResult> ClearProductMediaAsync(Guid productId, HttpContext http, AppDbContext db)
+    private static async Task<IResult> ClearProductMediaAsync(Guid productId, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
@@ -826,6 +844,7 @@ public static class CatalogEndpoints
             .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE")
             .ToListAsync(http.RequestAborted);
         foreach (var item in media) item.Status = "ARCHIVED";
+        if (media.Count > 0) await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [productId], timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.NoContent();
     }
@@ -844,8 +863,7 @@ public static class CatalogEndpoints
         if (products.Count != productIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görselin kaynak ürünü bulunamadı.", 404));
 
         foreach (var item in media) item.Status = "ARCHIVED";
-        var now = timeProvider.GetUtcNow();
-        foreach (var product in products) { product.UpdatedAt = now; product.Version++; }
+        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, products, timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Ok(new { deletedCount = media.Count });
     }
@@ -916,18 +934,20 @@ public static class CatalogEndpoints
         var affectedProducts = await db.Products
             .Where(item => item.TenantId == tenant.TenantId && affectedProductIds.Contains(item.Id))
             .ToListAsync(http.RequestAborted);
-        var now = timeProvider.GetUtcNow();
-        foreach (var affectedProduct in affectedProducts)
-        {
-            affectedProduct.UpdatedAt = now;
-            affectedProduct.Version++;
-        }
+        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, affectedProducts, timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);
         var version = affectedProducts.SingleOrDefault(item => item.Id == product.Id)?.Version ?? product.Version;
         http.Response.Headers.ETag = $"\"v{version}\"";
         return Results.Ok(new { deletedCount = media.Count, version, productVersions = affectedProducts.ToDictionary(item => item.Id.ToString("D"), item => item.Version) });
     }
+
+    // Oldest active upload with this content; FirstOrDefault because the same hash may be stored more than once
+    // (parallel uploads, no unique index yet), which made SingleOrDefault throw (K11).
+    private static Task<FileAsset?> FindUploadedAssetAsync(AppDbContext db, Guid tenantId, string hash, CancellationToken cancellationToken) =>
+        db.FileAssets.Where(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA" && x.Sha256 == hash && x.ArchivedAt == null)
+            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
     private static bool IsPublicAddress(IPAddress address) => PublicNetwork.IsPublic(address);
 
