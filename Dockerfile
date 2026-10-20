@@ -37,7 +37,9 @@ COPY --from=build --chown=${APP_UID}:${APP_UID} /out/worker ./worker
 # Keep the shared marketplace persistence settings at that common root.
 COPY --from=build --chown=${APP_UID}:${APP_UID} /out/api/appsettings*.json ./
 USER ${APP_UID}
-ENV ASPNETCORE_URLS=http://+:8080 DOTNET_EnableDiagnostics=0
+# Debugger and profiler attach stay disabled; the diagnostics IPC socket stays on so
+# `dotnet-counters`/`dotnet-trace` can read the MarketplaceHub meters (docs/CI-CD-DEPLOY.md).
+ENV ASPNETCORE_URLS=http://+:8080 DOTNET_EnableDiagnostics_Debugger=0 DOTNET_EnableDiagnostics_Profiler=0
 EXPOSE 8080
 ENTRYPOINT ["dotnet"]
 CMD ["api/MarketplaceHub.Api.dll"]
