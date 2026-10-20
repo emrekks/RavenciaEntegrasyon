@@ -30,7 +30,7 @@ public static class DependencyInjection
         var filesRoot = configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "private-files");
         var keysRoot = configuration["DataProtection:KeysRoot"] ?? Path.Combine(AppContext.BaseDirectory, "dp-keys");
 
-        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connection));
+        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connection, npgsql => npgsql.CommandTimeout(120)));
         services.AddMemoryCache(options => options.SizeLimit = 10_000);
         services.AddIdentityCore<ApplicationUser>(options =>
         {
