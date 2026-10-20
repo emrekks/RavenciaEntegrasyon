@@ -61,6 +61,10 @@ function aggregateOrderStatus(statuses: string[]) {
   if (operational.length) return operational.sort((left, right) => (orderStatusRank[right] ?? 110) - (orderStatusRank[left] ?? 110))[0]
   return values.includes('RETURNED') ? 'RETURNED' : 'CANCELLED'
 }
+// A spreadsheet reads a cell starting with = + - @ (or a tab / carriage return) as a formula: such text gets a leading apostrophe.
+function csvSafeText(text: string) {
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
+}
 async function loadOrderPage(filters: OrderFilters, limit: number, after: string | null, page = 1): Promise<Page<Order>> {
   const params = new URLSearchParams({ limit: String(limit) })
   orderFilterParams(filters, true).forEach((value, key) => params.set(key, value))
@@ -837,7 +841,8 @@ export function OrdersPage() {
     setExporting(true)
     try {
     const exportItems = hasLocalFilters ? items : (await loadAllOrderPages(orderQueryFilters)).items
-    const escapeCsv = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
+    // A text cell that a spreadsheet would read as a formula starts with an apostrophe (audit 2026-10-20 S19).
+    const escapeCsv = (value: unknown) => `"${csvSafeText(String(value ?? '')).replaceAll('"', '""')}"`
     const rows = [
       ['Sipariş No', 'Platform', 'Müşteri', 'Sipariş Tarihi', 'Durum', 'Fatura Durumu', 'Kargo', 'Ürünler', 'Toplam Tutar', 'Para Birimi'],
       ...exportItems.filter(item => filters.label === 'ALL' || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item))).map(item => [
@@ -845,11 +850,11 @@ export function OrdersPage() {
         item.platformDisplayName || item.platformCode,
         item.customerName,
         formatDateTime(item.orderedAt),
-        item.derivedStatus,
-        item.invoiceStatus,
-        item.packages?.[0]?.cargoProviderName ?? item.cargoProviderName ?? '',
+        titleTr(statusLabel(item.derivedStatus)),
+        item.invoiceStatus ? titleTr(statusLabel(item.invoiceStatus)) : '',
+        cargoLabel(orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName),
         (item.lines ?? []).map(line => `${line.title} x${productLineQuantity(line)}`).join(' | '),
-        item.grossAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        item.netAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         item.currency
       ])
     ]
@@ -948,7 +953,7 @@ export function OrdersPage() {
   const invoiceRegionOptions = [{ value: 'ALL', label: 'Tüm Bölgeler' }, { value: 'TR', label: 'Türkiye' }, { value: 'MICRO_EXPORT', label: 'Mikro İhracat' }]
   const labelOptions = [{ value: 'ALL', label: 'Tüm Etiketler' }, { value: 'PRINTED', label: 'Etiketi Yazdırılanlar' }, { value: 'NOT_PRINTED', label: 'Etiketi Yazdırılmayanlar' }]
   const statusOptions = orderStatusTabs.map(([value, label]) => ({ value, label: value === 'ALL' ? 'Tüm Siparişler' : label }))
-  const sortOptions: Array<[OrderFilters['sort'], string]> = [['DATE_DESC', 'En Yeni Siparişler'], ['DATE_ASC', 'En Eski Siparişler'], ['DUE_DESC', 'Teslim Tarihi Yaklaşanlar'], ['DUE_ASC', 'Teslim Tarihi Uzak Olanlar'], ['SHIP_DESC', 'Son Kargoya Verilenler'], ['SHIP_ASC', 'İlk Kargoya Verilenler']]
+  const sortOptions: Array<[OrderFilters['sort'], string]> = [['DATE_DESC', 'En Yeni Siparişler'], ['DATE_ASC', 'En Eski Siparişler'], ['DUE_ASC', 'Kargo Termini Yaklaşanlar'], ['DUE_DESC', 'Kargo Termini Uzak Olanlar'], ['SHIP_DESC', 'Son Kargoya Verilenler'], ['SHIP_ASC', 'İlk Kargoya Verilenler']]
   const platformTriggerLabel = selectedPlatforms.length === 0 || selectedPlatforms.includes(RETURN_NO_PLATFORM) ? 'Tüm Platformlar' : selectedPlatforms.length === 1 ? platformOptions.find(option => option.value === selectedPlatforms[0])?.label ?? selectedPlatforms[0] : `${selectedPlatforms.length} Platform Seçili`
   const sheetField = (label: string, current: string, options: Array<{ value: string; label: string }>, pick: (value: string) => void) => <div className="rr-fld rr-sheet-only"><small>{label}</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle}><span>{options.find(option => option.value === current)?.label ?? options[0]?.label}</span><RrIcon name="chev" /></button>}>{close => <ReturnColumnPop label={label} options={options} value={current} onPick={value => { pick(value); close() }} />}</RrAnchor></div>
   const invoicePop = (close: () => void) => { const group = (label: string, options: Array<{ value: string; label: string }>, current: string, key: 'invoice' | 'invoiceType' | 'invoiceRegion') => <><div className="rr-ph">{label}</div>{options.map((option, index) => { const on = current !== 'ALL' ? option.value === current : index === 0; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => { applyFilterValue(key, option.value); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span></button> })}</>; const any = filterForm.invoice !== 'ALL' || filterForm.invoiceType !== 'ALL' || filterForm.invoiceRegion !== 'ALL'; return <div className="rr-pop" role="dialog" style={{ minWidth: 260 }}>{group('Fatura Durumu', invoiceOptions, filterForm.invoice, 'invoice')}<div className="rr-sep" />{group('Fatura Türü', invoiceTypeOptions, filterForm.invoiceType, 'invoiceType')}<div className="rr-sep" />{group('Fatura Bölgesi', invoiceRegionOptions, filterForm.invoiceRegion, 'invoiceRegion')}{any && <div className="rr-foot"><span /><button type="button" className="rr-btn rr-quiet" style={{ height: 28 }} onClick={() => { clearInvoiceFilters(); close() }}>Filtreleri Temizle</button></div>}</div> }
