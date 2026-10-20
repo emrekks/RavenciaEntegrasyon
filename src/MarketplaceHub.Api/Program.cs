@@ -75,15 +75,14 @@ builder.Services.AddHttpClient(PublicNetwork.ClientName, client =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, _) => new ValueTask(ApiProblems.WriteAsync(context.HttpContext, "RATE_LIMITED", "Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.", StatusCodes.Status429TooManyRequests));
     options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    // Marketplaces deliver from a few shared addresses, so the limit is per connection rather than per
-    // IP; a campaign burst must not be answered with 429 (Hepsiburada blacklists a slow or failing feed).
-    options.AddPolicy("webhook", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.GetRouteValue("connectionPublicId")?.ToString() ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 1200, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // Webhook deliveries: per sending address, then per connection (see WebhookRateLimits).
+    options.GlobalLimiter = WebhookRateLimits.Create();
 });
+builder.Services.AddScoped<IWebhookRouteGate, WebhookRouteGate>();
 
 var app = builder.Build();
 var isAdministrativeCommand = args.Any(argument => argument is "migrate" or "bootstrap" or "healthcheck");

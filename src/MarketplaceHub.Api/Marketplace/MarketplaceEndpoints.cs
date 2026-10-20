@@ -146,8 +146,8 @@ public static class MarketplaceEndpoints
         api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret), Results.Ok) : MissingContext(http)).WithServerBudget();
         api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http)).WithServerBudget();
         // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
-        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireRateLimiting("webhook");
-        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}/{**eventPath}", ["POST", "PUT"], ReceiveWebhookEvent).DisableAntiforgery().RequireRateLimiting("webhook");
+        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery();
+        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}/{**eventPath}", ["POST", "PUT"], ReceiveWebhookEvent).DisableAntiforgery();
         return endpoints;
     }
 
@@ -328,15 +328,18 @@ public static class MarketplaceEndpoints
         });
     }
 
-    internal static Task<IResult> ReceiveWebhookEvent(Guid connectionPublicId, string routeToken, string? eventPath, HttpContext http, IMarketplaceWebhookService service) =>
-        ReceiveWebhookCore(connectionPublicId, routeToken, http, service, eventPath);
+    internal static Task<IResult> ReceiveWebhookEvent(Guid connectionPublicId, string routeToken, string? eventPath, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate) =>
+        ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, eventPath);
 
-    internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service) =>
-        await ReceiveWebhookCore(connectionPublicId, routeToken, http, service, null);
+    internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate) =>
+        await ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, null);
 
-    private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, string? eventPath)
+    private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, string? eventPath)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        // The address is checked before anything is read: an unknown connection costs no body buffering.
+        if (!await gate.IsKnownAsync(connectionPublicId, http.RequestAborted))
+            return Problem(http, new("WEBHOOK_ROUTE_NOT_FOUND", "Webhook route bulunamadı.", 404));
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = WebhookBodyReader.MaximumBytes;
         var bodyRead = await WebhookBodyReader.ReadAsync(http.Request.Body, http.Request.ContentLength, http.RequestAborted);

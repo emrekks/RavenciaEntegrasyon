@@ -15,7 +15,7 @@ public sealed class MarketplaceWebhookEndpointTests
         var service = new RecordingWebhookService();
         var context = NewContext(Array.Empty<byte>(), MarketplaceHub.Api.Marketplace.WebhookBodyReader.MaximumBytes + 1L);
 
-        var result = await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", context, service);
+        var result = await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", context, service, KnownGate);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status413RequestEntityTooLarge, context.Response.StatusCode);
@@ -32,7 +32,7 @@ public sealed class MarketplaceWebhookEndpointTests
         context.Request.Headers["x-trendyol-signature"] = "signature";
         context.Request.Headers["x-request-id"] = "request-1";
 
-        var result = await MarketplaceEndpoints.ReceiveWebhook(connectionId, "route-token", context, service);
+        var result = await MarketplaceEndpoints.ReceiveWebhook(connectionId, "route-token", context, service, KnownGate);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
@@ -54,7 +54,7 @@ public sealed class MarketplaceWebhookEndpointTests
         context.Request.Method = "PUT";
         context.Request.Headers[WebhookEventPath.Header] = "forged";
 
-        var result = await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", "/LineItems/B17553DE/Cancel/", context, service);
+        var result = await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", "/LineItems/B17553DE/Cancel/", context, service, KnownGate);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
@@ -63,8 +63,70 @@ public sealed class MarketplaceWebhookEndpointTests
         var plain = new RecordingWebhookService();
         var plainContext = NewContext(body, body.Length);
         plainContext.Request.Headers[WebhookEventPath.Header] = "forged";
-        await (await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", plainContext, plain)).ExecuteAsync(plainContext);
+        await (await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", plainContext, plain, KnownGate)).ExecuteAsync(plainContext);
         Assert.False(plain.Headers.ContainsKey(WebhookEventPath.Header));
+    }
+
+    [Fact]
+    public async Task ReceiveWebhook_ForAnUnknownConnection_Answers404WithoutReadingTheBody()
+    {
+        var service = new RecordingWebhookService();
+        var context = NewContext([], 10 * 1024 * 1024);
+        context.Request.Body = new UnreadableStream();
+
+        var result = await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", context, service, new Gate(false));
+        await result.ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        Assert.False(service.Called);
+    }
+
+    [Fact]
+    public void WebhookLimits_ChainAPerAddressLimitWithThePerConnectionOne()
+    {
+        using var limiter = WebhookRateLimits.Create();
+        // Random connection ids from one address: the per-connection limit alone never applied.
+        for (var index = 0; index < WebhookRateLimits.PerAddressPerMinute; index++)
+            Assert.True(limiter.AttemptAcquire(Hook(Guid.NewGuid(), "203.0.113.7")).IsAcquired);
+
+        Assert.False(limiter.AttemptAcquire(Hook(Guid.NewGuid(), "203.0.113.7")).IsAcquired);
+        Assert.True(limiter.AttemptAcquire(Hook(Guid.NewGuid(), "203.0.113.8")).IsAcquired);
+        Assert.True(limiter.AttemptAcquire(Plain("/api/v1/orders", "203.0.113.7")).IsAcquired);
+    }
+
+    [Fact]
+    public void WebhookLimits_KeepThePerConnectionLimitAcrossAddresses()
+    {
+        using var limiter = WebhookRateLimits.Create();
+        var connection = Guid.NewGuid();
+        for (var index = 0; index < WebhookRateLimits.PerConnectionPerMinute; index++)
+            Assert.True(limiter.AttemptAcquire(Hook(connection, $"198.51.100.{index % 200}")).IsAcquired);
+
+        Assert.False(limiter.AttemptAcquire(Hook(connection, "198.51.100.250")).IsAcquired);
+    }
+
+    private static readonly IWebhookRouteGate KnownGate = new Gate(true);
+
+    private static DefaultHttpContext Hook(Guid connection, string address) => Plain($"/api/v1/hooks/{connection:D}/token", address);
+
+    private static DefaultHttpContext Plain(string path, string address)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = path;
+        context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(address);
+        return context;
+    }
+
+    private sealed class Gate(bool known) : IWebhookRouteGate
+    {
+        public ValueTask<bool> IsKnownAsync(Guid connectionPublicId, CancellationToken cancellationToken) => ValueTask.FromResult(known);
+    }
+
+    private sealed class UnreadableStream : MemoryStream
+    {
+        public override int Read(byte[] buffer, int offset, int count) => throw new InvalidOperationException("The body must not be read.");
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => throw new InvalidOperationException("The body must not be read.");
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => throw new InvalidOperationException("The body must not be read.");
     }
 
     private static DefaultHttpContext NewContext(byte[] body, long? contentLength)
