@@ -1071,10 +1071,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 var variant = existingVariants.Single(x => x.Id == update.Id);
                 var dataChanged = VariantDataChanged(variant, update, storedVariantAttributes.Where(x => x.VariantId == variant.Id));
                 if (dataChanged) changedVariantIds.Add(variant.Id);
+                // D2: a stored key in a legacy form ("ABC_01", "KıRMıZı") that still names the same code is
+                // rewritten to the shared key on every save, so exact-key lookups (order lines, imports) find
+                // it. This is safe under the unique (tenant, key) indexes: the shared keys of every family row
+                // were checked above to be distinct inside the family and absent outside it. Assigning an
+                // unchanged value does not mark the row modified, and a key rewrite is not a data change.
+                if (CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku);
+                if (variant.BarcodeNormalized is not null && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode);
                 if (!dataChanged && variant.SortOrder == Math.Max(0, update.SortOrder)) continue;
-                // A stored key in the legacy form that still names the same code is kept until the data
-                // recompute, so an unchanged code never collides with itself under the unique index.
-                variant.Sku = update.Sku.Trim(); if (!CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); if (!CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
+                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }

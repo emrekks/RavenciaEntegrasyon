@@ -8857,23 +8857,33 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
     {
-        var skuKeys = remoteLines.Select(line => VariantLookupKey(line.Sku, false)).Where(key => key is not null).Select(key => key![2..]).Distinct(StringComparer.Ordinal).ToArray();
-        var barcodeKeys = remoteLines.Select(line => VariantLookupKey(line.Barcode, true)).Where(key => key is not null).Select(key => key![2..]).Distinct(StringComparer.Ordinal).ToArray();
+        // Stored keys may still be in a legacy form ("ABC_01" instead of "ABC-01") until the variant is saved
+        // again, so query every stored form like the other catalog lookups (K1). The result is keyed by the
+        // shared key (Key is idempotent over the legacy forms), and a row already stored under the shared key
+        // wins over a legacy row of the same code.
+        var skuKeys = remoteLines.SelectMany(line => CatalogLookupKeys(line.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
+        var barcodeKeys = remoteLines.SelectMany(line => CatalogLookupKeys(line.Barcode, 160)).Distinct(StringComparer.Ordinal).ToArray();
         if (skuKeys.Length == 0 && barcodeKeys.Length == 0) return new Dictionary<string, Guid>(StringComparer.Ordinal);
         var rows = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && (skuKeys.Contains(x.SkuNormalized) || barcodeKeys.Contains(x.BarcodeNormalized)))
             .OrderBy(x => x.Id)
             .ToListAsync(cancellationToken);
         var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        foreach (var row in rows)
+        foreach (var row in rows.OrderBy(x => IsSharedCatalogKey(x.SkuNormalized) ? 0 : 1).ThenBy(x => x.Id))
         {
             var skuKey = VariantLookupKey(row.SkuNormalized, false);
-            var barcodeKey = VariantLookupKey(row.BarcodeNormalized, true);
             if (skuKey is not null) result.TryAdd(skuKey, row.Id);
+        }
+        foreach (var row in rows.OrderBy(x => IsSharedCatalogKey(x.BarcodeNormalized) ? 0 : 1).ThenBy(x => x.Id))
+        {
+            var barcodeKey = VariantLookupKey(row.BarcodeNormalized, true);
             if (barcodeKey is not null) result.TryAdd(barcodeKey, row.Id);
         }
         return result;
     }
+
+    private static bool IsSharedCatalogKey(string? stored) =>
+        !string.IsNullOrEmpty(stored) && string.Equals(stored, NormalizeCatalogKey(stored, 160), StringComparison.Ordinal);
 
     private static string? VariantLookupKey(string? value, bool barcode)
     {
