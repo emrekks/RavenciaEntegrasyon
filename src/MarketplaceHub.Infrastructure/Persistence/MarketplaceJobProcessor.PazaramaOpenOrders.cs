@@ -21,6 +21,9 @@ public sealed partial class MarketplaceJobProcessor
             .ToListAsync(cancellationToken);
         if (PazaramaOpenOrderPolicy.StartDay(openOrderedAt, batchSize, now) is not { } startDay) return false;
 
+        // A window that still has pages after the page cap is not dropped silently: it is reported, so the
+        // missing open orders (read again only by their own per-order checks) do not go unnoticed.
+        var truncatedWindows = new List<DateTime>();
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
             string? page = null;
@@ -38,7 +41,15 @@ public sealed partial class MarketplaceJobProcessor
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
                 page = result.Value.HasMore ? result.Value.NextCursor : null;
             } while (page is not null && ++pages < PazaramaOpenOrderPolicy.MaxPagesPerWindow && !cancellationToken.IsCancellationRequested);
+            if (page is not null && !cancellationToken.IsCancellationRequested) truncatedWindows.Add(windowStart);
         }
+        var truncatedKey = $"pazarama-open-orders-truncated:{connectionId}";
+        if (truncatedWindows.Count > 0)
+            await RecordIssue(tenantId, truncatedKey, "PAZARAMA_OPEN_ORDER_WINDOW_TRUNCATED",
+                $"Pazarama açık sipariş taramasında {string.Join(", ", truncatedWindows.Select(day => day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))} tarihli pencere {PazaramaOpenOrderPolicy.MaxPagesPerWindow} sayfa sınırında kesildi; kalan siparişlerin durumu bu turda güncellenmedi.", cancellationToken);
+        else
+            await ResolveIssue(tenantId, truncatedKey, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
 
         // Open orders older than the windows are still read one by one.
         var floor = now.AddMonths(-PazaramaOrderHistoryPolicy.InitialLookbackMonths);
