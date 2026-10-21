@@ -8,12 +8,12 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // SearchAktifPasif=0) and names the total in RowCount; it has no modification filter, so a scan walks every page.
 // A single product is found by its barcode (SearchBarkod). The page cursor is "{page}:{firstBarcode}": the first
 // barcode of page zero guards against a server that ignores SearchPage and keeps answering the first page.
-// Product create, update and archive come with phase 7 and stay closed until then (no external write).
+// Product send (create or update, single-variant products) is in PttAvmProductWrites.cs; the other write calls stay closed.
 public sealed partial class PttAvmHttpClient : IProductPort
 {
     // An answer that never runs dry still ends: PTT AVM's documented page cap.
     internal const int MaxProductPages = 1000;
-    private const string ProductWritesLater = "PTT AVM ürün açma ve güncelleme sonraki entegrasyon aşamasında açılacak; şu an PTT AVM'ye ürün yazılmıyor.";
+    private const string ProductWritesLater = "PTT AVM ürün güncellemesi ürün gönderimiyle (yeniden yayınla) yapılır; bu işlem PTT AVM için ayrıca desteklenmiyor.";
 
     public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
@@ -80,13 +80,6 @@ public sealed partial class PttAvmHttpClient : IProductPort
         new("ShopId", StoreId(storeId) ?? "0"), new("SearchKategoriId", "0"), new("SearchAltKategoriId", "0"), new("SearchUrunAdi", ""), new("SearchBarkod", barcode ?? ""),
         new("SearchAktifPasif", "0"), new("SearchMevcut", "0"), new("SearchTedarikciKategoriId", "0"), new("SearchYeniKategoriId", ""), new("SearchPage", page.ToString(CultureInfo.InvariantCulture))
     ];
-
-    // Publication status serves the product write flows (approval, archive), which open with phase 7.
-    public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemotePublicationStatus>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));
-
-    public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemoteOperationRef>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));
 
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         Task.FromResult(NotSupported<RemoteOperationRef>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));

@@ -195,6 +195,14 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
 - **6. aşama (fatura linki, yazma kapısı arkasında):** `SaveInvoince`, belgeye bağlı PDF linkiyle sipariş numarasını ve canlı satırların
   `LineItemId` listesini alır. Belgedeki çelişkili cevap (`Success=false` + "işlem gerçekleştirilmiştir") belirsiz sayılır, sipariş okunarak
   doğrulanır. Geri okuma: canlı satırların hepsinde `IsInvoice=true`. Bağlantıda fatura oluşturma kapalı başlar.
+- **7. aşama (ürün gönderimi, yazma kapısı arkasında):** `UpdateProductsV3` barkoda göre ürünü açar veya günceller. Sonuç
+  `GetProductsTrackingResult` ile, yayın durumu `StokKontrolListesi` + `SearchBarkod` ile okunur (aktif → LIVE, pasif → bekliyor).
+  Varyantsız gönderim PTT AVM'deki varyantları sildiği için yalnız **tek varyantlı** ürün gönderilir. Bu da iki koşula bağlıdır:
+  1. Panel bağı: ürünün bu bağlantıdaki bütün bağları gönderilen barkod olmalıdır.
+  2. PTT AVM okuması: gönderimden hemen önce barkod okunur; PTT AVM o barkodu varyantlı bir ürün altında göstermemelidir.
+
+  Kategori yaprak olmalıdır; marka ve özellik eşlemesi istenmez. Varyantlı ürünler, üst barkod saklanıp canlıda doğrulanana kadar
+  PTT AVM panelinden yönetilir.
 - **8. aşama (iade görünümü, salt okunur):** Satırı `iade` olan her sipariş, yalnız o satırlarla tamamlanmış bir iade kaydıdır (`iade:{sipariş no}`).
   Kaydedilmesi stoğu değiştirmez; iade kararları PTT AVM paneline bırakılır ve panelden gönderilmez.
 - **Canlıda doğrulanacak:**

@@ -445,7 +445,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var waitingMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import sonucu bekleniyor."
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün ve Online Store yayın sonucu kaydediliyor."
-                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevinin sonucu bekleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma sonucu bekleniyor." : "Trendyol create batch sonucu bekleniyor.";
+                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevinin sonucu bekleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma sonucu bekleniyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM ürün gönderimi sonucu bekleniyor." : "Trendyol create batch sonucu bekleniyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", waitingMessage, TimeSpan.FromSeconds(15), operation.ExternalOperationId);
         }
 
@@ -475,12 +475,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var runningMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import işlemi sürüyor."
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün yayın işlemi sürüyor."
-                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma işlemi sürüyor." : "Trendyol create batch işlemi sürüyor.";
+                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma işlemi sürüyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM ürün gönderimi işleniyor." : "Trendyol create batch işlemi sürüyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", runningMessage, TimeSpan.FromSeconds(15), payload.ExternalOperationId);
         }
         // n11 drops a whole task without per-SKU lines when it rejects it; nothing was created.
         if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
             return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "N11_TASK_REJECTED", JobExecutionResult.Blocked("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir.", payload.ExternalOperationId), cancellationToken);
+        // PTT AVM cancelled the whole send without a per-product answer.
+        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
+            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "PTTAVM_PRODUCT_REJECTED", JobExecutionResult.Blocked("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir.", payload.ExternalOperationId), cancellationToken);
         if (!string.Equals(operationStatus.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_BATCH_STATUS_UNKNOWN", "Batch servisi tanınmayan bir durum döndürdü.", payload.ExternalOperationId), cancellationToken);
 
         var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
@@ -493,7 +496,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var keyedBySku = isHepsiburada || isShopify || isN11;
         var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
         var remoteKeyLabel = isN11 ? "stok kodu" : isShopify || isHepsiburada ? "merchantSku" : "barkod";
-        var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : "Trendyol";
+        var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM" : "Trendyol";
         if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken);
         var resultKeys = listings.Select(x => keyedBySku ? x.ExternalSku ?? "" : x.ExternalBarcode ?? "").ToList();
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken);
@@ -546,7 +549,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // instead of barcode; an approved stock code becomes the variant's n11 link.
         var isN11 = string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
         var isPazarama = string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase);
-        var marketplaceName = isN11 ? "N11" : isPazarama ? "Pazarama" : "Trendyol";
+        var isPttAvm = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
+        var marketplaceName = isN11 ? "N11" : isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : "Trendyol";
         var keyLabel = isN11 ? "stok kodu" : "barkod";
         Func<ChannelListingVariant, string?> approvalKey = item => isN11 ? item.ExternalSku : item.ExternalBarcode;
 
@@ -608,7 +612,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var localVariantIds = candidates.Select(x => x.VariantId).ToArray();
         // A just-created n11 product can be missing from the product query for a while, so a
         // missing n11 stock code stays pending instead of resetting the publication.
-        if (!isN11 && !isPazarama && candidates.Count == listings.Count
+        if (!isN11 && !isPazarama && !isPttAvm && candidates.Count == listings.Count
             && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remoteByBarcode.Values.ToArray()))
             return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
 

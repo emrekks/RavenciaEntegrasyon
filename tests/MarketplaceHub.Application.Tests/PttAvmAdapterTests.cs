@@ -104,7 +104,7 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void PttAvmConnectionsCarryTheirReadAndPriceStockCapabilities() =>
         Assert.Equal(
-            [MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite],
+            [MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite, MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PublicationRead, MarketplaceCapabilities.PublicationWrite],
             MarketplaceConnectionService.PttAvmCapabilityCodes);
 
     [Fact]
@@ -1146,6 +1146,66 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void NoPriceOrStockIsSentWhileExternalWritesAreOff() =>
         Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", Client(new CapturingHandler(_ => throw new InvalidOperationException())).WriteBlocked<RemoteOperationRef>(Account(status: "VERIFIED", connectionWrites: false), "fiyat-stok")!.Error!.Code);
+
+    private static PttAvmProductPayloadRules.ProductDraft ProductDraft() =>
+        new("8690000000017", "Gömlek", "Pamuklu gömlek", "1632", "GML-1", 250m, 20m, 12, 1m, ["https://cdn.example.com/a.jpg"]);
+
+    [Fact]
+    public void AProductSendCarriesTheDocumentedFieldsAndNoVariants()
+    {
+        var draft = PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(ProductDraft()), out var error);
+
+        Assert.Null(error);
+        Assert.Equal(ProductDraft() with { Images = draft!.Images }, draft);
+        var envelope = PttAvmHttpClient.SoapEnvelope(PttAvmHttpClient.ProductUpsert, Account(), Now, [new("items", PttAvmProductPayloadRules.ItemsXml(draft), Raw: true)]);
+        XNamespace ept = PttAvmHttpClient.RequestsNamespace;
+        var request = XDocument.Parse(envelope).Descendants(ept + "ProductV3Request").Single();
+        Assert.Equal(["Active", "Barcode", "CategoryId", "Desi", "Images", "LongDescription", "Name", "NoShippingProduct", "PriceWithVat", "ProductCode", "Quantity", "VATRate"], request.Elements().Select(x => x.Name.LocalName));
+        Assert.Null(request.Element(ept + "Variants"));
+        Assert.Equal("https://cdn.example.com/a.jpg", request.Element(ept + "Images")!.Element(ept + "ProductImageV3")!.Element(ept + "Url")!.Value);
+        Assert.Equal("250.00", request.Element(ept + "PriceWithVat")!.Value);
+    }
+
+    [Theory]
+    [InlineData("name", "")]
+    [InlineData("priceWithVat", "1")]
+    [InlineData("vatRate", "18")]
+    [InlineData("desi", "0")]
+    [InlineData("categoryId", "abc")]
+    public void AProductBreakingPttAvmRulesIsNotSent(string field, string value)
+    {
+        var payload = System.Text.Json.Nodes.JsonNode.Parse(PttAvmProductPayloadRules.Payload(ProductDraft()))!.AsObject();
+        payload[field] = field is "name" or "categoryId" ? value : decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.Null(PttAvmProductPayloadRules.Read(payload.ToJsonString(), out var error));
+        Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void AProductLinkedToOtherBarcodesIsNotSentWithoutItsVariants()
+    {
+        Assert.Null(PttAvmProductPayloadRules.VariantDeletionRisk("8690000000017", []));
+        Assert.Null(PttAvmProductPayloadRules.VariantDeletionRisk("8690000000017", ["8690000000017"]));
+        Assert.Contains("8690000000024", PttAvmProductPayloadRules.VariantDeletionRisk("8690000000017", ["8690000000017", "8690000000024"]));
+    }
+
+    [Fact]
+    public async Task ABarcodePttAvmListsWithVariantsIsNotSentWithoutThem()
+    {
+        var page = (await Client(new CapturingHandler(_ => Respond(HttpStatusCode.OK, ProductListAnswer))).ReadProductPageAsync(Account(), null, null, CancellationToken.None)).Value!;
+
+        // tshirt-kirmizi-xl is a variant of tshirt-1072 on PTT AVM; markaekleme1 is a product without variants.
+        Assert.NotNull(PttAvmProductPayloadRules.RemoteVariantRisk("tshirt-kirmizi-xl", page.Items));
+        Assert.Null(PttAvmProductPayloadRules.RemoteVariantRisk("markaekleme1", page.Items));
+        Assert.Null(PttAvmProductPayloadRules.RemoteVariantRisk("yeni-barkod", page.Items));
+        Assert.Equal("APPROVED", PttAvmProductPayloadRules.PublicationStatus("markaekleme1", page.Items).Status);
+        Assert.Equal("1234811128", PttAvmProductPayloadRules.PublicationStatus("markaekleme1", page.Items).ExternalProductId);
+        Assert.Equal("NOT_FOUND", PttAvmProductPayloadRules.PublicationStatus("yeni-barkod", page.Items).Status);
+    }
+
+    [Fact]
+    public void NoProductIsSentWhileExternalWritesAreOff() =>
+        Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", Client(new CapturingHandler(_ => throw new InvalidOperationException())).WriteBlocked<RemoteOperationRef>(Account(status: "ACTIVE", connectionWrites: false), "ürün")!.Error!.Code);
 
     private static RemoteOrder OrderFromList(string orderNumber)
     {

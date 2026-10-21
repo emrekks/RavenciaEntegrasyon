@@ -17,6 +17,11 @@ describe('product publication channel availability', () => {
     expect(productPublicationChannelMode('N11', 'PASSIVE', true)).toBeNull()
   })
 
+  it('keeps live-only PTT AVM read only until its external-write gate is enabled', () => {
+    expect(productPublicationChannelMode('PTTAVM', 'VERIFIED')).toBe('READ_ONLY')
+    expect(productPublicationChannelMode('PTTAVM', 'VERIFIED', true)).toBe('PUBLISH')
+  })
+
   it('does not show inactive connections as publication channels', () => {
     expect(productPublicationChannelMode('HEPSIBURADA', 'PASSIVE')).toBeNull()
   })
