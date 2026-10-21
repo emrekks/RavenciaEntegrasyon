@@ -766,7 +766,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var manualDeliveryRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
             && retryValue.ValueKind == JsonValueKind.True
             && invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
-        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == targetPackageId && x.OrderId == invoice.OrderId, cancellationToken);
+        // Tracked: the delivery reads write the marketplace's invoice state onto the package. Read without tracking,
+        // those writes were dropped, so the stored references never caught up and every attempt added the same
+        // reference-history row again.
+        var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == targetPackageId && x.OrderId == invoice.OrderId, cancellationToken);
         var order = package is null
             ? null
             : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId, x.CustomerSnapshotJson, x.OrderedAt, x.LastRemoteModifiedAt, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
@@ -914,6 +917,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 package.MarketplaceInvoiceNumber = liveReadback.Value.VerifiedInvoiceNumber;
                 package.MarketplaceInvoiceUrl = liveReadback.Value.VerifiedInvoiceLink;
                 package.MarketplaceInvoiceObservedAt = readAt;
+                package.UpdatedAt = readAt;
+                package.Version++;
 
                 // The package was read empty right before the link was sent and Hepsiburada accepted the request, so an
                 // invoice it shows afterwards is this one; its read shows only that an invoice exists, never its number,
