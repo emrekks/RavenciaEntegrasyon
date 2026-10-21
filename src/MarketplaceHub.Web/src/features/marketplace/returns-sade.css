@@ -263,6 +263,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-invcell .rr-m b { color: var(--rr-ink); font-weight: 500; white-space: nowrap; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-invcell .rr-m.rr-pay b { font-weight: 600; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reasoncell b { display: block; font-weight: 500; overflow-wrap: anywhere; }
+/* A seller-caused return (wrong, faulty, damaged product...): its costs are charged to the seller. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-reasoncell b.rr-fault { color: var(--rr-bad); font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reasoncell small { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; color: var(--rr-muted); font-size: 12px; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reasoncell small strong { color: var(--rr-subtle); font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-statuscell { display: grid; gap: 8px; justify-items: start; min-width: 0; }

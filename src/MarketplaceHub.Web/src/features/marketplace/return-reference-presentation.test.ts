@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatMarketplaceBarcode, returnCustomerNote, returnReasonPresentation, shouldShowReturnCountdown } from './return-reference-presentation'
+import { formatMarketplaceBarcode, isSellerFaultReturn, returnCustomerNote, returnReasonPresentation, shouldShowReturnCountdown } from './return-reference-presentation'
 
 describe('return reference presentation', () => {
   it('removes Hepsiburada zero prefixes from alphanumeric codes but preserves numeric barcodes', () => {
@@ -43,5 +43,14 @@ describe('return reference presentation', () => {
     const plain = returnReasonPresentation({ reasonCode: 'SMALLSIZE', reasonText: 'Bedeni/Ebatı Küçük Geldi' })
     expect(plain.label).toBe('Bedeni/Ebatı Küçük Geldi')
     expect(returnCustomerNote(plain.label, 'Bedeni/Ebatı Küçük Geldi')).toBeNull()
+  })
+
+  it('marks the reasons the seller is to blame for', () => {
+    expect(isSellerFaultReturn({ reasonCode: 'WRONGITEM' }, 'Yanlış ürün gönderildi')).toBe(true)
+    expect(isSellerFaultReturn({ reasonCode: 'DAMAGEDITEM' }, '')).toBe(true)
+    expect(isSellerFaultReturn({ reasonCode: 'Siparişimden farklı ürün gönderildi' }, 'Siparişimden farklı ürün gönderildi')).toBe(true)
+    expect(isSellerFaultReturn({ reasonCode: 'Hatalı Ürün' }, 'Hatalı Ürün')).toBe(true)
+    expect(isSellerFaultReturn({ reasonCode: 'SMALLSIZE' }, 'Bedeni/Ebatı Küçük Geldi')).toBe(false)
+    expect(isSellerFaultReturn({ reasonCode: 'WRONGORDER' }, 'Yanlış sipariş verdim')).toBe(false)
   })
 })

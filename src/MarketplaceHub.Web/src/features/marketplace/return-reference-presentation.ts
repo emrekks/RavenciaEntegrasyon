@@ -62,6 +62,25 @@ function normalizeReason(value: string): string {
   return value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
+// Returns the seller is to blame for: a wrong, faulty, damaged, incomplete, expired or fake product, or a wrong or
+// missing invoice. Turkish distance-selling rules put the return costs of a defective or different product on the
+// seller, and the marketplaces book these as seller-caused returns (return shipping charged to the seller). The
+// customer's own reasons (changed mind, size, dislike, ordered by mistake, not delivered) are not among them.
+const SELLER_FAULT_REASONS = new Set([
+  'wrongitem', 'damageditem', 'fakeproduct',
+  'productisbroken', 'productisdamaged', 'productisbrokenordamaged', 'missingproduct', 'wrongproductsentbymerchant',
+  'wrongproduct', 'producthasexpired', 'productiswrongweight', 'notarrivedinvoice', 'incorrectinvoice',
+  ...['Siparişimden farklı ürün gönderildi', 'Ürünüm arızalı geldi', 'Ürünüm hasarlı geldi', 'Ürünün parçası eksik',
+    'Bozuk / hasarlı geldi', 'Yanlış ürün geldi', 'Yanlış ürün gönderildi', 'Hatalı Ürün', 'Kusurlu Ürün',
+    'Ürünün son kullanma tarihi geçmiş', 'Ürünüm farklı gramajda geldi', 'Faturam gelmedi', 'Faturamda hata var',
+    'Hasarlı / kusurlu ürün gönderildi', 'Ürün orijinal değil'].map(normalizeReason),
+])
+
+/** Whether the return is the seller's fault (shown in red: its return costs are charged to the seller). */
+export function isSellerFaultReturn(item: { reasonCode?: string | null }, label: string): boolean {
+  return SELLER_FAULT_REASONS.has(normalizeReason(item.reasonCode ?? '')) || SELLER_FAULT_REASONS.has(normalizeReason(label))
+}
+
 export function returnReasonPresentation(item: { reasonCode?: string | null; reasonText?: string | null }): { label: string; explanation: string | null } {
   const code = item.reasonCode?.trim() ?? ''
   const text = item.reasonText?.trim() ?? ''

@@ -303,7 +303,7 @@
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-state.is-done > span,
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-unit,
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-time { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item[data-detail]:is(:hover, :focus-visible)::after { content: attr(data-detail); position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; padding: 6px 10px; color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item[data-detail]:is(:hover, :focus-visible)::after { content: attr(data-detail); position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; padding: 6px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); font-size: 12px; white-space: nowrap; pointer-events: none; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item.is-placeholder { width: 150px; }
   .qi-page .qi-detail-head { padding: 12px 16px; }
   .qi-page .qi-facts > div { min-height: 48px; padding: 6px 12px; }
