@@ -918,25 +918,23 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         return null;
     }
 
-    internal static string Marketplace(string jobType, string? platformCode = null) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
-        ? "N11"
-        : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
-        ? "Pazarama"
-        : string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
-        ? "Trendyol"
-        : jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
-        ? "Trendyol e-Faturam"
-        : jobType.Contains("HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
-            ? "Hepsiburada"
-        : jobType.Contains("SHOPIFY", StringComparison.OrdinalIgnoreCase)
-            ? "Shopify"
-        : jobType.StartsWith("N11_", StringComparison.OrdinalIgnoreCase)
-            ? "N11"
-        : jobType.StartsWith("PAZARAMA_", StringComparison.OrdinalIgnoreCase)
-            ? "Pazarama"
-        : jobType.Contains("TRENDYOL", StringComparison.OrdinalIgnoreCase)
-            ? "Trendyol"
-            : "Ravencia";
+    // The platform a job talks to: the connection's platform when it has one (shared types such as ORDER_STATUS_SYNC
+    // run for every marketplace), otherwise the platform its type names; invoicing jobs talk to E-Faturam. "Ravencia" is
+    // the panel's own work, which calls no outside service.
+    internal static string Marketplace(string jobType, string? platformCode = null)
+    {
+        if (jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase) || string.Equals(platformCode, "TRENDYOL_EFATURAM", StringComparison.OrdinalIgnoreCase)) return "E-Faturam";
+        var code = platformCode?.ToUpperInvariant() ?? (jobType.IndexOf('_') is > 0 and var cut ? jobType[..cut].ToUpperInvariant() : "");
+        return code switch
+        {
+            "TRENDYOL" => "Trendyol",
+            "HEPSIBURADA" => "Hepsiburada",
+            "SHOPIFY" => "Shopify",
+            "N11" => "N11",
+            "PAZARAMA" => "Pazarama",
+            _ => "Ravencia",
+        };
+    }
 
     private static string? ExternalId(string payloadJson)
     {

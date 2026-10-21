@@ -1,9 +1,3 @@
-export const marketplaceQuestionSyncPresentation = {
-  title: 'Pazaryeri Soru Senkronizasyonu',
-  icon: 'connection' as const,
-  description: 'Bağlı pazaryerindeki erişilebilir soru kayıtları salt okunur biçimde panele alınır. Bu işlem pazaryerine cevap göndermez.'
-}
-
 export const marketplaceQuestionSyncChange = {
   label: 'Yapılan işlem',
   value: 'Soru senkronizasyonu',

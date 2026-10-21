@@ -1,0 +1,26 @@
+import { describe, expect, it } from 'vitest'
+import { knownJobTypes } from './job-categories'
+import { jobPresentation, jobSubtitle, jobTitle } from './job-presentation'
+
+describe('job presentation', () => {
+  it('names the platform first and says which way the data goes', () => {
+    expect(jobTitle('N11_ORDER_SYNC', 'N11')).toBe('N11 Sipariş İşlemi')
+    expect(jobSubtitle('N11_ORDER_SYNC')).toBe('Platformdan Okuma · Yeni Sipariş Çekme')
+    expect(jobTitle('INVOICE_SUBMIT', 'E-Faturam')).toBe('E-Faturam Fatura İşlemi')
+    expect(jobSubtitle('INVOICE_SUBMIT')).toBe('Platforma Gönderim · Fatura Oluşturma')
+  })
+
+  it('takes the platform of the connection for shared types and leaves the panel own work without one', () => {
+    expect(jobTitle('ORDER_STATUS_SYNC', 'Shopify')).toBe('Shopify Sipariş İşlemi')
+    expect(jobTitle('IMPORT_APPLY', 'Ravencia')).toBe('İçe Aktarım İşlemi')
+    expect(jobTitle('HEPSIBURADA_ORDER_SYNC')).toBe('Hepsiburada Sipariş İşlemi')
+  })
+
+  it('describes every known job type in its own words', () => {
+    for (const type of knownJobTypes) {
+      const presentation = jobPresentation(type)
+      expect(presentation.action, type).not.toMatch(/_/)
+      expect(presentation.description, type).not.toContain('ayrıntılar için kaydı açabilirsiniz')
+    }
+  })
+})

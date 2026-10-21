@@ -9,8 +9,9 @@ import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
-import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } from './marketplace-question-sync'
-import { catalogStructureImportChange, catalogStructureImportPresentation } from './catalog-structure-import'
+import { marketplaceQuestionSyncChange } from './marketplace-question-sync'
+import { catalogStructureImportChange } from './catalog-structure-import'
+import { jobPresentation, jobSubtitle, jobTitle, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
 import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
@@ -126,55 +127,6 @@ function jobStatusChip(status: JobStatus): JobStatusChip {
 // The statuses each state filter stands for; the list asks the server for them so older jobs past the newest 2.000 show too.
 const jobChipStatuses: Record<JobStatusChip, JobStatus[]> = { success: ['SUCCEEDED'], running: ['LEASED'], waiting: ['PENDING', 'RETRY_SCHEDULED'], error: ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'], cancelled: ['CANCELLED'] }
 
-type JobTypeIconName = 'price' | 'order' | 'invoice' | 'return' | 'product' | 'connection' | 'generic'
-type JobPresentation = { title: string; icon: JobTypeIconName; description: string }
-
-function jobPresentation(jobType: string): JobPresentation {
-  const type = jobType.toUpperCase()
-  if (type === 'MARKETPLACE_QUESTION_SYNC') return marketplaceQuestionSyncPresentation
-  if (type === 'CATALOG_STRUCTURE_IMPORT') return catalogStructureImportPresentation
-  if (type.includes('REFERENCE_SYNC')) {
-    const platform = type.startsWith('HEPSIBURADA_') ? 'Hepsiburada' : type.startsWith('N11_') ? 'N11' : type.startsWith('PAZARAMA_') ? 'Pazarama' : 'Trendyol'
-    return { title: `${platform} kategori ve eşleştirme verisi`, icon: 'product', description: `${platform} kategori, özellik ve eşleştirme referansları salt okunur olarak yenilenir; platforma ürün veya başka veri gönderilmez.` }
-  }
-  if (type === 'STOCK_PROJECTION_DISPATCH') return { title: 'Stok Gönderim Hazırlığı', icon: 'price', description: 'Yerel stok değişikliği gönderim kuyruğuna aktarılır. Dış yazma kapalıysa pazaryerine değişiklik gönderilmez; başarılı durumu yalnızca bu hazırlık adımının işlendiğini gösterir.' }
-  if (type === 'STOCK_RECONCILIATION') return { title: 'Stok Uzlaştırma', icon: 'price', description: 'Yerel stok projection kayıtları kontrol edilir. Bu tarama tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
-  if (type === 'PRICE_INVENTORY_SYNC') return { title: 'Fiyat ve Stok Gönderimi', icon: 'price', description: 'Fiyat veya stok bilgisi Trendyol’a gönderilir. Dış yazma kapalıysa yeni gönderim engellenir.' }
-  if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat ve Stok İşlemi', icon: 'price', description: 'Fiyat veya stokla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.' }
-  if (type === 'ORDER_STATUS_SYNC') return { title: 'Sipariş Durum Kontrolü', icon: 'order', description: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel kayıtlar güncellenir.' }
-  if (type === 'TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION') return { title: 'Trendyol Kargo Bilgisi Kontrolü', icon: 'order', description: 'Teslim edilmiş paketlerin eksik kargo bilgileri ayrı, salt okunur bir taramada yenilenir.' }
-  if (type === 'ORDER_RECONCILIATION') return { title: 'Sipariş Mutabakatı', icon: 'order', description: 'Yerel siparişlerle Trendyol kayıtları karşılaştırılır; eksik veya farklı durumlar düzeltilir.' }
-  if (type === 'ORDER_INVOICE_RECONCILIATION') return { title: 'Paket Fatura Durum Kontrolü', icon: 'invoice', description: 'Trendyol’daki açık paketlerin fatura durumu okunur ve yerel pakete işlenir. Yeni fatura oluşturmaz.' }
-  if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { title: 'Sipariş Geçmişi Taraması', icon: 'order', description: 'Erişilebilen sipariş geçmişi taranarak eksik yerel sipariş kayıtları tamamlanır.' }
-  if (type === 'TRENDYOL_ORDER_SYNC') return { title: 'Yeni Sipariş Senkronizasyonu', icon: 'order', description: 'Trendyol’daki yeni ve değişen siparişler güvenli aralıklarla sisteme alınır.' }
-  if (type === 'HEPSIBURADA_ORDER_SYNC') return { title: 'Hepsiburada Sipariş İşlemi', icon: 'order', description: 'Hepsiburada sipariş bilgileri güvenli biçimde panele aktarılır.' }
-  if (type === 'PAZARAMA_ORDER_SYNC' || type === 'PAZARAMA_ORDER_RECOVERY_SYNC') return { title: 'Pazarama Sipariş İşlemi', icon: 'order', description: 'Pazarama siparişleri tarih aralıklarıyla okunup panele aktarılır.' }
-  if (type === 'PAZARAMA_ORDER_STATUS_SYNC') return { title: 'Pazarama Sipariş Durum Kontrolü', icon: 'order', description: 'Açık Pazarama siparişleri numarayla yeniden okunup durumları güncellenir.' }
-  if (type === 'N11_ORDER_SYNC' || type === 'N11_ORDER_RECOVERY_SYNC') return { title: 'N11 Sipariş İşlemi', icon: 'order', description: 'N11 sipariş paketleri 15 günlük aralıklarla okunup panele aktarılır.' }
-  if (type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER')) return { title: 'Kargo ve Paket İşlemi', icon: 'order', description: 'Paket, kargo firması veya teslimatla ilgili işlem pazaryerine gönderilir.' }
-  if (type.includes('LABEL')) return { title: 'Kargo Etiketi', icon: 'order', description: 'Seçilen sipariş veya paket için kargo etiketi işlemi yürütülür.' }
-  if (type.includes('ORDER')) return { title: 'Sipariş İşlemi', icon: 'order', description: 'Siparişle ilgili arka plan işlemi yürütülür.' }
-  if (type.includes('INVOICE') || type.includes('EFATURAM') || type.includes('BILLING')) return { title: 'E-Fatura İşlemi', icon: 'invoice', description: 'E-Faturam üzerinden fatura oluşturma, durum veya belge işlemi yürütülür.' }
-  if (type.includes('RETURN') || type.includes('CLAIM')) return { title: 'İade Senkronizasyonu', icon: 'return', description: 'Pazaryerindeki iade kayıtları ve durumları sistemle eşitlenir.' }
-  if (type.includes('PRODUCT') || type.includes('CATALOG') || type.includes('PUBLICATION') || type.includes('ATTRIBUTE') || type.includes('CATEGORY') || type.includes('BRAND')) return { title: 'Ürün ve Katalog Senkronizasyonu', icon: 'product', description: 'Ürün, katalog, kategori veya özellik bilgileri senkronize edilir.' }
-  if (type.includes('CONNECTION') || type.includes('PROBE') || type.includes('TEST')) return { title: 'Bağlantı Kontrolü', icon: 'connection', description: 'Pazaryeri bağlantısının ve gerekli yetkilerin çalıştığı doğrulanır.' }
-  return { title: jobType.replaceAll('_', ' ').toLocaleLowerCase('tr-TR').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('tr-TR')), icon: 'generic', description: 'İşlem arka planda yürütülür; ayrıntılar için kaydı açabilirsiniz.' }
-}
-
-function jobSource(jobType: string, marketplace?: string) {
-  const type = jobType.toUpperCase()
-  if (type.includes('EFATURAM')) return 'e-Faturam API'
-  if (marketplace === 'N11') return 'N11 API'
-  if (marketplace === 'Pazarama') return 'Pazarama API'
-  if (marketplace === 'Trendyol') return 'Trendyol API'
-  if (type.startsWith('HEPSIBURADA_')) return 'Hepsiburada API'
-  if (type.startsWith('N11_')) return 'N11 API'
-  if (type.startsWith('PAZARAMA_')) return 'Pazarama API'
-  if (type.startsWith('TRENDYOL_')) return 'Trendyol API'
-  if (type.includes('INVOICE')) return 'e-Faturam API'
-  return 'Ravencia Worker'
-}
-
 function fallbackJobChange(job: JobSummary): JobChange {
   const type = job.jobType.toUpperCase()
   if (type === 'MARKETPLACE_QUESTION_SYNC') return marketplaceQuestionSyncChange
@@ -192,7 +144,7 @@ function fallbackJobChange(job: JobSummary): JobChange {
   if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan işlem', value: type.startsWith('HEPSIBURADA_') ? 'Hepsiburada kategori ve eşleştirme verisi' : type.startsWith('N11_') ? 'N11 kategori ve eşleştirme verisi' : type.startsWith('PAZARAMA_') ? 'Pazarama kategori, özellik ve marka verisi' : 'Trendyol kategori ve eşleştirme verisi', detail: 'Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.' }
   if (type.includes('PRODUCT') || type.includes('CATALOG')) return { label: 'Yapılan değişiklik', value: 'Ürün senkronizasyonu', detail: 'Ürün bilgileri pazaryerine gönderildi.' }
   if (type.includes('INVOICE')) return { label: 'Yapılan değişiklik', value: 'Fatura işlemi', detail: 'Fatura isteği pazaryerine gönderildi.' }
-  return { label: 'Yapılan değişiklik', value: jobPresentation(job.jobType).title, detail: 'İşlem isteği sisteme kaydedildi.' }
+  return { label: 'Yapılan değişiklik', value: jobPresentation(job.jobType).action, detail: 'İşlem isteği sisteme kaydedildi.' }
 }
 
 function formatJobTime(value: string) {
@@ -362,8 +314,8 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
   return <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="aside" onClose={onClose} className="job-detail-drawer jobs-reference-drawer panel" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
     <div className="jobs-reference-drawer-header">
       <div>
-        <h2 id="job-detail-title">{selected ? jobPresentation(selected.jobType).title : 'İşlem ayrıntısı'}</h2>
-        <p>{selected ? `${jobSource(selected.jobType, selected.marketplace)} · ${selected.jobType}${selected.batchCount > 1 ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p>
+        <h2 id="job-detail-title">{selected ? jobTitle(selected.jobType, selected.marketplace) : 'İşlem ayrıntısı'}</h2>
+        <p>{selected ? `${jobSubtitle(selected.jobType)} · ${selected.jobType}${selected.batchCount > 1 ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p>
       </div>
       <button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={onClose}><UiIcon name="close" /></button>
     </div>
@@ -605,7 +557,7 @@ export function JobsPage({ me }: { me: Me }) {
         </div>
       </div>
     </div>
-    <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => jobPresentation(jobType).title} platform={platform} />
+    <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => `${jobTitle(jobType)} · ${jobPresentation(jobType).action}`} platform={platform} />
     <div className="jobs-reference-canvas">
       <ViewTabsWithMore more={[]} className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">
@@ -629,7 +581,7 @@ export function JobsPage({ me }: { me: Me }) {
             const time = formatJobTime(job.createdAt)
             const typeDescriptionId = `job-type-description-${job.id}`
             return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
-              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{presentation.title}</strong>{(job.batchCount > 1 || job.externalId || job.jobType.toUpperCase() !== 'HEPSIBURADA_ORDER_SYNC') && <small>{job.batchCount > 1 ? `Toplu işlem · ${job.batchCount} job` : job.externalId ?? `${job.marketplace} · ${jobSource(job.jobType, job.marketplace)}`}</small>}<span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
+              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{jobTitle(job.jobType, job.marketplace)}</strong><small>{jobSubtitle(job.jobType)}{job.batchCount > 1 ? ` · ${job.batchCount} kayıt birlikte` : job.externalId ? ` · ${job.externalId}` : ''}</small><span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
               <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><JobStateGlyph tone={jobStatusTone(job.status)} />{jobStatusLabel(job.status)}</span></td>
               <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
               <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day} · {job.attemptCount > 0 ? `son deneme ${jobAttemptDuration(job)}` : 'çalışma başlamadı'}</small></div></td>

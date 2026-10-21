@@ -15,7 +15,12 @@ public sealed class N11PolishTests
     [InlineData("PRICE_INVENTORY_SYNC", null, "Ravencia")]
     [InlineData("HEPSIBURADA_ORDER_SYNC", "HEPSIBURADA", "Hepsiburada")]
     [InlineData("N11_ORDER_SYNC", null, "N11")]
-    [InlineData("TRENDYOL_EFATURAM_INVOICE", "N11", "Trendyol e-Faturam")]
+    [InlineData("TRENDYOL_EFATURAM_INVOICE", "N11", "E-Faturam")]
+    [InlineData("INVOICE_SUBMIT", "TRENDYOL_EFATURAM", "E-Faturam")]
+    [InlineData("ORDER_STATUS_SYNC", "SHOPIFY", "Shopify")]
+    [InlineData("RETURN_SYNC", "HEPSIBURADA", "Hepsiburada")]
+    [InlineData("INVOICE_MARKETPLACE_DELIVERY", "TRENDYOL", "Trendyol")]
+    [InlineData("IMPORT_APPLY", null, "Ravencia")]
     public void JobMarketplaceFollowsTheConnectionWhenTheTypeIsShared(string jobType, string? platformCode, string expected) =>
         Assert.Equal(expected, JobOperationsService.Marketplace(jobType, platformCode));
 
