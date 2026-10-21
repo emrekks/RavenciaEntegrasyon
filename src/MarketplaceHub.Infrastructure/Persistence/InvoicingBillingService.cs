@@ -1372,6 +1372,8 @@ public sealed partial class InvoicingBillingService(
         if (lines.Count == 0 || lines.Any(x => x.Quantity <= 0 || x.LineTotal < 0)) failures.Add("INVOICE_LINES_INVALID");
         if (lines.Sum(x => x.LineTotal) != invoice.PayableTotal || invoice.TaxExclusiveTotal + invoice.TaxTotal != invoice.PayableTotal) failures.Add("INVOICE_TOTAL_MISMATCH");
         if (lines.Any(x => x.UnitSnapshot == "UNSPECIFIED" || x.VatRate != 0 && x.VatAmount <= 0)) failures.Add("FISCAL_CALCULATION_AUTHORITY_REQUIRED");
+        // D10: a 0% line carries no VAT, not even a rounding kuruş.
+        if (lines.Any(x => x.VatRate == 0 && x.VatAmount != 0)) failures.Add("INVOICE_ZERO_RATE_VAT_INVALID");
         // A line whose VAT rate the marketplace did not report must not be issued at an inferred rate or at 0%.
         var sourceLineIds = lines.Where(x => x.OrderLineId != null).Select(x => x.OrderLineId!.Value).ToList();
         var sourcePlatform = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)

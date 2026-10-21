@@ -52,6 +52,45 @@ public sealed class InvoiceAmountsTests
         Assert.Equal(new[] { 99m, 108m }, result.Lines.Select(line => line.PayableAmount));
     }
 
+    [Fact]
+    public void PutsTheRoundingKurusOnALineThatCarriesVat()
+    {
+        var sources = new[]
+        {
+            new InvoicePackageLineSource(Guid.NewGuid(), "KDV'li", "A", 1m, 100m, 20m),
+            new InvoicePackageLineSource(Guid.NewGuid(), "KDV'siz", "B", 1m, 50m, 0m)
+        };
+
+        Assert.True(InvoiceAmounts.TryCalculatePackage(sources, 150.01m, 0m, 150.01m, out var result, out var error));
+        Assert.Null(error);
+        Assert.NotNull(result);
+        Assert.Equal(0m, result.Lines[1].VatAmount);
+        Assert.Equal(50m, result.Lines[1].PayableAmount);
+        Assert.Equal(100.01m, result.Lines[0].PayableAmount);
+        Assert.Equal(16.68m, result.Lines[0].VatAmount);
+        Assert.Equal(150.01m, result.Lines.Sum(line => line.PayableAmount));
+        Assert.Equal(result.PayableTotal, result.TaxExclusiveTotal + result.TaxTotal);
+    }
+
+    [Fact]
+    public void PutsTheRoundingKurusOnTheNetWhenNoLineCarriesVat()
+    {
+        var sources = new[]
+        {
+            new InvoicePackageLineSource(Guid.NewGuid(), "A", "A", 1m, 100m, 0m),
+            new InvoicePackageLineSource(Guid.NewGuid(), "B", "B", 2m, 25m, 0m)
+        };
+
+        Assert.True(InvoiceAmounts.TryCalculatePackage(sources, 149.99m, 0m, 149.99m, out var result, out var error));
+        Assert.Null(error);
+        Assert.NotNull(result);
+        Assert.All(result.Lines, line => Assert.Equal(0m, line.VatAmount));
+        Assert.Equal(49.99m, result.Lines[1].PayableAmount);
+        Assert.Equal(24.995m, result.Lines[1].UnitPrice);
+        Assert.Equal(0m, result.TaxTotal);
+        Assert.Equal(149.99m, result.TaxExclusiveTotal);
+    }
+
     [Theory]
     [InlineData(200, 23, 207)]
     [InlineData(230, 40, 207)]
