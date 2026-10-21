@@ -2788,7 +2788,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"shopify-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
             if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
             TrackReceived();
-            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken, projectReservations: false, persistFinancialObservations: true);
+            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken, persistFinancialObservations: true);
             return true;
         }
 
@@ -2820,7 +2820,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var issue in result.Value.Issues ?? [])
                 await RecordIssue(tenantId, $"shopify-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
-            await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken, projectReservations: false);
+            await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
             foreach (var item in result.Value.Items)
                 if (latestSeen is null || item.LastModifiedAt > latestSeen) latestSeen = item.LastModifiedAt;
             if (result.Value.HasMore)
@@ -3001,7 +3001,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
-        var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         if (isTrendyol) return await SyncTrendyolOpenPackages(tenantId, connectionId, correlationId, cancellationToken);
@@ -3104,7 +3103,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             recoveredOrders.Add(result.Value!);
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
         }
-        if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken, projectReservations: !isShopify);
+        if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
         if (isHepsiburada)
             await ReconcileHepsiburadaPackageStatuses(tenantId, connectionId, correlationId, cancellationToken);
 
@@ -3718,7 +3717,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
 
             TrackReceived();
-            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, persistFinancialObservations: isShopify);
             await ResolveIssue(tenantId, $"order-reconcile:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
@@ -3917,7 +3916,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             TrackReceived();
             if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
                 hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
-            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, persistFinancialObservations: isShopify);
             await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
@@ -7731,7 +7730,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var order = await orders.GetAsync(Context(tenantId, connectionId, $"webhook:{externalMessageId}", $"shopify-webhook:{connectionId}:{externalMessageId}"), externalOrderId, cancellationToken);
             if (!order.IsSuccess) { TrackResultFailure(order.Error); throw JobProcessingException.FromAdapter(order.Error!); }
             TrackReceived();
-            await UpsertOrder(tenantId, connectionId, order.Value!, cancellationToken, projectReservations: false, persistFinancialObservations: true);
+            await UpsertOrder(tenantId, connectionId, order.Value!, cancellationToken, persistFinancialObservations: true);
         }
         else
         {
@@ -7757,7 +7756,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         public List<(OrderLine Line, DateTimeOffset ModifiedAt)> ReservationSources { get; } = [];
     }
 
-    private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken, bool projectReservations = true)
+    private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
     {
         if (remotes.Count == 0) return;
         // A long read projects page after page through one context. Rows this call loads are released
@@ -7857,9 +7856,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var variantIds = await ResolveOrderLineVariantIds(tenantId, remotes.SelectMany(x => x.Lines).ToList(), cancellationToken);
         foreach (var pair in variantIds) batch.VariantIdsByKey[pair.Key] = pair.Value;
-        foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false, projectReservations: projectReservations, persistFinancialObservations: isShopify);
-        if (projectReservations)
-            await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
+        foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false, persistFinancialObservations: isShopify);
+        await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Unchanged && !trackedBefore.Contains(entry.Entity)).ToList())
             entry.State = EntityState.Detached;
@@ -7892,7 +7890,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         };
     }
 
-    private async Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool projectReservations = true, bool persistFinancialObservations = false)
+    private async Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool persistFinancialObservations = false)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
@@ -8393,9 +8391,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (manualStatus.OccurredAt < order.LastRemoteModifiedAt) manualStatus.OccurredAt = order.LastRemoteModifiedAt;
             }
         }
-        if (projectReservations && batch is null)
+        // Every marketplace's order moves panel stock, Shopify's included: a sale on one channel lowers
+        // the stock the others are sent.
+        if (batch is null)
             await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
-        else if (projectReservations && batch is not null)
+        else
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
         return true;
