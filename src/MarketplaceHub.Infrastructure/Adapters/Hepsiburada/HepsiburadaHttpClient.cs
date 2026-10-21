@@ -917,10 +917,10 @@ public sealed partial class HepsiburadaHttpClient(
         using var content = new StringContent(TestOrderPayload(account.Connection.ExternalStoreId, orderNumber, sku, timeProvider.GetUtcNow()), Encoding.UTF8, "application/json");
         var response = await SendAsync(account, account.StageTestOrderBaseAddress, HttpMethod.Post, StageTestOrder(account, account.Connection.ExternalStoreId), content, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<StageTestOrderResult>.Failure(response.Error!, response.RateLimit);
+        // The SIT stub answers 201 without echoing the order number; the number is the one this request
+        // created, so a successful answer without it still identifies the order.
         var responseOrderNumber = Text(response.Value!.RootElement, "orderNumber", "OrderNumber");
-        return string.IsNullOrWhiteSpace(responseOrderNumber)
-            ? Failure<StageTestOrderResult>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_TEST_ORDER_CONTRACT_INVALID", "Hepsiburada test siparişi yanıtında orderNumber bulunamadı.", HttpStatusCode.BadGateway)
-            : AdapterResult<StageTestOrderResult>.Success(new(responseOrderNumber), response.RateLimit);
+        return AdapterResult<StageTestOrderResult>.Success(new(string.IsNullOrWhiteSpace(responseOrderNumber) ? orderNumber : responseOrderNumber), response.RateLimit);
     }
     public async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
