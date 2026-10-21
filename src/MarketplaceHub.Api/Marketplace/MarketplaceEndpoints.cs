@@ -23,7 +23,14 @@ public static class MarketplaceEndpoints
             return Created(result, "/api/v1/connections");
         });
         api.MapGet("/connections/{id:guid}", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
-        api.MapPatch("/connections/{id:guid}", async (Guid id, UpdateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
+        api.MapPatch("/connections/{id:guid}", async (Guid id, UpdateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (!TryIfMatch(http, out var version, out var failure)) return failure!;
+            var result = await service.UpdateAsync(tenant.TenantId, id, version, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
+            // The role refusal is the panel's own 403, not a marketplace's (which WithEtag reports as 502).
+            return result.Error is { Code: "PERMISSION_DENIED" } denied ? Problem(http, denied) : WithEtag(http, result, x => x.Version);
+        });
         api.MapPut("/connections/{id:guid}/credential", async (Guid id, CredentialCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RotateCredentialAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
         // Instant work below runs with the server's budget as http.RequestAborted, not the browser's connection.
         api.MapPost("/connections/{id:guid}/test-jobs", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceJobProcessor marketplaceProcessor, IInvoicingJobProcessor invoicingProcessor) =>

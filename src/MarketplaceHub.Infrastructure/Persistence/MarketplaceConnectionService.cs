@@ -239,7 +239,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)) with { LastErrorAt = errorTimes.GetValueOrDefault(id) });
     }
 
-    public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken)
+    public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken, bool elevated = true)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA"), cancellationToken);
         if (connection is null) return NotFound<ConnectionView>();
@@ -277,6 +277,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var n11Settings = connection.PlatformCode == "N11" ? ReadN11Settings(connection) : null;
         var pazaramaSettings = connection.PlatformCode == "PAZARAMA" ? ReadPazaramaSettings(connection) : null;
         var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? shopifySettings?.ExternalWritesEnabled ?? efaturamSettings?.ExternalWritesEnabled ?? n11Settings?.ExternalWritesEnabled ?? pazaramaSettings?.ExternalWritesEnabled ?? false;
+        if (!elevated && ConnectionSettingsChangePolicy.TouchesProtectedSettings(command, currentExternalWrites, invoiceCreationEnabled, connection.Environment, requestedEnvironment, connection.ExternalStoreId, requestedStoreId))
+            return ServiceResult<ConnectionView>.Fail("PERMISSION_DENIED", "Dış yazma, fatura oluşturma, ortam ve mağaza kapsamını yalnız sahip veya yönetici değiştirebilir.", 403);
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
         if (connection.PlatformCode == "TRENDYOL" && requestedUserAgent is not null && !TrendyolUserAgentPolicy.IsHeaderSafe(requestedUserAgent))
             return Invalid<ConnectionView>("userAgentIdentity", UnsendableUserAgentMessage);
@@ -958,6 +960,18 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     // contracted cargo is the only cargo model (docs/PAZARAMA-ENTEGRASYON-PLANI.md §2).
     private sealed record PazaramaConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = false);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
+}
+
+// G5: the settings that decide what the panel does on the marketplace's side (writing to it, creating invoices) and which
+// store or environment it talks to. A value sent back unchanged is not a change, so an edit form that posts every field
+// still works for operations users.
+internal static class ConnectionSettingsChangePolicy
+{
+    public static bool TouchesProtectedSettings(UpdateConnectionCommand command, bool currentExternalWrites, bool currentInvoiceCreation, string currentEnvironment, string? requestedEnvironment, string currentStoreId, string? requestedStoreId) =>
+        command.ExternalWritesEnabled is { } writes && writes != currentExternalWrites
+        || command.InvoiceCreationEnabled is { } invoices && invoices != currentInvoiceCreation
+        || requestedEnvironment is not null && !string.Equals(currentEnvironment, requestedEnvironment, StringComparison.OrdinalIgnoreCase)
+        || requestedStoreId is not null && !string.Equals(currentStoreId, requestedStoreId, StringComparison.Ordinal);
 }
 
 internal static class ConnectionActivationPolicy
