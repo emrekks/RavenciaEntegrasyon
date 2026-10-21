@@ -86,9 +86,16 @@ Eski anahtarı `~/.ssh/authorized_keys` içinden silin ve `DEPLOY_SSH_KEY` secre
 ## Veritabanı bağlantısı ve PostgreSQL
 
 - `app_db_connection.txt`: `...;Maximum Pool Size=25;Timeout=15;Command Timeout=120`.
-  API ve Worker'ın her biri EF havuzu + ayrı `NpgsqlDataSource` + LISTEN açar; havuz başına 25 ile toplam
-  `max_connections=150` altında kalır. Yeni kurulumda `initialize-deployment.sh` bunu yazar; **mevcut
-  sunucuda elle eklenir** (bkz. İşletim). Eksikse deploy betikleri uyarı basar.
+  API ve Worker aynı dosyayı okur; dosyadaki 25 **API'nin** havuzudur. Worker 15 şerit yuvası çalıştırır ve
+  `2 × yuva + 10 = 40` bağlantıya ihtiyaç duyar (`WorkerLanes.RequiredPoolSize`); bu yüzden Worker'ın
+  `appsettings.json`'undaki `Database:MaxPoolSize=45` yalnız Worker sürecinde dosyadaki değerin yerine geçer
+  (ortam değişkeni `Database__MaxPoolSize` ile değiştirilebilir). Paylaşılan hız sınırlayıcının ayrı
+  `NpgsqlDataSource`'u kodda 5 bağlantıyla sınırlıdır. Toplam ≈ 25 + 5 + 45 + 5 + LISTEN ≈ 82;
+  `max_connections=150` altında migrate/yedek/psql için pay kalır. Gizli dosyada değişiklik gerekmez;
+  mevcut sunucular yeni değerleri bir sonraki deploy'la alır. Worker açılışta havuzu loglar
+  (`database pool of 45 (needs at least 40)`), küçükse uyarır. Yeni kurulumda `initialize-deployment.sh`
+  dosyayı yazar; **havuz sınırı hiç olmayan eski sunucuda elle eklenir** (bkz. İşletim). Eksikse deploy
+  betikleri uyarı basar.
 - PostgreSQL (`compose.yaml`): `max_connections=150`, `shared_buffers=256MB`,
   `effective_cache_size=1GB`, `work_mem=16MB`, `log_min_duration_statement=2000` (2 sn üstü sorgular
   loglanır), `shm_size: 256m`. Bu ayar değişikliği ilk deploy'da postgres konteynerini yeniden yaratır

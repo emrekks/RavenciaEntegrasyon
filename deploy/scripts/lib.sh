@@ -43,6 +43,10 @@ read_env_or() {
 
 # API and Worker each hold an EF pool, a separate NpgsqlDataSource and a LISTEN
 # connection; without a cap they can exhaust PostgreSQL's max_connections.
+# The file's 25 is the API's pool. The Worker replaces it with Database:MaxPoolSize
+# (45, src/MarketplaceHub.Worker/appsettings.json) and the shared rate limiter's
+# data source is capped at 5 in code, so the file itself needs no change:
+# 25 + 5 + 45 + 5 + LISTEN/migrate/backup sessions stays under max_connections=150.
 warn_on_unbounded_connection_pool() {
   if ! "${sudo_cmd[@]}" grep -qi 'Maximum Pool Size=' "$repository_root/deploy/secrets/app_db_connection.txt"; then
     echo "WARNING: deploy/secrets/app_db_connection.txt has no 'Maximum Pool Size'; append ';Maximum Pool Size=25;Timeout=15;Command Timeout=120' (see docs/CI-CD-DEPLOY.md)." >&2

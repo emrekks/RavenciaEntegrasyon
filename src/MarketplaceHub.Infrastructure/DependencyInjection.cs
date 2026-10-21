@@ -25,7 +25,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddMarketplaceInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var connection = WithoutJit(RequiredSecret(configuration, "ConnectionStrings:AppDb"));
+        var connection = WithMaxPoolSize(WithoutJit(RequiredSecret(configuration, "ConnectionStrings:AppDb")), configuration["Database:MaxPoolSize"]);
         var credentialKey = Convert.FromBase64String(RequiredSecret(configuration, "Security:CredentialKey"));
         var filesRoot = configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "private-files");
         var keysRoot = configuration["DataProtection:KeysRoot"] ?? Path.Combine(AppContext.BaseDirectory, "dp-keys");
@@ -77,7 +77,7 @@ public static class DependencyInjection
         services.Configure<HepsiburadaOptions>(configuration.GetSection(HepsiburadaOptions.SectionName));
         services.Configure<N11Options>(configuration.GetSection(N11Options.SectionName));
         services.Configure<PazaramaOptions>(configuration.GetSection(PazaramaOptions.SectionName));
-        services.AddSingleton<ISharedRateLimiter>(_ => new PostgresSharedRateLimiter(Npgsql.NpgsqlDataSource.Create(connection)));
+        services.AddSingleton<ISharedRateLimiter>(_ => new PostgresSharedRateLimiter(Npgsql.NpgsqlDataSource.Create(ForSharedRateLimiter(connection))));
         services.AddSingleton<TrendyolResilienceState>();
         services.AddTransient<TrendyolResilienceHandler>();
         services.AddHttpClient("Trendyol", client => client.Timeout = Timeout.InfiniteTimeSpan)
@@ -196,6 +196,29 @@ public static class DependencyInjection
         var builder = new Npgsql.NpgsqlConnectionStringBuilder(connection);
         if (builder.Options?.Contains("jit", StringComparison.OrdinalIgnoreCase) == true) return connection;
         builder.Options = string.IsNullOrWhiteSpace(builder.Options) ? "-c jit=off" : $"{builder.Options} -c jit=off";
+        return builder.ConnectionString;
+    }
+
+    // The API and the Worker read the same connection file (Maximum Pool Size=25). The Worker needs a bigger pool
+    // (WorkerLanes.RequiredPoolSize: two connections per lane slot plus its loops), so its appsettings.json sets
+    // Database:MaxPoolSize, which replaces the file's value in that process only. Absent or invalid: unchanged.
+    internal static string WithMaxPoolSize(string connection, string? maxPoolSize)
+    {
+        if (!int.TryParse(maxPoolSize, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var size) || size <= 0) return connection;
+        return WithPoolLimit(connection, size);
+    }
+
+    // The shared rate limiter runs one short function call per request on its own NpgsqlDataSource, a pool separate
+    // from EF's. A few connections are enough; uncapped it could take as many as the main pool from max_connections.
+    internal const int SharedRateLimiterMaxPoolSize = 5;
+
+    internal static string ForSharedRateLimiter(string connection) => WithPoolLimit(connection, SharedRateLimiterMaxPoolSize);
+
+    private static string WithPoolLimit(string connection, int maxPoolSize)
+    {
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder(connection);
+        builder.MinPoolSize = Math.Min(builder.MinPoolSize, maxPoolSize);
+        builder.MaxPoolSize = maxPoolSize;
         return builder.ConnectionString;
     }
 
