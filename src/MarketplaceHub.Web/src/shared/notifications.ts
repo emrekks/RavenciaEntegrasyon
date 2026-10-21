@@ -12,6 +12,8 @@ export type AppNotification = {
   // Where the notification leads: the page that explains or fixes what it reports.
   href?: string
   actionLabel?: string
+  // The destination was derived from the message (inferNotificationTarget), so it is derived again on read.
+  targetInferred?: boolean
   // Which records the notification is about, for example one line per return with its outcome.
   details?: NotificationDetail[]
 }
@@ -98,15 +100,19 @@ export function readNotificationHistory(): AppNotification[] {
         || (value.kind !== 'success' && value.kind !== 'error' && value.kind !== 'info')) return []
       // History saved before the recording policy existed may hold routine messages; drop them on read.
       if (!shouldRecordNotification(value.message, normalizeNotificationKind(value.message, value.kind as AppNotification['kind']))) return []
-      const inferred = typeof value.href === 'string' ? null : inferNotificationTarget(value.message)
+      // A destination derived from the message follows the current rules: entries marked as inferred, entries
+      // without one, and connection notices saved before they led to Integrations (they linked to Returns).
+      const current = inferNotificationTarget(value.message)
+      const inferred = typeof value.href !== 'string' || value.targetInferred === true || (current?.href === '/integrations' && /bağlantısında/u.test(value.message.toLocaleLowerCase('tr-TR'))) ? current : null
       return [{
         id: value.id,
         message: value.message,
         kind: normalizeNotificationKind(value.message, value.kind as AppNotification['kind']),
         createdAt: value.createdAt,
         read: value.read === true,
-        href: typeof value.href === 'string' ? value.href : inferred?.href,
-        actionLabel: typeof value.actionLabel === 'string' ? value.actionLabel : inferred?.label,
+        href: inferred ? inferred.href : typeof value.href === 'string' ? value.href : undefined,
+        actionLabel: inferred ? inferred.label : typeof value.actionLabel === 'string' ? value.actionLabel : undefined,
+        targetInferred: inferred ? true : undefined,
         details: readNotificationDetails(value.details)
       }]
     }).slice(0, 20)
@@ -118,7 +124,7 @@ export function readNotificationHistory(): AppNotification[] {
 export function appendNotification(message: string, kind: AppNotification['kind'] = 'info', target?: NotificationTarget | null, details?: NotificationDetail[]) {
   if (!shouldRecordNotification(message, normalizeNotificationKind(message, kind))) return null
   const destination = target === undefined ? inferNotificationTarget(message) : target
-  const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind: normalizeNotificationKind(message, kind), createdAt: new Date().toISOString(), read: false, href: destination?.href, actionLabel: destination?.label, details: details && details.length > 0 ? details.slice(0, 40) : undefined }
+  const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind: normalizeNotificationKind(message, kind), createdAt: new Date().toISOString(), read: false, href: destination?.href, actionLabel: destination?.label, targetInferred: target === undefined && destination ? true : undefined, details: details && details.length > 0 ? details.slice(0, 40) : undefined }
   const history = [notification, ...readNotificationHistory()].slice(0, 20)
   try {
     localStorage.setItem(scopedStorageKey(notificationStorageKey), JSON.stringify(history))

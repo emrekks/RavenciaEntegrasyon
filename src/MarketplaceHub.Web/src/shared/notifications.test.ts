@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { inferNotificationTarget, shouldRecordNotification } from './notifications'
+import { inferNotificationTarget, readNotificationHistory, shouldRecordNotification } from './notifications'
+import { scopedStorageKey } from './storage-scope'
+
+describe('saved notification targets', () => {
+  it('sends a connection notice saved with the old Returns link to Integrations, and keeps chosen links', () => {
+    localStorage.setItem(scopedStorageKey('ravencia.notification-history'), JSON.stringify([
+      { id: 'a', message: 'SIT HEPSİBURADA bağlantısında seçilen veriler sıfırlandı: sipariş verileri, iade verileri, fatura verileri, ürün verileri. Otomatik eşitleme açıksa kayıtlar yeniden çekilebilir.', kind: 'success', createdAt: '2026-10-22T00:04:00Z', read: false, href: '/returns', actionLabel: 'İadelere Git' },
+      { id: 'b', message: '3 iade kabulü pazar yerine gönderildi.', kind: 'success', createdAt: '2026-10-22T00:05:00Z', read: false, href: '/returns?status=APPROVED', actionLabel: 'Onaylanan İadelere Git' }
+    ]))
+    const [reset, decision] = readNotificationHistory()
+    expect([reset.href, reset.actionLabel]).toEqual(['/integrations', 'Entegrasyonlara Git'])
+    expect([decision.href, decision.actionLabel]).toEqual(['/returns?status=APPROVED', 'Onaylanan İadelere Git'])
+    localStorage.clear()
+  })
+})
 
 describe('notification targets', () => {
   it('sends return decisions to the matching returns tab', () => {
