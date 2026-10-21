@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Application;
 
@@ -11,12 +12,16 @@ public sealed record InvoiceIssueRefusal(string Code, string Message);
 public static class InvoiceIssuePolicy
 {
     public const string EInvoiceRecipientCode = "EINVOICE_RECIPIENT_REQUIRES_EFATURA";
+    public const string EInvoiceRecipientReviewCode = "EINVOICE_RECIPIENT_REVIEW_REQUIRED";
     public const string AdjustmentFlowUnavailableCode = "INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE";
     public const string ExportFlowRequiredCode = "INVOICE_EXPORT_FLOW_REQUIRED";
     public const string RecipientTaxIdInvalidCode = "EFATURAM_RECIPIENT_TAX_ID_INVALID";
 
     public static readonly InvoiceIssueRefusal EInvoiceRecipient = new(EInvoiceRecipientCode,
         "Alıcı e-Fatura mükellefi. Bu siparişe e-Arşiv fatura kesilemez; e-Fatura durum sorgusu henüz doğrulanmadığı için otomatik e-Fatura da kapalı. Faturayı E-Faturam portalında e-Fatura olarak düzenleyip panele manuel belge olarak ekleyin.");
+
+    public static readonly InvoiceIssueRefusal EInvoiceRecipientReview = new(EInvoiceRecipientReviewCode,
+        "Alıcı bir şirket (vergi numarası veya firma unvanı var) ve e-Fatura mükellefi olabilir. Pazaryeri alıcının e-Fatura durumunu bildirmediği için otomatik e-Arşiv fatura kesilmedi. Alıcının e-Fatura mükellefiyetini kontrol edin; faturayı E-Faturam portalında doğru türde (mükellefse e-Fatura, değilse e-Arşiv) düzenleyip panele manuel belge olarak ekleyin.");
 
     public static readonly InvoiceIssueRefusal AdjustmentFlowUnavailable = new(AdjustmentFlowUnavailableCode,
         "İade/düzeltme faturası akışı henüz hazır değil. Orijinal faturaya bağlı yeni mali belge oluşturulmadı; iade faturasını E-Faturam portalında düzenleyin.");
@@ -32,6 +37,17 @@ public static class InvoiceIssuePolicy
         // verified), so an E-Invoice recipient is stopped instead of being sent an e-Archive document.
         if (string.Equals(invoiceType, "TEMELFATURA", StringComparison.Ordinal)) return EInvoiceRecipient;
         return null;
+    }
+
+    /// <summary>
+    /// <see cref="Refusal(string, string, string)"/> plus the platform-aware recipient check: only Trendyol states
+    /// whether a corporate buyer is an e-Invoice taxpayer, so another platform's corporate buyer is stopped for
+    /// review instead of being sent an e-Archive document that may have to be cancelled and issued again.
+    /// </summary>
+    public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, string? customerSnapshotJson, string? platformCode, string? invoiceAddressSnapshotJson)
+    {
+        if (Refusal(invoiceType, currency, customerSnapshotJson) is { } refusal) return refusal;
+        return InvoiceAmounts.RequiresEInvoiceRecipientReview(platformCode, customerSnapshotJson, invoiceAddressSnapshotJson) ? EInvoiceRecipientReview : null;
     }
 
     public const string LineVatRateUnknownCode = "ORDER_LINE_VAT_RATE_UNKNOWN";
@@ -98,6 +114,7 @@ public static class InvoiceIssuePolicy
     public static string DescribeValidationCode(string? code) => code switch
     {
         EInvoiceRecipientCode => EInvoiceRecipient.Message,
+        EInvoiceRecipientReviewCode => EInvoiceRecipientReview.Message,
         ExportFlowRequiredCode => ExportFlowRequired.Message,
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
         LineVatRateUnknownCode => LineVatRateUnknown.Message,
