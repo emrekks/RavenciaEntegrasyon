@@ -60,6 +60,13 @@ public static class ScheduledOrderPollingCadencePolicy
             return (interval, jitter);
         }
 
+        // PTT AVM documents no rate limit and answers a whole order-date window per request: new orders
+        // every two minutes, the open-order status scan every quarter hour.
+        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && resourceType is "ORDERS" or "ORDER_LIFECYCLE")
+        {
+            return (resourceType == "ORDERS" ? 120 : 900, Math.Min(jitterSeconds, 30));
+        }
+
         // Hepsiburada invoice state is read from order details and the missing-invoice list. The
         // batch covers every open Hepsiburada order at today's volume, and invoices sent from the
         // panel are recorded when they are delivered, so a half-hourly pass is enough.

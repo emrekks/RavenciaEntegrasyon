@@ -17,7 +17,7 @@ export type JobTypeMetric = {
 
 // The worker's own lanes; queued counts only jobs a slot could take now (not those waiting for their
 // connection's lock or a quota backoff).
-export type LaneCode = 'USER' | 'INITIAL' | 'HOT' | 'BACKGROUND' | 'ORDER_STATUS' | 'RETURNS_READ' | 'PRODUCT_CATALOG' | 'HEPSIBURADA_STATUS' | 'HEPSIBURADA_ORDERS' | 'PAZARAMA_ORDERS'
+export type LaneCode = 'USER' | 'INITIAL' | 'HOT' | 'BACKGROUND' | 'ORDER_STATUS' | 'RETURNS_READ' | 'PRODUCT_CATALOG' | 'HEPSIBURADA_STATUS' | 'HEPSIBURADA_ORDERS' | 'PAZARAMA_ORDERS' | 'PTTAVM_ORDERS'
 export type LaneMetric = { lane: LaneCode | string; attempts: number; averageWaitSeconds: number | null; p95WaitSeconds: number | null; queued: number; running: number }
 export type QuotaUsage = { platformCode: string; storeName: string; lane: 'FOREGROUND' | 'BACKGROUND'; limitPerMinute: number; lastHourRequests: number; peakMinuteRequests: number; averagePerMinute: number }
 
@@ -31,7 +31,8 @@ export const laneLabels: Record<LaneCode, string> = {
   PRODUCT_CATALOG: 'Ürün Kataloğu',
   HEPSIBURADA_STATUS: 'Hepsiburada Durum Taraması',
   HEPSIBURADA_ORDERS: 'Hepsiburada Siparişleri',
-  PAZARAMA_ORDERS: 'Pazarama Siparişleri'
+  PAZARAMA_ORDERS: 'Pazarama Siparişleri',
+  PTTAVM_ORDERS: 'PTT AVM Siparişleri'
 }
 
 export function laneLabel(lane: string) {

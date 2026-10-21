@@ -23,6 +23,9 @@ public static class WorkerLanes
     // the three order flows run in their own lane so they never occupy the hot lane's slots.
     public static readonly IReadOnlyList<string> PazaramaOrderJobTypes =
         [MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PazaramaOrderStatusSync];
+    // PTT AVM reads whole order-date windows (no paging); its three order flows get a lane of their own too.
+    public static readonly IReadOnlyList<string> PttAvmOrderJobTypes =
+        [MarketplaceJobTypes.PttAvmOrderSync, MarketplaceJobTypes.PttAvmOrderRecoverySync, MarketplaceJobTypes.PttAvmOrderStatusSync];
     public static readonly IReadOnlyList<string> ReturnReadJobTypes =
         [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
     // The open-order status scans can run for minutes (Trendyol's for up to twenty); they have their own
@@ -31,7 +34,7 @@ public static class WorkerLanes
     public static readonly IReadOnlyList<string> OrderStatusJobTypes = [MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ShopifyOrderStatusSync];
     public static readonly IReadOnlyList<string> HepsiburadaStatusJobTypes = [MarketplaceJobTypes.HepsiburadaOrderStatusSync];
     public static readonly IReadOnlyList<string> HotLaneExcludedJobTypes =
-        [.. HepsiburadaOrderJobTypes, .. PazaramaOrderJobTypes, .. ReturnReadJobTypes, .. OrderStatusJobTypes, .. HepsiburadaStatusJobTypes];
+        [.. HepsiburadaOrderJobTypes, .. PazaramaOrderJobTypes, .. PttAvmOrderJobTypes, .. ReturnReadJobTypes, .. OrderStatusJobTypes, .. HepsiburadaStatusJobTypes];
 
     // In precedence order: a job that more than one lane could lease is reported under the first.
     public static IReadOnlyList<WorkerLane> All(int hotPriorityCeiling = DefaultHotPriorityCeiling) =>
@@ -48,6 +51,7 @@ public static class WorkerLanes
         new("hepsiburada-status", 1, hotPriorityCeiling, 0, HepsiburadaStatusJobTypes, []),
         new("hepsiburada-orders", 1, hotPriorityCeiling, 0, HepsiburadaOrderJobTypes, []),
         new("pazarama-orders", 1, hotPriorityCeiling, 0, PazaramaOrderJobTypes, []),
+        new("pttavm-orders", 1, hotPriorityCeiling, 0, PttAvmOrderJobTypes, []),
         new("hot", 3, hotPriorityCeiling, 0, [], HotLaneExcludedJobTypes),
         new("background", 2, null, hotPriorityCeiling + 1, [], [.. JobTypeRegistry.ProductCatalogSyncJobTypes, .. ReturnReadJobTypes])
     ];

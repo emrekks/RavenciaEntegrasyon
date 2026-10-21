@@ -1,10 +1,9 @@
-export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'] as const
+export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM'] as const
 
 export type MarketplacePlatformOption = { value: string; label: string }
 export type MarketplacePlatformOptionSource = { platformCode: string; displayName?: string | null; status?: string | null }
 
-// PTT AVM is labelled already; it joins the order platforms with its order phase (docs/PTTAVM-ENTEGRASYON-PLANI.md).
-const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number] | 'PTTAVM', string> = {
+const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number], string> = {
   TRENDYOL: 'Trendyol',
   SHOPIFY: 'Shopify',
   HEPSIBURADA: 'Hepsiburada',
@@ -31,6 +30,9 @@ const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_RECONCIL
 
 // Pazarama: the order reads (new orders, history, open-order status scan); its write flows join with their phases.
 const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'RETURNS', 'QUESTIONS', 'SHIPMENT_WRITE', 'RETURN_WRITE'])
+
+// PTT AVM: the order reads (new orders, history, open-order status scan); its write flows join with their phases.
+const pttAvmReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
   return orderMarketplacePlatformCodes.includes(normalizeMarketplacePlatformCode(platformCode) as typeof orderMarketplacePlatformCodes[number])
@@ -84,13 +86,14 @@ export function isMarketplacePlatformSelected(selectedCodes: string[] | null, pl
 }
 
 export function supportsSyncPolicyManagement(platformCode: string) {
-  return platformCode === 'TRENDYOL' || platformCode === 'SHOPIFY' || platformCode === 'HEPSIBURADA' || platformCode === 'N11' || platformCode === 'PAZARAMA'
+  return platformCode === 'TRENDYOL' || platformCode === 'SHOPIFY' || platformCode === 'HEPSIBURADA' || platformCode === 'N11' || platformCode === 'PAZARAMA' || platformCode === 'PTTAVM'
 }
 
 export function supportsSyncPolicy(platformCode: string, resourceType: string) {
   if (!supportsSyncPolicyManagement(platformCode)) return false
   if (platformCode === 'N11') return n11ReadSyncPolicies.has(resourceType)
   if (platformCode === 'PAZARAMA') return pazaramaReadSyncPolicies.has(resourceType)
+  if (platformCode === 'PTTAVM') return pttAvmReadSyncPolicies.has(resourceType)
   return platformCode !== 'HEPSIBURADA' || hepsiburadaReadSyncPolicies.has(resourceType)
 }
 

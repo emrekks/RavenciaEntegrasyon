@@ -6,6 +6,7 @@ using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure;
 using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.PttAvm;
+using MarketplaceHub.Infrastructure.Jobs;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -429,6 +430,314 @@ public sealed class PttAvmAdapterTests
     [InlineData("   ", null)]
     public void ThePasswordIsKeptAsTypedApartFromInvisibleCharacters(string value, string? expected) =>
         Assert.Equal(expected, MarketplaceConnectionService.PttAvmPasswordValue(value));
+
+    // Order Control V2 as published (two orders of the sample, the first cut to two of its lines), plus an open
+    // order with one line waiting for cargo and one already sent.
+    private const string OrderListAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+           <s:Body>
+              <SiparisKontrolListesiV2Response xmlns="http://tempuri.org/">
+                 <SiparisKontrolListesiV2Result xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+                    <a:TedarikciSiparisKontrolV2>
+                       <a:Barcodes xmlns:b="http://schemas.datacontract.org/2004/07/ePttAVMService.Model">
+                          <b:Barkod><b:barcode>2710243114843</b:barcode><b:type>KARGO</b:type></b:Barkod>
+                       </a:Barcodes>
+                       <a:Eposta>Deneme@gmail.com</a:Eposta>
+                       <a:FaturaAdresi>Fatura Sokak 1</a:FaturaAdresi>
+                       <a:FaturaIlce>Çankaya</a:FaturaIlce>
+                       <a:FaturaIli>Ankara</a:FaturaIli>
+                       <a:FaturaMusteriAdi>Ayşe</a:FaturaMusteriAdi>
+                       <a:FaturaMusteriSoyadi>Yılmaz</a:FaturaMusteriSoyadi>
+                       <a:FaturaTip>Bireysel</a:FaturaTip>
+                       <a:FirmaUnvani/>
+                       <a:IslemTarihi>2024-10-07T17:38:29</a:IslemTarihi>
+                       <a:KargoBarkod>2710243114843</a:KargoBarkod>
+                       <a:KargoTutari>1330</a:KargoTutari>
+                       <a:MusteriAdi>Ayşe</a:MusteriAdi>
+                       <a:MusteriId>902933</a:MusteriId>
+                       <a:MusteriSoyadi>Yılmaz</a:MusteriSoyadi>
+                       <a:SiparisAdresi>Teslimat Sokak 2</a:SiparisAdresi>
+                       <a:SiparisIlce>Keçiören</a:SiparisIlce>
+                       <a:SiparisIli>Ankara</a:SiparisIli>
+                       <a:SiparisNo>PTT-A1712HP2E-071024</a:SiparisNo>
+                       <a:SiparisUrunler>
+                          <a:SiparisUrun>
+                             <a:IndirimPttavm>2.71</a:IndirimPttavm>
+                             <a:IndirimTedarikci>0</a:IndirimTedarikci>
+                             <a:IndirimToplam>2.71</a:IndirimToplam>
+                             <a:KdvDahilToplamTutar>33.92</a:KdvDahilToplamTutar>
+                             <a:KdvOrani>10</a:KdvOrani>
+                             <a:LineItemId>229049580</a:LineItemId>
+                             <a:SiparisDurumu>iade</a:SiparisDurumu>
+                             <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+                             <a:Urun>parça yönetimi 6</a:Urun>
+                             <a:UrunBarkod>0000000066266mainbrkd</a:UrunBarkod>
+                             <a:UrunId>944333635</a:UrunId>
+                          </a:SiparisUrun>
+                          <a:SiparisUrun>
+                             <a:IndirimToplam>0</a:IndirimToplam>
+                             <a:KdvDahilToplamTutar>41.25</a:KdvDahilToplamTutar>
+                             <a:KdvOrani>10</a:KdvOrani>
+                             <a:LineItemId>229049601</a:LineItemId>
+                             <a:SiparisDurumu>iptal</a:SiparisDurumu>
+                             <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+                             <a:Urun>parça yönetimi 4</a:Urun>
+                             <a:UrunBarkod>abs123456</a:UrunBarkod>
+                          </a:SiparisUrun>
+                       </a:SiparisUrunler>
+                       <a:TCKN>67351072674</a:TCKN>
+                       <a:TelefonNo>123123123</a:TelefonNo>
+                       <a:VergiDaire/>
+                       <a:VergiNo/>
+                    </a:TedarikciSiparisKontrolV2>
+                    <a:TedarikciSiparisKontrolV2>
+                       <a:Barcodes xmlns:b="http://schemas.datacontract.org/2004/07/ePttAVMService.Model"/>
+                       <a:IslemTarihi>2024-10-21T14:48:46</a:IslemTarihi>
+                       <a:KargoBarkod/>
+                       <a:MusteriAdi>test</a:MusteriAdi>
+                       <a:MusteriSoyadi>test</a:MusteriSoyadi>
+                       <a:SiparisNo>PTT-L6LI1VK2D-211024</a:SiparisNo>
+                       <a:SiparisUrunler>
+                          <a:SiparisUrun>
+                             <a:IndirimToplam>3.72</a:IndirimToplam>
+                             <a:KdvDahilToplamTutar>49.66</a:KdvDahilToplamTutar>
+                             <a:KdvOrani>1</a:KdvOrani>
+                             <a:LineItemId>232318670</a:LineItemId>
+                             <a:SiparisDurumu>iptal</a:SiparisDurumu>
+                             <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+                             <a:Urun>Test ürünü Fırın</a:Urun>
+                             <a:UrunBarkod>10102024-85224</a:UrunBarkod>
+                          </a:SiparisUrun>
+                       </a:SiparisUrunler>
+                    </a:TedarikciSiparisKontrolV2>
+                    <a:TedarikciSiparisKontrolV2>
+                       <a:IslemTarihi>2026-10-21T09:15:00</a:IslemTarihi>
+                       <a:KargoBarkod/>
+                       <a:SiparisNo>PTT-OPEN12345-211026</a:SiparisNo>
+                       <a:SiparisUrunler>
+                          <a:SiparisUrun>
+                             <a:IndirimToplam>10</a:IndirimToplam>
+                             <a:KdvDahilToplamTutar>190</a:KdvDahilToplamTutar>
+                             <a:KdvOrani>20</a:KdvOrani>
+                             <a:LineItemId>300000001</a:LineItemId>
+                             <a:SiparisDurumu>kargo_yapilmasi_bekleniyor</a:SiparisDurumu>
+                             <a:ToplamIslemAdedi>2</a:ToplamIslemAdedi>
+                             <a:Urun>Gömlek</a:Urun>
+                             <a:UrunBarkod>8690000000017</a:UrunBarkod>
+                          </a:SiparisUrun>
+                          <a:SiparisUrun>
+                             <a:IndirimToplam>0</a:IndirimToplam>
+                             <a:KdvDahilToplamTutar>50</a:KdvDahilToplamTutar>
+                             <a:KdvOrani>20</a:KdvOrani>
+                             <a:LineItemId>300000002</a:LineItemId>
+                             <a:SiparisDurumu>gönderilmiş</a:SiparisDurumu>
+                             <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+                             <a:Urun>Kemer</a:Urun>
+                             <a:UrunBarkod>8690000000024</a:UrunBarkod>
+                          </a:SiparisUrun>
+                       </a:SiparisUrunler>
+                    </a:TedarikciSiparisKontrolV2>
+                 </SiparisKontrolListesiV2Result>
+              </SiparisKontrolListesiV2Response>
+           </s:Body>
+        </s:Envelope>
+        """;
+
+    [Fact]
+    public async Task AnOrderWindowIsReadInOneRequestWithEveryStatus()
+    {
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, OrderListAnswer));
+
+        var result = await Client(handler).ReadOrdersAsync(Account(), new DateTime(2026, 9, 1), new DateTime(2026, 10, 6), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+        Assert.False(result.Value!.HasMore);
+        Assert.Equal(["PTT-A1712HP2E-071024", "PTT-L6LI1VK2D-211024", "PTT-OPEN12345-211026"], result.Value.Items.Select(x => x.ExternalOrderId));
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("\"http://tempuri.org/IService/SiparisKontrolListesiV2\"", request.Headers["SOAPAction"]);
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        var body = XDocument.Parse(request.Body!).Descendants(tem + "SiparisKontrolListesiV2").Single();
+        Assert.Equal("2026-09-01", body.Element(tem + "BaslangicTarihi")!.Value);
+        Assert.Equal("2026-10-06", body.Element(tem + "BitisTarihi")!.Value);
+        Assert.Equal("0", body.Element(tem + "AktifSiparisler")!.Value);
+    }
+
+    [Fact]
+    public void AnOrderKeepsItsLinesCustomerAddressesAndCargoBarcode()
+    {
+        var order = OrderFromList("PTT-A1712HP2E-071024");
+
+        // IslemTarihi carries no offset: Turkey time.
+        Assert.Equal(new DateTimeOffset(2024, 10, 7, 14, 38, 29, TimeSpan.Zero), order.OrderedAt);
+        Assert.Equal(["229049580", "229049601"], order.Lines.Select(x => x.ExternalLineId));
+        var returned = order.Lines[0];
+        Assert.Equal("Returned", returned.RawStatus);
+        Assert.Equal("0000000066266mainbrkd", returned.Barcode);
+        Assert.Equal("0000000066266mainbrkd", returned.Sku);
+        Assert.Equal(36.63m, returned.UnitPrice);
+        Assert.Equal(10m, returned.VatRate);
+        Assert.Equal("Cancelled", order.Lines[1].RawStatus);
+        Assert.Equal(1m, order.Lines[1].CancelledQuantity);
+        // The cancelled line is no part of the value while the returned line is live.
+        Assert.Equal(36.63m, order.GrossAmount);
+        Assert.Equal(2.71m, order.DiscountAmount);
+        Assert.Equal(33.92m, order.NetAmount);
+        var package = Assert.Single(order.Packages);
+        Assert.Equal("order:PTT-A1712HP2E-071024", package.ExternalPackageId);
+        Assert.Equal("Returned", package.RawStatus);
+        Assert.Equal("PTT Kargo", package.CargoProviderExternalId);
+        Assert.Equal("2710243114843", package.CargoTrackingNumber);
+        var customer = System.Text.Json.Nodes.JsonNode.Parse(order.CustomerSnapshotJson)!;
+        Assert.Equal("Ayşe Yılmaz", (string?)customer["customerName"]);
+        Assert.Equal("67351072674", (string?)customer["tcIdentityNumber"]);
+        Assert.Equal(1330m, (decimal?)customer["shipmentAmount"]);
+        var delivery = System.Text.Json.Nodes.JsonNode.Parse(order.ShipmentAddressSnapshotJson)!;
+        Assert.Equal("Ankara", (string?)delivery["city"]);
+        Assert.Equal("Keçiören", (string?)delivery["district"]);
+        Assert.Equal("Ayşe Yılmaz", (string?)delivery["fullName"]);
+        Assert.Equal("Fatura Sokak 1", (string?)System.Text.Json.Nodes.JsonNode.Parse(order.InvoiceAddressSnapshotJson)!["address1"]);
+        Assert.DoesNotContain("SiparisUrunler", order.RawJson);
+    }
+
+    [Fact]
+    public void AnOpenOrderWaitsWhereItsLeastAdvancedLineIs()
+    {
+        var order = OrderFromList("PTT-OPEN12345-211026");
+
+        Assert.Equal(["Created", "Shipped"], order.Lines.Select(x => x.RawStatus));
+        var package = Assert.Single(order.Packages);
+        Assert.Equal("Created", package.RawStatus);
+        Assert.Null(package.CargoTrackingNumber);
+        Assert.Equal([0m, 1m], package.Allocations.Select(x => x.ShippedQuantity));
+        Assert.Equal(100m, order.Lines[0].UnitPrice);
+        Assert.Equal(250m, order.GrossAmount);
+        Assert.Equal(240m, order.NetAmount);
+        Assert.Equal(ShipmentPackageStatus.New, TrendyolShipmentPackageStatusPolicy.FromRemote(package.RawStatus));
+    }
+
+    [Fact]
+    public void AFullyCancelledOrderKeepsTheValueItWasPlacedWith()
+    {
+        var order = OrderFromList("PTT-L6LI1VK2D-211024");
+
+        Assert.Equal("Cancelled", Assert.Single(order.Packages).RawStatus);
+        Assert.Equal(53.38m, order.GrossAmount);
+        Assert.Equal(49.66m, order.NetAmount);
+    }
+
+    [Theory]
+    [InlineData("kargo_yapilmasi_bekleniyor", "Created", ShipmentPackageStatus.New)]
+    [InlineData("havale_onayi_bekleniyor", "Awaiting", ShipmentPackageStatus.PaymentPending)]
+    [InlineData("onay_surecinde", "Awaiting", ShipmentPackageStatus.PaymentPending)]
+    [InlineData("gonderilmiş", "Shipped", ShipmentPackageStatus.Shipped)]
+    [InlineData("Gönderilmiş", "Shipped", ShipmentPackageStatus.Shipped)]
+    [InlineData("gondericisine_teslim_edildi", "Undelivered", ShipmentPackageStatus.Undelivered)]
+    [InlineData("tamamlandi", "Delivered", ShipmentPackageStatus.Delivered)]
+    [InlineData("iptal", "Cancelled", ShipmentPackageStatus.Cancelled)]
+    [InlineData("odeme_gecersiz", "Cancelled", ShipmentPackageStatus.Cancelled)]
+    [InlineData("iade", "Returned", ShipmentPackageStatus.Returned)]
+    public void LineStatusesReadAsPanelPackageStatuses(string value, string raw, ShipmentPackageStatus status)
+    {
+        Assert.Equal(raw, PttAvmOrderMapper.LineStatus(value));
+        Assert.Equal(status, TrendyolShipmentPackageStatusPolicy.FromRemote(raw));
+    }
+
+    [Fact]
+    public void AnUnknownLineStatusIsKeptForReview() =>
+        Assert.Equal("Unknown:yeni_durum", PttAvmOrderMapper.LineStatus("yeni_durum"));
+
+    [Fact]
+    public void EachPackageStatusIsItsOwnLaterEvent()
+    {
+        var ordered = new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero);
+        string[] path = ["Awaiting", "Created", "Shipped", "Delivered", "Returned"];
+
+        var times = path.Select(status => PttAvmOrderMapper.StatusObservedAt(ordered, status)).ToArray();
+
+        Assert.Equal(times.OrderBy(x => x), times);
+        Assert.Equal(times.Length, times.Distinct().Count());
+        Assert.True(PttAvmOrderMapper.StatusObservedAt(ordered, "Cancelled") > PttAvmOrderMapper.StatusObservedAt(ordered, "Shipped"));
+    }
+
+    [Theory]
+    [InlineData("PTT-A1712HP2E-071024", 2024, 10, 7)]
+    [InlineData("PTT-L6LI1VK2D-211024", 2024, 10, 21)]
+    public void TheOrderNumberNamesTheOrderDay(string orderNumber, int year, int month, int day) =>
+        Assert.Equal(new DateTime(year, month, day), PttAvmOrderMapper.OrderDay(orderNumber));
+
+    [Theory]
+    [InlineData("PTT-A1712HP2E")]
+    [InlineData("PTT-A1712HP2E-991324")]
+    [InlineData("")]
+    public void AnOrderNumberWithoutADayNamesNone(string orderNumber) => Assert.Null(PttAvmOrderMapper.OrderDay(orderNumber));
+
+    [Fact]
+    public async Task AnAnswerOfAnotherShapeIsAContractViolation()
+    {
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, OrdersAnswer.Replace("TedarikciSiparisKontrolV2", "BaskaBirSey", StringComparison.Ordinal)));
+
+        var result = await Client(handler).ReadOrdersAsync(Account(), new DateTime(2026, 10, 20), new DateTime(2026, 10, 21), CancellationToken.None);
+
+        Assert.Equal("PTTAVM_ORDER_CONTRACT_INVALID", result.Error!.Code);
+    }
+
+    [Fact]
+    public void HistoryWindowsStayWithinPttAvmsFortyDays()
+    {
+        var now = new DateTimeOffset(2026, 10, 21, 20, 0, 0, TimeSpan.Zero);
+        var start = PttAvmOrderHistoryPolicy.StartDay(true, null, now);
+
+        var windows = PttAvmOrderHistoryPolicy.Windows(start, now);
+
+        Assert.Equal(new DateTime(2026, 7, 21), start);
+        Assert.Equal(start, windows[0].Start);
+        Assert.Equal(new DateTime(2026, 10, 22), windows[^1].End);
+        Assert.All(windows, window => Assert.True(window.End - window.Start <= PttAvmHttpClient.MaxOrderWindow));
+        Assert.All(windows.Zip(windows.Skip(1)), pair => Assert.Equal(pair.First.End, pair.Second.Start));
+        // An incremental run re-reads the last two days.
+        Assert.Equal(new DateTime(2026, 10, 19), PttAvmOrderHistoryPolicy.StartDay(false, now.AddMinutes(-2), now));
+    }
+
+    [Fact]
+    public void TheOpenOrderScanStartsAtTheOldestRecentOpenOrder()
+    {
+        var now = new DateTimeOffset(2026, 10, 21, 20, 0, 0, TimeSpan.Zero);
+
+        Assert.Null(PttAvmOrderHistoryPolicy.OpenOrderStartDay([], now));
+        Assert.Null(PttAvmOrderHistoryPolicy.OpenOrderStartDay([now.AddMonths(-5)], now));
+        Assert.Equal(new DateTime(2026, 9, 2), PttAvmOrderHistoryPolicy.OpenOrderStartDay([now.AddDays(-3), now.AddDays(-49), now.AddMonths(-5)], now));
+    }
+
+    [Fact]
+    public void PttAvmOrderReadsHaveTheirOwnJobTypesLaneAndSchedule()
+    {
+        Assert.Equal(MarketplaceJobTypes.PttAvmOrderSync, MarketplaceJobTypes.ForPlatform("PTTAVM", MarketplaceJobTypes.OrderSync));
+        Assert.Equal(MarketplaceJobTypes.PttAvmOrderRecoverySync, MarketplaceJobTypes.ForPlatform("PTTAVM", MarketplaceJobTypes.OrderRecoverySync));
+        Assert.Equal(MarketplaceJobTypes.PttAvmOrderStatusSync, MarketplaceJobTypes.ForPlatform("PTTAVM", MarketplaceJobTypes.OrderStatusSync));
+        foreach (var type in new[] { MarketplaceJobTypes.PttAvmOrderSync, MarketplaceJobTypes.PttAvmOrderRecoverySync, MarketplaceJobTypes.PttAvmOrderStatusSync })
+        {
+            Assert.True(MarketplaceJobTypes.IsMarketplaceProcessorJob(type));
+            Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(type));
+            Assert.Equal("pttavm-orders", WorkerLanes.LaneFor(type, JobPriorityPolicy.Realtime));
+        }
+        Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("ORDERS"));
+        Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("ORDER_LIFECYCLE"));
+        Assert.False(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("RETURNS"));
+        Assert.False(ScheduledJobProducer.DefaultPolicyEnabled("PTTAVM", MarketplaceExternalWritePolicies.Stock));
+        Assert.Equal((120, 30), ScheduledOrderPollingCadencePolicy.ForPlatform("PTTAVM", "ORDERS", 60, 30));
+        Assert.Equal((900, 30), ScheduledOrderPollingCadencePolicy.ForPlatform("PTTAVM", "ORDER_LIFECYCLE", 120, 60));
+        var plan = MarketplaceConnectionService.CreateInitialDataSyncPlan("PTTAVM", Guid.NewGuid(), false);
+        Assert.Equal(MarketplaceJobTypes.PttAvmOrderRecoverySync, Assert.Single(plan).JobType);
+    }
+
+    private static RemoteOrder OrderFromList(string orderNumber)
+    {
+        var (result, error) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, OrderListAnswer, PttAvmHttpClient.Orders);
+        Assert.Null(error);
+        var page = PttAvmOrderMapper.Page(result!);
+        Assert.Empty(page.Issues ?? []);
+        return page.Items.Single(x => x.ExternalOrderId == orderNumber);
+    }
 
     private static string Operation(HttpRequestMessage request) =>
         request.Headers.GetValues("SOAPAction").Single().Trim('"')[PttAvmHttpClient.SoapActionPrefix.Length..];

@@ -167,6 +167,21 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
 | 8 | İade görünümü | Satır `iade` → iade kaydı (salt okunur) |
 | 9 | Sağlamlaştırma | Hata önerileri, veri eşitleme ekranı, iş adları, pano matrisi |
 
+### 6.1 Durum (21 Ekim 2026)
+
+- **1. aşama canlı:** SOAP (`ws.pttavm.com:93`, WS-Security). Mağaza ID, API kullanıcısının tedarikçi bilgisinden
+  (`KullaniciTedarikciBilgisiGetir` → `TedarikciId`) doğrulanır ve bağlantıya yazılır. Bağlantı testi ile kategori, sipariş ve stok
+  okumaları canlıda kanıtlandı.
+- **2. aşama (sipariş okuma):** `SiparisKontrolListesiV2` (`AktifSiparisler=0`, sayfalama yok) ile 35 günlük pencereler okunur.
+  `PTTAVM_ORDER_SYNC` (2 dk, son 2 gün), `PTTAVM_ORDER_RECOVERY_SYNC` (ilk aktarım 3 ay) ve `PTTAVM_ORDER_STATUS_SYNC` (15 dk) işleri
+  `pttavm-orders` şeridinde çalışır. Açık siparişlerin bulunduğu pencereler bütün olarak yeniden okunur.
+  Satır durumları Trendyol paket durumlarına çevrilir: `kargo_yapilmasi_bekleniyor` → Created, `havale_onayi_bekleniyor`/`onay_surecinde` → Awaiting,
+  `gonderilmiş` → Shipped, `gondericisine_teslim_edildi` → Undelivered, `tamamlandi` → Delivered, `iptal`/`odeme_gecersiz` → Cancelled, `iade` → Returned.
+  Durum değişim saati gelmediği için paket olay zamanı `IslemTarihi + durum adımı (sn)` olarak hesaplanır.
+  Tek sipariş, numaradaki gün (`PTT-…-ddMMyy`) ±1 gün okunarak bulunur.
+- **Canlıda doğrulanacak:** `IslemTarihi` gerçekten sipariş tarihi mi; `BitisTarihi` dahil mi; `KdvDahilToplamTutar` indirim sonrası mı
+  (brüt = ödenen + `IndirimToplam` varsayımı).
+
 ## 7. Riskler
 
 - **SOAP kimliğinin ömrü:** REST dokümanı kullanıcı adı/şifrenin "geçiş süresince" çalıştığını yazıyordu; panel bugün

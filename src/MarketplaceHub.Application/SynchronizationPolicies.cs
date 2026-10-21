@@ -121,6 +121,47 @@ public static class PazaramaOrderHistoryPolicy
     }
 }
 
+// PTT AVM lists orders by date (SiparisKontrolListesiV2) in ranges of at most 40 days, with no paging:
+// one request answers a whole window. Windows are [start, end) days; the adapter sends the end day
+// itself as BitisTarihi, so a window spans at most 35 + 1 days either way the end date is read.
+// A full scan reads the last three months, an incremental run re-reads the last days, and status
+// changes of older orders come from the open-order scan over the windows that hold them.
+public static class PttAvmOrderHistoryPolicy
+{
+    public const int InitialLookbackMonths = 3;
+    public const int IncrementalLookbackDays = 2;
+    public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(35);
+    public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+
+    // First day (Turkey time) the run reads.
+    public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now)
+    {
+        var today = now.ToOffset(TurkeyOffset).Date;
+        if (full || watermark is null) return today.AddMonths(-InitialLookbackMonths);
+        var fromWatermark = watermark.Value.ToOffset(TurkeyOffset).Date.AddDays(-IncrementalLookbackDays);
+        var floor = today.AddDays(-IncrementalLookbackDays);
+        return fromWatermark < floor ? fromWatermark : floor;
+    }
+
+    // Consecutive [start, end) day windows up to tomorrow.
+    public static IReadOnlyList<(DateTime Start, DateTime End)> Windows(DateTime startDay, DateTimeOffset now)
+    {
+        var end = now.ToOffset(TurkeyOffset).Date.AddDays(1);
+        var windows = new List<(DateTime, DateTime)>();
+        for (var cursor = startDay; cursor < end; cursor = cursor.Add(MaxWindow))
+            windows.Add((cursor, cursor.Add(MaxWindow) < end ? cursor.Add(MaxWindow) : end));
+        return windows;
+    }
+
+    // The open-order scan starts at the oldest open order of the last three months (null: none open).
+    public static DateTime? OpenOrderStartDay(IReadOnlyCollection<DateTimeOffset> openOrderedAt, DateTimeOffset now)
+    {
+        var floor = now.AddMonths(-InitialLookbackMonths);
+        var recent = openOrderedAt.Where(orderedAt => orderedAt >= floor).ToArray();
+        return recent.Length == 0 ? null : recent.Min().ToOffset(TurkeyOffset).Date;
+    }
+}
+
 public static class HepsiburadaOrderHistoryPolicy
 {
     public const int DefaultInitialLookbackMonths = 1;

@@ -24,7 +24,8 @@ public static class JobTypeRegistry
         MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation,
         MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.N11OrderRecoverySync,
         // Pazarama order reads used to fall back to the 60-minute default ceiling.
-        MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PazaramaOrderStatusSync
+        MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PazaramaOrderStatusSync,
+        MarketplaceJobTypes.PttAvmOrderSync, MarketplaceJobTypes.PttAvmOrderRecoverySync, MarketplaceJobTypes.PttAvmOrderStatusSync
     ];
 
     public static readonly IReadOnlyList<string> ProductCatalogSyncJobTypes =

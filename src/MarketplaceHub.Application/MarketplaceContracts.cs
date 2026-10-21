@@ -65,6 +65,9 @@ public static class MarketplaceJobTypes
     public const string PazaramaOrderRecoverySync = "PAZARAMA_ORDER_RECOVERY_SYNC";
     public const string PazaramaOrderStatusSync = "PAZARAMA_ORDER_STATUS_SYNC";
     public const string PttAvmConnectionTest = "PTTAVM_CONNECTION_TEST";
+    public const string PttAvmOrderSync = "PTTAVM_ORDER_SYNC";
+    public const string PttAvmOrderRecoverySync = "PTTAVM_ORDER_RECOVERY_SYNC";
+    public const string PttAvmOrderStatusSync = "PTTAVM_ORDER_STATUS_SYNC";
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
     public const string CatalogStructureImport = "CATALOG_STRUCTURE_IMPORT";
 
@@ -77,9 +80,9 @@ public static class MarketplaceJobTypes
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
         PriceInventorySync, StockProjectionDispatch, ExternalEffectReconcile,
-        OrderSync, ShopifyOrderSync, HepsiburadaOrderSync, N11OrderSync, PazaramaOrderSync,
-        OrderRecoverySync, ShopifyOrderRecoverySync, HepsiburadaOrderRecoverySync, N11OrderRecoverySync, PazaramaOrderRecoverySync,
-        OrderStatusSync, ShopifyOrderStatusSync, HepsiburadaOrderStatusSync, PazaramaOrderStatusSync, TrendyolOrderCargoInfoReconciliation,
+        OrderSync, ShopifyOrderSync, HepsiburadaOrderSync, N11OrderSync, PazaramaOrderSync, PttAvmOrderSync,
+        OrderRecoverySync, ShopifyOrderRecoverySync, HepsiburadaOrderRecoverySync, N11OrderRecoverySync, PazaramaOrderRecoverySync, PttAvmOrderRecoverySync,
+        OrderStatusSync, ShopifyOrderStatusSync, HepsiburadaOrderStatusSync, PazaramaOrderStatusSync, PttAvmOrderStatusSync, TrendyolOrderCargoInfoReconciliation,
         OrderReconciliation, ShopifyOrderReconciliation,
         OrderInvoiceReconciliation, ShopifyOrderInvoiceReconciliation, HepsiburadaOrderInvoiceReconciliation,
         ShipmentAction, CommonLabel, CapabilityProbe, StageTestOrder,
@@ -141,10 +144,13 @@ public static class MarketplaceJobTypes
             OrderStatusSync => PazaramaOrderStatusSync,
             _ => jobType
         },
-        // PTT AVM takes the same path (docs/PTTAVM-ENTEGRASYON-PLANI.md); phase 1 is the connection test.
+        // PTT AVM takes the same path (docs/PTTAVM-ENTEGRASYON-PLANI.md); phase 1 is the connection test, phase 2 the order reads.
         "PTTAVM" => jobType switch
         {
             ConnectionTest => PttAvmConnectionTest,
+            OrderSync => PttAvmOrderSync,
+            OrderRecoverySync => PttAvmOrderRecoverySync,
+            OrderStatusSync => PttAvmOrderStatusSync,
             _ => jobType
         },
         _ => jobType
@@ -183,7 +189,7 @@ public static class FullOrderSyncConflictPolicy
     private static bool IsRecoverySyncType(string? jobType) => jobType is
         MarketplaceJobTypes.OrderRecoverySync
         or MarketplaceJobTypes.ShopifyOrderRecoverySync
-        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync;
+        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderRecoverySync;
 
     private static bool IsPromotableOrderSyncType(string? requestedJobType, string? conflictingJobType) => requestedJobType switch
     {
@@ -192,6 +198,7 @@ public static class FullOrderSyncConflictPolicy
         MarketplaceJobTypes.HepsiburadaOrderRecoverySync => conflictingJobType is MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderStatusSync,
         MarketplaceJobTypes.N11OrderRecoverySync => conflictingJobType is MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.N11OrderRecoverySync,
         MarketplaceJobTypes.PazaramaOrderRecoverySync => conflictingJobType is MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PazaramaOrderStatusSync,
+        MarketplaceJobTypes.PttAvmOrderRecoverySync => conflictingJobType is MarketplaceJobTypes.PttAvmOrderSync or MarketplaceJobTypes.PttAvmOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderStatusSync,
         _ => false
     };
 }
@@ -288,6 +295,7 @@ public static class TargetedOrderSyncConflictPolicy
         MarketplaceJobTypes.HepsiburadaOrderSync => conflictingJobType is MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderStatusSync,
         MarketplaceJobTypes.N11OrderSync => conflictingJobType is MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.N11OrderRecoverySync,
         MarketplaceJobTypes.PazaramaOrderSync => conflictingJobType is MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PazaramaOrderStatusSync,
+        MarketplaceJobTypes.PttAvmOrderSync => conflictingJobType is MarketplaceJobTypes.PttAvmOrderSync or MarketplaceJobTypes.PttAvmOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderStatusSync,
         _ => false
     };
 
@@ -298,6 +306,7 @@ public static class TargetedOrderSyncConflictPolicy
         MarketplaceJobTypes.HepsiburadaOrderSync => conflictingJobType == MarketplaceJobTypes.HepsiburadaOrderSync,
         MarketplaceJobTypes.N11OrderSync => conflictingJobType == MarketplaceJobTypes.N11OrderSync,
         MarketplaceJobTypes.PazaramaOrderSync => conflictingJobType == MarketplaceJobTypes.PazaramaOrderSync,
+        MarketplaceJobTypes.PttAvmOrderSync => conflictingJobType == MarketplaceJobTypes.PttAvmOrderSync,
         _ => false
     };
 }

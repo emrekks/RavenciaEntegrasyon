@@ -120,7 +120,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   const initialImport = useQuery({
     queryKey: ['initial-import', item.id],
     queryFn: () => hubPoll<InitialImportView>(`/connections/${item.id}/initial-import`),
-    enabled: connected && !hidden && ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode),
+    enabled: connected && !hidden && ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM'].includes(item.platformCode),
     refetchInterval: query => query.state.data?.running ? 10_000 : 120_000
   })
   const initialImportText = initialImport.data?.running ? initialImportSummary(initialImport.data.parts) : null

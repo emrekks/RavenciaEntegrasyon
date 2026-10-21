@@ -244,9 +244,10 @@ public sealed class BackgroundProcessingAuditTests
         Assert.Equal("returns-read", WorkerLanes.LaneFor(MarketplaceJobTypes.ReturnSync, JobPriorityPolicy.Interactive));
         Assert.Equal("product-catalog", WorkerLanes.LaneFor(MarketplaceJobTypes.ProductSync, JobPriorityPolicy.Catalog));
         Assert.Equal("pazarama-orders", WorkerLanes.LaneFor(MarketplaceJobTypes.PazaramaOrderSync, JobPriorityPolicy.Realtime));
+        Assert.Equal("pttavm-orders", WorkerLanes.LaneFor(MarketplaceJobTypes.PttAvmOrderSync, JobPriorityPolicy.Realtime));
         Assert.Equal("background", WorkerLanes.LaneFor(MarketplaceJobTypes.OrderRecoverySync, JobPriorityPolicy.Recovery));
         Assert.Equal("hot", WorkerLanes.LaneFor(MarketplaceJobTypes.PriceInventorySync, JobPriorityPolicy.Writes));
-        Assert.Equal(10, WorkerLanes.All().Count);
+        Assert.Equal(11, WorkerLanes.All().Count);
     }
 
     [Fact]
@@ -429,8 +430,8 @@ public sealed class BackgroundProcessingAuditTests
     {
         var defaultSlots = WorkerLanes.All().Sum(lane => lane.DefaultSlots);
 
-        Assert.Equal(15, defaultSlots);
-        Assert.Equal(40, WorkerLanes.RequiredPoolSize(defaultSlots));
+        Assert.Equal(16, defaultSlots);
+        Assert.Equal(42, WorkerLanes.RequiredPoolSize(defaultSlots));
         Assert.True(WorkerLanes.RequiredPoolSize(defaultSlots) > 25);
     }
 }
