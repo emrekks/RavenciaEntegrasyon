@@ -17,7 +17,9 @@ verify_backup() {
 }
 
 # Retention (a set is ~1.1 GB; sized for the 72 GB root disk):
-#   - every set of the last 72 hours (pre-deploy sets stay restorable);
+#   - the newest BACKUP_KEEP_RECENT sets (default 5) of the last 72 hours, so the
+#     latest pre-deploy sets stay restorable (every deploy writes one; a busy day
+#     of deploys must not fill the disk);
 #   - the newest set of each UTC day for BACKUP_KEEP_DAILY days (default 7);
 #   - the newest set of each ISO week, older than the daily window, for
 #     BACKUP_KEEP_WEEKLY weeks (default 4);
@@ -33,6 +35,7 @@ verify_backup() {
 retention_cutoffs() {
   keep_daily="${BACKUP_KEEP_DAILY:-7}"
   keep_weekly="${BACKUP_KEEP_WEEKLY:-4}"
+  keep_recent="${BACKUP_KEEP_RECENT:-5}"
   now="${BACKUP_NOW_EPOCH:-$(date -u +%s)}"
   recent_cutoff="$((now - 259200))"
   daily_cutoff="$((now - keep_daily * 86400))"
@@ -62,6 +65,7 @@ prune_expired_backups() {
   seen_days=" "
   seen_weeks=" "
   weeks_kept=0
+  recent_kept=0
   newest_kept=false
 
   for path in $(list_backup_sets -r); do
@@ -75,8 +79,10 @@ prune_expired_backups() {
     keep=false
     if test "$newest_kept" = false; then
       keep=true
-    elif test "$backup_time" -ge "$recent_cutoff"; then
+      test "$backup_time" -lt "$recent_cutoff" || recent_kept="$((recent_kept + 1))"
+    elif test "$backup_time" -ge "$recent_cutoff" && test "$recent_kept" -lt "$keep_recent"; then
       keep=true
+      recent_kept="$((recent_kept + 1))"
     elif test "$backup_time" -ge "$daily_cutoff"; then
       case "$seen_days" in
         *" $day_key "*) ;;

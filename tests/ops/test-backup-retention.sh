@@ -65,6 +65,16 @@ run_prune >/dev/null
 assert_dir "$work/20250101T000000Z" "keeps the newest set even when it is a year old"
 assert_no_dir "$work/20241201T000000Z" "removes an older set outside every window"
 
+# --- a busy day of deploys keeps only the newest recent sets -------------
+rm -rf -- "${work:?}"/*
+busy_kept=(20261021T110000Z 20261021T100000Z 20261021T090000Z 20261021T080000Z 20261021T070000Z)
+busy_removed=(20261021T060000Z 20261021T050000Z 20261021T040000Z)
+make_sets "${busy_kept[@]}" "${busy_removed[@]}" 20261020T200000Z
+run_prune >/dev/null
+for name in "${busy_kept[@]}"; do assert_dir "$work/$name" "keeps recent set $name"; done
+for name in "${busy_removed[@]}"; do assert_no_dir "$work/$name" "removes recent set $name beyond the recent limit"; done
+assert_dir "$work/20261020T200000Z" "keeps the newest set of an earlier day through the daily rule"
+
 # --- running twice changes nothing ---------------------------------------
 rm -rf -- "${work:?}"/*
 make_sets "${kept[@]}"
