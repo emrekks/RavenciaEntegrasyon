@@ -69,8 +69,14 @@ jobs:
 
       - name: Validate deployment shell scripts
         run: |
-          for script in deploy/backup/*.sh deploy/scripts/*.sh; do bash -n "$script"; done
+          for script in deploy/backup/*.sh deploy/scripts/*.sh tests/ops/*.sh; do bash -n "$script"; done
           shellcheck deploy/backup/*.sh deploy/scripts/*.sh
+          shellcheck -x tests/ops/*.sh
+
+      # Plain bash tests (no framework to install): backup retention,
+      # ci-entrypoint decisions and the shutdown guard's lock wait.
+      - name: Test deployment shell scripts
+        run: bash tests/ops/run.sh
 
       - name: Validate systemd timer schedules
         run: |

@@ -284,6 +284,9 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
 - Backend ve frontend işleri, **aynı içerik** (git tree hash) daha önce geçtiyse atlanır; geçen içerik
   için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Hash'ler
   Dockerfile'ları ve `deploy/caddy`'yi de kapsar; imaj işi de geçmeden işaret yazılmaz.
+- `ops` işi deploy betiklerini `bash -n` + `shellcheck` ile denetler ve `tests/ops/run.sh`'ı çalıştırır:
+  çerçevesiz bash testleri (yedek saklama kuralları, `ci-entrypoint.sh` karar tablosu ve 23:45 ertelemesi,
+  kapanış kilidi beklemesi). Yerelde: `bash tests/ops/run.sh` (GNU coreutils, git, flock gerekir).
 - `ops` işi, sunucunun gerektirdiği Docker Compose 2.40.2'yi checksum'la kurup sürümü doğrular,
   birleşik compose dosyalarını ve journald sürücüsünü, systemd takvim ifadelerini denetler.
 - Ön yüz `npm run lint` adımı, `package.json`'da `lint` betiği varsa çalışır.
