@@ -57,6 +57,8 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
             Assert.Null(package.MarketplaceInvoiceUrl);
             Assert.True(await verification.MarketplaceInvoiceReferenceHistories.AnyAsync(row => row.PackageId == seed.PackageId && row.ChangeReason == "REMOVED:LINK_REVOCATION"));
             Assert.Equal(IssueStatus.Resolved, (await verification.OperationalIssues.SingleAsync(issue => issue.TenantId == seed.TenantId && issue.DedupeKey == $"invoice-link-revocation:{seed.InvoiceId:N}")).Status);
+            // The public link of the cancelled invoice is withdrawn with it: the public route stops serving the PDF.
+            Assert.True(await InvoiceDocumentLink.IsWithdrawnAsync(verification, seed.TenantId, seed.InvoiceId, CancellationToken.None));
 
             // A replay after the removal answers with the finished state and sends nothing.
             await using (var db = fixture.CreateContext())
@@ -147,6 +149,9 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
                 Assert.Equal("INVOICE_LINK_STILL_PRESENT", stillThere.Error?.Code);
                 Assert.Contains("Hepsiburada Satıcı Paneli", stillThere.Error!.Message, StringComparison.Ordinal);
             }
+            // While the package still shows the invoice, the public link keeps answering: the marketplace may still read it.
+            await using (var db = fixture.CreateContext())
+                Assert.False(await InvoiceDocumentLink.IsWithdrawnAsync(db, seed.TenantId, seed.InvoiceId, CancellationToken.None));
 
             marketplace.Status = AdapterResult<InvoiceDeliveryStatus>.Success(new("revoke-hepsiburada-package", "NOT_INVOICED", true));
             await using (var db = fixture.CreateContext())
@@ -156,6 +161,29 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
             Assert.Equal(2, marketplace.QueryCount);
             await using var verification = fixture.CreateContext();
             Assert.Equal(MarketplaceInvoiceLinkRevocationPolicy.Removed, (await verification.MarketplaceDeliveryStates.SingleAsync(state => state.Id == seed.StateId)).Status);
+            Assert.True(await InvoiceDocumentLink.IsWithdrawnAsync(verification, seed.TenantId, seed.InvoiceId, CancellationToken.None));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.TenantId);
+        }
+    }
+
+    // A failed removal leaves the link open (the marketplace still holds it), so the public link keeps answering.
+    [PostgreSqlFact]
+    public async Task APublicLinkIsNotWithdrawnBeforeItsMarketplaceLinkIsRemoved()
+    {
+        var seed = await SeedAsync("revoke-not-yet", "TRENDYOL");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.False(await InvoiceDocumentLink.IsWithdrawnAsync(db, seed.TenantId, seed.InvoiceId, CancellationToken.None));
+            var marketplace = new FakeMarketplace { Revoke = AdapterResult<InvoiceLinkRevocationResult>.Failure(new(AdapterErrorClass.BusinessConflict, MarketplaceInvoiceLinkRevocationPolicy.NotOursCode, "Başka fatura.", 409, null, null)) };
+            await using (var db = fixture.CreateContext())
+                Assert.False((await NewService(db, marketplace, OpenWrites).RevokeMarketplaceLinkAsync(seed.TenantId, seed.InvoiceId, seed.StateId, "key", "revoke-not-yet", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            Assert.False(await InvoiceDocumentLink.IsWithdrawnAsync(verification, seed.TenantId, seed.InvoiceId, CancellationToken.None));
         }
         finally
         {

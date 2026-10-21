@@ -102,7 +102,6 @@ internal static class InvoiceAdjustmentTracking
         if (states.Any(state => MarketplaceInvoiceLinkRevocationPolicy.IsOpen(state.Status))) return;
         await ResolveIssueAsync(db, tenantId, LinkRevocationIssueKey(invoiceId), now, cancellationToken);
     }
-
     public static MarketplaceDelivery AppendDeliveryHistory(AppDbContext db, MarketplaceDeliveryState state, string status, string? externalReference, string? errorCode, DateTimeOffset now)
     {
         var sequence = state.AttemptNumber + 1;

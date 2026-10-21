@@ -16,7 +16,6 @@ public sealed class N11InvoiceTests
         Assert.Equal(PdfLink, InvoiceDocumentLink.PdfAlias(ContentLink));
         Assert.Equal("https://provider.example.com/doc/content", InvoiceDocumentLink.PdfAlias("https://provider.example.com/doc/content"));
     }
-
     [Fact]
     public void DeliveryPayloadBecomesTheSaveLinkRequest()
     {
