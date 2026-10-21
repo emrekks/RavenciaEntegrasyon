@@ -37,6 +37,25 @@ const RETURN_REASON_LABELS: Record<string, string> = {
   wrongproduct: 'Yanlış ürün geldi',
   notarrivedwhenneeded: 'İhtiyacım olan zamanda gelmedi',
   other: 'Diğer',
+  // Trendyol's claim reason codes, named as Trendyol names them (customerClaimItemReason.name). Its claim carries one
+  // text: the customer's note when there is one, otherwise this name, so the code is what names the reason.
+  bigsize: 'Bedeni/Ebatı Büyük Geldi',
+  smallsize: 'Bedeni/Ebatı Küçük Geldi',
+  dislike: 'Beğenmedim',
+  abandon: 'Vazgeçtim',
+  wrongitem: 'Yanlış ürün gönderildi',
+  wrongorder: 'Yanlış sipariş verdim',
+  damageditem: 'Hasarlı / kusurlu ürün gönderildi',
+  fakeproduct: 'Ürün orijinal değil',
+  undelivered: 'Teslim edilemeyen gönderi',
+  undeliveredint: 'Müşterinin teslim almadığı gönderi',
+  lateintdelivery: 'Sipariş geç teslim edildi',
+}
+
+/** The customer's own words when they say more than the reason's name, else null. */
+export function returnCustomerNote(label: string, text: string | null | undefined): string | null {
+  const note = text?.trim() ?? ''
+  return note && normalizeReason(note) !== normalizeReason(label) ? note : null
 }
 
 function normalizeReason(value: string): string {

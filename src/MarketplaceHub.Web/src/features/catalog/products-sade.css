@@ -195,6 +195,8 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn small { font-weight: 400 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { display: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:hover > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-within > .rr-vtip { display: grid; }
+/* Opened above its row when the list's scroll box has no room below (placeVariantTip in ProductsPage.tsx). */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover[data-up] > .rr-vtip { top: auto; bottom: calc(100% + 6px); }
 /* compact variant stock table: colours down, sizes across */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtip { width: max-content; min-width: 0; max-width: 360px; max-height: 260px; overflow: auto; padding: 8px 10px; gap: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtab { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }

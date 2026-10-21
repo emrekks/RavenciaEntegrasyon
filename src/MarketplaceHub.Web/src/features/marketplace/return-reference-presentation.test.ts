@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatMarketplaceBarcode, returnReasonPresentation, shouldShowReturnCountdown } from './return-reference-presentation'
+import { formatMarketplaceBarcode, returnCustomerNote, returnReasonPresentation, shouldShowReturnCountdown } from './return-reference-presentation'
 
 describe('return reference presentation', () => {
   it('removes Hepsiburada zero prefixes from alphanumeric codes but preserves numeric barcodes', () => {
@@ -34,5 +34,14 @@ describe('return reference presentation', () => {
       .toEqual({ label: 'Ürünü almaktan vazgeçtim / beğenmedim', explanation: 'Eşime almıştım sürpriz yapacaktım' })
     expect(returnReasonPresentation({ reasonCode: 'Bedeni / boyutu uymadı', reasonText: 'Bedeni / boyutu uymadı' }))
       .toEqual({ label: 'Bedeni / boyutu uymadı', explanation: null })
+  })
+
+  it('names a Trendyol reason by its code and keeps the customer note apart', () => {
+    const reason = returnReasonPresentation({ reasonCode: 'WRONGITEM', reasonText: '3xl sipariş etmiştim 2xl geldi' })
+    expect(reason.label).toBe('Yanlış ürün gönderildi')
+    expect(returnCustomerNote(reason.label, '3xl sipariş etmiştim 2xl geldi')).toBe('3xl sipariş etmiştim 2xl geldi')
+    const plain = returnReasonPresentation({ reasonCode: 'SMALLSIZE', reasonText: 'Bedeni/Ebatı Küçük Geldi' })
+    expect(plain.label).toBe('Bedeni/Ebatı Küçük Geldi')
+    expect(returnCustomerNote(plain.label, 'Bedeni/Ebatı Küçük Geldi')).toBeNull()
   })
 })

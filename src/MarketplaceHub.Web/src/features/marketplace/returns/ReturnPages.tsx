@@ -12,7 +12,7 @@ import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
-import { returnReasonPresentation } from '../return-reference-presentation'
+import { returnCustomerNote, returnReasonPresentation } from '../return-reference-presentation'
 import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrLoading, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
 import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, type NotificationDetail, type NotificationTarget } from '../../../shared/notifications'
 import { resolveReturnStatus } from '../../../shared/dashboard-operational-links'
@@ -148,7 +148,8 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
     : canPrint ? [['print', 'İade Etiketi Yazdır', () => setLabelOpen(true)], 'hr', ['open', 'Detaylı Bilgi', () => setDialogMode('DETAIL')]]
     : [['open', 'Detaylı Bilgi', () => setDialogMode('DETAIL')], 'hr', ['print', 'İade Etiketi Yazdır', () => setLabelOpen(true), '', true]]
   const cargoIcon = cargoCarrier(cargoProvider)?.iconUrl
-  const reasonNote = item.platformCode?.toUpperCase() === 'TRENDYOL' && item.reasonText?.trim() ? ['Müşteri Notu', item.reasonText.trim()] : reasonPresentation.explanation ? ['Açıklama', reasonPresentation.explanation] : null
+  const trendyolNote = item.platformCode?.toUpperCase() === 'TRENDYOL' ? returnCustomerNote(reasonPresentation.label, item.reasonText) : null
+  const reasonNote = trendyolNote ? ['Müşteri Notu', trendyolNote] : item.platformCode?.toUpperCase() === 'TRENDYOL' ? null : reasonPresentation.explanation ? ['Açıklama', reasonPresentation.explanation] : null
   const closeDialog = () => setDialogMode(null)
   return <><tr ref={rowRef} className={[selection?.checked ? 'rr-sel' : '', urgentDeadline && actionRequired ? 'rr-due' : ''].filter(Boolean).join(' ') || undefined}>
     <td className="rr-wide"><div className="rr-ordercell">{selectColumn && (selection ? <input type="checkbox" className="rr-cb" checked={selection.checked} onChange={selection.onChange} aria-label={`${displayOrderNumber(item.orderNumber)} iadesini toplu onaya dahil et`} /> : <span style={{ width: 16, flex: 'none' }} />)}<div><RrWordmark code={item.platformCode} name={item.platformDisplayName || returnPlatformName(item.platformCode)} /><span className={`rr-on-no${urgentDeadline && actionRequired ? ' rr-crit' : ''}`}>{displayOrderNumber(item.orderNumber)}<button type="button" className="rr-icon-btn" title={copiedOrderNumber ? 'Kopyalandı' : 'Kopyala'} aria-label={copiedOrderNumber ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} style={{ width: 22, height: 22 }} onClick={() => void copyReturnOrderNumber()}><RrIcon name={copiedOrderNumber ? 'check' : 'copy'} size={14} /></button></span>{noBuyer && <small className="rr-buyer-inline"><b>Alıcı:</b> {customer}</small>}<small className="rr-num"><b>Sipariş Tarihi:</b> {returnDateText(order?.orderedAt ?? item.orderedAt)}</small><small className="rr-num"><b>Paket No:</b> {orderShipment?.externalPackageId ?? item.packageNumber ?? '—'}</small><small className="rr-num"><b>Kargo Teslimat No:</b> {trackingNumber?.trim() || 'Henüz platformdan iletilmedi'}</small></div></div></td>
