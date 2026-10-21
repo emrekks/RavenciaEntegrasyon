@@ -67,6 +67,17 @@ görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme ya
   beri değişmediyse `rollback.sh` önceki `manual-*` imajlarıyla otomatik çalışır (yedeksiz; şema aynı).
   Deploy yine başarısız sayılır, alarm gider, sürüm `.hold`'a girer. Ayrıntı ve koşullar:
   [RUNBOOK-GERI-ALMA.md](RUNBOOK-GERI-ALMA.md) bölüm 2. Kapatmak: `RAVENCIA_AUTO_ROLLBACK=false`.
+- **Migration provası** (O12): CI migration'ları yalnız boş veritabanında dener. Deploy, taze yedekten
+  sonra ve üretim migration'ından önce yeni imajın `migrate` komutunu o yedeğin izole bir geri yüklemesine
+  karşı çalıştırır (`restore-drill.sh --migration-only`; ayrı ağ/volume, `marketplacehub_rehearsal_*`).
+  Başarısız olursa ya da süre (`RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS`, varsayılan 1200 sn) dolarsa
+  deploy üretime dokunmadan durur. Bedeli tam bir `pg_restore` + migration süresidir (veritabanı boyutuna
+  göre birkaç dakika); bu yüzden varsayılan `auto` yalnız migration klasörü çalışan sürümden beri
+  değiştiyse (ya da çalışan sürüm bilinmiyorsa) prova yapar; kod-yalnız deploy'lar etkilenmez. Seçim:
+  `RAVENCIA_MIGRATION_REHEARSAL` (elle) ya da `production.env` içinde
+  `MARKETPLACEHUB_MIGRATION_REHEARSAL=auto|always|never`. Kök disk %80'in üstündeyse (ikinci bir veritabanı
+  kopyası gerekir) prova uyarıyla atlanır. Süre dolması üretimde de uzun sürecek bir migration demektir:
+  bir pencere planlanıp elle `RAVENCIA_MIGRATION_REHEARSAL=never` ile deploy edilir.
 - **Migration süresi**: `fast-deploy.sh` migrate konteynerini `docker wait` ile en çok 30 dakika bekler
   (`RAVENCIA_MIGRATION_TIMEOUT_SECONDS`, varsayılan 1800); süre dolarsa konteyneri durdurur (açık işlem geri
   alınır, eski yığın son tamamlanan migration'ın şemasıyla hizmete devam eder) ve deploy başarısız olur.

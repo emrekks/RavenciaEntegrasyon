@@ -112,6 +112,64 @@ bash "$repository_root/deploy/scripts/install-backup-timer.sh"
 previous_app_image="$(running_service_image api)"
 previous_edge_image="$(running_service_image caddy)"
 
+# Migration rehearsal: CI only migrates an empty database, so a data-repair
+# migration would otherwise meet real rows for the first time in production. The
+# new image's migrate runs first against a disposable restore of the backup set
+# taken above (deploy/backup/restore-drill.sh --migration-only, isolated network
+# and volumes). It costs a full pg_restore plus the migration (minutes), so it
+# stays off the common path:
+#   auto (default)  only when the migrations folder changed since the running
+#                   release (or that release is unknown);
+#   always / never  regardless. RAVENCIA_MIGRATION_REHEARSAL, else production.env's
+#                   MARKETPLACEHUB_MIGRATION_REHEARSAL, else auto.
+# A failed or timed-out rehearsal (RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS,
+# default 1200) stops the deploy before production is touched. It is skipped
+# with a warning when the root disk is above 80%: the restore needs a second
+# copy of the database.
+migration_rehearsal="${RAVENCIA_MIGRATION_REHEARSAL:-$(read_env_or MARKETPLACEHUB_MIGRATION_REHEARSAL auto)}"
+rehearsal_timeout="${RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS:-1200}"
+[[ "$migration_rehearsal" =~ ^(auto|always|never)$ ]] || { echo "Migration rehearsal must be auto, always or never (got '$migration_rehearsal')." >&2; exit 1; }
+[[ "$rehearsal_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
+rehearse=false
+case "$migration_rehearsal" in
+  always) rehearse=true ;;
+  never) echo "Migration rehearsal skipped (never)." ;;
+  auto)
+    running_revision=""
+    [[ "$previous_app_image" != marketplacehub-app:manual-* ]] || running_revision="${previous_app_image##*:manual-}"
+    if [[ -z "$running_revision" ]] || ! running_full="$(git rev-parse --verify --quiet "$running_revision^{commit}")"; then
+      echo "Migration rehearsal: the running release is unknown (${previous_app_image:-none}); rehearsing."
+      rehearse=true
+    elif ! git diff --quiet "$running_full" "$full_revision" -- src/MarketplaceHub.Infrastructure/Persistence/Migrations; then
+      echo "Migration rehearsal: migrations changed since $running_revision; rehearsing."
+      rehearse=true
+    else
+      echo "Migration rehearsal skipped: no migration changed since $running_revision."
+    fi
+    ;;
+esac
+# verified_backup_set is assigned by run_verified_backup (lib.sh).
+# shellcheck disable=SC2154
+if [[ "$rehearse" == true ]]; then
+  root_disk_percent="$(df --output=pcent / | tail -n 1 | tr -dc '0-9')"
+  if (( ${root_disk_percent:-100} > 80 )); then
+    echo "::warning::Migration rehearsal skipped: the root disk is ${root_disk_percent:-?}% full and the restore needs a second database copy."
+  else
+    app_image_id="$(sudo -n docker image inspect --format '{{.Id}}' "$app_image")"
+    echo "Migration rehearsal: backup set $verified_backup_set, image $app_image_id, up to ${rehearsal_timeout}s."
+    rehearsal_status=0
+    timeout --kill-after=120 "$rehearsal_timeout" "${sudo_cmd[@]}" bash "$repository_root/deploy/backup/restore-drill.sh" --migration-only \
+      "$verified_backup_set" "$app_image_id" "$repository_root/deploy/secrets" marketplacehub_backup_staging || rehearsal_status=$?
+    if (( rehearsal_status == 124 || rehearsal_status == 137 )); then
+      echo "Migration rehearsal did not finish within ${rehearsal_timeout}s; production was not migrated. The migration is likely to run that long in production too: plan a window, then deploy by hand with RAVENCIA_MIGRATION_REHEARSAL=never (or raise the timeout)." >&2
+      exit 1
+    elif (( rehearsal_status != 0 )); then
+      echo "Migration rehearsal failed against the restored copy of $verified_backup_set (exit code $rehearsal_status); production was not migrated." >&2
+      exit 1
+    fi
+  fi
+fi
+
 # Keep the currently serving API/worker/edge alive until the new database
 # migration has completed successfully. Compose's depends_on condition also
 # protects a fresh stack, but starting the one-shot migration separately makes

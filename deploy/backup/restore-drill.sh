@@ -2,9 +2,19 @@
 set -Eeuo pipefail
 
 usage() {
-  echo "usage: restore-drill.sh BACKUP_SET APP_IMAGE [SECRETS_ROOT] [BACKUP_VOLUME]" >&2
+  echo "usage: restore-drill.sh [--migration-only] BACKUP_SET APP_IMAGE [SECRETS_ROOT] [BACKUP_VOLUME]" >&2
   exit 2
 }
+
+# --migration-only: the deploy-time rehearsal (fast-deploy.sh). Restores the
+# database only, runs APP_IMAGE's migrate against it and stops there: no private
+# volumes, API or Worker. Its resources use their own name prefix, so it never
+# collides with a monthly drill of the same backup set.
+migration_only=false
+if [[ "${1:-}" == --migration-only ]]; then
+  migration_only=true
+  shift
+fi
 
 [[ $# -ge 2 && $# -le 4 ]] || usage
 backup_set="$1"
@@ -24,7 +34,11 @@ for secret in postgres_password.txt app_db_connection.txt credential_key.txt dp_
 done
 
 suffix="$(printf '%s' "$backup_set" | tr '[:upper:]' '[:lower:]')"
-resource_prefix="marketplacehub_restore_${suffix}"
+if [[ "$migration_only" == true ]]; then
+  resource_prefix="marketplacehub_rehearsal_${suffix}"
+else
+  resource_prefix="marketplacehub_restore_${suffix}"
+fi
 db_container="${resource_prefix}_db"
 migrate_container="${resource_prefix}_migrate"
 api_container="${resource_prefix}_api"
@@ -47,6 +61,9 @@ cleanup() {
   rm -rf -- "$temporary_root"
 }
 trap cleanup EXIT
+# A caller's timeout (fast-deploy.sh) sends TERM: exit through the EXIT trap so
+# the disposable containers, volumes and network are still removed.
+trap 'exit 143' TERM INT
 
 for container in "$db_container" "$migrate_container" "$api_container" "$worker_container"; do
   ! sudo docker container inspect "$container" >/dev/null 2>&1 || { echo "Restore drill container already exists: $container" >&2; exit 1; }
@@ -108,14 +125,16 @@ tenant_count="$(sudo docker exec "$db_container" psql -U marketplacehub -d marke
 [[ "$tenant_count" =~ ^[1-9][0-9]*$ ]] || { echo "Tenant data is empty after restore." >&2; exit 1; }
 echo "Restore drill: schema and aggregate checks passed."
 
-sudo docker run --rm -v "$backup_volume:/backup:ro" -v "$private_volume:/restore" "$postgres_image" sh -ceu "
-  cd '/backup/$backup_set'
-  tar -tzf private-volumes.tar.gz | awk 'BEGIN { ok=1 } /^\// { ok=0 } /(^|\/)\.\.($|\/)/ { ok=0 } END { exit ok ? 0 : 1 }'
-  tar -xzf private-volumes.tar.gz -C /restore
-  test -d /restore/files
-  test -d /restore/dp-keys
-"
-echo "Restore drill: private volumes restored with safe paths."
+if [[ "$migration_only" == false ]]; then
+  sudo docker run --rm -v "$backup_volume:/backup:ro" -v "$private_volume:/restore" "$postgres_image" sh -ceu "
+    cd '/backup/$backup_set'
+    tar -tzf private-volumes.tar.gz | awk 'BEGIN { ok=1 } /^\// { ok=0 } /(^|\/)\.\.($|\/)/ { ok=0 } END { exit ok ? 0 : 1 }'
+    tar -xzf private-volumes.tar.gz -C /restore
+    test -d /restore/files
+    test -d /restore/dp-keys
+  "
+  echo "Restore drill: private volumes restored with safe paths."
+fi
 
 common_args=(
   --network "$network"
@@ -143,6 +162,13 @@ sudo docker run --name "$migrate_container" "${common_args[@]}" "$app_image" api
   exit 1
 }
 echo "Restore drill: migration validation passed."
+
+if [[ "$migration_only" == true ]]; then
+  applied_count="$(sudo docker exec "$db_container" psql -U marketplacehub -d marketplacehub -Atc 'select count(*) from public."__EFMigrationsHistory";')"
+  printf 'Migration rehearsal passed: backup=%s migrationsBefore=%s migrationsAfter=%s durationSeconds=%s\n' \
+    "$backup_set" "$migration_count" "$applied_count" "$(( $(date -u +%s) - started_at ))"
+  exit 0
+fi
 
 # The restored copy must not emit scheduled reads or Stage writes while Worker startup is tested.
 sudo docker exec "$db_container" psql -U marketplacehub -d marketplacehub -v ON_ERROR_STOP=1 -c "

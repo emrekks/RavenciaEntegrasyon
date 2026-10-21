@@ -92,7 +92,10 @@ run_verified_backup() {
     test -s private-volumes.tar.gz
     sha256sum -c SHA256SUMS
     pg_restore --list database.dump >/dev/null
-  ' sh "$backup_set"
+  ' sh "$backup_set" || return
+  # The set's name, for callers that use it next (fast-deploy.sh's migration rehearsal).
+  # shellcheck disable=SC2034
+  verified_backup_set="$backup_set"
 }
 
 # Polls /health/ready through the edge (entered via loopback) until it answers 200.
