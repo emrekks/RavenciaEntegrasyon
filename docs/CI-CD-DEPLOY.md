@@ -127,6 +127,16 @@ MaxRetentionSec=30day
 - `/api/*` ve `/hubs/*` yanıtları sıkıştırılmaz (BREACH sınıfı); statik dosyalar ve SPA kabuğu
   zstd/gzip ile sıkıştırılmaya devam eder.
 - Caddyfile her imaj derlemesinde `caddy adapt` ile doğrulanır (CI `image-edge` işi dahil).
+- **IPv6 ziyaretçiler (G3):** `edge` ağı yalnız IPv4 olduğundan, sunucuya IPv6 ile gelen bağlantıyı
+  Docker'ın `docker-proxy` süreci (userland-proxy) karşılar ve Caddy'ye köprü ağ geçidinin özel IPv4
+  adresinden iletir. Bu durumda tüm IPv6 ziyaretçiler tek bir özel adres gibi görünür: hız sınırı ve
+  giriş engelleri (`ClientNetwork`) hepsine ortak işler, `remote_ip private_ranges` ise `/health/ready`
+  ve `/health/queues`'u onlara açar. Gerçek adresin Caddy'ye ulaşması için sunucuda `edge` ağında IPv6
+  açılmalıdır (`daemon.json`: `"ipv6": true, "ip6tables": true` ve ağa `enable_ipv6`). Bunun yerine
+  `"userland-proxy": false` seçilirse vekil devreden çıkar ama IPv6 bağlantılar hiç iletilmez; o zaman AAAA
+  kaydı kaldırılmalıdır. Canlıda bir IPv6 istemciden istek atıp Caddy erişim
+  kaydındaki `remote_ip` değerinin istemcinin adresi olduğu doğrulanmalıdır. Sunucunun AAAA kaydı yoksa
+  bu durum oluşmaz. Bkz. `deploy/compose/compose.yaml` içindeki `caddy` notu.
 
 ## İşletim: zamanlayıcılar, alarm, izleme
 
