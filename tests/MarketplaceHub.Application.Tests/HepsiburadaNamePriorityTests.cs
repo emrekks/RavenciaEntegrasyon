@@ -88,8 +88,41 @@ public sealed class HepsiburadaNamePriorityTests
     [InlineData("Delivered", null, "T-1", false)]
     [InlineData("Undelivered", "Aras", null, false)]
     [InlineData("Shipped", "Aras", "T-1", false)]
-    public void TheTrackingReadIsSkippedOnlyForAFinishedPackageWithCarrierAndTrackingKnown(string rawStatus, string? provider, string? tracking, bool skipped) =>
+    [InlineData("Open", "Aras", "T-1", true)]
+    [InlineData("Open", null, "T-1", false)]
+    [InlineData("Open", "Aras", null, false)]
+    public void TheTrackingReadIsSkippedOnlyWhenTheListAlreadyGivesWhatItWouldAdd(string rawStatus, string? provider, string? tracking, bool skipped) =>
         Assert.Equal(skipped, HepsiburadaHttpClient.SkipsTrackingRead(new("HB-1", new RemotePackage("PKG", null, rawStatus, DateTimeOffset.UnixEpoch, provider, tracking, []))));
+
+    [Theory]
+    [InlineData("Delivered", "Aras", "T-1", true)]
+    [InlineData("Delivered", null, "T-1", false)]
+    [InlineData("Undelivered", "Aras", "T-1", false)]
+    [InlineData("Cancelled", "Aras", "T-1", false)]
+    [InlineData("Open", "Aras", "T-1", false)]
+    public void TheOrderDetailSkipsOnlyTheTrackingReadThatCannotChangeThePackage(string rawStatus, string? provider, string? tracking, bool skipped) =>
+        Assert.Equal(skipped, HepsiburadaHttpClient.TrackingReadCannotChange(new RemotePackage("PKG", null, rawStatus, DateTimeOffset.UnixEpoch, provider, tracking, [])));
+
+    [Fact]
+    public async Task AnOpenPackageListedWithCarrierAndTrackingIsNotReadAgain()
+    {
+        var handler = new Routes(openCarrier: true);
+        var client = new HepsiburadaHttpClient(new Factory(handler), null!, Options.Create(new HepsiburadaOptions { AuthenticationMode = "BASIC" }), TimeProvider.System, new ConfigurationBuilder().Build(), NullLogger<HepsiburadaHttpClient>.Instance);
+        var account = new HepsiburadaRequestContext(
+            new PlatformConnection { PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", DisplayName = "fixture", ExternalStoreId = "m-1", Status = "ACTIVE", ApiVersion = "V1.0" },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        { IntegratorName = "ravencia_tests/1.0" };
+        var now = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var result = await client.PollPackagesAsync(account, new PackagePollWindow(now.AddHours(-2), now, IncludeStatusLists: false), new("0", 10), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Code);
+        var open = Assert.Single(result.Value!.Items).Package;
+        Assert.Equal("Open", open.RawStatus);
+        Assert.Equal("Yurtiçi", open.CargoProviderExternalId);
+        Assert.Equal("T-OPEN", open.CargoTrackingNumber);
+        Assert.DoesNotContain(handler.Paths, path => path.Contains("/packagenumber/", StringComparison.Ordinal));
+    }
 
     [Fact]
     public void ThePackageListsKeepTheLowerCaseOffsetProvenLive()
@@ -109,9 +142,10 @@ public sealed class HepsiburadaNamePriorityTests
     public void TerminalListStatuses(string rawStatus, bool terminal) =>
         Assert.Equal(terminal, HepsiburadaHttpClient.HasTerminalListStatus(new("HB-1", new RemotePackage("PKG", null, rawStatus, DateTimeOffset.UnixEpoch, null, null, []))));
 
-    private sealed class Routes : HttpMessageHandler
+    private sealed class Routes(bool openCarrier = false) : HttpMessageHandler
     {
         public List<string> Paths { get; } = [];
+        private readonly string openCargo = openCarrier ? ",\"cargoCompany\":\"Yurtiçi\",\"trackingInfoCode\":\"T-OPEN\"" : "";
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -123,7 +157,7 @@ public sealed class HepsiburadaNamePriorityTests
                 _ when path.Contains("/packagenumber/", StringComparison.Ordinal) => """[{"packageNumber":"PKG-OPEN","status":"InTransit","cargoCompany":"HepsiJet","trackingInfoCode":"T-1"}]""",
                 _ when path.EndsWith("/delivered", StringComparison.Ordinal) => """{"items":[{"orderNumber":"HB-DONE","packageNumber":"PKG-DONE","DeliveredDate":"2026-10-20T10:00:00"}],"totalCount":1}""",
                 _ when path.EndsWith("/shipped", StringComparison.Ordinal) || path.EndsWith("/undelivered", StringComparison.Ordinal) => """{"items":[],"totalCount":0}""",
-                _ => """{"items":[{"orderNumber":"HB-OPEN","packageNumber":"PKG-OPEN","status":"Open","orderDate":"2026-10-20T09:00:00Z","lineItems":[{"lineItemId":"line-1","merchantSku":"SKU-1","name":"Ürün","quantity":1}]}],"totalCount":1}"""
+                _ => $$"""{"items":[{"orderNumber":"HB-OPEN","packageNumber":"PKG-OPEN","status":"Open","orderDate":"2026-10-20T09:00:00Z"{{openCargo}},"lineItems":[{"lineItemId":"line-1","merchantSku":"SKU-1","name":"Ürün","quantity":1}]}],"totalCount":1}"""
             };
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
         }

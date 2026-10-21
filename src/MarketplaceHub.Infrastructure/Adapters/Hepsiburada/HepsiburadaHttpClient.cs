@@ -563,6 +563,10 @@ public sealed partial class HepsiburadaHttpClient(
             var packages = order.Packages.ToArray();
             for (var index = 0; index < packages.Length; index++)
             {
+                // R5: the detail's own carrier and tracking number are used first. Package status reconciliation reads
+                // the detail to see packages move on, so the tracking read is left out only where it cannot change
+                // anything (TrackingReadCannotChange); an Undelivered, cancelled or returned package is still read.
+                if (TrackingReadCannotChange(packages[index])) continue;
                 var readback = await ReadPackageTrackingInfoAsync(
                     account,
                     new RemoteOrderPackage(order.ExternalOrderId, packages[index]),
@@ -649,7 +653,8 @@ public sealed partial class HepsiburadaHttpClient(
                 // A package the lists already show as delivered, undelivered, cancelled or returned cannot move on
                 // through the tracking read; asking for it anyway made every page cost one extra request per row.
                 // G13: only when the list already names the carrier and the tracking number, so a package first
-                // seen delivered or undelivered still gets its cargo company once.
+                // seen delivered or undelivered still gets its cargo company once. An open package listed with both
+                // fields is not asked for either (R5).
                 if (SkipsTrackingRead(item))
                 {
                     items.Add(item);
@@ -777,10 +782,25 @@ public sealed partial class HepsiburadaHttpClient(
         return string.Join('&', query);
     }
 
+    // R5: an open-list package that already names its carrier and tracking number gains only those two fields from
+    // the tracking read, so it is not asked for; its later move on comes from the status lists and from package
+    // status reconciliation.
     internal static bool SkipsTrackingRead(RemoteOrderPackage package) =>
-        HasTerminalListStatus(package)
-        && !string.IsNullOrWhiteSpace(package.Package.CargoProviderExternalId)
-        && !string.IsNullOrWhiteSpace(package.Package.CargoTrackingNumber);
+        HasCarrierAndTracking(package.Package)
+        && (HasTerminalListStatus(package) || IsListedOpen(package.Package));
+
+    // ReadPackageTrackingInfoAsync keeps a Delivered status (and its date) whatever the tracking read says; it would
+    // only restate the carrier and tracking number, so for a delivered package with both known the read is skipped.
+    internal static bool TrackingReadCannotChange(RemotePackage package) =>
+        HasCarrierAndTracking(package)
+        && string.Equals(package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasCarrierAndTracking(RemotePackage package) =>
+        !string.IsNullOrWhiteSpace(package.CargoProviderExternalId)
+        && !string.IsNullOrWhiteSpace(package.CargoTrackingNumber);
+
+    private static bool IsListedOpen(RemotePackage package) =>
+        !package.IsStatusObservation && string.Equals(package.RawStatus, "Open", StringComparison.OrdinalIgnoreCase);
 
     internal static bool HasTerminalListStatus(RemoteOrderPackage package) =>
         ShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered
