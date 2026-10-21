@@ -44,7 +44,10 @@ public sealed partial class MarketplaceJobProcessor
                 await SyncHepsiburadaOrders(tenantId, connectionId, payload, correlationId, "ORDERS", false, cancellationToken);
                 await ResolveIssue(tenantId, issueKey, cancellationToken);
             }
-            catch (JobProcessingException exception)
+            // A quota rejection (or refused credentials) is about the connection, not this order: the next reads
+            // would hit the same wall, so it ends the job and lets the connection back off instead of being
+            // noted as an unread order while the loop keeps calling the marketplace.
+            catch (JobProcessingException exception) when (!exception.Result.BackOffConnection)
             {
                 await RecordIssue(tenantId, issueKey, exception.Result.ErrorCode ?? "HEPSIBURADA_MISSING_ORDER_UNREAD",
                     $"Hepsiburada'da görünen {orderNumber} numaralı sipariş{(packageNumber is null ? "" : $" ({packageNumber} paketiyle)")} okunamadı; sonraki taramada yeniden denenecek. {exception.Result.ErrorSummary}", cancellationToken);
