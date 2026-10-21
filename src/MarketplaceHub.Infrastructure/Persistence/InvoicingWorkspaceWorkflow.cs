@@ -205,6 +205,8 @@ public sealed partial class InvoicingBillingService
         if (DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
             || !DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "İptal edilmiş sipariş veya paket için satış faturası oluşturulamaz.", 422);
+        if (DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(order.DerivedStatus) || DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(package.Status))
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
         var marketplace = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId, cancellationToken);
         var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == target.ProviderConnectionId, cancellationToken);
         if (marketplace is null || provider is null || provider.PlatformCode != "TRENDYOL_EFATURAM" || provider.Status is not ("ACTIVE" or "VERIFIED"))
@@ -217,6 +219,8 @@ public sealed partial class InvoicingBillingService
             .OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (activePackages.Count == 0)
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Siparişte faturalanabilir etkin paket bulunamadı.", 422);
+        if (activePackages.Any(item => DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(item.Status)))
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
         if (activePackages.Any(item => item.ConnectionId != order.ConnectionId))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı. Tek belge güvenli hedeflere ayrıştırılamadığı için fatura kesilmedi.", 422);
         var activePackageIds = activePackages.Select(item => item.Id).ToList();

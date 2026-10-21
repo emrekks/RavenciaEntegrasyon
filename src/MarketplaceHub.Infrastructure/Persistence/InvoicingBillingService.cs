@@ -1110,6 +1110,8 @@ public sealed partial class InvoicingBillingService(
         return AddressName(shipmentAddress.RootElement) ?? "—";
     }
 
+    private const string SaleInvoiceStatusBlockedMessage = "İade edilmiş, teslim edilememiş veya ödemesi beklenen sipariş/paket için satış faturası oluşturulmaz. Sipariş durumunu pazaryerinde kontrol edin.";
+
     public async Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken)
     {
         // An adjustment would still be sent as a full SATIS e-Archive outside the order's one-invoice guard,
@@ -1158,6 +1160,11 @@ public sealed partial class InvoicingBillingService(
         {
             return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Satış faturası için siparişte uygun paket bulunamadı.", 422);
         }
+        // D6: an adjustment of an existing invoice stays possible; a new sale invoice is refused.
+        if (command.OriginalInvoiceId is null
+            && (DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(order.DerivedStatus)
+                || selectedPackage is not null && DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(selectedPackage.Status)))
+            return ServiceResult<InvoiceDetailView>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
         var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
         if (provider is null) return Invalid<InvoiceDetailView>("billing", "Aktif fatura bağlantısı bulunamadı.");
         var orderConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
@@ -1168,6 +1175,8 @@ public sealed partial class InvoicingBillingService(
         var activePackagesForOrder = await MarketplaceSalesService.CurrentShipmentPackages(db)
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .ToListAsync(cancellationToken);
+        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(item.Status)))
+            return ServiceResult<InvoiceDetailView>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
         var invoiceType = InvoiceAmounts.InvoiceDocumentType(orderPlatform, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
         if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, orderPlatform, order.InvoiceAddressSnapshotJson) is { } refusal)
             return Refuse<InvoiceDetailView>(refusal);
