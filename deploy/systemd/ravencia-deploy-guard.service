@@ -1,0 +1,23 @@
+[Unit]
+Description=Hold a host shutdown until a running Ravencia deploy releases its lock
+# Does nothing at boot. When the host stops (the nightly 00:30 Istanbul stop, or by
+# hand), ExecStop waits for ~/deploy-logs/.lock, which ci-entrypoint.sh holds for a
+# whole deploy. After=docker.service makes systemd stop this unit before Docker, so
+# the containers keep running while it waits. The deploy itself runs in the deploy
+# key's SSH session scope; session-.scope.d/ravencia-deploy-guard.conf orders those
+# scopes after this unit so they are not stopped before the wait ends.
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=ubuntu
+WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
+ExecStart=/bin/true
+ExecStop=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/wait-for-deploy-lock.sh
+# wait-for-deploy-lock.sh gives up after 23 minutes on its own.
+TimeoutStopSec=25min
+
+[Install]
+WantedBy=multi-user.target

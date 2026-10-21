@@ -34,6 +34,19 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
 | Diğer | fast-forward + `fast-deploy.sh`; başarıda `.last-success` = SHA, daha yeni bir sürüm `.hold`'u kaldırır |
 
 `.last-success` henüz yoksa (bu betiğin ilk kurulumu) eski kural geçerlidir: HEAD'in atası olan SHA için 0.
+
+**Gece kapanışı (00:30 TR)**: kilit alındıktan sonra saat **23:45–00:30 (Europe/Istanbul)** arasındaysa
+deploy başlatılmaz; `::warning::Deploy of <sha> deferred to morning` yazılır ve çıkış 0'dır. Sabah 09:20
+çalışması son yeşil SHA'yı deploy eder. Sunucudaki root kopyası henüz güncellenmediyse aynı kural
+`fast-deploy.sh` içinde de (yalnız CI yolu, `DEPLOY_REVISION`) uygulanır; elle çalıştırılan deploy
+ertelenmez. Kapanışın kendisi depoda değil (AWS tarafında durdurma); bunun için
+`ravencia-deploy-guard.service` kurulur: açılışta bir şey yapmaz, kapanışta `ExecStop`
+(`wait-for-deploy-lock.sh`) `~/deploy-logs/.lock` serbest kalana kadar en çok 23 dk bekler. Docker'dan
+önce durdurulduğu için konteynerler bu sırada çalışır; deploy'un koştuğu SSH oturum kapsamları
+`/etc/systemd/system/session-.scope.d/ravencia-deploy-guard.conf` ile bu birimden sonra durdurulur.
+Sunucuda doğrulama: `systemctl show -p After session-<n>.scope` çıktısında `ravencia-deploy-guard.service`
+görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; kesin koruma
+23:45 kuralıdır.
 `releases.tsv` her deploy/geri alma için bir satır tutar (zaman, tür, SHA, imajlar).
 
 **`ci-entrypoint.sh` değiştiğinde** sunucuda bir kez yeniden kurulmalıdır (root'a ait kopya):
@@ -167,6 +180,7 @@ MaxRetentionSec=30day
 | `ravencia-restore-drill.timer` | ayın ilk Pazar'ı 19:00 UTC (22:00 TR) | `monthly-restore-drill.sh`: en yeni seti izole konteynerlere geri yükler, migration/API/Worker sağlığını doğrular |
 | `ravencia-healthwatch.timer` | 5 dakikada bir, 09:00–00:25 TR | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
+| `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
 
 **Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatteki tüm setler + son **7 günün** her gününün
 en yeni seti + daha eski 4 ISO haftasının her birinin en yeni seti; en yeni set her koşulda kalır

@@ -40,6 +40,15 @@ cd "$repository_root"
 if [[ -n "${DEPLOY_REVISION:-}" ]]; then
   # CI passes the exact validated commit and has already fast-forwarded to it.
   [[ "$(git rev-parse HEAD)" == "$DEPLOY_REVISION" ]] || { echo "Checked-out revision does not match DEPLOY_REVISION." >&2; exit 1; }
+  # Same 23:45-00:30 rule as ci-entrypoint.sh, for a server whose root-owned copy of
+  # that script predates it. Nothing is recorded, so the morning run deploys this
+  # revision (it is already checked out). A manual run is never deferred.
+  # shellcheck source=/dev/null
+  source "$script_dir/ci-entrypoint.sh"
+  if deploy_window_closed; then
+    echo "::warning::Deploy of $DEPLOY_REVISION deferred to morning: no deploy starts between 23:45 and the 00:30 nightly stop (Europe/Istanbul)."
+    exit 0
+  fi
 else
   git pull --ff-only origin main
 fi
