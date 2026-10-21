@@ -110,20 +110,32 @@ previous_edge_image="$(running_service_image caddy)"
 "${compose[@]}" up -d --no-build postgres migrate
 migrate_id="$("${compose[@]}" ps -q migrate)"
 [[ -n "$migrate_id" ]] || { echo "Migration container was not created." >&2; exit 1; }
-migration_status=""
+# A data migration can legitimately run for minutes; each statement is bounded by
+# the migrate command's own statement_timeout (20 min) and lock_timeout (15 s,
+# retried), so the wait here is only the outer bound. On timeout the container is
+# stopped: its open transaction rolls back and the old stack keeps serving the
+# schema of the last completed migration.
+migration_timeout="${RAVENCIA_MIGRATION_TIMEOUT_SECONDS:-1800}"
+[[ "$migration_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_MIGRATION_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
+echo "Waiting up to ${migration_timeout}s for the database migration."
+migration_started="$(date +%s)"
 migration_exit_code=""
-for ((attempt = 1; attempt <= 120; attempt++)); do
-  migration_status="$(sudo -n docker inspect --format '{{.State.Status}}' "$migrate_id")"
-  if [[ "$migration_status" == "exited" ]]; then
-    migration_exit_code="$(sudo -n docker inspect --format '{{.State.ExitCode}}' "$migrate_id")"
-    break
-  fi
-  sleep 1
-done
-[[ "$migration_status" == "exited" && "$migration_exit_code" == "0" ]] || {
-  echo "Database migration did not complete successfully: state=$migration_status exit_code=${migration_exit_code:-unknown}." >&2
+wait_status=0
+migration_exit_code="$(timeout "$migration_timeout" sudo -n docker wait "$migrate_id")" || wait_status=$?
+migration_seconds="$(( $(date +%s) - migration_started ))"
+if (( wait_status == 124 )); then
+  echo "Database migration did not finish within ${migration_timeout}s; stopping the migrate container (the old stack keeps serving)." >&2
+  sudo -n docker stop --time 30 "$migrate_id" >/dev/null || true
+  sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
+  exit 1
+fi
+[[ "$wait_status" == "0" && "$migration_exit_code" == "0" ]] || {
+  migration_status="$(sudo -n docker inspect --format '{{.State.Status}}' "$migrate_id" 2>/dev/null || echo unknown)"
+  echo "Database migration did not complete successfully: state=$migration_status exit_code=${migration_exit_code:-unknown} after ${migration_seconds}s." >&2
+  sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
   exit 1
 }
+echo "Database migration completed in ${migration_seconds}s."
 
 "${compose[@]}" up -d --no-build api worker caddy
 

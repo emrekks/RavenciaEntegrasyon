@@ -50,6 +50,14 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
   imajlarını tutar (N-1, geri alma için); daha eskilerini siler.
 - Her deploy `install-backup-timer.sh` ile sunucudaki systemd birimlerini yeniler ve zamanlayıcıları
   etkinleştirir (bkz. İşletim).
+- **Migration süresi**: `fast-deploy.sh` migrate konteynerini `docker wait` ile en çok 30 dakika bekler
+  (`RAVENCIA_MIGRATION_TIMEOUT_SECONDS`, varsayılan 1800); süre dolarsa konteyneri durdurur (açık işlem geri
+  alınır, eski yığın son tamamlanan migration'ın şemasıyla hizmete devam eder) ve deploy başarısız olur.
+  `migrate` komutu (`DatabaseMigrator`) yalnız kendi oturumunda `lock_timeout=15s` ve
+  `statement_timeout=20min` kullanır: eski API/Worker çalışırken `ALTER TABLE` kilit kuyruğunda bekleyip
+  tüm yazmaları kilitlemez; kilit alınamazsa tüm çalıştırma 20 sn arayla 4 kez denenir. Uygulamanın normal
+  sorguları bu ayarlardan etkilenmez. `CREATE INDEX CONCURRENTLY` yazmaları kilitlemediği için bu tür
+  migration'lar kendi içinde `lock_timeout`'u kapatabilir. Deploy işinin GitHub süresi 90 dakikadır.
 
 ## GitHub Secrets (Settings → Secrets and variables → Actions)
 
