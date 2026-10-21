@@ -142,6 +142,52 @@ public sealed class HepsiburadaNamePriorityTests
     public void TerminalListStatuses(string rawStatus, bool terminal) =>
         Assert.Equal(terminal, HepsiburadaHttpClient.HasTerminalListStatus(new("HB-1", new RemotePackage("PKG", null, rawStatus, DateTimeOffset.UnixEpoch, null, null, []))));
 
+    [Theory]
+    [InlineData(0, 10, 0)]
+    [InlineData(10, 10, 50)]
+    [InlineData(20, 10, 100)]
+    public void TheStatusListsPageByTheOpenListsPageNumber(int offset, int limit, int statusOffset) =>
+        Assert.Equal((statusOffset, HepsiburadaHttpClient.StatusListPageSize), HepsiburadaHttpClient.StatusListPage(offset, limit));
+
+    [Fact]
+    public async Task TheStatusListsAreReadFiftyRowsAPage()
+    {
+        var handler = new Lists();
+        var client = new HepsiburadaHttpClient(new Factory(handler), null!, Options.Create(new HepsiburadaOptions { AuthenticationMode = "BASIC" }), TimeProvider.System, new ConfigurationBuilder().Build(), NullLogger<HepsiburadaHttpClient>.Instance);
+        var account = new HepsiburadaRequestContext(
+            new PlatformConnection { PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", DisplayName = "fixture", ExternalStoreId = "m-1", Status = "ACTIVE", ApiVersion = "V1.0" },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        { IntegratorName = "ravencia_tests/1.0" };
+        var now = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var result = await client.PollPackagesAsync(account, new PackagePollWindow(now.AddHours(-2), now), new("20", 10), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Code);
+        Assert.Equal(4, handler.Requests.Count);
+        Assert.StartsWith("?offset=20&limit=10&", handler.Requests.Single(uri => uri.AbsolutePath.EndsWith("/m-1", StringComparison.Ordinal)).Query);
+        Assert.All(handler.Requests.Where(uri => !uri.AbsolutePath.EndsWith("/m-1", StringComparison.Ordinal)),
+            uri => Assert.StartsWith("?offset=100&limit=50&", uri.Query));
+        // The open list (25 rows) ends with this page; the delivered list (200 rows) has more after row 150.
+        Assert.True(result.Value!.HasMore);
+        Assert.Equal("30", result.Value.NextCursor);
+    }
+
+    private sealed class Lists : HttpMessageHandler
+    {
+        public List<Uri> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var uri = request.RequestUri!;
+            lock (Requests) Requests.Add(uri);
+            var total = uri.AbsolutePath.EndsWith("/m-1", StringComparison.Ordinal) ? 25
+                : uri.AbsolutePath.EndsWith("/delivered", StringComparison.Ordinal) ? 200
+                : 0;
+            var body = $$"""{"items":[],"totalCount":{{total}}}""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+        }
+    }
+
     private sealed class Routes(bool openCarrier = false) : HttpMessageHandler
     {
         public List<string> Paths { get; } = [];
