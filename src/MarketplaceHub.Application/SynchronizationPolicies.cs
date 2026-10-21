@@ -661,9 +661,11 @@ public static class MarketplaceStoredClock
     public static DateTimeOffset RealInstant(DateTimeOffset stored, string? platformCode) => stored - StoredClockAhead(platformCode);
 }
 
-// While a marketplace's order notifications arrive, polling is only the safety net and runs less
-// often. A notification path is unhealthy when nothing arrived for six hours or when polling found
-// two orders the notifications had missed within a day; polling then returns to its own cadence.
+// While a marketplace's order notifications arrive, polling is only the safety net and runs every
+// eight minutes instead of three. A notification path is unhealthy once an order polling brought has
+// waited two minutes without any notification since (so a missed order is noticed within ten
+// minutes), or when polling found two orders the notifications had missed within a day; polling then
+// returns to its own cadence.
 public static class WebhookPollingPolicy
 {
     public const string HealthCursorResource = "WEBHOOK_HEALTH";
@@ -671,23 +673,41 @@ public static class WebhookPollingPolicy
     public static readonly TimeSpan GapWindow = TimeSpan.FromHours(24);
     public static readonly TimeSpan RegistrationGrace = TimeSpan.FromMinutes(10);
     public const int GapLimit = 2;
+    // A change whose notification never came is still read within eight minutes.
+    public const int SafetyNetSeconds = 480;
 
-    public static int? StretchedIntervalSeconds(string resourceType) => resourceType switch
+    // Trendyol and Shopify order reads return every change by its last-modified time, cancellations
+    // included, so with notifications their open-order scan only has to run hourly. Hepsiburada's
+    // cancellations and package changes are read by its open-order scan alone, which keeps its cadence.
+    public static int? StretchedIntervalSeconds(string? platformCode, string resourceType) => resourceType switch
     {
-        "ORDERS" => 900,
-        "ORDER_RECOVERY" or "ORDER_LIFECYCLE" => 3600,
+        "ORDERS" => SafetyNetSeconds,
+        "ORDER_RECOVERY" => 3600,
+        "ORDER_LIFECYCLE" when !string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) => 3600,
         _ => null
     };
 
-    // Silence counts against the notifications only when there was something to deliver: a store without orders
-    // for six hours has a quiet webhook, not a broken one (a broken one shows up as missed orders anyway).
-    public static bool IsHealthy(DateTimeOffset? lastReceivedAt, DateTimeOffset? registeredAt, IEnumerable<DateTimeOffset> gaps, DateTimeOffset now, bool ordersArrivedSinceLastSign = true)
+    // Silence alone says nothing: a store without orders has a quiet webhook, not a broken one. An order the
+    // panel has held for a while with no notification since shows that orders come and notifications do not;
+    // the next notification makes the webhook healthy again at once.
+    public static bool IsHealthy(DateTimeOffset? lastReceivedAt, DateTimeOffset? registeredAt, IEnumerable<DateTimeOffset> gaps, DateTimeOffset now, bool unnotifiedOrder = false)
     {
         var lastSign = lastReceivedAt ?? registeredAt;
-        if (lastSign is null) return false;
-        if (now - lastSign.Value > SilenceLimit && ordersArrivedSinceLastSign) return false;
+        if (lastSign is null || unnotifiedOrder) return false;
         return gaps.Count(gap => now - gap <= GapWindow) < GapLimit;
     }
+
+    // A poll usually writes an order seconds before its notification arrives; one still without a notification
+    // after this long was not notified.
+    public static readonly TimeSpan NotificationWait = TimeSpan.FromMinutes(2);
+    // The ingest job of a notification writes its order within about a minute of receiving it.
+    public static readonly TimeSpan IngestGrace = TimeSpan.FromMinutes(2);
+
+    // The orders that show notifications are not coming: written after the last notification, but not by it
+    // (its ingest job writes its order moments after it was received), and held long enough for their own
+    // notification to have come.
+    public static (DateTimeOffset After, DateTimeOffset Before) UnnotifiedOrderWindow(DateTimeOffset lastSign, DateTimeOffset now) =>
+        (lastSign + IngestGrace, now - NotificationWait);
 
     // An order polling inserted counts as missed only once the notifications had time to start.
     public static bool CountsAsGap(DateTimeOffset? registeredAt, DateTimeOffset now) =>
@@ -984,8 +1004,8 @@ public static class HepsiburadaPackagePolicy
 {
     public const string OrderToReadCode = "HEPSIBURADA_PACKAGE_ORDER_TO_READ";
     public const int MaxOrderReadsPerRun = 10;
-    // New orders and open packages are read every minute; the shipped, delivered and undelivered lists (three
-    // more requests a run) change rarely and are read every five minutes, or on a full read.
+    // New orders and open packages are read every run; the shipped, delivered and undelivered lists (three
+    // more requests a run) change rarely and are read every five minutes at most, or on a full read.
     public const string StatusListsCursorResource = "HEPSIBURADA_PACKAGE_STATUS_LISTS";
     public static readonly TimeSpan StatusListInterval = TimeSpan.FromMinutes(5);
 

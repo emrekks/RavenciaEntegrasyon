@@ -14,29 +14,51 @@ public sealed class WebhookPollingPolicyTests
         Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2)], Now));
         Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2), Now.AddHours(-1)], Now));
         Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddDays(-2), Now.AddHours(-1)], Now));
-        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now));
         Assert.False(WebhookPollingPolicy.IsHealthy(null, null, [], Now));
     }
 
     [Fact]
-    public void SilenceCountsOnlyWhenThereWereOrdersToDeliver()
+    public void AnOrderWithoutANotificationBreaksItAndSilenceAloneDoesNot()
     {
-        // A store without orders for seven hours has a quiet webhook, not a broken one.
-        Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now, ordersArrivedSinceLastSign: false));
-        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now, ordersArrivedSinceLastSign: true));
+        // A store without orders for a day has a quiet webhook, not a broken one.
+        Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddHours(-24), Now.AddDays(-3), [], Now));
+        // An order polling brought that no notification followed breaks it, however recent the last notification.
+        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-20), Now.AddDays(-3), [], Now, unnotifiedOrder: true));
         // Two missed orders break it whatever the silence says.
-        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2), Now.AddHours(-1)], Now, ordersArrivedSinceLastSign: false));
+        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2), Now.AddHours(-1)], Now));
     }
 
     [Fact]
     public void OnlyOrderPollsAreStretchedAndRightAfterRegistrationNothingCountsAsMissed()
     {
-        Assert.Equal(900, WebhookPollingPolicy.StretchedIntervalSeconds("ORDERS"));
-        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("ORDER_LIFECYCLE"));
-        Assert.Null(WebhookPollingPolicy.StretchedIntervalSeconds("RETURNS"));
+        // A missed notification is still read within eight minutes on every platform.
+        Assert.Equal(480, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDERS"));
+        Assert.Equal(480, WebhookPollingPolicy.StretchedIntervalSeconds("HEPSIBURADA", "ORDERS"));
+        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDER_RECOVERY"));
+        // Trendyol and Shopify order reads bring cancellations; Hepsiburada's come from its open-order scan.
+        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDER_LIFECYCLE"));
+        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("SHOPIFY", "ORDER_LIFECYCLE"));
+        Assert.Null(WebhookPollingPolicy.StretchedIntervalSeconds("HEPSIBURADA", "ORDER_LIFECYCLE"));
+        Assert.Null(WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "RETURNS"));
         Assert.False(WebhookPollingPolicy.CountsAsGap(Now.AddMinutes(-5), Now));
         Assert.True(WebhookPollingPolicy.CountsAsGap(Now.AddMinutes(-30), Now));
         Assert.False(WebhookPollingPolicy.CountsAsGap(null, Now));
+    }
+
+    [Fact]
+    public void AnUnnotifiedOrderIsOneWrittenAfterTheLastNotificationAndHeldTwoMinutes()
+    {
+        var lastNotification = Now.AddHours(-2);
+        var (after, before) = WebhookPollingPolicy.UnnotifiedOrderWindow(lastNotification, Now);
+        bool Unnotified(DateTimeOffset writtenAt) => writtenAt > after && writtenAt <= before;
+
+        // The last notification's own order, written by its ingest job seconds later, does not count.
+        Assert.False(Unnotified(lastNotification.AddSeconds(40)));
+        // A polled order whose notification may still come does not count yet.
+        Assert.False(Unnotified(Now.AddMinutes(-1)));
+        // A polled order held two minutes with no notification since does: an eight-minute poll plus two
+        // minutes notices a missed order within ten minutes.
+        Assert.True(Unnotified(Now.AddMinutes(-2)));
     }
 
     [Fact]

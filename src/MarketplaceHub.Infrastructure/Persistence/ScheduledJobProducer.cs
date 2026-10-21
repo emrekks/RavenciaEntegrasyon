@@ -80,7 +80,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 interval = QuestionCadencePolicy.IntervalSeconds(interval, lastQuestionAt, now);
             }
             // Healthy order notifications make the order polls a slower safety net.
-            if (WebhookPollingPolicy.StretchedIntervalSeconds(row.Policy.ResourceType) is { } stretched
+            if (WebhookPollingPolicy.StretchedIntervalSeconds(row.Connection.PlatformCode, row.Policy.ResourceType) is { } stretched
                 && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id))
                 interval = Math.Max(interval, stretched);
             interval = ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment);
@@ -222,18 +222,40 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .Select(x => x.OpaqueCursor)
                 .FirstOrDefaultAsync(cancellationToken);
             if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now,
-                    await OrdersArrivedSinceAsync(db, subscription.TenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken)))
+                    await UnnotifiedOrderAsync(db, subscription.TenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, now, cancellationToken)))
                 healthy.Add(subscription.ConnectionId);
         }
         return healthy;
     }
 
-    // Whether any order of the connection reached the panel after the notifications' last sign of life; a quiet
-    // store's silence is then not held against its webhook.
-    internal static Task<bool> OrdersArrivedSinceAsync(AppDbContext db, Guid tenantId, Guid connectionId, DateTimeOffset? since, CancellationToken cancellationToken) =>
-        since is null
-            ? Task.FromResult(false)
-            : db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.CreatedAt > since.Value, cancellationToken);
+    // The scheduler's notification health rule for one connection, so the panel judges a stretched poll by
+    // the cadence it actually runs at.
+    internal static async Task<bool> WebhookHealthyAsync(AppDbContext db, Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var subscriptions = await db.WebhookSubscriptions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+            .Select(x => new { x.LastReceivedAt, x.VerifiedAt })
+            .ToListAsync(cancellationToken);
+        if (subscriptions.Count == 0) return false;
+        var health = await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
+            .Select(x => x.OpaqueCursor)
+            .FirstOrDefaultAsync(cancellationToken);
+        foreach (var subscription in subscriptions)
+            if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now,
+                    await UnnotifiedOrderAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, now, cancellationToken)))
+                return true;
+        return false;
+    }
+
+    // Whether the panel holds an order of the connection that no notification followed (UnnotifiedOrderWindow).
+    internal static Task<bool> UnnotifiedOrderAsync(AppDbContext db, Guid tenantId, Guid connectionId, DateTimeOffset? lastSign, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (lastSign is null) return Task.FromResult(false);
+        var (after, before) = WebhookPollingPolicy.UnnotifiedOrderWindow(lastSign.Value, now);
+        if (after >= before) return Task.FromResult(false);
+        return db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.CreatedAt > after && order.CreatedAt <= before, cancellationToken);
+    }
 
     // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read
     // before their notification arrived, so it is not trusted and reads as no misses.
@@ -463,7 +485,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     internal static IReadOnlyList<PolicyDefaults> DefaultPolicies(IConfiguration configuration) =>
     [
-        new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 5)),
+        new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 180), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 5)),
         new("ORDER_RECOVERY", configuration.GetValue("MarketplaceSync:OrderRecovery:IntervalSeconds", 900), configuration.GetValue("MarketplaceSync:OrderRecovery:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:OrderRecovery:JitterSeconds", 30)),
         new("ORDER_LIFECYCLE", configuration.GetValue("MarketplaceSync:OrderLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:OrderLifecycle:JitterSeconds", 10)),
         new("ORDER_CARGO_INFO", configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:IntervalSeconds", 300), 0, configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:JitterSeconds", 15)),
