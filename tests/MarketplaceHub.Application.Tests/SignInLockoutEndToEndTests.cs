@@ -162,9 +162,9 @@ public sealed class SignInLockoutEndToEndTests(SignInLockoutFixture fixture) : I
             using (var travelling = await fixture.SignInAsync(email, SignInLockoutFixture.Password, "192.0.2.77"))
                 Assert.Equal(HttpStatusCode.OK, travelling.StatusCode);
 
-            // The open session's re-authentication is not ended by failures elsewhere.
-            using var reauthenticated = await SignInLockoutFixture.PostAsync(session, sessionCsrf, "203.0.113.50", "/api/v1/auth/reauthenticate", new { password = SignInLockoutFixture.Password });
-            Assert.Equal(HttpStatusCode.OK, reauthenticated.StatusCode);
+            // A password re-check inside the open session (starting an authenticator setup) is not ended by failures elsewhere.
+            using var rechecked = await SignInLockoutFixture.PostAsync(session, sessionCsrf, "203.0.113.50", "/api/v1/auth/mfa/setup", new { password = SignInLockoutFixture.Password });
+            Assert.Equal(HttpStatusCode.OK, rechecked.StatusCode);
         }
     }
 

@@ -10,26 +10,20 @@ type Props = {
   invoiceNumber: string | null
   items: InvoiceLinkRevocation[]
   onNotice: (message: string, kind: 'success' | 'error') => void
-  // A live provider asks for the account password again, as for the other fiscal writes (the detail page's field).
-  requiresPassword?: boolean
-  password?: string
-  onPasswordUsed?: () => void
 }
 
 // Links a cancelled invoice left on marketplace packages. Each removal is the operator's own request, confirmed in the
-// panel's dialog; nothing here runs on its own.
-export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, onNotice, requiresPassword = false, password = '', onPasswordUsed }: Props) {
+// panel's dialog (no password: being signed in with the role is enough); nothing here runs on its own.
+export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, onNotice }: Props) {
   const client = useQueryClient()
   const [confirm, confirmDialog] = useConfirmDialog()
-  const passwordMissing = requiresPassword && !password
   const revoke = useMutation({
     mutationFn: (item: InvoiceLinkRevocation) => hubApi<InvoiceLinkRevocation>(`/invoices/${invoiceId}/marketplace-link-revocations/${item.deliveryStateId}`, {
       method: 'POST',
       headers: { 'Idempotency-Key': newIdempotencyKey() },
-      body: JSON.stringify(requiresPassword ? { confirmed: true, password } : { confirmed: true }),
+      body: JSON.stringify({ confirmed: true }),
     }),
     onSuccess: async (_result, item) => {
-      onPasswordUsed?.()
       onNotice(linkRevocationSuccessMessage(item), 'success')
       await client.invalidateQueries({ queryKey: ['invoice', invoiceId] })
     },
@@ -48,7 +42,6 @@ export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, on
   return <div className="panel invoice-link-revocations">
     <h2>Pazaryeri Fatura Linkleri</h2>
     <p className="invoice-detail-muted">Bu fatura iptal edildi. Pazaryerine iletilen linki kaldırılmadan aynı pakete yeni fatura iletilemez.</p>
-    {requiresPassword && items.some(item => item.canAct) && <p className="invoice-detail-muted invoice-link-revocation-password-note">Canlı ortamda bu işlem için “Dış Mali İşlem Onayı” alanına hesap parolanızı girin.</p>}
     <div className="card-list">{items.map(item => {
       const action = linkRevocationActionLabel(item)
       const note = linkRevocationNote(item)
@@ -63,7 +56,7 @@ export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, on
         </span>
         <span className="invoice-link-revocation-actions">
           <Badge tone={linkRevocationTone(item.status)}>{linkRevocationStatusLabel(item.status)}</Badge>
-          {action && <Button variant={item.mode === 'AUTOMATIC' ? 'danger' : 'secondary'} size="md" loading={running} disabled={!item.canAct || revoke.isPending || passwordMissing} onClick={() => void start(item)}>{action}</Button>}
+          {action && <Button variant={item.mode === 'AUTOMATIC' ? 'danger' : 'secondary'} size="md" loading={running} disabled={!item.canAct || revoke.isPending} onClick={() => void start(item)}>{action}</Button>}
         </span>
       </div>
     })}</div>

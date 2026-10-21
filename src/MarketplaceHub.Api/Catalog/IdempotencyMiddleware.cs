@@ -57,7 +57,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         var hashInput = Encoding.UTF8.GetBytes($"{context.Request.Method}\n{route}\n{context.Request.QueryString}\n{versionLine}");
         var combined = new byte[hashInput.Length + requestBytes.Length];
         hashInput.CopyTo(combined, 0); requestBytes.ToArray().CopyTo(combined, hashInput.Length);
-        // Bodies can carry passwords (step-up confirmations) and credentials. A plain SHA-256 of them, kept
+        // Bodies can carry credentials (connection keys, webhook passwords). A plain SHA-256 of them, kept
         // for a day, would let anyone who reads the table test guesses offline; the digest is keyed with the
         // server's key instead.
         var hash = hasher.HashBytes(IdempotencyRequestDigest.Prefix(combined));
@@ -167,13 +167,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         {
             await next(context);
             responseBuffer.Position = 0;
-            if (StepUpMiddleware.WasRefused(context))
-            {
-                // The endpoint asked for a fresh re-authentication: the panel sends this request again, with this key,
-                // once the user has passed it, so the refusal must not become the key's stored result.
-                await ForgetAsync(db, record);
-            }
-            else if (context.Response.StatusCode < 500)
+            if (context.Response.StatusCode < 500)
             {
                 record.State = "COMPLETED";
                 string? body = null;

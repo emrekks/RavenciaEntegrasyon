@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Identity;
 
 namespace MarketplaceHub.Api.Security;
 
-// Every password and second-factor check (sign-in, each re-authentication, step-ups and the password
-// change) counts towards the same limits: SignInThrottle blocks the sending network from the account
+// Every password and second-factor check (sign-in, the password change and the authenticator changes)
+// counts towards the same limits: SignInThrottle blocks the sending network from the account
 // after five failures (longer each time), and the account-wide ceiling (SignInThrottle's window and the
 // Identity lockout) slows guesses spread over many networks without locking out the owner's trusted or
 // untouched networks, or an already signed-in session. A stolen session therefore cannot be used to

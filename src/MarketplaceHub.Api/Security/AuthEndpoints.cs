@@ -14,7 +14,7 @@ namespace MarketplaceHub.Api.Security;
 public static class AuthEndpoints
 {
     // Rate limit policies (Program.cs): sign-in per sending network; the steps after it (second factor,
-    // re-authentication, password change, authenticator changes) per session, in a bucket of their own.
+    // password change, authenticator changes) per session, in a bucket of their own.
     public const string SignInRateLimit = "auth";
     public const string StepRateLimit = "auth-step";
     private const string TotpPurpose = "MarketplaceHub.Totp.v1";
@@ -26,7 +26,6 @@ public static class AuthEndpoints
         group.MapPost("/login", LoginAsync).RequireRateLimiting(SignInRateLimit);
         group.MapPost("/logout", LogoutAsync);
         group.MapPost("/change-password", ChangePasswordAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/reauthenticate", ReauthenticateAsync).RequireRateLimiting(StepRateLimit);
         group.MapGet("/me", MeAsync);
         group.MapGet("/security-status", SecurityStatusAsync);
         group.MapGet("/sessions", SessionsAsync);
@@ -93,7 +92,7 @@ public static class AuthEndpoints
         }
         var raw = TokenHasher.NewToken(); var sessionId = Guid.NewGuid();
         AuthAudit.Record(db, context, AuthAudit.LoginSucceeded, user.Id, membership?.TenantId, $"state={SessionStateWire(state)}", now, sessionId);
-        db.UserSessions.Add(new UserSession { Id = sessionId, UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
+        db.UserSessions.Add(new UserSession { Id = sessionId, UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
         user.LastLoginAt = now; await db.SaveChangesAsync(context.RequestAborted);
         SetSessionCookie(context.Response, raw, now.AddHours(12));
         return Results.Ok(new { state = SessionStateWire(state) });
@@ -149,7 +148,7 @@ public static class AuthEndpoints
         // that has not passed it on record (opened before that order) still has to.
         var secondFactorPassed = security.TotpState != TotpState.Enabled || await db.AuditLogs.AsNoTracking()
             .AnyAsync(x => x.Action == AuthAudit.MfaSucceeded && x.TargetId == session.Id.ToString("D"), context.RequestAborted);
-        session.SessionVersion = user.SessionVersion; session.ReauthenticatedAt = time.GetUtcNow(); session.State = secondFactorPassed ? SessionState.Active : SessionState.MfaChallenge;
+        session.SessionVersion = user.SessionVersion; session.State = secondFactorPassed ? SessionState.Active : SessionState.MfaChallenge;
         if (secondFactorPassed) await PasswordCheck.RegisterSuccessAsync(context, users, user);
         if (session.TenantId is null)
         {
@@ -159,21 +158,6 @@ public static class AuthEndpoints
         }
         var raw = TokenHasher.NewToken(); session.TokenHash = hasher.Hash(raw); await db.SaveChangesAsync(context.RequestAborted); SetSessionCookie(context.Response, raw, session.AbsoluteExpiresAt);
         return Results.Ok(new { state = SessionStateWire(session.State) });
-    }
-
-    private static async Task<IResult> ReauthenticateAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
-    {
-        var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden(context);
-        var user = await users.FindByIdAsync(session.UserId.ToString());
-        if (user is null || !await PasswordCheck.VerifyAsync(context, users, user, request.Password)) return await PasswordRecheckFailedAsync(session, user, users, db, context, time);
-        var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
-        if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
-            return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
-        MfaAttemptPolicy.RegisterSuccess(session);
-        await PasswordCheck.RegisterSuccessAsync(context, users, user);
-        session.ReauthenticatedAt = time.GetUtcNow();
-        await db.SaveChangesAsync(context.RequestAborted);
-        return Results.Ok(new { reauthenticatedAt = session.ReauthenticatedAt });
     }
 
     private static async Task<IResult> MeAsync(HttpContext context, AppDbContext db)
@@ -217,7 +201,6 @@ public static class AuthEndpoints
         MfaAttemptPolicy.RegisterSuccess(session);
         await PasswordCheck.RegisterSuccessAsync(context, users, user);
         var now = time.GetUtcNow();
-        session.ReauthenticatedAt = now;
         var secret = totp.NewSecret(); var base32 = Base32(secret); var expires = now.AddMinutes(10);
         var protectedSecret = ProtectTotp(protection, session.UserId, secret);
         if (replacing)
@@ -259,7 +242,6 @@ public static class AuthEndpoints
         var user = await db.Users.SingleAsync(x => x.Id == session.UserId, context.RequestAborted);
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
         security.TotpState = TotpState.Enabled; security.ProtectedTotpSecret = pendingSecret; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = step; security.Version++;
-        session.ReauthenticatedAt = now;
         user.SessionVersion++; session.SessionVersion = user.SessionVersion;
         var revoked = await db.UserSessions.Where(x => x.UserId == session.UserId && x.Id != session.Id && x.State != SessionState.Revoked)
             .ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, now), context.RequestAborted);
@@ -326,7 +308,7 @@ public static class AuthEndpoints
             session.TenantId = membership.TenantId;
         }
         // A forced password change follows the second factor.
-        session.State = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow();
+        session.State = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : SessionState.Active;
         await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
@@ -346,8 +328,7 @@ public static class AuthEndpoints
             return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
         MfaAttemptPolicy.RegisterSuccess(session);
         await PasswordCheck.RegisterSuccessAsync(context, users, user);
-        session.ReauthenticatedAt = time.GetUtcNow();
-        AuthAudit.Record(db, context, AuthAudit.MfaDisabled, user.Id, session.TenantId, "other-sessions-revoked", session.ReauthenticatedAt.Value, session.Id);
+        AuthAudit.Record(db, context, AuthAudit.MfaDisabled, user.Id, session.TenantId, "other-sessions-revoked", time.GetUtcNow(), session.Id);
         security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null; security.Version++;
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         user.SessionVersion++; session.SessionVersion = user.SessionVersion;
@@ -364,8 +345,7 @@ public static class AuthEndpoints
             return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
         MfaAttemptPolicy.RegisterSuccess(session);
         await PasswordCheck.RegisterSuccessAsync(context, users, user);
-        session.ReauthenticatedAt = time.GetUtcNow();
-        AuthAudit.Record(db, context, AuthAudit.RecoveryCodesRegenerated, user.Id, session.TenantId, "previous-codes-invalidated", session.ReauthenticatedAt.Value, session.Id);
+        AuthAudit.Record(db, context, AuthAudit.RecoveryCodesRegenerated, user.Id, session.TenantId, "previous-codes-invalidated", time.GetUtcNow(), session.Id);
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         var codes = ReplaceRecoveryCodes(db, security, hasher, time.GetUtcNow()); await db.SaveChangesAsync(context.RequestAborted); await transaction.CommitAsync(context.RequestAborted);

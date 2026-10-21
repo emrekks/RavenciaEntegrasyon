@@ -51,9 +51,9 @@ public sealed class ClientNetworkAndRateLimitTests
     [Fact]
     public void StepBucket_IsPerSessionCookie_AndPerNetworkWithoutOne()
     {
-        var first = Request("/api/v1/auth/reauthenticate", "203.0.113.7", cookie: "token-a");
-        var second = Request("/api/v1/auth/reauthenticate", "203.0.113.7", cookie: "token-b");
-        var none = Request("/api/v1/auth/reauthenticate", "203.0.113.7");
+        var first = Request("/api/v1/auth/mfa/setup", "203.0.113.7", cookie: "token-a");
+        var second = Request("/api/v1/auth/mfa/setup", "203.0.113.7", cookie: "token-b");
+        var none = Request("/api/v1/auth/mfa/setup", "203.0.113.7");
 
         Assert.StartsWith("step:session:", RateLimitPolicies.StepPartition(first), StringComparison.Ordinal);
         Assert.NotEqual(RateLimitPolicies.StepPartition(first), RateLimitPolicies.StepPartition(second));
@@ -335,73 +335,6 @@ public sealed class CorrelationIdTests
     public void ALongValueIsReplaced()
     {
         Assert.NotEqual(new string('a', 65), CorrelationId.FromRequest(new string('a', 65)));
-    }
-}
-
-public sealed class StepUpMiddlewareTests
-{
-    private static readonly DateTimeOffset Now = new(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
-
-    [Theory]
-    [InlineData("POST", "/api/v1/settings/data-reset", true)]
-    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/deep-delete/", true)]
-    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111//data-reset", true)]
-    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/credential", true)]
-    [InlineData("GET", "/api/v1/connections/11111111-1111-1111-1111-111111111111/credential", false)]
-    [InlineData("PUT", "/api/v1/settings/shipping-label", false)]
-    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/test-jobs", false)]
-    [InlineData("POST", "/api/v1/connections", true)]
-    [InlineData("GET", "/api/v1/connections", false)]
-    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", true)]
-    [InlineData("GET", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", false)]
-    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", true)]
-    [InlineData("DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", false)]
-    [InlineData("POST", "/api/v1/hooks/11111111-1111-1111-1111-111111111111/token", false)]
-    public void RoutesThatNeedAFreshProof(string method, string path, bool expected)
-    {
-        Assert.Equal(expected, StepUpMiddleware.RequiresStepUp(method, path));
-    }
-
-    [Fact]
-    public async Task AnOldSignInIsAskedToReauthenticate_ARecentOneGoesThrough()
-    {
-        var (stale, staleCalled) = await Invoke(Now.AddMinutes(-6));
-        var (fresh, freshCalled) = await Invoke(Now.AddMinutes(-4));
-
-        Assert.False(staleCalled);
-        Assert.Equal(StatusCodes.Status403Forbidden, stale.Response.StatusCode);
-        Assert.True(freshCalled);
-    }
-
-    // G7: a fiscal endpoint's refusal is marked so the idempotency middleware does not keep it as the key's result.
-    [Fact]
-    public void AnEndpointRefusalIsMarkedForTheIdempotencyMiddleware()
-    {
-        var context = new DefaultHttpContext();
-        Assert.False(StepUpMiddleware.WasRefused(context));
-
-        var result = StepUpMiddleware.Refuse(context, "Yeniden doğrulama gerekir.");
-
-        Assert.True(StepUpMiddleware.WasRefused(context));
-        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
-    }
-
-    private static async Task<(HttpContext Context, bool Called)> Invoke(DateTimeOffset reauthenticatedAt)
-    {
-        var context = new DefaultHttpContext();
-        context.Request.Method = "POST";
-        context.Request.Path = "/api/v1/settings/data-reset";
-        context.Response.Body = new MemoryStream();
-        context.Items["UserSession"] = new UserSession { Id = Guid.CreateVersion7(), UserId = Guid.CreateVersion7(), State = SessionState.Active, TokenHash = "hash", ReauthenticatedAt = reauthenticatedAt };
-        var called = false;
-        await new StepUpMiddleware(_ => { called = true; return Task.CompletedTask; }).InvokeAsync(context, new SignInThrottleTests.Clock(Now));
-        if (!called)
-        {
-            context.Response.Body.Position = 0;
-            var problem = await JsonSerializer.DeserializeAsync<JsonElement>(context.Response.Body);
-            Assert.Equal(StepUpMiddleware.Code, problem.GetProperty("code").GetString());
-        }
-        return (context, called);
     }
 }
 

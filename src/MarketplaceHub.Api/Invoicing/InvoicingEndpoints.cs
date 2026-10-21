@@ -108,23 +108,22 @@ public static class InvoicingEndpoints
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/invoices/{id:guid}/validate", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ValidateAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
-        api.MapPost("/invoices/{id:guid}/submit-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, version, key) => service.EnqueueSubmitAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted), requireSensitiveConfirmation: false));
+        api.MapPost("/invoices/{id:guid}/submit-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, version, key) => service.EnqueueSubmitAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted), requireSensitiveConfirmation: false));
         api.MapPost("/invoices/{id:guid}/stage-capability-probe-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueStageCapabilityProbeAsync(tenant.TenantId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : failure! : MissingContext(http));
         api.MapPost("/invoices/{id:guid}/reconcile-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReconcileAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
+        api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
         // Operator-only: removes (Trendyol) or confirms the removal of (Hepsiburada) the link a cancelled invoice left on one package.
-        // Like the other fiscal writes it asks for the password again (live provider connection) and runs under the
+        // It takes an explicit confirmation (no password: a signed-in session with the role is enough) and runs under the
         // server's budget, so a closed tab does not leave the state "being removed".
-        api.MapPost("/invoices/{id:guid}/marketplace-link-revocations/{stateId:guid}", async (Guid id, Guid stateId, LinkRevocationRequest request, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) =>
+        api.MapPost("/invoices/{id:guid}/marketplace-link-revocations/{stateId:guid}", async (Guid id, Guid stateId, LinkRevocationRequest request, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } missingKey) return missingKey;
             if (request is not { Confirmed: true }) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Fatura linkini kaldırmak için açık onay gerekir.", 422));
-            if (await FiscalStepUpAsync(id, request.Password, tenant, http, users, db) is { } refused) return refused;
             var result = await service.RevokeMarketplaceLinkAsync(tenant.TenantId, id, stateId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
         }).WithServerBudget();
-        api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
+        api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
         api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery();
         api.MapPut("/invoices/{id:guid}/shopify-status", UpdateShopifyInvoiceStatusAsync);
         api.MapGet("/invoices/{invoiceId:guid}/documents/latest/content", async (Guid invoiceId, HttpContext http, AppDbContext db, IInvoicingBillingService service) =>
@@ -582,7 +581,7 @@ public static class InvoicingEndpoints
     }
 
     private sealed record ShopifyInvoiceStatusCommand(string Status);
-    private sealed record LinkRevocationRequest(bool Confirmed, string? Password = null);
+    private sealed record LinkRevocationRequest(bool Confirmed);
 
     // Confirms the workspace selection. Queuing the batch is bounded by the server's lifetime only: not by the
     // browser (a closed tab must not stop it midway) and not by the inline budget (a large batch may take longer
@@ -616,33 +615,6 @@ public static class InvoicingEndpoints
         return Results.Ok(new InvoiceWorkspaceConfirmResult(items));
     }
 
-    // The password step-up of fiscal writes: asked again when the invoice's provider connection is live, as in EnqueueProtected.
-    internal static async Task<IResult?> FiscalStepUpAsync(Guid invoiceId, string? password, TenantContext tenant, HttpContext http, UserManager<ApplicationUser> users, AppDbContext db)
-    {
-        var connection = await (from invoice in db.Invoices.AsNoTracking()
-                                join provider in db.PlatformConnections.AsNoTracking() on new { invoice.TenantId, Id = invoice.ProviderConnectionId } equals new { provider.TenantId, provider.Id }
-                                where invoice.TenantId == tenant.TenantId && invoice.Id == invoiceId
-                                select provider).SingleOrDefaultAsync(http.RequestAborted);
-        if (connection is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Fatura bulunamadı.", 404));
-        if (!IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)) return null;
-        var user = await users.FindByIdAsync(tenant.UserId.ToString());
-        return await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(http, users, user, password ?? string.Empty)
-            ? await FiscalSecondFactorAsync(tenant, http, db)
-            : Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
-    }
-
-    // G7: with an authenticator on, the password typed into the form is not enough for a fiscal write. The session must
-    // also have passed the second factor within StepUpMiddleware.Window (the sign-in, or POST /auth/reauthenticate with
-    // the code). Otherwise the answer is StepUpMiddleware's 403 REAUTHENTICATION_REQUIRED: the panel asks for the password
-    // and the code, re-authenticates and sends the same request again.
-    internal static async Task<IResult?> FiscalSecondFactorAsync(TenantContext tenant, HttpContext http, AppDbContext db)
-    {
-        if (!await db.UserSecurities.AsNoTracking().AnyAsync(x => x.UserId == tenant.UserId && x.TotpState == TotpState.Enabled, http.RequestAborted)) return null;
-        var now = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
-        return http.Items["UserSession"] is UserSession session && MarketplaceHub.Api.Security.StepUpMiddleware.IsRecent(session, now)
-            ? null
-            : MarketplaceHub.Api.Security.StepUpMiddleware.Refuse(http, "Bu mali işlem için parolanızla ve doğrulayıcı kodunuzla yeniden doğrulama gerekir.");
-    }
     private sealed record InvoiceWorkspaceManualStatusCommand(IReadOnlyList<Guid> PackageIds, string Status);
     private sealed record InvoiceWorkspaceHiddenCommand(IReadOnlyList<Guid> PackageIds, bool Hidden);
 
@@ -651,7 +623,7 @@ public static class InvoicingEndpoints
         : bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png"
         : null;
 
-    private static async Task<IResult> EnqueueProtected(Guid invoiceId, ConfirmedAction command, HttpContext http, UserManager<ApplicationUser> users, AppDbContext db, Func<Guid, long, string, Task<ServiceResult<Guid>>> enqueue, bool requireVersion = true, bool requireSensitiveConfirmation = true)
+    private static async Task<IResult> EnqueueProtected(Guid invoiceId, ConfirmedAction command, HttpContext http, AppDbContext db, Func<Guid, long, string, Task<ServiceResult<Guid>>> enqueue, bool requireVersion = true, bool requireSensitiveConfirmation = true)
     {
         var tenant = Tenant(http); if (tenant is null) return Unauthorized(http);
         var missingKey = RequireIdempotency(http); if (missingKey is not null) return missingKey;
@@ -666,20 +638,8 @@ public static class InvoicingEndpoints
             if (requireVersion && !TryIfMatch(http, out stageVersion, out var stageFailure)) return stageFailure!;
             return Accepted(await enqueue(tenant.TenantId, stageVersion, http.Request.Headers["Idempotency-Key"].ToString()));
         }
+        // A live provider connection takes an explicit confirmation; no password: the signed-in session with the role is enough.
         if (!command.Confirmed) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Dış mali işlem için açık onay zorunludur.", 422));
-        var user = await users.FindByIdAsync(tenant.UserId.ToString());
-        if (!await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(http, users, user, command.Password))
-        {
-            // Wrong passwords at a fiscal confirmation are audited like those at the re-authentication step, lockouts too.
-            var now = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
-            var sessionId = (http.Items["UserSession"] as UserSession)?.Id;
-            MarketplaceHub.Api.Security.AuthAudit.Record(db, http, MarketplaceHub.Api.Security.AuthAudit.ReauthenticationFailed, tenant.UserId, tenant.TenantId, "password; invoice-action", now, sessionId);
-            if (user is not null && await MarketplaceHub.Api.Security.PasswordCheck.IsBlockedAsync(http, users, user))
-                MarketplaceHub.Api.Security.AuthAudit.Record(db, http, MarketplaceHub.Api.Security.AuthAudit.AccountLockedOut, tenant.UserId, tenant.TenantId, "failed-reauthentication; invoice-action", now);
-            await db.SaveChangesAsync(CancellationToken.None);
-            return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
-        }
-        if (await FiscalSecondFactorAsync(tenant, http, db) is { } secondFactorRequired) return secondFactorRequired;
         long version = 0;
         if (requireVersion && !TryIfMatch(http, out version, out var failure)) return failure!;
         return Accepted(await enqueue(tenant.TenantId, version, http.Request.Headers["Idempotency-Key"].ToString()));
@@ -698,5 +658,5 @@ public static class InvoicingEndpoints
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
-    public sealed record ConfirmedAction(string Password, bool Confirmed);
+    public sealed record ConfirmedAction(bool Confirmed);
 }

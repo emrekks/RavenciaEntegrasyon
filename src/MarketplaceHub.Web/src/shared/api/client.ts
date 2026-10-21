@@ -24,21 +24,12 @@ export function isPermanentRequestError(error: unknown) {
   return error instanceof ApiRequestError && permanentStatuses.has(error.status)
 }
 
-// A 401 means "signed out" only when the server says so. A wrong password or code in a confirmation (REAUTHENTICATION_FAILED,
-// SECOND_FACTOR_FAILED) is a 401 too, but the session is still valid and the screen that asked shows the error.
+// A 401 means "signed out" only when the server says so. A wrong password or code in an authenticator change
+// (REAUTHENTICATION_FAILED, SECOND_FACTOR_FAILED) is a 401 too, but the session is still valid and the screen that asked
+// shows the error.
 const signedOutCodes = new Set(['AUTHENTICATION_REQUIRED', 'MFA_ATTEMPTS_EXCEEDED'])
 export function isSignedOutProblem(status: number, code: string | undefined) {
   return status === 401 && (code === undefined || signedOutCodes.has(code))
-}
-
-// Irreversible work (data reset, connection deletion, credential change) needs a fresh proof of identity: the server answers
-// 403 REAUTHENTICATION_REQUIRED. The app registers one handler that asks for the password (and code) and re-authenticates;
-// when it succeeds, the refused request is sent once more, unchanged.
-type StepUpHandler = () => Promise<boolean>
-let stepUpHandler: StepUpHandler | null = null
-export function setStepUpHandler(handler: StepUpHandler | null) {
-  stepUpHandler = handler
-  return () => { if (stepUpHandler === handler) stepUpHandler = null }
 }
 
 // Automatic polls that should not count as the person using the panel: the server can leave the session's idle clock alone.
@@ -131,12 +122,11 @@ export function automaticReadInit(init?: RequestInit): RequestInit | undefined {
   return method === 'GET' || method === 'HEAD' ? backgroundPollInit(init) : init
 }
 
-export async function hubApi<T>(path: string, init?: RequestInit, steppedUp = false): Promise<T> {
+export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithCsrf(`/api/v1${path}`, automaticReadInit(init))
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as ApiProblem
     if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
-    if (response.status === 403 && problem.code === 'REAUTHENTICATION_REQUIRED' && !steppedUp && stepUpHandler && await stepUpHandler()) return hubApi<T>(path, init, true)
     throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }
   if (response.status === 204) return undefined as T

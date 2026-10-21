@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiRequestError, backgroundPollInit, hubApi, hubPoll, isPermanentRequestError, isSignedOutProblem, isUserRecentlyActive, noteUserActivity, setStepUpHandler, setUnauthorizedHandler, trackUserActivity } from './client'
+import { ApiRequestError, backgroundPollInit, hubApi, hubPoll, isPermanentRequestError, isSignedOutProblem, isUserRecentlyActive, noteUserActivity, setUnauthorizedHandler, trackUserActivity } from './client'
 
 const respond = (status: number, body: unknown = {}) => vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 
@@ -52,30 +52,29 @@ describe('a wrong password in a confirmation', () => {
   })
 })
 
-describe('irreversible work that needs a fresh sign-in', () => {
-  it('asks the registered prompt and sends the same request again once', async () => {
+describe('irreversible work (no step-up re-authentication)', () => {
+  it('sends the request once and answers with its result: being signed in is enough', async () => {
     let resets = 0
     const fetchMock = vi.fn(async (url: string) => {
       if (url === '/api/v1/auth/csrf') return new Response(JSON.stringify({ token: 't' }), { status: 200 })
       resets++
-      return resets === 1
-        ? new Response(JSON.stringify({ code: 'REAUTHENTICATION_REQUIRED' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
-        : new Response(JSON.stringify({ done: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ done: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const prompt = vi.fn(async () => true)
-    const release = setStepUpHandler(prompt)
     await expect(hubApi('/settings/data-reset', { method: 'POST', body: '{"scopes":["ORDERS"]}' })).resolves.toEqual({ done: true })
-    expect(prompt).toHaveBeenCalledTimes(1)
-    expect(resets).toBe(2)
-    release()
+    expect(resets).toBe(1)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/reauthenticate'))).toBe(false)
   })
 
-  it('gives up when the person cancels the prompt', async () => {
-    vi.stubGlobal('fetch', respond(403, { code: 'REAUTHENTICATION_REQUIRED', title: 'Yeniden doğrulama gerekir.' }))
-    const release = setStepUpHandler(async () => false)
-    await expect(hubApi('/settings/data-reset', { method: 'POST', body: '{}' })).rejects.toMatchObject({ status: 403, code: 'REAUTHENTICATION_REQUIRED' })
-    release()
+  it('reports a refusal to the screen that asked without sending it again', async () => {
+    let sent = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/v1/auth/csrf') return new Response(JSON.stringify({ token: 't' }), { status: 200 })
+      sent++
+      return new Response(JSON.stringify({ code: 'FORBIDDEN', title: 'Bu işlem için yetkiniz yok.' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+    }))
+    await expect(hubApi('/settings/data-reset', { method: 'POST', body: '{}' })).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' })
+    expect(sent).toBe(1)
   })
 })
 

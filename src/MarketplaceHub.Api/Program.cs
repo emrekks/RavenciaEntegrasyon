@@ -126,7 +126,6 @@ app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<SessionStateBoundaryMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
 app.UseMiddleware<ElevatedRoleMfaMiddleware>();
-app.UseMiddleware<StepUpMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.MapAuthEndpoints();
 app.MapCatalogEndpoints();

@@ -44,7 +44,7 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         await next(context);
     }
 
-    // The session row is tracked: endpoints change it (state, re-authentication time) and save it.
+    // The session row is tracked: endpoints change it (state, session version) and save it.
     internal static IQueryable<SessionLookup> Lookup(AppDbContext db, string tokenHash) =>
         from session in db.UserSessions
         where session.TokenHash == tokenHash

@@ -158,8 +158,8 @@ describe('the forced password change (W30)', () => {
   })
 })
 
-describe('irreversible work asks for the password again (A4)', () => {
-  it('opens the prompt, re-authenticates and repeats the refused request', async () => {
+describe('irreversible work needs no re-authentication', () => {
+  it('sends the request once and never opens a password window', async () => {
     server.me = [{ status: 200, body: active }]
     const { host } = mount()
     await waitFor(() => shell(host))
@@ -167,71 +167,17 @@ describe('irreversible work asks for the password again (A4)', () => {
     server.hub = url => {
       if (url !== '/api/v1/settings/data-reset') return { status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } }
       resets++
-      return resets === 1 ? { status: 403, body: { code: 'REAUTHENTICATION_REQUIRED', title: 'Yeniden doğrulama gerekir.' } } : { status: 200, body: { products: 0 } }
+      return { status: 200, body: { products: 0 } }
     }
     const { hubApi } = await import('../shared/api')
     let result: unknown
-    const call = hubApi('/settings/data-reset', { method: 'POST', body: '{}' }).then(value => { result = value })
-    const password = await waitFor(() => document.querySelector<HTMLInputElement>('.rv-step-up-form input[name="password"]'))
-    await waitFor(stepUpReady)
-    password.value = 'gizli-parola'
-    submit(document.querySelector<HTMLFormElement>('.rv-step-up-form')!)
-    await act(async () => { await call })
+    await act(async () => { result = await hubApi('/settings/data-reset', { method: 'POST', body: '{}' }) })
     expect(result).toEqual({ products: 0 })
-    expect(resets).toBe(2)
-    expect(server.calls.some(call => call.url === '/api/v1/auth/reauthenticate' && JSON.parse(call.body ?? '{}').password === 'gizli-parola')).toBe(true)
-    expect(document.querySelector('.rv-step-up')).toBeNull()
-  })
-
-  it('asks for the authenticator code when one is on and sends it with the password', async () => {
-    server.me = [{ status: 200, body: active }]
-    const { host } = mount()
-    await waitFor(() => shell(host))
-    const fetchMock = vi.mocked(fetch)
-    const original = fetchMock.getMockImplementation()!
-    fetchMock.mockImplementation(async (url, init) => String(url) === '/api/v1/auth/security-status' ? reply({ status: 200, body: { totpState: 'ENABLED', recoveryCodesRemaining: 8 } }) : original(url, init))
-    let deletes = 0
-    server.hub = url => url === '/api/v1/connections/c1/deep-delete' ? (++deletes === 1 ? { status: 403, body: { code: 'REAUTHENTICATION_REQUIRED' } } : { status: 204 }) : { status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } }
-    const { hubApi } = await import('../shared/api')
-    const call = hubApi('/connections/c1/deep-delete', { method: 'POST', body: '{}' })
-    const code = await waitFor(() => document.querySelector<HTMLInputElement>('.rv-step-up-form input[name="factor"]'))
-    document.querySelector<HTMLInputElement>('.rv-step-up-form input[name="password"]')!.value = 'gizli-parola'
-    code.value = '123456'
-    submit(document.querySelector<HTMLFormElement>('.rv-step-up-form')!)
-    await act(async () => { await call })
-    expect(deletes).toBe(2)
-    const sent = JSON.parse(server.calls.find(call => call.url === '/api/v1/auth/reauthenticate')?.body ?? '{}')
-    expect(sent).toEqual({ password: 'gizli-parola', code: '123456', recoveryCode: null })
-  })
-
-  it('keeps the window open on a wrong password and gives the refusal back on cancel', async () => {
-    server.me = [{ status: 200, body: active }]
-    const { host } = mount()
-    await waitFor(() => shell(host))
-    const fetchMock = vi.mocked(fetch)
-    const original = fetchMock.getMockImplementation()!
-    fetchMock.mockImplementation(async (url, init) => String(url) === '/api/v1/auth/reauthenticate' ? reply({ status: 401, body: { code: 'REAUTHENTICATION_FAILED', title: 'Parola doğrulanamadı.' } }) : original(url, init))
-    server.hub = url => url === '/api/v1/settings/data-reset' ? { status: 403, body: { code: 'REAUTHENTICATION_REQUIRED', title: 'Yeniden doğrulama gerekir.' } } : { status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } }
-    const { hubApi } = await import('../shared/api')
-    let failure: unknown
-    const call = hubApi('/settings/data-reset', { method: 'POST', body: '{}' }).catch(reason => { failure = reason })
-    const password = await waitFor(() => document.querySelector<HTMLInputElement>('.rv-step-up-form input[name="password"]'))
-    await waitFor(stepUpReady)
-    password.value = 'yanlis'
-    submit(document.querySelector<HTMLFormElement>('.rv-step-up-form')!)
-    await waitFor(() => document.querySelector('.rv-step-up [role="alert"]')?.textContent?.includes('Parola doğrulanamadı'))
-    expect(shell(host)).not.toBeNull()
-    act(() => { Array.from(document.querySelectorAll<HTMLButtonElement>('.rv-step-up button')).find(button => button.textContent === 'Vazgeç')!.click() })
-    await act(async () => { await call })
-    expect(failure).toMatchObject({ status: 403, code: 'REAUTHENTICATION_REQUIRED' })
-    expect(document.querySelector('.rv-step-up')).toBeNull()
+    expect(resets).toBe(1)
+    expect(document.querySelector('input[type="password"]')).toBeNull()
+    expect(server.calls.some(call => call.url === '/api/v1/auth/reauthenticate')).toBe(false)
   })
 })
-
-function stepUpReady() {
-  const button = document.querySelector<HTMLButtonElement>('.rv-step-up button[type="submit"]')
-  return button !== null && !button.disabled
-}
 
 describe('a session that ends while the panel is open', () => {
   it('swaps the workspace for the sign-in screen with a note instead of retrying forever', async () => {

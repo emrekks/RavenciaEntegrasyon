@@ -8,7 +8,7 @@ namespace MarketplaceHub.Api.Security;
 
 // Every limit counts per sending network (an IPv4 address, or an IPv6 /64; see ClientNetwork):
 //   - "auth": sign-in, 10 per minute;
-//   - "auth-step": second factor, re-authentication, password change and authenticator changes, 10 per
+//   - "auth-step": second factor, password change and authenticator changes, 10 per
 //     minute per session (per network without one), so a sign-in burst does not use up the second step;
 //   - global: every API and SignalR request, RateLimits:PerNetworkPerMinute (default 1800) per minute,
 //     webhooks excepted; they have their own chain (WebhookRateLimits) and a concurrency cap;

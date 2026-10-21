@@ -1,14 +1,10 @@
 using System.Text.Json;
 using MarketplaceHub.Api.Invoicing;
 using MarketplaceHub.Domain;
-using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -261,32 +257,6 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
-    [PostgreSqlFact]
-    public async Task G18_LinkRemovalAsksForThePasswordOnALiveProviderOnly()
-    {
-        var live = NewSeed("g18-live", InvoiceStatus.Cancelled);
-        var stage = NewSeed("g18-stage", InvoiceStatus.Cancelled);
-        stage.Provider.Environment = "STAGE";
-        await SeedAsync(live);
-        await SeedAsync(stage);
-        try
-        {
-            await using var db = fixture.CreateContext();
-            using var users = new UserManager<ApplicationUser>(new NoUsers(), null!, null!, [], [], null!, null!, null!, NullLogger<UserManager<ApplicationUser>>.Instance);
-
-            var refused = await InvoicingEndpoints.FiscalStepUpAsync(live.Invoice.Id, "wrong", new(Guid.NewGuid(), live.Tenant.Id, "OWNER"), new DefaultHttpContext(), users, db);
-            Assert.Equal(401, Assert.IsAssignableFrom<IStatusCodeHttpResult>(refused).StatusCode);
-            Assert.Null(await InvoicingEndpoints.FiscalStepUpAsync(stage.Invoice.Id, null, new(Guid.NewGuid(), stage.Tenant.Id, "OWNER"), new DefaultHttpContext(), users, db));
-            var missing = await InvoicingEndpoints.FiscalStepUpAsync(Guid.NewGuid(), null, new(Guid.NewGuid(), live.Tenant.Id, "OWNER"), new DefaultHttpContext(), users, db);
-            Assert.Equal(404, Assert.IsAssignableFrom<IStatusCodeHttpResult>(missing).StatusCode);
-        }
-        finally
-        {
-            await DeleteTenantAsync(live.Tenant.Id);
-            await DeleteTenantAsync(stage.Tenant.Id);
-        }
-    }
-
     private InvoicingBillingService NewBillingService(AppDbContext db, IDictionary<string, string?> configuration, IInvoiceMarketplacePort? marketplace = null)
     {
         var dataProtection = new EphemeralDataProtectionProvider();
@@ -509,20 +479,5 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         public Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync(AdapterContext context, InvoiceSubmission submission, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken) => throw new NotSupportedException();
-    }
-
-    private sealed class NoUsers : IUserStore<ApplicationUser>
-    {
-        public Task<ApplicationUser?> FindByIdAsync(string userId, CancellationToken cancellationToken) => Task.FromResult<ApplicationUser?>(null);
-        public Task<ApplicationUser?> FindByNameAsync(string normalizedUserName, CancellationToken cancellationToken) => Task.FromResult<ApplicationUser?>(null);
-        public Task<IdentityResult> CreateAsync(ApplicationUser user, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<IdentityResult> DeleteAsync(ApplicationUser user, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<IdentityResult> UpdateAsync(ApplicationUser user, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<string?> GetNormalizedUserNameAsync(ApplicationUser user, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<string> GetUserIdAsync(ApplicationUser user, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<string?> GetUserNameAsync(ApplicationUser user, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task SetNormalizedUserNameAsync(ApplicationUser user, string? normalizedName, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task SetUserNameAsync(ApplicationUser user, string? userName, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public void Dispose() { }
     }
 }

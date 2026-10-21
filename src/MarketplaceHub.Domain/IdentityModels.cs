@@ -73,6 +73,7 @@ public sealed class UserSession
     public required string TokenHash { get; set; }
     public long SessionVersion { get; set; }
     public DateTimeOffset IssuedAt { get; set; }
+    // Unused since the step-up re-authentication was removed (21 Oct 2026); the column stays, nothing reads or writes it.
     public DateTimeOffset? ReauthenticatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset AbsoluteExpiresAt { get; set; }

@@ -13,7 +13,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// The authenticator lifecycle (A1, A2, A24), step-up before irreversible work (A4) and the password change
+// The authenticator lifecycle (A1, A2, A24), irreversible work without a step-up (removed 21 Oct 2026) and the password change
 // (A9) through the real pipeline. Its own host and tenant (fixture per class), so its sign-ins do not use
 // up the sign-in limit of ApiEndToEndTests.
 [Collection("postgres-integration")]
@@ -59,9 +59,9 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
                 using (var thisDevice = await first.GetAsync("/api/v1/auth/security-status"))
                     Assert.Equal(HttpStatusCode.OK, thisDevice.StatusCode);
 
-                using (var oldCode = await first.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/reauthenticate", firstCsrf, new { password = ApiEndToEndFixture.Password, recoveryCode = firstCodes[2] })))
+                using (var oldCode = await first.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/mfa/setup", firstCsrf, new { password = ApiEndToEndFixture.Password, recoveryCode = firstCodes[2] })))
                     Assert.Equal(HttpStatusCode.Unauthorized, oldCode.StatusCode);
-                using (var newCode = await first.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/reauthenticate", firstCsrf, new { password = ApiEndToEndFixture.Password, recoveryCode = replacementCodes[0] })))
+                using (var newCode = await first.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/mfa/setup", firstCsrf, new { password = ApiEndToEndFixture.Password, recoveryCode = replacementCodes[0] })))
                     Assert.Equal(HttpStatusCode.OK, newCode.StatusCode);
             }
         }
@@ -74,33 +74,28 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
     }
 
     [PostgreSqlFact]
-    public async Task DataReset_AsksForAFreshReauthentication_AndTheRefusalIsNotStoredForTheKey()
+    public async Task DataReset_NeedsNoReauthentication_ASignedInAdministratorReachesTheEndpoint()
     {
         var (client, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
         using (client)
         using (signIn)
         {
             Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
+            // The step-up re-authentication is gone (21 Oct 2026): a session whose last password entry is long past
+            // (the old column emptied) is enough. The re-authentication endpoint no longer exists.
             await using (var scope = fixture.Host!.Services.CreateAsyncScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var userId = await db.Users.Where(user => user.Email == fixture.Email(MembershipRole.Administrator)).Select(user => user.Id).SingleAsync();
                 await db.UserSessions.Where(session => session.UserId == userId && session.State == SessionState.Active)
-                    .ExecuteUpdateAsync(update => update.SetProperty(session => session.ReauthenticatedAt, DateTimeOffset.UtcNow.AddMinutes(-10)));
+                    .ExecuteUpdateAsync(update => update.SetProperty(session => session.ReauthenticatedAt, (DateTimeOffset?)null));
             }
-            var key = Guid.NewGuid().ToString();
-            // An empty selection: if it got through, the endpoint itself refuses it and nothing is deleted.
+            // An empty selection: the endpoint itself refuses it (422) and nothing is deleted.
             var body = new { scopes = Array.Empty<string>(), confirmation = "" };
-
-            using (var stale = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/data-reset", csrf, key, body)))
-            {
-                Assert.Equal(HttpStatusCode.Forbidden, stale.StatusCode);
-                Assert.Equal(StepUpMiddleware.Code, (await ApiTestHost.ProblemAsync(stale)).GetProperty("code").GetString());
-            }
-            using (var reauthenticated = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/reauthenticate", csrf, new { password = ApiEndToEndFixture.Password })))
-                Assert.Equal(HttpStatusCode.OK, reauthenticated.StatusCode);
-            using var fresh = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/data-reset", csrf, key, body));
-            Assert.Equal(HttpStatusCode.UnprocessableEntity, fresh.StatusCode);
+            using (var reset = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/data-reset", csrf, Guid.NewGuid().ToString(), body)))
+                Assert.Equal(HttpStatusCode.UnprocessableEntity, reset.StatusCode);
+            using var removed = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/reauthenticate", csrf, new { password = ApiEndToEndFixture.Password }));
+            Assert.Equal(HttpStatusCode.NotFound, removed.StatusCode);
         }
     }
 

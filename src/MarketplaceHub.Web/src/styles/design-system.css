@@ -1082,10 +1082,6 @@
   .rv-modal > header h2, .rv-drawer > header h2 { margin: 0; }
   .rv-modal > header p, .rv-drawer > header p { margin: var(--rv-space-1) 0 0; }
   .rv-modal-body, .rv-drawer-body { overflow: auto; padding: var(--rv-space-5); }
-  /* The re-authentication window opens over the confirmation that asked for it (A4). */
-  .rv-overlay:has(> .rv-step-up) { z-index: calc(var(--rv-z-modal) + 10); }
-  .rv-step-up-form { display: grid; gap: var(--rv-space-3); }
-  .rv-step-up-form > .rv-button { justify-self: start; }
   .rv-modal > footer, .rv-drawer > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); padding: var(--rv-space-4) var(--rv-space-5); border-top: 1px solid var(--rv-color-border); }
   .rv-empty-state, .rv-loading-state { display: grid; min-height: 160px; place-items: center; gap: var(--rv-space-2); padding: var(--rv-space-6); color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px dashed var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); text-align: center; }
   .rv-loading-state > strong { color: var(--rv-color-ink); }
