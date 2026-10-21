@@ -17,6 +17,8 @@ vi.mock('@microsoft/signalr', () => {
 vi.mock('../features/dashboard/DashboardPage', () => ({ DashboardPage: () => <h1>Genel bakış ekranı</h1> }))
 
 import { App } from './App'
+import { confirmQuerySnapshotScope, forgetPreviousSession, querySnapshotKey, restoreQuerySnapshot, saveQuerySnapshot } from '../shared/query-snapshot'
+import { setStorageScope } from '../shared/storage-scope'
 
 type Reply = { status: number; body?: unknown }
 const server = vi.hoisted(() => ({ me: [] as Reply[], calls: [] as Array<{ url: string; method: string; body?: string }>, hub: (_url: string): Reply => ({ status: 200, body: {} }) }))
@@ -39,11 +41,12 @@ beforeEach(() => {
     return reply(server.hub(url))
   }))
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); sessionStorage.clear() })
 
-function mount(path = '/dashboard') {
+function mount(path = '/dashboard', prepare?: (client: QueryClient) => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>)
+  prepare?.(client)
+  return { ...render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>), client }
 }
 
 function submit(form: HTMLFormElement) {
@@ -215,5 +218,45 @@ describe('a session that ends while the panel is open', () => {
     await waitFor(() => host.querySelector('#login-email'))
     expect(shell(host)).toBeNull()
     expect(host.textContent).toContain('Oturumunuzun süresi doldu')
+  })
+
+  it('removes the reload snapshot and writes it no more until the next sign-in', async () => {
+    server.me = [{ status: 200, body: active }]
+    // A fresh page load: the module-wide stop left by the test before is lifted as a sign-in would.
+    const { host, client } = mount('/dashboard', forgetPreviousSession)
+    await waitFor(() => shell(host))
+    client.setQueryData(['orders', 'summary'], { new: 4 })
+    saveQuerySnapshot(client)
+    expect(sessionStorage.getItem(querySnapshotKey)).not.toBeNull()
+    server.hub = () => ({ status: 401, body: { title: 'Oturum gerekli.' } })
+    const { hubApi } = await import('../shared/api')
+    await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
+    await waitFor(() => host.querySelector('#login-email'))
+    expect(sessionStorage.getItem(querySnapshotKey)).toBeNull()
+    client.setQueryData(['orders', 'summary'], { new: 5 })
+    saveQuerySnapshot(client)
+    expect(sessionStorage.getItem(querySnapshotKey)).toBeNull()
+  })
+})
+
+describe('a reload after another tab signed into another tenant', () => {
+  it('waits for /me and drops what the snapshot kept for the other tenant', async () => {
+    const before = new QueryClient()
+    forgetPreviousSession(before)
+    confirmQuerySnapshotScope(before, 'tenant-x', 'u1')
+    setStorageScope('tenant-x', 'u1')
+    before.setQueryData(['me'], { ...active, tenantId: 'tenant-x', displayName: 'X kişisi' })
+    before.setQueryData(['buyers', 'b1'], { name: 'X alıcısı' })
+    saveQuerySnapshot(before)
+
+    server.me = [{ status: 200, body: active }]
+    const { host, client } = mount('/dashboard', restoreQuerySnapshot)
+    expect(client.getQueryData(['me'])).toBeUndefined()
+    expect(shell(host)).toBeNull()
+    await waitFor(() => shell(host))
+    expect(host.textContent).toContain('Ayşe')
+    expect(host.textContent).not.toContain('X kişisi')
+    expect(client.getQueryData(['buyers', 'b1'])).toBeUndefined()
+    expect(sessionStorage.getItem(querySnapshotKey)).toBeNull()
   })
 })
