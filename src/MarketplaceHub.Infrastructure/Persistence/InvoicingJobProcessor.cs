@@ -268,8 +268,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             if (result.IsSuccess)
             {
                 attempt.Outcome = "SUCCEEDED"; attempt.ExternalReference = result.Value!.ExternalReference; attempt.RemoteRequestId = result.Value.RemoteRequestId;
-                invoice.ExternalReference = result.Value.ExternalReference; invoice.InvoiceNumber = result.Value.InvoiceNumber; invoice.EttnUuid = result.Value.EttnUuid; invoice.IssuedAt ??= started; invoice.Status = InvoiceStatus.Submitted; invoice.LastErrorCode = null;
-                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-submit", correlationId, cancellationToken);
+                ApplySubmissionSuccess(invoice, result.Value, started);
+                // From here on the provider holds the invoice: nothing may be cancelled before its reference is saved.
+                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-submit", correlationId, CancellationToken.None);
+                if (!await SaveSubmissionSuccess(tenantId, connectionId, invoice, result.Value, started, correlationId))
+                    throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_STATE_CHANGED", "Sağlayıcı faturayı oluşturdu ancak fatura kaydı bu sırada başka bir işlemle değişti. Sağlayıcı referansı gönderim denemesinde saklandı; fatura incelenmeli.", result.Value.RemoteRequestId));
+                return true;
             }
             else
             {
@@ -307,6 +311,55 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (!string.IsNullOrWhiteSpace(invoice.ExternalReference)) return;
         invoice.IssuedAt = now;
         invoice.UpdatedAt = now;
+    }
+
+    private void ApplySubmissionSuccess(Invoice invoice, InvoiceSubmissionResult submitted, DateTimeOffset started)
+    {
+        invoice.ExternalReference = submitted.ExternalReference; invoice.InvoiceNumber = submitted.InvoiceNumber; invoice.EttnUuid = submitted.EttnUuid; invoice.IssuedAt ??= started; invoice.Status = InvoiceStatus.Submitted; invoice.LastErrorCode = null;
+        invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+    }
+
+    private static readonly TimeSpan[] SubmissionSuccessSaveDelays = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8)];
+
+    // The provider has issued the invoice. If its reference, number and ETTN are not saved, the next run finds the
+    // attempt STARTED and marks the invoice UnknownResult: the reference is lost and a resubmission could issue a
+    // second fiscal invoice. So the save ignores cancellation and is retried on a database fault or a concurrent
+    // change; each retry reloads the invoice and applies the result again only while the invoice still waits for it
+    // (Submitting, or UnknownResult set meanwhile), never over another reference or a later state. False: the invoice
+    // moved on, and only the attempt (which keeps the provider's reference) was saved.
+    private async Task<bool> SaveSubmissionSuccess(Guid tenantId, Guid connectionId, Invoice invoice, InvoiceSubmissionResult submitted, DateTimeOffset started, string correlationId)
+    {
+        for (var retry = 0; ; retry++)
+        {
+            try
+            {
+                if (retry > 0)
+                {
+                    // A failed save keeps its changes, but the commit may still have happened: start again from the
+                    // stored invoice and let the reconcile job's deduplication see whether it was already queued.
+                    foreach (var queued in db.ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added).ToList())
+                        queued.State = EntityState.Detached;
+                    var entry = db.Entry(invoice);
+                    await entry.ReloadAsync(CancellationToken.None);
+                    if (entry.State == EntityState.Detached) return false;
+                    var stored = string.Equals(invoice.ExternalReference, submitted.ExternalReference, StringComparison.Ordinal);
+                    if (!stored && invoice.Status is (InvoiceStatus.Submitting or InvoiceStatus.UnknownResult) && string.IsNullOrWhiteSpace(invoice.ExternalReference))
+                    {
+                        ApplySubmissionSuccess(invoice, submitted, started);
+                        stored = true;
+                    }
+                    if (stored)
+                        await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-submit", correlationId, CancellationToken.None);
+                }
+                await db.SaveChangesAsync(CancellationToken.None);
+                return string.Equals(invoice.ExternalReference, submitted.ExternalReference, StringComparison.Ordinal);
+            }
+            catch (Exception exception) when (retry < SubmissionSuccessSaveDelays.Length
+                && exception is DbUpdateException or System.Data.Common.DbException or TimeoutException or InvalidOperationException)
+            {
+                await Task.Delay(SubmissionSuccessSaveDelays[retry], CancellationToken.None);
+            }
+        }
     }
 
     private void MarkSubmissionUnknown(Invoice invoice, InvoiceSubmissionAttempt attempt, string errorCode)

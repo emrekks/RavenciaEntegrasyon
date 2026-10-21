@@ -270,12 +270,22 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         using var activity = MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.Source.StartActivity($"job {job.JobType}");
         activity?.SetTag("job.id", job.Id).SetTag("job.type", job.JobType).SetTag("connection.id", job.ConnectionId).SetTag("correlation.id", job.CorrelationId);
         var executionStarted = System.Diagnostics.Stopwatch.GetTimestamp();
-        using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        // A job that writes to a marketplace or the invoice provider is not cancelled by a shutdown that begins
+        // while it runs: cancelled mid-request, the write may still happen while the job can only record an
+        // unknown outcome. It finishes (its heartbeat keeps the lease) and records its real outcome while the
+        // lane loop, and so the host's shutdown timeout, waits for it. Its timeout and a lost lease still cancel
+        // it; a job leased just as shutdown began is still cancelled before it starts and released.
+        var finishesOnShutdown = FinishOnShutdown(job.JobType) && !stoppingToken.IsCancellationRequested;
+        var shutdown = finishesOnShutdown ? CancellationToken.None : stoppingToken;
+        using var shutdownNotice = finishesOnShutdown
+            ? stoppingToken.Register(() => logger.LogInformation("Job {JobId} ({JobType}) writes externally; shutdown waits for it to finish", job.Id, job.JobType))
+            : default;
+        using var execution = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
         // How long the job type may run (and the setting that changes it) is kept in the job type registry.
         execution.CancelAfter(MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.TimeoutFor(job.JobType, configuration));
         using var heartbeatStop = StopLeaseHeartbeatOnExecutionTimeout(job.JobType)
-            ? CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, execution.Token)
-            : CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            ? CancellationTokenSource.CreateLinkedTokenSource(shutdown, execution.Token)
+            : CancellationTokenSource.CreateLinkedTokenSource(shutdown);
         var heartbeat = MaintainLeaseAsync(job, execution, heartbeatStop.Token);
         JobExecutionResult? result = null;
 
@@ -284,7 +294,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await using var scope = scopeFactory.CreateAsyncScope();
             result = await DispatchAsync(scope.ServiceProvider, job, execution.Token);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
         catch (OperationCanceledException exception)
         {
             logger.LogWarning(exception, "Job {JobId} execution timed out or was cancelled outside shutdown", job.Id);
@@ -311,7 +321,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.JobDuration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(executionStarted).TotalSeconds, jobTags);
             activity?.SetTag("job.outcome", outcome).SetTag("job.error_code", result?.ErrorCode);
             // Cancellation during shutdown can also surface as a transient Retry (e.g. a cancelled HTTP/DB call).
-            if (leaseHeld && stoppingToken.IsCancellationRequested && (result is null || result.Kind == JobCompletionKind.Retry))
+            // A job that finished despite the shutdown was not cancelled by it and records its real outcome.
+            if (leaseHeld && shutdown.IsCancellationRequested && (result is null || result.Kind == JobCompletionKind.Retry))
             {
                 await ReleaseOnShutdownAsync(job);
                 return;
@@ -413,6 +424,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.For(jobType).RetryAfterTimeout;
     internal static bool IsOrderInvoiceReconciliationJob(string jobType) => MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.IsOrderInvoiceReconciliation(jobType);
     internal static bool StopLeaseHeartbeatOnExecutionTimeout(string jobType) => MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.For(jobType).StopHeartbeatOnTimeout;
+    internal static bool FinishOnShutdown(string jobType) => MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.IsShutdownProtected(jobType);
 
     private async Task<bool> MaintainLeaseAsync(LeasedJob job, CancellationTokenSource execution, CancellationToken cancellationToken)
     {
