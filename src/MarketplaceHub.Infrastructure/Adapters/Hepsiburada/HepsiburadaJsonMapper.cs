@@ -97,9 +97,12 @@ internal static class HepsiburadaJsonMapper
                         var id = Text(item, "id", "attributeId");
                         var name = Text(item, "name");
                         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada kategori özelliği kimliği veya adı eksik.");
+                        // Only "enum" attributes take a value from the value list; "string" and the other
+                        // non-enum types (an image URL such as "Paket Görseli") take the value as text, and
+                        // Hepsiburada has no value list for them.
                         var type = Text(item, "type");
                         items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText(),
-                            Boolean(item, "mandatory"), string.Equals(type, "string", StringComparison.OrdinalIgnoreCase), Boolean(item, "multiValue")));
+                            Boolean(item, "mandatory"), !string.IsNullOrWhiteSpace(type) && !string.Equals(type, "enum", StringComparison.OrdinalIgnoreCase), Boolean(item, "multiValue")));
                         break;
                     }
                 case "ATTRIBUTE_VALUES":

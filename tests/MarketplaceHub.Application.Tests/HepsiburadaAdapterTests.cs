@@ -443,7 +443,9 @@ public sealed class HepsiburadaAdapterTests
         {
           "data": [
             { "id": "color", "name": "Renk", "mandatory": true, "type": "enum", "multiValue": false },
-            { "id": "material", "name": "Malzeme", "mandatory": false, "type": "string", "multiValue": true }
+            { "id": "material", "name": "Malzeme", "mandatory": false, "type": "string", "multiValue": true },
+            { "id": "00000MU", "name": "Paket Görseli (ön)", "mandatory": true, "type": "image", "multiValue": false },
+            { "id": "untyped", "name": "Tipsiz", "mandatory": false, "multiValue": false }
           ]
         }
         """);
@@ -463,6 +465,8 @@ public sealed class HepsiburadaAdapterTests
         Assert.False(attributePage.Items[0].AllowsMultipleValues);
         Assert.True(attributePage.Items[1].AllowsCustomValue);
         Assert.True(attributePage.Items[1].AllowsMultipleValues);
+        Assert.True(attributePage.Items[2].AllowsCustomValue);
+        Assert.False(attributePage.Items[3].AllowsCustomValue);
     }
 
     [Fact]
