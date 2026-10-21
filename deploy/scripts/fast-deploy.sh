@@ -137,10 +137,77 @@ fi
 }
 echo "Database migration completed in ${migration_seconds}s."
 
-"${compose[@]}" up -d --no-build api worker caddy
+# Automatic rollback (RAVENCIA_AUTO_ROLLBACK, default true): when the new release
+# does not start or fails verify_stack, the previous release's images are run
+# again through rollback.sh -- but only when that is a pure code rollback:
+#   - the previous release is a kept manual-<rev> app+edge pair of the same revision,
+#     older than this one;
+#   - no file under the migrations folder changed between it and this revision
+#     (old code against a newer schema is a manual decision, RUNBOOK-GERI-ALMA.md);
+#   - the deploy ran with production.env's write settings (rollback.sh reads those).
+# rollback.sh skips its own backup: the verified set above is minutes old and the
+# schema did not change. It also holds this revision from automatic redeploys.
+auto_rollback="${RAVENCIA_AUTO_ROLLBACK:-true}"
+rollback_target=""
+attempt_automatic_rollback() {
+  local previous_full
+  if [[ "$auto_rollback" != true ]]; then
+    echo "Automatic rollback is disabled (RAVENCIA_AUTO_ROLLBACK=$auto_rollback)." >&2
+    return 1
+  fi
+  if [[ "$disable_external_writes" == true || "$enable_invoice_marketplace_delivery" == true ]]; then
+    echo "Automatic rollback skipped: this deploy overrode the write settings, which rollback.sh would not keep." >&2
+    return 1
+  fi
+  if [[ "$previous_app_image" != marketplacehub-app:manual-* || "$previous_edge_image" != marketplacehub-edge:manual-* ]]; then
+    echo "Automatic rollback skipped: no previous manual-* release was running (api=${previous_app_image:-none}, caddy=${previous_edge_image:-none})." >&2
+    return 1
+  fi
+  rollback_target="${previous_app_image##*:manual-}"
+  if [[ ! "$rollback_target" =~ ^[0-9a-f]{12}$ || "${previous_edge_image##*:manual-}" != "$rollback_target" ]]; then
+    echo "Automatic rollback skipped: previous app and edge images are not one release ($previous_app_image, $previous_edge_image)." >&2
+    return 1
+  fi
+  if [[ "$rollback_target" == "$revision" ]]; then
+    echo "Automatic rollback skipped: the failed release is the one that was already running (redeploy)." >&2
+    return 1
+  fi
+  previous_full="$(git rev-parse --verify --quiet "$rollback_target^{commit}")" || {
+    echo "Automatic rollback skipped: revision $rollback_target is not in the local history." >&2
+    return 1
+  }
+  if ! git diff --quiet "$previous_full" "$full_revision" -- src/MarketplaceHub.Infrastructure/Persistence/Migrations; then
+    echo "Automatic rollback skipped: migrations changed between $rollback_target and $revision; follow docs/RUNBOOK-GERI-ALMA.md." >&2
+    return 1
+  fi
+  echo "Automatic rollback: returning to $rollback_target (code only; the schema is unchanged)." >&2
+  rollback_attempted=true
+  bash "$script_dir/rollback.sh" "$rollback_target" --skip-backup
+}
+rollback_attempted=false
 
-if [[ "$verify" == true ]]; then
-  verify_stack "${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
+site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
+release_status=0
+"${compose[@]}" up -d --no-build api worker caddy || release_status=$?
+if (( release_status == 0 )) && [[ "$verify" == true ]]; then
+  verify_stack "$site_address" || release_status=$?
+fi
+if (( release_status != 0 )); then
+  echo "Release $revision did not start or failed verification (exit code $release_status)." >&2
+  if attempt_automatic_rollback; then
+    "$script_dir/send-alert.sh" "Deploy of $revision failed verification and was rolled back automatically to $rollback_target; $revision is held from automatic redeploys. Log: ~/deploy-logs/" \
+      || echo "Rollback alert could not be sent." >&2
+    echo "Deploy failed; the previous release $rollback_target is serving again." >&2
+  elif [[ "$rollback_attempted" == true ]]; then
+    "$script_dir/send-alert.sh" "Deploy of $revision failed verification and the automatic rollback to $rollback_target FAILED too; act now: ~/deploy-logs/, docs/RUNBOOK-GERI-ALMA.md." \
+      || echo "Failure alert could not be sent." >&2
+    echo "Deploy failed and the automatic rollback to $rollback_target failed; see docs/RUNBOOK-GERI-ALMA.md." >&2
+  else
+    "$script_dir/send-alert.sh" "Deploy of $revision failed verification and was NOT rolled back automatically; check ~/deploy-logs/ and docs/RUNBOOK-GERI-ALMA.md." \
+      || echo "Failure alert could not be sent." >&2
+    echo "Deploy failed and the stack was left as it is; see docs/RUNBOOK-GERI-ALMA.md." >&2
+  fi
+  exit 1
 fi
 record_release deploy "$full_revision" "$app_image" "$edge_image"
 record_last_success "$full_revision"

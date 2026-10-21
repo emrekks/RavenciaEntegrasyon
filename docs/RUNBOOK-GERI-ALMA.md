@@ -56,6 +56,15 @@ dosyası, geri alınan sürümün (ve atalarının) otomatik olarak geri gelmesi
 commit (düzeltme) geldiğinde o commit normal şekilde deploy olur ve `.hold` kalkar. Bozuk sürümü bilerek
 yeniden açmak için: `rm ~/deploy-logs/.hold` ve Actions → Deploy → Run workflow (`redeploy` işaretli).
 
+**Otomatik geri alma**: `fast-deploy.sh` yeni sürüm ayağa kalkmazsa ya da `verify_stack` (readiness,
+Worker sağlığı, ön yüz) başarısız olursa, yukarıdaki betiği kendisi `rollback.sh <önceki-sha12>
+--skip-backup` ile çalıştırır — yalnız şu durumlarda: önceki sürüm sunucuda tutulan bir
+`manual-<sha12>` app+edge çiftidir, aradaki commit'lerde migration klasörü **değişmemiştir** ve deploy
+`production.env`'in yazma ayarlarıyla çalışmıştır. Yedek, migration'dan dakikalar önce alındığı ve şema
+değişmediği için atlanır. Sonuç `send-alert.sh` ile bildirilir; deploy her durumda başarısız (çıkış 1)
+sayılır ve geri alınan SHA `.hold`'a yazılır. Şema değiştiyse otomatik geri alma yapılmaz, alarm gider;
+karar bu belgeye göre elle verilir. Kapatmak için: `RAVENCIA_AUTO_ROLLBACK=false`.
+
 Not: Çalışma ağacı (git checkout) geri alınan sürümde kalmaz, son çekilen commit'te kalır; bu
 bilinçlidir — sonraki düzeltme commit'i fast-forward ile gelir.
 

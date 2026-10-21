@@ -125,11 +125,11 @@ verify_frontend() {
   curl --connect-timeout 3 --max-time 10 --silent --show-error --fail --output /dev/null "$site_address$asset_path"
 }
 
+# Chained with && so the result is also correct where errexit does not apply
+# (fast-deploy.sh calls it in an || list to decide on an automatic rollback).
 verify_stack() {
   local site_address="$1"
-  wait_for_readiness "$site_address"
-  wait_for_worker_health 30
-  verify_frontend "$site_address"
+  wait_for_readiness "$site_address" && wait_for_worker_health 30 && verify_frontend "$site_address"
 }
 
 # Deployment state shared with ci-entrypoint.sh and rollback.sh:

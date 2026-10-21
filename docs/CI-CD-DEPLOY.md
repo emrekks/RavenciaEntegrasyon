@@ -50,6 +50,10 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
   imajlarını tutar (N-1, geri alma için); daha eskilerini siler.
 - Her deploy `install-backup-timer.sh` ile sunucudaki systemd birimlerini yeniler ve zamanlayıcıları
   etkinleştirir (bkz. İşletim).
+- **Otomatik geri alma**: yeni sürüm başlamaz ya da doğrulanamazsa ve migration klasörü önceki sürümden
+  beri değişmediyse `rollback.sh` önceki `manual-*` imajlarıyla otomatik çalışır (yedeksiz; şema aynı).
+  Deploy yine başarısız sayılır, alarm gider, sürüm `.hold`'a girer. Ayrıntı ve koşullar:
+  [RUNBOOK-GERI-ALMA.md](RUNBOOK-GERI-ALMA.md) bölüm 2. Kapatmak: `RAVENCIA_AUTO_ROLLBACK=false`.
 - **Migration süresi**: `fast-deploy.sh` migrate konteynerini `docker wait` ile en çok 30 dakika bekler
   (`RAVENCIA_MIGRATION_TIMEOUT_SECONDS`, varsayılan 1800); süre dolarsa konteyneri durdurur (açık işlem geri
   alınır, eski yığın son tamamlanan migration'ın şemasıyla hizmete devam eder) ve deploy başarısız olur.
