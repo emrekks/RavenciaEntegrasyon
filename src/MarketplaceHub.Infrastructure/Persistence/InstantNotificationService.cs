@@ -68,7 +68,7 @@ public sealed class InstantNotificationService(
             .Select(x => x.OpaqueCursor)
             .FirstOrDefaultAsync(cancellationToken));
         var healthy = WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, gaps, timeProvider.GetUtcNow(),
-            await ScheduledJobProducer.OrdersArrivedSinceAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken));
+            await ScheduledJobProducer.UnnotifiedOrderAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, timeProvider.GetUtcNow(), cancellationToken));
         var message = state switch
         {
             "MISSING" => $"{PlatformName(connection.PlatformCode)}'da bu bildirim kaydı bulunamadı; kapatıp yeniden açabilirsiniz.",
@@ -76,8 +76,8 @@ public sealed class InstantNotificationService(
                 ? "Shopify bildirim aboneliklerinin bir kısmını kaldırmış; panel bir saat içinde yeniden oluşturur."
                 : "Trendyol bildirimleri durdurmuş; panel bir saat içinde yeniden açar.",
             _ when !healthy => connection.PlatformCode == "SHOPIFY"
-                ? "Bildirimler son saatlerde beklenen siparişleri getirmedi; sipariş kontrolü 3 dakikada bir sürüyor."
-                : "Bildirimler son saatlerde beklenen siparişleri getirmedi; sipariş kontrolü dakikada bir sürüyor.",
+                ? "Son siparişin bildirimi gelmedi; sipariş kontrolü 3 dakikada bir sürüyor."
+                : "Son siparişin bildirimi gelmedi; sipariş kontrolü dakikada bir sürüyor.",
             _ => "Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak 3 dakikada bir yapılıyor."
         };
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, message, cancellationToken));

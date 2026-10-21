@@ -662,8 +662,9 @@ public static class MarketplaceStoredClock
 }
 
 // While a marketplace's order notifications arrive, polling is only the safety net and runs less
-// often. A notification path is unhealthy when nothing arrived for six hours or when polling found
-// two orders the notifications had missed within a day; polling then returns to its own cadence.
+// often. A notification path is unhealthy once an order polling brought has waited five minutes
+// without any notification since, or when polling found two orders the notifications had missed
+// within a day; polling then returns to its own cadence.
 public static class WebhookPollingPolicy
 {
     public const string HealthCursorResource = "WEBHOOK_HEALTH";
@@ -685,20 +686,25 @@ public static class WebhookPollingPolicy
         _ => null
     };
 
-    // Silence counts against the notifications only when there was something to deliver: a store without orders
-    // for six hours has a quiet webhook, not a broken one (a broken one shows up as missed orders anyway).
-    public static bool IsHealthy(DateTimeOffset? lastReceivedAt, DateTimeOffset? registeredAt, IEnumerable<DateTimeOffset> gaps, DateTimeOffset now, bool ordersArrivedSinceLastSign = true)
+    // Silence alone says nothing: a store without orders has a quiet webhook, not a broken one. An order the
+    // panel has held for a while with no notification since shows that orders come and notifications do not;
+    // the next notification makes the webhook healthy again at once.
+    public static bool IsHealthy(DateTimeOffset? lastReceivedAt, DateTimeOffset? registeredAt, IEnumerable<DateTimeOffset> gaps, DateTimeOffset now, bool unnotifiedOrder = false)
     {
         var lastSign = lastReceivedAt ?? registeredAt;
-        if (lastSign is null) return false;
-        if (now - lastSign.Value > SilenceLimit && ordersArrivedSinceLastSign) return false;
+        if (lastSign is null || unnotifiedOrder) return false;
         return gaps.Count(gap => now - gap <= GapWindow) < GapLimit;
     }
 
-    // The order a notification brings is written by its ingest job moments after the notification was
-    // received; only an order written later than this after the last notification shows that orders keep
-    // coming while notifications do not.
-    public static DateTimeOffset UnnotifiedOrdersAfter(DateTimeOffset lastSign) => lastSign + DeliveryGrace;
+    // A poll usually writes an order seconds before its notification arrives; one still without a notification
+    // after this long was not notified.
+    public static readonly TimeSpan NotificationWait = TimeSpan.FromMinutes(5);
+
+    // The orders that show notifications are not coming: written after the last notification, but not by it
+    // (its ingest job writes its order moments after it was received, hence the delivery grace), and held
+    // long enough for their own notification to have come.
+    public static (DateTimeOffset After, DateTimeOffset Before) UnnotifiedOrderWindow(DateTimeOffset lastSign, DateTimeOffset now) =>
+        (lastSign + DeliveryGrace, now - NotificationWait);
 
     // An order polling inserted counts as missed only once the notifications had time to start.
     public static bool CountsAsGap(DateTimeOffset? registeredAt, DateTimeOffset now) =>

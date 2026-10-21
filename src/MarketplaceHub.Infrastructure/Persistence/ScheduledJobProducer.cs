@@ -222,7 +222,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .Select(x => x.OpaqueCursor)
                 .FirstOrDefaultAsync(cancellationToken);
             if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now,
-                    await OrdersArrivedSinceAsync(db, subscription.TenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken)))
+                    await UnnotifiedOrderAsync(db, subscription.TenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, now, cancellationToken)))
                 healthy.Add(subscription.ConnectionId);
         }
         return healthy;
@@ -243,19 +243,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .FirstOrDefaultAsync(cancellationToken);
         foreach (var subscription in subscriptions)
             if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now,
-                    await OrdersArrivedSinceAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken)))
+                    await UnnotifiedOrderAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, now, cancellationToken)))
                 return true;
         return false;
     }
 
-    // Whether any order of the connection reached the panel after the notifications' last sign of life; a quiet
-    // store's silence is then not held against its webhook. The order the last notification itself brought is
-    // written just after it and does not count.
-    internal static Task<bool> OrdersArrivedSinceAsync(AppDbContext db, Guid tenantId, Guid connectionId, DateTimeOffset? since, CancellationToken cancellationToken)
+    // Whether the panel holds an order of the connection that no notification followed (UnnotifiedOrderWindow).
+    internal static Task<bool> UnnotifiedOrderAsync(AppDbContext db, Guid tenantId, Guid connectionId, DateTimeOffset? lastSign, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (since is null) return Task.FromResult(false);
-        var after = WebhookPollingPolicy.UnnotifiedOrdersAfter(since.Value);
-        return db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.CreatedAt > after, cancellationToken);
+        if (lastSign is null) return Task.FromResult(false);
+        var (after, before) = WebhookPollingPolicy.UnnotifiedOrderWindow(lastSign.Value, now);
+        if (after >= before) return Task.FromResult(false);
+        return db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.CreatedAt > after && order.CreatedAt <= before, cancellationToken);
     }
 
     // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read

@@ -14,18 +14,18 @@ public sealed class WebhookPollingPolicyTests
         Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2)], Now));
         Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2), Now.AddHours(-1)], Now));
         Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddDays(-2), Now.AddHours(-1)], Now));
-        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now));
         Assert.False(WebhookPollingPolicy.IsHealthy(null, null, [], Now));
     }
 
     [Fact]
-    public void SilenceCountsOnlyWhenThereWereOrdersToDeliver()
+    public void AnOrderWithoutANotificationBreaksItAndSilenceAloneDoesNot()
     {
-        // A store without orders for seven hours has a quiet webhook, not a broken one.
-        Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now, ordersArrivedSinceLastSign: false));
-        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now, ordersArrivedSinceLastSign: true));
+        // A store without orders for a day has a quiet webhook, not a broken one.
+        Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddHours(-24), Now.AddDays(-3), [], Now));
+        // An order polling brought that no notification followed breaks it, however recent the last notification.
+        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-20), Now.AddDays(-3), [], Now, unnotifiedOrder: true));
         // Two missed orders break it whatever the silence says.
-        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2), Now.AddHours(-1)], Now, ordersArrivedSinceLastSign: false));
+        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2), Now.AddHours(-1)], Now));
     }
 
     [Fact]
@@ -46,12 +46,18 @@ public sealed class WebhookPollingPolicyTests
     }
 
     [Fact]
-    public void TheOrderTheLastNotificationBroughtDoesNotMakeTheSilenceCount()
+    public void AnUnnotifiedOrderIsOneWrittenWellAfterTheLastNotificationAndHeldFiveMinutes()
     {
-        // Its ingest job writes it seconds after the notification; only a later order shows orders without notifications.
-        var after = WebhookPollingPolicy.UnnotifiedOrdersAfter(Now);
-        Assert.False(Now.AddSeconds(40) > after);
-        Assert.True(Now.AddMinutes(11) > after);
+        var lastNotification = Now.AddHours(-2);
+        var (after, before) = WebhookPollingPolicy.UnnotifiedOrderWindow(lastNotification, Now);
+        bool Unnotified(DateTimeOffset writtenAt) => writtenAt > after && writtenAt <= before;
+
+        // The last notification's own order, written by its ingest job seconds later, does not count.
+        Assert.False(Unnotified(lastNotification.AddSeconds(40)));
+        // A polled order whose notification may still come does not count yet.
+        Assert.False(Unnotified(Now.AddMinutes(-2)));
+        // A polled order held six minutes with no notification since does.
+        Assert.True(Unnotified(Now.AddMinutes(-6)));
     }
 
     [Fact]

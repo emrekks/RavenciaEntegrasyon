@@ -92,7 +92,7 @@ public sealed class DataFreshnessService(AppDbContext db, TimeProvider timeProvi
                 .Select(x => x.OpaqueCursor)
                 .FirstOrDefaultAsync(cancellationToken);
             if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, ScheduledJobProducer.WebhookGaps(health), now,
-                    await ScheduledJobProducer.OrdersArrivedSinceAsync(db, tenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken)))
+                    await ScheduledJobProducer.UnnotifiedOrderAsync(db, tenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, now, cancellationToken)))
                 healthy.Add(subscription.ConnectionId);
         }
         return healthy;
