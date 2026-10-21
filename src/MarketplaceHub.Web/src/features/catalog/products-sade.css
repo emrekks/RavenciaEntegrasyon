@@ -21,6 +21,9 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small { display: block; color: var(--rr-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small span { color: var(--rr-subtle); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small b { display: inline; font-weight: 500; color: var(--rr-ink); }
+/* A long model code with no spaces ("TYBCamKırıgı115170414299") wraps inside the cell instead of running into the
+   next column; another rule had turned the line's clipping off. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small { white-space: normal; overflow-wrap: anywhere; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-thumb { width: 48px; height: 72px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover { position: relative; display: inline-block; outline: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell { display: grid; justify-items: center; gap: 1px; cursor: help; }
