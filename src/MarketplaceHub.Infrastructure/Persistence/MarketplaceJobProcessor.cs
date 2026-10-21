@@ -10240,7 +10240,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var effect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ShipmentAction && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
         if (effect is not null && effect.CompletedAt is null) throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki paket aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi."));
         if (effect is not null && effect.CompletedAt is not null) return true;
-        effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
+        // The record carries what the action changes, like the instant actions do, so an unclear outcome is
+        // verified by reading the marketplace instead of waiting a week to be closed as unresolved.
+        var (effectAction, expectedValue) = ShipmentEffectContext(payload.Action, payload.PayloadJson);
+        effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connectionId, TargetId = package.Id, Action = effectAction, ExpectedValue = expectedValue };
         db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
         TrackRequest();
         var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson, await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken)), cancellationToken);
@@ -10261,6 +10264,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (readback.IsSuccess) await UpsertOrder(tenantId, connectionId, readback.Value!, cancellationToken);
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
         return true;
+    }
+
+    // The action an open shipment effect is verified by, only where the verification job can judge it: picking
+    // (the package leaves New) and a Trendyol carrier change (the package shows the requested carrier). Other
+    // actions, and a Hepsiburada carrier change whose short name is not the carrier the order read shows, carry
+    // no action: a read could not tell, so they keep the old close-after-a-week path.
+    internal static (string? Action, string? ExpectedValue) ShipmentEffectContext(string action, string? payloadJson)
+    {
+        var normalized = action.Trim().ToUpperInvariant();
+        if (normalized == "PICKING") return (normalized, null);
+        if (normalized != "CHANGE_CARGO_PROVIDER" || string.IsNullOrWhiteSpace(payloadJson)) return (null, null);
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var provider = document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("cargoProvider", out var value) && value.ValueKind == JsonValueKind.String
+                    ? value.GetString()?.Trim()
+                    : null;
+            return string.IsNullOrEmpty(provider) || provider.Length > 256 ? (null, null) : (normalized, provider);
+        }
+        catch (JsonException) { return (null, null); }
     }
 
     // Hepsiburada dissolves an unpacked package: its lines return to the order and later reads no
@@ -10343,7 +10367,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu daha önce kabul edildi ancak read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
                 return true;
             }
-            var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ReturnAction, IdempotencyKey = decision.IdempotencyKey, CreatedAt = timeProvider.GetUtcNow() }; db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+            // The claim and action are recorded as the instant return decision does, so the sweep can verify an unclear outcome.
+            var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ReturnAction, IdempotencyKey = decision.IdempotencyKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connectionId, TargetId = claim.Id, Action = $"RETURN_{decision.Action}" }; db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
             TrackRequest();
             var result = await returns.ExecuteAsync(Context(tenantId, connectionId, correlationId, decision.IdempotencyKey), new(claim.ExternalClaimId, lineIds, decision.Action, decision.ReasonCode, decision.Explanation, evidenceFiles), cancellationToken);
             var now = timeProvider.GetUtcNow();
