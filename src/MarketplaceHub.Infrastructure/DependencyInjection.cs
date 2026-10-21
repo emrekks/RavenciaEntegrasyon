@@ -4,6 +4,7 @@ using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.N11;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
@@ -77,6 +78,7 @@ public static class DependencyInjection
         services.Configure<HepsiburadaOptions>(configuration.GetSection(HepsiburadaOptions.SectionName));
         services.Configure<N11Options>(configuration.GetSection(N11Options.SectionName));
         services.Configure<PazaramaOptions>(configuration.GetSection(PazaramaOptions.SectionName));
+        services.Configure<PttAvmOptions>(configuration.GetSection(PttAvmOptions.SectionName));
         services.AddSingleton<ISharedRateLimiter>(_ => new PostgresSharedRateLimiter(Npgsql.NpgsqlDataSource.Create(ForSharedRateLimiter(connection))));
         services.AddSingleton<TrendyolResilienceState>();
         services.AddTransient<TrendyolResilienceHandler>();
@@ -120,6 +122,14 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<PazaramaAuthenticationHandler>();
         services.AddScoped<PazaramaHttpClient>();
+        services.AddTransient<PttAvmRateLimitHandler>();
+        services.AddHttpClient(PttAvmHttpClient.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler<PttAvmRateLimitHandler>()
+            .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("PttAvm"))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddScoped<PttAvmAuthenticationHandler>();
+        services.AddScoped<PttAvmHttpClient>();
         services.AddScoped<MarketplacePortRouter>();
         services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReferenceDataPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());

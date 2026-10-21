@@ -8,6 +8,8 @@ const base = { status: 'ACTIVE', lastErrorCode: null as string | null, lastError
 describe('connectionAuthProblem', () => {
   it('sorts the refused-credential, access and gateway codes', () => {
     expect(connectionAuthProblem('PAZARAMA_CREDENTIALS_REJECTED')).toBe('credentials')
+    expect(connectionAuthProblem('PTTAVM_CREDENTIALS_REJECTED')).toBe('credentials')
+    expect(connectionAuthProblem('PTTAVM_CREDENTIAL_INVALID')).toBe('credentials')
     expect(connectionAuthProblem('HEPSIBURADA_AUTHENTICATION_FAILED')).toBe('credentials')
     expect(connectionAuthProblem('N11_CREDENTIAL_FORMAT_INVALID')).toBe('credentials')
     expect(connectionAuthProblem('EFATURAM_ACCESS_TOKEN_REJECTED')).toBe('credentials')
@@ -17,6 +19,7 @@ describe('connectionAuthProblem', () => {
     expect(connectionAuthProblem('HEPSIBURADA_ACCESS_FORBIDDEN')).toBe('access')
     expect(connectionAuthProblem('SHOPIFY_REQUIRED_READ_SCOPE')).toBe('access')
     expect(connectionAuthProblem('PAZARAMA_GATEWAY_BLOCKED')).toBe('gateway')
+    expect(connectionAuthProblem('PTTAVM_GATEWAY_BLOCKED')).toBe('gateway')
   })
 
   it('ignores other errors and webhook signature failures', () => {

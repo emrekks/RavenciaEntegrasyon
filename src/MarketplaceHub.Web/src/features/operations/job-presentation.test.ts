@@ -14,6 +14,8 @@ describe('job presentation', () => {
     expect(jobTitle('ORDER_STATUS_SYNC', 'Shopify')).toBe('Shopify Sipariş İşlemi')
     expect(jobTitle('IMPORT_APPLY', 'Ravencia')).toBe('İçe Aktarım İşlemi')
     expect(jobTitle('HEPSIBURADA_ORDER_SYNC')).toBe('Hepsiburada Sipariş İşlemi')
+    expect(jobTitle('PTTAVM_CONNECTION_TEST')).toBe('PTT AVM Bağlantı İşlemi')
+    expect(jobSubtitle('PTTAVM_CONNECTION_TEST')).toBe('Okuma · Bağlantı Testi')
   })
 
   it('describes every known job type in its own words', () => {

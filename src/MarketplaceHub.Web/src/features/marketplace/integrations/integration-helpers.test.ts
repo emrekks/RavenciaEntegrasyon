@@ -6,6 +6,8 @@ describe('integration helpers', () => {
     const data = new FormData()
     data.set('apiKey', 'key'); data.set('apiSecret', 'secret'); data.set('email', 'a@b.test'); data.set('password', '')
     expect(credentialRequestBody('N11', data)).toEqual({ apiKey: 'key', apiSecret: 'secret' })
+    // PTT AVM's rotation form sends the API Key as apiKey and the Access Token as apiSecret.
+    expect(credentialRequestBody('PTTAVM', data)).toEqual({ apiKey: 'key', apiSecret: 'secret' })
     expect(credentialRequestBody('TRENDYOL_EFATURAM', data)).toEqual({ email: 'a@b.test', password: null })
   })
 
@@ -13,6 +15,7 @@ describe('integration helpers', () => {
     expect(connectionEnvironmentLabel('TRENDYOL', 'PRODUCTION')).toBe('Canlı')
     expect(connectionEnvironmentLabel('TRENDYOL', 'STAGE')).toBe('Test Ortamı')
     expect(connectionEnvironmentLabel('SHOPIFY', 'STAGE')).toBe('Canlı')
+    expect(connectionEnvironmentLabel('PTTAVM', 'STAGE')).toBe('Canlı')
   })
 
   it('offers the test order on every Trendyol or Hepsiburada test connection, without a fixed store number (W32)', () => {
@@ -26,6 +29,7 @@ describe('integration helpers', () => {
     expect(readIntegrationListState(new URLSearchParams())).toEqual({ view: 'ALL', filter: 'ALL', platform: 'ALL' })
     expect(readIntegrationListState(new URLSearchParams('gorunum=bagli&durum=dikkat&platform=hepsiburada'))).toEqual({ view: 'ACTIVE', filter: 'ATTENTION', platform: 'HEPSIBURADA' })
     expect(readIntegrationListState(new URLSearchParams('durum=x&platform=amazon'))).toEqual({ view: 'ALL', filter: 'ALL', platform: 'ALL' })
+    expect(readIntegrationListState(new URLSearchParams('platform=pttavm')).platform).toBe('PTTAVM')
     expect(writeIntegrationListState(new URLSearchParams('gorunum=bagli'), { platform: 'TRENDYOL_EFATURAM' }).toString()).toBe('gorunum=bagli&platform=trendyol_efaturam')
     expect(writeIntegrationListState(new URLSearchParams('gorunum=bagli&durum=aktif'), { view: 'ALL', filter: 'ALL' }).toString()).toBe('')
   })

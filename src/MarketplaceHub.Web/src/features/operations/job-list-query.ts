@@ -38,7 +38,7 @@ export function jobCountsQueryString(timeRange: JobListTimeRange, platform: stri
 }
 
 // Platforms in the selector's order; E-Faturam is the invoicing provider, the rest are marketplaces.
-export const jobPlatformOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'SHOPIFY', 'TRENDYOL_EFATURAM'] as const
+export const jobPlatformOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY', 'TRENDYOL_EFATURAM'] as const
 
 // The URL value (?platform=trendyol) as a connection platform code, or null for every platform.
 export function jobPlatformFromSearch(value: string | null) {

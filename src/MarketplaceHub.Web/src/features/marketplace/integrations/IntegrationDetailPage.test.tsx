@@ -142,4 +142,27 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(submit().disabled).toBe(false)
     expect(container.querySelector('.im-field-notice.is-warning')).not.toBeNull()
   })
+
+  it('asks a new PTT AVM connection for its API Key and Access Token on the live store only', async () => {
+    await renderList('/integrations')
+    act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })
+    const pttAvm = Array.from(container.querySelectorAll<HTMLButtonElement>('.im-platforms button')).find(button => button.textContent === 'PTT AVM')!
+    act(() => { pttAvm.click() })
+
+    expect(pttAvm.getAttribute('aria-checked')).toBe('true')
+    expect(container.querySelector('input[name="pttAvmApiKey"]')).not.toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[name="pttAvmAccessToken"]')!.type).toBe('password')
+    expect(container.querySelector('select[name="environment"]')).toBeNull()
+    expect(container.querySelector('.integration-modal')!.textContent).toContain('Hesap Yönetimi → Entegrasyon Bilgileri')
+
+    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="displayName"]')!, 'PTT AVM Canlı'))
+    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!, 'Ravencia'))
+    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="pttAvmApiKey"]')!, 'key-1'))
+    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="pttAvmAccessToken"]')!, 'token-1'))
+    await act(async () => { container.querySelector<HTMLButtonElement>('.im-foot button[type="submit"]')!.click() })
+    await settle()
+
+    const created = apiState.calls.find(call => call.path === '/connections' && call.method === 'POST')!
+    expect(JSON.parse(created.body!)).toMatchObject({ platformCode: 'PTTAVM', environment: 'PRODUCTION', apiVersion: 'V1', pttAvmApiKey: 'key-1', pttAvmAccessToken: 'token-1' })
+  })
 })

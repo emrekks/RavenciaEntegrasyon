@@ -8,9 +8,9 @@ export function credentialRequestBody(platformCode: string, data: FormData) {
   return { apiKey: data.get('apiKey'), apiSecret: data.get('apiSecret') }
 }
 
-/** The environment in Turkish; Shopify, N11 and Pazarama connect only to the live store. */
+/** The environment in Turkish; Shopify, N11, Pazarama and PTT AVM connect only to the live store. */
 export function connectionEnvironmentLabel(platformCode: string, environment: string | null | undefined) {
-  if (platformCode === 'SHOPIFY' || platformCode === 'N11' || platformCode === 'PAZARAMA') return 'Canlı'
+  if (platformCode === 'SHOPIFY' || platformCode === 'N11' || platformCode === 'PAZARAMA' || platformCode === 'PTTAVM') return 'Canlı'
   return environment === 'PRODUCTION' ? 'Canlı' : 'Test Ortamı'
 }
 
@@ -27,10 +27,10 @@ export function stageTestOrderAvailable(item: { platformCode: string; environmen
 //   ?gorunum=bagli&durum=dikkat&platform=hepsiburada
 export type IntegrationView = 'ALL' | 'ACTIVE'
 export type IntegrationStatusFilter = 'ALL' | 'ACTIVE' | 'ATTENTION'
-export type IntegrationPlatformFilter = 'ALL' | 'TRENDYOL' | 'TRENDYOL_EFATURAM' | 'SHOPIFY' | 'HEPSIBURADA' | 'N11' | 'PAZARAMA'
+export type IntegrationPlatformFilter = 'ALL' | 'TRENDYOL' | 'TRENDYOL_EFATURAM' | 'SHOPIFY' | 'HEPSIBURADA' | 'N11' | 'PAZARAMA' | 'PTTAVM'
 export type IntegrationListState = { view: IntegrationView; filter: IntegrationStatusFilter; platform: IntegrationPlatformFilter }
 
-export const integrationPlatformFilters: readonly IntegrationPlatformFilter[] = ['ALL', 'TRENDYOL', 'TRENDYOL_EFATURAM', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA']
+export const integrationPlatformFilters: readonly IntegrationPlatformFilter[] = ['ALL', 'TRENDYOL', 'TRENDYOL_EFATURAM', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM']
 const statusSlugs: Record<IntegrationStatusFilter, string> = { ALL: '', ACTIVE: 'aktif', ATTENTION: 'dikkat' }
 
 export function readIntegrationListState(params: URLSearchParams): IntegrationListState {

@@ -26,7 +26,7 @@ const returnSync = job('İade', 'return', READ, 'Yeni İade Çekme', 'Platformda
 
 const catalogue: Record<string, JobPresentation> = {
   TRENDYOL_CONNECTION_TEST: connectionTest, SHOPIFY_CONNECTION_TEST: connectionTest, HEPSIBURADA_CONNECTION_TEST: connectionTest,
-  N11_CONNECTION_TEST: connectionTest, PAZARAMA_CONNECTION_TEST: connectionTest, EFATURAM_CONNECTION_TEST: connectionTest,
+  N11_CONNECTION_TEST: connectionTest, PAZARAMA_CONNECTION_TEST: connectionTest, PTTAVM_CONNECTION_TEST: connectionTest, EFATURAM_CONNECTION_TEST: connectionTest,
   TRENDYOL_CAPABILITY_PROBE: job('Bağlantı', 'connection', READ, 'Yetki Kontrolü', 'Bağlantının hangi işlemler için (sipariş, ürün, fiyat ve stok, iade) yetkili olduğu platformdan sorgulanır.'),
   EFATURAM_STAGE_CAPABILITY_PROBE: job('Bağlantı', 'connection', READ, 'Test Ortamı Yetki Kontrolü', 'Test ortamı hesabının fatura oluşturma ve sorgulama yetkileri doğrulanır. Gerçek fatura kesilmez.'),
   TRENDYOL_STAGE_TEST_ORDER: job('Sipariş', 'order', SEND, 'Test Siparişi Oluşturma', 'Entegrasyonu denemek için Trendyol test ortamında örnek sipariş oluşturulur. Canlı mağaza etkilenmez.'),
@@ -88,7 +88,7 @@ const platformFromType = (jobType: string) => {
   const type = jobType.toUpperCase()
   if (type.includes('EFATURAM') || /^INVOICE_(SUBMIT|RECONCILE|DOCUMENT_FETCH|CANCELLATION)$/.test(type)) return 'E-Faturam'
   const prefix = type.split('_')[0]
-  return ({ TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', SHOPIFY: 'Shopify', N11: 'N11', PAZARAMA: 'Pazarama' } as Record<string, string>)[prefix] ?? null
+  return ({ TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', SHOPIFY: 'Shopify', N11: 'N11', PAZARAMA: 'Pazarama', PTTAVM: 'PTT AVM' } as Record<string, string>)[prefix] ?? null
 }
 
 /** "N11 Sipariş İşlemi"; the panel's own jobs carry no platform: "İçe Aktarım İşlemi". */

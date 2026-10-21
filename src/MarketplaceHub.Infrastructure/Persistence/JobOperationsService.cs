@@ -952,6 +952,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             "SHOPIFY" => "Shopify",
             "N11" => "N11",
             "PAZARAMA" => "Pazarama",
+            "PTTAVM" => "PTT AVM",
             _ => "Ravencia",
         };
     }

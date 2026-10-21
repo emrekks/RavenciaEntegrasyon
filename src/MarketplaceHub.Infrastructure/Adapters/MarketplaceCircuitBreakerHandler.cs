@@ -31,7 +31,8 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
     private static bool WaitsForQuota(HttpRequestMessage request) =>
         request.Options.TryGetValue(Hepsiburada.HepsiburadaRateLimitHandler.QuotaAcquiredKey, out _)
         || request.Options.TryGetValue(N11.N11RateLimitHandler.QuotaAcquiredKey, out _)
-        || request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.QuotaAcquiredKey, out _);
+        || request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.QuotaAcquiredKey, out _)
+        || request.Options.TryGetValue(PttAvm.PttAvmRateLimitHandler.QuotaAcquiredKey, out _);
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -101,7 +102,7 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
     }
 
     // The account the request is sent for, as its rate-limit handler names it, hashed so no credential is kept
-    // in a key: Pazarama's seller key, n11's app key (the SOAP option or the REST header), or a Basic
+    // in a key: Pazarama's seller key, PTT AVM's store key, n11's app key (the SOAP option or the REST header), or a Basic
     // Authorization header (Hepsiburada, the Pazarama token call). A Bearer token is never used: it rotates, and
     // each new token would start a new circuit. Shopify needs none, as its host names the shop.
     internal static string? AccountKeyFor(HttpRequestMessage request)
@@ -109,6 +110,8 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
         string? identity = null;
         if (request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.AccountKeyOption, out var seller) && !string.IsNullOrWhiteSpace(seller))
             identity = "pazarama:" + seller;
+        else if (request.Options.TryGetValue(PttAvm.PttAvmRateLimitHandler.AccountKeyOption, out var pttAvmStore) && !string.IsNullOrWhiteSpace(pttAvmStore))
+            identity = "pttavm:" + pttAvmStore;
         else if (request.Options.TryGetValue(N11.N11RateLimitHandler.AccountKeyOption, out var soapAccount) && !string.IsNullOrWhiteSpace(soapAccount))
             identity = "n11:" + soapAccount;
         else if (request.Headers.TryGetValues("appkey", out var appKeys) && appKeys.FirstOrDefault() is { } appKey && !string.IsNullOrWhiteSpace(appKey))

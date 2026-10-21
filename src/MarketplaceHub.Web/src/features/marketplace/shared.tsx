@@ -88,6 +88,7 @@ export function returnPlatformName(platformCode: string | null | undefined) {
     case 'HEPSIBURADA': return 'Hepsiburada'
     case 'N11': return 'N11'
     case 'PAZARAMA': return 'Pazarama'
+    case 'PTTAVM': return 'PTT AVM'
     case 'SHOPIFY': return 'Shopify'
     case 'TRENDYOL': return 'Trendyol'
     default: return 'Pazar yeri'

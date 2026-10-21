@@ -3,12 +3,14 @@ export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURAD
 export type MarketplacePlatformOption = { value: string; label: string }
 export type MarketplacePlatformOptionSource = { platformCode: string; displayName?: string | null; status?: string | null }
 
-const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number], string> = {
+// PTT AVM is labelled already; it joins the order platforms with its order phase (docs/PTTAVM-ENTEGRASYON-PLANI.md).
+const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number] | 'PTTAVM', string> = {
   TRENDYOL: 'Trendyol',
   SHOPIFY: 'Shopify',
   HEPSIBURADA: 'Hepsiburada',
   N11: 'N11',
-  PAZARAMA: 'Pazarama'
+  PAZARAMA: 'Pazarama',
+  PTTAVM: 'PTT AVM'
 }
 
 const hepsiburadaReadSyncPolicies = new Set([
@@ -36,7 +38,7 @@ export function isOrderMarketplacePlatform(platformCode: string) {
 
 export function marketplacePlatformLabel(platformCode: string) {
   const normalizedCode = normalizeMarketplacePlatformCode(platformCode)
-  return marketplacePlatformLabels[normalizedCode as typeof orderMarketplacePlatformCodes[number]] ?? (platformCode.trim() || platformCode)
+  return marketplacePlatformLabels[normalizedCode as keyof typeof marketplacePlatformLabels] ?? (platformCode.trim() || platformCode)
 }
 
 export function normalizeMarketplacePlatformCode(platformCode: string) {

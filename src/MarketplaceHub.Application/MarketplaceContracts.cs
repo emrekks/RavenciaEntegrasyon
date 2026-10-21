@@ -4,9 +4,9 @@ namespace MarketplaceHub.Application;
 
 public static class ActiveIntegrationScope
 {
-    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA";
+    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM";
 
-    public static bool IsMarketplace(string? platformCode) => platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA";
+    public static bool IsMarketplace(string? platformCode) => platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM";
 }
 
 public static class MarketplaceJobTypes
@@ -64,6 +64,7 @@ public static class MarketplaceJobTypes
     public const string PazaramaOrderSync = "PAZARAMA_ORDER_SYNC";
     public const string PazaramaOrderRecoverySync = "PAZARAMA_ORDER_RECOVERY_SYNC";
     public const string PazaramaOrderStatusSync = "PAZARAMA_ORDER_STATUS_SYNC";
+    public const string PttAvmConnectionTest = "PTTAVM_CONNECTION_TEST";
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
     public const string CatalogStructureImport = "CATALOG_STRUCTURE_IMPORT";
 
@@ -71,7 +72,7 @@ public static class MarketplaceJobTypes
     // per-connection execution lock of its lock group.
     public static readonly IReadOnlyList<string> ProcessorJobTypes =
     [
-        ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest, N11ConnectionTest, PazaramaConnectionTest,
+        ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest, N11ConnectionTest, PazaramaConnectionTest, PttAvmConnectionTest,
         ReferenceSync, HepsiburadaReferenceSync, N11ReferenceSync, PazaramaReferenceSync,
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
@@ -138,6 +139,12 @@ public static class MarketplaceJobTypes
             OrderSync => PazaramaOrderSync,
             OrderRecoverySync => PazaramaOrderRecoverySync,
             OrderStatusSync => PazaramaOrderStatusSync,
+            _ => jobType
+        },
+        // PTT AVM takes the same path (docs/PTTAVM-ENTEGRASYON-PLANI.md); phase 1 is the connection test.
+        "PTTAVM" => jobType switch
+        {
+            ConnectionTest => PttAvmConnectionTest,
             _ => jobType
         },
         _ => jobType
@@ -780,7 +787,7 @@ public interface IWebhookVerifier
 public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, bool InvoiceCreationEnabled = true, string? N11ShipmentTemplate = null, int? N11PreparingDay = null, DateTimeOffset? DisabledAt = null, DateTimeOffset? LastErrorAt = null);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version, bool VerifiedForConnection = false);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
-public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null, string? HepsiburadaIntegratorUsername = null, string? N11AppKey = null, string? N11AppSecret = null, string? PazaramaClientId = null, string? PazaramaClientSecret = null);
+public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null, string? HepsiburadaIntegratorUsername = null, string? N11AppKey = null, string? N11AppSecret = null, string? PazaramaClientId = null, string? PazaramaClientSecret = null, string? PttAvmApiKey = null, string? PttAvmAccessToken = null);
 // N11ShipmentTemplate and N11PreparingDay are the n11 product create settings; null keeps the
 // saved value and an empty template clears it.
 public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? Environment = null, string? ExternalStoreId = null, bool? ExternalWritesEnabled = null, bool? InvoiceCreationEnabled = null, string? N11ShipmentTemplate = null, int? N11PreparingDay = null);
@@ -791,7 +798,9 @@ public sealed record CredentialCommand(
     string? Password = null,
     string? ShopifyAccessToken = null,
     string? HepsiburadaServiceKey = null,
-    string? HepsiburadaIntegratorUsername = null);
+    string? HepsiburadaIntegratorUsername = null,
+    string? PttAvmApiKey = null,
+    string? PttAvmAccessToken = null);
 public sealed record SyncPolicyView(
     Guid Id,
     string ResourceType,

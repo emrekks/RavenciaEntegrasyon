@@ -2,6 +2,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.N11;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -15,7 +16,8 @@ public sealed class MarketplacePortRouter(
     ShopifyHttpClient shopify,
     HepsiburadaHttpClient hepsiburada,
     N11HttpClient n11,
-    PazaramaHttpClient pazarama)
+    PazaramaHttpClient pazarama,
+    PttAvmHttpClient pttAvm)
     : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IWebhookRegistrationPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort, IQuestionPort, IOrderFinancePort
 {
     // The same answer the adapters give when they cannot load the connection: a connection removed while its
@@ -30,19 +32,21 @@ public sealed class MarketplacePortRouter(
             .SingleOrDefaultAsync(cancellationToken);
         if (platform is null) return AdapterResult<TResult>.Failure(ConnectionMissing);
         // A known platform without this port is a wiring bug, which stays an exception.
-        object port = SelectPort(platform, trendyol, shopify, hepsiburada, n11, pazarama);
+        object port = SelectPort(platform, trendyol, shopify, hepsiburada, n11, pazarama, pttAvm);
         return port is TPort typed
             ? await call(typed)
             : throw new InvalidOperationException($"{platform} bağlantısı {typeof(TPort).Name} portunu sağlamıyor.");
     }
 
-    internal static object SelectPort(string? platform, object trendyol, object shopify, object? hepsiburada = null, object? n11 = null, object? pazarama = null) => platform?.Trim().ToUpperInvariant() switch
+    internal static object SelectPort(string? platform, object trendyol, object shopify, object? hepsiburada = null, object? n11 = null, object? pazarama = null, object? pttAvm = null) => platform?.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => trendyol,
         "SHOPIFY" => shopify,
         "HEPSIBURADA" when hepsiburada is not null => hepsiburada,
         "N11" when n11 is not null => n11,
         "PAZARAMA" when pazarama is not null => pazarama,
+        // PTT AVM serves only the connection port in phase 1; any other port is a wiring bug until its phase lands.
+        "PTTAVM" when pttAvm is not null => pttAvm,
         _ => throw new InvalidOperationException($"{platform ?? "UNKNOWN"} platformu için adaptör yönlendirmesi tanımlı değil.")
     };
 

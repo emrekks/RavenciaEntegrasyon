@@ -12,7 +12,7 @@ public sealed class MarketplacePortRouterPostgreSqlTests(PostgreSqlTenantIsolati
     {
         await using var db = fixture.CreateContext();
         // No adapter is reached for a connection that does not exist.
-        var router = new MarketplacePortRouter(db, null!, null!, null!, null!, null!);
+        var router = new MarketplacePortRouter(db, null!, null!, null!, null!, null!, null!);
         var context = new AdapterContext(Guid.NewGuid(), Guid.NewGuid(), "router-missing-connection", "router-missing-connection", DateTimeOffset.UtcNow.AddMinutes(1));
 
         var order = await router.GetAsync(context, "ORDER-1", CancellationToken.None);
