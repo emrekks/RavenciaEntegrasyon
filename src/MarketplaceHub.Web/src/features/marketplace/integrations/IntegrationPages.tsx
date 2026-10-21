@@ -2,8 +2,7 @@
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, loadAllPages } from '../../../shared/api'
-import { pollHubApi } from '../../../shared/background-poll'
+import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { connectionEnvironmentLabel, credentialRequestBody, integrationPlatformFilters, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState, type IntegrationListState } from './integration-helpers'
 import { Busy, ErrorBox, Tabs, UiIcon, useConfirmDialog, DialogSurface } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
@@ -114,7 +113,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   // While a first import runs, the card says how far each kind of data has come.
   const initialImport = useQuery({
     queryKey: ['initial-import', item.id],
-    queryFn: context => pollHubApi<InitialImportView>(`/connections/${item.id}/initial-import`, context),
+    queryFn: () => hubPoll<InitialImportView>(`/connections/${item.id}/initial-import`),
     enabled: connected && !hidden && ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode),
     refetchInterval: query => query.state.data?.running ? 10_000 : 120_000
   })
@@ -488,7 +487,7 @@ function SettingsIcon({ name }: { name: SettingsIconName }) {
   return <svg className="cs-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name === 'info' && <circle cx="8" cy="8" r="6.2" />}{name === 'key' && <circle cx="5.5" cy="10.5" r="3" />}{settingsIconPaths[name].map(path => <path key={path} d={path} />)}</svg>
 }
 function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: string; inline?: boolean; onClose?: () => void }) {
-  const client = useQueryClient(); const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null); const [syncPolicyOpen, setSyncPolicyOpen] = useState<SyncPolicy | null>(null); const connection = useQuery({ queryKey: ['connection', id], queryFn: () => hubApi<Connection>(`/connections/${id}`), refetchOnMount: 'always' }); const syncPolicies = useQuery({ queryKey: ['sync-policies', id], queryFn: context => pollHubApi<SyncPolicy[]>(`/connections/${id}/sync-policies`, context), enabled: supportsSyncPolicyManagement(connection.data?.platformCode ?? ''), refetchInterval: 30_000, refetchIntervalInBackground: false }); const capabilities = useQuery({ queryKey: ['capabilities', id], queryFn: () => hubApi<Capability[]>(`/connections/${id}/capabilities`), enabled: shouldLoadConnectionCapabilities(connection.data?.platformCode) });
+  const client = useQueryClient(); const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null); const [syncPolicyOpen, setSyncPolicyOpen] = useState<SyncPolicy | null>(null); const connection = useQuery({ queryKey: ['connection', id], queryFn: () => hubApi<Connection>(`/connections/${id}`), refetchOnMount: 'always' }); const syncPolicies = useQuery({ queryKey: ['sync-policies', id], queryFn: () => hubPoll<SyncPolicy[]>(`/connections/${id}/sync-policies`), enabled: supportsSyncPolicyManagement(connection.data?.platformCode ?? ''), refetchInterval: 30_000, refetchIntervalInBackground: false }); const capabilities = useQuery({ queryKey: ['capabilities', id], queryFn: () => hubApi<Capability[]>(`/connections/${id}/capabilities`), enabled: shouldLoadConnectionCapabilities(connection.data?.platformCode) });
   useEffect(() => {
     if (!feedback) return
     const timeout = window.setTimeout(() => setFeedback(null), 5000)

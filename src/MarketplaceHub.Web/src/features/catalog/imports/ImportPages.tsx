@@ -2,8 +2,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, loadAllPages } from '../../../shared/api'
-import { pollHubApi } from '../../../shared/background-poll'
+import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { ErrorToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
@@ -54,7 +53,7 @@ export function ImportDetailPage() {
   // Re-read only while the worker moves the import on; a finished import is not polled.
   const session = useQuery({
     queryKey: ['import', id],
-    queryFn: context => pollHubApi<ImportSession>(`/imports/${id}`, context),
+    queryFn: () => hubPoll<ImportSession>(`/imports/${id}`),
     enabled: !!id,
     refetchInterval: query => importSessionPollInterval(query.state.data?.status)
   })

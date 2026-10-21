@@ -19,7 +19,7 @@ vi.mock('../../../shared/api', async importOriginal => {
     }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }
-  return { ...original, hubApi: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [], nextCursor: null, hasMore: false })) }
+  return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [], nextCursor: null, hasMore: false })) }
 })
 
 import { ImportDetailPage } from './ImportPages'
