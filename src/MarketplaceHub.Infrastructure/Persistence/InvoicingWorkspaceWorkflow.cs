@@ -212,7 +212,7 @@ public sealed partial class InvoicingBillingService
 
         var sourceLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (sourceLines.Count == 0) return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_LINES_MISSING", "Fatura önizlemesi için sipariş ürün satırları bulunamadı.", 422);
-        var activePackages = await db.ShipmentPackages.AsNoTracking()
+        var activePackages = await MarketplaceSalesService.CurrentShipmentPackages(db)
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (activePackages.Count == 0)

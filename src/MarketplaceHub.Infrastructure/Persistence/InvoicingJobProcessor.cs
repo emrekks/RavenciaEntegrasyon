@@ -167,7 +167,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
             if (ActiveIntegrationScope.IsMarketplace(orderConnection!.PlatformCode))
             {
-                var packages = await db.ShipmentPackages.Where(item => item.TenantId == tenantId
+                // Tracked: the precheck records the marketplace invoice state on these rows.
+                var packages = await MarketplaceSalesService.CurrentShipmentPackages(db, db.ShipmentPackages).Where(item => item.TenantId == tenantId
                     && item.OrderId == order.Id && item.Status != ShipmentPackageStatus.Cancelled)
                     .OrderBy(item => item.Id).ToListAsync(cancellationToken);
                 if (packages.Count == 0)

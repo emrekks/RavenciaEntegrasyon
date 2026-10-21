@@ -1154,7 +1154,7 @@ public sealed partial class InvoicingBillingService(
         }
         else if (command.OriginalInvoiceId is null
             && (DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
-                || !await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == command.OrderId && x.Status != ShipmentPackageStatus.Cancelled, cancellationToken)))
+                || !await MarketplaceSalesService.CurrentShipmentPackages(db).AnyAsync(x => x.TenantId == tenantId && x.OrderId == command.OrderId && x.Status != ShipmentPackageStatus.Cancelled, cancellationToken)))
         {
             return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Satış faturası için siparişte uygun paket bulunamadı.", 422);
         }
@@ -1163,7 +1163,9 @@ public sealed partial class InvoicingBillingService(
         var orderConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
         if (orderConnection is null) return Invalid<InvoiceDetailView>("billing", "Siparişin pazaryeri bağlantısı bulunamadı.");
         var orderPlatform = orderConnection.PlatformCode;
-        var activePackagesForOrder = await db.ShipmentPackages.AsNoTracking()
+        // D5: a package superseded by a resent or split one is history, not a live package; the same current-package
+        // rule as the order screens and the dashboard keeps it out of the invoice totals and allocations.
+        var activePackagesForOrder = await MarketplaceSalesService.CurrentShipmentPackages(db)
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .ToListAsync(cancellationToken);
         var invoiceType = InvoiceAmounts.InvoiceDocumentType(orderPlatform, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
@@ -1192,7 +1194,7 @@ public sealed partial class InvoicingBillingService(
         Dictionary<Guid, decimal>? packageQuantities = null;
         if (command.OriginalInvoiceId is not null && command.PackageId is { } selectedPackageId)
         {
-            var activePackageIds = await db.ShipmentPackages.AsNoTracking()
+            var activePackageIds = await MarketplaceSalesService.CurrentShipmentPackages(db)
                 .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
                 .Select(x => x.Id).ToListAsync(cancellationToken);
             var allPackageAllocations = await db.PackageLineAllocations.AsNoTracking()

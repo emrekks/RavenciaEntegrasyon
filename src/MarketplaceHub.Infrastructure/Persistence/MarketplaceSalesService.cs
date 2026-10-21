@@ -21,8 +21,11 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // displaying, counting or invoicing them as live packages.
     internal IQueryable<ShipmentPackage> CurrentShipmentPackages() => CurrentShipmentPackages(db);
 
-    // Also used by the dashboard, so its package counts follow the same rule as the order screens.
-    internal static IQueryable<ShipmentPackage> CurrentShipmentPackages(AppDbContext db) => db.ShipmentPackages.AsNoTracking()
+    // Also used by the dashboard and invoicing, so their package sets follow the same rule as the order screens.
+    internal static IQueryable<ShipmentPackage> CurrentShipmentPackages(AppDbContext db) => CurrentShipmentPackages(db, db.ShipmentPackages.AsNoTracking());
+
+    // The same rule over a caller's source, e.g. tracked packages that the invoicing precheck updates.
+    internal static IQueryable<ShipmentPackage> CurrentShipmentPackages(AppDbContext db, IQueryable<ShipmentPackage> packages) => packages
         .Where(package => package.RawStatus != ShipmentPackageSupersession.LocallyUnpackedRawStatus)
         .Where(package => (package.ExternalPackageId != "0"
             || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
