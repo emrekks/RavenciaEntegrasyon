@@ -150,6 +150,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             var offer = offers[variant.Id];
             if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || offer.SalePrice <= 0 || offer.ListPrice < offer.SalePrice) return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.");
             if (offer.VatRate < 0 || offer.VatRate > 100 || decimal.Truncate(offer.VatRate) != offer.VatRate) return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı 0-100 arasında tam sayı olmalıdır.");
+            // D7 (K20): Trendyol prices the cargo by dimensionalWeight; a guessed 1 desi bills the wrong shipping cost.
+            if (!HasDesi(variant.Desi)) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Trendyol'un zorunlu desi değeri girilmemiş.");
 
             // Explicit variant media replaces the product gallery for that
             // variant. This keeps marketplace colors from receiving every
@@ -280,7 +282,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 ["categoryId"] = externalCategoryId,
                 ["quantity"] = TrendyolStockRules.Quantity(publishable),
                 ["stockCode"] = variant.Sku.Trim(),
-                ["dimensionalWeight"] = variant.Desi ?? 1m,
+                ["dimensionalWeight"] = variant.Desi.GetValueOrDefault(),
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),
                 ["listPrice"] = PriceInventoryComposer.OutboundListPrice(offer),
                 ["salePrice"] = PriceInventoryComposer.OutboundSalePrice(offer),
@@ -425,6 +427,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         ?? value.BooleanValue?.ToString().ToLowerInvariant();
 
     private static string NormalizeLabel(string value) => value.Trim().ToUpperInvariant();
+
+    internal static bool HasDesi(decimal? desi) => desi is > 0;
 
     private static bool IsValidBarcode(string value) => value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
 

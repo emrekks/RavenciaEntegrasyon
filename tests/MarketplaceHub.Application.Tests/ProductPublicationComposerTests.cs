@@ -81,4 +81,13 @@ public sealed class ProductPublicationComposerTests
         Assert.Equal(8, selected.Count);
         Assert.Equal(Enumerable.Range(1, 8).Select(number => $"https://cdn.example.com/{number}.jpg"), selected);
     }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(0d, false)]
+    [InlineData(-1d, false)]
+    [InlineData(0.5d, true)]
+    [InlineData(3d, true)]
+    public void TrendyolPublication_RequiresAPositiveDesi(double? desi, bool expected) =>
+        Assert.Equal(expected, ProductPublicationComposer.HasDesi((decimal?)desi));
 }
