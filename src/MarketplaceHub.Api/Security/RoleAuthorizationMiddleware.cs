@@ -94,6 +94,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 // Creating a connection stores the store's credentials, as rotating them does.
                 if (segments.Length == 3) return ElevatedRoles;
                 if (last == "evidence" && segments.Any(segment => segment.Equals("capabilities", StringComparison.OrdinalIgnoreCase))) return ElevatedRoles;
+                // Revoking a webhook subscription (/webhooks/{subscriptionId}) is as elevated as creating one.
+                if (segments.Length > 5 && segments[4].Equals("webhooks", StringComparison.OrdinalIgnoreCase)) return ElevatedRoles;
                 // PATCH /connections/{id} stays operational; the endpoint refuses its external write, invoice creation,
                 // environment and store scope changes to other roles (IsElevated).
                 // Credentials, stage test orders, deleting, emptying or hiding a connection's data, and registering

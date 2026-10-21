@@ -3216,6 +3216,80 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // A webhook subscription made through POST /connections/{id}/webhooks is revoked on its own; its route token and
+    // secret are refused from then on, while the connection stays active.
+    [PostgreSqlFact]
+    public async Task WebhookSubscription_RevokedOnItsOwn_RefusesTheNextDelivery()
+    {
+        var tenant = NewTenant("webhook-revoke");
+        var other = NewTenant("webhook-revoke-other");
+        var connection = NewQuestionConnection(tenant);
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.AddRange(tenant, other);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            MarketplaceConnectionService Connections(AppDbContext db) => new(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, hasher, fixture.TimeProvider, new ConfigurationBuilder().Build());
+            async Task<ServiceResult<bool>> DeliverAsync(string routeToken, string orderNumber)
+            {
+                await using var db = fixture.CreateContext();
+                var receiver = new MarketplaceWebhookService(db, hasher, new TrendyolWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                return await receiver.ReceiveAsync(connection.PublicId, routeToken, Encoding.UTF8.GetBytes($$"""{"content":[{"orderNumber":"{{orderNumber}}","shipmentPackageId":{{orderNumber}}}]}"""), new Dictionary<string, string> { ["x-api-key"] = "revocable-key" }, "webhook-revoke", CancellationToken.None);
+            }
+
+            CreatedWebhookSubscription created;
+            await using (var db = fixture.CreateContext())
+                created = (await Connections(db).CreateWebhookAsync(tenant.Id, connection.Id, new("API_KEY", null, null, "revocable-key"), CancellationToken.None)).Value!;
+            Assert.Null((await DeliverAsync(created.RouteToken, "1")).Error);
+
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(404, (await Connections(db).RevokeWebhookAsync(other.Id, connection.Id, created.Subscription.Id, CancellationToken.None)).Error?.Status);
+            Assert.Null((await DeliverAsync(created.RouteToken, "2")).Error);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var revoked = await Connections(db).RevokeWebhookAsync(tenant.Id, connection.Id, created.Subscription.Id, CancellationToken.None);
+                Assert.Null(revoked.Error);
+                Assert.Equal("DELETED", revoked.Value!.Status);
+            }
+            Assert.Equal(404, (await DeliverAsync(created.RouteToken, "3")).Error?.Status);
+
+            // Revoking again answers with the same revoked subscription.
+            await using (var db = fixture.CreateContext())
+                Assert.Equal("DELETED", (await Connections(db).RevokeWebhookAsync(tenant.Id, connection.Id, created.Subscription.Id, CancellationToken.None)).Value!.Status);
+
+            // A subscription the marketplace holds is switched off through instant notifications, which also removes the remote one.
+            var managed = new WebhookSubscription { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, RouteTokenHash = hasher.Hash(TokenHasher.NewToken()), AuthenticationType = "BASIC_AUTHENTICATION", ProtectedVerifierSecret = "unused", ExternalSubscriptionId = "remote-webhook-1", Status = "ACTIVE", Version = 1 };
+            await using (var db = fixture.CreateContext())
+            {
+                db.WebhookSubscriptions.Add(managed);
+                await db.SaveChangesAsync();
+            }
+            await using (var db = fixture.CreateContext())
+                Assert.Equal("WEBHOOK_MANAGED_BY_INSTANT_NOTIFICATIONS", (await Connections(db).RevokeWebhookAsync(tenant.Id, connection.Id, managed.Id, CancellationToken.None)).Error?.Code);
+
+            await using var verification = fixture.CreateContext();
+            Assert.Equal("ACTIVE", (await verification.PlatformConnections.SingleAsync(row => row.Id == connection.Id)).Status);
+            Assert.Equal("ACTIVE", (await verification.WebhookSubscriptions.SingleAsync(row => row.Id == managed.Id)).Status);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+            await DeleteInvoiceTestTenantAsync(other.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task InstantNotifications_PrepareHepsiburadaWithoutCallingHepsiburada()
     {

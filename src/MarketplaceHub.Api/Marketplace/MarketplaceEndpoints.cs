@@ -94,6 +94,13 @@ public static class MarketplaceEndpoints
             if (result is { Succeeded: true, Value: { } created }) await AuditAsync(http, tenant, "WEBHOOK_SUBSCRIPTION_CREATED", id, $"subscription:{created.Subscription.Id:D};{created.Subscription.AuthenticationType}");
             return Created(result, $"/api/v1/connections/{id:D}/webhooks");
         });
+        api.MapDelete("/connections/{id:guid}/webhooks/{subscriptionId:guid}", async (Guid id, Guid subscriptionId, HttpContext http, IMarketplaceConnectionService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            var result = await service.RevokeWebhookAsync(tenant.TenantId, id, subscriptionId, http.RequestAborted);
+            if (result.Succeeded) await AuditAsync(http, tenant, "WEBHOOK_SUBSCRIPTION_REVOKED", id, $"subscription:{subscriptionId:D}");
+            return Result(result, Results.Ok);
+        });
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted) =>
             Tenant(http) is { } tenant

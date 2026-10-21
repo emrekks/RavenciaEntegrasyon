@@ -154,6 +154,10 @@ public sealed class RoleAuthorizationMiddlewareTests
     // Webhook subscriptions hold the verifier secret (A22).
     [InlineData("OPERATIONS", "POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", false)]
     [InlineData("ADMINISTRATOR", "POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", true)]
+    // Revoking one is as elevated as creating it, whatever the trailing subscription id.
+    [InlineData("OPERATIONS", "DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks/22222222-2222-2222-2222-222222222222", false)]
+    [InlineData("OPERATIONS", "DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/Webhooks/22222222-2222-2222-2222-222222222222/", false)]
+    [InlineData("OWNER", "DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks/22222222-2222-2222-2222-222222222222", true)]
     public async Task OrderAndInvoiceWorkspaceWrites_FollowTheirWorkingRoles(string role, string method, string path, bool reachable)
     {
         var (called, status) = await Invoke(role, method, path);

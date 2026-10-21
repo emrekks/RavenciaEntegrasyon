@@ -951,6 +951,7 @@ public interface IMarketplaceConnectionService
     Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<WebhookSubscriptionView>>> WebhooksAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<WebhookSubscriptionView>> RevokeWebhookAsync(Guid tenantId, Guid id, Guid subscriptionId, CancellationToken cancellationToken);
 }
 
 public sealed record OrderListView(

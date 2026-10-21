@@ -770,6 +770,24 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         db.WebhookSubscriptions.Add(subscription); await db.SaveChangesAsync(cancellationToken); return ServiceResult<CreatedWebhookSubscription>.Ok(new(Map(subscription), connection.PublicId, routeToken));
     }
 
+    // A subscription made here hands out a route token and a verifier secret that stay valid until revoked; the
+    // receiver accepts only ACTIVE rows, so a revoked one is refused on its next delivery. Subscriptions registered
+    // on the marketplace (instant notifications) are switched off there, so the remote one is removed too.
+    public async Task<ServiceResult<WebhookSubscriptionView>> RevokeWebhookAsync(Guid tenantId, Guid id, Guid subscriptionId, CancellationToken cancellationToken)
+    {
+        var subscription = await db.WebhookSubscriptions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Id == subscriptionId, cancellationToken);
+        if (subscription is null) return NotFound<WebhookSubscriptionView>();
+        if (subscription.ExternalSubscriptionId is not null && subscription.Status == "ACTIVE")
+            return ServiceResult<WebhookSubscriptionView>.Fail("WEBHOOK_MANAGED_BY_INSTANT_NOTIFICATIONS", "Bu bildirim kaydı anlık bildirimler ayarından kapatılır.", 409);
+        if (subscription.Status != "DELETED")
+        {
+            subscription.Status = "DELETED";
+            subscription.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return ServiceResult<WebhookSubscriptionView>.Ok(Map(subscription));
+    }
+
     private Task<PlatformConnection?> Find(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken);
     private async Task EnsureCapabilityRowsAsync(PlatformConnection connection, CancellationToken cancellationToken)
     {
