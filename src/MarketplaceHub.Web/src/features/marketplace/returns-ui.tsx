@@ -100,7 +100,9 @@ const MARK_AREA = 1350, MARK_MAX_H = 26, MARK_MAX_W = 104
 
 export function RrWordmark({ code, name }: { code: string | null | undefined; name: string }) {
   const mark = marks[(code ?? '').toUpperCase()]
-  if (!mark) return <span className="rr-wordmark-text">{name}</span>
+  // A platform without a cropped mark (PTT AVM) shows its logo at the marks' height instead of plain text.
+  const logo = mark ? null : orderPlatformLogoSource(code)
+  if (!mark) return logo ? <span className="rr-wordmark" role="img" aria-label={name} style={{ height: MARK_MAX_H - 4 }}><img src={logo} alt="" style={{ position: 'static', height: '100%', width: 'auto', maxWidth: MARK_MAX_W, objectFit: 'contain' }} /></span> : <span className="rr-wordmark-text">{name}</span>
   const ratio = mark.w / mark.h
   let height = Math.sqrt(MARK_AREA / ratio) * mark.weight
   height = Math.min(height, MARK_MAX_H, MARK_MAX_W / ratio)
