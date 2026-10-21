@@ -6,7 +6,7 @@ import { Link, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { Busy, cargoCarrier, cargoCarriers, cargoLabel, cargoMatches, ErrorBox, UiIcon, DialogSurface } from '../../../shared/components'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { safeExternalUrl } from '../../../shared/safe-url'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { setManualInvoiceStatus, type ManualInvoiceStatus } from '../../invoicing/manual-invoice-status'
@@ -624,7 +624,6 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
 }
 function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Order; onClose: () => void; onCreated: (packageNumber: string) => void }) {
   const lines = item.lines ?? []
-  const requestIdempotencyKey = useRef(newIdempotencyKey())
   const availableQuantity = (line: OrderLine) => Math.max(0, line.orderedQuantity - line.cancelledQuantity - (line.allocatedQuantity ?? 0))
   const firstLine = lines.find(line => availableQuantity(line) > 0)
   const [selected, setSelected] = useState<Record<string, number>>(() => firstLine ? { [firstLine.id]: availableQuantity(firstLine) } : {})
@@ -639,22 +638,25 @@ function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Ord
     const lineItems = Object.entries(selected).filter(([, quantity]) => quantity > 0).map(([orderLineId, quantity]) => ({ orderLineId, quantity }))
     setSaving(true)
     setError('')
+    const body = JSON.stringify({
+      barcode: data.get('barcode'),
+      cargoCompany: data.get('cargoCompany'),
+      carrier: data.get('carrier'),
+      creationReason: data.get('creationReason'),
+      deci: Number(data.get('deci')),
+      parcelQuantity: Number(data.get('parcelQuantity')),
+      shippingAddressLabel: data.get('shippingAddressLabel'),
+      shippingModel: data.get('shippingModel'),
+      lineItems,
+    })
     try {
-      const result = await hubApi<{ packageNumber: string }>(`/orders/${item.id}/packages`, {
+      // The same key for a resend of the same form on the same order version (a lost answer reaches Hepsiburada once);
+      // a corrected form, or any attempt after the server answered with an error (a 422), goes out with a new key.
+      const result = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('hb-package', item.id, item.version, body), key => hubApi<{ packageNumber: string }>(`/orders/${item.id}/packages`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': requestIdempotencyKey.current, 'If-Match': `"v${item.version}"` },
-        body: JSON.stringify({
-          barcode: data.get('barcode'),
-          cargoCompany: data.get('cargoCompany'),
-          carrier: data.get('carrier'),
-          creationReason: data.get('creationReason'),
-          deci: Number(data.get('deci')),
-          parcelQuantity: Number(data.get('parcelQuantity')),
-          shippingAddressLabel: data.get('shippingAddressLabel'),
-          shippingModel: data.get('shippingModel'),
-          lineItems,
-        }),
-      })
+        headers: { 'Idempotency-Key': key, 'If-Match': `"v${item.version}"` },
+        body,
+      }))
       onCreated(result.packageNumber)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Hepsiburada paketi oluşturulamadı.')
