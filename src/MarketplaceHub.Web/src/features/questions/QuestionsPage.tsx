@@ -282,7 +282,7 @@ export function QuestionsPage() {
   const activeFilterCount = (connectionId !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sort !== 'NEWEST' ? 1 : 0)
   const presets = [{ key: 'ALL', label: 'Tümü', title: 'Tüm Tarihler', range: { from: '', to: '' } }, { key: 'TODAY', label: 'Bugün', title: 'Bugün', range: lastDays(1) }, { key: '7', label: '7 Gün', title: 'Son 7 Gün', range: lastDays(7) }, { key: '30', label: '30 Gün', title: 'Son 30 Gün', range: lastDays(30) }]
   const productHrefOf = (row: MarketplaceQuestion) => row.kind === 'PRODUCT' || row.platformCode === 'HEPSIBURADA' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
-  const codesOf = (row: MarketplaceQuestion) => [row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'
+  const codesOf = (row: MarketplaceQuestion) => [row.productSku && `Stok Kodu ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'
   const isSeller = (author: string) => author.toLowerCase().includes('merchant') || author.toLowerCase().includes('seller')
   const openQuestion = (id: string) => { setSelectedId(id); setDetailOpen(true) }
   const nextWaiting = (id: string) => { const waiting = rows.filter(item => isAnswerable(item.status, item)); const index = waiting.findIndex(item => item.id === id); return waiting[index + 1] ?? waiting.find(item => item.id !== id) }
@@ -340,7 +340,7 @@ export function QuestionsPage() {
         <Tabs className="rv-questions-tabs qi-tabs rv-view-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: viewTabLabel('product', 'Ürün Soruları'), count: formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: viewTabLabel('order', 'Sipariş Soruları'), count: formatCount(waitingCounts[1].data) }]} />
         <div className="qi-tools" aria-label="Soru filtreleri">
           <div className="qi-tools-row">
-            <label className="rv-questions-search qi-search"><UiIcon name="search" size={15} /><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" aria-label="Metin ara" /></label>
+            <label className="rv-questions-search qi-search"><UiIcon name="search" size={15} /><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Soru, ürün, stok kodu veya sipariş no" aria-label="Metin ara" /></label>
             <div className="qi-filter" ref={filterRef}>
               <button type="button" className={`qi-filter-btn${filterOpen || activeFilterCount ? ' is-on' : ''}`} aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><UiIcon name="filter" size={15} />Filtre{activeFilterCount > 0 && <span className="qi-count">{activeFilterCount}</span>}</button>
               {filterOpen && <div className="qi-popover rv-questions-filter-grid" role="dialog" aria-label="Filtreler">
