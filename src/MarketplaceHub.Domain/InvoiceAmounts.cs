@@ -107,6 +107,123 @@ public static class InvoiceAmounts
         return true;
     }
 
+    /// <summary>
+    /// The e-document scenario for an order of any marketplace. Trendyol states both the corporate buyer
+    /// (commercial) and its e-Invoice registration (eInvoiceAvailable). Another platform selects e-Invoice
+    /// only when its snapshot carries an explicit e-Invoice flag (Pazarama isEInvoiceObliged, kept as isEInvoice);
+    /// its corporate buyers without that flag are stopped by <see cref="RequiresEInvoiceRecipientReview"/>.
+    /// </summary>
+    public static string InvoiceDocumentType(string? platformCode, string customerSnapshotJson, string invoiceAddressSnapshotJson)
+    {
+        if (IsTrendyol(platformCode)) return TrendyolInvoiceType(customerSnapshotJson, invoiceAddressSnapshotJson);
+        return EInvoiceRegistration(customerSnapshotJson, invoiceAddressSnapshotJson) == true ? "TEMELFATURA" : "EARSIVFATURA";
+    }
+
+    /// <summary>
+    /// True when a non-Trendyol order's buyer is a company (a valid 10-digit VKN, a company name next to a
+    /// tax/identity number, or a corporate invoiceType) and the platform did not state that it is not an
+    /// e-Invoice taxpayer. An automatic e-Archive could then be the wrong document, so the order needs review.
+    /// A buyer flagged as an e-Invoice taxpayer is caught here too, for drafts saved as e-Archive earlier.
+    /// </summary>
+    public static bool RequiresEInvoiceRecipientReview(string? platformCode, string? customerSnapshotJson, string? invoiceAddressSnapshotJson) =>
+        !IsTrendyol(platformCode)
+        && EInvoiceRegistration(customerSnapshotJson, invoiceAddressSnapshotJson) != false
+        && IsCorporateBuyer(customerSnapshotJson, invoiceAddressSnapshotJson);
+
+    private static readonly string[] EInvoiceFlagFields = ["eInvoiceAvailable", "isEInvoice", "isEInvoiceObliged"];
+    private static readonly string[] TaxNumberFields = ["taxNumber", "taxId", "vkn", "customerTaxNumber", "invoiceTaxNumber", "taxIdentityNumber", "taxIdentifier"];
+    private static readonly string[] IdentityNumberFields = ["identityNumber", "identityNo", "tcIdentityNumber", "turkishIdentityNumber", "customerIdentityNumber", "nationalIdentityNumber", "tcId", "tckn"];
+    private static readonly string[] CompanyNameFields = ["companyName", "companyTitle", "company", "tradeName", "legalName", "businessName"];
+
+    private static bool IsTrendyol(string? platformCode) => string.Equals(platformCode?.Trim(), "TRENDYOL", StringComparison.OrdinalIgnoreCase);
+
+    // An explicit e-Invoice flag on either snapshot root: true wins, false only when no true is present, null when absent.
+    private static bool? EInvoiceRegistration(string? customerSnapshotJson, string? invoiceAddressSnapshotJson)
+    {
+        bool? registration = null;
+        foreach (var json in new[] { customerSnapshotJson, invoiceAddressSnapshotJson })
+        {
+            if (string.IsNullOrWhiteSpace(json)) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Object) continue;
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (!EInvoiceFlagFields.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) continue;
+                    if (property.Value.ValueKind == JsonValueKind.True) return true;
+                    if (property.Value.ValueKind == JsonValueKind.False) registration = false;
+                }
+            }
+            catch (JsonException) { }
+        }
+        return registration;
+    }
+
+    private static bool IsCorporateBuyer(string? customerSnapshotJson, string? invoiceAddressSnapshotJson)
+    {
+        foreach (var json in new[] { invoiceAddressSnapshotJson, customerSnapshotJson })
+        {
+            if (string.IsNullOrWhiteSpace(json)) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                if (HasCorporateBuyer(document.RootElement, 0)) return true;
+            }
+            catch (JsonException) { }
+        }
+        return false;
+    }
+
+    // Each object is judged on its own fields, so a carrier's company name elsewhere in the snapshot does not
+    // pair with the buyer's personal identity number.
+    private static bool HasCorporateBuyer(JsonElement node, int depth)
+    {
+        if (depth > 3) return false;
+        if (node.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in node.EnumerateArray())
+                if (HasCorporateBuyer(item, depth + 1)) return true;
+            return false;
+        }
+        if (node.ValueKind != JsonValueKind.Object) return false;
+        var taxNumber = FieldText(node, TaxNumberFields);
+        if (TurkishTaxIdentity.IsValidVkn(taxNumber)) return true;
+        if (FieldText(node, CompanyNameFields) is not null
+            && (IsTaxIdShape(taxNumber) || IsTaxIdShape(FieldText(node, IdentityNumberFields)))) return true;
+        if (IsCorporateInvoiceType(node)) return true;
+        foreach (var property in node.EnumerateObject())
+            if (HasCorporateBuyer(property.Value, depth + 1)) return true;
+        return false;
+    }
+
+    // n11 and Pazarama billing addresses carry invoiceType 1 (individual) or 2 (corporate).
+    private static bool IsCorporateInvoiceType(JsonElement node)
+    {
+        var value = FieldText(node, ["invoiceType"])?.ToLowerInvariant();
+        return value is not null
+            && (value == "2" || value.Contains("kurumsal", StringComparison.Ordinal) || value.Contains("corporate", StringComparison.Ordinal));
+    }
+
+    private static bool IsTaxIdShape(string? value) =>
+        value is { Length: 10 or 11 } && value.All(char.IsAsciiDigit) && value != "11111111111";
+
+    private static string? FieldText(JsonElement node, string[] names)
+    {
+        foreach (var property in node.EnumerateObject())
+        {
+            if (!names.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) continue;
+            var text = property.Value.ValueKind switch
+            {
+                JsonValueKind.String => property.Value.GetString(),
+                JsonValueKind.Number => property.Value.GetRawText(),
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(text)) return text.Trim();
+        }
+        return null;
+    }
+
     public static string TrendyolInvoiceType(string customerSnapshotJson, string invoiceAddressSnapshotJson)
     {
         try

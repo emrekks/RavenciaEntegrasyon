@@ -66,7 +66,9 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 resultRecorded = true;
                 throw;
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            // A request timeout (the adapter's timeout token ran out, not the caller's) counts as a failure, so a
+            // hanging Trendyol opens the circuit; the caller's cancellation or a shutdown does not.
+            catch (OperationCanceledException) when (CallerCancellation.IsTimeout(request, cancellationToken))
             {
                 RecordResult(circuitKey, false, halfOpen);
                 resultRecorded = true;

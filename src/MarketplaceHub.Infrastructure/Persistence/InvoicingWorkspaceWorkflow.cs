@@ -248,7 +248,7 @@ public sealed partial class InvoicingBillingService
         var lines = calculated!.Lines.Select(line => new InvoiceWorkspacePreviewLine(line.Description, line.Sku, line.Quantity, "ADET", line.VatRate,
             line.UnitPrice, line.DiscountAmount, line.VatAmount, line.PayableAmount)).ToArray();
 
-        var invoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        var invoiceType = InvoiceAmounts.InvoiceDocumentType(marketplace.PlatformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
         var taxIdentity = ReadTaxIdentity(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
         var corporate = TrendyolEFaturamCanonicalPayload.IsCorporateRecipient(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, taxIdentity);
         var customerType = corporate ? "Kurumsal" : "Bireysel";
@@ -295,7 +295,7 @@ public sealed partial class InvoicingBillingService
                     ? MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage
                     : MarketplaceInvoiceCreationPolicy.DisabledMessage
                 : InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(provider.Environment, marketplace.Environment);
-        if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson) is { } issueRefusal)
+        if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, marketplace.PlatformCode, order.InvoiceAddressSnapshotJson) is { } issueRefusal)
         {
             canCreate = false;
             blockedReason = issueRefusal.Message;

@@ -3,8 +3,13 @@
 // sees it. Signing out removes it altogether.
 let scope = 'anonymous'
 
+/** The scope of one tenant and user (`anonymous` when either is missing). */
+export function storageScopeOf(tenantId: string | null | undefined, userId: string | null | undefined) {
+  return tenantId && userId ? `${tenantId}:${userId}` : 'anonymous'
+}
+
 export function setStorageScope(tenantId: string | null | undefined, userId: string | null | undefined) {
-  scope = tenantId && userId ? `${tenantId}:${userId}` : 'anonymous'
+  scope = storageScopeOf(tenantId, userId)
 }
 
 export function currentStorageScope() {

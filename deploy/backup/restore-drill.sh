@@ -148,7 +148,7 @@ echo "Restore drill: migration validation passed."
 sudo docker exec "$db_container" psql -U marketplacehub -d marketplacehub -v ON_ERROR_STOP=1 -c "
   update integration.connection_sync_policies set \"Enabled\" = false where \"Enabled\";
   update integration.jobs set \"Status\" = 'CANCELLED', \"CompletedAt\" = now(), \"LeaseTokenHash\" = null, \"LeaseExpiresAt\" = null, \"HeartbeatAt\" = null
-  where \"Status\" in ('PENDING', 'RUNNING', 'RETRY_SCHEDULED');
+  where \"Status\" in ('PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED');
 "
 echo "Restore drill: restored scheduler and pending jobs isolated."
 

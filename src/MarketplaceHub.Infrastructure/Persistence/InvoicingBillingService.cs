@@ -1166,8 +1166,8 @@ public sealed partial class InvoicingBillingService(
         var activePackagesForOrder = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .ToListAsync(cancellationToken);
-        var invoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
-        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson) is { } refusal)
+        var invoiceType = InvoiceAmounts.InvoiceDocumentType(orderPlatform, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, orderPlatform, order.InvoiceAddressSnapshotJson) is { } refusal)
             return Refuse<InvoiceDetailView>(refusal);
         if (command.OriginalInvoiceId is null && invoiceType == "EARSIVFATURA")
         {
@@ -1345,11 +1345,9 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<InvoiceDetailView>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify belge kayıtları mali taslak olarak doğrulanamaz; panelde yalnızca yüklenen belge ve manuel durum izlenir.", 422);
         if (!InvoiceStateMachine.CanTransition(invoice.Status, InvoiceStatus.Validating)) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan doğrulanamaz.", 409);
         invoice.Status = InvoiceStatus.Validating; invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
-        var orderCustomerJson = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
-            .Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
         var issueRefusal = invoice.OriginalInvoiceId is not null
             ? InvoiceIssuePolicy.AdjustmentFlowUnavailable
-            : InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, orderCustomerJson);
+            : await SaleIssueRefusalAsync(tenantId, invoice, cancellationToken);
         if (issueRefusal is not null)
         {
             // The draft keeps the reason so the workspace shows it; nothing reaches the provider.
@@ -1431,9 +1429,7 @@ public sealed partial class InvoicingBillingService(
         if (await IsMarketplaceInvoiceCreationDisabledAsync(tenantId, invoice.OrderId, cancellationToken))
             return ServiceResult<Guid>.Fail(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, MarketplaceInvoiceCreationPolicy.DisabledMessage, 422);
         // Drafts validated before these gates existed must not reach the provider either.
-        var submitCustomerJson = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
-            .Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
-        if ((invoice.OriginalInvoiceId is not null ? InvoiceIssuePolicy.AdjustmentFlowUnavailable : InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, submitCustomerJson)) is { } submitRefusal)
+        if ((invoice.OriginalInvoiceId is not null ? InvoiceIssuePolicy.AdjustmentFlowUnavailable : await SaleIssueRefusalAsync(tenantId, invoice, cancellationToken)) is { } submitRefusal)
             return Refuse<Guid>(submitRefusal);
         var safePreProviderRetry = CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
         if (invoice.Status != InvoiceStatus.Ready && !safePreProviderRetry)
@@ -1940,6 +1936,18 @@ public sealed partial class InvoicingBillingService(
     }
     private static InvoicePolicyView Map(InvoicePolicy value) => new(value.Id, value.ProviderConnectionId, value.TriggerState, value.PackageScope, value.DueRule, value.RoundingRule, value.AdjustmentRule, value.AutoSubmit, value.Version);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
+    // The sale gates read from the order as it is now, so a draft created before a gate existed is stopped too.
+    private async Task<InvoiceIssueRefusal?> SaleIssueRefusalAsync(Guid tenantId, Invoice invoice, CancellationToken cancellationToken)
+    {
+        var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => new { x.CustomerSnapshotJson, x.InvoiceAddressSnapshotJson, x.ConnectionId }).SingleOrDefaultAsync(cancellationToken);
+        string? platformCode = null;
+        if (order is not null)
+            platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId)
+                .Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, order?.CustomerSnapshotJson, platformCode, order?.InvoiceAddressSnapshotJson);
+    }
+
     private static ServiceResult<T> Refuse<T>(InvoiceIssueRefusal refusal) => ServiceResult<T>.Fail(refusal.Code, refusal.Message, 422);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);

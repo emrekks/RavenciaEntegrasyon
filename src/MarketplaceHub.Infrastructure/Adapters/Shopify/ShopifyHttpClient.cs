@@ -64,7 +64,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<ConnectionIdentity>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify mağaza bilgileri veya yetkilendirmesi geçersiz.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<ConnectionIdentity>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify mağaza bilgileri veya yetkilendirmesi geçersiz.", HttpStatusCode.Unauthorized));
         var result = await QueryAsync(shop, "query { shop { name primaryDomain { host } currencyCode } locations(first: 50) { nodes { id name isActive } } }", cancellationToken: cancellationToken);
         if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
         try
@@ -103,7 +103,7 @@ public sealed partial class ShopifyHttpClient(
         var orders = await PollAsync(context, new OrderPollWindow(null, now, null), new(null, 1), cancellationToken);
         var categories = await ReadAsync(context, new("CATEGORIES", null), new(null, 1), cancellationToken);
         var scopesContext = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (scopesContext is null) return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Failure(new(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", 401, null, null));
+        if (scopesContext is null) return CredentialFailure(AdapterResult<IReadOnlyList<CapabilityEvidence>>.Failure(new(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", 401, null, null)));
         var scopesResult = await QueryAsync(scopesContext, "query { currentAppInstallation { accessScopes { handle } } }", cancellationToken: cancellationToken);
         var scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (scopesResult.IsSuccess && scopesResult.Value!.RootElement.TryGetProperty("currentAppInstallation", out var installation)
@@ -137,7 +137,7 @@ public sealed partial class ShopifyHttpClient(
             return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.NotSupported, "SHOPIFY_REFERENCE_NOT_SUPPORTED", "Shopify bağlantısında yalnızca ürün taksonomisi kategorileri okunabilir.", HttpStatusCode.NotImplemented);
 
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
 
         ShopifyTaxonomyPageCursor state;
         RateLimitMetadata? rateLimit = null;
@@ -225,7 +225,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         // The catalog query contains nested variant and inventory-level
         // connections. Keeping the product page small is required because
         // Shopify rejects a query whose requested cost exceeds 1,000.
@@ -266,7 +266,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<RemoteOperationRef>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<RemoteOperationRef>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.InventoryWrite, cancellationToken)
             || !await CanWriteAsync(shop, context, MarketplaceCapabilities.PublicationRead, cancellationToken)
             || !await CanWriteAsync(shop, context, MarketplaceCapabilities.PublicationWrite, cancellationToken)) return WriteClosed<RemoteOperationRef>();
@@ -449,7 +449,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<RemoteOperationRef>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<RemoteOperationRef>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite, cancellationToken)) return WriteClosed<RemoteOperationRef>();
         JsonDocument payload;
         try { payload = JsonDocument.Parse(payloadJson); }
@@ -532,7 +532,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var first = Math.Clamp(page.Limit, 1, Math.Clamp(settings.OrderPageSize, 1, 250));
         var query = BuildOrderQuery(window);
         var result = await QueryOrderAsync(shop, new { first, after = page.Cursor, query }, single: false, cancellationToken);
@@ -560,7 +560,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<RemoteOrder>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<RemoteOrder>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var id = externalOrderId.StartsWith("gid://", StringComparison.Ordinal) ? externalOrderId : $"gid://shopify/Order/{externalOrderId}";
         var result = await QueryOrderAsync(shop, new { id }, single: true, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
@@ -576,7 +576,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<PackageActionResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<PackageActionResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.ShipmentWrite, cancellationToken)) return WriteClosed<PackageActionResult>();
         if (string.IsNullOrWhiteSpace(command.ExternalPackageId)) return Fail<PackageActionResult>(AdapterErrorClass.Validation, "SHOPIFY_FULFILLMENT_ID_REQUIRED", "Shopify fulfillment kimliği zorunludur.", HttpStatusCode.BadRequest);
         if (!string.Equals(command.Action, "TRACKING_NUMBER", StringComparison.OrdinalIgnoreCase))
@@ -608,7 +608,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!IntegrationRuntimePolicy.AllowsManualRead(shop.Connection)) return Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.NotSupported, "SHOPIFY_CONNECTION_INACTIVE", "Shopify iadeleri yalnızca etkin bağlantıdan okunabilir.", HttpStatusCode.Forbidden);
         return await PollReturnsAsync(shop, window, page, cancellationToken);
     }
@@ -703,7 +703,7 @@ public sealed partial class ShopifyHttpClient(
     async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<RemoteReturnClaim>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<RemoteReturnClaim>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var id = externalReturnId.StartsWith("gid://", StringComparison.Ordinal) ? externalReturnId : $"gid://shopify/Return/{externalReturnId}";
         var result = await QueryAsync(shop, SingleReturnQuery, new { id }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(result.Error!, result.RateLimit);
@@ -726,7 +726,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<ReturnActionResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<ReturnActionResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.ReturnWrite, cancellationToken)) return WriteClosed<ReturnActionResult>();
         if (string.IsNullOrWhiteSpace(command.ExternalClaimId)) return Fail<ReturnActionResult>(AdapterErrorClass.Validation, "SHOPIFY_RETURN_ID_REQUIRED", "Shopify iade kimliği zorunludur.", HttpStatusCode.BadRequest);
         var id = command.ExternalClaimId.StartsWith("gid://", StringComparison.Ordinal) ? command.ExternalClaimId : $"gid://shopify/Return/{command.ExternalClaimId}";
@@ -753,7 +753,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<InvoiceDeliveryResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<InvoiceDeliveryResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var automaticDeliveryAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(shop.Connection, context, configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))
             && await CanWriteAsync(shop, context, InvoicingCapabilities.InvoiceDeliver, cancellationToken);
         var manualDeliveryAllowed = IntegrationRuntimePolicy.AllowsExplicitManualInvoiceMarketplaceDelivery(
@@ -795,7 +795,7 @@ public sealed partial class ShopifyHttpClient(
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<InvoiceDeliveryStatus>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<InvoiceDeliveryStatus>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!IntegrationRuntimePolicy.AllowsManualRead(shop.Connection))
             return Fail<InvoiceDeliveryStatus>(AdapterErrorClass.NotSupported, "SHOPIFY_CONNECTION_INACTIVE", "Shopify fatura durumu yalnızca etkin bağlantıdan okunabilir.", HttpStatusCode.Forbidden);
         var orderId = reference.ExternalOrderId ?? reference.ExternalReference;
@@ -986,6 +986,8 @@ public sealed partial class ShopifyHttpClient(
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = new StringContent(JsonSerializer.Serialize(new { query, variables }), Encoding.UTF8, "application/json") };
         request.Headers.TryAddWithoutValidation("X-Shopify-Access-Token", context.AccessToken);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        // The client's 45 s timeout cancels inside the pipeline; the circuit tells it from the caller's cancellation.
+        CallerCancellation.Mark(request, cancellationToken);
         try
         {
             using var response = await client.SendAsync(request, cancellationToken);
@@ -1062,6 +1064,12 @@ public sealed partial class ShopifyHttpClient(
         {
             logger.LogWarning(exception, "Shopify GraphQL isteği başarısız. Shop: {Shop}", context.Shop);
             return Failure<JsonDocument>(new(AdapterErrorClass.TransientNetwork, "SHOPIFY_NETWORK_ERROR", "Shopify bağlantısı geçici olarak kurulamadı.", null, null, null));
+        }
+        // The client's timeout (not the caller's cancellation) ended the request.
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Shopify GraphQL isteği zaman aşımına uğradı. Shop: {Shop}", context.Shop);
+            return Failure<JsonDocument>(new(AdapterErrorClass.TransientNetwork, "SHOPIFY_TIMEOUT", "Shopify isteği zaman aşımına uğradı.", null, null, null));
         }
     }
 
@@ -1669,6 +1677,10 @@ public sealed partial class ShopifyHttpClient(
     private static CapabilityEvidence Probe<T>(string code, ConnectionIdentity identity, string source, AdapterResult<T> result, string operation, DateTimeOffset verified, string scope) => result.IsSuccess
         ? Supported(code, identity, source, $"{operation} başarılı.", verified, scope)
         : new(code, "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, scope, null, $"{operation} doğrulanamadı: {result.Error?.SafeMessage ?? "Shopify yanıtı alınamadı."}", null, verified);
+    // No request context: a token request that failed on the network or timed out is retried as such; otherwise
+    // the credentials are missing or rejected.
+    private AdapterResult<T> CredentialFailure<T>(AdapterResult<T> credentialInvalid) =>
+        authentication.TokenRequestFailure is { } transient ? Failure<T>(transient) : credentialInvalid;
     private static AdapterResult<T> Fail<T>(AdapterErrorClass kind, string code, string message, HttpStatusCode status) => AdapterResult<T>.Failure(new(kind, code, message, (int)status, null, null));
     private static Task<AdapterResult<T>> Unsupported<T>(string message) => Task.FromResult(Fail<T>(AdapterErrorClass.NotSupported, "SHOPIFY_NOT_SUPPORTED", message, HttpStatusCode.NotImplemented));
     private static AdapterResult<T> Failure<T>(AdapterError error, RateLimitMetadata? rate = null) => AdapterResult<T>.Failure(error, rate);

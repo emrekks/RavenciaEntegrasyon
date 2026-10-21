@@ -1126,6 +1126,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         linked.CancelAfter(instantLimits is null ? timeout + MaximumQuotaWait : instantLimits.MaximumQuotaWait);
         var quotaAcquired = false;
         request.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => { quotaAcquired = true; linked.CancelAfter(timeout); });
+        CallerCancellation.Mark(request, cancellationToken);
         try
         {
             using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = RetryAfterDelay(response.Headers.RetryAfter, timeProvider.GetUtcNow()); var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;

@@ -18,6 +18,8 @@ internal sealed class QuotaAwareTimeout : IDisposable
         this.requestTimeout = requestTimeout;
         source.CancelAfter(requestTimeout + MaximumQuotaWait);
         request.Options.Set(quotaAcquiredKey, OnQuotaAcquired);
+        // The circuit tells this timeout from the caller's own cancellation by the caller's token.
+        CallerCancellation.Mark(request, cancellationToken);
     }
 
     public CancellationToken Token => source.Token;

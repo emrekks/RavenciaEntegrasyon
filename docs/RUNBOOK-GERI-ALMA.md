@@ -98,7 +98,21 @@ silinir — yani bir haftadan eski bir noktaya dönüş her zaman garanti değil
    ```
    Dosya/anahtar volume'leri (`app_files`, `dp_keys`) gerekiyorsa `private-volumes.tar.gz`'den aynı
    şekilde açılır; Data Protection anahtarları değişmediyse dokunmayın.
-6. **Başlat ve doğrula**: `sudo docker start marketplacehub-api-1 marketplacehub-worker-1`, sonra bölüm 1'deki
+6. **Bekleyen işleri karantinaya al** (worker'ı başlatmadan önce, zorunlu). Yedek alındığı anda kuyrukta
+   bekleyen ya da çalışan işler arasında fatura gönderimi, kargo/iade aksiyonu ve fiyat-stok yazımı
+   olabilir. Bunlar yedekten sonra zaten gönderilmiş olabilir; worker onları yeniden çalıştırırsa
+   çift fatura veya pazaryerine eski stok yazılır. Hepsini manuel incelemeye çek:
+   ```bash
+   sudo docker exec marketplacehub-postgres-1 psql -U marketplacehub -d marketplacehub -v ON_ERROR_STOP=1 -c "
+     update integration.jobs set \"Status\" = 'MANUAL_REVIEW', \"LastErrorCode\" = 'RESTORE_QUARANTINE',
+       \"LeaseTokenHash\" = null, \"LeaseExpiresAt\" = null, \"HeartbeatAt\" = null
+     where \"Status\" in ('PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED');"
+   ```
+   Zamanlanmış okumalar (sipariş, iade, soru) worker açılınca kendiliğinden yeniden kuyruğa girer;
+   karantina onları etkilemez. Karantinadaki yazma işleri İşlem Takibi'nde `RESTORE_QUARANTINE` koduyla
+   görünür: her birini pazaryeri ve fatura sağlayıcısı panelinde kontrol et, yalnız **gerçekten
+   gönderilmemiş** olanları yeniden çalıştır.
+7. **Başlat ve doğrula**: `sudo docker start marketplacehub-api-1 marketplacehub-worker-1`, sonra bölüm 1'deki
    kontroller. Yedek ile şimdi arasındaki pazaryeri siparişleri sonraki senkronda yeniden çekilir;
    kesilmiş faturalar ve pazaryerine gönderilmiş durumlar **elle** karşılaştırılmalıdır.
 

@@ -1,13 +1,15 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace MarketplaceHub.Infrastructure.Adapters;
 
-// Circuit breaker for marketplace hosts without their own resilience handler (Hepsiburada,
-// Shopify). Five consecutive failures (5xx, 408, network errors) open the circuit for 30 s; a 429
-// with Retry-After opens it for that long (at most 15 min). While open, calls are answered locally:
-// 429 for a quota stop, so the job is deferred without losing an attempt, otherwise 503. After the
+// Circuit breaker for marketplace hosts without their own resilience handler (Hepsiburada, n11,
+// Pazarama, Shopify), one circuit per API family and account. Five consecutive failures (5xx, 408,
+// network errors, request timeouts) open the circuit for 30 s; a 429 with Retry-After opens it for
+// that long (at most 15 min). While open, calls are answered locally: 429 for a quota stop, so the job is deferred without losing an attempt, otherwise 503. After the
 // break one probe request is let through; its result closes or reopens the circuit. It sits outside the
 // marketplace's rate-limit handler, so a call refused by an open circuit never takes a quota token.
 public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerState state, TimeProvider timeProvider) : DelegatingHandler
@@ -33,13 +35,17 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var circuit = state.For(CircuitKeyFor(request.RequestUri));
+        var circuit = state.For(CircuitKeyFor(request));
         var deferProbe = WaitsForQuota(request);
         if (!circuit.TryEnter(timeProvider.GetUtcNow(), deferProbe, out var probe, out var openResponse)) return openResponse!;
         var refusedAtGate = false;
+        // A request that waits for a quota token is sent only once its rate-limit handler passes the gate; a
+        // timeout before that (the quota stayed full) says nothing about the marketplace.
+        var quotaHeld = !deferProbe;
         if (deferProbe)
             request.Options.Set(ProbeGateKey, () =>
             {
+                quotaHeld = true;
                 if (!circuit.TryClaimDeferredProbe(timeProvider.GetUtcNow(), out var claimed, out var refused))
                 {
                     refusedAtGate = true;
@@ -72,7 +78,9 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
             recorded = true;
             throw;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        // A request timeout (the adapter's own timeout token ran out, not the caller's) counts as a failure, so a
+        // hanging platform opens the circuit; the caller's cancellation or a shutdown does not.
+        catch (OperationCanceledException) when (quotaHeld && CallerCancellation.IsTimeout(request, cancellationToken))
         {
             circuit.Record(timeProvider.GetUtcNow(), succeeded: false);
             recorded = true;
@@ -82,6 +90,34 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
         {
             if (probe && !recorded) circuit.ReleaseProbe();
         }
+    }
+
+    // One circuit per API family and account: one merchant's failures or quota stop must not block every
+    // other tenant's calls to the same family. A request without a known account keeps the family key.
+    internal static string CircuitKeyFor(HttpRequestMessage request)
+    {
+        var family = CircuitKeyFor(request.RequestUri);
+        return AccountKeyFor(request) is { } account ? $"{family}#{account}" : family;
+    }
+
+    // The account the request is sent for, as its rate-limit handler names it, hashed so no credential is kept
+    // in a key: Pazarama's seller key, n11's app key (the SOAP option or the REST header), or a Basic
+    // Authorization header (Hepsiburada, the Pazarama token call). A Bearer token is never used: it rotates, and
+    // each new token would start a new circuit. Shopify needs none, as its host names the shop.
+    internal static string? AccountKeyFor(HttpRequestMessage request)
+    {
+        string? identity = null;
+        if (request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.AccountKeyOption, out var seller) && !string.IsNullOrWhiteSpace(seller))
+            identity = "pazarama:" + seller;
+        else if (request.Options.TryGetValue(N11.N11RateLimitHandler.AccountKeyOption, out var soapAccount) && !string.IsNullOrWhiteSpace(soapAccount))
+            identity = "n11:" + soapAccount;
+        else if (request.Headers.TryGetValues("appkey", out var appKeys) && appKeys.FirstOrDefault() is { } appKey && !string.IsNullOrWhiteSpace(appKey))
+            identity = "n11:" + appKey;
+        else if (request.Headers.Authorization is { } authorization
+            && string.Equals(authorization.Scheme, "Basic", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(authorization.Parameter))
+            identity = "basic:" + authorization.Parameter;
+        return identity is null ? null : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..16];
     }
 
     // Host plus the first two path segments: one failing API family (e.g. invoice delivery that keeps

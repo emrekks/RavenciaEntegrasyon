@@ -47,4 +47,53 @@ public sealed class JobTypeRegistryTests
         Assert.False(webhook.StopHeartbeatOnTimeout);
         Assert.Null(webhook.RetryAfterTimeout);
     }
+
+    [Theory]
+    [InlineData(InvoicingJobTypes.InvoiceSubmit)]
+    [InlineData(InvoicingJobTypes.InvoiceCancellation)]
+    [InlineData(InvoicingJobTypes.MarketplaceDelivery)]
+    [InlineData(InvoicingJobTypes.ManualOrderInvoiceDelivery)]
+    [InlineData(MarketplaceJobTypes.ShipmentAction)]
+    [InlineData(MarketplaceJobTypes.ReturnAction)]
+    [InlineData(MarketplaceJobTypes.CommonLabel)]
+    [InlineData(MarketplaceJobTypes.ProductCreate)]
+    [InlineData(MarketplaceJobTypes.ProductUpdate)]
+    [InlineData(MarketplaceJobTypes.ProductArchive)]
+    [InlineData(MarketplaceJobTypes.PriceInventorySync)]
+    [InlineData(MarketplaceJobTypes.StageTestOrder)]
+    public void ExternalWritesFinishOnShutdown(string jobType)
+    {
+        Assert.True(JobTypeRegistry.IsShutdownProtected(jobType));
+        Assert.True(JobTypeRegistry.For(jobType).FinishOnShutdown);
+    }
+
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderSync)]
+    [InlineData(MarketplaceJobTypes.ProductSync)]
+    [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
+    [InlineData(MarketplaceJobTypes.WebhookIngest)]
+    [InlineData(MarketplaceJobTypes.QuestionSync)]
+    [InlineData(MarketplaceJobTypes.StockProjectionDispatch)]
+    [InlineData(MarketplaceJobTypes.StockReconciliation)]
+    [InlineData(MarketplaceJobTypes.ExternalEffectReconcile)]
+    [InlineData(MarketplaceJobTypes.ProductApprovalReconcile)]
+    [InlineData(InvoicingJobTypes.InvoiceReconcile)]
+    [InlineData(InvoicingJobTypes.InvoiceDocumentFetch)]
+    [InlineData(InvoicingJobTypes.InvoiceDueScan)]
+    [InlineData("IMPORT_APPLY")]
+    [InlineData("UNKNOWN_JOB_TYPE")]
+    public void ReadsAndScansAreCancelledOnShutdown(string jobType)
+    {
+        Assert.False(JobTypeRegistry.IsShutdownProtected(jobType));
+        Assert.False(JobTypeRegistry.For(jobType).FinishOnShutdown);
+    }
+
+    [Fact]
+    public void EveryShutdownProtectedJobTypeHasAProcessor()
+    {
+        string[] invoicingWrites = [InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.ManualOrderInvoiceDelivery];
+        Assert.All(JobTypeRegistry.ShutdownProtectedJobTypes, jobType =>
+            Assert.True(MarketplaceJobTypes.IsMarketplaceProcessorJob(jobType) || invoicingWrites.Contains(jobType), jobType));
+        Assert.Equal(JobTypeRegistry.ShutdownProtectedJobTypes.Count, JobTypeRegistry.ShutdownProtectedJobTypes.Distinct().Count());
+    }
 }

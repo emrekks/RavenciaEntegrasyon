@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.Security;
@@ -21,8 +22,13 @@ public sealed class ShopifyAuthenticationHandler(
     // so a rotated credential never reuses the old token.
     private static readonly ConcurrentDictionary<(Guid ConnectionId, Guid CredentialId), CachedToken> Tokens = new();
 
+    // Why the last LoadAsync returned null when the token service could not be reached or timed out: the caller
+    // answers this transient failure instead of reporting the credentials as invalid.
+    public AdapterError? TokenRequestFailure { get; private set; }
+
     public async Task<ShopifyRequestContext?> LoadAsync(Guid tenantId, Guid connectionId, string apiVersion, CancellationToken cancellationToken)
     {
+        TokenRequestFailure = null;
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(
             // The API version comes from the server's settings; the version stored on the connection is the one it
             // was last verified with, so raising the setting does not cut every connection off.
@@ -83,6 +89,8 @@ public sealed class ShopifyAuthenticationHandler(
                 ["client_secret"] = payload.ResolvedClientSecret!
             })
         };
+        // The client's 45 s timeout cancels inside the pipeline; the circuit tells it from the caller's cancellation.
+        CallerCancellation.Mark(request, cancellationToken);
         try
         {
             using var response = await client.SendAsync(request, cancellationToken);
@@ -103,6 +111,15 @@ public sealed class ShopifyAuthenticationHandler(
         catch (HttpRequestException exception)
         {
             logger.LogWarning(exception, "Shopify token isteği başarısız. ConnectionId: {ConnectionId}", connectionId);
+            TokenRequestFailure = new(AdapterErrorClass.TransientNetwork, "SHOPIFY_NETWORK_ERROR", "Shopify oturum servisine bağlanılamadı.", null, null, null);
+            return null;
+        }
+        // The client's timeout (not the caller's cancellation) ended the token request; it is answered like a
+        // network failure instead of escaping as TaskCanceledException.
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Shopify token isteği zaman aşımına uğradı. ConnectionId: {ConnectionId}", connectionId);
+            TokenRequestFailure = new(AdapterErrorClass.TransientNetwork, "SHOPIFY_TIMEOUT", "Shopify oturum servisi zaman aşımına uğradı.", null, null, null);
             return null;
         }
     }

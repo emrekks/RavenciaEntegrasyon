@@ -14,7 +14,7 @@ import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFont
 import { readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
 import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
-import { clearQuerySnapshot, forgetPreviousSession } from '../shared/query-snapshot'
+import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession } from '../shared/query-snapshot'
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
 import { focusOnMount } from '../shared/focus'
@@ -201,12 +201,20 @@ const isSignedOut = (error: unknown) => error instanceof ApiRequestError && erro
 
 export function App() {
   const client = useQueryClient()
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false })
+  // The session is never restored from the reload snapshot (another tab may have signed into another tenant since), so
+  // the workspace waits for this answer; restored answers of another tenant or user are dropped before it lands.
+  const me = useQuery({ queryKey: ['me'], queryFn: async () => {
+    const current = await api<Me>('/me')
+    confirmQuerySnapshotScope(client, current.tenantId, current.id)
+    return current
+  }, retry: false })
   // A request heard 401: the session ended while the panel was open. The workspace gives way to the sign-in screen at
   // once (no reload, no screens retrying forever); signing in again brings the person back to the same page.
   useEffect(() => setUnauthorizedHandler(() => {
     const current = client.getQueryData<Me>(['me'])
     if (!current || current.state === 'REVOKED') return
+    // Nothing of the ended session stays in, or is written again to, this tab's reload snapshot until the next sign-in.
+    clearQuerySnapshot()
     void client.cancelQueries({ predicate: query => query.queryKey[0] !== 'me' })
     client.setQueryData<Me>(['me'], { ...current, state: 'REVOKED' })
   }), [client])
@@ -353,6 +361,7 @@ function Login({ notice }: { notice?: string }) {
       else localStorage.removeItem('ravencia.rememberedEmail')
       // Nothing read under the previous session (perhaps another account or workspace) is shown to this one.
       forgetPreviousSession(client)
+      confirmQuerySnapshotScope(client, currentUser.tenantId, currentUser.id)
       client.setQueryData(['me'], currentUser)
       if (location.pathname === '/' || location.pathname === '') navigate('/dashboard', { replace: true })
     } catch (reason) {
