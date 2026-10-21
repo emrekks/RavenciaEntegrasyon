@@ -569,10 +569,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             return await ReconcileHepsiburadaProductApproval(tenantId, connectionId, payload, profile, listings, states, correlationId, cancellationToken);
 
+        // Variants an earlier check of this publication already approved keep their recorded identity instead of being
+        // read again; the adapter reads one barcode per request, so this is what keeps a long wait cheap.
+        var candidateVariantIds = candidates.Select(x => x.VariantId).ToArray();
+        var settledProductId = await db.MarketplaceProductLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId)
+            .Select(x => x.ExternalId)
+            .SingleOrDefaultAsync(cancellationToken);
+        var settledVariantIds = settledProductId is null
+            ? new Dictionary<Guid, string>()
+            : await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && candidateVariantIds.Contains(x.VariantId))
+                .ToDictionaryAsync(x => x.VariantId, x => x.ExternalId, cancellationToken);
         var remoteByBarcode = new Dictionary<string, RemotePublicationStatus>(StringComparer.OrdinalIgnoreCase);
         foreach (var listing in candidates)
         {
             var barcode = approvalKey(listing)!;
+            if (ProductApprovalReconciliationPolicy.IsSettledLive(listing.ActualStatus, settledProductId is not null, settledVariantIds.TryGetValue(listing.VariantId, out var settledVariantId)))
+            {
+                remoteByBarcode.Add(barcode, new RemotePublicationStatus(barcode, "APPROVED", settledProductId, settledVariantId, null, "{}"));
+                continue;
+            }
             TrackRequest();
             var result = await products.GetPublicationStatusAsync(Context(tenantId, connectionId, correlationId, $"product-approval:{profile.Id:N}:{barcode}"), barcode, cancellationToken);
             if (!result.IsSuccess)
@@ -712,7 +729,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         await transaction.CommitAsync(cancellationToken);
 
         if (exceptional > 0) return JobExecutionResult.ManualReview(firstCode ?? "PRODUCT_APPROVAL_REVIEW_REQUIRED", $"{marketplaceName} ürün onayında operatör incelemesi gerektiren terminal durum oluştu.");
-        if (pending > 0) return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", $"{marketplaceName} ürün onayı henüz tamamlanmadı.", TimeSpan.FromMinutes(5));
+        if (pending > 0) return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", $"{marketplaceName} ürün onayı henüz tamamlanmadı.", ProductApprovalReconciliationPolicy.PendingRecheckDelay(payload.StartedAt, payload.DeadlineAt, timeProvider.GetUtcNow()));
         if (live == listings.Count) return JobExecutionResult.Success();
         return rejected == listings.Count
             ? JobExecutionResult.Blocked("PRODUCT_APPROVAL_REJECTED", $"{marketplaceName} ürün onayı tüm varyantlar için reddedildi.")

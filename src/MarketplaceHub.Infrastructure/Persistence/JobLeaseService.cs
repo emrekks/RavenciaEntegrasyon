@@ -247,7 +247,8 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             return InvoiceDeliveryRetryPolicy.DelayAfterAttempt(job.AttemptCount, requested);
 
         // Product approval is a bounded, read-only reconciliation poll. Its processor
-        // deliberately asks for five minutes; applying the generic terminal one-hour
+        // asks for its own backoff (five minutes, then 15, hourly and six-hourly, see
+        // ProductApprovalReconciliationPolicy.PendingRecheckDelay); applying the generic terminal one-hour
         // backoff would prevent the seven-day acceptance window from being observed.
         // Provider/network retries still follow the generic policy and Retry-After.
         if (job.JobType == MarketplaceJobTypes.ProductApprovalReconcile
