@@ -52,11 +52,14 @@ public static class PttAvmProductMapper
             var reads = PttAvmVariantMapper.Read(entry);
             if (reads.Count == 0)
             {
-                issues.Add(new("PRODUCT_VARIANT_INVALID", $"{barcode}:{PttAvmVariantMapper.Shape(entry)}", $"PTT AVM ürünü {barcode} için bir varyantın barkodu okunamadı ({PttAvmVariantMapper.Shape(entry)}); varyant içeri alınmadı."));
+                issues.Add(new("PRODUCT_VARIANT_INVALID", $"{barcode}:{PttAvmVariantMapper.Shape(entry)}", $"PTT AVM ürünü {barcode} için bir varyantın barkodu veya kimliği okunamadı ({PttAvmVariantMapper.Shape(entry)}); varyant içeri alınmadı."));
                 continue;
             }
+            // The product barcode is the variants' model code. A variant without a barcode is named under its
+            // model ("FK4530/1234"), and its stock code is the model and its name ("FK4530-S").
             foreach (var read in reads)
-                variants.Add(new(read.Barcode, read.Barcode, read.Barcode, null, read.Options, !active || read.Active == false,
+                variants.Add(new(read.Barcode ?? $"{barcode}/{read.VariantId}", read.Barcode ?? $"{barcode}-{read.Options[PttAvmVariantMapper.VariantNameOption]}", read.Barcode, barcode,
+                    read.Options, !active || read.Active == false,
                     PttAvmVariantMapper.SalePrice(read, price), null, vatRate, read.Quantity, "TRY", Snapshot(read.Source).ToJsonString(), images, Desi: desi));
         }
         // The product's stock code is UrunKodu; the documentation says the barcode replaced it, so it falls back to the barcode.

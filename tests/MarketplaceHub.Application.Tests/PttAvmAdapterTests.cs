@@ -1261,6 +1261,35 @@ public sealed class PttAvmAdapterTests
         """;
 
     [Fact]
+    public void ModelVariantsKnownByIdAndNameAreReadUnderTheModel()
+    {
+        // The live GetProductsWithVariants shape: Variant[Limit, PriceDifference, Quantity, VariantId, VariantName], no barcode.
+        XNamespace a = "http://schemas.datacontract.org/2004/07/ePttAVMService";
+        var row = new XElement(a + "StokKontrolDetay", new XElement(a + "Aktif", "true"), new XElement(a + "Barkod", "FK4530"), new XElement(a + "KDVli", "500"),
+            new XElement(a + "UrunAdi", "Bordo Kaşe Mini Etek"), new XElement(a + "UrunId", "900001"));
+        XNamespace n = "http://schemas.datacontract.org/2004/07/ePttAVMService.New";
+        var entries = new[]
+        {
+            new XElement(n + "Variant", new XElement(n + "Limit", "0"), new XElement(n + "PriceDifference", "25"), new XElement(n + "Quantity", "3"), new XElement(n + "VariantId", "7101"), new XElement(n + "VariantName", "S")),
+            new XElement(n + "Variant", new XElement(n + "Quantity", "2"), new XElement(n + "VariantName", "M"))
+        };
+        var issues = new List<AdapterPageIssue>();
+
+        var product = PttAvmProductMapper.Product(row, issues, new Dictionary<string, IReadOnlyList<XElement>> { ["FK4530"] = entries })!;
+
+        var small = Assert.Single(product.Variants);
+        Assert.Equal("FK4530/7101", small.ExternalVariantId);
+        Assert.Equal("FK4530-S", small.Sku);
+        Assert.Null(small.Barcode);
+        Assert.Equal("FK4530", small.ModelCode);
+        Assert.Equal("S", small.Options[PttAvmVariantMapper.VariantNameOption]);
+        Assert.Equal(3m, small.StockQuantity);
+        Assert.Equal(525m, small.SalePrice);
+        // The entry without an id cannot be linked and is reported.
+        Assert.Contains(issues, issue => issue.Code == "PRODUCT_VARIANT_INVALID");
+    }
+
+    [Fact]
     public async Task ModelProductsTakeTheirVariantsFromTheVariantList()
     {
         var variantPages = 0;

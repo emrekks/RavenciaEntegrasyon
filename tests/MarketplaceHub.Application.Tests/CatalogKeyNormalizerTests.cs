@@ -98,6 +98,21 @@ public sealed class CatalogKeyNormalizerTests
         Assert.False(MarketplaceJobProcessor.SameColorAndSize("RENK=MAVI|BEDEN=L", remote));
     }
 
+    [Fact]
+    public void VariantNamesMatchByTheirValuesAndTheTitleColour()
+    {
+        // PTT AVM names a model's variants by value only ("S"), with the colour in the product title.
+        var size = new Dictionary<string, string> { ["Varyant"] = "S" };
+        Assert.True(MarketplaceJobProcessor.HasOptionValues("Renk: Bordo | Beden: S | Boy: Mini", size));
+        Assert.False(MarketplaceJobProcessor.HasOptionValues("Renk: Bordo | Beden: M | Boy: Mini", size));
+        Assert.True(MarketplaceJobProcessor.HasOptionValues("Renk: Lacivert | Beden: L", new Dictionary<string, string> { ["Varyant"] = "Lacivert / L" }));
+        Assert.False(MarketplaceJobProcessor.HasOptionValues(null, size));
+        Assert.True(MarketplaceJobProcessor.TitleNamesColor("Bordo Kaşe Mini Etek", "Renk: Bordo | Beden: S"));
+        Assert.False(MarketplaceJobProcessor.TitleNamesColor("Bordo Kaşe Mini Etek", "Renk: Haki | Beden: S"));
+        Assert.True(MarketplaceJobProcessor.TitleNamesColor("Siyah-Beyaz Kolsuz Bluz", "Renk: Siyah-Beyaz | Beden: S"));
+        Assert.False(MarketplaceJobProcessor.TitleNamesColor("Siyahlı Bluz", "Renk: Siyah | Beden: S"));
+    }
+
     [Theory]
     [InlineData("İpek Şal Mavi", "ipek", true)]
     [InlineData("TOMMY HILFIGER Gömlek", "Tommy-Hilfiger", true)]

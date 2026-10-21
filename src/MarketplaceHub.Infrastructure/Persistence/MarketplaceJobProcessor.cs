@@ -6027,7 +6027,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A chosen match key leaves one code: barcode to barcode or stock code to panel SKU, with no cross or model match.
         if (matchKey == ProductImportMatchKey.StockCode) barcodes = [];
         if (matchKey == ProductImportMatchKey.Barcode) { skus = []; rawSkus = []; }
-        if (matchKey is not null) modelCodes = [];
+        // Variants without any barcode (PTT AVM models: an id and a name such as "S") have only their model code,
+        // so they keep it whatever key is chosen.
+        if (matchKey is not null && remoteVariants.Any(variant => !string.IsNullOrWhiteSpace(variant.Barcode))) modelCodes = [];
         var crossMatch = crossMatchCodes && matchKey is null;
         var skuModelMatch = preferBarcode && matchKey is null;
         if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return false;
@@ -6096,6 +6098,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(existing => existing.VariantId)
             .ToHashSet();
         var matchedVariantCount = 0;
+        var matchedProductIds = new HashSet<Guid>();
 
         foreach (var remote in remoteVariants)
         {
@@ -6118,7 +6121,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     ? localVariants.Where(variant => string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteModelCode, StringComparison.Ordinal)).ToList()
                     : [];
             if (crossMatchCodes && modelMatches.Count > 1)
-                modelMatches = modelMatches.Where(variant => SameColorAndSize(variant.OptionSignature, remote.Options)).ToList();
+            {
+                var narrowed = modelMatches.Where(variant => SameColorAndSize(variant.OptionSignature, remote.Options)).ToList();
+                // Options without a colour or size name (PTT AVM's variant name "S") are matched by their values, and a
+                // colour the product title names ("Bordo Kaşe Mini Etek") picks among the colours of the model.
+                if (narrowed.Count != 1)
+                {
+                    var byValues = modelMatches.Where(variant => HasOptionValues(variant.OptionSignature, remote.Options)).ToList();
+                    if (byValues.Count > 1) byValues = byValues.Where(variant => TitleNamesColor(snapshot.Title, variant.OptionSignature)).ToList();
+                    if (byValues.Count == 1) narrowed = byValues;
+                }
+                modelMatches = narrowed;
+            }
             var matches = barcodeMatches.Count > 0 ? barcodeMatches : skuMatches.Count > 0 ? skuMatches : modelMatches;
             var candidate = matches.Count == 1 ? matches[0] : null;
             if (candidate is null || claimedVariantIds.Contains(candidate.Id))
@@ -6133,7 +6147,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
             if (externalLink is not null)
             {
-                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
+                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; matchedProductIds.Add(candidate.ProductId); if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
                 else if (reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı {remote.Sku} daha önce başka bir panel varyantına bağlanmış; şimdiki eşleşme {candidate.Sku}. Bağlantı değiştirilmedi · {snapshot.Title}.", 1000), cancellationToken);
@@ -6153,11 +6167,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
             claimedVariantIds.Add(candidate.Id);
             matchedVariantCount++;
+            matchedProductIds.Add(candidate.ProductId);
             telemetryInsertedCount++;
             if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource);
         }
 
         if (matchedVariantCount == 0) return false;
+        // A model shared by several panel products (one per colour) links to the product its variants matched,
+        // not to the first candidate.
+        if (link is null && matchedProductIds.Count == 1 && matchedProductIds.Single() is var matchedProductId && matchedProductId != productId.Value)
+        {
+            productId = matchedProductId;
+            linkProduct = !await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == matchedProductId && existing.ExternalId != externalProductId, cancellationToken);
+        }
         if (!linkProduct) return true;
         if (link is null)
         {
@@ -7413,6 +7435,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // True when the local option signature carries the same colour and size values as the remote options.
     // It reads both stored forms ("Renk: Mavi | Beden: XL" and the old panel "RENK=MAVI|BEDEN=XL"). Remote
     // options without a colour or size cannot narrow a model-code match.
+    // Every value the marketplace names ("S"; "Lacivert / L") is one of the panel variant's option values.
+    internal static bool HasOptionValues(string? localSignature, IReadOnlyDictionary<string, string> remoteOptions)
+    {
+        if (string.IsNullOrWhiteSpace(localSignature)) return false;
+        var local = VariantOptionSignature.ParseKeyed(localSignature).Values.ToHashSet(StringComparer.Ordinal);
+        var values = remoteOptions.Values
+            .SelectMany(value => value.Split(['/', ',', ';', '|'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .Select(value => NormalizeCatalogKey(CleanCatalogOptionValue(value), 120))
+            .Where(value => value.Length > 0)
+            .ToList();
+        return values.Count > 0 && values.All(local.Contains);
+    }
+
+    // The panel variant's colour appears in the title as whole words ("Bordo" in "Bordo Kaşe Mini Etek").
+    internal static bool TitleNamesColor(string? title, string? localSignature)
+    {
+        var color = VariantOptionSignature.ParseKeyed(localSignature).FirstOrDefault(option => VariantOptionSignature.IsColorName(option.Key)).Value;
+        var titleKey = NormalizeCatalogKey(title, 320);
+        return !string.IsNullOrEmpty(color) && titleKey.Length > 0 && $"-{titleKey}-".Contains($"-{color}-", StringComparison.Ordinal);
+    }
+
     internal static bool SameColorAndSize(string? localSignature, IReadOnlyDictionary<string, string> remoteOptions)
     {
         var axes = remoteOptions

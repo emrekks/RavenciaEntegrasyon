@@ -52,7 +52,12 @@ public sealed partial class PttAvmHttpClient
 
 public static class PttAvmVariantMapper
 {
-    public sealed record VariantRead(string Barcode, decimal? Quantity, decimal? Price, bool PriceIsDifference, IReadOnlyDictionary<string, string> Options, bool? Active, XElement Source);
+    // The option a variant known only by its name carries ("S", "Lacivert / L").
+    public const string VariantNameOption = "Varyant";
+
+    // Barcode is null for a GetProductsWithVariants entry (VariantId, VariantName, Quantity, PriceDifference, Limit);
+    // VariantId then names it.
+    public sealed record VariantRead(string? Barcode, decimal? Quantity, decimal? Price, bool PriceIsDifference, IReadOnlyDictionary<string, string> Options, bool? Active, XElement Source, string? VariantId = null);
 
     // GetProductsWithVariantsResult {ProductsWithVariants{ProductWithVariants{ProductBarcode, Variants{...}}}, TotalPage}.
     public static IEnumerable<(string ProductBarcode, IReadOnlyList<XElement> Entries)> ProductsWithVariants(XElement result)
@@ -76,9 +81,14 @@ public static class PttAvmVariantMapper
             if (Value(combination, "Barkod", "VariantBarkod", "Barcode") is { } barcode)
                 reads.Add(new(barcode, Number(combination, "Stok", "Miktar", "Quantity"), null, true, CombinationOptions(Value(combination, "Degerler")), Bool(combination, "Aktif"), combination));
         if (reads.Count > 0) return reads;
-        if (Value(entry, "VariantBarkod", "VariantBarcode", "Barkod", "Barcode", "CatalogBarcode") is not { } entryBarcode) return reads;
-        reads.Add(new(entryBarcode, Number(entry, "Miktar", "Stok", "Quantity"), Number(entry, "Fiyat", "FiyatFarki", "Price"),
-            Bool(entry, "FiyatFarkiMi") ?? true, EntryOptions(entry), Bool(entry, "Aktif"), entry));
+        var entryBarcode = Value(entry, "VariantBarkod", "VariantBarcode", "Barkod", "Barcode", "CatalogBarcode");
+        var variantId = Value(entry, "VariantId");
+        var options = EntryOptions(entry);
+        if (Value(entry, "VariantName") is { } variantName) options.TryAdd(VariantNameOption, variantName);
+        // Without a barcode the entry needs its id and its name: the id links it, the name is matched to the panel options.
+        if (entryBarcode is null && (variantId is null || !options.ContainsKey(VariantNameOption))) return reads;
+        reads.Add(new(entryBarcode, Number(entry, "Miktar", "Stok", "Quantity"), Number(entry, "Fiyat", "FiyatFarki", "PriceDifference", "Price"),
+            Bool(entry, "FiyatFarkiMi") ?? true, options, Bool(entry, "Aktif"), entry, variantId));
         return reads;
     }
 
@@ -93,7 +103,7 @@ public static class PttAvmVariantMapper
         $"{entry.Name.LocalName}[{string.Join(",", entry.Descendants().Select(x => x.Name.LocalName).Distinct().Take(20))}]";
 
     // Tanim/Deger (VariantAttr), Definition/Value or Name/Value pairs, and the Variant1Deger/Variant2Deger values.
-    private static IReadOnlyDictionary<string, string> EntryOptions(XElement entry)
+    private static Dictionary<string, string> EntryOptions(XElement entry)
     {
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in entry.Descendants().Where(x => x.HasElements))
