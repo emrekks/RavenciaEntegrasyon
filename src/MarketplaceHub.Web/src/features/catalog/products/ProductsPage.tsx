@@ -1,7 +1,7 @@
 // Ürünler (/products).
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { variantOptionParts } from '../variant-option-label'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages, type CursorPage } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
@@ -22,6 +22,7 @@ import { quickPriceTarget } from '../quick-price-edit'
 import { bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
+import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { AcceptedJob, ImageLightboxModal, MarketplaceConnection, Product, Variant, compareLabelsAlphabetically, compareOptionValues, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantColorKey, variantOptionEntries } from '../shared'
 
 function compareVariantItemsAlphabetically(left: { variant: { optionSignature?: string | null; sku: string } }, right: { variant: { optionSignature?: string | null; sku: string } }) {
@@ -480,9 +481,20 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
     <p className="rr-lead">Devam ederseniz bu kayıtların varyant, stok, fiyat ve platform eşleşmeleri silinir.</p>
   </RrModal>
 }
+const productPageSizes = [20, 50, 100]
+// The list state a products address carries (W16); the page's cursor goes with it, so page 3 opens as page 3.
+function productListFromUrl(params: URLSearchParams) {
+  const filters: ProductListFilters = { search: readUrlText(params, 'q'), status: readUrlText(params, 'status'), platform: readUrlText(params, 'platform'), stock: readUrlText(params, 'stock') }
+  const pageSize = readUrlNumber(params, 'size', 20, productPageSizes)
+  const after = readUrlText(params, 'after')
+  const pageNumber = after ? readUrlNumber(params, 'page', 1) : 1
+  return { filters, pageSize, pageNumber, pageCursors: pageNumber > 1 ? { [JSON.stringify(filters)]: { [pageNumber]: after } } : {} }
+}
 export function ProductsPage() {
+  const [searchParams] = useSearchParams()
+  const [initialList] = useState(() => productListFromUrl(searchParams))
   const [trackedProductImportJobIds, setTrackedProductImportJobIds] = useState<string[]>([])
-  const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' } | null>(null); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED' } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(true); const [productImportUpdateExistingPricesAndStock, setProductImportUpdateExistingPricesAndStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [lowStockOpen, setLowStockOpen] = useState(false); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
+  const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(initialList.filters.search); const [searchFilter, setSearchFilter] = useState(initialList.filters.search); const [status, setStatus] = useState(initialList.filters.status); const [platform, setPlatform] = useState(initialList.filters.platform); const [stock, setStock] = useState(initialList.filters.stock); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' } | null>(null); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED' } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(true); const [productImportUpdateExistingPricesAndStock, setProductImportUpdateExistingPricesAndStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [lowStockOpen, setLowStockOpen] = useState(false); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>(initialList.pageCursors)
   const [pageJumping, setPageJumping] = useState(false)
   const [catalogSort, setCatalogSort] = useState<ProductCatalogSort>(null)
   const [productImportIncludePendingApproval, setProductImportIncludePendingApproval] = useState(false)
@@ -535,7 +547,8 @@ export function ProductsPage() {
     setTrackedProductImportJobIds([])
   }, [client, productImportOpen, productSyncJobsQuery.data, trackedProductImportJobIds])
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
-  useEffect(() => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }, [productFilterKey, pageSize])
+  useChangeEffect(`${productFilterKey}|${pageSize}`, () => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) })
+  useListUrlSync({ q: searchFilter, status, platform, stock, size: pageSize, page: pageNumber, after: pageNumber > 1 ? pageCursor : null }, { size: 20, page: 1 })
   useEffect(() => {
     if (query.data?.totalCount == null) return
     const nextTotalPages = Math.max(1, Math.ceil(query.data.totalCount / pageSize))

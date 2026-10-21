@@ -11,6 +11,7 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
+import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
 import { returnReasonPresentation } from '../return-reference-presentation'
 import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrLoading, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
 import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, type NotificationDetail, type NotificationTarget } from '../../../shared/notifications'
@@ -318,12 +319,18 @@ function ReturnInlineActions({ item, onNotice, selectedLineIds, onSelectedLineId
   if (item.decisionPending) return <div className="rr-callout"><RrIcon name="info" /><span><b>Karar {marketplaceName}’a Gönderildi.</b> Bu iade kararı {marketplaceName}’a anlık olarak iletildi. {marketplaceName}’dan kesin durum yanıtı gelene kadar yeni bir karar gönderilemez.</span></div>
   return <><ReturnReceiptButton item={item} onNotice={onNotice} />{decisions && <ReturnDecisionActions item={item} onNotice={onNotice} selectedLineIds={selectedLineIds} onSelectedLineIdsChange={onSelectedLineIdsChange} />}</>
 }
+const returnPageSizes = [20, 50, 100, 200]
+const approvedReturnSorts: readonly ApprovedReturnSort[] = ['APPROVED_DESC', 'APPROVED_ASC', 'ORDERED_DESC', 'ORDERED_ASC']
+// The list state a returns address carries besides status and search (W16).
+function returnListFromUrl(params: URLSearchParams) {
+  return { from: readUrlText(params, 'from'), to: readUrlText(params, 'to'), pageSize: readUrlNumber(params, 'size', 20, returnPageSizes), pageNumber: readUrlNumber(params, 'page', 1), platforms: readUrlList(params, 'platforms'), cargo: readUrlText(params, 'cargo', 'ALL'), reason: readUrlText(params, 'reason', 'ALL'), invoice: readUrlText(params, 'invoice', 'ALL'), sort: readUrlChoice(params, 'sort', approvedReturnSorts, 'APPROVED_DESC') }
+}
 export function ReturnsPage() {
   const tabs = [['ALL', 'Tüm İadeler'], ['REQUESTED', 'Talep Oluşturulan'], ['SHIPPING', 'Kargoya Verilen'], ['ACTION_REQUIRED', 'Aksiyon Bekleyen'], ['APPROVED', 'Onaylanan'], ['REJECTED', 'Reddedilen'], ['REVIEW', 'Analiz'], ['DISPUTED', 'İhtilaflı'], ['SUSPENDED', 'Askıda İadeler']] as const
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedStatus = searchParams.get('status') ?? 'ALL'
   const initialStatus = resolveReturnStatus(requestedStatus)
-  const [status, setStatus] = useState<string>(initialStatus); const [search, setSearch] = useState(() => searchParams.get('search') ?? ''); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [jumpPage, setJumpPage] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]); const [cargoFilter, setCargoFilter] = useState('ALL'); const [reasonFilter, setReasonFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [approvedSort, setApprovedSort] = useState<ApprovedReturnSort>('APPROVED_DESC')
+  const [status, setStatus] = useState<string>(initialStatus); const [initialList] = useState(() => returnListFromUrl(searchParams)); const [search, setSearch] = useState(() => searchParams.get('search') ?? ''); const [from, setFrom] = useState(initialList.from); const [to, setTo] = useState(initialList.to); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [jumpPage, setJumpPage] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [cargoFilter, setCargoFilter] = useState(initialList.cargo); const [reasonFilter, setReasonFilter] = useState(initialList.reason); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState(initialList.invoice); const [approvedSort, setApprovedSort] = useState<ApprovedReturnSort>(initialList.sort)
   const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<ReturnNoticeKind>('info')
   function setNotice(message: string, kind: ReturnNoticeKind = 'info') { setNoticeState(message); setNoticeKind(kind) }
   const handleNotice = setNotice
@@ -346,6 +353,7 @@ export function ReturnsPage() {
   const [cursorKey, setCursorKey] = useState(listKey)
   if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
   const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
+  useListUrlSync({ status: appliedFilters.status, search: appliedFilters.search, from: appliedFilters.from, to: appliedFilters.to, platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoice: invoiceStatusFilter, sort: approvedSort, size: pageSize, page: pageNumber }, { status: 'ALL', cargo: 'ALL', reason: 'ALL', invoice: 'ALL', sort: 'APPROVED_DESC', size: 20, page: 1 })
   const query = useQuery({ queryKey: ['returns', 'list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor], queryFn: () => hubApi<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const summary = useQuery({ queryKey: ['returns', 'summary', appliedFilters, refinements], queryFn: () => hubApi<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
