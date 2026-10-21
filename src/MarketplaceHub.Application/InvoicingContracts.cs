@@ -331,6 +331,7 @@ public static class MarketplaceInvoiceLinkRevocationPolicy
             "TRENDYOL" => $"Trendyol fatura linkini silme servisi sunuyor. “Fatura Linkini Kaldır” {package} paketindeki linki siler ve paketi yeniden okuyarak kalktığını doğrular. Servis çalışmazsa Trendyol Satıcı Paneli’nde siparişi açıp faturayı silin.",
             "HEPSIBURADA" => $"Hepsiburada gönderilen fatura linkini silme veya değiştirme servisi sunmuyor. Hepsiburada Satıcı Paneli’nde {package} paketinin faturasını kaldırın; panelde bu seçenek yoksa Hepsiburada’ya satıcı destek talebi açıp faturanın silinmesini isteyin. Sonra “Kaldırıldığını Kontrol Et” ile paneli güncelleyin.",
             "N11" => "n11 fatura linkini silme servisi sunmuyor. Siparişte tek aktif link olur; aynı siparişe yeni fatura linki gönderildiğinde eskisinin yerine geçer. Yeni fatura kesilmeyecekse linkin kaldırılmasını n11 satıcı desteğinden isteyin.",
+            "PTTAVM" => "PTT AVM fatura linkini silme servisi sunmuyor. Yeni fatura kesilmeyecekse linkin kaldırılmasını PTT AVM satıcı panelinden veya satıcı desteğinden isteyin.",
             "PAZARAMA" => "Pazarama fatura linkini silme servisi sunmuyor; link yalnız yeni bir linkle güncellenebilir. Yeni fatura kesilmeyecekse linkin kaldırılmasını Pazarama satıcı desteğinden isteyin.",
             _ => "Bu pazaryeri için fatura linkini kaldırma servisi yok. Linki pazaryerinin satıcı panelinden kaldırın."
         };

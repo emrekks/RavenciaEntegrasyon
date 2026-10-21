@@ -787,11 +787,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (oneTimeAuthorization is not null
             && !await IsValidOneTimeInvoiceDeliveryAsync(tenantId, jobConnectionId, invoice, package, order?.OrderNumber, oneTimeAuthorization, state, cancellationToken))
             return false;
-        // n11 and Pazarama take only links that end in a document extension, so their deliveries always use the
+        // n11, Pazarama and PTT AVM take only links that end in a document extension, so their deliveries always use the
         // document-bound link, which the API also serves as .../invoice.pdf.
         if ((oneTimeAuthorization is not null && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
                 || string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
             && state?.Status is not ("STARTED" or "UNKNOWN" or "SUBMITTED" or "CONFIRMATION_RETRYABLE" or "CONFIRMED"))
         {
             // Provider URLs may require authentication. Publish only the already
@@ -1112,6 +1113,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         {
             deliveryPayload["orderNumber"] = order?.OrderNumber;
             deliveryPayload["pazaramaOrderId"] = PazaramaOrderId(order?.CustomerSnapshotJson);
+        }
+        // PTT AVM attaches the invoice to order lines: the LineItemId of every line not cancelled.
+        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
+        {
+            deliveryPayload["orderNumber"] = order?.OrderNumber;
+            deliveryPayload["lineItemIds"] = await db.OrderLines.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.OrderId == package.OrderId && x.OrderedQuantity > x.CancelledQuantity)
+                .OrderBy(x => x.ExternalLineId)
+                .Select(x => x.ExternalLineId)
+                .ToListAsync(cancellationToken);
         }
         var payload = JsonSerializer.Serialize(deliveryPayload);
         var requestHash = Hash(payload);
@@ -1791,7 +1802,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                     && state.UpdatedAt <= now.AddMinutes(-2)
                                     && connection.Status == "ACTIVE"
                                     && connection.Environment == "PRODUCTION"
-                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA")
+                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA" || connection.PlatformCode == "PTTAVM")
                                     && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
                                 select new { invoice.Id, PackageId = package.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
 
@@ -1818,7 +1829,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .Where(connection => connection.TenantId == tenantId
                 && connection.Status == "ACTIVE"
                 && connection.Environment == "PRODUCTION"
-                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA"))
+                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA" || connection.PlatformCode == "PTTAVM"))
             .Select(connection => connection.Id).ToListAsync(cancellationToken)).ToHashSet();
         var activeDeliveryJobs = await db.IntegrationJobs.AsNoTracking()
             .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery

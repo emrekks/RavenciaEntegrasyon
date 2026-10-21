@@ -990,6 +990,71 @@ public sealed class PttAvmAdapterTests
         Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("RETURNS"));
     }
 
+    private const string InvoicePayload = """{"invoiceLink":"https://panel.ravencia.com/api/v1/public/invoices/abc/document","invoiceNumber":"RVC2026000001","orderNumber":"PTT-A1712HP2E-071024","lineItemIds":["229049580","229049580","x"]}""";
+
+    [Fact]
+    public void AnInvoiceRequestCarriesThePdfLinkTheOrderAndItsLines()
+    {
+        var request = PttAvmInvoiceMapper.Request(InvoicePayload);
+
+        Assert.Null(request.Error);
+        Assert.Equal([229049580L], request.LineItemIds);
+        var envelope = PttAvmHttpClient.SoapEnvelope(PttAvmHttpClient.SaveInvoice, Account(), Now, PttAvmInvoiceMapper.Parameters(request));
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace, arr = PttAvmHttpClient.ArrayNamespace;
+        var body = XDocument.Parse(envelope).Descendants(tem + "SaveInvoince").Single();
+        Assert.Equal(["lineItemId", "orderId", "content", "url"], body.Elements().Select(x => x.Name.LocalName));
+        Assert.Equal("229049580", body.Element(tem + "lineItemId")!.Element(arr + "int")!.Value);
+        Assert.Equal("PTT-A1712HP2E-071024", body.Element(tem + "orderId")!.Value);
+        Assert.Equal(request.Link, body.Element(tem + "url")!.Value);
+    }
+
+    [Fact]
+    public void AnInvoiceRequestWithoutLinesOrHttpsIsRefused()
+    {
+        Assert.NotNull(PttAvmInvoiceMapper.Request("""{"invoiceLink":"https://x.test/a.pdf","orderNumber":"PTT-1-010125","lineItemIds":[]}""").Error);
+        Assert.NotNull(PttAvmInvoiceMapper.Request("""{"invoiceLink":"http://x.test/a.pdf","orderNumber":"PTT-1-010125","lineItemIds":["1"]}""").Error);
+    }
+
+    [Fact]
+    public async Task NoInvoiceIsSentWhileExternalWritesAreOff()
+    {
+        var handler = new CapturingHandler(_ => throw new InvalidOperationException());
+        var client = Client(handler, globalWrites: false);
+
+        var blocked = client.WriteBlocked<InvoiceDeliveryResult>(Account(status: "ACTIVE", connectionWrites: true), "fatura linki");
+
+        Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", blocked!.Error!.Code);
+        Assert.Null(Client(handler, globalWrites: true).WriteBlocked<InvoiceDeliveryResult>(Account(status: "ACTIVE", connectionWrites: true), "fatura linki"));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("<a:Error_Message i:nil=\"true\"/><a:Success>true</a:Success>", PttAvmInvoiceMapper.SaveOutcome.Saved)]
+    [InlineData("<a:Error_Message>işlem gerçekleştirilmiştir.</a:Error_Message><a:Success>false</a:Success>", PttAvmInvoiceMapper.SaveOutcome.Unclear)]
+    [InlineData("<a:Error_Message>Sipariş bulunamadı.</a:Error_Message><a:Success>false</a:Success>", PttAvmInvoiceMapper.SaveOutcome.Rejected)]
+    public void TheInvoiceAnswerIsReadWithoutGuessing(string fields, PttAvmInvoiceMapper.SaveOutcome expected)
+    {
+        var result = XElement.Parse($"""<SaveInvoinceResult xmlns:a="{PttAvmHttpClient.ContractNamespace}" xmlns:i="{PttAvmHttpClient.InstanceNamespace}">{fields}</SaveInvoinceResult>""");
+
+        Assert.Equal(expected, PttAvmInvoiceMapper.Outcome(result));
+    }
+
+    [Fact]
+    public void TheOrderLinesTellWhetherAnInvoiceIsHeld()
+    {
+        // Lines without the flag answer nothing; the cancelled line never counts.
+        Assert.Null(PttAvmInvoiceMapper.Invoiced(OrderFromList("PTT-A1712HP2E-071024")));
+        Assert.False(PttAvmInvoiceMapper.Invoiced(WithLiveLineInvoiceFlag("false")));
+        Assert.True(PttAvmInvoiceMapper.Invoiced(WithLiveLineInvoiceFlag("true")));
+    }
+
+    private static RemoteOrder WithLiveLineInvoiceFlag(string flag)
+    {
+        var answer = OrderListAnswer.Replace("<a:IndirimPttavm>2.71</a:IndirimPttavm>", $"<a:IndirimPttavm>2.71</a:IndirimPttavm><a:IsInvoice>{flag}</a:IsInvoice>", StringComparison.Ordinal);
+        var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, answer, PttAvmHttpClient.Orders);
+        return PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-A1712HP2E-071024");
+    }
+
     private static RemoteOrder OrderFromList(string orderNumber)
     {
         var (result, error) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, OrderListAnswer, PttAvmHttpClient.Orders);

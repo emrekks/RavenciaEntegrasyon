@@ -25,19 +25,21 @@ public sealed partial class PttAvmHttpClient
     internal const string PasswordTextType = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText";
     internal const string InstanceNamespace = "http://www.w3.org/2001/XMLSchema-instance";
     internal const string ContractNamespace = "http://schemas.datacontract.org/2004/07/ePttAVMService";
+    internal const string ArrayNamespace = "http://schemas.microsoft.com/2003/10/Serialization/Arrays";
     // The service rejects a request whose Timestamp has expired; five minutes is what its own answers carry.
     internal static readonly TimeSpan TimestampLifetime = TimeSpan.FromMinutes(5);
 
-    // One request parameter: <tem:Name>value</tem:Name>, or <tem:Name i:nil="true"/> for null.
-    internal readonly record struct SoapParameter(string Name, string? Value);
+    // One request parameter: <tem:Name>value</tem:Name>, or <tem:Name i:nil="true"/> for null. A raw parameter carries
+    // markup already built (an arr:int list), which goes in unescaped.
+    internal readonly record struct SoapParameter(string Name, string? Value, bool Raw = false);
 
     internal static string SoapEnvelope(string operation, PttAvmRequestContext account, DateTimeOffset now, IReadOnlyList<SoapParameter> parameters)
     {
         var created = now.ToUniversalTime();
         var body = new StringBuilder();
-        foreach (var parameter in parameters) body.Append(SoapElement(parameter.Name, parameter.Value));
+        foreach (var parameter in parameters) body.Append(parameter.Raw ? $"<tem:{parameter.Name}>{parameter.Value}</tem:{parameter.Name}>" : SoapElement(parameter.Name, parameter.Value));
         var operationElement = body.Length == 0 ? $"<tem:{operation}/>" : $"<tem:{operation}>{body}</tem:{operation}>";
-        return $"""<soapenv:Envelope xmlns:soapenv="{EnvelopeNamespace}" xmlns:tem="{ServiceNamespace}" xmlns:i="{InstanceNamespace}"><soapenv:Header><wsse:Security soapenv:mustUnderstand="1" xmlns:wsse="{SecurityNamespace}" xmlns:wsu="{UtilityNamespace}"><wsu:Timestamp wsu:Id="TS-{Guid.NewGuid():N}"><wsu:Created>{SoapTime(created)}</wsu:Created><wsu:Expires>{SoapTime(created + TimestampLifetime)}</wsu:Expires></wsu:Timestamp><wsse:UsernameToken wsu:Id="UsernameToken-{Guid.NewGuid():N}"><wsse:Username>{SecurityElement.Escape(account.Username)}</wsse:Username><wsse:Password Type="{PasswordTextType}">{SecurityElement.Escape(account.Password)}</wsse:Password></wsse:UsernameToken></wsse:Security></soapenv:Header><soapenv:Body>{operationElement}</soapenv:Body></soapenv:Envelope>""";
+        return $"""<soapenv:Envelope xmlns:soapenv="{EnvelopeNamespace}" xmlns:tem="{ServiceNamespace}" xmlns:i="{InstanceNamespace}" xmlns:arr="{ArrayNamespace}"><soapenv:Header><wsse:Security soapenv:mustUnderstand="1" xmlns:wsse="{SecurityNamespace}" xmlns:wsu="{UtilityNamespace}"><wsu:Timestamp wsu:Id="TS-{Guid.NewGuid():N}"><wsu:Created>{SoapTime(created)}</wsu:Created><wsu:Expires>{SoapTime(created + TimestampLifetime)}</wsu:Expires></wsu:Timestamp><wsse:UsernameToken wsu:Id="UsernameToken-{Guid.NewGuid():N}"><wsse:Username>{SecurityElement.Escape(account.Username)}</wsse:Username><wsse:Password Type="{PasswordTextType}">{SecurityElement.Escape(account.Password)}</wsse:Password></wsse:UsernameToken></wsse:Security></soapenv:Header><soapenv:Body>{operationElement}</soapenv:Body></soapenv:Envelope>""";
     }
 
     internal static string SoapElement(string name, string? value) =>
