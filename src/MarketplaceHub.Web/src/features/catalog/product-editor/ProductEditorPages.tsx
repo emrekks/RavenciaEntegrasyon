@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
-import { UiIcon, usePromptDialog, type UiIconName, DialogSurface } from '../../../shared/components'
+import { UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
@@ -1060,9 +1060,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const allowReseedUntil = useRef(0)
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({})
   const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds }), [attributeSelections, attributeTextValues, familyMediaOrder, form, mediaFiles.length, removedVariantIds, variantRows])
-  const editorDirty = Boolean(editProductId) && seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
+  // A new product compares with the empty form it opened with; a copy and an edit with the form right after seeding.
+  const editorDirty = seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
   const captureEditorSnapshot = useEffectEvent(() => setSeedSnapshot(currentEditorSnapshot))
   useEffect(() => { if (snapshotRequest) captureEditorSnapshot() }, [snapshotRequest])
+  useEffect(() => { if (!editProductId && !duplicateProductId) setSnapshotRequest(value => value + 1) }, [duplicateProductId, editProductId])
+  // The editor's own navigation after a save (to the new product's page) is not asked about.
+  const leavingAfterSave = useRef(false)
   useEffect(() => {
     if (!editorDirty) return
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
@@ -2309,6 +2313,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (!createOnly) showFeedback(message, warnings.length ? 'info' : 'success')
       if (createOnly && productCreated) {
         appendNotification('Ürün oluşturuldu. Ürün sayfası açılıyor.', 'success')
+        leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`)
       }
     } catch (reason) {
@@ -2318,6 +2323,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (!productCreated) setFieldErrors(editorFieldErrors(reason))
       if (productCreated && !editProductId) {
         appendNotification(`${feedbackMessage} Ürün sayfası açılıyor; kaldığınız yerden düzenleyebilirsiniz.`, 'error')
+        leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`)
       }
     } finally { setSubmitting(false) }
@@ -2529,6 +2535,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorToast error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere dön</Link></Page>
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
+    <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />
     {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
     <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
