@@ -234,31 +234,32 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     // first controlled n11 write is made before the automatic flows are on.
     public async Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || (x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || (x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
         // Hepsiburada is accepted only for the SIT certification upload of a STAGE connection; any other
         // Hepsiburada connection (PRODUCTION) gets the same refusal as before.
         if (connection is not null && connection.PlatformCode == "HEPSIBURADA" && !HepsiburadaStageCertificationPolicy.IsStageHepsiburada(connection)) connection = null;
-        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11 ya da Pazarama bağlantısı gerekir.", 422);
+        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11, Pazarama ya da PTT AVM bağlantısı gerekir.", 422);
         if (connection.PlatformCode == "HEPSIBURADA") return await EnqueueHepsiburadaStagePriceInventoryAsync(tenantId, connection, idempotencyKey, correlationId, stockCode, cancellationToken);
         Guid? variantId = null;
         if (!string.IsNullOrWhiteSpace(stockCode))
         {
-            if (connection.PlatformCode is not ("N11" or "PAZARAMA")) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11 ve Pazarama bağlantısında kullanılabilir.", 422);
+            if (connection.PlatformCode is not ("N11" or "PAZARAMA" or "PTTAVM")) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11, Pazarama ve PTT AVM bağlantısında kullanılabilir.", 422);
             var code = stockCode.Trim();
             variantId = await db.MarketplaceVariantLinks.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == code)
                 .Select(x => (Guid?)x.VariantId)
                 .SingleOrDefaultAsync(cancellationToken);
+            if (variantId is null && connection.PlatformCode == "PTTAVM") return ServiceResult<Guid>.Fail("PTTAVM_BARCODE_NOT_LINKED", $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce PTT AVM ürün eşleştirmesini çalıştırın.", 422);
             if (variantId is null) return ServiceResult<Guid>.Fail(connection.PlatformCode == "PAZARAMA" ? "PAZARAMA_BARCODE_NOT_LINKED" : "N11_STOCK_CODE_NOT_LINKED", connection.PlatformCode == "PAZARAMA" ? $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce Pazarama ürün eşleştirmesini çalıştırın." : $"'{code}' stok kodu panelde bir varyanta bağlı değil. Önce N11 ürün eşleştirmesini çalıştırın.", 404);
-            if (connection.PlatformCode != "PAZARAMA" && !await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock && x.Enabled, cancellationToken))
+            if (connection.PlatformCode is not ("PAZARAMA" or "PTTAVM") && !await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock && x.Enabled, cancellationToken))
                 return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         }
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
-        // Pazarama sends started from the panel are manual: the connection switch is the only gate; the
+        // Pazarama and PTT AVM sends started from the panel are manual: the connection switch is the only gate; the
         // automatic price/stock policies only govern sends the system starts on its own.
-        var manual = connection.PlatformCode == "PAZARAMA";
+        var manual = connection.PlatformCode is "PAZARAMA" or "PTTAVM";
         if (!manual && pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
         // The request writes stock as well (Trendyol's too), so the stock policy must allow it.
         if (!manual && !await StockWritePolicyAllowsAsync(tenantId, connectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);

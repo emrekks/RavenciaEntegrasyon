@@ -102,9 +102,9 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
-    public void PttAvmConnectionsCarryOnlyThePhaseOneReadCapabilities() =>
+    public void PttAvmConnectionsCarryTheirReadAndPriceStockCapabilities() =>
         Assert.Equal(
-            [MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.ReferenceRead],
+            [MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite],
             MarketplaceConnectionService.PttAvmCapabilityCodes);
 
     [Fact]
@@ -1054,6 +1054,98 @@ public sealed class PttAvmAdapterTests
         var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, answer, PttAvmHttpClient.Orders);
         return PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-A1712HP2E-071024");
     }
+
+    [Fact]
+    public void APriceStockPayloadCarriesBarcodeVatPriceAndClampedStock()
+    {
+        var line = new PriceInventoryPushLine(Guid.NewGuid(), Guid.NewGuid(), "tshirt-1072", 12000m, 149.999m, 149.999m, "TRY", 3, 2, "hash");
+        var payload = PttAvmPriceInventoryRules.Payload([(line, 20m), (line with { Barcode = "tshirt-1075", Quantity = -4 }, 18m)]);
+
+        var items = PttAvmPriceInventoryRules.Items(payload)!;
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal(new PttAvmPriceInventoryRules.Item("tshirt-1072", 150.00m, 20m, 9999), items[0]);
+        // 18 % is not a PTT AVM rate: the VAT rate is left out and PTT AVM keeps its own.
+        Assert.Equal(new PttAvmPriceInventoryRules.Item("tshirt-1075", 150.00m, null, 0), items[1]);
+        var envelope = PttAvmHttpClient.SoapEnvelope(PttAvmHttpClient.StockPriceUpdate, Account(), Now, [new("items", PttAvmPriceInventoryRules.ItemsXml(items), Raw: true)]);
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace, ept = PttAvmHttpClient.RequestsNamespace;
+        var requests = XDocument.Parse(envelope).Descendants(ept + "ProductStockPriceRequest").ToList();
+        Assert.Equal(2, requests.Count);
+        Assert.Equal(["Barcode", "PriceWithVAT", "Quantity", "VATRate"], requests[0].Elements().Select(x => x.Name.LocalName));
+        Assert.Equal("150.00", requests[0].Element(ept + "PriceWithVAT")!.Value);
+        Assert.Equal("20", requests[0].Element(ept + "VATRate")!.Value);
+        Assert.Null(requests[1].Element(ept + "VATRate"));
+        Assert.Single(XDocument.Parse(envelope).Descendants(tem + "items"));
+    }
+
+    [Theory]
+    [InlineData("""{"items":[]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":1,"quantity":1}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"quantity":10000}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"quantity":1},{"barcode":"A","priceWithVat":10,"quantity":1}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"quantity":1,"vatRate":18}]}""")]
+    public void AnUnacceptablePriceStockPayloadIsRefused(string payload) => Assert.Null(PttAvmPriceInventoryRules.Items(payload));
+
+    // GetProductsTrackingResult as published (three of its five barcodes).
+    private const string TrackingAnswer = """
+        <GetProductsTrackingResultResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService.Model.Responses" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+           <a:CreatedAt>2024-10-24T09:46:41.595Z</a:CreatedAt>
+           <a:Progress>100</a:Progress>
+           <a:Status>COMPLETED</a:Status>
+           <a:TrackingId>671a178183f9c51388bbb169</a:TrackingId>
+           <a:ProductsSubTrackingResult>
+              <a:ProductBasedInfos>
+                 <a:ProductBasedInfo>
+                    <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"><b:string>Ürünün KDV tanımı 0, 1, 10, 20 değerleri olabilir.</b:string></a:FailureReasons>
+                    <a:Message>Ürün güncellemesi başarısız.</a:Message><a:Status>CANCELLED</a:Status><a:Barcode>tshirt-1071</a:Barcode><a:ProductId>744445042</a:ProductId>
+                 </a:ProductBasedInfo>
+                 <a:ProductBasedInfo>
+                    <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"/>
+                    <a:Message>Ürün bilgilerinde herhangi bir değişiklik tespit edilemedi.</a:Message><a:Status>CANCELLED</a:Status><a:Barcode>tshirt-1073</a:Barcode><a:ProductId>744445044</a:ProductId>
+                 </a:ProductBasedInfo>
+                 <a:ProductBasedInfo>
+                    <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"><b:string>Fiyat kilidinden dolayı ürünün fiyatı güncellenemedi.</b:string></a:FailureReasons>
+                    <a:Message>Ürün güncellendi.</a:Message><a:Status>COMPLETED</a:Status><a:Barcode>tshirt-1075</a:Barcode>
+                 </a:ProductBasedInfo>
+                 <a:ProductBasedInfo>
+                    <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"/>
+                    <a:Message>Ürün güncellendi.</a:Message><a:Status>COMPLETED</a:Status><a:Barcode>tshirt-1076</a:Barcode>
+                 </a:ProductBasedInfo>
+              </a:ProductBasedInfos>
+           </a:ProductsSubTrackingResult>
+        </GetProductsTrackingResultResult>
+        """;
+
+    [Fact]
+    public void TrackingResultsSayWhichBarcodesTookTheirPriceAndStock()
+    {
+        var status = PttAvmPriceInventoryRules.Tracking("t:671a", XElement.Parse(TrackingAnswer))!;
+
+        Assert.Equal("COMPLETED", status.Status);
+        var lines = status.Lines.ToDictionary(x => x.ExternalKey);
+        Assert.False(lines["tshirt-1071"].Succeeded);
+        Assert.Equal("PTTAVM_PRODUCT_UPDATE_CANCELLED", lines["tshirt-1071"].ErrorCode);
+        Assert.Contains("KDV tanımı", lines["tshirt-1071"].Status);
+        // Nothing to change counts as done.
+        Assert.True(lines["tshirt-1073"].Succeeded);
+        // Completed with a lock reason did not take everything.
+        Assert.Equal("PTTAVM_PRODUCT_UPDATE_PARTIAL", lines["tshirt-1075"].ErrorCode);
+        Assert.True(lines["tshirt-1076"].Succeeded);
+        Assert.Equal("744445042", lines["tshirt-1071"].ExternalId);
+    }
+
+    [Fact]
+    public void ATrackingStillWaitingIsInProgress()
+    {
+        var waiting = TrackingAnswer.Replace("<a:Status>COMPLETED</a:Status>\n           <a:TrackingId>", "<a:Status>InProgress</a:Status>\n           <a:TrackingId>", StringComparison.Ordinal)
+            .Replace("<a:Status>COMPLETED</a:Status><a:Barcode>tshirt-1076</a:Barcode>", "<a:Status>Waiting</a:Status><a:Barcode>tshirt-1076</a:Barcode>", StringComparison.Ordinal);
+
+        Assert.Equal("IN_PROGRESS", PttAvmPriceInventoryRules.Tracking("t:671a", XElement.Parse(waiting))!.Status);
+    }
+
+    [Fact]
+    public void NoPriceOrStockIsSentWhileExternalWritesAreOff() =>
+        Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", Client(new CapturingHandler(_ => throw new InvalidOperationException())).WriteBlocked<RemoteOperationRef>(Account(status: "VERIFIED", connectionWrites: false), "fiyat-stok")!.Error!.Code);
 
     private static RemoteOrder OrderFromList(string orderNumber)
     {

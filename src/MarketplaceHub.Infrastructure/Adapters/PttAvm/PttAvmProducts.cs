@@ -102,7 +102,4 @@ public sealed partial class PttAvmHttpClient : IProductPort
 
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) =>
         Task.FromResult(NotSupported<RemoteOperationRef>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));
-
-    public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemoteOperationStatus>("PTTAVM_OPERATION_READ_LATER", "PTT AVM işlem takibi fiyat/stok aşamasıyla açılacak."));
 }

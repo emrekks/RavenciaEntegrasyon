@@ -440,8 +440,8 @@ function PriceStockSendPanel({ connectionId, writesEnabled, connectionActive, pl
   })
   const blocked = !writesEnabled || !connectionActive
   return <section className="panel n11-price-stock-send">
-    <h2>{platformName}’{platformName === 'Pazarama' ? 'ya' : 'e'} Fiyat ve Stok Gönder</h2>
-    <p>{!connectionActive ? 'Gönderim için bağlantı aktif veya doğrulanmış olmalı.' : !writesEnabled ? (platformName === 'Pazarama' ? 'Gönderim için yukarıdaki dış yazma anahtarını açın.' : 'Gönderim için yukarıdaki dış yazma anahtarını ve fiyat-stok akışını açın.') : `İlk gönderimi tek bir ${codeLabel} ile yapıp sonucu ${platformName} panelinde kontrol edin; sorun yoksa değişen tüm ürünleri gönderin.`}</p>
+    <h2>{platformName}’{platformName === 'Pazarama' ? 'ya' : platformName === 'PTT AVM' ? 'ye' : 'e'} Fiyat ve Stok Gönder</h2>
+    <p>{!connectionActive ? 'Gönderim için bağlantı aktif veya doğrulanmış olmalı.' : !writesEnabled ? (platformName === 'Pazarama' || platformName === 'PTT AVM' ? 'Gönderim için yukarıdaki dış yazma anahtarını açın.' : 'Gönderim için yukarıdaki dış yazma anahtarını ve fiyat-stok akışını açın.') : `İlk gönderimi tek bir ${codeLabel} ile yapıp sonucu ${platformName} panelinde kontrol edin; sorun yoksa değişen tüm ürünleri gönderin.`}</p>
     <form onSubmit={event => { event.preventDefault(); if (stockCode.trim()) send.mutate(stockCode.trim()) }}>
       <label>{platformName} {codeLabel.split(' ').map(word => word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1)).join(' ')}<input value={stockCode} onChange={event => setStockCode(event.target.value)} placeholder={`Örn. ${codeExample}`} autoComplete="off" /></label>
       <div className="n11-price-stock-send-actions">
@@ -567,11 +567,15 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
   if (!activePlatformCodes.has(item.platformCode)) return <div className={rootClass}><Link to="/integrations" className="back"><UiIcon name="arrowLeft" /> Platformlar</Link><div className="unknown"><strong>Bağlantı aktif kapsam dışında</strong><p>Bu platform için işlem paneli henüz etkin değil. Kapsam dışı tarihsel bağlantılara işlem sunulmaz.</p></div></div>
   const stageManual = item.platformCode !== 'SHOPIFY' && item.environment === 'STAGE'; const displayEnvironment = item.platformCode === 'SHOPIFY' ? 'PRODUCTION' : item.environment; const readConnectionReady = item.status === 'ACTIVE' || item.status === 'VERIFIED'; const stageReady = stageManual && !item.lastErrorCode && readConnectionReady
    const efaturam = item.platformCode === 'TRENDYOL_EFATURAM'
-   const externalWritePlatform = item.platformCode === 'SHOPIFY' ? 'Shopify' : item.platformCode === 'HEPSIBURADA' ? 'Hepsiburada' : item.platformCode === 'N11' ? 'N11' : item.platformCode === 'PAZARAMA' ? 'Pazarama' : efaturam ? 'E-Faturam' : 'Trendyol'
+   const externalWritePlatform = item.platformCode === 'SHOPIFY' ? 'Shopify' : item.platformCode === 'HEPSIBURADA' ? 'Hepsiburada' : item.platformCode === 'N11' ? 'N11' : item.platformCode === 'PAZARAMA' ? 'Pazarama' : item.platformCode === 'PTTAVM' ? 'PTT AVM' : efaturam ? 'E-Faturam' : 'Trendyol'
    const externalWriteGroups: Array<{ key: string; label: string; resourceTypes: string[]; description: string; capabilityCodes?: string[] }> = item.platformCode === 'SHOPIFY'
      ? [
          { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki fiyat ve stok değişiklikleri Shopify mağazasına gönderilir.', capabilityCodes: ['PRICE_WRITE', 'INVENTORY_WRITE'] },
          { key: 'manual-external-writes', label: 'Manuel Dış Yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Mevcut fulfillment kargo takip bilgisi ve iade onay/ret kararları Shopify’a gönderilir. Shopify Admin API bu panelden taşıyıcı etiketi satın almaz veya üretmez.', capabilityCodes: ['SHIPMENT_WRITE', 'RETURN_READ', 'RETURN_WRITE'] }
+       ]
+     : item.platformCode === 'PTTAVM'
+     ? [
+         { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki PTT AVM fiyatı ve stok değişikliklerini PTT AVM’ye otomatik gönderir. Kapalıyken sistem bu güncellemeleri kendiliğinden göndermez; panelden elle başlattığınız fiyat-stok gönderimi bu ayardan bağımsızdır, yalnız dış yazma anahtarı açık olmalıdır.' }
        ]
      : item.platformCode === 'PAZARAMA'
      ? [
@@ -674,7 +678,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
   const invoiceSupported = item.platformCode === 'TRENDYOL' || item.platformCode === 'SHOPIFY' || item.platformCode === 'N11' || item.platformCode === 'PAZARAMA' || item.platformCode === 'PTTAVM'
   const writeSupported = item.platformCode === 'TRENDYOL' || item.platformCode === 'HEPSIBURADA' || item.platformCode === 'SHOPIFY' || item.platformCode === 'N11' || item.platformCode === 'PAZARAMA' || efaturam
   const stageTestAvailable = stageTestOrderAvailable(item)
-  const toolsAvailable = item.platformCode === 'N11' || item.platformCode === 'PAZARAMA' || stageTestAvailable || stageManual
+  const toolsAvailable = item.platformCode === 'N11' || item.platformCode === 'PAZARAMA' || item.platformCode === 'PTTAVM' || stageTestAvailable || stageManual
   const overview = <>
     <ConnectionAuthAlert item={item} detail={connectionTestHelp(item)} onTest={item.hasCredential ? () => run.mutate({ path: `/connections/${id}/test-jobs` }) : undefined} testing={run.isPending} />
     <div className="cs-stats"><div><small>Kimlik Bilgisi</small><b>{credentialLabel(item)}</b><span>{credentialHelp(item)}</span></div><div><small>Son Doğrulama</small><b><DateText value={item.lastTestedAt} /></b><span>{connectionTestHelp(item)}</span></div><div><small>{stageManual ? 'Test Ortamı İşlemleri' : 'Pazaryerine Yazma'}</small><b>{stageManual ? stageReady ? 'Hazır' : 'Bloke' : item.externalWritesEnabled ? 'Açık' : 'Kapalı'}</b><span>{stageManual ? stageReady ? 'Manuel denemeler doğrulamalarla çalışır.' : 'Bağlantı testi düzeltilmeden işlem başlatılmaz.' : 'Ana anahtar ve bağlantı anahtarıyla korunur.'}</span></div></div>
@@ -708,6 +712,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
         {item.platformCode === 'N11' && <PriceStockSendPanel connectionId={id} writesEnabled={externalWritesEnabled} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} platformName="N11" codeLabel="stok kodu" codeAccusative="stok kodunu" codeExample="BS74297" />}
         {item.platformCode === 'PAZARAMA' && <PazaramaSaleStatusPanel connectionId={id} writesEnabled={externalWritesEnabled} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} />}
         {item.platformCode === 'PAZARAMA' && <PriceStockSendPanel connectionId={id} writesEnabled={externalWritesEnabled} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} platformName="Pazarama" codeLabel="barkod" codeAccusative="barkodu" codeExample="BS74297" />}
+        {item.platformCode === 'PTTAVM' && <PriceStockSendPanel connectionId={id} writesEnabled={externalWritesEnabled} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} platformName="PTT AVM" codeLabel="barkod" codeAccusative="barkodu" codeExample="8690000000017" />}
         {item.platformCode === 'HEPSIBURADA' && item.environment === 'STAGE' && <HepsiburadaSitPriceStockPanel connectionId={id} connectionReady={stageReady} />}
         {stageTestAvailable && <div className="panel"><h2>Test Ortamında Yeni Sipariş</h2><p>Yalnız test ortamında tek seferlik deneme siparişi oluşturur. Hepsiburada için bağlı hbSku’su olan, yayındaki bir ürün; yoksa SIT hesabından hbSku ile içe aktarılmış aktif bir ürün seçilir. Tıklayınca pazaryerinin test ortamında sipariş açılır; sipariş numarası İşlem Takibi’nde görünür.</p><button type="button" disabled={!item.hasCredential || run.isPending} onClick={() => run.mutate({ path: `/connections/${id}/stage-test-order-jobs` })}>{run.isPending ? 'Kuyruğa alınıyor…' : 'Test Siparişi Oluştur'}</button></div>}
         {stageManual && <div className="panel"><h2>Test Ortamı İşlem Durumu</h2><p>Elle yapılan denemeler bağlantıyı, kayıtlı API bilgilerini, girilen değerleri, tekrar korumasını ve pazaryerinin yanıtını denetler.</p><p>Teknik ayrıntılı hata kayıtları İşlem Takibi’nde tutulur.</p></div>}</> }] : [])

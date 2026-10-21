@@ -7,6 +7,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -131,6 +132,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productId);
         if (string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
             return await BuildPazaramaAsync(tenantId, connectionId, cancellationToken, variantId, productId);
+        if (string.Equals(connection.PlatformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
+            return await BuildPttAvmAsync(tenantId, connectionId, cancellationToken, variantId, productId);
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isTrendyol = string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
@@ -319,6 +322,49 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         // A barcode may be linked to two variants only by mistake; one request must not carry it twice.
         lines = lines.GroupBy(x => x.Line.Barcode, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).Take(PazaramaPriceInventoryRules.MaxItemsPerRequest).ToList();
         var payload = PazaramaPriceInventoryRules.Payload(lines);
+        return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines.Select(x => x.Line).ToList()) { MissingInventorySkus = missingInventory });
+    }
+
+    // PTT AVM has no listing profile in the panel either: an offer is sent when its variant is linked to a PTT AVM
+    // barcode. Price (VAT inclusive, with the offer's VAT rate when PTT AVM accepts it) and stock go in one request,
+    // so a line is sent when either changed; PTT AVM has no separate list price.
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildPttAvmAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId)
+    {
+        var rows = await (from offer in db.ChannelOffers.AsNoTracking()
+                          join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                          join remoteLink in db.MarketplaceVariantLinks.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId }
+                          join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
+                          from inventory in inventories.DefaultIfEmpty()
+                          where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                               && (variantId == null || offer.VariantId == variantId)
+                               && (productId == null || variant.ProductId == productId)
+                          orderby variant.Id
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = remoteLink.ExternalId })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PTT AVM fiyat-stok gönderimi için PTT AVM barkoduna bağlı varyant ve ACTIVE PTT AVM teklifi gerekir.", 422);
+        var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
+        if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
+
+        var lines = new List<(PriceInventoryPushLine Line, decimal? VatRate)>();
+        foreach (var row in rows.Where(row => row.Inventory is not null))
+        {
+            var salePrice = PttAvmPriceInventoryRules.Price(OutboundSalePrice(row.Offer));
+            // PTT AVM refuses a price of 1 or less.
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
+                return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.", 422);
+            var barcode = row.Barcode.Trim();
+            if (barcode.Length == 0 || barcode.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
+                return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM barkodu boş veya {PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.", 422);
+            var vatRate = PttAvmPriceInventoryRules.VatRate(row.Offer.VatRate);
+            var quantity = PttAvmPriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
+            var priceHash = PttAvmPriceInventoryRules.PriceHash(salePrice, vatRate, row.Offer.PriceVersion);
+            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
+            lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, salePrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash), vatRate));
+        }
+        if (lines.Count == 0) return NoChanges(missingInventory);
+        // A barcode may be linked to two variants only by mistake; one request must not carry it twice.
+        lines = lines.GroupBy(x => x.Line.Barcode, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).Take(PttAvmPriceInventoryRules.MaxItemsPerRequest).ToList();
+        var payload = PttAvmPriceInventoryRules.Payload(lines);
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines.Select(x => x.Line).ToList()) { MissingInventorySkus = missingInventory });
     }
 

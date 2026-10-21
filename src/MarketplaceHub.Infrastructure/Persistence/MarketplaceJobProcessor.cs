@@ -1374,7 +1374,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (!submit.IsSuccess)
             {
                 TrackResultFailure(submit.Error);
-                if (IsAmbiguous(submit.Error!)) return JobExecutionResult.Retry("PRICE_INVENTORY_OUTCOME_UNKNOWN", "Fiyat-stok çağrısının sonucu kesinleşmedi; aynı değerler yeniden gönderilecek.", TimeSpan.FromSeconds(30), submit.Error!.RemoteRequestId);
+                // PTT AVM refuses the same request again within five minutes, so its resend waits past that window.
+                if (IsAmbiguous(submit.Error!)) return JobExecutionResult.Retry("PRICE_INVENTORY_OUTCOME_UNKNOWN", "Fiyat-stok çağrısının sonucu kesinleşmedi; aynı değerler yeniden gönderilecek.", await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken) == "PTTAVM" ? TimeSpan.FromMinutes(6) : TimeSpan.FromSeconds(30), submit.Error!.RemoteRequestId);
                 db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(submit.Error!);
             }
             effect.CompletedAt = timeProvider.GetUtcNow(); var op = submit.Value!;
@@ -6185,6 +6186,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // Pazarama refuses an update that repeats the values it already holds. An offer that is still the
             // untouched copy of the remote price and stock counts as sent, so only real changes go out later.
             if (source == "PAZARAMA") await MarkPazaramaOfferInSyncAsync(tenantId, existing, remote, salePrice, listPrice, cancellationToken);
+            if (source == "PTTAVM") await MarkPttAvmOfferInSyncAsync(tenantId, existing, remote, salePrice, listPrice, cancellationToken);
             return;
         }
         if (salePrice <= 0) return;
@@ -6207,6 +6209,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         };
         db.ChannelOffers.Add(offer);
         if (source == "PAZARAMA") await MarkPazaramaOfferInSyncAsync(tenantId, offer, remote, salePrice, listPrice, cancellationToken);
+        if (source == "PTTAVM") await MarkPttAvmOfferInSyncAsync(tenantId, offer, remote, salePrice, listPrice, cancellationToken);
         db.ChannelPriceHistory.Add(new ChannelPriceHistory
         {
             Id = Guid.CreateVersion7(),

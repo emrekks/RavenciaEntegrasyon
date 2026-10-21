@@ -113,6 +113,29 @@ public sealed partial class MarketplaceJobProcessor
         return true;
     }
 
+    // An offer the import seeded from PTT AVM already holds PTT AVM's price and stock: it is marked as sent, so the
+    // first price/stock send carries only what changed in the panel instead of the whole catalog.
+    private async Task MarkPttAvmOfferInSyncAsync(Guid tenantId, ChannelOffer offer, RemoteCatalogVariant remote, decimal salePrice, decimal listPrice, CancellationToken cancellationToken)
+    {
+        var changed = false;
+        if (offer.LastPriceHash is null && offer.PriceVersion == 1 && offer.SalePrice == salePrice && offer.ListPrice == listPrice)
+        {
+            offer.LastPriceHash = Adapters.PttAvm.PttAvmPriceInventoryRules.PriceHash(
+                Adapters.PttAvm.PttAvmPriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer)), Adapters.PttAvm.PttAvmPriceInventoryRules.VatRate(offer.VatRate), offer.PriceVersion);
+            changed = true;
+        }
+        if (offer.LastStockProjectionVersion is null && remote.StockQuantity is { } remoteStock)
+        {
+            var inventory = await db.InventoryItems.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == offer.VariantId && x.LocationCode == "MAIN", cancellationToken);
+            if (inventory is not null && Adapters.PttAvm.PttAvmPriceInventoryRules.Quantity(inventory.Available - offer.SafetyStock) == Adapters.PttAvm.PttAvmPriceInventoryRules.Quantity(remoteStock))
+            {
+                offer.LastStockProjectionVersion = inventory.ProjectionVersion;
+                changed = true;
+            }
+        }
+        if (changed && db.Entry(offer).State != EntityState.Added) offer.Version++;
+    }
+
     private async Task ReadPttAvmOrderWindows(Guid tenantId, Guid connectionId, string correlationId, string operation, DateTime startDay, DateTimeOffset now, CancellationToken cancellationToken)
     {
         foreach (var (windowStart, windowEnd) in PttAvmOrderHistoryPolicy.Windows(startDay, now))
