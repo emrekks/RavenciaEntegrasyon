@@ -1850,7 +1850,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     private Task<bool> HasOperationalReturnConnectionAsync(Guid tenantId, CancellationToken cancellationToken) =>
         db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
-                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
+                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
 
     private IQueryable<ReturnClaim> ReturnBaseQuery(Guid tenantId) =>

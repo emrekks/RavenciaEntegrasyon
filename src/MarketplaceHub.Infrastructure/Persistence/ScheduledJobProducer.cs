@@ -648,9 +648,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     // PTT AVM runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the open-order
     // status scan (ORDER_LIFECYCLE), because the order list has no change filter, plus the daily category tree
-    // (REFERENCE_DATA). The write flows are listed so the
+    // (REFERENCE_DATA) and the returned order lines (RETURNS, read only). The write flows are listed so the
     // policies exist (and stay off) for the later phases.
-    internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA"
+    internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>

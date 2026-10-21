@@ -722,12 +722,12 @@ public sealed class PttAvmAdapterTests
         }
         Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("ORDERS"));
         Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("ORDER_LIFECYCLE"));
-        Assert.False(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("RETURNS"));
+        Assert.False(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("QUESTIONS"));
         Assert.False(ScheduledJobProducer.DefaultPolicyEnabled("PTTAVM", MarketplaceExternalWritePolicies.Stock));
         Assert.Equal((120, 30), ScheduledOrderPollingCadencePolicy.ForPlatform("PTTAVM", "ORDERS", 60, 30));
         Assert.Equal((900, 30), ScheduledOrderPollingCadencePolicy.ForPlatform("PTTAVM", "ORDER_LIFECYCLE", 120, 60));
         var plan = MarketplaceConnectionService.CreateInitialDataSyncPlan("PTTAVM", Guid.NewGuid(), false);
-        Assert.Equal([MarketplaceJobTypes.PttAvmReferenceSync, MarketplaceJobTypes.PttAvmOrderRecoverySync], plan.Select(x => x.JobType));
+        Assert.Equal([MarketplaceJobTypes.PttAvmReferenceSync, MarketplaceJobTypes.PttAvmOrderRecoverySync, MarketplaceJobTypes.ReturnSync], plan.Select(x => x.JobType));
         Assert.Contains("\"resourceType\":\"CATEGORIES\"", plan[0].PayloadJson);
     }
 
@@ -952,6 +952,42 @@ public sealed class PttAvmAdapterTests
         Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("REFERENCE_DATA"));
         Assert.True(CatalogService.TryProductPlatformFilter("PTTAVM:ACTIVE", out var code, out _));
         Assert.Equal("PTTAVM", code);
+    }
+
+    [Fact]
+    public void ReturnedOrderLinesBecomeOneCompletedReturn()
+    {
+        var claim = PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-A1712HP2E-071024"))!;
+
+        Assert.Equal("iade:PTT-A1712HP2E-071024", claim.ExternalClaimId);
+        Assert.Equal("PTT-A1712HP2E-071024", claim.ExternalOrderId);
+        Assert.Equal(ReturnClaimStatus.Completed, MarketplaceReturnStatus.Canonicalize(claim.RawStatus, null));
+        // Only the returned line, not the cancelled one.
+        var line = Assert.Single(claim.Lines);
+        Assert.Equal("229049580", line.ExternalOrderLineId);
+        Assert.Equal(1m, line.Quantity);
+        Assert.Equal("2710243114843", claim.CargoTrackingNumber);
+        Assert.Equal(new DateTimeOffset(2024, 10, 7, 14, 38, 29, TimeSpan.Zero), claim.OrderCreatedAt);
+    }
+
+    [Fact]
+    public void AnOrderWithoutReturnedLinesHasNoReturn()
+    {
+        Assert.Null(PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-OPEN12345-211026")));
+        Assert.Null(PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-L6LI1VK2D-211024")));
+    }
+
+    [Fact]
+    public async Task ReturnDecisionsAreNeverSentToPttAvm()
+    {
+        var handler = new CapturingHandler(_ => throw new InvalidOperationException());
+        IReturnPort port = Client(handler);
+
+        var result = await port.ExecuteAsync(new AdapterContext(Guid.NewGuid(), Guid.NewGuid(), "c", "k", Now), new("iade:PTT-1", ["1"], "APPROVE", null, null, []), CancellationToken.None);
+
+        Assert.Equal("PTTAVM_RETURN_ACTION_UNSUPPORTED", result.Error!.Code);
+        Assert.Empty(handler.Requests);
+        Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("RETURNS"));
     }
 
     private static RemoteOrder OrderFromList(string orderNumber)

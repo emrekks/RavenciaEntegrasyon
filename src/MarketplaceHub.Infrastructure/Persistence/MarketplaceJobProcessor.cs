@@ -9274,6 +9274,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return await SyncN11Returns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
             return await SyncPazaramaReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
+            return await SyncPttAvmReturns(tenantId, connectionId, correlationId, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()

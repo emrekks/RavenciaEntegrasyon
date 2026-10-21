@@ -82,6 +82,37 @@ public sealed partial class MarketplaceJobProcessor
         return true;
     }
 
+    // PTT AVM returns are order lines in "iade" status (no return service): each run reads the order windows of the
+    // last three months and records the returned lines as completed returns. Nothing is sent to PTT AVM.
+    private async Task<bool> SyncPttAvmReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var (windowStart, windowEnd) in PttAvmOrderHistoryPolicy.Windows(PttAvmOrderHistoryPolicy.StartDay(true, null, now), now))
+        {
+            if (cancellationToken.IsCancellationRequested) return false;
+            TrackRequest();
+            var result = await returns.PollAsync(
+                Context(tenantId, connectionId, correlationId, $"pttavm-return-sync:{windowStart:yyyyMMdd}"),
+                new ReturnPollWindow(new DateTimeOffset(windowStart, PttAvmOrderHistoryPolicy.TurkeyOffset), new DateTimeOffset(windowEnd, PttAvmOrderHistoryPolicy.TurkeyOffset)),
+                new(null, 0),
+                cancellationToken);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            foreach (var claim in result.Value!.Items)
+            {
+                TrackReceived();
+                await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+            }
+        }
+        cursor.OpaqueCursor = null;
+        cursor.LastModifiedWatermark = now;
+        cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private async Task ReadPttAvmOrderWindows(Guid tenantId, Guid connectionId, string correlationId, string operation, DateTime startDay, DateTimeOffset now, CancellationToken cancellationToken)
     {
         foreach (var (windowStart, windowEnd) in PttAvmOrderHistoryPolicy.Windows(startDay, now))
