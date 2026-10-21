@@ -545,6 +545,43 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<int>.Ok(products.Count);
     }
 
+    // Ledger sources written by order and return flows; such a movement is stock history that a delete must keep.
+    private static readonly string[] OrderMovementSourceTypes = ["ORDER_LINE", "RETURN_CLAIM"];
+
+    private static readonly string[] PendingCatalogWriteJobTypes =
+    [
+        MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile,
+        MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch
+    ];
+
+    private static readonly JobStatus[] PendingJobStatuses = [JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled, JobStatus.Blocked];
+
+    // D3 (K19): a delete purges the variants' reservations and stock ledger. It is refused while a variant has
+    // an active order reservation, has any order or return stock movement (the ledger is history, never purged),
+    // or a publication or price/stock job for the product or variant is still pending; the caller archives
+    // instead. Returns the Turkish reason ("... bağlı") or null when the delete may proceed.
+    private async Task<string?> StockHistoryDeleteBlockAsync(Guid tenantId, Guid[] productIds, Guid[] variantIds, Guid[] inventoryIds, CancellationToken cancellationToken)
+    {
+        if (inventoryIds.Length > 0)
+        {
+            if (await db.StockReservations.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId) && x.Status == ReservationStatus.Active, cancellationToken))
+                return "açık sipariş rezervasyonuna";
+            if (await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId) && OrderMovementSourceTypes.Contains(x.SourceType), cancellationToken))
+                return "sipariş stok hareketine";
+        }
+        if (productIds.Length == 0 && variantIds.Length == 0) return null;
+        var pendingJobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && PendingCatalogWriteJobTypes.Contains(x.JobType) && PendingJobStatuses.Contains(x.Status))
+            .Select(x => new { x.JobDedupKey, x.PayloadJson })
+            .ToListAsync(cancellationToken);
+        if (pendingJobs.Count == 0) return null;
+        // Publication dedup keys carry the product id in the N form; payloads serialize ids in the D form.
+        var markers = productIds.Select(productId => productId.ToString("N")).Concat(productIds.Concat(variantIds).Select(id => id.ToString("D"))).ToArray();
+        return pendingJobs.Any(job => markers.Any(marker => job.JobDedupKey.Contains(marker, StringComparison.OrdinalIgnoreCase) || job.PayloadJson.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+            ? "bekleyen yayın veya fiyat-stok işine"
+            : null;
+    }
+
     public Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) =>
         DeleteProductsAsync(tenantId, [id], expectedVersion, cancellationToken);
 
@@ -583,6 +620,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToArrayAsync(cancellationToken);
         if (inventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId), cancellationToken))
             return Conflict<int>("PRODUCT_DELETE_BLOCKED", "Ürün iade stok hareketine bağlı olduğu için silinemiyor. Sipariş ve iade geçmişini korumak için ürünü arşivleyin.");
+        var productDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, targetIds, variantIds, inventoryIds, cancellationToken);
+        if (productDeleteBlock is not null)
+            return Conflict<int>("PRODUCT_DELETE_BLOCKED", $"Ürün {productDeleteBlock} bağlı olduğu için silinemiyor. Stok geçmişini korumak için ürünü arşivleyin.");
 
         await db.Database.ExecuteSqlInterpolatedAsync($$"""
             CREATE TEMP TABLE IF NOT EXISTS purge_product_ids ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
@@ -1026,6 +1066,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var deletingInventoryIds = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIdsToDelete.Contains(x.VariantId)).Select(x => x.Id).ToArrayAsync(cancellationToken);
             if (deletingInventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && deletingInventoryIds.Contains(x.InventoryItemId), cancellationToken))
                 return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", "Varyant iade stok hareketine bağlı olduğu için silinemiyor.");
+            var deletingProductIds = existingVariants.Where(existing => variantIdsToDelete.Contains(existing.Id)).Select(existing => existing.ProductId).Distinct().ToArray();
+            var variantDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, deletingProductIds, [.. variantIdsToDelete], deletingInventoryIds, cancellationToken);
+            if (variantDeleteBlock is not null)
+                return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", $"Varyant {variantDeleteBlock} bağlı olduğu için silinemiyor. Stok geçmişini korumak için ürünü arşivleyin.");
         }
         var changedVariantIds = new HashSet<Guid>();
         foreach (var update in variantUpdates)

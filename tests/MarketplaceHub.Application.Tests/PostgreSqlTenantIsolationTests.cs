@@ -618,6 +618,91 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenDeletedVariantHasOrderStockMovement_IsRefusedAndKeepsTheLedger()
+    {
+        var tenant = NewTenant("variant-delete-ledger");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Ledger delete {Guid.NewGuid():N}",
+            Description = "Ledger delete test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(int order)
+        {
+            var code = $"LDG-{order}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = product.Id,
+                SortOrder = order,
+                Sku = code,
+                SkuNormalized = code,
+                OptionSignature = $"Beden={order}",
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        var kept = NewVariant(0);
+        var sold = NewVariant(1);
+        var soldItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = sold.Id, LocationCode = "MAIN", OnHand = 3, Available = 2 };
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(kept, sold);
+        db.InventoryItems.AddRange(
+            new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = kept.Id, LocationCode = "MAIN", OnHand = 5, Available = 5 },
+            soldItem);
+        db.StockLedgerEntries.Add(new StockLedgerEntry
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            InventoryItemId = soldItem.Id,
+            MovementType = "ORDER_RESERVED",
+            QuantityDelta = -1,
+            SourceType = "ORDER_LINE",
+            SourceId = Guid.NewGuid().ToString("D"),
+            SourceEventId = "ledger-delete-test",
+            IdempotencyKey = $"ledger-delete-test:{Guid.NewGuid():N}",
+            OccurredAt = fixture.Now,
+            RecordedAt = fixture.Now,
+            CorrelationId = "ledger-delete-test"
+        });
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+
+        var variantDelete = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [sold.Id]),
+            CancellationToken.None);
+        Assert.False(variantDelete.Succeeded);
+        Assert.Equal("VARIANT_DELETE_BLOCKED", variantDelete.Error!.Code);
+        Assert.Equal(409, variantDelete.Error.Status);
+
+        db.ChangeTracker.Clear();
+        Assert.True(await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == sold.Id));
+        Assert.True(await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == soldItem.Id));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenEditorSendsTheWholeFamily_TouchesOnlySiblingsWhoseDataChanged()
     {
         var tenant = NewTenant("family-save");
