@@ -80,7 +80,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 interval = QuestionCadencePolicy.IntervalSeconds(interval, lastQuestionAt, now);
             }
             // Healthy order notifications make the order polls a slower safety net.
-            if (WebhookPollingPolicy.StretchedIntervalSeconds(row.Policy.ResourceType) is { } stretched
+            if (WebhookPollingPolicy.StretchedIntervalSeconds(row.Connection.PlatformCode, row.Policy.ResourceType) is { } stretched
                 && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id))
                 interval = Math.Max(interval, stretched);
             interval = ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment);
@@ -226,6 +226,26 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 healthy.Add(subscription.ConnectionId);
         }
         return healthy;
+    }
+
+    // The scheduler's notification health rule for one connection, so the panel judges a stretched poll by
+    // the cadence it actually runs at.
+    internal static async Task<bool> WebhookHealthyAsync(AppDbContext db, Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var subscriptions = await db.WebhookSubscriptions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+            .Select(x => new { x.LastReceivedAt, x.VerifiedAt })
+            .ToListAsync(cancellationToken);
+        if (subscriptions.Count == 0) return false;
+        var health = await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
+            .Select(x => x.OpaqueCursor)
+            .FirstOrDefaultAsync(cancellationToken);
+        foreach (var subscription in subscriptions)
+            if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now,
+                    await OrdersArrivedSinceAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken)))
+                return true;
+        return false;
     }
 
     // Whether any order of the connection reached the panel after the notifications' last sign of life; a quiet

@@ -671,11 +671,17 @@ public static class WebhookPollingPolicy
     public static readonly TimeSpan GapWindow = TimeSpan.FromHours(24);
     public static readonly TimeSpan RegistrationGrace = TimeSpan.FromMinutes(10);
     public const int GapLimit = 2;
+    // A change whose notification never came is still read within three minutes.
+    public const int SafetyNetSeconds = 180;
 
-    public static int? StretchedIntervalSeconds(string resourceType) => resourceType switch
+    // Trendyol and Shopify order reads return every change by its last-modified time, cancellations
+    // included, so with notifications their open-order scan only has to run hourly. Hepsiburada's
+    // cancellations and package changes are read by its open-order scan alone, which keeps its cadence.
+    public static int? StretchedIntervalSeconds(string? platformCode, string resourceType) => resourceType switch
     {
-        "ORDERS" => 900,
-        "ORDER_RECOVERY" or "ORDER_LIFECYCLE" => 3600,
+        "ORDERS" => SafetyNetSeconds,
+        "ORDER_RECOVERY" => 3600,
+        "ORDER_LIFECYCLE" when !string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) => 3600,
         _ => null
     };
 

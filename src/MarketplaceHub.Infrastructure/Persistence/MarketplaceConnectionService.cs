@@ -621,12 +621,17 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var cursorStalledAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:CursorStalledAfterSeconds", 900), 60, 604_800));
         var recoveryGapWarning = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapWarningDays", 70), 1, 90));
         var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
+        // With healthy notifications the scheduler polls orders less often; health is judged by that cadence.
+        var webhookHealthy = await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
         var rows = policies.Select(x =>
         {
             var cursorResourceType = MarketplaceSyncPolicyRules.CursorResourceType(x.ResourceType);
             var cursor = cursors.FirstOrDefault(candidate => candidate.ResourceType == cursorResourceType)
                 ?? cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType);
-            var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, x.IntervalSeconds) + Math.Max(0, x.JitterSeconds));
+            var intervalSeconds = webhookHealthy && WebhookPollingPolicy.StretchedIntervalSeconds(connection.PlatformCode, x.ResourceType) is { } stretched
+                ? Math.Max(x.IntervalSeconds, stretched)
+                : x.IntervalSeconds;
+            var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, intervalSeconds) + Math.Max(0, x.JitterSeconds));
             var health = MarketplaceSyncHealthPolicy.Classify(
                 cursor?.LastSuccessAt,
                 now,

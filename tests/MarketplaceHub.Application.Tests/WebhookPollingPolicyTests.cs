@@ -31,9 +31,15 @@ public sealed class WebhookPollingPolicyTests
     [Fact]
     public void OnlyOrderPollsAreStretchedAndRightAfterRegistrationNothingCountsAsMissed()
     {
-        Assert.Equal(900, WebhookPollingPolicy.StretchedIntervalSeconds("ORDERS"));
-        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("ORDER_LIFECYCLE"));
-        Assert.Null(WebhookPollingPolicy.StretchedIntervalSeconds("RETURNS"));
+        // A missed notification is still read within three minutes on every platform.
+        Assert.Equal(180, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDERS"));
+        Assert.Equal(180, WebhookPollingPolicy.StretchedIntervalSeconds("HEPSIBURADA", "ORDERS"));
+        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDER_RECOVERY"));
+        // Trendyol and Shopify order reads bring cancellations; Hepsiburada's come from its open-order scan.
+        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDER_LIFECYCLE"));
+        Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("SHOPIFY", "ORDER_LIFECYCLE"));
+        Assert.Null(WebhookPollingPolicy.StretchedIntervalSeconds("HEPSIBURADA", "ORDER_LIFECYCLE"));
+        Assert.Null(WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "RETURNS"));
         Assert.False(WebhookPollingPolicy.CountsAsGap(Now.AddMinutes(-5), Now));
         Assert.True(WebhookPollingPolicy.CountsAsGap(Now.AddMinutes(-30), Now));
         Assert.False(WebhookPollingPolicy.CountsAsGap(null, Now));
