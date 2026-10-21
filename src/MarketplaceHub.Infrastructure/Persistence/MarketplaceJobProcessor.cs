@@ -2069,6 +2069,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             connection.Environment = result.Value.Environment;
             connection.ExternalStoreId = result.Value.ExternalStoreId;
         }
+        // PTT AVM: the store the API user belongs to (a store name typed as the Mağaza ID gives way to it).
+        if (connection.PlatformCode == "PTTAVM") connection.ExternalStoreId = result.Value!.ExternalStoreId;
         foreach (var _ in discovery.Value!) TrackReceived();
         foreach (var evidence in discovery.Value!)
         {

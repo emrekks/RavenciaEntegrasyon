@@ -162,14 +162,15 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
-    public async Task ANonNumericStoreIdIsRefusedBeforeAnyCall()
+    public async Task AStoreNameTypedAsTheStoreIdGivesWayToTheApiUsersStore()
     {
-        var handler = new CapturingHandler(_ => throw new InvalidOperationException());
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, SupplierAnswer));
 
         var result = await Client(handler).TestAsync(Account(storeId: "Ravencia"), CancellationToken.None);
 
-        Assert.Equal("PTTAVM_STORE_ID_INVALID", result.Error!.Code);
-        Assert.Empty(handler.Requests);
+        Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+        Assert.Equal(StoreId, result.Value!.ExternalStoreId);
+        Assert.Single(handler.Requests);
     }
 
     [Fact]

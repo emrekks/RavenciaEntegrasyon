@@ -65,23 +65,23 @@ public sealed partial class PttAvmHttpClient(
         return load.Account is null ? CredentialFailure<ConnectionIdentity>(load) : await TestAsync(load.Account, cancellationToken);
     }
 
-    // The supplier info call is the cheapest authenticated read: no parameters, and its TedarikciId proves the
-    // API user belongs to the store id written on the connection.
+    // The supplier info call is the cheapest authenticated read: no parameters, and its TedarikciId is the store the
+    // API user belongs to. A numeric Mağaza ID on the connection must match it; anything else (a store name typed in
+    // its place) gives way to the TedarikciId, which the connection test then saves on the connection.
     internal async Task<AdapterResult<ConnectionIdentity>> TestAsync(PttAvmRequestContext account, CancellationToken cancellationToken)
     {
         var connection = account.Connection;
-        if (StoreId(connection.ExternalStoreId) is not { } storeId)
-            return Failure<ConnectionIdentity>(AdapterErrorClass.Validation, "PTTAVM_STORE_ID_INVALID", PttAvmErrorAdvice.StoreIdInvalid, HttpStatusCode.BadRequest);
+        var storeId = StoreId(connection.ExternalStoreId);
         var result = await SendSoapAsync(account, SupplierInfo, [], cancellationToken);
         if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
         var supplier = Supplier(result.Value!);
         if (supplier is null)
             return Failure<ConnectionIdentity>(AdapterErrorClass.ContractViolation, "PTTAVM_CONNECTION_CONTRACT_INVALID", $"PTT AVM tedarikçi bilgisi yanıtı beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
-        if (long.Parse(supplier.Value.Id, CultureInfo.InvariantCulture) != long.Parse(storeId, CultureInfo.InvariantCulture))
+        if (storeId is not null && long.Parse(supplier.Value.Id, CultureInfo.InvariantCulture) != long.Parse(storeId, CultureInfo.InvariantCulture))
             return Failure<ConnectionIdentity>(AdapterErrorClass.Validation, "PTTAVM_STORE_MISMATCH",
                 $"Bu API kullanıcısı başka bir PTT AVM mağazasına ait (Mağaza ID {supplier.Value.Id}); bağlantıda Mağaza ID {storeId} yazılı. Entegrasyon Bilgileri ekranındaki Mağaza ID'yi girin ya da o mağazanın API kullanıcısını kullanın.", HttpStatusCode.Conflict);
         return AdapterResult<ConnectionIdentity>.Success(
-            new("PTTAVM", connection.Environment, connection.ExternalStoreId, connection.ApiVersion, supplier.Value.Id),
+            new("PTTAVM", connection.Environment, supplier.Value.Id, connection.ApiVersion, supplier.Value.Id),
             result.RateLimit);
     }
 
@@ -112,11 +112,11 @@ public sealed partial class PttAvmHttpClient(
         var categories = await SendSoapAsync(account, MainCategories, [], cancellationToken);
         var categoriesError = categories.IsSuccess ? MainCategoryError(categories.Value!) : categories.Error!.Code;
         var orders = await SendSoapAsync(account, Orders, OrderProbeParameters(now), cancellationToken);
-        var products = await SendSoapAsync(account, StockList, StockProbeParameters(account.Connection.ExternalStoreId), cancellationToken);
+        var products = await SendSoapAsync(account, StockList, StockProbeParameters(identity.ExternalStoreId), cancellationToken);
 
         IReadOnlyList<CapabilityEvidence> evidence =
         [
-            new(MarketplaceCapabilities.ConnectionTest, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "listeleme-entegrasyonu_soap/tedarikci-bilgisi_soap", "soap", null, null, "PTT AVM API kullanıcı adı ve şifresi kabul edildi; tedarikçi bilgisi bağlantıdaki Mağaza ID ile eşleşti.", null, now),
+            new(MarketplaceCapabilities.ConnectionTest, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "listeleme-entegrasyonu_soap/tedarikci-bilgisi_soap", "soap", null, null, "PTT AVM API kullanıcı adı ve şifresi kabul edildi; Mağaza ID tedarikçi bilgisinden doğrulandı.", null, now),
             new(MarketplaceCapabilities.ReferenceRead, categoriesError is null ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "katalog-entegrasyonu_soap/ana-kategori-listesi_soap", "soap", null, null,
                 categoriesError is null ? "Ana kategori listesi salt okunur okundu." : $"Ana kategori listesi okunamadı ({categoriesError}); yetenek UNKNOWN bırakıldı.", null, now),
             new(MarketplaceCapabilities.OrderRead, orders.IsSuccess ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "siparis-entegrasyonu_soap/siparis-kontrol-v2_soap", "soap", null, null,
