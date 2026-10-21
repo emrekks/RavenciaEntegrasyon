@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using MarketplaceHub.Application;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -18,6 +20,15 @@ public static class InvoiceDocumentLink
             || !uri.AbsolutePath.EndsWith("/content", StringComparison.Ordinal)) return link;
         var builder = new UriBuilder(uri) { Path = uri.AbsolutePath[..^"content".Length] + PdfFileName };
         return builder.Uri.AbsoluteUri;
+    }
+
+    // A link has no expiry and its document row is immutable, so it is withdrawn by the revocation itself (G10): once
+    // a marketplace link of the invoice was removed and none is left to remove, the public link stops answering.
+    // While a package still waits, its marketplace may still be reading the link.
+    public static async Task<bool> IsWithdrawnAsync(AppDbContext db, Guid tenantId, Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var statuses = await db.MarketplaceDeliveryStates.AsNoTracking().Where(state => state.TenantId == tenantId && state.InvoiceId == invoiceId).Select(state => state.Status).ToListAsync(cancellationToken);
+        return statuses.Contains(MarketplaceInvoiceLinkRevocationPolicy.Removed) && !statuses.Any(MarketplaceInvoiceLinkRevocationPolicy.IsOpen);
     }
 
     public static string Create(IDataProtectionProvider provider, string origin, Guid tenantId, Guid invoiceId, Guid documentId)

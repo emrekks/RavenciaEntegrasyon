@@ -102,16 +102,6 @@ internal static class InvoiceAdjustmentTracking
         if (states.Any(state => MarketplaceInvoiceLinkRevocationPolicy.IsOpen(state.Status))) return;
         await ResolveIssueAsync(db, tenantId, LinkRevocationIssueKey(invoiceId), now, cancellationToken);
     }
-
-    // A public invoice link has no expiry and its document row is immutable, so it is withdrawn by the revocation
-    // itself (G10): once a marketplace link of the invoice was removed and none is left to remove, the public link
-    // stops answering. While a package still waits, its marketplace may still be reading the link.
-    public static async Task<bool> IsPublicLinkWithdrawnAsync(AppDbContext db, Guid tenantId, Guid invoiceId, CancellationToken cancellationToken)
-    {
-        var statuses = await db.MarketplaceDeliveryStates.AsNoTracking().Where(state => state.TenantId == tenantId && state.InvoiceId == invoiceId).Select(state => state.Status).ToListAsync(cancellationToken);
-        return statuses.Contains(MarketplaceInvoiceLinkRevocationPolicy.Removed) && !statuses.Any(MarketplaceInvoiceLinkRevocationPolicy.IsOpen);
-    }
-
     public static MarketplaceDelivery AppendDeliveryHistory(AppDbContext db, MarketplaceDeliveryState state, string status, string? externalReference, string? errorCode, DateTimeOffset now)
     {
         var sequence = state.AttemptNumber + 1;
