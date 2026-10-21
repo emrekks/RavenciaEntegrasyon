@@ -90,4 +90,17 @@ public sealed class ProductPublicationComposerTests
     [InlineData(3d, true)]
     public void TrendyolPublication_RequiresAPositiveDesi(double? desi, bool expected) =>
         Assert.Equal(expected, ProductPublicationComposer.HasDesi((decimal?)desi));
+
+    [Theory]
+    [InlineData(0d, true)]
+    [InlineData(1d, true)]
+    [InlineData(10d, true)]
+    [InlineData(20d, true)]
+    [InlineData(8d, false)]
+    [InlineData(18d, false)]
+    [InlineData(20.5d, false)]
+    [InlineData(100d, false)]
+    [InlineData(-1d, false)]
+    public void TrendyolPublication_AcceptsOnlyTurkishVatRates(double rate, bool expected) =>
+        Assert.Equal(expected, ProductPublicationComposer.IsTrendyolVatRate((decimal)rate));
 }

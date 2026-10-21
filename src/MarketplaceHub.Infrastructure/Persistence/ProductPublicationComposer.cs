@@ -149,7 +149,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         {
             var offer = offers[variant.Id];
             if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || offer.SalePrice <= 0 || offer.ListPrice < offer.SalePrice) return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.");
-            if (offer.VatRate < 0 || offer.VatRate > 100 || decimal.Truncate(offer.VatRate) != offer.VatRate) return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı 0-100 arasında tam sayı olmalıdır.");
+            // D11: Trendyol accepts only the Turkish VAT rates.
+            if (!IsTrendyolVatRate(offer.VatRate)) return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; Trendyol için 0, 1, 10 veya 20 olmalıdır.");
             // D7 (K20): Trendyol prices the cargo by dimensionalWeight; a guessed 1 desi bills the wrong shipping cost.
             if (!HasDesi(variant.Desi)) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Trendyol'un zorunlu desi değeri girilmemiş.");
 
@@ -429,6 +430,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     private static string NormalizeLabel(string value) => value.Trim().ToUpperInvariant();
 
     internal static bool HasDesi(decimal? desi) => desi is > 0;
+
+    internal static bool IsTrendyolVatRate(decimal rate) => rate is 0m or 1m or 10m or 20m;
 
     private static bool IsValidBarcode(string value) => value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
 
