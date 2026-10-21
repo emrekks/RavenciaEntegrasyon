@@ -29,6 +29,7 @@ import { formatDateTime, formatIstanbul, fromDateTimeLocal, istanbulDateKey, ist
 import { formatMoney } from '../../../shared/format-money'
 import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
 import { OrderMetricCards } from './OrderMetricCards'
+import { orderDetailQueryKey } from './order-query-keys'
 import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnPlatformName, usableShipmentDueAt } from '../shared'
 
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
@@ -135,7 +136,7 @@ function addressDataText(data: Record<string, unknown>, platformCode: string) { 
 function longDate(value: string) { return formatIstanbul(new Date(value), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 function deliveryText(item: Order) { const shipment = orderDisplayShipment(item); const rawStatuses = [...(item.packages ?? []).map(value => value.rawStatus), ...(item.lines ?? []).map(value => value.rawStatus)]; if (item.derivedStatus === 'CANCELLED') return { label: 'İptal tarihi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'İptal zamanı bekleniyor', note: null, overdue: false }; if (item.derivedStatus === 'DELIVERED') return { label: 'Teslim edildi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Teslimat zamanı bekleniyor', note: null, overdue: false }; if (item.derivedStatus === 'UNVERIFIED') return { label: 'Sipariş durumu', value: 'Durumu doğrulanmadı', note: 'Paket veya güncel sipariş yaşam döngüsü bilgisi bulunmadığından teslimat durumu doğrulanamadı.', overdue: false }; if (item.derivedStatus === 'PAYMENT_PENDING') return { label: 'Sipariş durumu', value: 'Trendyol ödeme onayı bekleniyor', note: 'Ödeme onaylanana kadar paket işlemleri kullanılamaz.', overdue: false }; if (item.platformCode.trim().toUpperCase() === 'HEPSIBURADA' && item.derivedStatus === 'UNDELIVERED') return { label: 'Sipariş durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }; if (['SHIPPED', 'UNDELIVERED'].includes(item.derivedStatus)) return { label: 'Taşıma durumunda', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Kargo zamanı bekleniyor', note: 'Kargoya teslim edildi', overdue: false }; if (item.derivedStatus === 'ON_HOLD') return { label: 'Sipariş durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }; const dueAt = usableShipmentDueAt(item.shipmentDueAt); const overdueDays = overdueShipmentDays(item.derivedStatus, dueAt); if (overdueDays > 0) return { label: '', value: `Siparişiniz ${overdueDays} gün gecikmiştir!`, note: 'Siparişinizi en kısa sürede kargoya teslim etmelisiniz.', overdue: true }; const urgent = Boolean(dueAt && new Date(dueAt).getTime() - Date.now() <= 86_400_000); return { label: 'Kalan süre', value: dueAt ? remainingText(dueAt) : item.isMicroExport ? 'Trendyol termin bilgisi göndermedi' : 'Termin zamanı bekleniyor', note: null, overdue: urgent } }
 function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void }) {
-  const detail = useQuery({ queryKey: ['invoice-info-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const order = detail.data
   const missing = (value: string | null | undefined) => value ? value : 'Bilgi gelmedi'
   return <RrModal crumb={displayOrderNumber(item.orderNumber)} title="Fatura ve Adres Bilgileri" size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button><button type="button" className="rr-btn rr-primary" disabled={!order} onClick={() => window.print()}><RrIcon name="print" />Yazdır</button></>}>
@@ -148,7 +149,7 @@ function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void 
 }
 function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { item: Order; providers: Connection[]; onClose: () => void; onFeedback: IntegrationFeedbackHandler }) {
   const client = useQueryClient()
-  const detail = useQuery({ queryKey: ['invoice-draft-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const order = detail.data
   const marketplace = providers.find(connection => connection.id === order?.connectionId)
   const provider = invoiceProviderForEnvironment(providers, marketplace?.environment)
@@ -183,7 +184,7 @@ function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order; onClos
   const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null)
   const [documentRequestKey, setDocumentRequestKey] = useState(() => `manual-invoice-document:${item.id}:${newIdempotencyKey()}`)
   const [dragging, setDragging] = useState(false)
-  const detail = useQuery({ queryKey: ['invoice-upload-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const saveDocument = useMutation({
     mutationFn: async () => {
       if (Boolean(file) === Boolean(invoiceUrl.trim())) throw new Error('PDF dosyası veya HTTPS fatura bağlantısından yalnızca birini girin.')
@@ -244,7 +245,7 @@ function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Order;
   const client = useQueryClient()
   const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>(item.invoiceStatus === 'FATURA_YUKLENDI' ? 'UPLOADED' : 'PENDING')
   const [message, setMessage] = useState('')
-  const detail = useQuery({ queryKey: ['invoice-status-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const update = useMutation({
     mutationFn: async () => {
       if (!detail.data || detail.data.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura durumu yalnız Shopify siparişlerinde kullanılabilir.')
