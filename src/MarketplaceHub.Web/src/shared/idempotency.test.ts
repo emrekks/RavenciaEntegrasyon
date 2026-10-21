@@ -51,6 +51,26 @@ describe('versioned key attempts (G4)', () => {
     expect(failedWithHttpAnswer(new TypeError('Failed to fetch'))).toBe(false)
     expect(failedWithHttpAnswer('boom')).toBe(false)
   })
+
+  it('keeps a create form’s key across lost answers and renews it only after the server answered (W-F8)', async () => {
+    const formKey = newIdempotencyKey('product-create')
+    const used: string[] = []
+    const send = (outcome: 'ok' | 'network' | number) => sendWithVersionedIdempotencyKey(formKey, async key => {
+      used.push(key)
+      if (outcome === 'network') throw new TypeError('Failed to fetch')
+      if (typeof outcome === 'number') throw new ApiRequestError('SKU zaten var', outcome)
+      return 'created'
+    }).catch(() => undefined)
+    await send('network')
+    await send('network')
+    await send(409)
+    await send('ok')
+    expect(used[0]).toBe(formKey)
+    expect(used[1]).toBe(formKey)
+    expect(used[2]).toBe(formKey)
+    expect(used[3]).not.toBe(formKey)
+    expect(used[3]).toMatch(/^product-create:[0-9a-f-]{36}$/)
+  })
 })
 
 describe('idempotency keys', () => {

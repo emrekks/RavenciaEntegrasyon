@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard } from '../../../shared/components'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
@@ -1065,6 +1065,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const captureEditorSnapshot = useEffectEvent(() => setSeedSnapshot(currentEditorSnapshot))
   useEffect(() => { if (snapshotRequest) captureEditorSnapshot() }, [snapshotRequest])
   useEffect(() => { if (!editProductId && !duplicateProductId) setSnapshotRequest(value => value + 1) }, [duplicateProductId, editProductId])
+  // One create key for the form's whole life: a resend after a lost answer (network error) is replayed by the server
+  // instead of creating the product twice; once the server answered with an error the next attempt gets a new key.
+  const [productCreateKey] = useState(() => newIdempotencyKey('product-create'))
   // The editor's own navigation after a save (to the new product's page) is not asked about.
   const leavingAfterSave = useRef(false)
   useEffect(() => {
@@ -2238,7 +2241,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           }
         }
       } else {
-        product = await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), attributes: globalAttributes, variants: rows.map(variantPayload) }) })
+        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed = ['ürün']; const warnings: string[] = []
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)

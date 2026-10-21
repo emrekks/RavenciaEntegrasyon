@@ -4,7 +4,7 @@ import { variantOptionParts } from '../variant-option-label'
 import { Link, useNavigate } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages, type CursorPage } from '../../../shared/api'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { productStatusLabel } from '../../../shared/status-labels'
@@ -143,6 +143,15 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   // just one), never picked by the screen.
   const [priceConnectionId, setPriceConnectionId] = useState(() => connections.length === 1 ? connections[0].id : '')
   const needsPriceConnection = mode !== 'stock' && variants.some(item => !item.variant.offerId)
+  // A first offer keeps its create key for this window's life, so a resend after a lost answer cannot make two.
+  const offerCreateKeys = useRef(new Map<string, string>())
+  const offerCreateKey = (variantId: string) => {
+    const existing = offerCreateKeys.current.get(variantId)
+    if (existing) return existing
+    const created = newIdempotencyKey('channel-offer-create')
+    offerCreateKeys.current.set(variantId, created)
+    return created
+  }
   // The stock each variant had when this dialog opened (or after this dialog saved it): the value a bulk change is
   // computed from and sent as the expected current stock. A refused (stale) change resets it to the refreshed list.
   const stockBaseline = useRef<Map<string, number>>(new Map())
@@ -196,7 +205,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
             if (nextList < nextSale) throw new Error('liste fiyatı satış fiyatından küçük olamaz.')
             const body = { connectionId: target.kind === 'create' ? target.connectionId : '', variantId: variant.id, listPrice: nextList, salePrice: nextSale, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Toplu ürün fiyat düzenleme' }
             if (target.kind === 'update') await hubApi(`/channel-offers/${target.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.offerVersion}"` }, body: JSON.stringify(body) })
-            else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) })
+            else await sendWithVersionedIdempotencyKey(offerCreateKey(variant.id), key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
           } catch (error) {
             if (isStaleStockError(error)) anyStale = true
             failures.push({ sku: variant.sku, message: `fiyat: ${error instanceof Error ? error.message : 'kaydedilemedi'}` })
@@ -259,6 +268,8 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
   useEffect(() => { if (!stockDirty) { setStock(String(variant.onHand)); setStockBase(variant.onHand) } }, [stockDirty, variant.onHand])
   const [savingPrice, setSavingPrice] = useState(false); const [savingStock, setSavingStock] = useState(false)
   const [priceError, setPriceError] = useState('')
+  // The first offer's create key lives as long as the field (see the bulk apply above).
+  const [offerCreateKey] = useState(() => newIdempotencyKey('channel-offer-create'))
   const priceTarget = quickPriceTarget(variant, priceConnectionId, connectionCount)
   async function savePrice() {
     const salePrice = Number(price); if (savingPrice || price === '' || salePrice === (variant.salePrice ?? variant.listPrice ?? 0)) return
@@ -269,7 +280,7 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
     setSavingPrice(true); setPriceError('')
     try {
       if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
-      else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) })
+      else await sendWithVersionedIdempotencyKey(offerCreateKey, key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
     } catch (error) {
       setPriceError(`Fiyat kaydedilmedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`)
       return
