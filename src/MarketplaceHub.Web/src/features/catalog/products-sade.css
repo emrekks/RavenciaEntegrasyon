@@ -129,6 +129,9 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job { display: grid; gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job-h { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job-h b { flex: 1; font-weight: 500; }
+/* The connection the import reads, before what it is doing: which platform each row is. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job-h .rr-logo { width: 22px; height: 22px; flex: none; border-radius: 6px; object-fit: contain; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job-h .rr-job-src { font-weight: 600; margin-right: 8px; padding-right: 8px; border-right: 1px solid var(--rr-line, var(--rv-color-border)); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job .rr-bar { display: block; height: 4px; overflow: hidden; background: var(--rr-line); border-radius: 4px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job .rr-bar i { display: block; height: 100%; background: var(--rr-primary); border-radius: 4px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job-c { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--rr-muted); font-size: 12px; }
