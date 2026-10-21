@@ -14,6 +14,7 @@ import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFont
 import { readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
 import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
+import { clearQuerySnapshot, forgetPreviousSession } from '../shared/query-snapshot'
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
 import { focusOnMount } from '../shared/focus'
@@ -127,7 +128,7 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
   // A failed sign-out request (network, expired session) still leaves the workspace.
-  async function logout() { try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { clearPersonalStorage(); window.location.replace(`/?signedOut=${Date.now()}`) } }
+  async function logout() { try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { clearPersonalStorage(); clearQuerySnapshot(); window.location.replace(`/?signedOut=${Date.now()}`) } }
   // Hover expansion is an overlay state: the layout column stays collapsed so
   // opening and closing the menu does not move the page underneath it.
   const menuCollapsed = !sidebarPinned
@@ -226,6 +227,8 @@ export function App() {
   if (authPreview === 'mfa') return <MfaChallenge />
   if (me.isLoading) return <DelayedStatus title="Çalışma alanı hazırlanıyor" />
   // Only "not signed in" asks for the password; a server that is restarting or unreachable shows the error and tries again.
+  // A session that is gone leaves nothing of itself for the next reload to show.
+  if (me.isError && isSignedOut(me.error)) clearQuerySnapshot()
   if (me.isError) return isSignedOut(me.error) ? <Routes><Route path="*" element={<Login />} /></Routes> : <SessionLoadError error={me.error} onRetry={() => void me.refetch()} />
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />
   // Browser-stored notification history and remembered counts belong to this tenant and user only.
@@ -349,7 +352,7 @@ function Login({ notice }: { notice?: string }) {
       if (rememberMe) localStorage.setItem('ravencia.rememberedEmail', email.trim())
       else localStorage.removeItem('ravencia.rememberedEmail')
       // Nothing read under the previous session (perhaps another account or workspace) is shown to this one.
-      client.removeQueries({ predicate: query => query.queryKey[0] !== 'me' })
+      forgetPreviousSession(client)
       client.setQueryData(['me'], currentUser)
       if (location.pathname === '/' || location.pathname === '') navigate('/dashboard', { replace: true })
     } catch (reason) {
@@ -436,7 +439,7 @@ function MfaChallenge() {
   const [leaving, setLeaving] = useState(false)
   async function backToLogin() {
     setLeaving(true)
-    try { await api('/logout', { method: 'POST' }) } finally { clearPersonalStorage(); window.location.replace(`/?signedOut=${Date.now()}`) }
+    try { await api('/logout', { method: 'POST' }) } finally { clearPersonalStorage(); clearQuerySnapshot(); window.location.replace(`/?signedOut=${Date.now()}`) }
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -471,7 +474,7 @@ function LockedSession() {
   const [leaving, setLeaving] = useState(false)
   async function backToLogin() {
     setLeaving(true)
-    try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { clearPersonalStorage(); window.location.replace(`/?signedOut=${Date.now()}`) }
+    try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { clearPersonalStorage(); clearQuerySnapshot(); window.location.replace(`/?signedOut=${Date.now()}`) }
   }
   return <Status title="Oturum kilitli" detail="Bu oturumla devam edilemiyor. Giriş ekranına dönüp yeniden giriş yapın." action={<button type="button" className="rv-button rv-button-primary rv-button-md" onClick={() => void backToLogin()} disabled={leaving}>{leaving ? 'Giriş ekranına dönülüyor…' : 'Giriş Ekranına Dön'}</button>} />
 }
