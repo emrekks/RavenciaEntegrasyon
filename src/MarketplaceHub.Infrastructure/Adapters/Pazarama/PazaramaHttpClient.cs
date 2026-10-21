@@ -156,6 +156,7 @@ public sealed partial class PazaramaHttpClient(
             timeout.CancelAfter(requestTimeout + MaximumQuotaWait);
             var quotaAcquired = false;
             request.Options.Set(PazaramaRateLimitHandler.QuotaAcquiredKey, () => { quotaAcquired = true; timeout.CancelAfter(requestTimeout); });
+            CallerCancellation.Mark(request, cancellationToken);
             try
             {
                 using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
@@ -222,6 +223,8 @@ public sealed partial class PazaramaHttpClient(
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
+            // The token call waits for no quota token, so a cancellation the caller did not ask for is a timeout.
+            CallerCancellation.Mark(request, cancellationToken);
             using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
             var token = TokenResponse(response.StatusCode, await response.Content.ReadAsStringAsync(timeout.Token));
             if (!token.IsSuccess) logger.LogWarning("Pazarama token alınamadı. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}", account.Connection.Id, (int)response.StatusCode, token.Error?.Code);

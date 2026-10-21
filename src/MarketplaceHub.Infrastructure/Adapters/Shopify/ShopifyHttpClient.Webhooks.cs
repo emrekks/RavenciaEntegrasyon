@@ -21,7 +21,7 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     public async Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListWebhooksAsync(AdapterContext context, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<IReadOnlyList<RemoteWebhook>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<IReadOnlyList<RemoteWebhook>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var result = await QueryAsync(shop, "query{webhookSubscriptions(first:100){nodes{id topic uri}}}", null, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<IReadOnlyList<RemoteWebhook>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
@@ -40,7 +40,7 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     public async Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<string>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<string>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var created = new List<string>();
         foreach (var topic in WebhookTopics)
         {
@@ -55,7 +55,7 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     public async Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<bool>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<bool>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         foreach (var id in externalId.Split(WebhookIdSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var deleted = await DeleteSubscriptionAsync(shop, id, cancellationToken);
@@ -110,7 +110,7 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
         if (ours.FirstOrDefault(webhook => !string.IsNullOrWhiteSpace(webhook.Url))?.Url is not { } url)
             return Fail<string?>(AdapterErrorClass.NotFound, "SHOPIFY_WEBHOOKS_REMOVED", "Shopify panelin bütün bildirim aboneliklerini kaldırmış; bildirimleri kapatıp yeniden açın.", HttpStatusCode.NotFound);
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
-        if (shop is null) return Fail<string?>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (shop is null) return CredentialFailure(Fail<string?>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var restored = ours.Select(webhook => webhook.Id).ToList();
         foreach (var topic in WebhookTopics.Where(topic => ours.All(webhook => webhook.Topic != topic)))
         {

@@ -359,6 +359,68 @@ public sealed class TrendyolResilienceHandlerTests
         Assert.Equal(3, downstream.RequestCount);
     }
 
+    // The adapter's linked timeout token runs out while Trendyol hangs: the caller did not cancel, so it counts
+    // as a failure and the circuit opens instead of letting every request hang for the full timeout.
+    [Fact]
+    public async Task RequestTimeoutAfterTheQuota_CountsAsACircuitFailure()
+    {
+        var options = Options.Create(new TrendyolOptions
+        {
+            MaxConcurrency = 1,
+            RequestsPerInterval = 100,
+            RequestInterval = TimeSpan.FromMilliseconds(1),
+            CircuitFailureThreshold = 2,
+            CircuitBreakDuration = TimeSpan.FromMinutes(1)
+        });
+        using var downstream = new HangingHandler();
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options)) { InnerHandler = downstream };
+        using var invoker = new HttpMessageInvoker(resilience);
+
+        for (var i = 0; i < 2; i++)
+        {
+            using var caller = new CancellationTokenSource();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(caller.Token);
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/hanging");
+            CallerCancellation.Mark(request, caller.Token);
+            var sending = invoker.SendAsync(request, timeout.Token);
+            await downstream.WaitUntilEntered(i + 1);
+            timeout.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sending);
+        }
+        using var refusedRequest = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/hanging");
+        using var refused = await invoker.SendAsync(refusedRequest, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+        Assert.Equal(2, downstream.RequestCount);
+    }
+
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        private readonly SemaphoreSlim entered = new(0);
+        private int requestCount;
+
+        public int RequestCount => requestCount;
+
+        public async Task WaitUntilEntered(int count)
+        {
+            while (Volatile.Read(ref requestCount) < count) await entered.WaitAsync();
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref requestCount);
+            entered.Release();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) entered.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
     private sealed class SequenceHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
     {
         private int requestCount;

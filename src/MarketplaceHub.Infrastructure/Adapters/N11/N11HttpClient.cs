@@ -101,6 +101,8 @@ public sealed partial class N11HttpClient(
             {
                 Content = new StringContent(envelope, System.Text.Encoding.UTF8, "text/xml")
             };
+            // The account is inside the envelope; naming it keeps this probe on the account's quota and circuit.
+            request.Options.Set(N11RateLimitHandler.AccountKeyOption, account.AppKey);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
             using var response = await clients.CreateBoundedClient("N11").SendAsync(request, timeout.Token);
