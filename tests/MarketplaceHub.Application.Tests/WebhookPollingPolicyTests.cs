@@ -46,6 +46,15 @@ public sealed class WebhookPollingPolicyTests
     }
 
     [Fact]
+    public void TheOrderTheLastNotificationBroughtDoesNotMakeTheSilenceCount()
+    {
+        // Its ingest job writes it seconds after the notification; only a later order shows orders without notifications.
+        var after = WebhookPollingPolicy.UnnotifiedOrdersAfter(Now);
+        Assert.False(Now.AddSeconds(40) > after);
+        Assert.True(Now.AddMinutes(11) > after);
+    }
+
+    [Fact]
     public void AnOrderThePollReadsBeforeItsNotificationIsNotAMiss()
     {
         // Trendyol order times are stored three hours ahead (Turkey wall time); the cut-off moves with them.

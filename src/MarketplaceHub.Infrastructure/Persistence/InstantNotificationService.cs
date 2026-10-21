@@ -54,7 +54,7 @@ public sealed class InstantNotificationService(
             {
                 "WAITING" => "Bilgiler hazır; Hepsiburada adresi tanımlayıp ilk bildirimi gönderene kadar siparişler düzenli kontrolle gelir.",
                 "QUIET" => "Son saatlerde Hepsiburada'dan bildirim gelmedi; siparişler düzenli kontrolle gelmeye devam ediyor.",
-                _ => "Bildirimler geliyor; sipariş kontrolü yedek olarak 15 dakikada bir yapılıyor."
+                _ => "Bildirimler geliyor; sipariş kontrolü yedek olarak 3 dakikada bir yapılıyor."
             };
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, manualState, manualMessage, cancellationToken));
         }
@@ -75,8 +75,10 @@ public sealed class InstantNotificationService(
             "PASSIVE" => connection.PlatformCode == "SHOPIFY"
                 ? "Shopify bildirim aboneliklerinin bir kısmını kaldırmış; panel bir saat içinde yeniden oluşturur."
                 : "Trendyol bildirimleri durdurmuş; panel bir saat içinde yeniden açar.",
-            _ when !healthy => "Bildirimler son saatlerde beklenen siparişleri getirmedi; sipariş kontrolü dakikada bir sürüyor.",
-            _ => "Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak 15 dakikada bir yapılıyor."
+            _ when !healthy => connection.PlatformCode == "SHOPIFY"
+                ? "Bildirimler son saatlerde beklenen siparişleri getirmedi; sipariş kontrolü 3 dakikada bir sürüyor."
+                : "Bildirimler son saatlerde beklenen siparişleri getirmedi; sipariş kontrolü dakikada bir sürüyor.",
+            _ => "Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak 3 dakikada bir yapılıyor."
         };
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, message, cancellationToken));
     }

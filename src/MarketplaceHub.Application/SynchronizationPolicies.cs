@@ -695,6 +695,11 @@ public static class WebhookPollingPolicy
         return gaps.Count(gap => now - gap <= GapWindow) < GapLimit;
     }
 
+    // The order a notification brings is written by its ingest job moments after the notification was
+    // received; only an order written later than this after the last notification shows that orders keep
+    // coming while notifications do not.
+    public static DateTimeOffset UnnotifiedOrdersAfter(DateTimeOffset lastSign) => lastSign + DeliveryGrace;
+
     // An order polling inserted counts as missed only once the notifications had time to start.
     public static bool CountsAsGap(DateTimeOffset? registeredAt, DateTimeOffset now) =>
         registeredAt is { } registered && now - registered >= RegistrationGrace;
