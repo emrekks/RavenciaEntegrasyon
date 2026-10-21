@@ -445,6 +445,27 @@ function PriceStockSendPanel({ connectionId, writesEnabled, connectionActive, pl
     <IntegrationFeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
   </section>
 }
+// Hepsiburada SIT certification (STAGE connection only): uploads the price and stock of the products Hepsiburada
+// loaded into the SIT account (imported hbSku links with an active offer). The job's detail in İşlem Takibi shows
+// the inventoryUploadId as its external id.
+function HepsiburadaSitPriceStockPanel({ connectionId, connectionReady }: { connectionId: string; connectionReady: boolean }) {
+  const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const send = useMutation({
+    mutationFn: () => hubApi<{ jobId?: string }>(`/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
+    onSuccess: result => { setJobId(result.jobId ?? null); setFeedback({ kind: 'success', message: 'Stok ve fiyat yüklemesi kuyruğa alındı. inventoryUploadId, İşlem Takibi’nde bu işlemin Dış Kimlik alanında görünür.' }) },
+    onError: reason => setFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Stok ve fiyat yüklemesi başlatılamadı.' })
+  })
+  return <section className="panel n11-price-stock-send">
+    <h2>Stok ve Fiyat Gönder (SIT)</h2>
+    <p>{connectionReady ? 'Hepsiburada’nın SIT hesabına yüklediği, hbSku ile eşleşmiş ve aktif teklifi olan ürünlerin fiyat ve stoğu tek bir yükleme olarak gönderilir. Her gönderim yeni bir yükleme (inventoryUploadId) oluşturur.' : 'Gönderim için bağlantı aktif veya doğrulanmış olmalı ve son bağlantı testi hatasız tamamlanmalı.'}</p>
+    <div className="n11-price-stock-send-actions">
+      <button type="button" disabled={!connectionReady || send.isPending} onClick={() => send.mutate()}>{send.isPending ? 'Kuyruğa alınıyor…' : 'Stok ve Fiyat Gönder (SIT)'}</button>
+    </div>
+    {jobId && <p>İşlem kimliği: <code>{jobId}</code> · <Link to="/jobs">İşlem Takibi’nde aç</Link></p>}
+    <IntegrationFeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
+  </section>
+}
 function N11PublishSettingsPanel({ connectionId, displayName, version, shipmentTemplate, preparingDay }: { connectionId: string; displayName: string; version: number; shipmentTemplate: string | null | undefined; preparingDay: number | null | undefined }) {
   const client = useQueryClient()
   const [template, setTemplate] = useState(shipmentTemplate ?? '')
@@ -679,7 +700,8 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
         {item.platformCode === 'N11' && <PriceStockSendPanel connectionId={id} writesEnabled={externalWritesEnabled} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} platformName="N11" codeLabel="stok kodu" codeAccusative="stok kodunu" codeExample="BS74297" />}
         {item.platformCode === 'PAZARAMA' && <PazaramaSaleStatusPanel connectionId={id} writesEnabled={externalWritesEnabled} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} />}
         {item.platformCode === 'PAZARAMA' && <PriceStockSendPanel connectionId={id} writesEnabled={externalWritesEnabled} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} platformName="Pazarama" codeLabel="barkod" codeAccusative="barkodu" codeExample="BS74297" />}
-        {stageTestAvailable && <div className="panel"><h2>Test Ortamında Yeni Sipariş</h2><p>Yalnız test ortamında tek seferlik deneme siparişi oluşturur. Hepsiburada için bağlı hbSku’su olan, yayındaki bir ürün seçilir. Tıklayınca pazaryerinin test ortamında sipariş açılır.</p><button type="button" disabled={!item.hasCredential || run.isPending} onClick={() => run.mutate({ path: `/connections/${id}/stage-test-order-jobs` })}>{run.isPending ? 'Kuyruğa alınıyor…' : 'Test Siparişi Oluştur'}</button></div>}
+        {item.platformCode === 'HEPSIBURADA' && item.environment === 'STAGE' && <HepsiburadaSitPriceStockPanel connectionId={id} connectionReady={stageReady} />}
+        {stageTestAvailable && <div className="panel"><h2>Test Ortamında Yeni Sipariş</h2><p>Yalnız test ortamında tek seferlik deneme siparişi oluşturur. Hepsiburada için bağlı hbSku’su olan, yayındaki bir ürün; yoksa SIT hesabından hbSku ile içe aktarılmış aktif bir ürün seçilir. Tıklayınca pazaryerinin test ortamında sipariş açılır; sipariş numarası İşlem Takibi’nde görünür.</p><button type="button" disabled={!item.hasCredential || run.isPending} onClick={() => run.mutate({ path: `/connections/${id}/stage-test-order-jobs` })}>{run.isPending ? 'Kuyruğa alınıyor…' : 'Test Siparişi Oluştur'}</button></div>}
         {stageManual && <div className="panel"><h2>Test Ortamı İşlem Durumu</h2><p>Elle yapılan denemeler bağlantıyı, kayıtlı API bilgilerini, girilen değerleri, tekrar korumasını ve pazaryerinin yanıtını denetler.</p><p>Teknik ayrıntılı hata kayıtları İşlem Takibi’nde tutulur.</p></div>}</> }] : [])
   ]
   const activeSection = settingsSections.find(section => section.key === settingsSection) ?? settingsSections[0]

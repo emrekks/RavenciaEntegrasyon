@@ -597,7 +597,9 @@ public sealed record CommonLabelRequest(string CargoTrackingNumber, int BoxQuant
 public sealed record CommonLabelDocument(string CargoTrackingNumber, string Format, byte[] Content);
 public sealed record CommonLabelJobPayload(Guid JobId, Guid PackageId, string Phase, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string Format = "ZPL");
 public sealed record CapabilityProbeJobPayload(Guid JobId, Guid PackageId, Guid ActorUserId, string CapabilityCode, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
-public sealed record StageTestOrderJobPayload(Guid JobId, Guid ActorUserId, string Barcode, DateTimeOffset StartedAt);
+// HepsiburadaSku is set only on a STAGE Hepsiburada connection without a LIVE listing: the SIT order is
+// then created directly from an imported hbSku link instead of a listing barcode.
+public sealed record StageTestOrderJobPayload(Guid JobId, Guid ActorUserId, string Barcode, DateTimeOffset StartedAt, string? HepsiburadaSku = null);
 public sealed record StageTestOrderResult(string OrderNumber);
 public sealed record ReturnPollWindow(
     DateTimeOffset? ModifiedAfter,

@@ -1793,9 +1793,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             || connection.PlatformCode == "TRENDYOL" && !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal))
             return ServiceResult<Guid>.Fail("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Taze test siparişi yalnız desteklenen Stage bağlantılarında oluşturulabilir.", 422);
         var barcode = "9900000000486";
+        string? hepsiburadaSku = null;
         if (connection.PlatformCode == "HEPSIBURADA")
         {
-            barcode = await (from listing in db.ChannelListingVariants.AsNoTracking()
+            var liveBarcode = await (from listing in db.ChannelListingVariants.AsNoTracking()
                              join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, ProfileId = listing.ProfileId } equals new { profile.TenantId, ProfileId = profile.Id }
                              join state in db.MarketplaceListingStates.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { state.TenantId, state.ConnectionId, state.VariantId }
                              join link in db.MarketplaceVariantLinks.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { link.TenantId, link.ConnectionId, link.VariantId }
@@ -1803,12 +1804,26 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                                    && listing.ExternalBarcode != null && !string.IsNullOrWhiteSpace(link.ExternalId)
                              orderby listing.VariantId
                              select listing.ExternalBarcode!).FirstOrDefaultAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(barcode)) return ServiceResult<Guid>.Fail("HEPSIBURADA_STAGE_LISTING_REQUIRED", "Test siparişi için Stage ortamında bağlı Hepsiburada SKU’su bulunan LIVE bir ürün gerekir.", 409);
+            if (!string.IsNullOrWhiteSpace(liveBarcode)) barcode = liveBarcode;
+            else
+            {
+                // SIT fallback (this method only reaches here for a STAGE connection): the products Hepsiburada
+                // loads into the SIT account are imported, not published from the panel, so they have no LIVE
+                // listing. Use an imported link whose external id is a real hbSku and whose offer is ACTIVE.
+                var importedExternalIds = await (from link in db.MarketplaceVariantLinks.AsNoTracking()
+                                                 join offer in db.ChannelOffers.AsNoTracking() on new { link.TenantId, link.ConnectionId, link.VariantId } equals new { offer.TenantId, offer.ConnectionId, offer.VariantId }
+                                                 where link.TenantId == tenantId && link.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                                                 orderby link.VariantId
+                                                 select link.ExternalId).ToListAsync(cancellationToken);
+                hepsiburadaSku = HepsiburadaStageCertificationPolicy.FirstHepsiburadaSku(importedExternalIds);
+                if (hepsiburadaSku is null) return ServiceResult<Guid>.Fail("HEPSIBURADA_STAGE_LISTING_REQUIRED", "Test siparişi için Stage ortamında bağlı Hepsiburada SKU’su bulunan LIVE bir ürün veya hbSku ile içe aktarılmış ACTIVE bir teklif gerekir.", 409);
+                barcode = hepsiburadaSku;
+            }
         }
         var normalizedKey = idempotencyKey.Trim();
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.StageTestOrder && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new StageTestOrderJobPayload(jobId, actorUserId, barcode, now));
+        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new StageTestOrderJobPayload(jobId, actorUserId, barcode, now, hepsiburadaSku));
         var job = NewJob(tenantId, connectionId, MarketplaceJobTypes.StageTestOrder, $"stage-test-order:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}", payload, correlationId);
         job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; job.MaxAttempts = 1; db.IntegrationJobs.Add(job);
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "STAGE_TEST_ORDER_ENQUEUED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = $"official-stage-test-order-fixture:{connection.PlatformCode}", CorrelationId = correlationId, CreatedAt = now });

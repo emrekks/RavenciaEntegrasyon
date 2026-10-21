@@ -1678,7 +1678,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     private async Task<bool> HasHepsiburadaPublicationEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken)
     {
-        var required = new[] { MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite };
+        // A STAGE (SIT) connection does not require PRODUCT_WRITE: that evidence is produced by the SIT
+        // product import itself. PRICE_WRITE/INVENTORY_WRITE stay required; PRODUCTION requires all three.
+        var required = HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(connection);
         var capabilities = await db.PlatformCapabilities.AsNoTracking()
             .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && required.Contains(x.Code))
             .ToListAsync(cancellationToken);

@@ -1330,14 +1330,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
             if (connection is null) return JobExecutionResult.Blocked("CONNECTION_NOT_FOUND", "Bağlantı bulunamadı.");
-            if (!WritesEnabled(connection.SettingsJson))
+            // The SIT inventory upload of a STAGE Hepsiburada connection is a manual Stage operation: it is
+            // not gated by the write switches (the adapter allows it only as a manual operational Stage
+            // write with PRICE_WRITE/INVENTORY_WRITE evidence) and it is built from the imported offers.
+            var hepsiburadaStageManual = HepsiburadaStageCertificationPolicy.IsManualStagePriceInventory(connection, payload.Manual);
+            if (!hepsiburadaStageManual && !WritesEnabled(connection.SettingsJson))
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
             // Every platform's request carries price and stock together (Trendyol's too), so an
             // automatic send needs both policies; a manual send is guarded by the connection switch alone.
             foreach (var writePolicy in PriceInventoryOutboxPolicy.RequiredWritePolicies(payload.Manual))
                 if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
                     return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; pazar yeri isteği gönderilmedi." : "Fiyat dış yazma akışı kapalı; pazar yeri isteği gönderilmedi.");
-            var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);
+            var current = hepsiburadaStageManual
+                ? await new PriceInventoryComposer(db).BuildHepsiburadaStageAsync(tenantId, connectionId, cancellationToken, payload.VariantId)
+                : await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);
             if (!current.Succeeded)
             {
                 if (current.Error!.Code == "NO_EXTERNAL_CHANGES") return JobExecutionResult.Success();
@@ -1364,7 +1370,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             else effect.CompletedAt = null;
             await db.SaveChangesAsync(cancellationToken);
             TrackRequest();
-            var submit = await inventoryPrice.PushPriceAndInventoryAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey) with { Operation = IntegrationOperation.Automatic }, payload.PayloadJson, cancellationToken);
+            var submit = await inventoryPrice.PushPriceAndInventoryAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey) with { Operation = hepsiburadaStageManual ? IntegrationOperation.Manual : IntegrationOperation.Automatic }, payload.PayloadJson, cancellationToken);
             if (!submit.IsSuccess)
             {
                 TrackResultFailure(submit.Error);
@@ -1502,7 +1508,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             || connection.PlatformCode == "TRENDYOL" && !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal))
             return JobExecutionResult.Blocked("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Stage test siparişi yalnız desteklenen Stage bağlantılarında kullanılabilir.");
         var sku = payload.Barcode;
-        if (connection.PlatformCode == "HEPSIBURADA")
+        var importedHepsiburadaSku = payload.HepsiburadaSku?.Trim();
+        if (connection.PlatformCode == "HEPSIBURADA" && !string.IsNullOrEmpty(importedHepsiburadaSku))
+        {
+            // SIT fallback chosen at enqueue (STAGE only, checked above): the hbSku of an imported product
+            // with no LIVE listing. It must still be a linked hbSku with an ACTIVE offer on this connection.
+            var importedExternalIds = await (from link in db.MarketplaceVariantLinks.AsNoTracking()
+                                             join offer in db.ChannelOffers.AsNoTracking() on new { link.TenantId, link.ConnectionId, link.VariantId } equals new { offer.TenantId, offer.ConnectionId, offer.VariantId }
+                                             where link.TenantId == tenantId && link.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                                             select link.ExternalId).ToListAsync(cancellationToken);
+            if (!HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(importedHepsiburadaSku)
+                || !importedExternalIds.Any(externalId => string.Equals(externalId.Trim(), importedHepsiburadaSku, StringComparison.OrdinalIgnoreCase)))
+                return JobExecutionResult.Blocked("HEPSIBURADA_STAGE_SKU_NOT_LINKED", "Test siparişi için seçilen hbSku artık bu Stage bağlantısında ACTIVE teklife bağlı değil.");
+            sku = importedHepsiburadaSku;
+        }
+        else if (connection.PlatformCode == "HEPSIBURADA")
         {
             var remoteSkus = await (from listing in db.ChannelListingVariants.AsNoTracking()
                                     join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, ProfileId = listing.ProfileId } equals new { profile.TenantId, ProfileId = profile.Id }
@@ -9157,7 +9177,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<bool> HasHepsiburadaPublicationEvidenceAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
-        return await HasHepsiburadaWriteEvidenceAsync(tenantId, connectionId, cancellationToken, MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite);
+        // A STAGE (SIT) connection does not require PRODUCT_WRITE: the SIT product import is what produces
+        // that evidence. PRICE_WRITE/INVENTORY_WRITE stay required; PRODUCTION requires all three.
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "HEPSIBURADA", cancellationToken);
+        if (connection is null) return false;
+        return await HasHepsiburadaWriteEvidenceAsync(tenantId, connectionId, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(connection));
     }
 
     private async Task<bool> HasHepsiburadaWriteEvidenceAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, params string[] required)

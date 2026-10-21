@@ -234,8 +234,12 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     // first controlled n11 write is made before the automatic flows are on.
     public async Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || (x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || (x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
+        // Hepsiburada is accepted only for the SIT certification upload of a STAGE connection; any other
+        // Hepsiburada connection (PRODUCTION) gets the same refusal as before.
+        if (connection is not null && connection.PlatformCode == "HEPSIBURADA" && !HepsiburadaStageCertificationPolicy.IsStageHepsiburada(connection)) connection = null;
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11 ya da Pazarama bağlantısı gerekir.", 422);
+        if (connection.PlatformCode == "HEPSIBURADA") return await EnqueueHepsiburadaStagePriceInventoryAsync(tenantId, connection, idempotencyKey, correlationId, stockCode, cancellationToken);
         Guid? variantId = null;
         if (!string.IsNullOrWhiteSpace(stockCode))
         {
@@ -268,6 +272,40 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         var writeDelay = pricePolicy is null || manual ? 0 : Math.Clamp(pricePolicy.IntervalSeconds, 0, 86_400);
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(id);
+    }
+
+    // Hepsiburada SIT certification: an upload of the imported SIT offers, started from the panel on a STAGE
+    // connection. It is a manual Stage operation, so the global/connection write switches and the automatic
+    // price/stock policies do not apply; the worker sends it as a manual operation and the adapter still
+    // requires an operational STAGE connection with PRICE_WRITE/INVENTORY_WRITE evidence. Each click (a new
+    // Idempotency-Key) makes a new upload, so a fresh inventoryUploadId can always be produced.
+    private async Task<ServiceResult<Guid>> EnqueueHepsiburadaStagePriceInventoryAsync(Guid tenantId, PlatformConnection connection, string idempotencyKey, string correlationId, string? stockCode, CancellationToken cancellationToken)
+    {
+        if (!IntegrationRuntimePolicy.IsOperationalStage(connection)) return ServiceResult<Guid>.Fail("STAGE_CONNECTION_NOT_READY", "SIT fiyat-stok yüklemesi için bağlantı aktif/doğrulanmış olmalı ve son bağlantı testi hatasız tamamlanmalı.", 422);
+        if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fiyat-stok yüklemesi kuyruğa alınamaz.", 422);
+        Guid? variantId = null;
+        if (!string.IsNullOrWhiteSpace(stockCode))
+        {
+            var code = stockCode.Trim();
+            var variantIds = await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connection.Id && x.ExternalId == code)
+                .Select(x => x.VariantId)
+                .ToListAsync(cancellationToken);
+            if (variantIds.Count != 1) return ServiceResult<Guid>.Fail("HEPSIBURADA_SKU_NOT_LINKED", $"'{code}' hbSku'su panelde tek bir varyanta bağlı değil. Önce Hepsiburada ürün eşleştirmesini çalıştırın.", 404);
+            variantId = variantIds[0];
+        }
+        var build = await new PriceInventoryComposer(db).BuildHepsiburadaStageAsync(tenantId, connection.Id, cancellationToken, variantId);
+        if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
+        var draft = build.Value!;
+        var key = idempotencyKey.Trim();
+        var dedup = $"{PriceInventoryOutboxPolicy.DedupKey(connection.Id, draft.Lines)}:sit:{Hash(key)[..32]}";
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
+        var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connection.Id, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, null, Manual: true));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connection.Id, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(key)}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<Guid>.Ok(id);
     }
 
     public async Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)

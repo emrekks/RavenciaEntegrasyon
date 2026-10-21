@@ -183,6 +183,63 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines) { MissingInventorySkus = missingInventory });
     }
 
+    // Hepsiburada SIT certification (STAGE connection, manual send from the panel only). The inventory
+    // products Hepsiburada loads into the SIT account reach the panel through the product import (a
+    // variant link and an ACTIVE offer) and have no listing profile or LIVE state, so the Hepsiburada
+    // branch above finds nothing. This batch is built from the imported links instead, with the same
+    // payload shape and line record, so the POLL phase reconciles it the same way. Every ACTIVE offer is
+    // sent, not only changed ones, since the point is a fresh inventoryUploadId; links that carry the
+    // merchant SKU instead of an hbSku are left out because the upload needs both SKUs.
+    public async Task<ServiceResult<PriceInventoryDraft>> BuildHepsiburadaStageAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == connectionId, cancellationToken);
+        if (connection is null) return ServiceResult<PriceInventoryDraft>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
+        if (!HepsiburadaStageCertificationPolicy.IsStageHepsiburada(connection))
+            return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_STAGE_CONNECTION_REQUIRED", "Bu fiyat-stok yüklemesi yalnız Hepsiburada test (STAGE) bağlantısında kullanılabilir.", 422);
+        var rows = await (from offer in db.ChannelOffers.AsNoTracking()
+                          join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                          join remoteLink in db.MarketplaceVariantLinks.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId }
+                          join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
+                          from inventory in inventories.DefaultIfEmpty()
+                          where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                               && (variantId == null || offer.VariantId == variantId)
+                          orderby variant.Id
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, ExternalId = remoteLink.ExternalId })
+            .ToListAsync(cancellationToken);
+        var candidates = rows.Where(row => HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.ExternalId)).ToList();
+        if (candidates.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_SKU_LINK_REQUIRED", "SIT fiyat-stok yüklemesi için hbSku (HB…) ile içe aktarılmış ACTIVE Hepsiburada teklifi gerekir.", 422);
+        var missingInventory = candidates.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
+        if (missingInventory.Count == candidates.Count) return MissingInventory(missingInventory);
+
+        var lines = new List<PriceInventoryPushLine>();
+        var merchantSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hepsiburadaSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in candidates.Where(row => row.Inventory is not null))
+        {
+            var merchantSku = row.Variant.Sku.Trim();
+            var hepsiburadaSku = row.ExternalId.Trim();
+            var salePrice = OutboundSalePrice(row.Offer);
+            var listPrice = OutboundListPrice(row.Offer);
+            // The upload takes one line per merchantSku and hbSku, a positive TRY price and SKUs without
+            // spaces (HepsiburadaHttpClient.ValidPriceInventoryPayload); other offers stay out of the batch.
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0
+                || merchantSku.Length == 0 || merchantSku.Any(char.IsWhiteSpace)
+                || !merchantSkus.Add(merchantSku) || !hepsiburadaSkus.Add(hepsiburadaSku)) continue;
+            var quantity = decimal.Floor(Math.Max(0, row.Inventory!.Available - row.Offer.SafetyStock));
+            var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
+            var barcode = string.IsNullOrWhiteSpace(row.Variant.Barcode) ? merchantSku : row.Variant.Barcode.Trim();
+            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, merchantSku, hepsiburadaSku));
+        }
+        if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", "SIT fiyat-stok yüklemesine uygun teklif yok: TRY, sıfırdan büyük fiyat ve boşluksuz, tekil merchantSku/hbSku gerekir.", 422);
+        lines = lines.Take(HepsiburadaHttpClient.MaxInventoryUploadItems).ToList();
+        var payload = JsonSerializer.Serialize(new
+        {
+            merchantId = connection.ExternalStoreId,
+            items = lines.Select(x => new { hepsiburadaSku = x.HepsiburadaSku, merchantSku = x.MerchantSku, price = x.SalePrice, availableStock = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)) }).ToArray()
+        });
+        return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines) { MissingInventorySkus = missingInventory });
+    }
+
     // n11 has no listing profile in the panel: an n11 offer is sent when its
     // variant is linked to an n11 stock code. Prices go with two decimals and
     // listPrice >= salePrice, stock is capped at n11's 999,999.

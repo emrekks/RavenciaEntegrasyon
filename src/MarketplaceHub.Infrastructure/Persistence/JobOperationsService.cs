@@ -442,7 +442,27 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 }
             }
         }
+        summary = await WithHepsiburadaStageReadBackAsync(job, summary, cancellationToken);
         return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice);
+    }
+
+    // Hepsiburada SIT certification read-back (STAGE Hepsiburada connections only): the job detail's external id
+    // shows the product import trackingId, the listing inventoryUploadId, or the created test order number, so
+    // they can be copied from İşlem Takibi. Only these remote identifiers are read; no payload or secret is exposed.
+    private async Task<JobSummaryView> WithHepsiburadaStageReadBackAsync(IntegrationJob job, JobSummaryView summary, CancellationToken cancellationToken)
+    {
+        if (summary.ExternalId is not null || job.ConnectionId is not Guid connectionId
+            || job.JobType is not (MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.PriceInventorySync or MarketplaceJobTypes.StageTestOrder)) return summary;
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null || !HepsiburadaStageCertificationPolicy.IsStageHepsiburada(connection)) return summary;
+        var externalId = job.JobType == MarketplaceJobTypes.StageTestOrder
+            ? await db.AuditLogs.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.Action == "STAGE_TEST_ORDER_CREATED" && x.CorrelationId == job.CorrelationId)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => x.TargetId)
+                .FirstOrDefaultAsync(cancellationToken)
+            : HepsiburadaStageCertificationPolicy.OperationIdForDisplay(job.PayloadJson);
+        return string.IsNullOrWhiteSpace(externalId) ? summary : summary with { ExternalId = externalId };
     }
 
     private async Task<JobInvoiceContextView?> InvoiceContext(IntegrationJob job, CancellationToken cancellationToken)

@@ -329,8 +329,15 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
 
         var connectionIds = blockedConnectionIds.Select(x => x.ConnectionId).ToArray();
+        // A STAGE (SIT) Hepsiburada connection runs its certification writes as manual Stage operations with
+        // the write switches off: its product create/update jobs and the price/stock uploads started from
+        // the panel are not cancelled here. Its automatic jobs, and every PRODUCTION connection, still are.
+        var stageHepsiburadaIds = connections
+            .Where(x => !WritesEnabled(x.SettingsJson) && HepsiburadaStageCertificationPolicy.IsStageHepsiburada(x))
+            .Select(x => x.Id)
+            .ToArray();
         var blockedHepsiburadaIds = connections
-            .Where(x => x.PlatformCode == "HEPSIBURADA" && !WritesEnabled(x.SettingsJson))
+            .Where(x => x.PlatformCode == "HEPSIBURADA" && !WritesEnabled(x.SettingsJson) && !HepsiburadaStageCertificationPolicy.IsStageHepsiburada(x))
             .Select(x => x.Id)
             .ToArray();
         var policies = await db.ConnectionSyncPolicies
@@ -346,7 +353,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var jobs = await db.IntegrationJobs
             .Where(x => connectionIds.Contains(x.ConnectionId!.Value)
                 && (x.JobType == MarketplaceJobTypes.StockReconciliation
-                    || x.JobType == MarketplaceJobTypes.PriceInventorySync
+                    || x.JobType == MarketplaceJobTypes.PriceInventorySync && !(x.TriggerType == "user" && stageHepsiburadaIds.Contains(x.ConnectionId!.Value))
                     || x.JobType == MarketplaceJobTypes.StockProjectionDispatch
                     || blockedHepsiburadaIds.Contains(x.ConnectionId!.Value) && (x.JobType == MarketplaceJobTypes.ProductCreate || x.JobType == MarketplaceJobTypes.ProductUpdate))
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
