@@ -19,7 +19,9 @@ export type AppNotification = {
 // Most notifications are plain sentences, so the destination is derived from what they talk about.
 export function inferNotificationTarget(message: string): NotificationTarget | null {
   const text = message.toLocaleLowerCase('tr-TR')
-  if (/(dış yazma|yazma anahtar|bağlantı doğrulan|bağlantı test|api anahtar|kimlik doğrulama)/u.test(text)) return { href: '/integrations', label: 'Entegrasyonlara Git' }
+  // A connection's own events (for example "… bağlantısında seçilen veriler sıfırlandı: iade verileri…") lead to
+  // the connection even when they name the data they touched.
+  if (/(dış yazma|yazma anahtar|bağlantı doğrulan|bağlantı test|api anahtar|kimlik doğrulama|bağlantısında)/u.test(text)) return { href: '/integrations', label: 'Entegrasyonlara Git' }
   if (/iade/u.test(text)) {
     if (/(onaylanamadı|reddedilemedi|başarısız|hata|alınamadı)/u.test(text)) return { href: '/returns?status=ACTION_REQUIRED', label: 'Bekleyen İadelere Git' }
     if (/(reddi|reddedildi|ret kararı)/u.test(text)) return { href: '/returns?status=REJECTED', label: 'Reddedilen İadelere Git' }

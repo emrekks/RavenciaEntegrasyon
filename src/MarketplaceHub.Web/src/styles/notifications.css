@@ -8,3 +8,7 @@
 
 .rv-notification-history { position: fixed; top: calc(var(--rv-topbar-height) + 10px); right: 16px; z-index: var(--rv-z-toast); display: grid; grid-template-rows: auto auto minmax(0, 1fr); width: min(480px, calc(100vw - 32px)); max-height: min(680px, calc(100dvh - 88px)); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 18px 48px rgb(0 0 0 / .45); }
 @media (max-width: 600px) { .rv-notification-history { top: 68px; right: 16px; left: 16px; width: auto; max-width: none; } }
+/* Opens with a short settle instead of appearing at once; still for people who ask for less motion. */
+.rv-notification-history { animation: rv-notification-history-in 140ms cubic-bezier(.2, .8, .2, 1); transform-origin: top right; }
+@keyframes rv-notification-history-in { from { opacity: 0; transform: translateY(-6px) scale(.985); } }
+@media (prefers-reduced-motion: reduce) { .rv-notification-history { animation: none; } }

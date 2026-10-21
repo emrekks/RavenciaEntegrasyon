@@ -10,6 +10,7 @@ describe('notification targets', () => {
 
   it('sends connection and write-switch problems to the integrations page', () => {
     expect(inferNotificationTarget('Global veya connection dış yazma anahtarı kapalı.')?.href).toBe('/integrations')
+    expect(inferNotificationTarget('SIT Hepsiburada bağlantısında seçilen veriler sıfırlandı: sipariş verileri, iade verileri, fatura verileri.')).toEqual({ href: '/integrations', label: 'Entegrasyonlara Git' })
   })
 
   it('maps the other areas and returns nothing for unrelated text', () => {
