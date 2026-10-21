@@ -477,7 +477,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private sealed record ProductFamily(string Key, Product Primary, IReadOnlyList<Product> Products);
 
     // Narrow rows for catalog-wide grouping and counting; never saved or shown as they are.
-    private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version };
+    private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", BrandId = x.BrandId, Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version };
     private IQueryable<ProductVariant> VariantShapes(Guid tenantId) => db.ProductVariants.AsNoTracking()
         .Where(x => x.TenantId == tenantId)
         .Select(x => new ProductVariant { Id = x.Id, TenantId = x.TenantId, ProductId = x.ProductId, Sku = "", SkuNormalized = "", ModelCode = x.ModelCode, OptionSignature = x.OptionSignature, Status = x.Status });
@@ -485,7 +485,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private static string ProductFamilyKey(Product product, IReadOnlyList<ProductVariant> variants)
     {
         var modelCode = variants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-        return string.IsNullOrWhiteSpace(modelCode) ? $"product:{product.Id:D}" : $"model:{modelCode.Trim().ToUpperInvariant()}";
+        return ProductFamilyKeyPolicy.FamilyKey(product.Id, product.BrandId, modelCode);
     }
 
     public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
@@ -975,12 +975,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var ownVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
         var modelCode = ownVariants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
-        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
-            ? [id]
-            : await (from siblingVariant in db.ProductVariants.AsNoTracking()
-                     join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
-                     where siblingVariant.ModelCode != null && siblingVariant.ModelCode.ToUpper() == modelCode.ToUpper()
-                     select siblingProduct.Id).Distinct().ToListAsync(cancellationToken);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken);
         if (!familyProductIds.Contains(id)) familyProductIds.Add(id);
         var familyProducts = await VisibleProducts(tenantId)
             .Where(x => familyProductIds.Contains(x.Id))
@@ -1748,15 +1743,18 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(modelCode)) return [product.Id];
-
-        var ids = await (from siblingVariant in db.ProductVariants.AsNoTracking()
-                         join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
-                         where siblingVariant.ModelCode != null && siblingVariant.ModelCode.ToUpper() == modelCode.ToUpper()
-                         select siblingProduct.Id).Distinct().ToListAsync(cancellationToken);
+        var ids = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken);
         if (!ids.Contains(product.Id)) ids.Add(product.Id);
         return ids;
     }
+
+    // D9: the visible products of the same brand whose model code has the same key.
+    private Task<List<Guid>> VisibleFamilyProductIdsAsync(Guid tenantId, Guid? brandId, string? modelCode, CancellationToken cancellationToken) =>
+        ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode,
+            from siblingVariant in db.ProductVariants.AsNoTracking()
+            join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
+            select siblingVariant,
+            cancellationToken);
 
     private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken, Guid? variantAttributeProductId = null)
     {

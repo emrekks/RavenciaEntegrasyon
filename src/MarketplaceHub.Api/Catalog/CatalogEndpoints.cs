@@ -495,6 +495,17 @@ public static class CatalogEndpoints
         return Results.Ok(new { productId = product.Id, variantId = command.VariantId, mediaCount = desiredMedia.Count });
     }
 
+    // D9: the products of the same brand whose model code has the same key, among products that are not linked
+    // only to hidden connections. Empty when the model code is empty.
+    private static Task<List<Guid>> VisibleFamilyProductIdsAsync(AppDbContext db, Guid tenantId, Guid? brandId, string? modelCode, CancellationToken cancellationToken) =>
+        ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenantId
+                && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId)
+                    || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId
+                        && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId
+                            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))),
+            cancellationToken);
+
     private static Task<IResult> ReorderProductFamilyMediaAsync([FromBody] ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider) =>
         command.UrlsInOrder is null
             ? ReorderProductFamilyMediaLegacyAsync(command, http, db, timeProvider)
@@ -518,19 +529,7 @@ public static class CatalogEndpoints
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(http.RequestAborted);
-        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
-            ? new List<Guid> { sourceProduct.Id }
-            : await db.ProductVariants.AsNoTracking()
-                .Where(variant => variant.TenantId == tenant.TenantId
-                    && variant.ModelCode != null
-                    && variant.ModelCode.ToUpper() == modelCode.ToUpper()
-                    && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
-                        || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
-                            && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
-                                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
-                .Select(variant => variant.ProductId)
-                .Distinct()
-                .ToListAsync(http.RequestAborted);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(db, tenant.TenantId, sourceProduct.BrandId, modelCode, http.RequestAborted);
         if (!familyProductIds.Contains(sourceProduct.Id)) familyProductIds.Add(sourceProduct.Id);
 
         var media = await db.ProductMedia
@@ -680,17 +679,7 @@ public static class CatalogEndpoints
             .FirstOrDefaultAsync(http.RequestAborted);
         if (string.IsNullOrWhiteSpace(modelCode)) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
 
-        var familyProductIds = await db.ProductVariants.AsNoTracking()
-            .Where(variant => variant.TenantId == tenant.TenantId
-                && variant.ModelCode != null
-                && variant.ModelCode.ToUpper() == modelCode.ToUpper()
-                && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
-                    || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
-                        && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
-                            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
-            .Select(variant => variant.ProductId)
-            .Distinct()
-            .ToListAsync(http.RequestAborted);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(db, tenant.TenantId, sourceProduct.BrandId, modelCode, http.RequestAborted);
         familyProductIds.Remove(sourceProduct.Id);
         if (familyProductIds.Count == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
 
@@ -915,19 +904,7 @@ public static class CatalogEndpoints
             .OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id)
             .Select(variant => variant.ModelCode)
             .FirstOrDefaultAsync(http.RequestAborted);
-        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
-            ? new List<Guid> { product.Id }
-            : await db.ProductVariants.AsNoTracking()
-                .Where(variant => variant.TenantId == tenant.TenantId
-                    && variant.ModelCode != null
-                    && variant.ModelCode.ToUpper() == modelCode.ToUpper()
-                    && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
-                        || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
-                            && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
-                                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
-                .Select(variant => variant.ProductId)
-                .Distinct()
-                .ToListAsync(http.RequestAborted);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(db, tenant.TenantId, product.BrandId, modelCode, http.RequestAborted);
         if (!familyProductIds.Contains(product.Id)) familyProductIds.Add(product.Id);
 
         await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
