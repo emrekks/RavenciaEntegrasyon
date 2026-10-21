@@ -90,6 +90,32 @@ describe('signing in', () => {
     expect(JSON.parse(challenge?.body ?? '{}')).toEqual({ code: '123456', recoveryCode: null })
   })
 
+  it('lists the workspaces only after the code and sends the chosen one without a code (G8)', async () => {
+    server.me = [{ status: 200, body: { ...active, state: 'MFA_CHALLENGE', tenantId: null } }, { status: 200, body: active }]
+    const { host } = mount()
+    await waitFor(() => host.querySelector('#mfa-code'))
+    const fetchMock = vi.mocked(fetch)
+    const original = fetchMock.getMockImplementation()!
+    let challenges = 0
+    fetchMock.mockImplementation(async (url, init) => {
+      if (String(url) !== '/api/v1/auth/mfa/challenge') return original(url, init)
+      server.calls.push({ url: String(url), method: 'POST', body: String(init?.body) })
+      return ++challenges === 1
+        ? reply({ status: 409, body: { code: 'TENANT_SELECTION_REQUIRED', tenants: [{ id: 't1', displayName: 'Birinci' }, { id: 't2', displayName: 'İkinci' }] } })
+        : reply({ status: 200, body: { state: 'ACTIVE' } })
+    })
+    host.querySelector<HTMLInputElement>('#mfa-code')!.value = '123456'
+    submit(host.querySelector<HTMLFormElement>('form.rv-auth-mfa-form')!)
+    const select = await waitFor(() => host.querySelector<HTMLSelectElement>('#mfa-tenant'))
+    expect(host.querySelector('#mfa-code')).toBeNull()
+    expect(select.textContent).toContain('İkinci')
+    act(() => { select.value = 't2'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    submit(host.querySelector<HTMLFormElement>('form.rv-auth-mfa-form')!)
+    await waitFor(() => shell(host))
+    const sent = server.calls.filter(call => call.url === '/api/v1/auth/mfa/challenge').map(call => JSON.parse(call.body ?? '{}'))
+    expect(sent).toEqual([{ code: '123456', recoveryCode: null }, { code: null, recoveryCode: null, tenantId: 't2' }])
+  })
+
   it('tells that a wrong code was refused and stays on the second step', async () => {
     server.me = [{ status: 200, body: { ...active, state: 'MFA_CHALLENGE' } }]
     const { host } = mount()
