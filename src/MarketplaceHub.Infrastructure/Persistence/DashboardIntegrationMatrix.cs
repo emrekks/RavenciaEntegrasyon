@@ -10,13 +10,15 @@ public static class DashboardIntegrationMatrix
 {
     private static readonly TimeSpan Window = TimeSpan.FromDays(7);
 
-    // Kinds of data and the jobs that carry them. Stock and price share the combined price/stock push.
-    public static readonly (string Key, string[] JobTypes, TimeSpan StaleAfter)[] Kinds =
+    // Kinds of data and the jobs that carry them. Stock and price share the combined price/stock push. StaleAfter is
+    // how old the last success may be for a kind read on a schedule; products, stock and price run only when there is
+    // something to do (an import, a changed price or stock), so a quiet week is not "Gecikiyor" (null: no age rule).
+    public static readonly (string Key, string[] JobTypes, TimeSpan? StaleAfter)[] Kinds =
     [
         ("orders", [MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.N11OrderRecoverySync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ShopifyOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.PazaramaOrderStatusSync, MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest], TimeSpan.FromHours(2)),
-        ("products", [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile], TimeSpan.FromDays(3)),
-        ("stock", [MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation, MarketplaceJobTypes.PriceInventorySync], TimeSpan.FromHours(6)),
-        ("price", [MarketplaceJobTypes.PriceInventorySync], TimeSpan.FromDays(2)),
+        ("products", [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile], null),
+        ("stock", [MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation, MarketplaceJobTypes.PriceInventorySync], null),
+        ("price", [MarketplaceJobTypes.PriceInventorySync], null),
         ("returns", [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync, MarketplaceJobTypes.ReturnReconciliation, MarketplaceJobTypes.ReturnAction], TimeSpan.FromHours(12)),
         ("invoices", [InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.ManualOrderInvoiceDelivery, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation], TimeSpan.FromDays(2)),
     ];
@@ -52,7 +54,7 @@ public static class DashboardIntegrationMatrix
                 var state = problem is not null && Failed.Contains(problem.Status) ? "bad"
                     : problem is not null ? "warn"
                     : lastSuccess is null ? "off"
-                    : now - lastSuccess > staleAfter ? "warn"
+                    : staleAfter is { } limit && now - lastSuccess > limit ? "warn"
                     : "ok";
                 if (problem is not null && Failed.Contains(problem.Status)) issue ??= problem.LastErrorSummary;
                 cells[key] = new DashboardIntegrationCellView(state, lastSuccess, problem?.CreatedAt);
