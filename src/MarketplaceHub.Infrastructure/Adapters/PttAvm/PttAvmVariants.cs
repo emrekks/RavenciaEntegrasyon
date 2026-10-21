@@ -42,8 +42,10 @@ public sealed partial class PttAvmHttpClient
         }
         if (VariantLists.Count > 50) VariantLists.Clear();
         VariantLists[account.Connection.Id] = (now, variants);
-        logger.LogInformation("PTT AVM variant list read. ConnectionId: {ConnectionId}, Products: {Products}, Shape: {Shape}",
-            account.Connection.Id, variants.Count, variants.Values.SelectMany(x => x).Select(PttAvmVariantMapper.Shape).FirstOrDefault() ?? "none");
+        // The element names and one variant name (catalog text, e.g. "Lacivert / L") show the live shape of the list.
+        var sample = variants.Values.SelectMany(x => x).FirstOrDefault();
+        logger.LogInformation("PTT AVM variant list read. ConnectionId: {ConnectionId}, Products: {Products}, Shape: {Shape}, SampleVariantName: {SampleVariantName}",
+            account.Connection.Id, variants.Count, sample is null ? "none" : PttAvmVariantMapper.Shape(sample), sample is null ? null : ContractValue(sample, "VariantName"));
         return AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>>.Success(variants, rate);
     }
 }

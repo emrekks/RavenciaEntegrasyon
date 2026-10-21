@@ -600,6 +600,20 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
+    public void AnOrderLineOfAVariantCarriesTheVariantBarcode()
+    {
+        // As the live store answers: UrunBarkod is the model code, VariantBarkod the variant sold.
+        var live = OrderListAnswer.Replace("<a:UrunBarkod>8690000000017</a:UrunBarkod>", "<a:UrunBarkod>RYP001</a:UrunBarkod><a:VariantBarkod>RYP00105</a:VariantBarkod>", StringComparison.Ordinal)
+            .Replace("<a:UrunBarkod>8690000000024</a:UrunBarkod>", "<a:UrunBarkod>RYP002</a:UrunBarkod><a:VariantBarkod>2737667, 2737668</a:VariantBarkod>", StringComparison.Ordinal);
+        var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, live, PttAvmHttpClient.Orders);
+
+        var lines = PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-OPEN12345-211026").Lines;
+
+        Assert.Equal(["RYP00105", "RYP002"], lines.Select(x => x.Barcode));
+        Assert.Equal("RYP00105", lines[0].Sku);
+    }
+
+    [Fact]
     public void AnOpenOrderWaitsWhereItsLeastAdvancedLineIs()
     {
         var order = OrderFromList("PTT-OPEN12345-211026");
