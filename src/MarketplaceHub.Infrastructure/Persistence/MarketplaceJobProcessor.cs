@@ -267,22 +267,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // Refused credentials during a sync show on the connection, as a failed
     // connection test does; the next successful test clears the code.
+    // The code is written in place without moving the connection's version: a background refusal is not an
+    // edit, and bumping the version made a user saving the connection's settings at that moment get a 412.
     private async Task RecordConnectionAuthenticationFailureAsync(Guid tenantId, Guid connectionId, string jobType, JobExecutionResult result, CancellationToken cancellationToken)
     {
         if (!IsConnectionAuthenticationFailure(jobType, result)) return;
-        try
-        {
-            var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-            if (connection is null || string.Equals(connection.LastErrorCode, result.ErrorCode, StringComparison.Ordinal)) return;
-            connection.LastErrorCode = result.ErrorCode;
-            connection.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // The connection was edited meanwhile; the next refused read records it.
-            db.ChangeTracker.Clear();
-        }
+        var errorCode = result.ErrorCode;
+        await db.PlatformConnections
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId && (x.LastErrorCode == null || x.LastErrorCode != errorCode))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastErrorCode, errorCode), cancellationToken);
     }
 
     private async Task RecordSyncAttempt(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
