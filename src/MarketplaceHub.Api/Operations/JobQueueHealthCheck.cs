@@ -17,10 +17,9 @@ public sealed class JobQueueHealthCheck(IServiceScopeFactory scopeFactory, IConf
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var now = timeProvider.GetUtcNow();
-            var oldestRunnable = await db.IntegrationJobs.AsNoTracking()
-                .Where(job => (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled)
-                    && job.AttemptCount < job.MaxAttempts && job.AvailableAt <= now)
-                .MinAsync(job => (DateTimeOffset?)job.AvailableAt, cancellationToken);
+            // Jobs held back by their connection's busy lock group or a quota backoff are not stuck
+            // (the same "runnable" rule as the panel's queue depth, QueueHealthService.RunnableDepthAsync).
+            var oldestRunnable = await QueueHealthService.OldestRunnableAvailableAtAsync(db, now, cancellationToken);
             var staleLeaseCutoff = now - TimeSpan.FromMinutes(5);
             var staleLeases = await db.IntegrationJobs.AsNoTracking()
                 .CountAsync(job => job.Status == JobStatus.Leased && job.LeaseExpiresAt < staleLeaseCutoff, cancellationToken);

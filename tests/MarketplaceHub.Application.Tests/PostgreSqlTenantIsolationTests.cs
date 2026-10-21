@@ -1447,6 +1447,62 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task QueueHealth_OldestRunnableJobIgnoresJobsWaitingForTheirLockGroupOrAQuotaBackoff()
+    {
+        var tenant = NewTenant("queue-oldest-runnable");
+        var busyConnection = Guid.CreateVersion7();
+        var backoffConnection = Guid.CreateVersion7();
+        var now = DateTimeOffset.UtcNow;
+        // Whole seconds (PostgreSQL keeps microseconds) and far older than any job another test queues: if either
+        // blocked job counted, it would be the global minimum.
+        var ancient = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds()).AddYears(-20);
+        var running = NewJob(tenant.Id);
+        running.JobType = MarketplaceJobTypes.OrderSync;
+        running.ConnectionId = busyConnection;
+        running.Status = JobStatus.Leased;
+        running.AttemptCount = 1;
+        running.LeaseExpiresAt = now.AddMinutes(10);
+        var behindRunning = NewJob(tenant.Id);
+        behindRunning.JobType = MarketplaceJobTypes.OrderSync;
+        behindRunning.ConnectionId = busyConnection;
+        behindRunning.AvailableAt = ancient;
+        var behindBackoff = NewJob(tenant.Id);
+        behindBackoff.JobType = MarketplaceJobTypes.OrderSync;
+        behindBackoff.ConnectionId = backoffConnection;
+        behindBackoff.AvailableAt = ancient.AddSeconds(1);
+        var lockGroup = MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderSync);
+        var until = now.AddHours(1);
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(running, behindRunning, behindBackoff);
+            await setup.SaveChangesAsync();
+            await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.connection_backoffs ("ConnectionId", "LockGroup", "Until", "Reason")
+                VALUES ({backoffConnection}, {lockGroup}, {until}, 'TEST')
+                """);
+        }
+
+        var jobIds = new[] { running.Id, behindRunning.Id, behindBackoff.Id };
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var oldest = await QueueHealthService.OldestRunnableAvailableAtAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+
+            Assert.NotEqual(ancient, oldest);
+            Assert.NotEqual(ancient.AddSeconds(1), oldest);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.connection_backoffs WHERE \"ConnectionId\" = {backoffConnection}");
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task Orders_SortByWhenTheyWereHandedToTheCarrier()
     {
         var tenant = NewTenant("ship-sort");
