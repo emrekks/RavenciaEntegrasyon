@@ -196,7 +196,9 @@ doldurmasın): gece yedeği başarısız olur (`OnFailure` alarmı), deploy yede
 Disk kullanımı: `df -h /` ve `sudo docker run --rm -v marketplacehub_backup_staging:/b alpine du -sh /b/*`.
 
 **Alarm kanalı**: `deploy/secrets/alert_webhook_url.txt` (tek satır, root:root 600). Dosya yoksa alarm
-sessizce atlanır.
+gönderilmez; `send-alert.sh` mesajı stderr'e (journal) yazar ve her deploy
+`::warning::No alert channel is configured` uyarısı basar (Actions çalışmasında da görünür). Kanal
+kurulmadan healthwatch, yedek ve otomatik geri alma alarmları kimseye ulaşmaz.
 
 - Telegram: `https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>`
 - Slack (ya da Slack uyumlu; Discord için webhook URL'sinin sonuna `/slack`): `https://hooks.slack.com/services/...`
@@ -207,12 +209,18 @@ Deneme: `bash deploy/scripts/send-alert.sh "test"`.
 düzelince "Recovered" mesajı. Docker'ın `unhealthy` dediği API konteyneri iki ardışık kontrolde öyle
 kalırsa ve PostgreSQL sağlıklıysa `docker restart` edilir (en çok 30 dakikada bir) ve alarm gönderilir.
 Açılıştan sonraki ilk 10 dakika atlanır. Durum: `/var/lib/ravencia-healthwatch/`.
+Aynı alarm akışıyla şunlar da denetlenir: kök disk doluluğu ≥ %85 (`RAVENCIA_DISK_ALERT_PERCENT`),
+PostgreSQL istemci bağlantıları ≥ `max_connections`'ın %80'i (`RAVENCIA_DB_CONNECTION_ALERT_PERCENT`;
+`pg_stat_activity`, postgres konteynerinde `psql`) ve `marketplacehub_backup_staging` içindeki en yeni
+yedek setinin yaşı ≥ 30 saat (`RAVENCIA_BACKUP_MAX_AGE_HOURS`; gece kapanışı payı dahil) ya da hiç set
+olmaması.
 
 > Autoheal sidecar'ı (`willfarrell/autoheal`) bilinçli olarak kullanılmadı: Docker soketini
 > (host'ta root eşdeğeri) üçüncü taraf bir imaja açmak gerekirdi; aynı işi sunucudaki healthwatch
 > birimi, PostgreSQL kesintisinde gereksiz yeniden başlatma yapmadan görüyor.
 
-**Dış izleme (önerilen, ücretsiz)**: UptimeRobot/Better Stack ile `https://panel.ravencia.com/health/live`
+**Dış izleme (elle kurulmalı, önerilen, ücretsiz)** — sunucu ya da Docker tamamen çökerse healthwatch da
+çalışmaz; bunu yalnız dışarıdan bir izleyici görür: UptimeRobot/Better Stack ile `https://panel.ravencia.com/health/live`
 5 dakikada bir; bakım penceresi 00:30–09:00 Europe/Istanbul. Ready/queues dışarıya kapalı olduğu için
 derin kontroller sunucudaki healthwatch'tadır.
 

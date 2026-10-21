@@ -58,6 +58,7 @@ compose_version="$(sudo docker compose version --short)"
 [[ "$compose_version" == "2.40.2" ]] || { echo "Exact Docker Compose 2.40.2 is required; detected $compose_version." >&2; exit 1; }
 "${compose[@]}" config --quiet
 warn_on_unbounded_connection_pool
+warn_when_alerts_unconfigured
 echo "Production configuration passed fail-closed validation."
 [[ "$validate_only" == true ]] && exit 0
 

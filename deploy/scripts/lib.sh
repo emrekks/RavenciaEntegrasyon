@@ -53,6 +53,15 @@ warn_on_unbounded_connection_pool() {
   fi
 }
 
+# Alerts (healthwatch, failed backups, deploy rollbacks) go nowhere without a
+# channel; "::warning::" also shows on the GitHub Actions run of a CI deploy.
+warn_when_alerts_unconfigured() {
+  local url_file="$repository_root/deploy/secrets/alert_webhook_url.txt"
+  if [[ ! -s "$url_file" ]] && ! "${sudo_cmd[@]}" test -s "$url_file" 2>/dev/null; then
+    echo "::warning::No alert channel is configured: create deploy/secrets/alert_webhook_url.txt (docs/CI-CD-DEPLOY.md). Health, backup and rollback alerts are only written to the journal until then." >&2
+  fi
+}
+
 require_boolean() {
   local name="$1" value="$2"
   [[ "$value" == true || "$value" == false ]] || { echo "$name must be true or false." >&2; exit 1; }

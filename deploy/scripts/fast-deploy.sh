@@ -68,6 +68,7 @@ validation_compose=("${sudo_cmd[@]}" env "MARKETPLACEHUB_APP_IMAGE=$app_image" "
 "${validation_compose[@]}" config --quiet
 "${compose[@]}" --profile operations config --quiet
 warn_on_unbounded_connection_pool
+warn_when_alerts_unconfigured
 
 sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
