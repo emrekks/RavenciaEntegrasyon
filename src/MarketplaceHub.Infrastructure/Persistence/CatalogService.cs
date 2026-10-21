@@ -534,13 +534,22 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var products = await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).ToListAsync(cancellationToken);
         if (products.Count != ids.Length) return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
         var now = timeProvider.GetUtcNow();
+        // D4 (K8): the bulk change moves the same rows as the editor's status change: the product, its sale
+        // rows and its marketplace links (a local edit). Archive and activate are both status flips only, so an
+        // archived product comes back with its variants and images on activation.
+        var changedProductIds = products.Where(product => product.Status != status).Select(product => product.Id).ToArray();
+        var variants = changedProductIds.Length == 0
+            ? []
+            : await db.ProductVariants.Where(x => x.TenantId == tenantId && changedProductIds.Contains(x.ProductId) && x.Status != status).ToListAsync(cancellationToken);
         foreach (var product in products)
         {
             product.Status = status;
-            product.ArchivedAt = status == ProductStatus.Archived ? now : null;
+            product.ArchivedAt = status == ProductStatus.Archived ? product.ArchivedAt ?? now : null;
             product.UpdatedAt = now;
             product.Version++;
         }
+        foreach (var variant in variants) { variant.Status = status; variant.UpdatedAt = now; variant.Version++; }
+        await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedProductIds, CatalogLocalEdits.ProductField, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<int>.Ok(products.Count);
     }
@@ -1318,7 +1327,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
     {
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version); product.Status = ProductStatus.Archived; product.ArchivedAt = timeProvider.GetUtcNow(); product.UpdatedAt = product.ArchivedAt.Value; product.Version++; var variants = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); foreach (var variant in variants) { variant.Status = ProductStatus.Archived; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
-        var media = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == id && x.Status != "ARCHIVED").ToListAsync(cancellationToken); foreach (var item in media) item.Status = "ARCHIVED"; var assetIds = media.Select(x => x.FileAssetId).Distinct().ToArray(); var sharedAssetIds = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId != id && x.Status != "ARCHIVED" && assetIds.Contains(x.FileAssetId)).Select(x => x.FileAssetId).Distinct().ToListAsync(cancellationToken); var assets = await db.FileAssets.Where(x => x.TenantId == tenantId && assetIds.Contains(x.Id) && !sharedAssetIds.Contains(x.Id)).ToListAsync(cancellationToken); foreach (var asset in assets) { asset.Status = "ARCHIVED"; asset.ArchivedAt = product.ArchivedAt; }
+        // D4 (K8): archiving is a status flip only. Images stay as they are: an archived image is a removed one
+        // and cannot be told apart from it later, so an archive that removed them could not be undone.
         await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
     }
