@@ -44,9 +44,32 @@ public sealed class BackgroundProcessingAuditTests
         Assert.False(retried.RefundAttempt);
         Assert.False(JobLeaseService.RefundsAttempt(retried, TimeSpan.FromMinutes(5)));
 
-        // Any other outcome ends the run of conflicts.
+        // Any other outcome ends the run of conflicts, except a wait for a busy lock, which never ran the job.
         Assert.Equal(0, JobConflictPolicy.Apply(JobExecutionResult.Success(), afterLimit).ConflictCount);
-        Assert.Equal(0, JobConflictPolicy.Apply(JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY"), afterLimit).ConflictCount);
+        Assert.Equal(0, JobConflictPolicy.Apply(JobExecutionResult.Continue("slice"), afterLimit).ConflictCount);
+        Assert.Equal(afterLimit, JobConflictPolicy.Apply(JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY"), afterLimit).ConflictCount);
+    }
+
+    [Fact]
+    public void ALockBusyDeferralBetweenConflictsKeepsTheRun()
+    {
+        var conflict = WorkerService.ExceptionResult(new DbUpdateConcurrencyException("expected to affect 1 row"));
+        var busy = JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY");
+        var count = 0;
+        for (var round = 0; round < JobConflictPolicy.DeferredVersionConflicts; round++)
+        {
+            (_, count) = JobConflictPolicy.Apply(conflict, count);
+            (var waited, count) = JobConflictPolicy.Apply(busy, count);
+            Assert.Same(busy, waited);
+        }
+
+        // The deferrals in between did not start the run over: the next conflict spends an attempt.
+        var (retried, afterLimit) = JobConflictPolicy.Apply(conflict, count);
+        Assert.Equal(JobConflictPolicy.DeferredVersionConflicts + 1, afterLimit);
+        Assert.False(retried.RefundAttempt);
+
+        // A duplicate-insert run (negative count) is kept by a wait just the same.
+        Assert.Equal(-2, JobConflictPolicy.Apply(busy, -2).ConflictCount);
     }
 
     [Fact]
