@@ -938,8 +938,9 @@ main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12p
 .rr.rr-returns .rr-invcell > .rr-anchor { grid-column: 1 / -1; }
 .rr.rr-returns .rr-actcell.rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 .rr.rr-returns .rr-actcell.rr-actcell > *, .rr.rr-returns .rr-actcell.rr-actcell > .rr-anchor > :is(.rr-trigger, .rr-btn) { width: 100% !important; min-width: 0; }
-.rr.rr-returns .rr-actcell :is(.rr-btn, .rr-trigger) { height: 36px; justify-content: center; }
-.rr.rr-returns .rr-actcell .rr-btn.rr-link { border: 1px solid var(--rr-line-strong); border-radius: 10px; }
+/* Both buttons the same box: the link button's own rule (height auto, no padding) outranked the plain selectors here. */
+.rr.rr-returns .rr-actcell.rr-actcell :is(.rr-btn, .rr-trigger) { height: 36px; justify-content: center; }
+.rr.rr-returns .rr-actcell.rr-actcell .rr-btn.rr-link { padding: 0 12px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; }
 .rr.rr-returns .rr-actcell .rr-trigger > span { flex: none; }
 .rr.rr-returns .rr-actcell > :only-child { grid-column: 1 / -1; }
 }
