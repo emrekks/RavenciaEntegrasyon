@@ -45,7 +45,7 @@ public sealed class MarketplacePortRouter(
         "HEPSIBURADA" when hepsiburada is not null => hepsiburada,
         "N11" when n11 is not null => n11,
         "PAZARAMA" when pazarama is not null => pazarama,
-        // PTT AVM serves the connection, order, reference, product, return and invoice ports (phases 1–3, 6 and 8); any other port is a wiring bug until its phase lands.
+        // PTT AVM serves every port it has (phases 1–4 and 6–8; cargo, phase 5, waits for its credentials); any other port is a wiring bug until its phase lands.
         "PTTAVM" when pttAvm is not null => pttAvm,
         _ => throw new InvalidOperationException($"{platform ?? "UNKNOWN"} platformu için adaptör yönlendirmesi tanımlı değil.")
     };

@@ -295,7 +295,7 @@ const variantBulkEditLabels: Record<VariantBulkEditField, string> = { stock: 'St
 type ProductAttributePayload = ProductAttributeAssignment
 function marketplacePlatformName(platform: VariantPlatformStatus) {
   const code = platform.platformCode.trim().toLocaleUpperCase('tr-TR')
-  return code === 'SHOPIFY' ? 'Shopify' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'TRENDYOL' ? 'Trendyol' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : platform.platform
+  return code === 'SHOPIFY' ? 'Shopify' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'TRENDYOL' ? 'Trendyol' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : code === 'PTTAVM' ? 'PTT AVM' : platform.platform
 }
 function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, productName, modelCode, filterGroups, matchesFilterValue, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; filterGroups: VariantMediaGroup[]; matchesFilterValue: (row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) => boolean; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
   const sortedRows = sortVariantsAlphabetically(rows)
@@ -824,6 +824,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
         return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${card.name} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [] }
       }
+      if (card.connection.platformCode.trim().toUpperCase() === 'PTTAVM') return { requiredIssues: [], optionalWarnings: [], categoryScope: categoryMapping.externalId }
 
       const categoryScope = categoryMapping.externalId
       const [attributeReferences, attributeMappings] = await Promise.all([
@@ -1628,7 +1629,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function platformDisplayName(platform: VariantPlatformStatus) {
     const code = platform.platformCode.trim().toLocaleUpperCase('tr-TR')
-    return code === 'SHOPIFY' ? 'Shopify' : code === 'TRENDYOL' ? 'Trendyol' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : platform.platform
+    return code === 'SHOPIFY' ? 'Shopify' : code === 'TRENDYOL' ? 'Trendyol' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : code === 'PTTAVM' ? 'PTT AVM' : platform.platform
   }
   function openVariantPlatformPricing(row: VariantDraft, platform: VariantPlatformStatus) {
     setVariantPlatformPricing({ rowKey: row.key, platform })

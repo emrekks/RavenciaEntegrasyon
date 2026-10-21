@@ -8,7 +8,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // from the marketplaces, whether order notifications arrive, and how far a first import has come.
 public sealed class DataFreshnessService(AppDbContext db, TimeProvider timeProvider) : IDataFreshnessService
 {
-    private static readonly string[] MarketplacePlatforms = ["TRENDYOL", "HEPSIBURADA", "N11", "PAZARAMA", "SHOPIFY"];
+    private static readonly string[] MarketplacePlatforms = ["TRENDYOL", "HEPSIBURADA", "N11", "PAZARAMA", "PTTAVM", "SHOPIFY"];
     private static readonly JobStatus[] OpenStatuses = [JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled];
 
     public async Task<DataFreshnessView> FreshnessAsync(Guid tenantId, CancellationToken cancellationToken)

@@ -8,12 +8,12 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // SearchAktifPasif=0) and names the total in RowCount; it has no modification filter, so a scan walks every page.
 // A single product is found by its barcode (SearchBarkod). The page cursor is "{page}:{firstBarcode}": the first
 // barcode of page zero guards against a server that ignores SearchPage and keeps answering the first page.
-// Product create, update and archive come with phase 7 and stay closed until then (no external write).
+// Product send (create or update, single-variant products) is in PttAvmProductWrites.cs; the other write calls stay closed.
 public sealed partial class PttAvmHttpClient : IProductPort
 {
     // An answer that never runs dry still ends: PTT AVM's documented page cap.
     internal const int MaxProductPages = 1000;
-    private const string ProductWritesLater = "PTT AVM ürün açma ve güncelleme sonraki entegrasyon aşamasında açılacak; şu an PTT AVM'ye ürün yazılmıyor.";
+    private const string ProductWritesLater = "PTT AVM ürün güncellemesi ürün gönderimiyle (yeniden yayınla) yapılır; bu işlem PTT AVM için ayrıca desteklenmiyor.";
 
     public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
@@ -39,9 +39,14 @@ public sealed partial class PttAvmHttpClient : IProductPort
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
         if (!IsNil(result.Value!) && result.Value!.Elements().Any(x => x.Name.LocalName != "StokKontrolDetay"))
             return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "PTTAVM_PRODUCT_CONTRACT_INVALID", $"PTT AVM ürün listesi beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
-        var (products, total, issues) = PttAvmProductMapper.Page(result.Value!);
-        var pageFirst = products.FirstOrDefault()?.Variants.FirstOrDefault()?.Barcode;
+        // The variants of model products come from GetProductsWithVariants: read on the first page of a scan, reused by
+        // its later pages. A failure there leaves the products without their variants and is reported, not fatal.
+        var variantList = await VariantListAsync(account, refresh: pageIndex == 0 && barcode is null, cancellationToken);
+        var (products, total, issues) = PttAvmProductMapper.Page(result.Value!, variantList.IsSuccess ? variantList.Value : null);
+        var pageFirst = products.FirstOrDefault()?.ProductMainId;
         var issueList = issues.ToList();
+        if (!variantList.IsSuccess)
+            issueList.Add(new("PTTAVM_VARIANT_LIST_UNAVAILABLE", pageIndex.ToString(CultureInfo.InvariantCulture), $"PTT AVM varyant listesi okunamadı ({variantList.Error!.Code}); ürünler bu sayfada varyantsız okundu."));
         // A later page that starts like page zero means SearchPage was ignored: the scan stops instead of looping.
         if (pageIndex > 0 && pageFirst is not null && string.Equals(pageFirst, firstBarcode, StringComparison.Ordinal))
         {
@@ -80,13 +85,6 @@ public sealed partial class PttAvmHttpClient : IProductPort
         new("ShopId", StoreId(storeId) ?? "0"), new("SearchKategoriId", "0"), new("SearchAltKategoriId", "0"), new("SearchUrunAdi", ""), new("SearchBarkod", barcode ?? ""),
         new("SearchAktifPasif", "0"), new("SearchMevcut", "0"), new("SearchTedarikciKategoriId", "0"), new("SearchYeniKategoriId", ""), new("SearchPage", page.ToString(CultureInfo.InvariantCulture))
     ];
-
-    // Publication status serves the product write flows (approval, archive), which open with phase 7.
-    public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemotePublicationStatus>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));
-
-    public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemoteOperationRef>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));
 
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         Task.FromResult(NotSupported<RemoteOperationRef>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));

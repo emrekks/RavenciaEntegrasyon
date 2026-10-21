@@ -40,6 +40,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             return await new N11ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (platformCode == "PAZARAMA")
             return await new PazaramaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        if (platformCode == "PTTAVM")
+            return await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
             return Fail("PRODUCT_APPROVAL_CONTENT_SPLIT", "Trendyol varyantları birden fazla içerik kimliğine ayırdı. Yanlış ilana yazmamak için ürün içeriği güncellemesi durduruldu; varyant durumları ayrı ayrı izlenebilir.", status: 409);
 

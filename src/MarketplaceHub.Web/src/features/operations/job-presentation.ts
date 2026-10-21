@@ -29,7 +29,7 @@ const catalogue: Record<string, JobPresentation> = {
   N11_CONNECTION_TEST: connectionTest, PAZARAMA_CONNECTION_TEST: connectionTest, PTTAVM_CONNECTION_TEST: connectionTest, EFATURAM_CONNECTION_TEST: connectionTest,
   TRENDYOL_CAPABILITY_PROBE: job('Bağlantı', 'connection', READ, 'Yetki Kontrolü', 'Bağlantının hangi işlemler için (sipariş, ürün, fiyat ve stok, iade) yetkili olduğu platformdan sorgulanır.'),
   EFATURAM_STAGE_CAPABILITY_PROBE: job('Bağlantı', 'connection', READ, 'Test Ortamı Yetki Kontrolü', 'Test ortamı hesabının fatura oluşturma ve sorgulama yetkileri doğrulanır. Gerçek fatura kesilmez.'),
-  TRENDYOL_STAGE_TEST_ORDER: job('Sipariş', 'order', SEND, 'Test Siparişi Oluşturma', 'Entegrasyonu denemek için Trendyol test ortamında örnek sipariş oluşturulur. Canlı mağaza etkilenmez.'),
+  TRENDYOL_STAGE_TEST_ORDER: job('Sipariş', 'order', SEND, 'Test Siparişi Oluşturma', 'Entegrasyonu denemek için pazaryerinin test ortamında örnek sipariş oluşturulur. Canlı mağaza etkilenmez.'),
   TRENDYOL_REFERENCE_SYNC: referenceSync, HEPSIBURADA_REFERENCE_SYNC: referenceSync, N11_REFERENCE_SYNC: referenceSync, PAZARAMA_REFERENCE_SYNC: referenceSync, PTTAVM_REFERENCE_SYNC: referenceSync,
   CATALOG_STRUCTURE_IMPORT: job('Katalog', 'product', READ, 'Ürün Yapısı Çekme', 'Platformdaki ürünlerin kategori, seçenek ve özellik yapısı okunur. Önizleme panele kayıt yazmaz; uygulama yalnızca panel kategorilerini, özelliklerini ve eşleşmelerini oluşturur. Platforma veri gönderilmez.'),
   TRENDYOL_ORDER_SYNC: orderSync, SHOPIFY_ORDER_SYNC: orderSync, HEPSIBURADA_ORDER_SYNC: orderSync, N11_ORDER_SYNC: orderSync, PAZARAMA_ORDER_SYNC: orderSync, PTTAVM_ORDER_SYNC: orderSync,
@@ -96,6 +96,16 @@ export function jobTitle(jobType: string, platform?: string | null) {
   const name = platform && platform !== 'Ravencia' ? platform : platformFromType(jobType)
   const { area } = jobPresentation(jobType)
   return name ? `${name} ${area} İşlemi` : `${area} İşlemi`
+}
+
+// Job types that kept a TRENDYOL_ prefix from when only Trendyol had them, though other marketplaces run them too
+// (the Hepsiburada test order is a TRENDYOL_STAGE_TEST_ORDER job). For another marketplace the code is shown without
+// the prefix, so a Hepsiburada job never reads as Trendyol's.
+const sharedTrendyolPrefixedTypes = new Set(['TRENDYOL_STAGE_TEST_ORDER'])
+
+/** The job type as shown for the job's marketplace: "STAGE_TEST_ORDER" for a Hepsiburada test order. */
+export function jobTypeCode(jobType: string, platform?: string | null) {
+  return sharedTrendyolPrefixedTypes.has(jobType) && platform && platform !== 'Trendyol' ? jobType.slice('TRENDYOL_'.length) : jobType
 }
 
 /** "Okuma · Yeni Sipariş Çekme" */

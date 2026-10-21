@@ -64,7 +64,10 @@ public static class PttAvmOrderMapper
             var lineGross = paid.Value + lineDiscount;
             var raw = LineStatus(Value(line, "SiparisDurumu"));
             lineStatuses.Add(raw);
-            var barcode = Value(line, "UrunBarkod");
+            // UrunBarkod is the product's barcode (for a model, the model code); the variant sold carries its own in
+            // VariantBarkod (live: RYP001 / RYP00105). The documentation calls VariantBarkod a comma list of variant
+            // ids, so a value with a comma is not taken as a barcode.
+            var barcode = Value(line, "VariantBarkod") is { } variantBarcode && !variantBarcode.Contains(',', StringComparison.Ordinal) ? variantBarcode : Value(line, "UrunBarkod");
             var title = Value(line, "Urun") ?? barcode ?? lineId;
             var cancelled = raw == "Cancelled" ? quantity.Value : 0;
             lines.Add(new(lineId, barcode ?? Value(line, "UrunId") ?? lineId, barcode, title, quantity.Value, decimal.Round(lineGross / quantity.Value, 4), Number(line, "KdvOrani") ?? 0, raw, LineSnapshot(line), cancelled));

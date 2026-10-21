@@ -179,8 +179,38 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   `gonderilmiş` → Shipped, `gondericisine_teslim_edildi` → Undelivered, `tamamlandi` → Delivered, `iptal`/`odeme_gecersiz` → Cancelled, `iade` → Returned.
   Durum değişim saati gelmediği için paket olay zamanı `IslemTarihi + durum adımı (sn)` olarak hesaplanır.
   Tek sipariş, numaradaki gün (`PTT-…-ddMMyy`) ±1 gün okunarak bulunur.
-- **Canlıda doğrulanacak:** `IslemTarihi` gerçekten sipariş tarihi mi; `BitisTarihi` dahil mi; `KdvDahilToplamTutar` indirim sonrası mı
-  (brüt = ödenen + `IndirimToplam` varsayımı).
+- **3. aşama (kategori + ürün çekme):** `GetCategoryTree(parent_id=0)` tüm ağacı tek çağrıda verir. Ağaç `PTTAVM_REFERENCE_SYNC` ile
+  ilk aktarımda ve günde bir okunur. Özellik ve marka servisi yok; özellik okumaları boş liste döner.
+  `StokKontrolListesi` sayfa sayfa okunur (`SearchAktifPasif=0`): `RowCount` taramayı bitirir, ilk sayfayı tekrar eden sayfa durdurur.
+  Barkod anahtardır. Fiyat `KDVli` (0 ise `KDVsiz`+KDV), stok `Miktar`, `Aktif=false` pasif ilandır.
+  `VariantListesi` belgede tanımsız; yazma tarafındaki adlarla ve Türkçe karşılıklarıyla okunur.
+  İçe aktarma n11/Pazarama'nın düz katalog yolunu kullanır (tam, yalnız eşleme, yeni, mevcut).
+- **4. aşama (fiyat/stok, yazma kapısı arkasında):** `UpdateProductsStockPrice` en çok 1000 barkod alır. Gönderilenler: KDV dahil fiyat,
+  KDV oranı (yalnız 0/1/10/20; başka oranda alan gönderilmez) ve 0–9999 stok. Sonuç `GetProductsTrackingResult` ile barkod barkod okunur.
+  Belirsiz sonuç 6 dk sonra yeniden gönderilir (aynı istek 5 dk içinde reddedilir). İçe aktarılan teklifler "gönderilmiş" sayılır.
+  Panelden gönderim elle başlatılır ve yalnız dış yazma anahtarına bağlıdır.
+  Sınırlama: PTT AVM varyantları özellikle eşler; varyant barkodu tek başına gönderilir, kabul edilmezse takip sonucu gösterir.
+- **5. aşama (kargo): engelli.** Kargo servisi ayrı bir REST API (`shipment.pttavm.com`); `Api-Key` ve `Access-Token` ister. Satıcı panelinde
+  yalnız Mağaza ID + API kullanıcı adı + şifre var. Bu bilgiler PTT AVM'den alınınca açılır.
+- **6. aşama (fatura linki, yazma kapısı arkasında):** `SaveInvoince`, belgeye bağlı PDF linkiyle sipariş numarasını ve canlı satırların
+  `LineItemId` listesini alır. Belgedeki çelişkili cevap (`Success=false` + "işlem gerçekleştirilmiştir") belirsiz sayılır, sipariş okunarak
+  doğrulanır. Geri okuma: canlı satırların hepsinde `IsInvoice=true`. Bağlantıda fatura oluşturma kapalı başlar.
+- **7. aşama (ürün gönderimi, yazma kapısı arkasında):** `UpdateProductsV3` barkoda göre ürünü açar veya günceller. Sonuç
+  `GetProductsTrackingResult` ile, yayın durumu `StokKontrolListesi` + `SearchBarkod` ile okunur (aktif → LIVE, pasif → bekliyor).
+  Varyantsız gönderim PTT AVM'deki varyantları sildiği için yalnız **tek varyantlı** ürün gönderilir. Bu da iki koşula bağlıdır:
+  1. Panel bağı: ürünün bu bağlantıdaki bütün bağları gönderilen barkod olmalıdır.
+  2. PTT AVM okuması: gönderimden hemen önce barkod okunur; PTT AVM o barkodu varyantlı bir ürün altında göstermemelidir.
+
+  Kategori yaprak olmalıdır; marka ve özellik eşlemesi istenmez. Varyantlı ürünler, üst barkod saklanıp canlıda doğrulanana kadar
+  PTT AVM panelinden yönetilir.
+- **8. aşama (iade görünümü, salt okunur):** Satırı `iade` olan her sipariş, yalnız o satırlarla tamamlanmış bir iade kaydıdır (`iade:{sipariş no}`).
+  Kaydedilmesi stoğu değiştirmez; iade kararları PTT AVM paneline bırakılır ve panelden gönderilmez.
+- **Canlıda doğrulanacak:**
+  - `IslemTarihi` gerçekten sipariş tarihi mi.
+  - `BitisTarihi` sonuca dahil mi.
+  - `KdvDahilToplamTutar` indirim sonrası mı (brüt = ödenen + `IndirimToplam` varsayımı).
+  - `StokKontrolListesi` sayfa boyu ve `VariantListesi` yapısı.
+  - `IsInvoice` alanı gerçekten geliyor mu.
 
 ## 7. Riskler
 

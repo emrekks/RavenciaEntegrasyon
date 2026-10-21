@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
+import { orderPlatformLogoSource, platformLogoSource } from '../../shared/platform-logos'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
 import { errorText, RetryRing } from '../../shared/components/AsyncState'
@@ -99,7 +100,9 @@ const MARK_AREA = 1350, MARK_MAX_H = 26, MARK_MAX_W = 104
 
 export function RrWordmark({ code, name }: { code: string | null | undefined; name: string }) {
   const mark = marks[(code ?? '').toUpperCase()]
-  if (!mark) return <span className="rr-wordmark-text">{name}</span>
+  // A platform without a cropped mark (PTT AVM) shows its logo at the marks' height instead of plain text.
+  const logo = mark ? null : orderPlatformLogoSource(code)
+  if (!mark) return logo ? <span className="rr-wordmark" role="img" aria-label={name} style={{ height: MARK_MAX_H - 4 }}><img src={logo} alt="" style={{ position: 'static', height: '100%', width: 'auto', maxWidth: MARK_MAX_W, objectFit: 'contain' }} /></span> : <span className="rr-wordmark-text">{name}</span>
   const ratio = mark.w / mark.h
   let height = Math.sqrt(MARK_AREA / ratio) * mark.weight
   height = Math.min(height, MARK_MAX_H, MARK_MAX_W / ratio)
@@ -114,7 +117,9 @@ export function RrWordmark({ code, name }: { code: string | null | undefined; na
 const logoKeys: Record<string, string> = { TRENDYOL: 'trendyol', HEPSIBURADA: 'hepsiburada', PAZARAMA: 'pazarama', N11: 'n11', SHOPIFY: 'shopify' }
 export function RrLogo({ code, large }: { code: string | null | undefined; large?: boolean }) {
   const key = logoKeys[(code ?? '').toUpperCase()]
-  return key ? <img className={`rr-logo${large ? ' rr-lg' : ''}`} src={`/platforms/returns/icon-${key}.png`} alt="" /> : <span className={`rr-logo${large ? ' rr-lg' : ''}`} aria-hidden="true" />
+  // A platform without a return icon (PTT AVM) uses its square logo, so it is never shown without one.
+  const source = key ? `/platforms/returns/icon-${key}.png` : platformLogoSource(code)
+  return source ? <img className={`rr-logo${large ? ' rr-lg' : ''}`} src={source} alt="" /> : <span className={`rr-logo${large ? ' rr-lg' : ''}`} aria-hidden="true" />
 }
 
 // Closes a popover on an outside press or Escape.

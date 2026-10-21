@@ -13,7 +13,7 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // Attributes/Definition/Value) and their Turkish read-side spellings; an entry without a barcode is reported.
 public static class PttAvmProductMapper
 {
-    public static (IReadOnlyList<RemoteCatalogProduct> Products, int? TotalCount, IReadOnlyList<AdapterPageIssue> Issues) Page(XElement result)
+    public static (IReadOnlyList<RemoteCatalogProduct> Products, int? TotalCount, IReadOnlyList<AdapterPageIssue> Issues) Page(XElement result, IReadOnlyDictionary<string, IReadOnlyList<XElement>>? variantsByProductBarcode = null)
     {
         var products = new List<RemoteCatalogProduct>();
         var issues = new List<AdapterPageIssue>();
@@ -21,12 +21,12 @@ public static class PttAvmProductMapper
         foreach (var row in PttAvmHttpClient.ContractItems(result, "StokKontrolDetay"))
         {
             if (Number(row, "RowCount") is { } count && count >= 0) total ??= (int)Math.Min(count, int.MaxValue);
-            if (Product(row, issues) is { } product) products.Add(product);
+            if (Product(row, issues, variantsByProductBarcode) is { } product) products.Add(product);
         }
         return (products, total, issues);
     }
 
-    internal static RemoteCatalogProduct? Product(XElement row, List<AdapterPageIssue> issues)
+    internal static RemoteCatalogProduct? Product(XElement row, List<AdapterPageIssue> issues, IReadOnlyDictionary<string, IReadOnlyList<XElement>>? variantsByProductBarcode = null)
     {
         var productId = Value(row, "UrunId");
         var barcode = Value(row, "Barkod");
@@ -42,28 +42,28 @@ public static class PttAvmProductMapper
         var images = Images(row);
         var desi = Number(row, "Desi");
         var variants = new List<RemoteCatalogVariant>();
+        // The product's own VariantListesi, or else the GetProductsWithVariants entries of its barcode.
         var variantList = row.Elements().FirstOrDefault(x => x.Name.LocalName == "VariantListesi");
-        if (variantList is not null && !PttAvmHttpClient.IsNil(variantList))
+        IReadOnlyList<XElement> entries = variantList is not null && !PttAvmHttpClient.IsNil(variantList) && variantList.HasElements
+            ? variantList.Elements().ToList()
+            : variantsByProductBarcode?.GetValueOrDefault(barcode) ?? [];
+        foreach (var entry in entries)
         {
-            foreach (var entry in variantList.Elements())
+            var reads = PttAvmVariantMapper.Read(entry);
+            if (reads.Count == 0)
             {
-                var variantBarcode = FirstValue(entry, "VariantBarkod", "VariantBarcode", "Barkod", "Barcode");
-                if (variantBarcode is null)
-                {
-                    issues.Add(new("PRODUCT_VARIANT_INVALID", $"{barcode}:{entry.Name.LocalName}", $"PTT AVM ürünü {barcode} için bir varyantın barkodu okunamadı; varyant içeri alınmadı."));
-                    continue;
-                }
-                // A variant's price is a VAT-inclusive difference to the product's price.
-                var difference = FirstNumber(entry, "Fiyat", "FiyatFarki", "Price") ?? 0;
-                var quantity = FirstNumber(entry, "Miktar", "Stok", "Quantity");
-                variants.Add(new(variantBarcode, variantBarcode, variantBarcode, null, Options(entry), !active,
-                    price is null ? null : Math.Max(price.Value + difference, 0), null, vatRate, quantity, "TRY", Snapshot(entry).ToJsonString(), images, Desi: desi));
+                issues.Add(new("PRODUCT_VARIANT_INVALID", $"{barcode}:{PttAvmVariantMapper.Shape(entry)}", $"PTT AVM ürünü {barcode} için bir varyantın barkodu okunamadı ({PttAvmVariantMapper.Shape(entry)}); varyant içeri alınmadı."));
+                continue;
             }
+            foreach (var read in reads)
+                variants.Add(new(read.Barcode, read.Barcode, read.Barcode, null, read.Options, !active || read.Active == false,
+                    PttAvmVariantMapper.SalePrice(read, price), null, vatRate, read.Quantity, "TRY", Snapshot(read.Source).ToJsonString(), images, Desi: desi));
         }
         if (variants.Count == 0)
             variants.Add(new(barcode, barcode, barcode, null, new Dictionary<string, string>(), !active,
                 price, null, vatRate, Number(row, "Miktar"), "TRY", "{}", images, Desi: desi));
-        return new(productId, Value(row, "UrunKodu") ?? barcode, title, Value(row, "UzunAciklama") ?? Value(row, "Aciklama") ?? "", null, null,
+        // The product barcode groups the variants (for a model it is the model code).
+        return new(productId, barcode, title, Value(row, "UzunAciklama") ?? Value(row, "Aciklama") ?? "", null, null,
             Value(row, "YeniKategoriId") is { } category && category != "0" ? category : null, null, images, variants, Snapshot(row).ToJsonString());
     }
 
@@ -87,19 +87,6 @@ public static class PttAvmProductMapper
         return urls.Where(url => Uri.TryCreate(url, UriKind.Absolute, out var address) && address.Scheme is "http" or "https").Distinct(StringComparer.Ordinal).ToList();
     }
 
-    // Attributes/Attribute (or VariantAttrV3, Ozellik) with Definition/Value (or Tanim/Deger, Name/Value).
-    private static IReadOnlyDictionary<string, string> Options(XElement entry)
-    {
-        var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var pair in entry.Descendants().Where(x => x.HasElements))
-        {
-            var name = FirstValue(pair, "Definition", "Tanim", "Name", "Ozellik");
-            var value = FirstValue(pair, "Value", "Deger");
-            if (name is not null && value is not null) options.TryAdd(name, value);
-        }
-        return options;
-    }
-
     // Every non-nil field as JSON (nested lists keep their own fields), never the image streams.
     internal static JsonObject Snapshot(XElement element)
     {
@@ -120,8 +107,6 @@ public static class PttAvmProductMapper
 
     private static decimal? Number(XElement element, string name) =>
         decimal.TryParse(Value(element, name), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : null;
-
-    private static decimal? FirstNumber(XElement element, params string[] names) => names.Select(name => Number(element, name)).FirstOrDefault(x => x is not null);
 
     private static bool? Bool(XElement element, string name) => bool.TryParse(Value(element, name), out var value) ? value : null;
 }
