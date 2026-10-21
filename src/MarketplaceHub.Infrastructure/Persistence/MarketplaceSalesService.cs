@@ -1797,13 +1797,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (connection.PlatformCode == "HEPSIBURADA")
         {
             var liveBarcode = await (from listing in db.ChannelListingVariants.AsNoTracking()
-                             join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, ProfileId = listing.ProfileId } equals new { profile.TenantId, ProfileId = profile.Id }
-                             join state in db.MarketplaceListingStates.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { state.TenantId, state.ConnectionId, state.VariantId }
-                             join link in db.MarketplaceVariantLinks.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { link.TenantId, link.ConnectionId, link.VariantId }
-                             where listing.TenantId == tenantId && profile.ConnectionId == connectionId && profile.Enabled && state.ActualStatus == "LIVE"
-                                   && listing.ExternalBarcode != null && !string.IsNullOrWhiteSpace(link.ExternalId)
-                             orderby listing.VariantId
-                             select listing.ExternalBarcode!).FirstOrDefaultAsync(cancellationToken);
+                                     join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, ProfileId = listing.ProfileId } equals new { profile.TenantId, ProfileId = profile.Id }
+                                     join state in db.MarketplaceListingStates.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { state.TenantId, state.ConnectionId, state.VariantId }
+                                     join link in db.MarketplaceVariantLinks.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { link.TenantId, link.ConnectionId, link.VariantId }
+                                     where listing.TenantId == tenantId && profile.ConnectionId == connectionId && profile.Enabled && state.ActualStatus == "LIVE"
+                                           && listing.ExternalBarcode != null && !string.IsNullOrWhiteSpace(link.ExternalId)
+                                     orderby listing.VariantId
+                                     select listing.ExternalBarcode!).FirstOrDefaultAsync(cancellationToken);
             if (!string.IsNullOrWhiteSpace(liveBarcode)) barcode = liveBarcode;
             else
             {
