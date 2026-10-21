@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
-import { orderPlatformLogoSource } from '../../shared/platform-logos'
+import { orderPlatformLogoSource, platformLogoSource } from '../../shared/platform-logos'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
 import { errorText, RetryRing } from '../../shared/components/AsyncState'
@@ -117,8 +117,8 @@ export function RrWordmark({ code, name }: { code: string | null | undefined; na
 const logoKeys: Record<string, string> = { TRENDYOL: 'trendyol', HEPSIBURADA: 'hepsiburada', PAZARAMA: 'pazarama', N11: 'n11', SHOPIFY: 'shopify' }
 export function RrLogo({ code, large }: { code: string | null | undefined; large?: boolean }) {
   const key = logoKeys[(code ?? '').toUpperCase()]
-  // A platform without a return icon (PTT AVM) uses its order artwork, so it is never shown without a logo.
-  const source = key ? `/platforms/returns/icon-${key}.png` : orderPlatformLogoSource(code)
+  // A platform without a return icon (PTT AVM) uses its square logo, so it is never shown without one.
+  const source = key ? `/platforms/returns/icon-${key}.png` : platformLogoSource(code)
   return source ? <img className={`rr-logo${large ? ' rr-lg' : ''}`} src={source} alt="" /> : <span className={`rr-logo${large ? ' rr-lg' : ''}`} aria-hidden="true" />
 }
 
