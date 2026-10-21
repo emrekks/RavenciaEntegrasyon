@@ -618,6 +618,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
       (policy.consecutiveFailureCount ?? 0) > 0 ? `${policy.consecutiveFailureCount} ardışık akış hatası var.` : ''
     ].filter(Boolean).join(' ')
     if (!policy.enabled) return `Bu akış kapalı. ${success}`
+    if (policy.healthStatus === 'PERMISSION') return 'Bu bir yazma iznidir: açıkken panelden başlatılan işlemler platforma gönderilir. Zamanlanmış bir okuma olmadığı için gecikme durumu yoktur.'
     if (policy.healthStatus === 'OFFLINE') return policy.lastSuccessAt
       ? `${success} Beklenen çalışma aralığı aşıldı; akış güncellenmedi. Pazaryeri bağlantısı açık olabilir, bu uyarı yalnızca bu akışın son çalışmasının eski olduğunu gösterir.`
       : 'Bu akış henüz başarıyla çalışmadı. İlk başarılı çalışması bekleniyor; bu durum tek başına pazaryeri bağlantısının kapalı olduğu anlamına gelmez.'

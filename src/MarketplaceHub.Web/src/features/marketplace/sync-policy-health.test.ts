@@ -35,4 +35,8 @@ describe('syncPolicyHealthPresentation', () => {
       stalled: false,
     })
   })
+
+  it('shows a write permission as on, never as waiting for a first run', () => {
+    expect(syncPolicyHealthPresentation({ enabled: true, healthStatus: 'PERMISSION', lastSuccessAt: null })).toEqual({ label: 'İzin açık', tone: 'healthy', stalled: false })
+  })
 })

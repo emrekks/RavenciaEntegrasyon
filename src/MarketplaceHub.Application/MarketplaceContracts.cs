@@ -302,6 +302,9 @@ public static class MarketplaceSyncPolicyRules
         "ORDERS" => "ORDERS_HOT",
         "ORDER_RECOVERY" => "ORDERS_RECOVERY",
         "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" => "ORDER_RECONCILIATION",
+        // The return and stock reconciliations write one cursor for their three tiers, like the order ones.
+        "RETURN_RECONCILE_SHORT" or "RETURN_RECONCILE_MEDIUM" or "RETURN_RECONCILE_DAILY" => "RETURN_RECONCILIATION",
+        "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY" => "STOCK_RECONCILIATION",
         _ => resourceType.Trim().ToUpperInvariant()
     };
 

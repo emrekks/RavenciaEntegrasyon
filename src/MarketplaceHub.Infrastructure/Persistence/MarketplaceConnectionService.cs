@@ -633,6 +633,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var intervalSeconds = webhookHealthy && WebhookPollingPolicy.StretchedIntervalSeconds(connection.PlatformCode, x.ResourceType) is { } stretched
                 ? Math.Max(x.IntervalSeconds, stretched)
                 : x.IntervalSeconds;
+            // Questions are read on a stretching interval (QuestionCadencePolicy): up to ten minutes while none arrive.
+            if (string.Equals(x.ResourceType, "QUESTIONS", StringComparison.OrdinalIgnoreCase))
+                intervalSeconds = Math.Max(intervalSeconds, QuestionCadencePolicy.MaximumSeconds);
             var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, intervalSeconds) + Math.Max(0, x.JitterSeconds));
             var health = MarketplaceSyncHealthPolicy.Classify(
                 cursor?.LastSuccessAt,
@@ -643,6 +646,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 cursor?.ConsecutiveFailureCount ?? 0,
                 cursor?.LastFailedCount ?? 0,
                 expectedCadence).ToString().ToUpperInvariant();
+            // A write policy is a permission switch, not a scheduled read: it has no cursor to judge.
+            if (MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)) health = "PERMISSION";
             var cursorProgress = MarketplaceCursorProgressPolicy.Classify(
                 cursor?.LastSuccessAt,
                 cursor?.LastCursorAdvancedAt,

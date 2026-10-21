@@ -18,6 +18,8 @@ export function syncPolicyHealthPresentation(
   if (!effectiveEnabled) return { label: 'Kapalı', tone: 'disabled', stalled: false }
 
   const health = policy.healthStatus?.trim().toUpperCase()
+  // Write policies (SHIPMENT_WRITE, RETURN_WRITE...) are permissions, not reads: there is nothing to be late.
+  if (health === 'PERMISSION') return { label: 'İzin açık', tone: 'healthy', stalled: false }
   const stalled = policy.cursorProgressStatus?.trim().toUpperCase() === 'STALLED'
 
   if (health === 'OFFLINE') return { label: policy.lastSuccessAt ? 'Güncelleme gecikti' : 'İlk çalışma bekliyor', tone: 'offline', stalled }
