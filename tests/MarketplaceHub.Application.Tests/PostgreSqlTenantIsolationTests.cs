@@ -652,7 +652,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
         var kept = NewVariant(0);
         var sold = NewVariant(1);
-        var soldItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = sold.Id, LocationCode = "MAIN", OnHand = 3, Available = 2 };
+        var soldItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = sold.Id, LocationCode = "MAIN", OnHand = 3, Reserved = 1, Available = 2 };
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
