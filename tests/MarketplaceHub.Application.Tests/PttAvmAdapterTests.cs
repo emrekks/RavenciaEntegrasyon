@@ -897,7 +897,8 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(["https://cdn.example.com/a.jpg"], simple.ImageUrls);
         var only = Assert.Single(simple.Variants);
         Assert.Equal("markaekleme1", only.Barcode);
-        Assert.Equal("markaekleme1", only.Sku);
+        // The stock code is UrunKodu; the barcode stays the barcode.
+        Assert.Equal("MARKA_EKLEME_1", only.Sku);
         Assert.Null(only.ModelCode);
         // KDVli is 0 in the sample: the price is worked out from KDVsiz and the VAT rate.
         Assert.Equal(8999.00m, only.SalePrice);
@@ -1303,6 +1304,14 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(["FK4530", "RVNC015"], page.Items.Select(x => Assert.Single(x.Variants).Barcode));
         Assert.Contains(page.Issues!, issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE");
     }
+
+    [Theory]
+    [InlineData("BARCODE", "BARCODE")]
+    [InlineData(" stock_code ", "STOCK_CODE")]
+    [InlineData("MODEL", null)]
+    [InlineData(null, null)]
+    public void TheImportMatchKeyIsBarcodeStockCodeOrAutomatic(string? value, string? expected) =>
+        Assert.Equal(expected, ProductImportMatchKey.Normalize(value));
 
     private static RemoteOrder OrderFromList(string orderNumber)
     {

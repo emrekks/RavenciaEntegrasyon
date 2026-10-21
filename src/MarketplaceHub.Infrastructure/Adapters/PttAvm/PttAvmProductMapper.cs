@@ -59,8 +59,9 @@ public static class PttAvmProductMapper
                 variants.Add(new(read.Barcode, read.Barcode, read.Barcode, null, read.Options, !active || read.Active == false,
                     PttAvmVariantMapper.SalePrice(read, price), null, vatRate, read.Quantity, "TRY", Snapshot(read.Source).ToJsonString(), images, Desi: desi));
         }
+        // The product's stock code is UrunKodu; the documentation says the barcode replaced it, so it falls back to the barcode.
         if (variants.Count == 0)
-            variants.Add(new(barcode, barcode, barcode, null, new Dictionary<string, string>(), !active,
+            variants.Add(new(barcode, Value(row, "UrunKodu") ?? barcode, barcode, null, new Dictionary<string, string>(), !active,
                 price, null, vatRate, Number(row, "Miktar"), "TRY", "{}", images, Desi: desi));
         // The product barcode groups the variants (for a model it is the model code).
         return new(productId, barcode, title, Value(row, "UzunAciklama") ?? Value(row, "Aciklama") ?? "", null, null,

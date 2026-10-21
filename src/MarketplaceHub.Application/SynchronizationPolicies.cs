@@ -410,6 +410,23 @@ public static class InventoryAuthorityPolicy
         && inventory.ProjectionVersion == 1;
 }
 
+// The code a product import matches marketplace listings to panel variants by, chosen when the import starts.
+// Barcode: the marketplace barcode against the panel barcode only. Stock code: the marketplace stock code against
+// the panel SKU only. Null (automatic): each platform's own rule (barcode, stock code, model code and the
+// barcode/stock-code cross match of the flat catalogs), as before the choice existed.
+public static class ProductImportMatchKey
+{
+    public const string Barcode = "BARCODE";
+    public const string StockCode = "STOCK_CODE";
+
+    public static string? Normalize(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        Barcode => Barcode,
+        StockCode => StockCode,
+        _ => null
+    };
+}
+
 public static class ProductImportMergePolicy
 {
     public static bool PreserveLocalChanges(long productVersion, long lastImportedProductVersion) =>
