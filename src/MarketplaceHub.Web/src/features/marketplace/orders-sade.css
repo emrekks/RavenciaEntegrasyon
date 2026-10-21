@@ -175,6 +175,8 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-on-no { grid-row: 1; grid-column: 2; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small:first-of-type { grid-column: 1 / -1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small:not(:first-of-type) { display: none; }
+/* a late order says so in words on the card, not only with the red order number */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small.rr-due.is-late { display: block; grid-column: 1 / -1; margin-top: 2px; font-size: 12.5px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b { color: var(--rr-ink); font-size: 12.5px; font-weight: 500; text-align: left; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b::before { content: "Alıcı: "; color: var(--rr-muted); font-weight: 400; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell.rr-cargocell { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 10px; }
