@@ -141,6 +141,13 @@ public static class CatalogEndpoints
                                join file in db.FileAssets.AsNoTracking() on new { media.TenantId, FileAssetId = media.FileAssetId } equals new { file.TenantId, FileAssetId = file.Id }
                                where media.FileAssetId == assetId && media.Status == "ACTIVE" && product.Status != ProductStatus.Archived
                                    && file.Classification == "PRODUCT_MEDIA" && file.Status == "ACTIVE" && file.ArchivedAt == null
+                                   // G11: only images a marketplace was given. This address goes out only in publication
+                                   // payloads (ProductPublicationComposer and the platform composers), and the submit and
+                                   // update requests set the product's listing profile LIVE in the same transaction as their
+                                   // job, before the marketplace fetches anything; products linked to a marketplace listing
+                                   // (published or imported) stay readable. A draft never submitted is not served.
+                                   && (db.ChannelListingProfiles.Any(profile => profile.TenantId == media.TenantId && profile.ProductId == media.ProductId && profile.DesiredStatus == "LIVE")
+                                       || db.MarketplaceProductLinks.Any(link => link.TenantId == media.TenantId && link.ProductId == media.ProductId))
                                select new { file.TenantId, file.RelativePath, file.MimeType }).FirstOrDefaultAsync(http.RequestAborted);
             if (asset is null || asset.MimeType is not ("image/jpeg" or "image/png")) return Results.NotFound();
             try
