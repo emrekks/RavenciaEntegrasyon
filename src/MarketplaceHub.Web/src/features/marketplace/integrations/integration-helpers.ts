@@ -5,6 +5,8 @@ export function credentialRequestBody(platformCode: string, data: FormData) {
   if (platformCode === 'TRENDYOL_EFATURAM') return { email: data.get('email') || null, password: data.get('password') || null }
   if (platformCode === 'SHOPIFY') return { shopifyAccessToken: data.get('shopifyAccessToken') }
   if (platformCode === 'HEPSIBURADA') return { hepsiburadaIntegratorUsername: data.get('hepsiburadaIntegratorUsername'), hepsiburadaServiceKey: data.get('hepsiburadaServiceKey') }
+  // PTT AVM: the API user name and password of the seller panel’s Entegrasyon Bilgileri screen (the Mağaza ID is the store field).
+  if (platformCode === 'PTTAVM') return { pttAvmUsername: data.get('apiKey'), pttAvmPassword: data.get('apiSecret') }
   return { apiKey: data.get('apiKey'), apiSecret: data.get('apiSecret') }
 }
 

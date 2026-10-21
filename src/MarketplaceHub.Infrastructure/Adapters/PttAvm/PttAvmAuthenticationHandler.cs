@@ -9,8 +9,8 @@ using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 
-// Loads the encrypted API Key and Access Token of a PTT AVM connection. Both are produced in the
-// seller panel (Hesap Yönetimi › Entegrasyon Bilgileri) for the selected integrator and store.
+// Loads the encrypted API user name and password of a PTT AVM connection. The seller panel's Hesap Yönetimi ›
+// Entegrasyon Bilgileri screen shows them next to the Mağaza ID, which is kept as the connection's ExternalStoreId.
 public sealed class PttAvmAuthenticationHandler(
     AppDbContext db,
     IDataProtectionProvider dataProtection,
@@ -18,39 +18,60 @@ public sealed class PttAvmAuthenticationHandler(
 {
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
 
-    public async Task<PttAvmRequestContext?> LoadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    public async Task<PttAvmCredentialLoad> LoadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM" && x.ApiVersion == "V1",
             cancellationToken);
-        if (connection is null) return null;
+        if (connection is null) return PttAvmCredentialLoad.Missing;
 
         var credential = await db.PlatformCredentials.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.RevokedAt == null)
             .OrderByDescending(x => x.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
-        if (credential is null) return null;
+        if (credential is null) return PttAvmCredentialLoad.Missing;
 
-        CredentialPayload? payload;
-        try { payload = JsonSerializer.Deserialize<CredentialPayload>(BoundSecret.UnprotectForConnection(protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload)); }
-        catch (Exception exception) when (exception is CryptographicException or JsonException)
+        string json;
+        try { json = BoundSecret.UnprotectForConnection(protector, credential.TenantId, credential.ConnectionId, credential.ProtectedPayload); }
+        catch (CryptographicException exception)
         {
             logger.LogWarning(exception, "PTT AVM credential çözülemedi. ConnectionId: {ConnectionId}", connectionId);
-            return null;
+            return PttAvmCredentialLoad.Missing;
         }
-
-        if (payload is null || string.IsNullOrWhiteSpace(payload.ApiKey) || string.IsNullOrWhiteSpace(payload.AccessToken)) return null;
-        return new(connection, payload.ApiKey.Trim(), payload.AccessToken.Trim());
+        return Read(connection, json);
     }
 
-    private sealed record CredentialPayload(string ApiKey, string AccessToken)
+    // The first PTT AVM release stored {ApiKey, AccessToken} for the REST API; such a payload cannot sign a SOAP
+    // call and is reported as rejected credentials, so the owner enters the user name and password instead.
+    internal static PttAvmCredentialLoad Read(PlatformConnection connection, string json)
     {
-        public override string ToString() => nameof(CredentialPayload);
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return PttAvmCredentialLoad.Missing;
+            var username = Text(root, "Username");
+            var password = Text(root, "Password");
+            if (username is not null && password is not null) return new(new(connection, username.Trim(), password), false);
+            var legacy = Text(root, "ApiKey") is not null || Text(root, "AccessToken") is not null;
+            return new(null, legacy);
+        }
+        catch (JsonException) { return PttAvmCredentialLoad.Missing; }
     }
+
+    private static string? Text(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString() : null;
 }
 
-public sealed record PttAvmRequestContext(PlatformConnection Connection, string ApiKey, string AccessToken)
+// Account is null when the connection has no usable credential; LegacyApiKeyPayload says the stored one is the
+// old API Key / Access Token pair.
+public sealed record PttAvmCredentialLoad(PttAvmRequestContext? Account, bool LegacyApiKeyPayload)
 {
-    // The generated ToString would print the key and the token; a logged or thrown context must not leak them.
+    public static readonly PttAvmCredentialLoad Missing = new(null, false);
+}
+
+public sealed record PttAvmRequestContext(PlatformConnection Connection, string Username, string Password)
+{
+    // The generated ToString would print the user name and the password; a logged or thrown context must not leak them.
     public override string ToString() => $"PttAvmRequestContext {{ ConnectionId = {Connection.Id} }}";
 }

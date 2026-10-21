@@ -5,7 +5,8 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 
 // PTT AVM documents no quotas, so the starting buckets are cautious (docs/PTTAVM-ENTEGRASYON-PLANI.md §5.4).
 // The API process and every worker call it with the same client, so each request takes a token from a
-// PostgreSQL bucket shared by all of them, per store.
+// PostgreSQL bucket shared by all of them, per API user. Every SOAP call goes to the same address, so the
+// bucket is chosen by the operation name the client puts on the request.
 public sealed class PttAvmRateLimitHandler(
     IOptions<PttAvmOptions> options,
     TimeProvider timeProvider,
@@ -13,18 +14,18 @@ public sealed class PttAvmRateLimitHandler(
     ILogger<PttAvmRateLimitHandler>? logger = null) : DelegatingHandler
 {
     public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.PttAvm.Account");
+    public static readonly HttpRequestOptionsKey<string> OperationKey = new("MarketplaceHub.PttAvm.Operation");
     // Invoked once the request has its quota token, right before it is sent; the caller starts the request
     // timeout there, so time spent waiting for the quota is not counted as a timeout.
     public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.PttAvm.QuotaAcquired");
 
-    // The store behind the credentials, without the token itself. The Access Token is issued per integrator
-    // and store, while the API Key may be shared by every store of one integrator.
-    public static string StoreKey(string accessToken) =>
-        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(accessToken.Trim())))[..16];
+    // The API user behind the credentials, without the user name itself: one user belongs to one store.
+    public static string AccountKey(string username) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(username.Trim().ToLowerInvariant())))[..16];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var bucket = BucketFor(request.RequestUri);
+        var bucket = BucketFor(request.Options.TryGetValue(OperationKey, out var operation) ? operation : null);
         if (sharedLimiter is not null && request.Options.TryGetValue(AccountKeyOption, out var account) && !string.IsNullOrWhiteSpace(account))
         {
             try
@@ -44,14 +45,13 @@ public sealed class PttAvmRateLimitHandler(
         return await base.SendAsync(request, cancellationToken);
     }
 
-    internal static string BucketFor(Uri? uri)
+    internal static string BucketFor(string? operation)
     {
-        if (uri is null) return "reads";
-        if (uri.Host.StartsWith("shipment.", StringComparison.OrdinalIgnoreCase)) return "shipment";
-        var path = uri.AbsolutePath.TrimStart('/');
-        if (path.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase)) path = path["api/v1/".Length..];
-        if (path.Equals("products/upsert", StringComparison.OrdinalIgnoreCase) || path.Equals("products/stock-prices", StringComparison.OrdinalIgnoreCase)) return "product-write";
-        if (path.StartsWith("orders/", StringComparison.OrdinalIgnoreCase)) return "orders";
+        if (string.IsNullOrWhiteSpace(operation)) return "reads";
+        if (operation.StartsWith("Stok", StringComparison.Ordinal) && operation.Contains("Guncelle", StringComparison.Ordinal)
+            || operation.StartsWith("UpdateProduct", StringComparison.Ordinal))
+            return "product-write";
+        if (operation.StartsWith("Siparis", StringComparison.Ordinal) || operation is "KargoBilgiListesi" or "SaveInvoince") return "orders";
         return "reads";
     }
 
@@ -59,7 +59,6 @@ public sealed class PttAvmRateLimitHandler(
     {
         "product-write" => SharedRateLimits.ForSpacing(options.ProductWriteSpacing),
         "orders" => SharedRateLimits.ForWindow(options.OrderRequestsPerMinute, TimeSpan.FromMinutes(1)),
-        "shipment" => SharedRateLimits.ForWindow(options.ShipmentRequestsPerMinute, TimeSpan.FromMinutes(1)),
         _ => SharedRateLimits.ForWindow(options.ReadRequestsPerMinute, TimeSpan.FromMinutes(1))
     };
 }

@@ -6,8 +6,8 @@ describe('integration helpers', () => {
     const data = new FormData()
     data.set('apiKey', 'key'); data.set('apiSecret', 'secret'); data.set('email', 'a@b.test'); data.set('password', '')
     expect(credentialRequestBody('N11', data)).toEqual({ apiKey: 'key', apiSecret: 'secret' })
-    // PTT AVM's rotation form sends the API Key as apiKey and the Access Token as apiSecret.
-    expect(credentialRequestBody('PTTAVM', data)).toEqual({ apiKey: 'key', apiSecret: 'secret' })
+    // PTT AVM's rotation form asks for the API user name (apiKey field) and the API password (apiSecret field).
+    expect(credentialRequestBody('PTTAVM', data)).toEqual({ pttAvmUsername: 'key', pttAvmPassword: 'secret' })
     expect(credentialRequestBody('TRENDYOL_EFATURAM', data)).toEqual({ email: 'a@b.test', password: null })
   })
 

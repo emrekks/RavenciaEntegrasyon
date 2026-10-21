@@ -787,7 +787,7 @@ public interface IWebhookVerifier
 public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, bool InvoiceCreationEnabled = true, string? N11ShipmentTemplate = null, int? N11PreparingDay = null, DateTimeOffset? DisabledAt = null, DateTimeOffset? LastErrorAt = null);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version, bool VerifiedForConnection = false);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
-public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null, string? HepsiburadaIntegratorUsername = null, string? N11AppKey = null, string? N11AppSecret = null, string? PazaramaClientId = null, string? PazaramaClientSecret = null, string? PttAvmApiKey = null, string? PttAvmAccessToken = null);
+public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null, string? HepsiburadaIntegratorUsername = null, string? N11AppKey = null, string? N11AppSecret = null, string? PazaramaClientId = null, string? PazaramaClientSecret = null, string? PttAvmUsername = null, string? PttAvmPassword = null);
 // N11ShipmentTemplate and N11PreparingDay are the n11 product create settings; null keeps the
 // saved value and an empty template clears it.
 public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? Environment = null, string? ExternalStoreId = null, bool? ExternalWritesEnabled = null, bool? InvoiceCreationEnabled = null, string? N11ShipmentTemplate = null, int? N11PreparingDay = null);
@@ -799,8 +799,8 @@ public sealed record CredentialCommand(
     string? ShopifyAccessToken = null,
     string? HepsiburadaServiceKey = null,
     string? HepsiburadaIntegratorUsername = null,
-    string? PttAvmApiKey = null,
-    string? PttAvmAccessToken = null);
+    string? PttAvmUsername = null,
+    string? PttAvmPassword = null);
 public sealed record SyncPolicyView(
     Guid Id,
     string ResourceType,
