@@ -7091,6 +7091,11 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 .app-shell.stitch-shell :is(.rr-layer) .rr-tbl thead th,
 .app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { background-color: var(--rv-color-surface-soft) !important; }
 @media (min-width: 761px) { .app-shell.stitch-shell main :is(.rr-tbl, .jobs-reference-table, .mapping-saved-table table) tbody tr:hover > td { background-color: color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent) !important; } }
+/* Up to 1100 px the .rr-tbl rows are cards (a grid of cells with gaps): the hover colours the whole card, not each cell. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .rr-tbl.rr-tbl tbody tr:hover { background-color: color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent); }
+  .app-shell.stitch-shell main .rr-tbl.rr-tbl tbody tr:hover > td { background-color: transparent !important; }
+}
 
 /* Saved mapping delete button is 36×36 like every icon button. */
 .app-shell.stitch-shell main .mapping-saved-table .mapping-row-actions .mapping-delete-button { width: 36px !important; min-width: 36px !important; height: 36px !important; min-height: 36px !important; padding: 0 !important; }
