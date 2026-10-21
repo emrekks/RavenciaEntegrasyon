@@ -29,8 +29,8 @@ public sealed partial class PttAvmHttpClient
             return AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>>.Success(cached.Variants);
         var variants = new Dictionary<string, IReadOnlyList<XElement>>(StringComparer.OrdinalIgnoreCase);
         RateLimitMetadata? rate = null;
-        // The schema does not say whether pages start at 0 or 1: pages are read from 0 until one brings no new product.
-        for (var page = 0; page < MaxVariantPages; page++)
+        // Pages start at 1 (PTT AVM answers page 0 with "Page 0.dan büyük olmalıdır") and are read until one brings no new product.
+        for (var page = 1; page <= MaxVariantPages; page++)
         {
             var result = await SendSoapAsync(account, ProductsWithVariants, [new("page", page.ToString(CultureInfo.InvariantCulture)), new("size", VariantPageSize.ToString(CultureInfo.InvariantCulture))], cancellationToken);
             if (!result.IsSuccess) return AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>>.Failure(result.Error!, result.RateLimit);

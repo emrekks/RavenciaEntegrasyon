@@ -1272,8 +1272,11 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(300m, blouse.Variants[0].SalePrice);
         // The entry without any barcode is reported by its element names.
         Assert.Contains(page.Issues!, issue => issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Message.Contains("Variant[Tanim]", StringComparison.Ordinal));
-        // Variant pages are read until one brings no new product.
+        // Variant pages start at 1 (PTT AVM refuses page 0) and are read until one brings no new product.
         Assert.Equal(2, variantPages);
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        Assert.Equal(["1", "2"], handler.Requests.Where(x => x.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductsWithVariants, StringComparison.Ordinal))
+            .Select(x => XDocument.Parse(x.Body!).Descendants(tem + "page").Single().Value));
     }
 
     [Fact]
