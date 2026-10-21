@@ -29,6 +29,17 @@ public sealed class StepUpMiddleware(RequestDelegate next)
 
     internal static bool IsRecent(UserSession session, DateTimeOffset now) => session.ReauthenticatedAt is { } at && at >= now - Window;
 
+    // The same refusal from an endpoint that decides only after reading its data (a fiscal write by a user with an
+    // authenticator, G7). Those endpoints run after the idempotency middleware, which drops the key's record when it
+    // sees the mark, so the request sent again after the re-authentication is not answered with the stored refusal.
+    private const string RefusedItem = "MarketplaceHub.StepUpRefused";
+    internal static IResult Refuse(HttpContext context, string message)
+    {
+        context.Items[RefusedItem] = true;
+        return ApiProblems.Of(context, Code, message, StatusCodes.Status403Forbidden, new Dictionary<string, object?> { ["reauthenticateWithinSeconds"] = (int)Window.TotalSeconds });
+    }
+    internal static bool WasRefused(HttpContext context) => context.Items.ContainsKey(RefusedItem);
+
     // Segments compare whole, empty ones dropped, like RoleAuthorizationMiddleware.
     internal static bool RequiresStepUp(string method, string? path)
     {

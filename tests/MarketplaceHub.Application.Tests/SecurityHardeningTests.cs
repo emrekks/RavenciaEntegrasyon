@@ -373,6 +373,19 @@ public sealed class StepUpMiddlewareTests
         Assert.True(freshCalled);
     }
 
+    // G7: a fiscal endpoint's refusal is marked so the idempotency middleware does not keep it as the key's result.
+    [Fact]
+    public void AnEndpointRefusalIsMarkedForTheIdempotencyMiddleware()
+    {
+        var context = new DefaultHttpContext();
+        Assert.False(StepUpMiddleware.WasRefused(context));
+
+        var result = StepUpMiddleware.Refuse(context, "Yeniden doğrulama gerekir.");
+
+        Assert.True(StepUpMiddleware.WasRefused(context));
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+    }
+
     private static async Task<(HttpContext Context, bool Called)> Invoke(DateTimeOffset reauthenticatedAt)
     {
         var context = new DefaultHttpContext();
