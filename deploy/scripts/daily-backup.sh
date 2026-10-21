@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Nightly verified backup (ravencia-backup.timer, 20:30 UTC = 23:30 Istanbul).
+# Scheduled verified backup (ravencia-backup.timer, 08:59 and 20:59 UTC = 11:59 and 23:59 Istanbul).
 # After a boot the timer may fire before the stack is up (Persistent=true), so
 # the running API and Caddy containers are awaited for up to five minutes; their
 # images are needed to resolve the production Compose file.

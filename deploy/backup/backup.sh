@@ -20,9 +20,13 @@ verify_backup() {
 #   - the newest BACKUP_KEEP_RECENT sets (default 5) of the last 72 hours, so the
 #     latest pre-deploy sets stay restorable (every deploy writes one; a busy day
 #     of deploys must not fill the disk);
-#   - the newest set of each UTC day for BACKUP_KEEP_DAILY days (default 7);
+#   - for BACKUP_KEEP_DAILY days (default 7) the newest set of each half day: the
+#     timer writes two sets a day, 11:59 and 23:59 Istanbul (08:59 / 20:59 UTC),
+#     one before and one after 12:00 UTC;
 #   - the newest set of each ISO week, older than the daily window, for
 #     BACKUP_KEEP_WEEKLY weeks (default 4);
+#   - the newest set of each calendar month, older than the weekly window, for
+#     BACKUP_KEEP_MONTHLY months (default 6);
 #   - always the newest set, whatever its age.
 # Everything else is removed. Names that are not UTC timestamps are never touched.
 # Disk guard (before a new set is written): if the filesystem holding /backup
@@ -35,11 +39,13 @@ verify_backup() {
 retention_cutoffs() {
   keep_daily="${BACKUP_KEEP_DAILY:-7}"
   keep_weekly="${BACKUP_KEEP_WEEKLY:-4}"
+  keep_monthly="${BACKUP_KEEP_MONTHLY:-6}"
   keep_recent="${BACKUP_KEEP_RECENT:-5}"
   now="${BACKUP_NOW_EPOCH:-$(date -u +%s)}"
   recent_cutoff="$((now - 259200))"
   daily_cutoff="$((now - keep_daily * 86400))"
   weekly_cutoff="$((now - (keep_daily + keep_weekly * 7 + 7) * 86400))"
+  monthly_cutoff="$((weekly_cutoff - keep_monthly * 31 * 86400))"
 }
 
 # Prints the epoch of a YYYYMMDDTHHMMSSZ set name; prints nothing for other names.
@@ -62,9 +68,11 @@ list_backup_sets() {
 
 prune_expired_backups() {
   retention_cutoffs
-  seen_days=" "
+  seen_half_days=" "
   seen_weeks=" "
+  seen_months=" "
   weeks_kept=0
+  months_kept=0
   recent_kept=0
   newest_kept=false
 
@@ -73,8 +81,10 @@ prune_expired_backups() {
     name="${path##*/}"
     backup_time="$(backup_set_epoch "$name")"
     test -n "$backup_time" || continue
-    day_key="$(printf '%s' "$name" | cut -c1-8)"
+    # 20261021AM / 20261021PM: before or after 12:00 UTC.
+    if test "$(printf '%s' "$name" | cut -c10-11)" -lt 12; then half_day_key="$(printf '%s' "$name" | cut -c1-8)AM"; else half_day_key="$(printf '%s' "$name" | cut -c1-8)PM"; fi
     week_key="$(date -u -d "@$backup_time" +%G%V)"
+    month_key="$(printf '%s' "$name" | cut -c1-6)"
 
     keep=false
     if test "$newest_kept" = false; then
@@ -84,8 +94,8 @@ prune_expired_backups() {
       keep=true
       recent_kept="$((recent_kept + 1))"
     elif test "$backup_time" -ge "$daily_cutoff"; then
-      case "$seen_days" in
-        *" $day_key "*) ;;
+      case "$seen_half_days" in
+        *" $half_day_key "*) ;;
         *) keep=true ;;
       esac
     elif test "$backup_time" -ge "$weekly_cutoff" && test "$weeks_kept" -lt "$keep_weekly"; then
@@ -93,12 +103,18 @@ prune_expired_backups() {
         *" $week_key "*) ;;
         *) keep=true; weeks_kept="$((weeks_kept + 1))" ;;
       esac
+    elif test "$backup_time" -lt "$weekly_cutoff" && test "$backup_time" -ge "$monthly_cutoff" && test "$months_kept" -lt "$keep_monthly"; then
+      case "$seen_months" in
+        *" $month_key "*) ;;
+        *) keep=true; months_kept="$((months_kept + 1))" ;;
+      esac
     fi
 
     if test "$keep" = true; then
       newest_kept=true
-      seen_days="$seen_days$day_key "
+      seen_half_days="$seen_half_days$half_day_key "
       seen_weeks="$seen_weeks$week_key "
+      seen_months="$seen_months$month_key "
     else
       rm -rf -- "${backup_root:?}/$name"
       echo "Removed expired backup set: $name"

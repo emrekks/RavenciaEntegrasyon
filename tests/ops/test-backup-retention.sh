@@ -35,18 +35,22 @@ kept=(
   20261021T110000Z   # newest
   20261021T080000Z   # within 72 hours
   20261019T200000Z   # within 72 hours
-  20261017T203000Z   # daily window: newest of 17 Oct
-  20261015T203000Z   # daily window: newest of 15 Oct
+  20261017T203000Z   # daily window: evening set of 17 Oct (after 12:00 UTC)
+  20261017T085900Z   # daily window: noon set of 17 Oct (before 12:00 UTC)
+  20261015T203000Z   # daily window: evening set of 15 Oct
   20261010T203000Z   # weekly: newest of ISO week 41
   20261001T203000Z   # weekly: week 40
   20260924T203000Z   # weekly: week 39
   20260917T203000Z   # weekly: week 38 (fourth weekly set)
+  20260815T000000Z   # monthly: newest of August, older than the weekly window
+  20260520T000000Z   # monthly: May
 )
 removed=(
-  20261017T100000Z   # second set of a day in the daily window
+  20261017T190000Z   # older set of the same half day in the daily window
   20261008T203000Z   # older set of week 41
-  20260910T203000Z   # fifth weekly set
-  20260801T000000Z   # older than the weekly window
+  20260910T203000Z   # fifth weekly set, still inside the weekly window
+  20260801T000000Z   # older set of August
+  20250101T000000Z   # older than the monthly window
 )
 make_sets "${kept[@]}" "${removed[@]}"
 mkdir -p -- "$work/manual-copy"

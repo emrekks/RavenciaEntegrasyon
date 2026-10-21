@@ -1,5 +1,5 @@
 [Unit]
-Description=Create and verify the daily Ravencia database and private-volume backup
+Description=Create and verify a scheduled Ravencia database and private-volume backup
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target

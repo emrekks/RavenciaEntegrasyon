@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 # Installs/refreshes the host's operational systemd units. Every deploy runs it,
 # so unit changes in the repository reach the host with the next release:
-#   ravencia-backup.timer         nightly verified backup (20:30 UTC)
+#   ravencia-backup.timer         verified backup twice a day (08:59 and 20:59 UTC)
 #   ravencia-restore-drill.timer  monthly isolated restore drill
 #   ravencia-healthwatch.timer    5-minute health watch + API self-heal
 #   ravencia-alert@.service       alert sender used by OnFailure= and the watch
