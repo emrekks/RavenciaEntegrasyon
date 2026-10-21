@@ -9,7 +9,8 @@ type SecurityStatus = { totpState: string }
 // session's five code attempts.
 type FactorState = 'loading' | 'off' | 'on' | 'unknown'
 
-// Irreversible work (emptying data, deleting a connection, changing its credentials) answers 403 REAUTHENTICATION_REQUIRED
+// Irreversible or lasting work (emptying data, deleting or creating a connection, changing its credentials, opening a
+// webhook subscription or instant notifications) answers 403 REAUTHENTICATION_REQUIRED
 // when the last sign-in or re-authentication is older than five minutes. This window asks for the password, and the
 // authenticator code when one is on, and posts them to /auth/reauthenticate; after that succeeds the client sends the
 // refused request once more. It is rendered into <body> so it sits over the confirmation window that asked for it.
@@ -68,7 +69,7 @@ export function StepUpPrompt() {
   }
 
   if (!open) return null
-  return createPortal(<Modal open title="Kimliğinizi doğrulayın" description="Bu işlem geri alınamaz; devam etmek için parolanızı yeniden girin." className="rv-step-up" onClose={() => { if (!busy) settle(false) }} footer={<>
+  return createPortal(<Modal open title="Kimliğinizi doğrulayın" description="Bu işlem hassas bir işlemdir; devam etmek için parolanızı yeniden girin." className="rv-step-up" onClose={() => { if (!busy) settle(false) }} footer={<>
     <Button variant="secondary" onClick={() => settle(false)} disabled={busy}>Vazgeç</Button>
     <Button type="submit" form={formId} loading={busy} disabled={factor === 'loading'}>Doğrula ve devam et</Button>
   </>}>

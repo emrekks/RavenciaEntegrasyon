@@ -350,6 +350,13 @@ public sealed class StepUpMiddlewareTests
     [InlineData("GET", "/api/v1/connections/11111111-1111-1111-1111-111111111111/credential", false)]
     [InlineData("PUT", "/api/v1/settings/shipping-label", false)]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/test-jobs", false)]
+    [InlineData("POST", "/api/v1/connections", true)]
+    [InlineData("GET", "/api/v1/connections", false)]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", true)]
+    [InlineData("GET", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", false)]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", true)]
+    [InlineData("DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", false)]
+    [InlineData("POST", "/api/v1/hooks/11111111-1111-1111-1111-111111111111/token", false)]
     public void RoutesThatNeedAFreshProof(string method, string path, bool expected)
     {
         Assert.Equal(expected, StepUpMiddleware.RequiresStepUp(method, path));
