@@ -7682,7 +7682,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 using var document = JsonDocument.Parse(raw);
                 if (string.Equals(resourceType, "ORDER_EVENT", StringComparison.Ordinal))
-                    return await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, OrderEventPath(externalMessageId), correlationId, cancellationToken);
+                    return await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, externalMessageId, OrderEventPath(externalMessageId), correlationId, cancellationToken);
                 // A claim notice the mapper cannot read whole: the recent claims are read again.
                 if (string.Equals(resourceType, "CLAIM_EVENT", StringComparison.Ordinal))
                     return await SyncReturns(tenantId, connectionId, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
