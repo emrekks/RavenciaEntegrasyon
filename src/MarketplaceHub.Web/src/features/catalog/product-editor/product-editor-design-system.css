@@ -236,7 +236,7 @@
 }
 
 @layer features {
-  .app-shell.stitch-shell main .category-attribute-select-trigger:hover { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-ink) 7%, transparent); border-color: var(--rv-color-border-strong); }
+  .app-shell.stitch-shell main .category-attribute-select-trigger:hover { color: var(--rv-color-ink); background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 7%, transparent)); border-color: var(--rv-color-border-strong); }
 }
 
 @layer features {
@@ -296,7 +296,7 @@
 }
 
 @layer features {
-  .app-shell.stitch-shell main .variant-filter-select-trigger:hover { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-ink) 7%, transparent); border-color: var(--rv-color-border-strong); }
+  .app-shell.stitch-shell main .variant-filter-select-trigger:hover { color: var(--rv-color-ink); background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 7%, transparent)); border-color: var(--rv-color-border-strong); }
 }
 
 @layer features {
@@ -825,7 +825,7 @@
 
 .marketplace-pricing-open { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 14px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); cursor: pointer; text-align: left; }
 .product-top-sidebar .marketplace-pricing-open { margin-top: var(--rv-space-3); }
-.marketplace-pricing-open:hover { border-color: var(--rv-color-border-strong); background: color-mix(in srgb, var(--rv-color-ink) 7%, transparent); }
+.marketplace-pricing-open:hover { border-color: var(--rv-color-border-strong); background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 7%, transparent)); }
 @media (max-width: 600px) {
   .marketplace-pricing-open { align-items: flex-start; flex-direction: column; }
 }

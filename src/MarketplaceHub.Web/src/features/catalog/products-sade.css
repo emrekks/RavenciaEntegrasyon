@@ -2,7 +2,7 @@
    which holds the shared parts of the new design; every rule here is scoped to this page or to the popup layer. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics article.rr-bad strong { color: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn { display: grid; gap: 2px; padding: 14px 16px; color: var(--rr-ink); text-align: left; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; font: inherit; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn:hover { background: var(--rr-hover); border-color: var(--rr-line-strong); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn small { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-size: 24px; font-weight: 600; line-height: 1.3; color: var(--rr-warn); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn span { display: inline-flex; align-items: center; gap: 4px; color: var(--rr-violet); font-size: 12px; font-weight: 500; }
@@ -35,7 +35,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vrow .rr-low b { color: var(--rr-warn); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vrow .rr-empty b { color: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn { display: grid; justify-items: center; gap: 1px; padding: 4px 8px; color: var(--rr-ink); background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn:hover { background: var(--rr-hover); border-color: var(--rr-line-strong); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn b { font-weight: 600; font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn small { color: var(--rr-subtle); font-size: 11.5px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn small.rr-num { text-decoration: line-through; }
@@ -45,7 +45,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn.rr-zero small { color: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-th-sort,
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-sortbtn { display: inline-grid; place-items: center; width: 20px; height: 20px; color: var(--rr-subtle); background: none; border: 0; border-radius: 5px; cursor: pointer; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-sortbtn:hover { color: var(--rr-ink); background: var(--rr-hover); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-sortbtn:hover { color: var(--rr-ink); background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pmarks { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm { position: relative; display: inline-grid; outline: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm .rr-logo { width: 26px; height: 26px; border-radius: 6px; }
@@ -106,7 +106,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini .rr-in { height: 32px; padding: 0 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 10px; cursor: pointer; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src:hover { background: var(--rr-hover); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src.rr-on { border-color: var(--rr-line-strong); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src > span:not(.rr-badge) { display: grid; min-width: 0; flex: 1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src b { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -115,7 +115,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-seg button.rr-on { color: var(--rr-ink); background: var(--rr-raised); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-radios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-rcard { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 10px; cursor: pointer; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-rcard:hover { background: var(--rr-hover); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-rcard:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-rcard.rr-on { border-color: var(--rr-violet-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-rcard > span:last-child { display: grid; gap: 2px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-rcard b { font-weight: 500; font-size: 13px; }

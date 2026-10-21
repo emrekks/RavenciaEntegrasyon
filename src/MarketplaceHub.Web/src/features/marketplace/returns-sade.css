@@ -42,18 +42,18 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-st.rr-done { color: var(--rr-ink); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-st.rr-bad { color: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 12px; white-space: nowrap; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn:hover { background: var(--rr-soft); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn:hover { background: var(--rv-hover, var(--rr-soft)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-primary { color: #fff; background: var(--rr-primary); border-color: var(--rr-primary); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-primary:hover { filter: brightness(1.08); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-quiet { color: var(--rr-muted); background: none; border-color: transparent; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-quiet:hover { color: var(--rr-ink); background: var(--rr-raised); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-quiet:hover { color: var(--rr-ink); background: var(--rv-hover, var(--rr-raised)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-danger { color: var(--rr-bad); border-color: color-mix(in srgb, var(--rr-bad) 45%, var(--rr-line-strong)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-solid { color: #fff; background: var(--rr-bad); border-color: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-link { height: auto; padding: 0; color: var(--rr-violet); background: none; border: 0; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-link:hover { text-decoration: underline; background: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn:disabled { opacity: .45; cursor: default; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-icon-btn { display: grid; width: 28px; height: 28px; place-items: center; color: var(--rr-muted); background: none; border: 0; border-radius: 6px; cursor: pointer; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-icon-btn:hover { color: var(--rr-ink); background: var(--rr-raised); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-icon-btn:hover { color: var(--rr-ink); background: var(--rv-hover, var(--rr-raised)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rr-ink); background: var(--rr-line-strong); border-radius: 5px; font-size: 11px; font-weight: 500; line-height: 1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-count.rr-warn { color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 16%, var(--rr-line-strong)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-in { width: 100%; height: 36px; padding: 0 12px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; outline: none; }
@@ -92,7 +92,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pop.rr-static { position: static; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pop .rr-ph { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 8px; color: var(--rr-muted); font-size: 12px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px; color: var(--rr-ink); text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; font-size: 13px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:hover { background: var(--rr-soft); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:hover { background: var(--rv-hover, var(--rr-soft)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on { background: var(--rr-primary-soft); color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-grow { flex: 1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt small { color: var(--rr-subtle); font-size: 12px; }
@@ -110,7 +110,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid b { color: var(--rr-subtle); font-weight: 500; padding: 4px 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid span { display: grid; place-items: center; height: 32px; border-radius: 6px; cursor: pointer; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid span:hover { background: var(--rr-soft); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid span:hover { background: var(--rv-hover, var(--rr-soft)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid span.rr-in-range { background: var(--rr-primary-soft); border-radius: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid span.rr-edge { color: #fff; background: var(--rr-primary); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid span.rr-off { color: var(--rr-subtle); opacity: .45; cursor: default; }
@@ -222,12 +222,12 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th { position: relative; height: 44px; padding: 0 8px; color: var(--rr-muted); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; background: var(--rr-raised); border-bottom: 1px solid var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-hf { display: inline-flex; align-items: center; gap: 4px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-fbtn { display: inline-grid; place-items: center; width: 24px; height: 24px; color: var(--rr-subtle); background: none; border: 0; border-radius: 5px; cursor: pointer; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-fbtn:hover { color: var(--rr-ink); background: var(--rr-soft); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-fbtn:hover { color: var(--rr-ink); background: var(--rv-hover, var(--rr-soft)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th.rr-has-filter .rr-fbtn { color: var(--rr-violet); background: var(--rr-primary-soft); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td { padding: 18px 8px; vertical-align: top; border-bottom: 1px solid var(--rr-line); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td:first-child { padding-left: 16px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr:last-child td { border-bottom: 0; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tbody tr:hover td { background: color-mix(in srgb, var(--rr-raised) 60%, transparent); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tbody tr:hover td { background: var(--rv-hover, color-mix(in srgb, var(--rr-raised) 60%, transparent)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td { background: var(--rr-primary-soft); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td:first-child { box-shadow: inset 2px 0 0 var(--rr-primary); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-due td:first-child { box-shadow: inset 2px 0 0 var(--rr-warn); }
@@ -280,7 +280,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-jump .rr-btn { height: 36px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button { min-width: 32px; height: 32px; padding: 0 8px; color: var(--rr-muted); background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button.rr-on { color: var(--rr-violet); background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button:hover:not(.rr-on) { color: var(--rr-ink); background: var(--rr-raised); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button:hover:not(.rr-on) { color: var(--rr-ink); background: var(--rv-hover, var(--rr-raised)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk { position: sticky; bottom: 16px; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; background: var(--rr-raised); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk .rr-grow { flex: 1; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-empty { display: grid; justify-items: center; gap: 6px; padding: 40px 24px; text-align: center; }
@@ -447,7 +447,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu { position: absolute; z-index: 60; top: calc(100% + 6px); min-width: 250px; padding: 6px; display: grid; gap: 2px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu.rr-static { position: static; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; color: var(--rr-ink); text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; font-size: 14px; font-weight: 500; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:hover:not(:disabled) { background: var(--rr-raised); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:hover:not(:disabled) { background: var(--rv-hover, var(--rr-raised)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button svg { color: var(--rr-muted); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-on { background: var(--rr-primary-soft); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-on svg { color: var(--rr-violet); }
@@ -692,11 +692,11 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal .rr-grid span:hover,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-trigger:hover,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-switch:hover,
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ghost:hover { background: var(--rr-hover); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tbody tr:hover td { background: var(--rr-hover); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard:hover { background: var(--rr-hover); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ghost:hover { background: var(--rv-hover, var(--rr-hover)); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tbody tr:hover td { background: var(--rv-hover, var(--rr-hover)); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard.rr-on { background: var(--rr-surface); border-color: var(--rr-line-strong); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard.rr-on:hover { background: var(--rr-hover); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard.rr-on:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td { background: var(--rr-hover); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-on { background: var(--rr-hover); color: var(--rr-ink); }
@@ -829,7 +829,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-date { display: grid; gap: 6px; min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-label { display: block; margin: 0; color: var(--rr-subtle); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 36px; min-height: 36px; padding: 0 10px 0 12px; color: var(--rr-ink); text-align: left; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400; cursor: pointer; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger:hover { background: var(--rr-hover); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger[aria-expanded="true"] { border-color: var(--rr-violet-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400 !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger > span.is-empty { color: var(--rr-muted); }

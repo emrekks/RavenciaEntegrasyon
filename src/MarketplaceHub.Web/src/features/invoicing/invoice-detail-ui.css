@@ -13,7 +13,7 @@
 }
 .app-shell.stitch-shell main .invoice-detail-header-actions .invoice-detail-platform-refresh:hover:not(:disabled) {
   color: var(--rv-color-ink);
-  background: var(--rv-color-surface-soft);
+  background: var(--rv-hover, var(--rv-color-surface-soft));
 }
 .invoice-detail-addresses article > span { overflow-wrap: anywhere; line-height: 1.5; }
 .invoice-detail-addresses article > span > strong { color: var(--rv-color-muted); font-weight: 750; }

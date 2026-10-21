@@ -171,7 +171,7 @@
 }
 
 @layer features {
-  .panel-category-picker [role="option"]:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+  .panel-category-picker [role="option"]:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 }
 
 @layer features {

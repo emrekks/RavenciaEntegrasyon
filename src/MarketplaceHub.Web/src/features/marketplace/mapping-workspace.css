@@ -158,7 +158,7 @@
   border-radius: var(--rv-radius-md);
   box-shadow: none;
 }
-.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:hover:not(:disabled) { background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); }
+.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); border-color: var(--rv-color-border); }
 .value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:disabled { color: var(--rv-color-subtle); opacity: .6; }
 .value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 .value-mapping-editor .value-mapping-commandbar button > svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); flex: 0 0 auto; color: var(--rv-color-muted); }
@@ -391,11 +391,11 @@
 .app-shell.stitch-shell main section.mapping-page .category-library-tools > span { min-width: 8ch; color: var(--rv-color-muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) { gap: 6px; }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span { display: flex; align-items: center; height: 36px; min-height: 36px; padding: 0 6px 0 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
-.app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span.active { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span > button:first-child { flex: 1; min-width: 0; height: auto; min-height: 0; padding: 0; overflow: hidden; color: var(--rv-color-ink); text-align: left; text-overflow: ellipsis; white-space: nowrap; background: none; border: 0; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-remove, .category-chip-remove) { display: grid; flex: none; width: 24px; min-width: 24px; height: 24px; min-height: 24px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 5px; box-shadow: none; }
-.app-shell.stitch-shell main section.mapping-page :is(.category-library-remove, .category-chip-remove):hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main section.mapping-page :is(.category-library-remove, .category-chip-remove):hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-remove, .category-chip-remove) .ui-icon { width: 14px; height: 14px; }
 
 /* 2. New category mapping: info row, picker pair with a quiet link mark, footer */
@@ -409,7 +409,7 @@
 .app-shell.stitch-shell main section.mapping-page .panel-category-picker-trigger .ui-icon { flex: none; width: 14px; height: 14px; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main section.mapping-page .panel-category-picker { padding: 6px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
 .app-shell.stitch-shell main section.mapping-page .panel-category-picker [role="option"] { min-height: 34px; padding: 0 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
-.app-shell.stitch-shell main section.mapping-page .panel-category-picker [role="option"]:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main section.mapping-page .panel-category-picker [role="option"]:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main section.mapping-page .panel-category-picker [role="option"][aria-selected="true"] { background: var(--rv-color-primary-soft); }
 .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 14px 0 0; color: var(--rv-color-muted); border-top: 1px solid var(--rv-color-border); font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .mapping-local-manager > summary { display: flex; align-items: center; gap: 8px; min-height: 0; padding: 6px 0 0; color: var(--rv-color-muted); background: none; border: 0; font-size: 13px; cursor: pointer; }
@@ -429,14 +429,14 @@
 .app-shell.stitch-shell main section.mapping-page .panel-value-token-entry > button { color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); box-shadow: none; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 8px 8px 8px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 10px; box-shadow: none; }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article:hover { background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article.selected { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-main { display: grid; flex: 1; gap: 2px; min-width: 0; height: auto; min-height: 0; padding: 0; text-align: left; background: none; border: 0; box-shadow: none; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-main strong { overflow: hidden; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-main small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions { display: flex; flex: none; align-items: center; gap: 2px; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions > button { display: grid; width: 30px; min-width: 30px; height: 30px !important; min-height: 30px !important; place-items: center; padding: 0 !important; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions > .panel-attribute-category-button { order: -1; width: auto; margin-right: 4px; padding: 0 10px !important; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions .ui-icon { width: 15px; height: 15px; }
 
@@ -456,7 +456,7 @@
 .app-shell.stitch-shell main .panel-attribute-modal-card > header strong { font-size: 18px; font-weight: 600; text-transform: none; }
 .app-shell.stitch-shell main .panel-attribute-modal-card > header small { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .panel-attribute-modal-card > header > button { display: grid; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
-.app-shell.stitch-shell main .panel-attribute-modal-card > header > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .panel-attribute-modal-card > header > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .panel-attribute-modal-card :is(.panel-attribute-add-value, .panel-attribute-category-search) { display: flex; align-items: center; gap: 8px; margin: 0; padding: 16px 24px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .panel-attribute-modal-card :is(.panel-attribute-add-value, .panel-attribute-category-search) input { flex: 1; min-width: 0; box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-search > span { color: var(--rv-color-muted); font-size: 13px; white-space: nowrap; }
@@ -468,9 +468,9 @@
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-value-editor > div > input { flex: 1; height: 32px; min-height: 32px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-primary); border-radius: 7px; font-size: 14px; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-value-editor > div > div { display: flex; gap: 2px; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-value-editor > div > div > button { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
-.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-value-editor > div > div > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-value-editor > div > div > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; padding: 0 8px 0 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
-.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button:hover { background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button.active { background: var(--rv-color-primary-soft); }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button > i { display: grid; flex: none; width: 18px; height: 18px; place-items: center; color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); }
 .app-shell.stitch-shell main .panel-attribute-modal-card > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
@@ -487,7 +487,7 @@
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button { font-weight: 400 !important; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button.active { background: none; }
-.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button:hover { background: var(--rv-color-surface-raised) !important; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button:hover { background: var(--rv-hover, var(--rv-color-surface-raised)) !important; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button:not(.active) { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .panel-attribute-modal-card > header > button { border: 0 !important; box-shadow: none !important; }
 @media (max-width: 560px) { .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list { grid-template-columns: minmax(0, 1fr); } }
@@ -537,7 +537,7 @@
 
 /* Backup popups: checked rows stay plain; the check mark carries the state. */
 .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options label:has(input:checked), .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-all-option { background: none !important; }
-.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options label:hover { background: var(--rv-color-surface-raised) !important; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options label:hover { background: var(--rv-hover, var(--rv-color-surface-raised)) !important; }
 .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-all-option { border-bottom: 1px solid var(--rv-color-border-strong); }
 
 /* Brand mapping: quiet note, flat pickers with the link mark between them, title-row refresh. */
@@ -598,7 +598,7 @@
   /* Saved mappings as cards: panel category and state on top, the platform path under it, the platform on the left of
      the actions at the bottom; cells lose their table lines, and a card keeps its look under the finger (no hover). */
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "panel panel status" "target target target" "platform actions actions"; gap: 8px 10px; padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); }
-  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr:hover { background: var(--rv-color-surface); border-color: var(--rv-color-border); box-shadow: none; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr:hover { background: var(--rv-hover, var(--rv-color-surface)); border-color: var(--rv-color-border); box-shadow: none; }
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr { grid-template-rows: none; grid-auto-rows: auto; }
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td { display: flex; align-items: center; height: auto; min-width: 0; min-height: 0; padding: 0; background: none !important; border: 0 !important; box-shadow: none !important; }
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td::before,
@@ -628,7 +628,7 @@
    violet with white text and violet lines, depending on the order the stylesheets loaded. */
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button { color: var(--rv-color-muted); background: none !important; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button.active { color: var(--rv-color-ink); font-weight: 500 !important; }
-.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft) !important; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)) !important; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button > i { color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button:not(.active) > i { visibility: hidden; }
 

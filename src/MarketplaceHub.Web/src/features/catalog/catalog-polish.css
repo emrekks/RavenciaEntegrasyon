@@ -86,12 +86,12 @@
 /* The back link has no frame: the arrow sits bare and the hover is the same quiet fill the other icon buttons use */
 .app-shell.stitch-shell main .product-heading-back .ui-icon { border-color: transparent; }
 .app-shell.stitch-shell main .product-heading-back:hover .ui-icon,
-.app-shell.stitch-shell main .product-heading-back:focus-visible .ui-icon { background: var(--rv-color-surface-soft); border-color: transparent; transform: none; }
+.app-shell.stitch-shell main .product-heading-back:focus-visible .ui-icon { background: var(--rv-hover, var(--rv-color-surface-soft)); border-color: transparent; transform: none; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .product-heading-back { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; background: none; border: 0; border-radius: 7px; }
   .app-shell.stitch-shell main .product-add-page .product-heading-back .ui-icon { width: 20px; height: 20px; padding: 0; background: none; border: 0; transform: none; }
   .app-shell.stitch-shell main .product-add-page .product-heading-back:hover,
-  .app-shell.stitch-shell main .product-add-page .product-heading-back:focus-visible { background: var(--rv-color-surface-soft); }
+  .app-shell.stitch-shell main .product-add-page .product-heading-back:focus-visible { background: var(--rv-hover, var(--rv-color-surface-soft)); }
   .app-shell.stitch-shell main .product-add-page .product-heading-back:hover .ui-icon,
   .app-shell.stitch-shell main .product-add-page .product-heading-back:focus-visible .ui-icon { background: none; }
 }

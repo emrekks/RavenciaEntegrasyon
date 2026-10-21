@@ -29,7 +29,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ring small.rr-bad { color: var(--rr-bad); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-srcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 10px; cursor: pointer; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src:hover { background: var(--rr-hover); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src.rr-on { border-color: var(--rr-line-strong); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src > span { display: grid; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src b { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -38,7 +38,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-seg button.rr-on { color: var(--rr-ink); background: var(--rr-raised); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard { position: relative; display: grid; justify-items: center; gap: 6px; padding: 14px 10px 12px; text-align: center; border: 1px solid var(--rr-line); border-radius: 10px; cursor: pointer; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard:hover { background: var(--rr-hover); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard.rr-on { border-color: var(--rr-violet-line); box-shadow: inset 0 0 0 1px var(--rr-violet-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard input { position: absolute; top: 8px; left: 8px; margin: 0; accent-color: var(--rr-primary); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard .rr-ci { display: grid; place-items: center; height: 30px; }

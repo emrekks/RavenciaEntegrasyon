@@ -227,7 +227,7 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .mam > .mam-more { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(280px, 82vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
   html body .mam.is-open > .mam-more { display: grid; }
   html body .mam > .mam-more > * { order: 0; display: flex; box-sizing: border-box; width: 100%; min-height: 46px; align-items: center; justify-content: flex-start; gap: 10px; margin: 0; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: 14px; font-weight: 600; text-align: left; text-decoration: none; }
-  html body .mam > .mam-more > :is(button, a):hover { background: var(--rv-color-surface-soft); }
+  html body .mam > .mam-more > :is(button, a):hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
   /* Page headings: title on top, the action row under it. */
   html body .page-heading:has(.mam), html body .mapping-reference-heading:has(.mam) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }

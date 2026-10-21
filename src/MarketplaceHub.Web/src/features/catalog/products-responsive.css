@@ -405,7 +405,7 @@
      the finger gets the neutral hover of every other button */
   .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions > .platform-update-split { padding: 0; }
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { flex: none; width: 44px; min-width: 44px; height: 100%; min-height: 0; padding: 0; justify-content: center; }
-  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 }
 
 /* Phones: product pictures are reordered by holding and sliding (see the media strip handlers); the browser's own

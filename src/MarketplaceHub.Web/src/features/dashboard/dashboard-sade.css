@@ -14,7 +14,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; color: var(--rr-ink); text-decoration: none; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover,
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rr-hover); border-color: var(--rr-line-strong); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico:last-child { color: var(--rr-subtle); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-ic { display: grid; place-items: center; width: 38px; height: 38px; color: var(--rr-muted); background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 10px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-warn .rr-op-ic { color: var(--rr-warn); }
@@ -121,7 +121,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt td:first-child { padding-left: 16px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt td.rr-mx-act { padding-right: 16px; text-align: right; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tr:last-child td { border-bottom: 0; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tbody tr:hover td { background: var(--rr-hover); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tbody tr:hover td { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tr.rr-attn td:first-child { box-shadow: inset 2px 0 0 var(--rr-warn); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm { display: flex; align-items: center; gap: 10px; min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm .rr-logo { width: 28px; height: 28px; }
@@ -200,7 +200,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { position: relative; display: grid; grid-template-rows: auto auto 1fr auto auto; gap: 4px; align-items: start; min-width: 0; padding: 14px 16px; border-right: 1px solid var(--rr-line); outline: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc:last-child { border-right: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-pick { cursor: pointer; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-pick:hover { background: var(--rr-hover); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-pick:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-pick:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--rr-primary) 70%, transparent); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on { background: color-mix(in srgb, var(--rr-raised) 70%, transparent); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--rr-primary); }
@@ -228,7 +228,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-stack i { display: block; height: 100%; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows { display: grid; gap: 2px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; min-height: 0; padding: 8px 10px; color: var(--rr-ink); text-align: left; background: none; border: 1px solid transparent; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 400 !important; cursor: pointer; justify-content: stretch; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow:hover { background: var(--rr-hover); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow.rr-on { background: var(--rr-raised); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow.rr-dim { opacity: .5; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow .rr-logo { width: 22px; height: 22px; }
@@ -301,7 +301,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend .rr-trend-v { min-width: 8.5ch; font-variant-numeric: tabular-nums; }
 /* when the integration rows turn into grid cards the hover fills the whole row, not each cell with the gaps left bare */
 @media (max-width: 1100px) {
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover { background: var(--rr-hover); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover td { background: none; }
 }
 /* the period buttons share the width equally and keep their labels in the middle */

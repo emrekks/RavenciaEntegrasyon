@@ -13,5 +13,5 @@
 .invoice-sort-list li { margin: 0; }
 .invoice-sort-list button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--rv-color-ink); font-size: 14px; font-weight: 500; text-align: left; white-space: nowrap; cursor: pointer; }
 .invoice-sort-list button > span { flex: 1; }
-.invoice-sort-list button:hover { background: color-mix(in srgb, var(--rv-color-ink) 7%, transparent); }
+.invoice-sort-list button:hover { background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 7%, transparent)); }
 .invoice-sort-list button.is-selected { background: color-mix(in srgb, var(--rv-color-primary) 14%, transparent); }

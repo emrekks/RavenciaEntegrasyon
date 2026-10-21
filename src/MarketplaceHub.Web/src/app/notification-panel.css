@@ -14,7 +14,7 @@
 .rv-notification-history-title b { display: inline-grid; min-width: 22px; height: 20px; place-items: center; padding: 0 6px; color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); background: var(--rv-color-primary-soft); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 55%, transparent); border-radius: 6px; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .rv-notification-history-actions { display: inline-flex; align-items: center; gap: 2px; }
 .rv-notification-mark-all, .rv-notification-clear { display: inline-flex; align-items: center; gap: 6px; height: 30px; min-height: 30px; padding: 0 10px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
-.rv-notification-mark-all:hover:not(:disabled), .rv-notification-clear:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
+.rv-notification-mark-all:hover:not(:disabled), .rv-notification-clear:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .rv-notification-clear:hover:not(:disabled) { color: var(--rv-color-danger); }
 .rv-notification-mark-all:disabled, .rv-notification-clear:disabled { cursor: not-allowed; opacity: .4; }
 
@@ -51,7 +51,7 @@
 
 .rv-notification-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 .rv-notification-go, .rv-notification-more, .rv-notification-mark-read { display: inline-flex; width: auto; height: 30px; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
-.rv-notification-go:hover, .rv-notification-more:hover, .rv-notification-mark-read:hover { background: var(--rv-color-surface-raised); }
+.rv-notification-go:hover, .rv-notification-more:hover, .rv-notification-mark-read:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .rv-notification-history-item.is-error .rv-notification-go { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border-strong)); }
 .rv-notification-go .ui-icon { transition: transform .12s; }
 .rv-notification-go:hover .ui-icon { transform: translateX(2px); }

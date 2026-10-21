@@ -118,4 +118,8 @@
   --rv-color-sidebar: #eaedf2;
   --rv-hover-fill: color-mix(in srgb, var(--rv-color-ink) 6%, transparent);
   --rv-hover-solid: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-surface));
+  /* One hover colour for every neutral hover in the light theme: the ground under the element, 7% darker, so a row,
+     card, menu item or button never turns the colour of the page behind it. Hover rules read it as
+     var(--rv-hover, <their dark-theme colour>); the dark theme leaves it unset and keeps its own colours. */
+  --rv-hover: color-mix(in srgb, var(--rv-color-ink) 7%, transparent);
 }
