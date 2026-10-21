@@ -361,6 +361,9 @@ public static class MarketplaceEndpoints
                     result.Error!.Code, result.Error.Status, connectionPublicId, eventPath ?? "/", WebhookBodyOutline(body.Memory));
             return Problem(http, result.Error!);
         }
+        if (!result.Value)
+            http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                .LogWarning("Webhook acknowledged but not processed (stale delivery) for connection {ConnectionPublicId}.", connectionPublicId);
         // Hepsiburada's event paths answer 204 as its contracts show; the base address keeps its body.
         return eventPath is null ? Results.Ok(new { accepted = true }) : Results.NoContent();
     }
