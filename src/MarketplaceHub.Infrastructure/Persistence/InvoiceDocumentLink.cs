@@ -20,6 +20,10 @@ public static class InvoiceDocumentLink
         return builder.Uri.AbsoluteUri;
     }
 
+    // True for a link served by our public invoice-document route (not a provider's own document URL).
+    public static bool IsPublicLink(string? link) =>
+        Uri.TryCreate(link, UriKind.Absolute, out var uri) && uri.AbsolutePath.StartsWith(PathPrefix, StringComparison.Ordinal);
+
     public static string Create(IDataProtectionProvider provider, string origin, Guid tenantId, Guid invoiceId, Guid documentId)
     {
         if (!ProductPublicationComposer.IsPublicHttpsUrl(origin)

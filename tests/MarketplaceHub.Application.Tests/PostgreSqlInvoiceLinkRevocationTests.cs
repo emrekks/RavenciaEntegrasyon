@@ -57,6 +57,8 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
             Assert.Null(package.MarketplaceInvoiceUrl);
             Assert.True(await verification.MarketplaceInvoiceReferenceHistories.AnyAsync(row => row.PackageId == seed.PackageId && row.ChangeReason == "REMOVED:LINK_REVOCATION"));
             Assert.Equal(IssueStatus.Resolved, (await verification.OperationalIssues.SingleAsync(issue => issue.TenantId == seed.TenantId && issue.DedupeKey == $"invoice-link-revocation:{seed.InvoiceId:N}")).Status);
+            // The public link of the cancelled invoice is withdrawn with it: the public route finds no stored URL.
+            Assert.Null((await verification.InvoiceDocuments.SingleAsync(document => document.InvoiceId == seed.InvoiceId)).PermanentUrl);
 
             // A replay after the removal answers with the finished state and sends nothing.
             await using (var db = fixture.CreateContext())
@@ -147,6 +149,9 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
                 Assert.Equal("INVOICE_LINK_STILL_PRESENT", stillThere.Error?.Code);
                 Assert.Contains("Hepsiburada Satıcı Paneli", stillThere.Error!.Message, StringComparison.Ordinal);
             }
+            // While the package still shows the invoice, the link stays: the next check names it to the marketplace.
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(seed.PermanentUrl, (await db.InvoiceDocuments.SingleAsync(document => document.InvoiceId == seed.InvoiceId)).PermanentUrl);
 
             marketplace.Status = AdapterResult<InvoiceDeliveryStatus>.Success(new("revoke-hepsiburada-package", "NOT_INVOICED", true));
             await using (var db = fixture.CreateContext())
@@ -156,6 +161,31 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
             Assert.Equal(2, marketplace.QueryCount);
             await using var verification = fixture.CreateContext();
             Assert.Equal(MarketplaceInvoiceLinkRevocationPolicy.Removed, (await verification.MarketplaceDeliveryStates.SingleAsync(state => state.Id == seed.StateId)).Status);
+            Assert.Null((await verification.InvoiceDocuments.SingleAsync(document => document.InvoiceId == seed.InvoiceId)).PermanentUrl);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.TenantId);
+        }
+    }
+
+    // Only links served by our public route are withdrawn; a provider's own document address is not ours to remove.
+    [PostgreSqlFact]
+    public async Task AProviderDocumentAddressIsKeptWhenTheLinkIsRemoved()
+    {
+        var seed = await SeedAsync("revoke-provider-url", "TRENDYOL");
+        const string providerUrl = "https://efaturam.example.test/documents/revoke-provider-url.pdf";
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await db.InvoiceDocuments.Where(document => document.InvoiceId == seed.InvoiceId).ExecuteUpdateAsync(setters => setters.SetProperty(document => document.PermanentUrl, providerUrl));
+            var marketplace = new FakeMarketplace { Revoke = AdapterResult<InvoiceLinkRevocationResult>.Success(new("revoke-provider-url-package", false, "NotInvoiced")) };
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewService(db, marketplace, OpenWrites).RevokeMarketplaceLinkAsync(seed.TenantId, seed.InvoiceId, seed.StateId, "key", "revoke-provider-url", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(MarketplaceInvoiceLinkRevocationPolicy.Removed, (await verification.MarketplaceDeliveryStates.SingleAsync(state => state.Id == seed.StateId)).Status);
+            Assert.Equal(providerUrl, (await verification.InvoiceDocuments.SingleAsync(document => document.InvoiceId == seed.InvoiceId)).PermanentUrl);
         }
         finally
         {

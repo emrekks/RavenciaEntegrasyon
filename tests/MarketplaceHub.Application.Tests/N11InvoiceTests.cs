@@ -17,6 +17,19 @@ public sealed class N11InvoiceTests
         Assert.Equal("https://provider.example.com/doc/content", InvoiceDocumentLink.PdfAlias("https://provider.example.com/doc/content"));
     }
 
+    // Link revocation withdraws only the links our public route serves (G10), never a provider's document URL.
+    [Theory]
+    [InlineData(ContentLink, true)]
+    [InlineData(PdfLink, true)]
+    [InlineData("https://provider.example.com/doc/content", false)]
+    [InlineData("https://provider.example.com/x/api/v1/public/invoice-documents/abc/content", false)]
+    [InlineData("/api/v1/public/invoice-documents/abc/content", false)]
+    [InlineData(null, false)]
+    public void OnlyOurPublicInvoiceLinksCountAsPublicLinks(string? link, bool expected)
+    {
+        Assert.Equal(expected, InvoiceDocumentLink.IsPublicLink(link));
+    }
+
     [Fact]
     public void DeliveryPayloadBecomesTheSaveLinkRequest()
     {
