@@ -32,8 +32,12 @@ exec 9>"$log_dir/.lock"
 flock -w 3600 9 || { echo "Another deployment is still running." >&2; exit 75; }
 
 cd "$repository_root"
-git fetch --quiet origin main
+# The explicit refspec updates origin/main even where the clone's fetch configuration would not.
+git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
 git cat-file -e "$revision^{commit}" 2>/dev/null || { echo "Revision $revision is not on origin/main." >&2; exit 1; }
+# Being in the object store is not enough: a commit pushed to another branch, or dropped from main by a force-push, is
+# still there. Only a revision that main currently contains is deployed.
+git merge-base --is-ancestor "$revision" refs/remotes/origin/main || { echo "Revision $revision is not on origin/main." >&2; exit 1; }
 
 is_ancestor_or_equal() { git merge-base --is-ancestor "$1" "$2" 2>/dev/null; }
 

@@ -27,6 +27,7 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
 
 | Durum | Sonuç |
 | --- | --- |
+| SHA `origin/main`'in atası/aynısı değil (başka dal, force-push ile çıkarılmış commit) | **çıkış 1**, deploy yok |
 | SHA, `.hold` içindeki SHA'nın atası/aynısı (geri alınmış sürüm) | deploy yok, `::warning::`, çıkış 0 |
 | `.last-success` SHA'yı içeriyor (ve `redeploy` yok) | "already live", çıkış 0 |
 | SHA, çalışma ağacındaki HEAD'in atası ama `.last-success` içermiyor (daha yeni deploy başarısız olmuş) | **çıkış 1** — ileri düzeltme ya da `rollback.sh` |
