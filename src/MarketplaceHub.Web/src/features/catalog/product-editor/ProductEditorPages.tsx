@@ -36,7 +36,7 @@ import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJ
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { publicationJobPollInterval } from '../publication-job-poll'
 import { productPublicationTargets } from '../product-publication-submit'
-import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
+import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
 import { AcceptedJob, Attribute, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
@@ -1989,22 +1989,46 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function rowMatchesVariantFilters(row: VariantDraft) {
     return filterVariantsByOptions([row], variantFilterGroups, variantFilterSelections, rowMatchesVariantMediaValue).length > 0
   }
-  // Media assignments made in the modal are persisted right away on the edit page;
-  // the effect runs after variantRows state has committed so the save sees the new refs.
-  const autoSaveMedia = useEffectEvent(() => {
-    if (!mediaAutoSaveTick || !editProductId) return
-    const form = document.getElementById('product-creation-form') as HTMLFormElement | null
-    const saveButton = form?.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')
-    if (form && saveButton && !saveButton.disabled) form.requestSubmit(saveButton)
+  // Image assignments made in the window are saved on their own right away on the edit page: only the variants'
+  // pictures, never the rest of the form (unsaved prices or stock stay unsaved). The effect runs after variantRows has
+  // committed so it sees the new references. New variants and pictures still to upload wait for the product save.
+  const mediaAssignmentFormWasClean = useRef(false)
+  const saveVariantMediaAssignments = useEffectEvent(async () => {
+    const product = productToEdit.data
+    if (!mediaAutoSaveTick || !editProductId || !product) return
+    const requests = variantMediaReconcileRequests(variantRows, initialEditVariantMediaRefs.current)
+    if (requests === null || submitting) {
+      showFeedback('Görsel ataması forma eklendi; ürünü kaydettiğinizde kaydedilir.', 'info')
+      return
+    }
+    if (!requests.length) return
+    const formWasClean = mediaAssignmentFormWasClean.current
+    try {
+      for (const request of requests) {
+        await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: request.variantId, items: request.items, altText: `${product.title} · ${request.optionSignature}` }) })
+        initialEditVariantMediaRefs.current = { ...initialEditVariantMediaRefs.current, [request.variantId]: request.items.map(item => `url|${item.url}`) }
+      }
+      // A form with no other edits stays clean; other unsaved edits are left for the Kaydet button.
+      if (formWasClean) setSnapshotRequest(value => value + 1)
+      void client.invalidateQueries({ queryKey: ['products'] })
+      showFeedback(`${requests.length} varyantın görsel ataması kaydedildi.${formWasClean ? '' : ' Formdaki diğer değişiklikler henüz kaydedilmedi.'}`, 'success')
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Görsel ataması kaydedilemedi.'
+      showFeedback(`Görsel ataması kaydedilemedi: ${message} Atama formda duruyor; ürünü kaydettiğinizde yeniden denenir.`, 'error')
+    }
   })
-  useEffect(() => autoSaveMedia(), [mediaAutoSaveTick])
+  useEffect(() => { void saveVariantMediaAssignments() }, [mediaAutoSaveTick])
+  function requestVariantMediaSave() {
+    mediaAssignmentFormWasClean.current = !editorDirty
+    setMediaAutoSaveTick(tick => tick + 1)
+  }
 
   function applyVariantMediaSelection() {
     if (!variantMediaModal) return
     if (variantMediaModal.mode === 'variant') {
       updateVariantMedia(variantMediaModal.rowKey, variantMediaModal.draftRefs)
       setVariantMediaModal(null)
-      setMediaAutoSaveTick(tick => tick + 1)
+      requestVariantMediaSave()
       showFeedback(variantMediaModal.draftRefs.length ? `${variantMediaModal.draftRefs.length} varyant görseli seçildi.` : 'Varyant görselleri kaldırıldı.', 'success')
       return
     }
@@ -2025,8 +2049,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const assignment = assignments.find(item => item.matchingRows.some(matchingRow => matchingRow.key === row.key))
       return assignment ? { ...row, mediaRefs: assignment.refs } : row
     }))
-    setVariantMediaModal(null); setMediaAutoSaveTick(tick => tick + 1)
-    const message = `${group.name} görsel eşlemesi kaydedildi: ${assignments.length} değer, ${matchingRowCount} varyant satırı.`
+    setVariantMediaModal(null); requestVariantMediaSave()
+    const message = `${group.name} görsel eşlemesi uygulandı: ${assignments.length} değer, ${matchingRowCount} varyant satırı.`
     setNotice(message); showFeedback(message, 'success')
   }
 
