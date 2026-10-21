@@ -34,6 +34,7 @@ public static class InvoicingEndpoints
                 .Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId && x.Id == documentId)
                 .Select(x => x.PermanentUrl).SingleOrDefaultAsync(http.RequestAborted);
             if (!Uri.TryCreate(permanentUrl, UriKind.Absolute, out var uri) || uri.AbsolutePath != expectedPath) return Results.NotFound();
+            LogPublicInvoiceDocumentOpened(http, "invoice", tenantId, documentId);
             try { return Stream(await service.OpenDocumentAsync(tenantId, invoiceId, documentId, http.RequestAborted), http); }
             catch (FileNotFoundException) { return Results.NotFound(); }
         }
@@ -396,10 +397,21 @@ public static class InvoicingEndpoints
             || !string.Equals(storedUri.AbsolutePath, expectedPath, StringComparison.Ordinal)
             || !string.IsNullOrEmpty(storedUri.Query)
             || !string.IsNullOrEmpty(storedUri.Fragment)) return Results.NotFound();
+        LogPublicInvoiceDocumentOpened(http, "manual", tenantId, documentId);
         // Invoices carry personal data: not kept by shared caches or the browser (A17).
         http.Response.Headers.CacheControl = "private, no-store";
         return Results.File(await storage.OpenReadAsync(tenantId, row.RelativePath, http.RequestAborted), row.MimeType, row.OriginalNameSafe ?? $"invoice-{documentId:N}.pdf", enableRangeProcessing: false);
     }
+
+    // G10: the public invoice links have no expiry on purpose. The marketplaces keep the link they were given (Trendyol's
+    // invoiceLink, the n11 .pdf form) and show it to the buyer for as long as the order is listed; an expiring link would
+    // leave the buyer without the invoice. A link is withdrawn by removing it (link revocation clears the stored URL),
+    // and every opening is logged here so a leaked link's use can be traced. The token (a bearer secret) is never logged.
+    private static void LogPublicInvoiceDocumentOpened(HttpContext http, string kind, Guid tenantId, Guid documentId) =>
+        http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.InvoiceLinks")
+            .LogInformation("Public {Kind} invoice document {DocumentId} of tenant {TenantId} opened from {ClientNetwork} (pdf alias: {PdfAlias}).",
+                kind, documentId, tenantId, MarketplaceHub.Api.Security.ClientNetwork.PartitionKey(http),
+                http.Request.Path.Value?.EndsWith("/" + InvoiceDocumentLink.PdfFileName, StringComparison.Ordinal) == true);
 
     private static bool IsPublicHttpsInvoiceUrl(string value)
     {
