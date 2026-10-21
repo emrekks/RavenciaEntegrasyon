@@ -252,7 +252,9 @@ public sealed class TrendyolEFaturamHttpClient(
                 remoteId ??= await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(response.Content, linked.Token);
                 return AdapterResult<AuthorizedResponse>.Failure(TrendyolEFaturamErrorMapper.FromAuthorizedStatus(response.StatusCode, retryAfter, remoteId), rate);
             }
-            return AdapterResult<AuthorizedResponse>.Success(new(await response.Content.ReadAsStringAsync(linked.Token), remoteId), rate);
+            // R7: the body is read with ResponseHeadersRead, so the read itself keeps it under the response limit; a larger
+            // one fails as a network error instead of filling memory.
+            return AdapterResult<AuthorizedResponse>.Success(new(await response.Content.ReadBoundedStringAsync(linked.Token), remoteId), rate);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<AuthorizedResponse>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_TIMEOUT", "E-Faturam isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null)); }
         catch (HttpRequestException) { return AdapterResult<AuthorizedResponse>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_NETWORK_ERROR", "E-Faturam ağına güvenli bağlantı kurulamadı.", null, TimeSpan.FromSeconds(5), null)); }

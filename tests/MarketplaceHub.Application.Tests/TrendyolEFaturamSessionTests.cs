@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using Microsoft.Extensions.Configuration;
@@ -113,6 +114,28 @@ public sealed class TrendyolEFaturamSessionTests
 
         Assert.Equal("EFATURAM_ACCESS_TOKEN_REJECTED", rejected.Error!.Code);
         Assert.Equal(2, handler.SignInCount);
+    }
+
+    [Fact]
+    public async Task An_answer_over_the_response_limit_is_not_read_into_memory()
+    {
+        var handler = new SessionHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/signin", StringComparison.Ordinal)) return SignInResponse(Start.AddMinutes(30));
+            var content = new StringContent("{}");
+            if (request.RequestUri.AbsolutePath.EndsWith("/large", StringComparison.Ordinal))
+                content.Headers.ContentLength = MarketplaceResponseLimits.MaxResponseBytes + 1;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        });
+        var (client, _) = Client(handler);
+        var context = Context(Guid.NewGuid());
+        var access = await client.AcquireAccess(context, CancellationToken.None);
+
+        var small = await client.SendAuthorized(context, access.Value!.AccessToken, HttpMethod.Get, "api/invoice/documents/earchive/status/small", null, CancellationToken.None);
+        var large = await client.SendAuthorized(context, access.Value.AccessToken, HttpMethod.Get, "api/invoice/documents/earchive/status/large", null, CancellationToken.None);
+
+        Assert.Equal("{}", small.Value!.Body);
+        Assert.Equal("EFATURAM_NETWORK_ERROR", large.Error!.Code);
     }
 
     [Fact]
