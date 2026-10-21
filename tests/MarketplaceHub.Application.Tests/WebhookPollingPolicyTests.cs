@@ -31,9 +31,9 @@ public sealed class WebhookPollingPolicyTests
     [Fact]
     public void OnlyOrderPollsAreStretchedAndRightAfterRegistrationNothingCountsAsMissed()
     {
-        // A missed notification is still read within three minutes on every platform.
-        Assert.Equal(180, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDERS"));
-        Assert.Equal(180, WebhookPollingPolicy.StretchedIntervalSeconds("HEPSIBURADA", "ORDERS"));
+        // A missed notification is still read within eight minutes on every platform.
+        Assert.Equal(480, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDERS"));
+        Assert.Equal(480, WebhookPollingPolicy.StretchedIntervalSeconds("HEPSIBURADA", "ORDERS"));
         Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDER_RECOVERY"));
         // Trendyol and Shopify order reads bring cancellations; Hepsiburada's come from its open-order scan.
         Assert.Equal(3600, WebhookPollingPolicy.StretchedIntervalSeconds("TRENDYOL", "ORDER_LIFECYCLE"));
@@ -46,7 +46,7 @@ public sealed class WebhookPollingPolicyTests
     }
 
     [Fact]
-    public void AnUnnotifiedOrderIsOneWrittenWellAfterTheLastNotificationAndHeldFiveMinutes()
+    public void AnUnnotifiedOrderIsOneWrittenAfterTheLastNotificationAndHeldTwoMinutes()
     {
         var lastNotification = Now.AddHours(-2);
         var (after, before) = WebhookPollingPolicy.UnnotifiedOrderWindow(lastNotification, Now);
@@ -55,9 +55,10 @@ public sealed class WebhookPollingPolicyTests
         // The last notification's own order, written by its ingest job seconds later, does not count.
         Assert.False(Unnotified(lastNotification.AddSeconds(40)));
         // A polled order whose notification may still come does not count yet.
-        Assert.False(Unnotified(Now.AddMinutes(-2)));
-        // A polled order held six minutes with no notification since does.
-        Assert.True(Unnotified(Now.AddMinutes(-6)));
+        Assert.False(Unnotified(Now.AddMinutes(-1)));
+        // A polled order held two minutes with no notification since does: an eight-minute poll plus two
+        // minutes notices a missed order within ten minutes.
+        Assert.True(Unnotified(Now.AddMinutes(-2)));
     }
 
     [Fact]

@@ -661,10 +661,11 @@ public static class MarketplaceStoredClock
     public static DateTimeOffset RealInstant(DateTimeOffset stored, string? platformCode) => stored - StoredClockAhead(platformCode);
 }
 
-// While a marketplace's order notifications arrive, polling is only the safety net and runs less
-// often. A notification path is unhealthy once an order polling brought has waited five minutes
-// without any notification since, or when polling found two orders the notifications had missed
-// within a day; polling then returns to its own cadence.
+// While a marketplace's order notifications arrive, polling is only the safety net and runs every
+// eight minutes instead of three. A notification path is unhealthy once an order polling brought has
+// waited two minutes without any notification since (so a missed order is noticed within ten
+// minutes), or when polling found two orders the notifications had missed within a day; polling then
+// returns to its own cadence.
 public static class WebhookPollingPolicy
 {
     public const string HealthCursorResource = "WEBHOOK_HEALTH";
@@ -672,8 +673,8 @@ public static class WebhookPollingPolicy
     public static readonly TimeSpan GapWindow = TimeSpan.FromHours(24);
     public static readonly TimeSpan RegistrationGrace = TimeSpan.FromMinutes(10);
     public const int GapLimit = 2;
-    // A change whose notification never came is still read within three minutes.
-    public const int SafetyNetSeconds = 180;
+    // A change whose notification never came is still read within eight minutes.
+    public const int SafetyNetSeconds = 480;
 
     // Trendyol and Shopify order reads return every change by its last-modified time, cancellations
     // included, so with notifications their open-order scan only has to run hourly. Hepsiburada's
@@ -698,13 +699,15 @@ public static class WebhookPollingPolicy
 
     // A poll usually writes an order seconds before its notification arrives; one still without a notification
     // after this long was not notified.
-    public static readonly TimeSpan NotificationWait = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan NotificationWait = TimeSpan.FromMinutes(2);
+    // The ingest job of a notification writes its order within about a minute of receiving it.
+    public static readonly TimeSpan IngestGrace = TimeSpan.FromMinutes(2);
 
     // The orders that show notifications are not coming: written after the last notification, but not by it
-    // (its ingest job writes its order moments after it was received, hence the delivery grace), and held
-    // long enough for their own notification to have come.
+    // (its ingest job writes its order moments after it was received), and held long enough for their own
+    // notification to have come.
     public static (DateTimeOffset After, DateTimeOffset Before) UnnotifiedOrderWindow(DateTimeOffset lastSign, DateTimeOffset now) =>
-        (lastSign + DeliveryGrace, now - NotificationWait);
+        (lastSign + IngestGrace, now - NotificationWait);
 
     // An order polling inserted counts as missed only once the notifications had time to start.
     public static bool CountsAsGap(DateTimeOffset? registeredAt, DateTimeOffset now) =>
@@ -1001,8 +1004,8 @@ public static class HepsiburadaPackagePolicy
 {
     public const string OrderToReadCode = "HEPSIBURADA_PACKAGE_ORDER_TO_READ";
     public const int MaxOrderReadsPerRun = 10;
-    // New orders and open packages are read every minute; the shipped, delivered and undelivered lists (three
-    // more requests a run) change rarely and are read every five minutes, or on a full read.
+    // New orders and open packages are read every run; the shipped, delivered and undelivered lists (three
+    // more requests a run) change rarely and are read every five minutes at most, or on a full read.
     public const string StatusListsCursorResource = "HEPSIBURADA_PACKAGE_STATUS_LISTS";
     public static readonly TimeSpan StatusListInterval = TimeSpan.FromMinutes(5);
 

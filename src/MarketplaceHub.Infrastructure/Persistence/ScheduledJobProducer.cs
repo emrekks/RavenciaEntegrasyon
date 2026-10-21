@@ -485,7 +485,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     internal static IReadOnlyList<PolicyDefaults> DefaultPolicies(IConfiguration configuration) =>
     [
-        new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 5)),
+        new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 180), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 5)),
         new("ORDER_RECOVERY", configuration.GetValue("MarketplaceSync:OrderRecovery:IntervalSeconds", 900), configuration.GetValue("MarketplaceSync:OrderRecovery:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:OrderRecovery:JitterSeconds", 30)),
         new("ORDER_LIFECYCLE", configuration.GetValue("MarketplaceSync:OrderLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:OrderLifecycle:JitterSeconds", 10)),
         new("ORDER_CARGO_INFO", configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:IntervalSeconds", 300), 0, configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:JitterSeconds", 15)),
