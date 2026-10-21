@@ -902,7 +902,7 @@ public sealed class PttAvmAdapterTests
         // The variant without a barcode is reported, not imported.
         Assert.Contains(page.Issues!, issue => issue.Code == "PRODUCT_VARIANT_INVALID");
         XNamespace tem = PttAvmHttpClient.ServiceNamespace;
-        var body = XDocument.Parse(Assert.Single(handler.Requests).Body!).Descendants(tem + "StokKontrolListesi").Single();
+        var body = XDocument.Parse(handler.Requests.Single(x => x.Headers["SOAPAction"].Contains("StokKontrolListesi", StringComparison.Ordinal)).Body!).Descendants(tem + "StokKontrolListesi").Single();
         Assert.Equal(StoreId, body.Element(tem + "ShopId")!.Value);
         Assert.Equal("0", body.Element(tem + "SearchAktifPasif")!.Value);
         Assert.Equal("0", body.Element(tem + "SearchPage")!.Value);
@@ -1206,6 +1206,86 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void NoProductIsSentWhileExternalWritesAreOff() =>
         Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", Client(new CapturingHandler(_ => throw new InvalidOperationException())).WriteBlocked<RemoteOperationRef>(Account(status: "ACTIVE", connectionWrites: false), "ürün")!.Error!.Code);
+
+    // A model product (barcode = model code) answered without VariantListesi, and its variants from
+    // GetProductsWithVariants: one entry in the StokKontrolListesi variant shape, one carrying combinations.
+    private const string ModelProductAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><StokKontrolListesiResponse xmlns="http://tempuri.org/">
+           <StokKontrolListesiResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+              <a:StokKontrolDetay>
+                 <a:Aktif>true</a:Aktif><a:Barkod>FK4530</a:Barkod><a:KDVOran>10</a:KDVOran><a:KDVli>500</a:KDVli><a:Miktar>9</a:Miktar>
+                 <a:RowCount>1</a:RowCount><a:UrunAdi>Bordo Kaşe Mini Etek</a:UrunAdi><a:UrunId>900001</a:UrunId><a:VariantListesi i:nil="true"/>
+              </a:StokKontrolDetay>
+              <a:StokKontrolDetay>
+                 <a:Aktif>true</a:Aktif><a:Barkod>RVNC015</a:Barkod><a:KDVOran>10</a:KDVOran><a:KDVli>300</a:KDVli><a:Miktar>4</a:Miktar>
+                 <a:RowCount>1</a:RowCount><a:UrunAdi>Bluz</a:UrunAdi><a:UrunId>900002</a:UrunId><a:VariantListesi i:nil="true"/>
+              </a:StokKontrolDetay>
+           </StokKontrolListesiResult></StokKontrolListesiResponse></s:Body></s:Envelope>
+        """;
+
+    private const string VariantsAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><GetProductsWithVariantsResponse xmlns="http://tempuri.org/">
+           <GetProductsWithVariantsResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService.New" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+              <a:ProductsWithVariants>
+                 <a:ProductWithVariants><a:ProductBarcode>FK4530</a:ProductBarcode><a:Variants>
+                    <a:Variant><a:Fiyat>25</a:Fiyat><a:FiyatFarkiMi>true</a:FiyatFarkiMi><a:Miktar>3</a:Miktar><a:Variant1Deger>Bordo</a:Variant1Deger><a:Variant2Deger>S</a:Variant2Deger><a:VariantBarkod>FK453001</a:VariantBarkod></a:Variant>
+                    <a:Variant><a:Fiyat>0</a:Fiyat><a:Miktar>6</a:Miktar><a:Variant1Deger>Bordo</a:Variant1Deger><a:Variant2Deger>M</a:Variant2Deger><a:VariantBarkod>FK453002</a:VariantBarkod></a:Variant>
+                 </a:Variants></a:ProductWithVariants>
+                 <a:ProductWithVariants><a:ProductBarcode>RVNC015</a:ProductBarcode><a:Variants>
+                    <a:Variant><a:Combination><a:VariantCombination><a:Aktif>true</a:Aktif><a:Barkod>RVNC01501</a:Barkod><a:Degerler>Beyaz,S</a:Degerler><a:Stok>2</a:Stok></a:VariantCombination><a:VariantCombination><a:Aktif>false</a:Aktif><a:Barkod>RVNC01502</a:Barkod><a:Degerler>Beyaz,M</a:Degerler><a:Stok>0</a:Stok></a:VariantCombination></a:Combination></a:Variant>
+                    <a:Variant><a:Tanim>Renk</a:Tanim></a:Variant>
+                 </a:Variants></a:ProductWithVariants>
+              </a:ProductsWithVariants><a:TotalPage>1</a:TotalPage>
+           </GetProductsWithVariantsResult></GetProductsWithVariantsResponse></s:Body></s:Envelope>
+        """;
+
+    private const string EmptyVariantsAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><GetProductsWithVariantsResponse xmlns="http://tempuri.org/">
+           <GetProductsWithVariantsResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService.New"><a:ProductsWithVariants/><a:TotalPage>1</a:TotalPage></GetProductsWithVariantsResult>
+        </GetProductsWithVariantsResponse></s:Body></s:Envelope>
+        """;
+
+    [Fact]
+    public async Task ModelProductsTakeTheirVariantsFromTheVariantList()
+    {
+        var variantPages = 0;
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, variantPages++ == 0 ? VariantsAnswer : EmptyVariantsAnswer),
+            _ => throw new InvalidOperationException()
+        });
+
+        var page = (await Client(handler).ReadProductPageAsync(Account(), null, null, CancellationToken.None)).Value!;
+
+        var skirt = page.Items.Single(x => x.ProductMainId == "FK4530");
+        Assert.Equal(["FK453001", "FK453002"], skirt.Variants.Select(x => x.Barcode));
+        // FiyatFarkiMi=true: the variant price is the product price plus the difference; 0 is no difference.
+        Assert.Equal([525m, 500m], skirt.Variants.Select(x => x.SalePrice));
+        Assert.Equal([3m, 6m], skirt.Variants.Select(x => x.StockQuantity));
+        Assert.Equal("S", skirt.Variants[0].Options["Varyant 2"]);
+        var blouse = page.Items.Single(x => x.ProductMainId == "RVNC015");
+        Assert.Equal(["RVNC01501", "RVNC01502"], blouse.Variants.Select(x => x.Barcode));
+        Assert.False(blouse.Variants[0].Archived);
+        Assert.True(blouse.Variants[1].Archived);
+        Assert.Equal("Beyaz", blouse.Variants[0].Options["Varyant 1"]);
+        Assert.Equal(300m, blouse.Variants[0].SalePrice);
+        // The entry without any barcode is reported by its element names.
+        Assert.Contains(page.Issues!, issue => issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Message.Contains("Variant[Tanim]", StringComparison.Ordinal));
+        // Variant pages are read until one brings no new product.
+        Assert.Equal(2, variantPages);
+    }
+
+    [Fact]
+    public async Task AFailingVariantListLeavesProductsWithoutVariantsAndSaysSo()
+    {
+        var handler = new CapturingHandler(request => Operation(request) == "StokKontrolListesi" ? Respond(HttpStatusCode.OK, ModelProductAnswer) : Respond(HttpStatusCode.InternalServerError, SecurityFault));
+
+        var page = (await Client(handler).ReadProductPageAsync(Account(), null, null, CancellationToken.None)).Value!;
+
+        Assert.Equal(["FK4530", "RVNC015"], page.Items.Select(x => Assert.Single(x.Variants).Barcode));
+        Assert.Contains(page.Issues!, issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE");
+    }
 
     private static RemoteOrder OrderFromList(string orderNumber)
     {

@@ -39,9 +39,14 @@ public sealed partial class PttAvmHttpClient : IProductPort
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
         if (!IsNil(result.Value!) && result.Value!.Elements().Any(x => x.Name.LocalName != "StokKontrolDetay"))
             return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "PTTAVM_PRODUCT_CONTRACT_INVALID", $"PTT AVM ürün listesi beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
-        var (products, total, issues) = PttAvmProductMapper.Page(result.Value!);
-        var pageFirst = products.FirstOrDefault()?.Variants.FirstOrDefault()?.Barcode;
+        // The variants of model products come from GetProductsWithVariants: read on the first page of a scan, reused by
+        // its later pages. A failure there leaves the products without their variants and is reported, not fatal.
+        var variantList = await VariantListAsync(account, refresh: pageIndex == 0 && barcode is null, cancellationToken);
+        var (products, total, issues) = PttAvmProductMapper.Page(result.Value!, variantList.IsSuccess ? variantList.Value : null);
+        var pageFirst = products.FirstOrDefault()?.ProductMainId;
         var issueList = issues.ToList();
+        if (!variantList.IsSuccess)
+            issueList.Add(new("PTTAVM_VARIANT_LIST_UNAVAILABLE", pageIndex.ToString(CultureInfo.InvariantCulture), $"PTT AVM varyant listesi okunamadı ({variantList.Error!.Code}); ürünler bu sayfada varyantsız okundu."));
         // A later page that starts like page zero means SearchPage was ignored: the scan stops instead of looping.
         if (pageIndex > 0 && pageFirst is not null && string.Equals(pageFirst, firstBarcode, StringComparison.Ordinal))
         {
