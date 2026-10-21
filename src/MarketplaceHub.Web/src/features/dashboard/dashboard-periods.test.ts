@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matrixCellText } from './DashboardPage'
+import { axisLabel, matrixCellText } from './DashboardPage'
 import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
 
 const row = (day: string, connectionId: string, amount: number, extra: Partial<PerformanceRow> = {}): PerformanceRow =>
@@ -95,5 +95,15 @@ describe('hourly series of a one-day period', () => {
     expect(istanbulHour('2026-10-20T20:28:00Z')).toBe(23)
     expect(istanbulHour('2026-10-20T21:05:00Z')).toBe(0)
     expect(istanbulHour('not a date')).toBe(23)
+  })
+})
+
+describe('revenue chart axis (W-F15)', () => {
+  it('labels the axis in the currency the chart shows', () => {
+    expect(axisLabel(0)).toBe('₺0')
+    expect(axisLabel(850)).toBe('₺850')
+    expect(axisLabel(1500)).toBe('₺1,5 B')
+    expect(axisLabel(1500, 'USD')).toBe('$1,5 B')
+    expect(axisLabel(850, 'EUR')).toBe('€850')
   })
 })

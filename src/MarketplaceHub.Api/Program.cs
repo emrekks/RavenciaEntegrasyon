@@ -12,7 +12,6 @@ using MarketplaceHub.Infrastructure.Bootstrap;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -87,7 +86,8 @@ if (!isAdministrativeCommand && builder.Environment.IsDevelopment() && string.Eq
     await using var seedScope = app.Services.CreateAsyncScope();
     await seedScope.ServiceProvider.GetRequiredService<LocalDevelopmentSeedService>().EnsureAsync(CancellationToken.None);
 }
-if (args is ["migrate"]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(); return; }
+// The migration session runs with its own lock_timeout and statement_timeout (DatabaseMigrator).
+if (args is ["migrate"]) { await using var scope = app.Services.CreateAsyncScope(); await DatabaseMigrator.MigrateAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), app.Logger, CancellationToken.None); return; }
 if (args is ["bootstrap"]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BootstrapService>().RunAsync(CancellationToken.None); return; }
 if (args is ["identity", "reset-mfa", var email, var reason]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BreakGlassService>().ResetMfaAsync(email, reason, CancellationToken.None); return; }
 // Prints the one-time password once; the owner must change it at the next sign-in.

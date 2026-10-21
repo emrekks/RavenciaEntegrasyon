@@ -53,8 +53,9 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets: [postgres_password]
     volumes: [pg_data:/var/lib/postgresql]
-    # API and Worker cap each Npgsql pool at 25 (app_db_connection.txt); 150 leaves
-    # room for both services' pools, LISTEN, migrate, backup and psql sessions.
+    # Pools: API 25 (app_db_connection.txt), Worker 45 (Database:MaxPoolSize in its
+    # appsettings.json overrides the file), each shared rate limiter 5. About 82 in
+    # total, so 150 leaves room for LISTEN, migrate, backup and psql sessions.
     # shared_buffers/effective_cache_size fit the 2 GiB container limit on an 8 GiB host (1 GiB left too little
     # room for query memory: PostgreSQL was killed by the out-of-memory killer four times on 20 Oct 2026);
     # statements slower than 2 s are logged.
@@ -126,6 +127,14 @@ services:
     restart: unless-stopped
     init: true
     networks: [edge, backend]
+    # IPv6 visitors (G3, see ClientNetwork.cs and docs/CI-CD-DEPLOY.md "Kenar"): the edge network is IPv4 only,
+    # so a connection that reaches the host over IPv6 is accepted by Docker's userland proxy (docker-proxy) and
+    # arrives here from the bridge gateway's private IPv4 address. Every IPv6 visitor then looks like one private
+    # sender: rate limits and sign-in throttles are shared, and "remote_ip private_ranges" opens /health/ready and
+    # /health/queues to them. On a host with an AAAA record, enable IPv6 for this network (daemon.json "ipv6": true
+    # and "ip6tables": true, plus enable_ipv6 on the network). Setting "userland-proxy": false instead stops the
+    # proxying, but then IPv6 connections are not forwarded at all and the AAAA record should go. Either way, check
+    # that Caddy's access log shows the client's own remote_ip for a request made over IPv6.
     ports: ["80:80", "443:443", "443:443/udp"]
     environment: { MARKETPLACEHUB_SITE_ADDRESS: "${MARKETPLACEHUB_SITE_ADDRESS:-https://localhost}" }
     volumes: [caddy_data:/data, caddy_config:/config]

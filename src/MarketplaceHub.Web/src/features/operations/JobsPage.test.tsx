@@ -16,7 +16,8 @@ function job(id: string, jobType: string, status: string, createdAt: string) {
   }
 }
 
-vi.mock('../../shared/api', () => ({
+vi.mock('../../shared/api', () => {
+  const mocked = {
   loadAllPages: vi.fn(async () => ({ items: [
     { id: 'ty', platformCode: 'TRENDYOL', status: 'ACTIVE' },
     { id: 'ef', platformCode: 'TRENDYOL_EFATURAM', status: 'ACTIVE' },
@@ -46,7 +47,10 @@ vi.mock('../../shared/api', () => ({
     }
     throw new Error(`Test API fixture does not handle ${path}`)
   })
-}))
+  }
+  // Polled reads go through hubPoll; the fixture answers them the same way.
+  return { ...mocked, hubPoll: mocked.hubApi }
+})
 
 import { JobsPage } from './pages'
 

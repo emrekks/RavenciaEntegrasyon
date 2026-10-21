@@ -94,8 +94,30 @@ public static class InvoiceAmounts
         }
         if (roundingDifference != 0)
         {
-            var last = lines[^1];
-            lines[^1] = last with { PayableAmount = last.PayableAmount + roundingDifference, VatAmount = last.VatAmount + roundingDifference };
+            // D10: the kuruş goes to the VAT of the last line that carries VAT; a 0% line never gets VAT. When no
+            // line carries VAT, the last line's net (and payable) takes it together, so its VAT stays 0.
+            var vatIndex = lines.FindLastIndex(line => line.VatRate > 0 && line.VatAmount + roundingDifference >= 0 && line.PayableAmount + roundingDifference >= 0);
+            if (vatIndex >= 0)
+            {
+                var target = lines[vatIndex];
+                lines[vatIndex] = target with { PayableAmount = target.PayableAmount + roundingDifference, VatAmount = target.VatAmount + roundingDifference };
+            }
+            else
+            {
+                var netIndex = lines.FindLastIndex(line => line.PayableAmount + roundingDifference >= 0);
+                if (netIndex < 0)
+                {
+                    error = "Yuvarlama farkı fatura kalemlerine güvenli biçimde dağıtılamadı.";
+                    return false;
+                }
+                var target = lines[netIndex];
+                var payable = target.PayableAmount + roundingDifference;
+                lines[netIndex] = target with
+                {
+                    PayableAmount = payable,
+                    UnitPrice = decimal.Round((payable - target.VatAmount) / target.Quantity, 4, MidpointRounding.AwayFromZero)
+                };
+            }
         }
 
         calculation = new(

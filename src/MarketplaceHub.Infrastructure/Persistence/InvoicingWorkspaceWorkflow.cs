@@ -44,6 +44,8 @@ public sealed partial class InvoicingBillingService
         if (request.Items.Select(item => item.OrderId).Distinct().Count() != request.Items.Count)
             return ServiceResult<InvoiceWorkspaceConfirmResult>.Fail("INVOICE_CONFIRM_DUPLICATE_ORDER", "Sipariş başına tek mali fatura oluşturulabilir; aynı sipariş onay isteğinde bir kez yer almalıdır.", 422);
 
+        // A confirmation of several packages is bulk work: its jobs yield to single user actions in the user lane.
+        var bulk = request.Items.Count > 1;
         var results = new List<InvoiceWorkspaceConfirmItemResult>(request.Items.Count);
         foreach (var confirmation in request.Items)
         {
@@ -91,7 +93,7 @@ public sealed partial class InvoicingBillingService
                 var itemKey = $"{idempotencyKey}:order:{confirmation.OrderId:N}";
                 if (invoice is not null && InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode))
                 {
-                    var queuedDelivery = await EnqueueDeliveryAsync(tenantId, invoice.Id, $"{itemKey}:delivery", correlationId, cancellationToken);
+                    var queuedDelivery = await EnqueueDeliveryAsync(tenantId, invoice.Id, $"{itemKey}:delivery", correlationId, bulk, cancellationToken);
                     if (!queuedDelivery.Succeeded)
                     {
                         await transaction.RollbackAsync(cancellationToken);
@@ -111,7 +113,7 @@ public sealed partial class InvoicingBillingService
                     invoice.UpdatedAt = timeProvider.GetUtcNow();
                     invoice.Version++;
                     await db.SaveChangesAsync(cancellationToken);
-                    var queuedRetry = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit-retry", correlationId, cancellationToken);
+                    var queuedRetry = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit-retry", correlationId, bulk, cancellationToken);
                     if (!queuedRetry.Succeeded)
                     {
                         await transaction.RollbackAsync(cancellationToken);
@@ -168,7 +170,7 @@ public sealed partial class InvoicingBillingService
                     invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == invoice.Id, cancellationToken);
                 }
 
-                var queued = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit", correlationId, cancellationToken);
+                var queued = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit", correlationId, bulk, cancellationToken);
                 if (!queued.Succeeded)
                 {
                     await transaction.RollbackAsync(cancellationToken);
@@ -203,6 +205,8 @@ public sealed partial class InvoicingBillingService
         if (DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
             || !DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "İptal edilmiş sipariş veya paket için satış faturası oluşturulamaz.", 422);
+        if (DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(order.DerivedStatus) || DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(package.Status))
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
         var marketplace = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId, cancellationToken);
         var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == target.ProviderConnectionId, cancellationToken);
         if (marketplace is null || provider is null || provider.PlatformCode != "TRENDYOL_EFATURAM" || provider.Status is not ("ACTIVE" or "VERIFIED"))
@@ -210,11 +214,13 @@ public sealed partial class InvoicingBillingService
 
         var sourceLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (sourceLines.Count == 0) return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_LINES_MISSING", "Fatura önizlemesi için sipariş ürün satırları bulunamadı.", 422);
-        var activePackages = await db.ShipmentPackages.AsNoTracking()
+        var activePackages = await MarketplaceSalesService.CurrentShipmentPackages(db)
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (activePackages.Count == 0)
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Siparişte faturalanabilir etkin paket bulunamadı.", 422);
+        if (activePackages.Any(item => DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(item.Status)))
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
         if (activePackages.Any(item => item.ConnectionId != order.ConnectionId))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı. Tek belge güvenli hedeflere ayrıştırılamadığı için fatura kesilmedi.", 422);
         var activePackageIds = activePackages.Select(item => item.Id).ToList();

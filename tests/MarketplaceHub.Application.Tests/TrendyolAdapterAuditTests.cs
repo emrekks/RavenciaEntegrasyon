@@ -77,6 +77,53 @@ public sealed class TrendyolAdapterAuditTests
     }
 
     [Fact]
+    public async Task TheOrderStreamLookupStopsAfterItsPageCap()
+    {
+        var handler = new EndlessStream();
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var scan = await Client(handler).ScanOrderStreamAsync(Account(), "ORD-MISSING", end.AddDays(-12), end, "TR", null, CancellationToken.None);
+
+        Assert.Equal(TrendyolHttpClient.OrderScanIncompleteCode, scan.Result?.Error?.Code);
+        Assert.Equal(AdapterErrorClass.TransientNetwork, scan.Result!.Error!.Class);
+        Assert.Equal(TrendyolHttpClient.MaxOrderStreamPages, handler.Requests);
+    }
+
+    [Fact]
+    public async Task TheOrderStreamLookupStopsWhenTheStreamRepeatsACursor()
+    {
+        var handler = new PagedStream(_ => """{"content":[],"hasMore":true,"nextCursor":"same"}""");
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var scan = await Client(handler).ScanOrderStreamAsync(Account(), "ORD-1", end.AddDays(-12), end, "TR", null, CancellationToken.None);
+
+        Assert.Equal(TrendyolHttpClient.OrderScanIncompleteCode, scan.Result?.Error?.Code);
+        Assert.Equal(2, handler.Requests);
+    }
+
+    [Fact]
+    public async Task TheOrderStreamLookupKeepsReadingForTheOrdersOtherPackages()
+    {
+        var handler = new PagedStream(page => page == 1
+            ? """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}"""
+            : """{"content":[{"id":"pkg-2","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000001000,"lines":[]}],"hasMore":false}""");
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var scan = await Client(handler).ScanOrderStreamAsync(Account(), "ORD-1", end.AddDays(-12), end, "TR", null, CancellationToken.None);
+
+        Assert.True(scan.Result!.IsSuccess);
+        Assert.Equal(["pkg-1", "pkg-2"], scan.Result.Value!.Packages.Select(package => package.ExternalPackageId).Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(2, handler.Requests);
+    }
+
+    private static TrendyolHttpClient Client(HttpMessageHandler handler) =>
+        new(new Factory(handler), null!, new ConfigurationBuilder().Build(), Options.Create(new TrendyolOptions()), TimeProvider.System, NullLogger<TrendyolHttpClient>.Instance);
+
+    private static TrendyolRequestContext Account() => new(
+        new PlatformConnection { PlatformCode = "TRENDYOL", Environment = "PRODUCTION", Status = "ACTIVE", DisplayName = "Trendyol", ExternalStoreId = "seller-1", ApiVersion = "V2" },
+        new Uri("https://apigw.example/"), "key", "secret", "seller-1 - SelfIntegration", false);
+
+    [Fact]
     public void EachClaimBucketKeepsItsOwnPage()
     {
         var start = TrendyolHttpClient.ClaimBucketPages(null);
@@ -114,6 +161,21 @@ public sealed class TrendyolAdapterAuditTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent($$"""{"content":[],"hasMore":true,"nextCursor":"cursor-{{page}}"}""", Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    private sealed class PagedStream(Func<int, string> body) : HttpMessageHandler
+    {
+        private int requests;
+        public int Requests => requests;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var page = Interlocked.Increment(ref requests);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body(page), Encoding.UTF8, "application/json")
             });
         }
     }

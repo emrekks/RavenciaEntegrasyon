@@ -1,12 +1,12 @@
 // Siparişler (/orders).
 import { copyText } from '../../../shared/copy-text'
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
+import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { Busy, cargoCarrier, cargoCarriers, cargoLabel, cargoMatches, ErrorBox, UiIcon, DialogSurface } from '../../../shared/components'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { safeExternalUrl } from '../../../shared/safe-url'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { setManualInvoiceStatus, type ManualInvoiceStatus } from '../../invoicing/manual-invoice-status'
@@ -27,8 +27,10 @@ import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from '../../i
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatDateTime, formatIstanbul, fromDateTimeLocal, istanbulDateKey, istanbulDayBoundary } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
+import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
 import { OrderMetricCards } from './OrderMetricCards'
+import { orderDetailQueryKey } from './order-query-keys'
 import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnPlatformName, usableShipmentDueAt } from '../shared'
 
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
@@ -40,6 +42,14 @@ type InvoiceViewer = { id: string; orderNumber: string; invoiceType: string; sta
 // The shipping-deadline sort only means something for orders still to be shipped (Yeni, İşleme Alınanlar): other tabs
 // neither offer it nor keep it.
 const dueSortTabs = ['NEW', 'PROCESSING']
+const orderSorts: readonly OrderSort[] = ['DATE_DESC', 'DATE_ASC', 'DUE_DESC', 'DUE_ASC', 'SHIP_DESC', 'SHIP_ASC']
+const orderPageSizes = [20, 50, 100, 200]
+// The list state an orders address carries (W16): filters, platforms, page size and page.
+function orderListFromUrl(params: URLSearchParams) {
+  const status = resolveOrderStatusTab(params.get('status'))
+  const filters: OrderFilters = { ...initialOrderFilters, search: readUrlText(params, 'search'), status, listing: readUrlText(params, 'listing', 'ALL'), cargo: readUrlText(params, 'cargo', 'ALL'), invoice: readUrlText(params, 'invoice', 'ALL'), invoiceType: readUrlText(params, 'invoiceType', 'ALL'), invoiceRegion: readUrlText(params, 'invoiceRegion', 'ALL'), label: readUrlText(params, 'label', 'ALL'), sort: keepSort(status, readUrlChoice(params, 'sort', orderSorts, 'DATE_DESC')), dateFrom: readUrlText(params, 'from'), dateTo: readUrlText(params, 'to') }
+  return { filters, platforms: readUrlList(params, 'platforms'), pageSize: readUrlNumber(params, 'size', 50, orderPageSizes), page: readUrlNumber(params, 'page', 1) }
+}
 const keepSort = (status: string, sort: OrderFilters['sort']): OrderFilters['sort'] => dueSortTabs.includes(status) || (sort !== 'DUE_ASC' && sort !== 'DUE_DESC') ? sort : 'DATE_DESC'
 const initialOrderFilters: OrderFilters = { search: '', status: 'ALL', platform: 'ALL', platforms: [], listing: 'ALL', cargo: 'ALL', invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL', label: 'ALL', sort: 'DATE_DESC', dateFrom: '', dateTo: '' }
 const orderStatusRank: Record<string, number> = { MANUAL_REVIEW: 110, RETURNED: 100, RETURN_IN_TRANSIT: 90, DELIVERED: 80, UNDELIVERED: 70, SHIPPED: 60, READY_TO_SHIP: 50, ON_HOLD: 40, PROCESSING: 30, PARTIALLY_CANCELLED: 20, UNVERIFIED: 15, NEW: 10, PAYMENT_PENDING: 5, CANCELLED: 0 }
@@ -135,7 +145,7 @@ function addressDataText(data: Record<string, unknown>, platformCode: string) { 
 function longDate(value: string) { return formatIstanbul(new Date(value), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 function deliveryText(item: Order) { const shipment = orderDisplayShipment(item); const rawStatuses = [...(item.packages ?? []).map(value => value.rawStatus), ...(item.lines ?? []).map(value => value.rawStatus)]; if (item.derivedStatus === 'CANCELLED') return { label: 'İptal tarihi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'İptal zamanı bekleniyor', note: null, overdue: false }; if (item.derivedStatus === 'DELIVERED') return { label: 'Teslim edildi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Teslimat zamanı bekleniyor', note: null, overdue: false }; if (item.derivedStatus === 'UNVERIFIED') return { label: 'Sipariş durumu', value: 'Durumu doğrulanmadı', note: 'Paket veya güncel sipariş yaşam döngüsü bilgisi bulunmadığından teslimat durumu doğrulanamadı.', overdue: false }; if (item.derivedStatus === 'PAYMENT_PENDING') return { label: 'Sipariş durumu', value: 'Trendyol ödeme onayı bekleniyor', note: 'Ödeme onaylanana kadar paket işlemleri kullanılamaz.', overdue: false }; if (item.platformCode.trim().toUpperCase() === 'HEPSIBURADA' && item.derivedStatus === 'UNDELIVERED') return { label: 'Sipariş durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }; if (['SHIPPED', 'UNDELIVERED'].includes(item.derivedStatus)) return { label: 'Taşıma durumunda', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Kargo zamanı bekleniyor', note: 'Kargoya teslim edildi', overdue: false }; if (item.derivedStatus === 'ON_HOLD') return { label: 'Sipariş durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }; const dueAt = usableShipmentDueAt(item.shipmentDueAt); const overdueDays = overdueShipmentDays(item.derivedStatus, dueAt); if (overdueDays > 0) return { label: '', value: `Siparişiniz ${overdueDays} gün gecikmiştir!`, note: 'Siparişinizi en kısa sürede kargoya teslim etmelisiniz.', overdue: true }; const urgent = Boolean(dueAt && new Date(dueAt).getTime() - Date.now() <= 86_400_000); return { label: 'Kalan süre', value: dueAt ? remainingText(dueAt) : item.isMicroExport ? 'Trendyol termin bilgisi göndermedi' : 'Termin zamanı bekleniyor', note: null, overdue: urgent } }
 function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void }) {
-  const detail = useQuery({ queryKey: ['invoice-info-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const order = detail.data
   const missing = (value: string | null | undefined) => value ? value : 'Bilgi gelmedi'
   return <RrModal crumb={displayOrderNumber(item.orderNumber)} title="Fatura ve Adres Bilgileri" size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button><button type="button" className="rr-btn rr-primary" disabled={!order} onClick={() => window.print()}><RrIcon name="print" />Yazdır</button></>}>
@@ -148,7 +158,7 @@ function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void 
 }
 function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { item: Order; providers: Connection[]; onClose: () => void; onFeedback: IntegrationFeedbackHandler }) {
   const client = useQueryClient()
-  const detail = useQuery({ queryKey: ['invoice-draft-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const order = detail.data
   const marketplace = providers.find(connection => connection.id === order?.connectionId)
   const provider = invoiceProviderForEnvironment(providers, marketplace?.environment)
@@ -183,7 +193,7 @@ function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order; onClos
   const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null)
   const [documentRequestKey, setDocumentRequestKey] = useState(() => `manual-invoice-document:${item.id}:${newIdempotencyKey()}`)
   const [dragging, setDragging] = useState(false)
-  const detail = useQuery({ queryKey: ['invoice-upload-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const saveDocument = useMutation({
     mutationFn: async () => {
       if (Boolean(file) === Boolean(invoiceUrl.trim())) throw new Error('PDF dosyası veya HTTPS fatura bağlantısından yalnızca birini girin.')
@@ -244,7 +254,7 @@ function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Order;
   const client = useQueryClient()
   const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>(item.invoiceStatus === 'FATURA_YUKLENDI' ? 'UPLOADED' : 'PENDING')
   const [message, setMessage] = useState('')
-  const detail = useQuery({ queryKey: ['invoice-status-order', item.id], queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const update = useMutation({
     mutationFn: async () => {
       if (!detail.data || detail.data.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura durumu yalnız Shopify siparişlerinde kullanılabilir.')
@@ -624,7 +634,6 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
 }
 function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Order; onClose: () => void; onCreated: (packageNumber: string) => void }) {
   const lines = item.lines ?? []
-  const requestIdempotencyKey = useRef(newIdempotencyKey())
   const availableQuantity = (line: OrderLine) => Math.max(0, line.orderedQuantity - line.cancelledQuantity - (line.allocatedQuantity ?? 0))
   const firstLine = lines.find(line => availableQuantity(line) > 0)
   const [selected, setSelected] = useState<Record<string, number>>(() => firstLine ? { [firstLine.id]: availableQuantity(firstLine) } : {})
@@ -639,22 +648,25 @@ function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Ord
     const lineItems = Object.entries(selected).filter(([, quantity]) => quantity > 0).map(([orderLineId, quantity]) => ({ orderLineId, quantity }))
     setSaving(true)
     setError('')
+    const body = JSON.stringify({
+      barcode: data.get('barcode'),
+      cargoCompany: data.get('cargoCompany'),
+      carrier: data.get('carrier'),
+      creationReason: data.get('creationReason'),
+      deci: Number(data.get('deci')),
+      parcelQuantity: Number(data.get('parcelQuantity')),
+      shippingAddressLabel: data.get('shippingAddressLabel'),
+      shippingModel: data.get('shippingModel'),
+      lineItems,
+    })
     try {
-      const result = await hubApi<{ packageNumber: string }>(`/orders/${item.id}/packages`, {
+      // The same key for a resend of the same form on the same order version (a lost answer reaches Hepsiburada once);
+      // a corrected form, or any attempt after the server answered with an error (a 422), goes out with a new key.
+      const result = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('hb-package', item.id, item.version, body), key => hubApi<{ packageNumber: string }>(`/orders/${item.id}/packages`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': requestIdempotencyKey.current, 'If-Match': `"v${item.version}"` },
-        body: JSON.stringify({
-          barcode: data.get('barcode'),
-          cargoCompany: data.get('cargoCompany'),
-          carrier: data.get('carrier'),
-          creationReason: data.get('creationReason'),
-          deci: Number(data.get('deci')),
-          parcelQuantity: Number(data.get('parcelQuantity')),
-          shippingAddressLabel: data.get('shippingAddressLabel'),
-          shippingModel: data.get('shippingModel'),
-          lineItems,
-        }),
-      })
+        headers: { 'Idempotency-Key': key, 'If-Match': `"v${item.version}"` },
+        body,
+      }))
       onCreated(result.packageNumber)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Hepsiburada paketi oluşturulamadı.')
@@ -801,7 +813,7 @@ export function OrdersPage() {
   const [processingOrderId, setProcessingOrderId] = useState<string | null>(null)
   const [hepsiburadaPackageOrder, setHepsiburadaPackageOrder] = useState<Order | null>(null)
   const [bulkShopifyStatus, setBulkShopifyStatus] = useState<{ kind: 'order' | 'invoice'; items: Order[] } | null>(null)
-  const [searchParams, setSearchParams] = useSearchParams(); const requestedSearch = searchParams.get('search') ?? ''; const initialFilters = { ...initialOrderFilters, search: requestedSearch, status: resolveOrderStatusTab(searchParams.get('status')) }; const [filterForm, setFilterForm] = useState<OrderFilters>(initialFilters); const [filters, setFilters] = useState<OrderFilters>(initialFilters); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]); const [pageSize, setPageSize] = useState(50); const [page, setPage] = useState(1); const [jumpPage, setJumpPage] = useState(''); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkNotice, setBulkNotice] = useState(''); const [bulkNoticeKind, setBulkNoticeKind] = useState<IntegrationFeedback['kind'] | 'pending'>('success'); const [bulkNoticeVersion, setBulkNoticeVersion] = useState(0); const [exporting, setExporting] = useState(false); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceViewerOrder, setInvoiceViewerOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [shopifyStatusOrder, setShopifyStatusOrder] = useState<Order | null>(null); const [shopifyCsvImportOpen, setShopifyCsvImportOpen] = useState(false); const [courierOrder, setCourierOrder] = useState<{ item: Order; items: Order[] } | null>(null); const [shippingLabel, setShippingLabel] = useState<{ item: Order; format: ShippingLabelFormat } | null>(null); const [shippingLabelBatch, setShippingLabelBatch] = useState<{ items: Order[]; format: ShippingLabelFormat } | null>(null); const [singleSyncOpen, setSingleSyncOpen] = useState(false); const [previewImage, setPreviewImage] = useState<ProductImagePreview | null>(null); const [, setColumnFilterOpen] = useState<'cargo' | 'invoice' | 'label' | 'status' | null>(null); const { settings: labelSettings } = useShippingLabelSettings(); const [printedLabels, setPrintedLabels] = useState<Set<string>>(() => new Set(loadPrintedShippingLabels()))
+  const [searchParams, setSearchParams] = useSearchParams(); const requestedSearch = searchParams.get('search') ?? ''; const [initialList] = useState(() => orderListFromUrl(searchParams)); const [filterForm, setFilterForm] = useState<OrderFilters>(initialList.filters); const [filters, setFilters] = useState<OrderFilters>(initialList.filters); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [pageSize, setPageSize] = useState(initialList.pageSize); const [page, setPage] = useState(initialList.page); const [jumpPage, setJumpPage] = useState(''); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkNotice, setBulkNotice] = useState(''); const [bulkNoticeKind, setBulkNoticeKind] = useState<IntegrationFeedback['kind'] | 'pending'>('success'); const [bulkNoticeVersion, setBulkNoticeVersion] = useState(0); const [exporting, setExporting] = useState(false); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceViewerOrder, setInvoiceViewerOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [shopifyStatusOrder, setShopifyStatusOrder] = useState<Order | null>(null); const [shopifyCsvImportOpen, setShopifyCsvImportOpen] = useState(false); const [courierOrder, setCourierOrder] = useState<{ item: Order; items: Order[] } | null>(null); const [shippingLabel, setShippingLabel] = useState<{ item: Order; format: ShippingLabelFormat } | null>(null); const [shippingLabelBatch, setShippingLabelBatch] = useState<{ items: Order[]; format: ShippingLabelFormat } | null>(null); const [singleSyncOpen, setSingleSyncOpen] = useState(false); const [previewImage, setPreviewImage] = useState<ProductImagePreview | null>(null); const [, setColumnFilterOpen] = useState<'cargo' | 'invoice' | 'label' | 'status' | null>(null); const { settings: labelSettings } = useShippingLabelSettings(); const [printedLabels, setPrintedLabels] = useState<Set<string>>(() => new Set(loadPrintedShippingLabels()))
   useEffect(() => {
     const refreshPrintedLabels = () => setPrintedLabels(new Set(loadPrintedShippingLabels()))
     window.addEventListener('storage', refreshPrintedLabels)
@@ -910,8 +922,11 @@ export function OrdersPage() {
     if (!next || pageCursors[page + 1] === next) return
     setPageCursors(current => ({ ...current, [page + 1]: next }))
   }, [ordersQuery.data?.nextCursor, page, pageCursors])
-  useEffect(() => { setPageCursors({ 1: null }); setPage(1); setSelectedIds([]) }, [filters, selectedPlatforms, pageSize])
-  useEffect(() => { if (!requestedSearch) return; setFilterForm(current => ({ ...current, search: requestedSearch })); setFilters(current => ({ ...current, search: requestedSearch })); setPage(1) }, [requestedSearch])
+  useChangeEffect(JSON.stringify([filters, selectedPlatforms, pageSize]), () => { setPageCursors({ 1: null }); setPage(1); setSelectedIds([]) })
+  useListUrlSync({ search: filters.search, status: filters.status, platforms: selectedPlatforms, listing: filters.listing, cargo: filters.cargo, invoice: filters.invoice, invoiceType: filters.invoiceType, invoiceRegion: filters.invoiceRegion, label: filters.label, sort: filters.sort, from: filters.dateFrom, to: filters.dateTo, size: pageSize, page }, { status: 'ALL', listing: 'ALL', cargo: 'ALL', invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL', label: 'ALL', sort: 'DATE_DESC', size: 50, page: 1 })
+  // A link that brings a search (the quick search) while the list is open; the list's own address is not one.
+  const applyRequestedSearch = useEffectEvent((value: string) => { if (!value || value === filters.search) return; setFilterForm(current => ({ ...current, search: value })); setFilters(current => ({ ...current, search: value })); setPage(1) })
+  useEffect(() => { applyRequestedSearch(requestedSearch) }, [requestedSearch])
   useEffect(() => {
     const requestedStatus = searchParams.get('status')
     const resolvedStatus = resolveOrderStatusTab(requestedStatus)

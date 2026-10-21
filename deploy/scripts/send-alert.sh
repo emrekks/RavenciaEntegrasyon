@@ -5,8 +5,9 @@ set -Eeuo pipefail
 # Usage: send-alert.sh "<message>"
 #
 # The URL is read from deploy/secrets/alert_webhook_url.txt (one line, root-owned,
-# never committed). When the file is missing or empty the alert is skipped
-# silently, so the units work before an operator configures a channel.
+# never committed). When the file is missing or empty the alert is skipped with
+# a note on stderr (exit 0), so the units work before an operator configures a
+# channel; every deploy warns about it until one is configured.
 #   Telegram: https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>
 #   Slack (or any Slack-compatible incoming webhook, e.g. Discord .../slack):
 #             https://hooks.slack.com/services/...  -> JSON {"text": "..."}
@@ -26,7 +27,12 @@ read_url() {
   fi
 }
 url="$(read_url | tr -d '[:space:]' || true)"
-[[ -n "$url" ]] || exit 0
+if [[ -z "$url" ]]; then
+  # Still exit 0 (the units must not fail for it), but leave a trace in the journal
+  # and the deploy log; deploy scripts also warn (warn_when_alerts_unconfigured).
+  echo "No alert channel is configured (deploy/secrets/alert_webhook_url.txt); alert not sent: ${message:0:200}" >&2
+  exit 0
+fi
 [[ "$url" == https://* ]] || { echo "alert_webhook_url.txt must contain an https:// URL; alert skipped." >&2; exit 0; }
 
 # One line, no control characters, bounded length.

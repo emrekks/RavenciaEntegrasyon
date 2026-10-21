@@ -15,9 +15,22 @@ public static class MarketplaceEndpoints
     {
         var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) => { try { return await next(context); } catch (ArgumentException exception) { var (code, message) = MarketplaceHub.Api.Security.RequestArgumentError.From(exception); return Problem(context.HttpContext, new(code, message, 400)); } });
         api.MapGet("/connections", async (HttpContext http, IMarketplaceConnectionService service, int? limit, string? after) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
-        api.MapPost("/connections", async (CreateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/connections") : MissingContext(http));
+        api.MapPost("/connections", async (CreateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            var result = await service.CreateAsync(tenant.TenantId, command, http.RequestAborted);
+            if (result is { Succeeded: true, Value: { } created }) await AuditAsync(http, tenant, "CONNECTION_CREATED", created.Id, $"{created.PlatformCode}:{created.Environment}");
+            return Created(result, "/api/v1/connections");
+        });
         api.MapGet("/connections/{id:guid}", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
-        api.MapPatch("/connections/{id:guid}", async (Guid id, UpdateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
+        api.MapPatch("/connections/{id:guid}", async (Guid id, UpdateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (!TryIfMatch(http, out var version, out var failure)) return failure!;
+            var result = await service.UpdateAsync(tenant.TenantId, id, version, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
+            // The role refusal is the panel's own 403, not a marketplace's (which WithEtag reports as 502).
+            return result.Error is { Code: "PERMISSION_DENIED" } denied ? Problem(http, denied) : WithEtag(http, result, x => x.Version);
+        });
         api.MapPut("/connections/{id:guid}/credential", async (Guid id, CredentialCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RotateCredentialAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
         // Instant work below runs with the server's budget as http.RequestAborted, not the browser's connection.
         api.MapPost("/connections/{id:guid}/test-jobs", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceJobProcessor marketplaceProcessor, IInvoicingJobProcessor invoicingProcessor) =>
@@ -74,7 +87,13 @@ public static class MarketplaceEndpoints
             return Result(await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
         });
         api.MapGet("/connections/{id:guid}/webhooks", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.WebhooksAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/connections/{id:guid}/webhooks", async (Guid id, CreateWebhookSubscriptionCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateWebhookAsync(tenant.TenantId, id, command, http.RequestAborted), $"/api/v1/connections/{id:D}/webhooks") : MissingContext(http));
+        api.MapPost("/connections/{id:guid}/webhooks", async (Guid id, CreateWebhookSubscriptionCommand command, HttpContext http, IMarketplaceConnectionService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            var result = await service.CreateWebhookAsync(tenant.TenantId, id, command, http.RequestAborted);
+            if (result is { Succeeded: true, Value: { } created }) await AuditAsync(http, tenant, "WEBHOOK_SUBSCRIPTION_CREATED", id, $"subscription:{created.Subscription.Id:D};{created.Subscription.AuthenticationType}");
+            return Created(result, $"/api/v1/connections/{id:D}/webhooks");
+        });
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted) =>
             Tenant(http) is { } tenant
@@ -158,7 +177,13 @@ public static class MarketplaceEndpoints
         api.MapGet("/data-freshness", async (HttpContext http, IDataFreshnessService service) => Tenant(http) is { } tenant ? Results.Ok(await service.FreshnessAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/connections/{id:guid}/initial-import", async (Guid id, HttpContext http, IDataFreshnessService service) => Tenant(http) is { } tenant ? Result(await service.InitialImportAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireSameOriginFetch();
-        api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret), Results.Ok) : MissingContext(http)).WithServerBudget();
+        api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            var result = await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret);
+            if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, "INSTANT_NOTIFICATIONS_ENABLED", id, view.State);
+            return Result(result, Results.Ok);
+        }).WithServerBudget();
         api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http)).WithServerBudget();
         // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
         api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery();
@@ -343,6 +368,9 @@ public static class MarketplaceEndpoints
                     result.Error!.Code, result.Error.Status, connectionPublicId, eventPath ?? "/", WebhookBodyOutline(body.Memory));
             return Problem(http, result.Error!);
         }
+        if (!result.Value)
+            http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                .LogWarning("Webhook acknowledged but not processed (stale delivery) for connection {ConnectionPublicId}.", connectionPublicId);
         // Hepsiburada's event paths answer 204 as its contracts show; the base address keeps its body.
         return eventPath is null ? Results.Ok(new { accepted = true }) : Results.NoContent();
     }
@@ -358,6 +386,13 @@ public static class MarketplaceEndpoints
         catch (System.Text.Json.JsonException) { return $"not JSON ({body.Length} bytes)"; }
     }
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
+    // A connection or a webhook subscription outlives the session that made it (G2): the audit log keeps who set it up.
+    private static async Task AuditAsync(HttpContext http, TenantContext tenant, string action, Guid connectionId, string reason)
+    {
+        var db = http.RequestServices.GetRequiredService<AppDbContext>();
+        db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = action, TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = reason, CorrelationId = http.TraceIdentifier, CreatedAt = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow() });
+        await db.SaveChangesAsync(http.RequestAborted);
+    }
     private static string OperationCorrelation(HttpContext http) =>
         Guid.TryParse(http.Request.Headers["X-Operation-ID"].ToString(), out var operationId)
             ? $"operation-{operationId:N}"

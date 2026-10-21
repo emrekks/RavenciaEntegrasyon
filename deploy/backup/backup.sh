@@ -1,9 +1,12 @@
 #!/bin/sh
 set -eu
 umask 077
-test -r "${POSTGRES_PASSWORD_FILE:?missing POSTGRES_PASSWORD_FILE}"
-PGPASSWORD="$(cat "$POSTGRES_PASSWORD_FILE")"
-export PGPASSWORD
+
+# The backup container mounts the staging volume at /backup. BACKUP_ROOT and
+# BACKUP_NOW_EPOCH exist for tests/ops (retention tests against a temporary
+# directory and a fixed clock); BACKUP_FUNCTIONS_ONLY=true, when the file is
+# sourced, defines the functions and returns before any backup work.
+backup_root="${BACKUP_ROOT:-/backup}"
 
 verify_backup() {
   backup_dir="$1"
@@ -30,7 +33,7 @@ verify_backup() {
 retention_cutoffs() {
   keep_daily="${BACKUP_KEEP_DAILY:-7}"
   keep_weekly="${BACKUP_KEEP_WEEKLY:-4}"
-  now="$(date -u +%s)"
+  now="${BACKUP_NOW_EPOCH:-$(date -u +%s)}"
   recent_cutoff="$((now - 259200))"
   daily_cutoff="$((now - keep_daily * 86400))"
   weekly_cutoff="$((now - (keep_daily + keep_weekly * 7 + 7) * 86400))"
@@ -51,7 +54,7 @@ backup_set_epoch() {
 # Lists the set directories, oldest first ("-r": newest first).
 # The names contain no whitespace (checked by backup_set_epoch), so word splitting is safe.
 list_backup_sets() {
-  printf '%s\n' /backup/????????T??????Z | sort "$@"
+  printf '%s\n' "$backup_root"/????????T??????Z | sort "$@"
 }
 
 prune_expired_backups() {
@@ -91,7 +94,7 @@ prune_expired_backups() {
       seen_days="$seen_days$day_key "
       seen_weeks="$seen_weeks$week_key "
     else
-      rm -rf -- "/backup/$name"
+      rm -rf -- "${backup_root:?}/$name"
       echo "Removed expired backup set: $name"
     fi
   done
@@ -100,7 +103,7 @@ prune_expired_backups() {
 # Projected use (%) of the filesystem holding /backup after adding $1 KiB,
 # computed like df's Use% (used / (used + available), reserved blocks excluded).
 projected_disk_percent() {
-  df -Pk /backup | awk -v extra="$1" 'NR == 2 { total = $3 + $4; if (total <= 0) { print 0 } else { printf "%d\n", (($3 + extra) * 100 + total - 1) / total } }'
+  df -Pk "$backup_root" | awk -v extra="$1" 'NR == 2 { total = $3 + $4; if (total <= 0) { print 0 } else { printf "%d\n", (($3 + extra) * 100 + total - 1) / total } }'
 }
 
 guard_disk_space() {
@@ -141,12 +144,21 @@ guard_disk_space() {
   fi
 }
 
+if test "${BACKUP_FUNCTIONS_ONLY:-false}" = "true"; then
+  # Only reached when sourced by the tests; "return" ends the sourcing.
+  return 0
+fi
+
+test -r "${POSTGRES_PASSWORD_FILE:?missing POSTGRES_PASSWORD_FILE}"
+PGPASSWORD="$(cat "$POSTGRES_PASSWORD_FILE")"
+export PGPASSWORD
+
 today="$(date -u +%Y%m%d)"
 # Deploys, rollbacks and the nightly timer pass BACKUP_FORCE=true; only an ad-hoc
 # run may reuse today's verified set.
 if test "${BACKUP_FORCE:-false}" != "true"; then
   today_backup=""
-  for candidate in /backup/"$today"T??????Z; do
+  for candidate in "$backup_root/$today"T??????Z; do
     test -d "$candidate" || continue
     if verify_backup "$candidate"; then today_backup="$candidate"; fi
   done
@@ -163,11 +175,11 @@ prune_expired_backups
 guard_disk_space
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-target="/backup/$stamp"
+target="$backup_root/$stamp"
 while ! mkdir "$target" 2>/dev/null; do
   sleep 1
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  target="/backup/$stamp"
+  target="$backup_root/$stamp"
 done
 pg_dump --format=custom --file="$target/database.dump"
 tar -C /source -czf "$target/private-volumes.tar.gz" files dp-keys

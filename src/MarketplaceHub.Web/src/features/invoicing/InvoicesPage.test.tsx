@@ -251,6 +251,24 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(apiState.pageRequests.at(-1)).toContain('tab=ALL')
   })
 
+  it('asks for the search once typing pauses, not on every key (W-F10)', async () => {
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Fatura Ara"]')!
+    const before = apiState.pageRequests.length
+    for (const value of ['D', 'DS', 'DSM']) {
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    }
+    await settle()
+    expect(apiState.pageRequests.slice(before).some(path => path.includes('search='))).toBe(false)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
+    await settle()
+    const searched = apiState.pageRequests.slice(before).filter(path => path.includes('search='))
+    expect(searched).toHaveLength(1)
+    expect(searched[0]).toContain('search=DSM')
+  })
+
   it('changes only Shopify invoice statuses when mixed platforms are selected', async () => {
     const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())

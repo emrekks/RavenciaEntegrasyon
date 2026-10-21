@@ -15,7 +15,10 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == connectionPublicId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken); if (connection is null) return NotFound();
         var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE").ToListAsync(cancellationToken); var subscription = subscriptions.SingleOrDefault(x => SafeVerify(routeToken, x.RouteTokenHash)); if (subscription is null) return NotFound();
-        var verified = await verifier.VerifyAsync(rawBody, headers, connection.Id, subscription.Id, cancellationToken); if (!verified.IsSuccess) return ServiceResult<bool>.Fail(verified.Error!.Code, verified.Error.SafeMessage, verified.Error.HttpStatus ?? 422);
+        var verified = await verifier.VerifyAsync(rawBody, headers, connection.Id, subscription.Id, cancellationToken);
+        // A stale Shopify delivery is answered 200 and dropped: a refusal would only make Shopify retry the same old delivery.
+        if (!verified.IsSuccess && verified.Error!.Code == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.StaleCode) return ServiceResult<bool>.Ok(false);
+        if (!verified.IsSuccess) return ServiceResult<bool>.Fail(verified.Error!.Code, verified.Error.SafeMessage, verified.Error.HttpStatus ?? 422);
         var source = $"{connection.PlatformCode}_WEBHOOK";
         var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.WebhookIngest);
         var envelope = verified.Value!;

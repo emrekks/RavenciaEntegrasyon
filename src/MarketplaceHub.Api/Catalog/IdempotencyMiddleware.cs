@@ -167,7 +167,13 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         {
             await next(context);
             responseBuffer.Position = 0;
-            if (context.Response.StatusCode < 500)
+            if (StepUpMiddleware.WasRefused(context))
+            {
+                // The endpoint asked for a fresh re-authentication: the panel sends this request again, with this key,
+                // once the user has passed it, so the refusal must not become the key's stored result.
+                await ForgetAsync(db, record);
+            }
+            else if (context.Response.StatusCode < 500)
             {
                 record.State = "COMPLETED";
                 string? body = null;

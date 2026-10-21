@@ -477,7 +477,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private sealed record ProductFamily(string Key, Product Primary, IReadOnlyList<Product> Products);
 
     // Narrow rows for catalog-wide grouping and counting; never saved or shown as they are.
-    private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version };
+    private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", BrandId = x.BrandId, Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version };
     private IQueryable<ProductVariant> VariantShapes(Guid tenantId) => db.ProductVariants.AsNoTracking()
         .Where(x => x.TenantId == tenantId)
         .Select(x => new ProductVariant { Id = x.Id, TenantId = x.TenantId, ProductId = x.ProductId, Sku = "", SkuNormalized = "", ModelCode = x.ModelCode, OptionSignature = x.OptionSignature, Status = x.Status });
@@ -485,7 +485,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private static string ProductFamilyKey(Product product, IReadOnlyList<ProductVariant> variants)
     {
         var modelCode = variants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-        return string.IsNullOrWhiteSpace(modelCode) ? $"product:{product.Id:D}" : $"model:{modelCode.Trim().ToUpperInvariant()}";
+        return ProductFamilyKeyPolicy.FamilyKey(product.Id, product.BrandId, modelCode);
     }
 
     public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
@@ -534,15 +534,61 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var products = await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).ToListAsync(cancellationToken);
         if (products.Count != ids.Length) return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
         var now = timeProvider.GetUtcNow();
+        // D4 (K8): the bulk change moves the same rows as the editor's status change: the product, its sale
+        // rows and its marketplace links (a local edit). Archive and activate are both status flips only, so an
+        // archived product comes back with its variants and images on activation.
+        var changedProductIds = products.Where(product => product.Status != status).Select(product => product.Id).ToArray();
+        var variants = changedProductIds.Length == 0
+            ? []
+            : await db.ProductVariants.Where(x => x.TenantId == tenantId && changedProductIds.Contains(x.ProductId) && x.Status != status).ToListAsync(cancellationToken);
         foreach (var product in products)
         {
             product.Status = status;
-            product.ArchivedAt = status == ProductStatus.Archived ? now : null;
+            product.ArchivedAt = status == ProductStatus.Archived ? product.ArchivedAt ?? now : null;
             product.UpdatedAt = now;
             product.Version++;
         }
+        foreach (var variant in variants) { variant.Status = status; variant.UpdatedAt = now; variant.Version++; }
+        await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedProductIds, CatalogLocalEdits.ProductField, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<int>.Ok(products.Count);
+    }
+
+    // Ledger sources written by order and return flows; such a movement is stock history that a delete must keep.
+    private static readonly string[] OrderMovementSourceTypes = ["ORDER_LINE", "RETURN_CLAIM"];
+
+    private static readonly string[] PendingCatalogWriteJobTypes =
+    [
+        MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile,
+        MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch
+    ];
+
+    private static readonly JobStatus[] PendingJobStatuses = [JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled, JobStatus.Blocked];
+
+    // D3 (K19): a delete purges the variants' reservations and stock ledger. It is refused while a variant has
+    // an active order reservation, has any order or return stock movement (the ledger is history, never purged),
+    // or a publication or price/stock job for the product or variant is still pending; the caller archives
+    // instead. Returns the Turkish reason ("... bağlı") or null when the delete may proceed.
+    private async Task<string?> StockHistoryDeleteBlockAsync(Guid tenantId, Guid[] productIds, Guid[] variantIds, Guid[] inventoryIds, CancellationToken cancellationToken)
+    {
+        if (inventoryIds.Length > 0)
+        {
+            if (await db.StockReservations.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId) && x.Status == ReservationStatus.Active, cancellationToken))
+                return "açık sipariş rezervasyonuna";
+            if (await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId) && OrderMovementSourceTypes.Contains(x.SourceType), cancellationToken))
+                return "sipariş stok hareketine";
+        }
+        if (productIds.Length == 0 && variantIds.Length == 0) return null;
+        var pendingJobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && PendingCatalogWriteJobTypes.Contains(x.JobType) && PendingJobStatuses.Contains(x.Status))
+            .Select(x => new { x.JobDedupKey, x.PayloadJson })
+            .ToListAsync(cancellationToken);
+        if (pendingJobs.Count == 0) return null;
+        // Publication dedup keys carry the product id in the N form; payloads serialize ids in the D form.
+        var markers = productIds.Select(productId => productId.ToString("N")).Concat(productIds.Concat(variantIds).Select(id => id.ToString("D"))).ToArray();
+        return pendingJobs.Any(job => markers.Any(marker => job.JobDedupKey.Contains(marker, StringComparison.OrdinalIgnoreCase) || job.PayloadJson.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+            ? "bekleyen yayın veya fiyat-stok işine"
+            : null;
     }
 
     public Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) =>
@@ -583,6 +629,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToArrayAsync(cancellationToken);
         if (inventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId), cancellationToken))
             return Conflict<int>("PRODUCT_DELETE_BLOCKED", "Ürün iade stok hareketine bağlı olduğu için silinemiyor. Sipariş ve iade geçmişini korumak için ürünü arşivleyin.");
+        var productDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, targetIds, variantIds, inventoryIds, cancellationToken);
+        if (productDeleteBlock is not null)
+            return Conflict<int>("PRODUCT_DELETE_BLOCKED", $"Ürün {productDeleteBlock} bağlı olduğu için silinemiyor. Stok geçmişini korumak için ürünü arşivleyin.");
 
         await db.Database.ExecuteSqlInterpolatedAsync($$"""
             CREATE TEMP TABLE IF NOT EXISTS purge_product_ids ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
@@ -926,12 +975,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var ownVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
         var modelCode = ownVariants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
-        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
-            ? [id]
-            : await (from siblingVariant in db.ProductVariants.AsNoTracking()
-                     join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
-                     where siblingVariant.ModelCode != null && siblingVariant.ModelCode.ToUpper() == modelCode.ToUpper()
-                     select siblingProduct.Id).Distinct().ToListAsync(cancellationToken);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken);
         if (!familyProductIds.Contains(id)) familyProductIds.Add(id);
         var familyProducts = await VisibleProducts(tenantId)
             .Where(x => familyProductIds.Contains(x.Id))
@@ -1026,6 +1070,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var deletingInventoryIds = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIdsToDelete.Contains(x.VariantId)).Select(x => x.Id).ToArrayAsync(cancellationToken);
             if (deletingInventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && deletingInventoryIds.Contains(x.InventoryItemId), cancellationToken))
                 return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", "Varyant iade stok hareketine bağlı olduğu için silinemiyor.");
+            var deletingProductIds = existingVariants.Where(existing => variantIdsToDelete.Contains(existing.Id)).Select(existing => existing.ProductId).Distinct().ToArray();
+            var variantDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, deletingProductIds, [.. variantIdsToDelete], deletingInventoryIds, cancellationToken);
+            if (variantDeleteBlock is not null)
+                return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", $"Varyant {variantDeleteBlock} bağlı olduğu için silinemiyor. Stok geçmişini korumak için ürünü arşivleyin.");
         }
         var changedVariantIds = new HashSet<Guid>();
         foreach (var update in variantUpdates)
@@ -1071,10 +1119,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 var variant = existingVariants.Single(x => x.Id == update.Id);
                 var dataChanged = VariantDataChanged(variant, update, storedVariantAttributes.Where(x => x.VariantId == variant.Id));
                 if (dataChanged) changedVariantIds.Add(variant.Id);
+                // D2: a stored key in a legacy form ("ABC_01", "KıRMıZı") that still names the same code is
+                // rewritten to the shared key on every save, so exact-key lookups (order lines, imports) find
+                // it. This is safe under the unique (tenant, key) indexes: the shared keys of every family row
+                // were checked above to be distinct inside the family and absent outside it. Assigning an
+                // unchanged value does not mark the row modified, and a key rewrite is not a data change.
+                if (CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku);
+                if (variant.BarcodeNormalized is not null && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode);
                 if (!dataChanged && variant.SortOrder == Math.Max(0, update.SortOrder)) continue;
-                // A stored key in the legacy form that still names the same code is kept until the data
-                // recompute, so an unchanged code never collides with itself under the unique index.
-                variant.Sku = update.Sku.Trim(); if (!CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); if (!CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
+                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
@@ -1269,7 +1322,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
     {
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version); product.Status = ProductStatus.Archived; product.ArchivedAt = timeProvider.GetUtcNow(); product.UpdatedAt = product.ArchivedAt.Value; product.Version++; var variants = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); foreach (var variant in variants) { variant.Status = ProductStatus.Archived; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
-        var media = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == id && x.Status != "ARCHIVED").ToListAsync(cancellationToken); foreach (var item in media) item.Status = "ARCHIVED"; var assetIds = media.Select(x => x.FileAssetId).Distinct().ToArray(); var sharedAssetIds = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId != id && x.Status != "ARCHIVED" && assetIds.Contains(x.FileAssetId)).Select(x => x.FileAssetId).Distinct().ToListAsync(cancellationToken); var assets = await db.FileAssets.Where(x => x.TenantId == tenantId && assetIds.Contains(x.Id) && !sharedAssetIds.Contains(x.Id)).ToListAsync(cancellationToken); foreach (var asset in assets) { asset.Status = "ARCHIVED"; asset.ArchivedAt = product.ArchivedAt; }
+        // D4 (K8): archiving is a status flip only. Images stay as they are: an archived image is a removed one
+        // and cannot be told apart from it later, so an archive that removed them could not be undone.
         await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
     }
@@ -1689,15 +1743,18 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(modelCode)) return [product.Id];
-
-        var ids = await (from siblingVariant in db.ProductVariants.AsNoTracking()
-                         join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
-                         where siblingVariant.ModelCode != null && siblingVariant.ModelCode.ToUpper() == modelCode.ToUpper()
-                         select siblingProduct.Id).Distinct().ToListAsync(cancellationToken);
+        var ids = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken);
         if (!ids.Contains(product.Id)) ids.Add(product.Id);
         return ids;
     }
+
+    // D9: the visible products of the same brand whose model code has the same key.
+    private Task<List<Guid>> VisibleFamilyProductIdsAsync(Guid tenantId, Guid? brandId, string? modelCode, CancellationToken cancellationToken) =>
+        ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode,
+            from siblingVariant in db.ProductVariants.AsNoTracking()
+            join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
+            select siblingVariant,
+            cancellationToken);
 
     private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken, Guid? variantAttributeProductId = null)
     {

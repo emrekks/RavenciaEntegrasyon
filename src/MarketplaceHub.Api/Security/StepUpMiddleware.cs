@@ -4,8 +4,11 @@ namespace MarketplaceHub.Api.Security;
 
 // Irreversible, tenant-wide work needs a fresh proof of who is at the keyboard, not only a session cookie:
 // emptying data (settings or connection data reset), deleting a connection with its data, and replacing a
-// connection's credentials. The session must have signed in or re-authenticated (POST /auth/reauthenticate:
-// password, and the authenticator code when one is on) within the last five minutes. Otherwise the answer
+// connection's credentials. Creating a connection and opening a webhook subscription (POST .../webhooks, turning
+// instant notifications on) are in the same group: a subscription keeps admitting deliveries after the session that
+// made it is signed out or its password changed, so a stolen cookie alone must not be able to set one up (G2).
+// The session must have signed in or re-authenticated (POST /auth/reauthenticate: password, and the
+// authenticator code when one is on) within the last five minutes. Otherwise the answer
 // is 403 REAUTHENTICATION_REQUIRED; the panel asks for the password (and code) and sends the same request
 // again. The check runs before the idempotency middleware, so the refusal is not stored as the key's result.
 public sealed class StepUpMiddleware(RequestDelegate next)
@@ -27,16 +30,28 @@ public sealed class StepUpMiddleware(RequestDelegate next)
 
     internal static bool IsRecent(UserSession session, DateTimeOffset now) => session.ReauthenticatedAt is { } at && at >= now - Window;
 
+    // The same refusal from an endpoint that decides only after reading its data (a fiscal write by a user with an
+    // authenticator, G7). Those endpoints run after the idempotency middleware, which drops the key's record when it
+    // sees the mark, so the request sent again after the re-authentication is not answered with the stored refusal.
+    private const string RefusedItem = "MarketplaceHub.StepUpRefused";
+    internal static IResult Refuse(HttpContext context, string message)
+    {
+        context.Items[RefusedItem] = true;
+        return ApiProblems.Of(context, Code, message, StatusCodes.Status403Forbidden, new Dictionary<string, object?> { ["reauthenticateWithinSeconds"] = (int)Window.TotalSeconds });
+    }
+    internal static bool WasRefused(HttpContext context) => context.Items.ContainsKey(RefusedItem);
+
     // Segments compare whole, empty ones dropped, like RoleAuthorizationMiddleware.
     internal static bool RequiresStepUp(string method, string? path)
     {
         var segments = (path ?? string.Empty).Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length < 4 || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase) || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)) return false;
+        if (segments.Length < 3 || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase) || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)) return false;
         var area = segments[2].ToLowerInvariant();
         var last = segments[^1].ToLowerInvariant();
         if (HttpMethods.IsPost(method))
             return area == "settings" && segments.Length == 4 && last == "data-reset"
-                || area == "connections" && segments.Length == 5 && last is "data-reset" or "deep-delete";
+                || area == "connections" && segments.Length == 3
+                || area == "connections" && segments.Length == 5 && last is "data-reset" or "deep-delete" or "webhooks" or "instant-notifications";
         if (HttpMethods.IsPut(method))
             return area == "connections" && segments.Length == 5 && last == "credential";
         return false;

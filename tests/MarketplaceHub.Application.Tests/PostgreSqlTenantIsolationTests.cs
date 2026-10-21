@@ -618,6 +618,91 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenDeletedVariantHasOrderStockMovement_IsRefusedAndKeepsTheLedger()
+    {
+        var tenant = NewTenant("variant-delete-ledger");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Ledger delete {Guid.NewGuid():N}",
+            Description = "Ledger delete test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(int order)
+        {
+            var code = $"LDG-{order}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = product.Id,
+                SortOrder = order,
+                Sku = code,
+                SkuNormalized = code,
+                OptionSignature = $"Beden={order}",
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        var kept = NewVariant(0);
+        var sold = NewVariant(1);
+        var soldItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = sold.Id, LocationCode = "MAIN", OnHand = 3, Reserved = 1, Available = 2 };
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(kept, sold);
+        db.InventoryItems.AddRange(
+            new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = kept.Id, LocationCode = "MAIN", OnHand = 5, Available = 5 },
+            soldItem);
+        db.StockLedgerEntries.Add(new StockLedgerEntry
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            InventoryItemId = soldItem.Id,
+            MovementType = "ORDER_RESERVED",
+            QuantityDelta = -1,
+            SourceType = "ORDER_LINE",
+            SourceId = Guid.NewGuid().ToString("D"),
+            SourceEventId = "ledger-delete-test",
+            IdempotencyKey = $"ledger-delete-test:{Guid.NewGuid():N}",
+            OccurredAt = fixture.Now,
+            RecordedAt = fixture.Now,
+            CorrelationId = "ledger-delete-test"
+        });
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+
+        var variantDelete = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [sold.Id]),
+            CancellationToken.None);
+        Assert.False(variantDelete.Succeeded);
+        Assert.Equal("VARIANT_DELETE_BLOCKED", variantDelete.Error!.Code);
+        Assert.Equal(409, variantDelete.Error.Status);
+
+        db.ChangeTracker.Clear();
+        Assert.True(await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == sold.Id));
+        Assert.True(await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == soldItem.Id));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenEditorSendsTheWholeFamily_TouchesOnlySiblingsWhoseDataChanged()
     {
         var tenant = NewTenant("family-save");
@@ -1358,6 +1443,62 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await using var cleanup = fixture.CreateContext();
             await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_usage WHERE \"Key\" IN ({foregroundKey}, {backgroundKey})");
             await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task QueueHealth_OldestRunnableJobIgnoresJobsWaitingForTheirLockGroupOrAQuotaBackoff()
+    {
+        var tenant = NewTenant("queue-oldest-runnable");
+        var busyConnection = Guid.CreateVersion7();
+        var backoffConnection = Guid.CreateVersion7();
+        var now = DateTimeOffset.UtcNow;
+        // Whole seconds (PostgreSQL keeps microseconds) and far older than any job another test queues: if either
+        // blocked job counted, it would be the global minimum.
+        var ancient = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds()).AddYears(-20);
+        var running = NewJob(tenant.Id);
+        running.JobType = MarketplaceJobTypes.OrderSync;
+        running.ConnectionId = busyConnection;
+        running.Status = JobStatus.Leased;
+        running.AttemptCount = 1;
+        running.LeaseExpiresAt = now.AddMinutes(10);
+        var behindRunning = NewJob(tenant.Id);
+        behindRunning.JobType = MarketplaceJobTypes.OrderSync;
+        behindRunning.ConnectionId = busyConnection;
+        behindRunning.AvailableAt = ancient;
+        var behindBackoff = NewJob(tenant.Id);
+        behindBackoff.JobType = MarketplaceJobTypes.OrderSync;
+        behindBackoff.ConnectionId = backoffConnection;
+        behindBackoff.AvailableAt = ancient.AddSeconds(1);
+        var lockGroup = MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderSync);
+        var until = now.AddHours(1);
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(running, behindRunning, behindBackoff);
+            await setup.SaveChangesAsync();
+            await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.connection_backoffs ("ConnectionId", "LockGroup", "Until", "Reason")
+                VALUES ({backoffConnection}, {lockGroup}, {until}, 'TEST')
+                """);
+        }
+
+        var jobIds = new[] { running.Id, behindRunning.Id, behindBackoff.Id };
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var oldest = await QueueHealthService.OldestRunnableAvailableAtAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+
+            Assert.NotEqual(ancient, oldest);
+            Assert.NotEqual(ancient.AddSeconds(1), oldest);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.connection_backoffs WHERE \"ConnectionId\" = {backoffConnection}");
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
         }
     }
 

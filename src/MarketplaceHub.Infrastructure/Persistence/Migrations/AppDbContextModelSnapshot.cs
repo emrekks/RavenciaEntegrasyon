@@ -2007,6 +2007,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "CreatedAt", "Id")
+                        .IsDescending(false, true, true);
+
                     b.HasIndex("TenantId", "JobType", "JobDedupKey")
                         .IsUnique();
 
@@ -2626,10 +2629,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId");
-
                     b.HasIndex("JobId", "AttemptNumber")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "StartedAt");
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "StartedAt"), new[] { "JobId" });
 
                     b.ToTable("job_attempts", "integration");
                 });

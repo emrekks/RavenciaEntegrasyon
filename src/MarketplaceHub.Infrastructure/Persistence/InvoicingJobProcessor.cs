@@ -167,7 +167,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
             if (ActiveIntegrationScope.IsMarketplace(orderConnection!.PlatformCode))
             {
-                var packages = await db.ShipmentPackages.Where(item => item.TenantId == tenantId
+                // Tracked: the precheck records the marketplace invoice state on these rows.
+                var packages = await MarketplaceSalesService.CurrentShipmentPackages(db, db.ShipmentPackages).Where(item => item.TenantId == tenantId
                     && item.OrderId == order.Id && item.Status != ShipmentPackageStatus.Cancelled)
                     .OrderBy(item => item.Id).ToListAsync(cancellationToken);
                 if (packages.Count == 0)
@@ -766,7 +767,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var manualDeliveryRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
             && retryValue.ValueKind == JsonValueKind.True
             && invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
-        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == targetPackageId && x.OrderId == invoice.OrderId, cancellationToken);
+        // Tracked: the delivery reads write the marketplace's invoice state onto the package. Read without tracking,
+        // those writes were dropped, so the stored references never caught up and every attempt added the same
+        // reference-history row again.
+        var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == targetPackageId && x.OrderId == invoice.OrderId, cancellationToken);
         var order = package is null
             ? null
             : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId, x.CustomerSnapshotJson, x.OrderedAt, x.LastRemoteModifiedAt, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
@@ -914,6 +918,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 package.MarketplaceInvoiceNumber = liveReadback.Value.VerifiedInvoiceNumber;
                 package.MarketplaceInvoiceUrl = liveReadback.Value.VerifiedInvoiceLink;
                 package.MarketplaceInvoiceObservedAt = readAt;
+                package.UpdatedAt = readAt;
+                package.Version++;
 
                 // The package was read empty right before the link was sent and Hepsiburada accepted the request, so an
                 // invoice it shows afterwards is this one; its read shows only that an invoice exists, never its number,
@@ -1866,7 +1872,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 PayloadHash = Hash(payload),
                 JobDedupKey = dedup,
                 EffectIdempotencyKey = dedup,
-                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery),
+                // A recovery nobody clicked: it yields to single user actions in the user lane.
+                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true),
                 AvailableAt = now,
                 CorrelationId = $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}",
                 Version = 1
@@ -1916,9 +1923,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
         var payload = JsonSerializer.Serialize(new { invoiceId });
-        // Status check, document and marketplace delivery follow a submission the user waits for,
-        // so they run in the user lane.
-        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.UserAction, TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
+        // Status check, document and marketplace delivery follow a submission the user waits for, so they run in
+        // the user lane, at the pace of that submission: a single click's chain stays ahead of a bulk confirmation,
+        // and a bulk (or scheduler-started) chain yields to single user actions.
+        var needle = invoiceId.ToString();
+        var submitPriority = await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.InvoiceSubmit && job.PayloadJson.Contains(needle))
+            .OrderByDescending(job => job.CreatedAt)
+            .Select(job => (int?)job.Priority)
+            .FirstOrDefaultAsync(cancellationToken);
+        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.ForFollowUp(submitPriority), TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
     }
 
     private static readonly HashSet<string> AcceptedDeliveryStatuses = new(StringComparer.Ordinal)

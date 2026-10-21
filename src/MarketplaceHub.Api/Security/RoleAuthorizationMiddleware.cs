@@ -94,6 +94,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 // Creating a connection stores the store's credentials, as rotating them does.
                 if (segments.Length == 3) return ElevatedRoles;
                 if (last == "evidence" && segments.Any(segment => segment.Equals("capabilities", StringComparison.OrdinalIgnoreCase))) return ElevatedRoles;
+                // PATCH /connections/{id} stays operational; the endpoint refuses its external write, invoice creation,
+                // environment and store scope changes to other roles (IsElevated).
                 // Credentials, stage test orders, deleting, emptying or hiding a connection's data, and registering
                 // the marketplace's notifications (a setting on the store's side) and webhook subscriptions (they hold
                 // the verifier secret and hand out the route token) are for administrators.
@@ -108,6 +110,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 return ElevatedRoles;
         }
     }
+
+    // Owner or administrator: for the checks an endpoint makes on what a request changes, not only on its path (G5).
+    internal static bool IsElevated(string? role) => Normalize(role) is { Length: > 0 } normalized && ElevatedRoles.Contains(normalized);
 
     private static string Normalize(string? role) => role?.Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant() switch
     {

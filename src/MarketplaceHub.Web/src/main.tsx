@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router'
+import { createBrowserRouter, RouterProvider } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './app/App'
 import { ErrorBoundary } from './shared/components/ErrorBoundary'
@@ -39,4 +39,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: retryO
 // After F5 the last view shows at once from this tab's snapshot while everything on it is asked for again.
 restoreQuerySnapshot(queryClient)
 persistQuerySnapshot(queryClient)
-createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><ErrorBoundary title="Panel açılamadı"><App /></ErrorBoundary></BrowserRouter></QueryClientProvider></StrictMode>)
+// A data router (one catch-all route; App keeps its own <Routes>) so screens can hold back in-app navigation while
+// they have unsaved edits (useBlocker).
+const router = createBrowserRouter([{ path: '*', element: <ErrorBoundary title="Panel açılamadı"><App /></ErrorBoundary> }])
+createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider></StrictMode>)

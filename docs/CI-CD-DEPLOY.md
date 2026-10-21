@@ -27,12 +27,26 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
 
 | Durum | Sonuç |
 | --- | --- |
+| SHA `origin/main`'in atası/aynısı değil (başka dal, force-push ile çıkarılmış commit) | **çıkış 1**, deploy yok |
 | SHA, `.hold` içindeki SHA'nın atası/aynısı (geri alınmış sürüm) | deploy yok, `::warning::`, çıkış 0 |
 | `.last-success` SHA'yı içeriyor (ve `redeploy` yok) | "already live", çıkış 0 |
 | SHA, çalışma ağacındaki HEAD'in atası ama `.last-success` içermiyor (daha yeni deploy başarısız olmuş) | **çıkış 1** — ileri düzeltme ya da `rollback.sh` |
 | Diğer | fast-forward + `fast-deploy.sh`; başarıda `.last-success` = SHA, daha yeni bir sürüm `.hold`'u kaldırır |
 
 `.last-success` henüz yoksa (bu betiğin ilk kurulumu) eski kural geçerlidir: HEAD'in atası olan SHA için 0.
+
+**Gece kapanışı (00:30 TR)**: kilit alındıktan sonra saat **23:45–00:30 (Europe/Istanbul)** arasındaysa
+deploy başlatılmaz; `::warning::Deploy of <sha> deferred to morning` yazılır ve çıkış 0'dır. Sabah 09:20
+çalışması son yeşil SHA'yı deploy eder. Sunucudaki root kopyası henüz güncellenmediyse aynı kural
+`fast-deploy.sh` içinde de (yalnız CI yolu, `DEPLOY_REVISION`) uygulanır; elle çalıştırılan deploy
+ertelenmez. Kapanışın kendisi depoda değil (AWS tarafında durdurma); bunun için
+`ravencia-deploy-guard.service` kurulur: açılışta bir şey yapmaz, kapanışta `ExecStop`
+(`wait-for-deploy-lock.sh`) `~/deploy-logs/.lock` serbest kalana kadar en çok 23 dk bekler. Docker'dan
+önce durdurulduğu için konteynerler bu sırada çalışır; deploy'un koştuğu SSH oturum kapsamları
+`/etc/systemd/system/session-.scope.d/ravencia-deploy-guard.conf` ile bu birimden sonra durdurulur.
+Sunucuda doğrulama: `systemctl show -p After session-<n>.scope` çıktısında `ravencia-deploy-guard.service`
+görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; kesin koruma
+23:45 kuralıdır.
 `releases.tsv` her deploy/geri alma için bir satır tutar (zaman, tür, SHA, imajlar).
 
 **`ci-entrypoint.sh` değiştiğinde** sunucuda bir kez yeniden kurulmalıdır (root'a ait kopya):
@@ -49,6 +63,29 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
   imajlarını tutar (N-1, geri alma için); daha eskilerini siler.
 - Her deploy `install-backup-timer.sh` ile sunucudaki systemd birimlerini yeniler ve zamanlayıcıları
   etkinleştirir (bkz. İşletim).
+- **Otomatik geri alma**: yeni sürüm başlamaz ya da doğrulanamazsa ve migration klasörü önceki sürümden
+  beri değişmediyse `rollback.sh` önceki `manual-*` imajlarıyla otomatik çalışır (yedeksiz; şema aynı).
+  Deploy yine başarısız sayılır, alarm gider, sürüm `.hold`'a girer. Ayrıntı ve koşullar:
+  [RUNBOOK-GERI-ALMA.md](RUNBOOK-GERI-ALMA.md) bölüm 2. Kapatmak: `RAVENCIA_AUTO_ROLLBACK=false`.
+- **Migration provası** (O12): CI migration'ları yalnız boş veritabanında dener. Deploy, taze yedekten
+  sonra ve üretim migration'ından önce yeni imajın `migrate` komutunu o yedeğin izole bir geri yüklemesine
+  karşı çalıştırır (`restore-drill.sh --migration-only`; ayrı ağ/volume, `marketplacehub_rehearsal_*`).
+  Başarısız olursa ya da süre (`RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS`, varsayılan 1200 sn) dolarsa
+  deploy üretime dokunmadan durur. Bedeli tam bir `pg_restore` + migration süresidir (veritabanı boyutuna
+  göre birkaç dakika); bu yüzden varsayılan `auto` yalnız migration klasörü çalışan sürümden beri
+  değiştiyse (ya da çalışan sürüm bilinmiyorsa) prova yapar; kod-yalnız deploy'lar etkilenmez. Seçim:
+  `RAVENCIA_MIGRATION_REHEARSAL` (elle) ya da `production.env` içinde
+  `MARKETPLACEHUB_MIGRATION_REHEARSAL=auto|always|never`. Kök disk %80'in üstündeyse (ikinci bir veritabanı
+  kopyası gerekir) prova uyarıyla atlanır. Süre dolması üretimde de uzun sürecek bir migration demektir:
+  bir pencere planlanıp elle `RAVENCIA_MIGRATION_REHEARSAL=never` ile deploy edilir.
+- **Migration süresi**: `fast-deploy.sh` migrate konteynerini `docker wait` ile en çok 30 dakika bekler
+  (`RAVENCIA_MIGRATION_TIMEOUT_SECONDS`, varsayılan 1800); süre dolarsa konteyneri durdurur (açık işlem geri
+  alınır, eski yığın son tamamlanan migration'ın şemasıyla hizmete devam eder) ve deploy başarısız olur.
+  `migrate` komutu (`DatabaseMigrator`) yalnız kendi oturumunda `lock_timeout=15s` ve
+  `statement_timeout=20min` kullanır: eski API/Worker çalışırken `ALTER TABLE` kilit kuyruğunda bekleyip
+  tüm yazmaları kilitlemez; kilit alınamazsa tüm çalıştırma 20 sn arayla 4 kez denenir. Uygulamanın normal
+  sorguları bu ayarlardan etkilenmez. `CREATE INDEX CONCURRENTLY` yazmaları kilitlemediği için bu tür
+  migration'lar kendi içinde `lock_timeout`'u kapatabilir. Deploy işinin GitHub süresi 90 dakikadır.
 
 ## GitHub Secrets (Settings → Secrets and variables → Actions)
 
@@ -85,9 +122,16 @@ Eski anahtarı `~/.ssh/authorized_keys` içinden silin ve `DEPLOY_SSH_KEY` secre
 ## Veritabanı bağlantısı ve PostgreSQL
 
 - `app_db_connection.txt`: `...;Maximum Pool Size=25;Timeout=15;Command Timeout=120`.
-  API ve Worker'ın her biri EF havuzu + ayrı `NpgsqlDataSource` + LISTEN açar; havuz başına 25 ile toplam
-  `max_connections=150` altında kalır. Yeni kurulumda `initialize-deployment.sh` bunu yazar; **mevcut
-  sunucuda elle eklenir** (bkz. İşletim). Eksikse deploy betikleri uyarı basar.
+  API ve Worker aynı dosyayı okur; dosyadaki 25 **API'nin** havuzudur. Worker 15 şerit yuvası çalıştırır ve
+  `2 × yuva + 10 = 40` bağlantıya ihtiyaç duyar (`WorkerLanes.RequiredPoolSize`); bu yüzden Worker'ın
+  `appsettings.json`'undaki `Database:MaxPoolSize=45` yalnız Worker sürecinde dosyadaki değerin yerine geçer
+  (ortam değişkeni `Database__MaxPoolSize` ile değiştirilebilir). Paylaşılan hız sınırlayıcının ayrı
+  `NpgsqlDataSource`'u kodda 5 bağlantıyla sınırlıdır. Toplam ≈ 25 + 5 + 45 + 5 + LISTEN ≈ 82;
+  `max_connections=150` altında migrate/yedek/psql için pay kalır. Gizli dosyada değişiklik gerekmez;
+  mevcut sunucular yeni değerleri bir sonraki deploy'la alır. Worker açılışta havuzu loglar
+  (`database pool of 45 (needs at least 40)`), küçükse uyarır. Yeni kurulumda `initialize-deployment.sh`
+  dosyayı yazar; **havuz sınırı hiç olmayan eski sunucuda elle eklenir** (bkz. İşletim). Eksikse deploy
+  betikleri uyarı basar.
 - PostgreSQL (`compose.yaml`): `max_connections=150`, `shared_buffers=256MB`,
   `effective_cache_size=1GB`, `work_mem=16MB`, `log_min_duration_statement=2000` (2 sn üstü sorgular
   loglanır), `shm_size: 256m`. Bu ayar değişikliği ilk deploy'da postgres konteynerini yeniden yaratır
@@ -126,6 +170,16 @@ MaxRetentionSec=30day
 - `/api/*` ve `/hubs/*` yanıtları sıkıştırılmaz (BREACH sınıfı); statik dosyalar ve SPA kabuğu
   zstd/gzip ile sıkıştırılmaya devam eder.
 - Caddyfile her imaj derlemesinde `caddy adapt` ile doğrulanır (CI `image-edge` işi dahil).
+- **IPv6 ziyaretçiler (G3):** `edge` ağı yalnız IPv4 olduğundan, sunucuya IPv6 ile gelen bağlantıyı
+  Docker'ın `docker-proxy` süreci (userland-proxy) karşılar ve Caddy'ye köprü ağ geçidinin özel IPv4
+  adresinden iletir. Bu durumda tüm IPv6 ziyaretçiler tek bir özel adres gibi görünür: hız sınırı ve
+  giriş engelleri (`ClientNetwork`) hepsine ortak işler, `remote_ip private_ranges` ise `/health/ready`
+  ve `/health/queues`'u onlara açar. Gerçek adresin Caddy'ye ulaşması için sunucuda `edge` ağında IPv6
+  açılmalıdır (`daemon.json`: `"ipv6": true, "ip6tables": true` ve ağa `enable_ipv6`). Bunun yerine
+  `"userland-proxy": false` seçilirse vekil devreden çıkar ama IPv6 bağlantılar hiç iletilmez; o zaman AAAA
+  kaydı kaldırılmalıdır. Canlıda bir IPv6 istemciden istek atıp Caddy erişim
+  kaydındaki `remote_ip` değerinin istemcinin adresi olduğu doğrulanmalıdır. Sunucunun AAAA kaydı yoksa
+  bu durum oluşmaz. Bkz. `deploy/compose/compose.yaml` içindeki `caddy` notu.
 
 ## İşletim: zamanlayıcılar, alarm, izleme
 
@@ -137,6 +191,7 @@ MaxRetentionSec=30day
 | `ravencia-restore-drill.timer` | ayın ilk Pazar'ı 19:00 UTC (22:00 TR) | `monthly-restore-drill.sh`: en yeni seti izole konteynerlere geri yükler, migration/API/Worker sağlığını doğrular |
 | `ravencia-healthwatch.timer` | 5 dakikada bir, 09:00–00:25 TR | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
+| `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
 
 **Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatteki tüm setler + son **7 günün** her gününün
 en yeni seti + daha eski 4 ISO haftasının her birinin en yeni seti; en yeni set her koşulda kalır
@@ -152,7 +207,9 @@ doldurmasın): gece yedeği başarısız olur (`OnFailure` alarmı), deploy yede
 Disk kullanımı: `df -h /` ve `sudo docker run --rm -v marketplacehub_backup_staging:/b alpine du -sh /b/*`.
 
 **Alarm kanalı**: `deploy/secrets/alert_webhook_url.txt` (tek satır, root:root 600). Dosya yoksa alarm
-sessizce atlanır.
+gönderilmez; `send-alert.sh` mesajı stderr'e (journal) yazar ve her deploy
+`::warning::No alert channel is configured` uyarısı basar (Actions çalışmasında da görünür). Kanal
+kurulmadan healthwatch, yedek ve otomatik geri alma alarmları kimseye ulaşmaz.
 
 - Telegram: `https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>`
 - Slack (ya da Slack uyumlu; Discord için webhook URL'sinin sonuna `/slack`): `https://hooks.slack.com/services/...`
@@ -163,12 +220,18 @@ Deneme: `bash deploy/scripts/send-alert.sh "test"`.
 düzelince "Recovered" mesajı. Docker'ın `unhealthy` dediği API konteyneri iki ardışık kontrolde öyle
 kalırsa ve PostgreSQL sağlıklıysa `docker restart` edilir (en çok 30 dakikada bir) ve alarm gönderilir.
 Açılıştan sonraki ilk 10 dakika atlanır. Durum: `/var/lib/ravencia-healthwatch/`.
+Aynı alarm akışıyla şunlar da denetlenir: kök disk doluluğu ≥ %85 (`RAVENCIA_DISK_ALERT_PERCENT`),
+PostgreSQL istemci bağlantıları ≥ `max_connections`'ın %80'i (`RAVENCIA_DB_CONNECTION_ALERT_PERCENT`;
+`pg_stat_activity`, postgres konteynerinde `psql`) ve `marketplacehub_backup_staging` içindeki en yeni
+yedek setinin yaşı ≥ 30 saat (`RAVENCIA_BACKUP_MAX_AGE_HOURS`; gece kapanışı payı dahil) ya da hiç set
+olmaması.
 
 > Autoheal sidecar'ı (`willfarrell/autoheal`) bilinçli olarak kullanılmadı: Docker soketini
 > (host'ta root eşdeğeri) üçüncü taraf bir imaja açmak gerekirdi; aynı işi sunucudaki healthwatch
 > birimi, PostgreSQL kesintisinde gereksiz yeniden başlatma yapmadan görüyor.
 
-**Dış izleme (önerilen, ücretsiz)**: UptimeRobot/Better Stack ile `https://panel.ravencia.com/health/live`
+**Dış izleme (elle kurulmalı, önerilen, ücretsiz)** — sunucu ya da Docker tamamen çökerse healthwatch da
+çalışmaz; bunu yalnız dışarıdan bir izleyici görür: UptimeRobot/Better Stack ile `https://panel.ravencia.com/health/live`
 5 dakikada bir; bakım penceresi 00:30–09:00 Europe/Istanbul. Ready/queues dışarıya kapalı olduğu için
 derin kontroller sunucudaki healthwatch'tadır.
 
@@ -221,6 +284,9 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
 - Backend ve frontend işleri, **aynı içerik** (git tree hash) daha önce geçtiyse atlanır; geçen içerik
   için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Hash'ler
   Dockerfile'ları ve `deploy/caddy`'yi de kapsar; imaj işi de geçmeden işaret yazılmaz.
+- `ops` işi deploy betiklerini `bash -n` + `shellcheck` ile denetler ve `tests/ops/run.sh`'ı çalıştırır:
+  çerçevesiz bash testleri (yedek saklama kuralları, `ci-entrypoint.sh` karar tablosu ve 23:45 ertelemesi,
+  kapanış kilidi beklemesi). Yerelde: `bash tests/ops/run.sh` (GNU coreutils, git, flock gerekir).
 - `ops` işi, sunucunun gerektirdiği Docker Compose 2.40.2'yi checksum'la kurup sürümü doğrular,
   birleşik compose dosyalarını ve journald sürücüsünü, systemd takvim ifadelerini denetler.
 - Ön yüz `npm run lint` adımı, `package.json`'da `lint` betiği varsa çalışır.

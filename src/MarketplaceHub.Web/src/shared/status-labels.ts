@@ -171,14 +171,6 @@ export function productStatusLabel(value: string) {
   return normalized === 'DRAFT' ? 'Taslak' : statusLabel(value)
 }
 
-export function productStatusTone(value: string) {
-  const normalized = normalizedStatus(value)
-  if (normalized === 'ACTIVE') return 'good' as const
-  if (normalized === 'ARCHIVED') return 'warn' as const
-  if (normalized === 'MIXED') return 'bad' as const
-  return 'neutral' as const
-}
-
 export function mappingStatusLabel(value: string) {
   return ['ACTIVE', 'VERIFIED'].includes(normalizedStatus(value)) ? 'Aktif' : statusLabel(value)
 }

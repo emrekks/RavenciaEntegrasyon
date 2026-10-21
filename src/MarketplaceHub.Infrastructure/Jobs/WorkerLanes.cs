@@ -36,8 +36,9 @@ public static class WorkerLanes
     // In precedence order: a job that more than one lane could lease is reported under the first.
     public static IReadOnlyList<WorkerLane> All(int hotPriorityCeiling = DefaultHotPriorityCeiling) =>
     [
-        // Jobs a user waits for (JobPriorityPolicy.UserAction) never queue behind syncs.
-        new("user", 2, JobPriorityPolicy.UserAction, null, [], []),
+        // Jobs a user waits for (JobPriorityPolicy.UserAction) never queue behind syncs; bulk user work
+        // (JobPriorityPolicy.BulkUserAction) shares the lane but is leased after them.
+        new("user", 2, JobPriorityPolicy.BulkUserAction, null, [], []),
         new("initial-data-sync", 1, JobPriorityPolicy.InitialDataSync, JobPriorityPolicy.InitialDataSync, [], []),
         new("order-status", 1, hotPriorityCeiling, 0, OrderStatusJobTypes, []),
         // Return reads and product-catalog syncs have dedicated lanes and are kept out of the shared

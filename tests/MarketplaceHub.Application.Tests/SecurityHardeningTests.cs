@@ -350,6 +350,13 @@ public sealed class StepUpMiddlewareTests
     [InlineData("GET", "/api/v1/connections/11111111-1111-1111-1111-111111111111/credential", false)]
     [InlineData("PUT", "/api/v1/settings/shipping-label", false)]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/test-jobs", false)]
+    [InlineData("POST", "/api/v1/connections", true)]
+    [InlineData("GET", "/api/v1/connections", false)]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", true)]
+    [InlineData("GET", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", false)]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", true)]
+    [InlineData("DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", false)]
+    [InlineData("POST", "/api/v1/hooks/11111111-1111-1111-1111-111111111111/token", false)]
     public void RoutesThatNeedAFreshProof(string method, string path, bool expected)
     {
         Assert.Equal(expected, StepUpMiddleware.RequiresStepUp(method, path));
@@ -364,6 +371,19 @@ public sealed class StepUpMiddlewareTests
         Assert.False(staleCalled);
         Assert.Equal(StatusCodes.Status403Forbidden, stale.Response.StatusCode);
         Assert.True(freshCalled);
+    }
+
+    // G7: a fiscal endpoint's refusal is marked so the idempotency middleware does not keep it as the key's result.
+    [Fact]
+    public void AnEndpointRefusalIsMarkedForTheIdempotencyMiddleware()
+    {
+        var context = new DefaultHttpContext();
+        Assert.False(StepUpMiddleware.WasRefused(context));
+
+        var result = StepUpMiddleware.Refuse(context, "Yeniden doğrulama gerekir.");
+
+        Assert.True(StepUpMiddleware.WasRefused(context));
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
     }
 
     private static async Task<(HttpContext Context, bool Called)> Invoke(DateTimeOffset reauthenticatedAt)

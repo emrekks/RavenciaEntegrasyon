@@ -303,45 +303,78 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         // A known order V2 cannot serve is read from the stream around its last recorded change.
         if (TrendyolLookupPolicy.StreamWindow(hint, now) is { } streamWindow)
         {
-            var storeFrontCode = storefronts[0];
-            var packages = new List<RemoteOrder>();
-            string? nextCursor = null;
-            do
-            {
-                var query = new List<string>
-                {
-                    "size=200",
-                    "lastModifiedStartDate=" + streamWindow.Start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
-                    "lastModifiedEndDate=" + streamWindow.End.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)
-                };
-                if (nextCursor is not null) query.Add("nextCursor=" + Uri.EscapeDataString(nextCursor));
-                var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), null, cancellationToken, storeFrontCode: storeFrontCode);
-                if (!response.IsSuccess)
-                {
-                    if (response.Error?.HttpStatus is 400 or 404) break;
-                    return AdapterResult<RemoteOrder>.Failure(response.Error!, response.RateLimit);
-                }
-                rateLimit = response.RateLimit;
-                try
-                {
-                    var page = TrendyolJsonMapper.Orders(response.Value!);
-                    firstPageIssue ??= page.Issues?.FirstOrDefault();
-                    packages.AddRange(page.Items.Where(item => string.Equals(item.ExternalOrderId, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase) || string.Equals(item.OrderNumber, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase)));
-                    nextCursor = page.HasMore && !string.IsNullOrWhiteSpace(page.NextCursor) ? page.NextCursor : null;
-                }
-                catch (JsonException exception)
-                {
-                    logger.LogWarning(exception, "Trendyol order stream failed contract mapping during direct lookup for {ExternalOrderId}.", normalizedOrderNumber);
-                    return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract());
-                }
-            } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
-            if (TrendyolJsonMapper.MergeOrderPackages(packages, normalizedOrderNumber) is { } streamed)
-                return AdapterResult<RemoteOrder>.Success(streamed with { StoreFrontCode = storeFrontCode }, rateLimit);
+            var scan = await ScanOrderStreamAsync(authorized, normalizedOrderNumber, streamWindow.Start, streamWindow.End, storefronts[0], rateLimit, cancellationToken);
+            if (scan.Result is { } streamed) return streamed;
+            firstPageIssue ??= scan.Issue;
         }
 
         if (firstPageIssue is not null)
             return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.ContractViolation, firstPageIssue.Code, firstPageIssue.Message, null, null, null));
         return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null));
+    }
+
+    // The order stream is read with the same page cap as the package scan (both cover a 12-day window). Every
+    // package of the order is collected before the merge: a split order's packages can sit on different pages,
+    // so the first match does not end the read. A cursor the stream hands back twice would loop forever.
+    internal const int MaxOrderStreamPages = MaxPackageStreamPages;
+    internal const string OrderScanIncompleteCode = "TRENDYOL_ORDER_SCAN_INCOMPLETE";
+    private static readonly AdapterError OrderScanIncomplete = new(AdapterErrorClass.TransientNetwork, OrderScanIncompleteCode,
+        "Trendyol sipariş akışı sonuna kadar okunamadı; okuma daha sonra yeniden denenecek.", 503, TimeSpan.FromMinutes(15), null);
+
+    // Result is set when the read ends the lookup (the order, or an error); otherwise the caller goes on to
+    // "not found" with the first page issue the stream reported.
+    internal async Task<(AdapterResult<RemoteOrder>? Result, AdapterPageIssue? Issue)> ScanOrderStreamAsync(
+        TrendyolRequestContext authorized, string normalizedOrderNumber, DateTimeOffset modifiedStart, DateTimeOffset modifiedEnd,
+        string storeFrontCode, RateLimitMetadata? rateLimit, CancellationToken cancellationToken)
+    {
+        AdapterPageIssue? firstPageIssue = null;
+        var packages = new List<RemoteOrder>();
+        var seenCursors = new HashSet<string>(StringComparer.Ordinal);
+        string? nextCursor = null;
+        var pages = 0;
+        do
+        {
+            if (++pages > MaxOrderStreamPages)
+            {
+                // The window was not read to its end, so "not found" is unknown, not a 404 (as in ScanPackageStreamAsync).
+                logger.LogWarning("Trendyol order {ExternalOrderId} stream lookup stopped after {Pages} pages.", normalizedOrderNumber, MaxOrderStreamPages);
+                return (AdapterResult<RemoteOrder>.Failure(OrderScanIncomplete, rateLimit), firstPageIssue);
+            }
+            var query = new List<string>
+            {
+                "size=200",
+                "lastModifiedStartDate=" + modifiedStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
+                "lastModifiedEndDate=" + modifiedEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)
+            };
+            if (nextCursor is not null) query.Add("nextCursor=" + Uri.EscapeDataString(nextCursor));
+            var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), null, cancellationToken, storeFrontCode: storeFrontCode);
+            if (!response.IsSuccess)
+            {
+                if (response.Error?.HttpStatus is 400 or 404) break;
+                return (AdapterResult<RemoteOrder>.Failure(response.Error!, response.RateLimit), firstPageIssue);
+            }
+            rateLimit = response.RateLimit;
+            try
+            {
+                var page = TrendyolJsonMapper.Orders(response.Value!);
+                firstPageIssue ??= page.Issues?.FirstOrDefault();
+                packages.AddRange(page.Items.Where(item => string.Equals(item.ExternalOrderId, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase) || string.Equals(item.OrderNumber, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase)));
+                nextCursor = page.HasMore && !string.IsNullOrWhiteSpace(page.NextCursor) ? page.NextCursor : null;
+            }
+            catch (JsonException exception)
+            {
+                logger.LogWarning(exception, "Trendyol order stream failed contract mapping during direct lookup for {ExternalOrderId}.", normalizedOrderNumber);
+                return (AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract()), firstPageIssue);
+            }
+            if (nextCursor is not null && !seenCursors.Add(nextCursor))
+            {
+                logger.LogWarning("Trendyol order {ExternalOrderId} stream lookup stopped: a cursor came back after {Pages} pages.", normalizedOrderNumber, pages);
+                return (AdapterResult<RemoteOrder>.Failure(OrderScanIncomplete, rateLimit), firstPageIssue);
+            }
+        } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
+        if (TrendyolJsonMapper.MergeOrderPackages(packages, normalizedOrderNumber) is { } streamed)
+            return (AdapterResult<RemoteOrder>.Success(streamed with { StoreFrontCode = storeFrontCode }, rateLimit), firstPageIssue);
+        return (null, firstPageIssue);
     }
 
     // Order V2 takes up to 50 package IDs per request. The group shares one storefront and one

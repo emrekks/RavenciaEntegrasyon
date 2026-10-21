@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
-import { hubApi, loadAllPages, type Me } from '../../shared/api'
+import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { Button, Pagination, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
@@ -17,7 +17,6 @@ import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-deliver
 import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, readJobsViewState, writeJobsViewState, type JobStatusChip, type JobsViewState } from './jobs-url-state'
-import { pollHubApi } from '../../shared/background-poll'
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
@@ -410,7 +409,7 @@ export function JobsPage({ me }: { me: Me }) {
   // the loaded list is counted instead.
   const serverCounts = useQuery({
     queryKey: ['jobs', 'counts', timeRange, platform],
-    queryFn: context => pollHubApi<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`, context),
+    queryFn: () => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`),
     refetchInterval: jobListPollMs
   })
   // The tab's job types come from its fixed definition, never from the live counts, so a count refresh that brings a
@@ -418,7 +417,7 @@ export function JobsPage({ me }: { me: Me }) {
   const categoryJobTypes = jobTypesForCategoryTab(category)
   const list = useInfiniteQuery({
     queryKey: ['jobs', 'page', serverStatus, timeRange, category, platform],
-    queryFn: context => pollHubApi<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform })}`, context),
+    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform })}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -428,7 +427,7 @@ export function JobsPage({ me }: { me: Me }) {
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
     queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, platform],
-    queryFn: context => pollHubApi<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`, context),
+    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`),
     enabled: loadedServerPages > 1,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
@@ -437,7 +436,7 @@ export function JobsPage({ me }: { me: Me }) {
   }, [listHead.data, client, serverStatus, timeRange, category, platform])
   const detail = useQuery({
     queryKey: ['job', selectedId],
-    queryFn: context => pollHubApi<JobDetail>(`/jobs/${selectedId}`, context),
+    queryFn: () => hubPoll<JobDetail>(`/jobs/${selectedId}`),
     enabled: Boolean(selectedId),
     refetchInterval: query => selectedId ? jobDetailPollInterval(query.state.data?.job.status) : false
   })

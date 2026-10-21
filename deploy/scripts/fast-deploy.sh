@@ -40,6 +40,15 @@ cd "$repository_root"
 if [[ -n "${DEPLOY_REVISION:-}" ]]; then
   # CI passes the exact validated commit and has already fast-forwarded to it.
   [[ "$(git rev-parse HEAD)" == "$DEPLOY_REVISION" ]] || { echo "Checked-out revision does not match DEPLOY_REVISION." >&2; exit 1; }
+  # Same 23:45-00:30 rule as ci-entrypoint.sh, for a server whose root-owned copy of
+  # that script predates it. Nothing is recorded, so the morning run deploys this
+  # revision (it is already checked out). A manual run is never deferred.
+  # shellcheck source=/dev/null
+  source "$script_dir/ci-entrypoint.sh"
+  if deploy_window_closed; then
+    echo "::warning::Deploy of $DEPLOY_REVISION deferred to morning: no deploy starts between 23:45 and the 00:30 nightly stop (Europe/Istanbul)."
+    exit 0
+  fi
 else
   git pull --ff-only origin main
 fi
@@ -59,6 +68,7 @@ validation_compose=("${sudo_cmd[@]}" env "MARKETPLACEHUB_APP_IMAGE=$app_image" "
 "${validation_compose[@]}" config --quiet
 "${compose[@]}" --profile operations config --quiet
 warn_on_unbounded_connection_pool
+warn_when_alerts_unconfigured
 
 sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
@@ -102,6 +112,64 @@ bash "$repository_root/deploy/scripts/install-backup-timer.sh"
 previous_app_image="$(running_service_image api)"
 previous_edge_image="$(running_service_image caddy)"
 
+# Migration rehearsal: CI only migrates an empty database, so a data-repair
+# migration would otherwise meet real rows for the first time in production. The
+# new image's migrate runs first against a disposable restore of the backup set
+# taken above (deploy/backup/restore-drill.sh --migration-only, isolated network
+# and volumes). It costs a full pg_restore plus the migration (minutes), so it
+# stays off the common path:
+#   auto (default)  only when the migrations folder changed since the running
+#                   release (or that release is unknown);
+#   always / never  regardless. RAVENCIA_MIGRATION_REHEARSAL, else production.env's
+#                   MARKETPLACEHUB_MIGRATION_REHEARSAL, else auto.
+# A failed or timed-out rehearsal (RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS,
+# default 1200) stops the deploy before production is touched. It is skipped
+# with a warning when the root disk is above 80%: the restore needs a second
+# copy of the database.
+migration_rehearsal="${RAVENCIA_MIGRATION_REHEARSAL:-$(read_env_or MARKETPLACEHUB_MIGRATION_REHEARSAL auto)}"
+rehearsal_timeout="${RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS:-1200}"
+[[ "$migration_rehearsal" =~ ^(auto|always|never)$ ]] || { echo "Migration rehearsal must be auto, always or never (got '$migration_rehearsal')." >&2; exit 1; }
+[[ "$rehearsal_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
+rehearse=false
+case "$migration_rehearsal" in
+  always) rehearse=true ;;
+  never) echo "Migration rehearsal skipped (never)." ;;
+  auto)
+    running_revision=""
+    [[ "$previous_app_image" != marketplacehub-app:manual-* ]] || running_revision="${previous_app_image##*:manual-}"
+    if [[ -z "$running_revision" ]] || ! running_full="$(git rev-parse --verify --quiet "$running_revision^{commit}")"; then
+      echo "Migration rehearsal: the running release is unknown (${previous_app_image:-none}); rehearsing."
+      rehearse=true
+    elif ! git diff --quiet "$running_full" "$full_revision" -- src/MarketplaceHub.Infrastructure/Persistence/Migrations; then
+      echo "Migration rehearsal: migrations changed since $running_revision; rehearsing."
+      rehearse=true
+    else
+      echo "Migration rehearsal skipped: no migration changed since $running_revision."
+    fi
+    ;;
+esac
+# verified_backup_set is assigned by run_verified_backup (lib.sh).
+# shellcheck disable=SC2154
+if [[ "$rehearse" == true ]]; then
+  root_disk_percent="$(df --output=pcent / | tail -n 1 | tr -dc '0-9')"
+  if (( ${root_disk_percent:-100} > 80 )); then
+    echo "::warning::Migration rehearsal skipped: the root disk is ${root_disk_percent:-?}% full and the restore needs a second database copy."
+  else
+    app_image_id="$(sudo -n docker image inspect --format '{{.Id}}' "$app_image")"
+    echo "Migration rehearsal: backup set $verified_backup_set, image $app_image_id, up to ${rehearsal_timeout}s."
+    rehearsal_status=0
+    timeout --kill-after=120 "$rehearsal_timeout" "${sudo_cmd[@]}" bash "$repository_root/deploy/backup/restore-drill.sh" --migration-only \
+      "$verified_backup_set" "$app_image_id" "$repository_root/deploy/secrets" marketplacehub_backup_staging || rehearsal_status=$?
+    if (( rehearsal_status == 124 || rehearsal_status == 137 )); then
+      echo "Migration rehearsal did not finish within ${rehearsal_timeout}s; production was not migrated. The migration is likely to run that long in production too: plan a window, then deploy by hand with RAVENCIA_MIGRATION_REHEARSAL=never (or raise the timeout)." >&2
+      exit 1
+    elif (( rehearsal_status != 0 )); then
+      echo "Migration rehearsal failed against the restored copy of $verified_backup_set (exit code $rehearsal_status); production was not migrated." >&2
+      exit 1
+    fi
+  fi
+fi
+
 # Keep the currently serving API/worker/edge alive until the new database
 # migration has completed successfully. Compose's depends_on condition also
 # protects a fresh stack, but starting the one-shot migration separately makes
@@ -110,25 +178,104 @@ previous_edge_image="$(running_service_image caddy)"
 "${compose[@]}" up -d --no-build postgres migrate
 migrate_id="$("${compose[@]}" ps -q migrate)"
 [[ -n "$migrate_id" ]] || { echo "Migration container was not created." >&2; exit 1; }
-migration_status=""
+# A data migration can legitimately run for minutes; each statement is bounded by
+# the migrate command's own statement_timeout (20 min) and lock_timeout (15 s,
+# retried), so the wait here is only the outer bound. On timeout the container is
+# stopped: its open transaction rolls back and the old stack keeps serving the
+# schema of the last completed migration.
+migration_timeout="${RAVENCIA_MIGRATION_TIMEOUT_SECONDS:-1800}"
+[[ "$migration_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_MIGRATION_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
+echo "Waiting up to ${migration_timeout}s for the database migration."
+migration_started="$(date +%s)"
 migration_exit_code=""
-for ((attempt = 1; attempt <= 120; attempt++)); do
-  migration_status="$(sudo -n docker inspect --format '{{.State.Status}}' "$migrate_id")"
-  if [[ "$migration_status" == "exited" ]]; then
-    migration_exit_code="$(sudo -n docker inspect --format '{{.State.ExitCode}}' "$migrate_id")"
-    break
-  fi
-  sleep 1
-done
-[[ "$migration_status" == "exited" && "$migration_exit_code" == "0" ]] || {
-  echo "Database migration did not complete successfully: state=$migration_status exit_code=${migration_exit_code:-unknown}." >&2
+wait_status=0
+migration_exit_code="$(timeout "$migration_timeout" sudo -n docker wait "$migrate_id")" || wait_status=$?
+migration_seconds="$(( $(date +%s) - migration_started ))"
+if (( wait_status == 124 )); then
+  echo "Database migration did not finish within ${migration_timeout}s; stopping the migrate container (the old stack keeps serving)." >&2
+  sudo -n docker stop --time 30 "$migrate_id" >/dev/null || true
+  sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
+  exit 1
+fi
+[[ "$wait_status" == "0" && "$migration_exit_code" == "0" ]] || {
+  migration_status="$(sudo -n docker inspect --format '{{.State.Status}}' "$migrate_id" 2>/dev/null || echo unknown)"
+  echo "Database migration did not complete successfully: state=$migration_status exit_code=${migration_exit_code:-unknown} after ${migration_seconds}s." >&2
+  sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
   exit 1
 }
+echo "Database migration completed in ${migration_seconds}s."
 
-"${compose[@]}" up -d --no-build api worker caddy
+# Automatic rollback (RAVENCIA_AUTO_ROLLBACK, default true): when the new release
+# does not start or fails verify_stack, the previous release's images are run
+# again through rollback.sh -- but only when that is a pure code rollback:
+#   - the previous release is a kept manual-<rev> app+edge pair of the same revision,
+#     older than this one;
+#   - no file under the migrations folder changed between it and this revision
+#     (old code against a newer schema is a manual decision, RUNBOOK-GERI-ALMA.md);
+#   - the deploy ran with production.env's write settings (rollback.sh reads those).
+# rollback.sh skips its own backup: the verified set above is minutes old and the
+# schema did not change. It also holds this revision from automatic redeploys.
+auto_rollback="${RAVENCIA_AUTO_ROLLBACK:-true}"
+rollback_target=""
+attempt_automatic_rollback() {
+  local previous_full
+  if [[ "$auto_rollback" != true ]]; then
+    echo "Automatic rollback is disabled (RAVENCIA_AUTO_ROLLBACK=$auto_rollback)." >&2
+    return 1
+  fi
+  if [[ "$disable_external_writes" == true || "$enable_invoice_marketplace_delivery" == true ]]; then
+    echo "Automatic rollback skipped: this deploy overrode the write settings, which rollback.sh would not keep." >&2
+    return 1
+  fi
+  if [[ "$previous_app_image" != marketplacehub-app:manual-* || "$previous_edge_image" != marketplacehub-edge:manual-* ]]; then
+    echo "Automatic rollback skipped: no previous manual-* release was running (api=${previous_app_image:-none}, caddy=${previous_edge_image:-none})." >&2
+    return 1
+  fi
+  rollback_target="${previous_app_image##*:manual-}"
+  if [[ ! "$rollback_target" =~ ^[0-9a-f]{12}$ || "${previous_edge_image##*:manual-}" != "$rollback_target" ]]; then
+    echo "Automatic rollback skipped: previous app and edge images are not one release ($previous_app_image, $previous_edge_image)." >&2
+    return 1
+  fi
+  if [[ "$rollback_target" == "$revision" ]]; then
+    echo "Automatic rollback skipped: the failed release is the one that was already running (redeploy)." >&2
+    return 1
+  fi
+  previous_full="$(git rev-parse --verify --quiet "$rollback_target^{commit}")" || {
+    echo "Automatic rollback skipped: revision $rollback_target is not in the local history." >&2
+    return 1
+  }
+  if ! git diff --quiet "$previous_full" "$full_revision" -- src/MarketplaceHub.Infrastructure/Persistence/Migrations; then
+    echo "Automatic rollback skipped: migrations changed between $rollback_target and $revision; follow docs/RUNBOOK-GERI-ALMA.md." >&2
+    return 1
+  fi
+  echo "Automatic rollback: returning to $rollback_target (code only; the schema is unchanged)." >&2
+  rollback_attempted=true
+  bash "$script_dir/rollback.sh" "$rollback_target" --skip-backup
+}
+rollback_attempted=false
 
-if [[ "$verify" == true ]]; then
-  verify_stack "${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
+site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
+release_status=0
+"${compose[@]}" up -d --no-build api worker caddy || release_status=$?
+if (( release_status == 0 )) && [[ "$verify" == true ]]; then
+  verify_stack "$site_address" || release_status=$?
+fi
+if (( release_status != 0 )); then
+  echo "Release $revision did not start or failed verification (exit code $release_status)." >&2
+  if attempt_automatic_rollback; then
+    "$script_dir/send-alert.sh" "Deploy of $revision failed verification and was rolled back automatically to $rollback_target; $revision is held from automatic redeploys. Log: ~/deploy-logs/" \
+      || echo "Rollback alert could not be sent." >&2
+    echo "Deploy failed; the previous release $rollback_target is serving again." >&2
+  elif [[ "$rollback_attempted" == true ]]; then
+    "$script_dir/send-alert.sh" "Deploy of $revision failed verification and the automatic rollback to $rollback_target FAILED too; act now: ~/deploy-logs/, docs/RUNBOOK-GERI-ALMA.md." \
+      || echo "Failure alert could not be sent." >&2
+    echo "Deploy failed and the automatic rollback to $rollback_target failed; see docs/RUNBOOK-GERI-ALMA.md." >&2
+  else
+    "$script_dir/send-alert.sh" "Deploy of $revision failed verification and was NOT rolled back automatically; check ~/deploy-logs/ and docs/RUNBOOK-GERI-ALMA.md." \
+      || echo "Failure alert could not be sent." >&2
+    echo "Deploy failed and the stack was left as it is; see docs/RUNBOOK-GERI-ALMA.md." >&2
+  fi
+  exit 1
 fi
 record_release deploy "$full_revision" "$app_image" "$edge_image"
 record_last_success "$full_revision"

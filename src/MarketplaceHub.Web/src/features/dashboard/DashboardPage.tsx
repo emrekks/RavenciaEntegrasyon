@@ -68,9 +68,10 @@ export function matrixCellText(cell: MatrixCell) {
 // Series days are Istanbul calendar days (YYYY-MM-DD) and read as such; noon keeps the name of the day in any clock.
 const dayLong = (day: string) => formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
 const dayShort = (day: string) => { const dayOfMonth = Number(day.slice(8, 10)); return dayOfMonth === 1 ? formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'short' }).replace(/\.$/, '') : String(dayOfMonth) }
-function axisLabel(value: number) {
-  if (!value) return '₺0'
-  return value >= 1000 ? `₺${(value / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} B` : `₺${count(value)}`
+// A money axis in the currency the chart shows (the period's main currency), thousands as "B" (bin).
+export function axisLabel(value: number, currency = 'TRY') {
+  if (value >= 1000) return `${formatMoney(value / 1000, currency, { minimumFractionDigits: 0, maximumFractionDigits: 1 })} B`
+  return formatMoney(value || 0, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 function niceStep(max: number) {
   const rough = Math.max(1, max) / 5
@@ -86,7 +87,7 @@ function Breakdown({ rows }: { rows: Array<{ key: string; code: string; name: st
 // Daily revenue: area and line for this period, dashed line for the previous one. The day tooltip follows the
 // pointer, above it when the page has room there, otherwise below.
 // An hourly chart (a one-day period) compares each hour with the same hour of the previous day.
-function RevenueChart({ points, previous, currency, value = point => point.amount, axis = axisLabel, hourly = false }: { points: DayPoint[]; previous: DayPoint[]; currency: string; value?: (point: DayPoint) => number; axis?: (value: number) => string; hourly?: boolean }) {
+function RevenueChart({ points, previous, currency, value = point => point.amount, axis = amount => axisLabel(amount, currency), hourly = false }: { points: DayPoint[]; previous: DayPoint[]; currency: string; value?: (point: DayPoint) => number; axis?: (value: number) => string; hourly?: boolean }) {
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
@@ -201,9 +202,9 @@ export function DashboardPage() {
   const selectedName = selected?.displayName ?? storeTotals.find(item => item.connectionId === channel)?.name ?? ''
   const periodText = range === 'custom' ? 'Seçilen dönem' : periodLabel(range)
   const chartValues: Array<[(point: DayPoint) => number, (value: number) => string, string]> = [
-    [point => point.amount, axisLabel, hourly ? 'Saatlik Ciro' : 'Günlük Ciro'],
+    [point => point.amount, value => axisLabel(value, currency), hourly ? 'Saatlik Ciro' : 'Günlük Ciro'],
     [point => point.orderCount, value => count(value), hourly ? 'Saatlik Sipariş' : 'Günlük Sipariş'],
-    [point => point.orderCount ? point.amount / point.orderCount : 0, axisLabel, hourly ? 'Saatlik Ortalama Sepet' : 'Günlük Ortalama Sepet'],
+    [point => point.orderCount ? point.amount / point.orderCount : 0, value => axisLabel(value, currency), hourly ? 'Saatlik Ortalama Sepet' : 'Günlük Ortalama Sepet'],
   ]
   // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
   const rows = (matrix.data ?? []).filter(row => PLATFORMS.some(([code]) => code === row.platformCode.toUpperCase()))

@@ -87,13 +87,13 @@ public static class AuthEndpoints
                 await db.SaveChangesAsync(context.RequestAborted);
                 return Problem("TENANT_NOT_AVAILABLE", "Kullanıcı için aktif çalışma alanı bulunamadı.", 403);
             }
-            var tenantIds = memberships.Select(x => x.TenantId).ToArray();
-            var tenants = await db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active && tenantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, context.RequestAborted);
-            return ApiProblems.Of(context, "TENANT_SELECTION_REQUIRED", "Devam etmek için bir çalışma alanı seçin.", 409, new Dictionary<string, object?> { ["tenants"] = memberships.Select(x => new { id = x.TenantId, displayName = tenants.GetValueOrDefault(x.TenantId)?.DisplayName ?? x.TenantId.ToString("D") }).ToList() });
+            // G8: the password alone does not show which workspaces an account with an authenticator belongs to. Its
+            // session starts without one and the names are listed after the second factor (MfaChallengeAsync).
+            if (state != SessionState.MfaChallenge) return await TenantSelectionRequiredAsync(context, db, memberships);
         }
         var raw = TokenHasher.NewToken(); var sessionId = Guid.NewGuid();
-        AuthAudit.Record(db, context, AuthAudit.LoginSucceeded, user.Id, membership.TenantId, $"state={SessionStateWire(state)}", now, sessionId);
-        db.UserSessions.Add(new UserSession { Id = sessionId, UserId = user.Id, TenantId = membership.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
+        AuthAudit.Record(db, context, AuthAudit.LoginSucceeded, user.Id, membership?.TenantId, $"state={SessionStateWire(state)}", now, sessionId);
+        db.UserSessions.Add(new UserSession { Id = sessionId, UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
         user.LastLoginAt = now; await db.SaveChangesAsync(context.RequestAborted);
         SetSessionCookie(context.Response, raw, now.AddHours(12));
         return Results.Ok(new { state = SessionStateWire(state) });
@@ -278,6 +278,9 @@ public static class AuthEndpoints
         // The password already passed from this network: only this network's own block (wrong codes or
         // passwords from it) stops the sign-in here, not failures from elsewhere.
         if (await PasswordCheck.IsBlockedAsync(context, users, user, signedIn: true)) return await EndSessionAfterFailuresAsync(session, db, context, time, "network-blocked");
+        // The second factor already passed in this session and only the workspace is still to be chosen (G8).
+        if (session.TenantId is null && await db.AuditLogs.AsNoTracking().AnyAsync(x => x.Action == AuthAudit.MfaSucceeded && x.TargetId == session.Id.ToString("D"), context.RequestAborted))
+            return await FinishMfaSignInAsync(session, user, request.TenantId, db, context, time);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var accepted = false;
         if (request.RecoveryCode is { Length: > 0 })
@@ -297,18 +300,41 @@ public static class AuthEndpoints
         if (!accepted)
             return await SecondFactorFailedAsync(session, user, users, db, context, time, request.RecoveryCode is { Length: > 0 } ? "recovery-code" : "totp",
                 Problem("MFA_CHALLENGE_INVALID", "Doğrulama kodu veya kurtarma kodu geçersiz.", 400));
-        if (session.TenantId is null)
-        {
-            var membership = await ActiveTenantMemberships(db, session.UserId).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
-            if (membership is null) return Problem("TENANT_NOT_AVAILABLE", "Aktif çalışma alanı bulunamadı.", 403);
-            session.TenantId = membership.TenantId;
-        }
         MfaAttemptPolicy.RegisterSuccess(session);
         await PasswordCheck.RegisterSuccessAsync(context, users, user);
+        // Also the record FinishMfaSignInAsync's workspace step (and ChangePasswordAsync) looks for.
+        AuthAudit.Record(db, context, AuthAudit.MfaSucceeded, session.UserId, session.TenantId, request.RecoveryCode is { Length: > 0 } ? "recovery-code" : "totp", time.GetUtcNow(), session.Id);
+        return await FinishMfaSignInAsync(session, user, request.TenantId, db, context, time);
+    }
+
+    // After the second factor: a session that started without a workspace (an account with several and an authenticator,
+    // G8) takes the one requested, or the only one. With several and none chosen it stays at this step, the second
+    // factor recorded as passed, and the answer lists the workspaces by name; the next request only names one.
+    private static async Task<IResult> FinishMfaSignInAsync(UserSession session, ApplicationUser user, Guid? requestedTenantId, AppDbContext db, HttpContext context, TimeProvider time)
+    {
+        if (session.TenantId is null)
+        {
+            var memberships = await ActiveTenantMemberships(db, session.UserId).OrderBy(x => x.CreatedAt).ToListAsync(context.RequestAborted);
+            var membership = requestedTenantId is Guid requested ? memberships.SingleOrDefault(x => x.TenantId == requested) : memberships.Count == 1 ? memberships[0] : null;
+            if (membership is null)
+            {
+                await db.SaveChangesAsync(context.RequestAborted);
+                return memberships.Count == 0
+                    ? Problem("TENANT_NOT_AVAILABLE", "Aktif çalışma alanı bulunamadı.", 403)
+                    : await TenantSelectionRequiredAsync(context, db, memberships);
+            }
+            session.TenantId = membership.TenantId;
+        }
         // A forced password change follows the second factor.
         session.State = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow();
-        AuthAudit.Record(db, context, AuthAudit.MfaSucceeded, session.UserId, session.TenantId, request.RecoveryCode is { Length: > 0 } ? "recovery-code" : "totp", session.ReauthenticatedAt.Value, session.Id);
         await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
+    }
+
+    private static async Task<IResult> TenantSelectionRequiredAsync(HttpContext context, AppDbContext db, IReadOnlyList<TenantMembership> memberships)
+    {
+        var tenantIds = memberships.Select(x => x.TenantId).ToArray();
+        var tenants = await db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active && tenantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, context.RequestAborted);
+        return ApiProblems.Of(context, "TENANT_SELECTION_REQUIRED", "Devam etmek için bir çalışma alanı seçin.", 409, new Dictionary<string, object?> { ["tenants"] = memberships.Select(x => new { id = x.TenantId, displayName = tenants.GetValueOrDefault(x.TenantId)?.DisplayName ?? x.TenantId.ToString("D") }).ToList() });
     }
 
     private static async Task<IResult> MfaDisableAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
@@ -484,6 +510,6 @@ public static class AuthEndpoints
 
     public sealed record LoginRequest(string Email, string Password, Guid? TenantId = null);
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
-    public sealed record CodeRequest(string Code, string? RecoveryCode = null);
+    public sealed record CodeRequest(string Code, string? RecoveryCode = null, Guid? TenantId = null);
     public sealed record ReauthenticateRequest(string Password, string? Code = null, string? RecoveryCode = null);
 }

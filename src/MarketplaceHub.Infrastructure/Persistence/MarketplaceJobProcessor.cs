@@ -267,22 +267,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // Refused credentials during a sync show on the connection, as a failed
     // connection test does; the next successful test clears the code.
+    // The code is written in place without moving the connection's version: a background refusal is not an
+    // edit, and bumping the version made a user saving the connection's settings at that moment get a 412.
     private async Task RecordConnectionAuthenticationFailureAsync(Guid tenantId, Guid connectionId, string jobType, JobExecutionResult result, CancellationToken cancellationToken)
     {
         if (!IsConnectionAuthenticationFailure(jobType, result)) return;
-        try
-        {
-            var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-            if (connection is null || string.Equals(connection.LastErrorCode, result.ErrorCode, StringComparison.Ordinal)) return;
-            connection.LastErrorCode = result.ErrorCode;
-            connection.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // The connection was edited meanwhile; the next refused read records it.
-            db.ChangeTracker.Clear();
-        }
+        var errorCode = result.ErrorCode;
+        await db.PlatformConnections
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId && (x.LastErrorCode == null || x.LastErrorCode != errorCode))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastErrorCode, errorCode), cancellationToken);
     }
 
     private async Task RecordSyncAttempt(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
@@ -576,10 +569,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             return await ReconcileHepsiburadaProductApproval(tenantId, connectionId, payload, profile, listings, states, correlationId, cancellationToken);
 
+        // Variants an earlier check of this publication already approved keep their recorded identity instead of being
+        // read again; the adapter reads one barcode per request, so this is what keeps a long wait cheap.
+        var candidateVariantIds = candidates.Select(x => x.VariantId).ToArray();
+        var settledProductId = await db.MarketplaceProductLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId)
+            .Select(x => x.ExternalId)
+            .SingleOrDefaultAsync(cancellationToken);
+        var settledVariantIds = settledProductId is null
+            ? new Dictionary<Guid, string>()
+            : await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && candidateVariantIds.Contains(x.VariantId))
+                .ToDictionaryAsync(x => x.VariantId, x => x.ExternalId, cancellationToken);
         var remoteByBarcode = new Dictionary<string, RemotePublicationStatus>(StringComparer.OrdinalIgnoreCase);
         foreach (var listing in candidates)
         {
             var barcode = approvalKey(listing)!;
+            if (ProductApprovalReconciliationPolicy.IsSettledLive(listing.ActualStatus, settledProductId is not null, settledVariantIds.TryGetValue(listing.VariantId, out var settledVariantId)))
+            {
+                remoteByBarcode.Add(barcode, new RemotePublicationStatus(barcode, "APPROVED", settledProductId, settledVariantId, null, "{}"));
+                continue;
+            }
             TrackRequest();
             var result = await products.GetPublicationStatusAsync(Context(tenantId, connectionId, correlationId, $"product-approval:{profile.Id:N}:{barcode}"), barcode, cancellationToken);
             if (!result.IsSuccess)
@@ -719,7 +729,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         await transaction.CommitAsync(cancellationToken);
 
         if (exceptional > 0) return JobExecutionResult.ManualReview(firstCode ?? "PRODUCT_APPROVAL_REVIEW_REQUIRED", $"{marketplaceName} ürün onayında operatör incelemesi gerektiren terminal durum oluştu.");
-        if (pending > 0) return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", $"{marketplaceName} ürün onayı henüz tamamlanmadı.", TimeSpan.FromMinutes(5));
+        if (pending > 0) return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", $"{marketplaceName} ürün onayı henüz tamamlanmadı.", ProductApprovalReconciliationPolicy.PendingRecheckDelay(payload.StartedAt, payload.DeadlineAt, timeProvider.GetUtcNow()));
         if (live == listings.Count) return JobExecutionResult.Success();
         return rejected == listings.Count
             ? JobExecutionResult.Blocked("PRODUCT_APPROVAL_REJECTED", $"{marketplaceName} ürün onayı tüm varyantlar için reddedildi.")
@@ -7689,7 +7699,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 using var document = JsonDocument.Parse(raw);
                 if (string.Equals(resourceType, "ORDER_EVENT", StringComparison.Ordinal))
-                    return await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, OrderEventPath(externalMessageId), correlationId, cancellationToken);
+                    return await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, externalMessageId, OrderEventPath(externalMessageId), correlationId, cancellationToken);
                 // A claim notice the mapper cannot read whole: the recent claims are read again.
                 if (string.Equals(resourceType, "CLAIM_EVENT", StringComparison.Ordinal))
                     return await SyncReturns(tenantId, connectionId, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
@@ -8847,23 +8857,33 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
     {
-        var skuKeys = remoteLines.Select(line => VariantLookupKey(line.Sku, false)).Where(key => key is not null).Select(key => key![2..]).Distinct(StringComparer.Ordinal).ToArray();
-        var barcodeKeys = remoteLines.Select(line => VariantLookupKey(line.Barcode, true)).Where(key => key is not null).Select(key => key![2..]).Distinct(StringComparer.Ordinal).ToArray();
+        // Stored keys may still be in a legacy form ("ABC_01" instead of "ABC-01") until the variant is saved
+        // again, so query every stored form like the other catalog lookups (K1). The result is keyed by the
+        // shared key (Key is idempotent over the legacy forms), and a row already stored under the shared key
+        // wins over a legacy row of the same code.
+        var skuKeys = remoteLines.SelectMany(line => CatalogLookupKeys(line.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
+        var barcodeKeys = remoteLines.SelectMany(line => CatalogLookupKeys(line.Barcode, 160)).Distinct(StringComparer.Ordinal).ToArray();
         if (skuKeys.Length == 0 && barcodeKeys.Length == 0) return new Dictionary<string, Guid>(StringComparer.Ordinal);
         var rows = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && (skuKeys.Contains(x.SkuNormalized) || barcodeKeys.Contains(x.BarcodeNormalized)))
             .OrderBy(x => x.Id)
             .ToListAsync(cancellationToken);
         var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        foreach (var row in rows)
+        foreach (var row in rows.OrderBy(x => IsSharedCatalogKey(x.SkuNormalized) ? 0 : 1).ThenBy(x => x.Id))
         {
             var skuKey = VariantLookupKey(row.SkuNormalized, false);
-            var barcodeKey = VariantLookupKey(row.BarcodeNormalized, true);
             if (skuKey is not null) result.TryAdd(skuKey, row.Id);
+        }
+        foreach (var row in rows.OrderBy(x => IsSharedCatalogKey(x.BarcodeNormalized) ? 0 : 1).ThenBy(x => x.Id))
+        {
+            var barcodeKey = VariantLookupKey(row.BarcodeNormalized, true);
             if (barcodeKey is not null) result.TryAdd(barcodeKey, row.Id);
         }
         return result;
     }
+
+    private static bool IsSharedCatalogKey(string? stored) =>
+        !string.IsNullOrEmpty(stored) && string.Equals(stored, NormalizeCatalogKey(stored, 160), StringComparison.Ordinal);
 
     private static string? VariantLookupKey(string? value, bool barcode)
     {
@@ -10240,7 +10260,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var effect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ShipmentAction && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
         if (effect is not null && effect.CompletedAt is null) throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki paket aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi."));
         if (effect is not null && effect.CompletedAt is not null) return true;
-        effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
+        // The record carries what the action changes, like the instant actions do, so an unclear outcome is
+        // verified by reading the marketplace instead of waiting a week to be closed as unresolved.
+        var (effectAction, expectedValue) = ShipmentEffectContext(payload.Action, payload.PayloadJson);
+        effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connectionId, TargetId = package.Id, Action = effectAction, ExpectedValue = expectedValue };
         db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
         TrackRequest();
         var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson, await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken)), cancellationToken);
@@ -10261,6 +10284,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (readback.IsSuccess) await UpsertOrder(tenantId, connectionId, readback.Value!, cancellationToken);
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
         return true;
+    }
+
+    // The action an open shipment effect is verified by, only where the verification job can judge it: picking
+    // (the package leaves New) and a Trendyol carrier change (the package shows the requested carrier). Other
+    // actions, and a Hepsiburada carrier change whose short name is not the carrier the order read shows, carry
+    // no action: a read could not tell, so they keep the old close-after-a-week path.
+    internal static (string? Action, string? ExpectedValue) ShipmentEffectContext(string action, string? payloadJson)
+    {
+        var normalized = action.Trim().ToUpperInvariant();
+        if (normalized == "PICKING") return (normalized, null);
+        if (normalized != "CHANGE_CARGO_PROVIDER" || string.IsNullOrWhiteSpace(payloadJson)) return (null, null);
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var provider = document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("cargoProvider", out var value) && value.ValueKind == JsonValueKind.String
+                    ? value.GetString()?.Trim()
+                    : null;
+            return string.IsNullOrEmpty(provider) || provider.Length > 256 ? (null, null) : (normalized, provider);
+        }
+        catch (JsonException) { return (null, null); }
     }
 
     // Hepsiburada dissolves an unpacked package: its lines return to the order and later reads no
@@ -10306,64 +10350,72 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<bool> ReturnAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        // Only a payload that cannot be read blocks the job for good, and a missing decision or claim is checked
+        // below. Any other failure (a dropped connection, a database fault) reaches the worker's retry handling
+        // instead of being taken for a bad payload and blocking the return decision.
+        Guid decisionId;
+        Guid[]? selectedReturnLineIds;
         try
         {
             using var payload = JsonDocument.Parse(payloadJson);
-            var decisionId = payload.RootElement.GetProperty("decisionId").GetGuid();
-            var selectedReturnLineIds = payload.RootElement.TryGetProperty("returnLineIds", out var selectedLinesElement) && selectedLinesElement.ValueKind == JsonValueKind.Array
+            decisionId = payload.RootElement.GetProperty("decisionId").GetGuid();
+            selectedReturnLineIds = payload.RootElement.TryGetProperty("returnLineIds", out var selectedLinesElement) && selectedLinesElement.ValueKind == JsonValueKind.Array
                 ? selectedLinesElement.EnumerateArray().Select(value => value.GetGuid()).Distinct().ToArray()
                 : null;
-            var decision = await db.ReturnDecisions.SingleAsync(x => x.TenantId == tenantId && x.Id == decisionId, cancellationToken);
-            if (decision.Status == "SUCCEEDED") return true;
-            if (decision.Status == "MANUAL_REVIEW") throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode ?? "RETURN_ACTION_REVIEW_REQUIRED", "İade kararı manuel inceleme bekliyor.", decision.ExternalOperationId));
-            var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == decision.ClaimId && x.ConnectionId == connectionId, cancellationToken);
-            if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı; pazar yeri isteği gönderilmedi."));
-            var returnLines = db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id);
-            if (selectedReturnLineIds is not null) returnLines = returnLines.Where(x => selectedReturnLineIds.Contains(x.Id));
-            var lineIds = await returnLines.OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
-            if (lineIds.Count == 0) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_LINES_REQUIRED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return false; }
-            var evidenceRows = await (from evidence in db.ReturnEvidence.AsNoTracking() where evidence.TenantId == tenantId && evidence.DecisionId == decisionId join asset in db.FileAssets.AsNoTracking() on new { evidence.TenantId, Id = evidence.FileAssetId } equals new { asset.TenantId, asset.Id } select asset).ToListAsync(cancellationToken);
-            var evidenceFiles = new List<ReturnEvidenceFile>(); long totalBytes = 0;
-            foreach (var asset in evidenceRows)
-            {
-                if (asset.SizeBytes <= 0 || asset.SizeBytes > 10 * 1024 * 1024 || totalBytes + asset.SizeBytes > 25 * 1024 * 1024) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_EVIDENCE_LIMIT_EXCEEDED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return false; }
-                await using var source = await files.OpenReadAsync(tenantId, asset.RelativePath, cancellationToken); await using var buffer = new MemoryStream(); await source.CopyToAsync(buffer, cancellationToken); if (buffer.Length != asset.SizeBytes) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_EVIDENCE_SIZE_MISMATCH"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "İade kanıt dosyasının kayıtlı boyutu ile okunan içerik eşleşmedi.")); }
-                var bytes = buffer.ToArray(); var checksum = Convert.ToHexString(SHA256.HashData(bytes)); if (!string.Equals(checksum, asset.Sha256, StringComparison.OrdinalIgnoreCase)) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_EVIDENCE_CHECKSUM_MISMATCH"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "İade kanıt dosyasının checksum doğrulaması başarısız oldu.")); }
-                evidenceFiles.Add(new(asset.OriginalNameSafe ?? $"evidence-{asset.Id:N}", asset.MimeType, bytes)); totalBytes += bytes.LongLength;
-            }
-            var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ReturnAction && x.IdempotencyKey == decision.IdempotencyKey, cancellationToken);
-            if (existingEffect is not null && existingEffect.CompletedAt is null) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "EXTERNAL_EFFECT_AMBIGUOUS"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "Önceki iade aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi.")); }
-            if (existingEffect is not null && existingEffect.CompletedAt is not null)
-            {
-                decision.Status = "SUBMITTED"; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
-                TrackRequest();
-                var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
-                if (readback.IsSuccess) TrackReceived();
-                if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
-                else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu daha önce kabul edildi ancak read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
-                return true;
-            }
-            var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ReturnAction, IdempotencyKey = decision.IdempotencyKey, CreatedAt = timeProvider.GetUtcNow() }; db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
-            TrackRequest();
-            var result = await returns.ExecuteAsync(Context(tenantId, connectionId, correlationId, decision.IdempotencyKey), new(claim.ExternalClaimId, lineIds, decision.Action, decision.ReasonCode, decision.Explanation, evidenceFiles), cancellationToken);
-            var now = timeProvider.GetUtcNow();
-            if (result.IsSuccess)
-            {
-                TrackReceived();
-                effect.CompletedAt = now; decision.Status = "SUBMITTED"; decision.ExternalOperationId = result.Value!.ExternalOperationId; decision.ErrorCode = null; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
-                TrackRequest();
-                var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
-                if (readback.IsSuccess) TrackReceived();
-                if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
-                else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu kabul edildi ancak anlık read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
-                return true;
-            }
-            var error = result.Error!; decision.ErrorCode = error.Code; decision.ExternalOperationId ??= error.RemoteRequestId;
-            TrackResultFailure(error);
-            if (IsAmbiguous(error)) { decision.Status = "MANUAL_REVIEW"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "İade aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId)); }
-            db.ExternalEffectRecords.Remove(effect); decision.Status = "FAILED"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error);
         }
-        catch (Exception exception) when (exception is JsonException or InvalidOperationException) { return false; }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException or InvalidOperationException) { return false; }
+        var decision = await db.ReturnDecisions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == decisionId, cancellationToken);
+        if (decision is null) return false;
+        if (decision.Status == "SUCCEEDED") return true;
+        if (decision.Status == "MANUAL_REVIEW") throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode ?? "RETURN_ACTION_REVIEW_REQUIRED", "İade kararı manuel inceleme bekliyor.", decision.ExternalOperationId));
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == decision.ClaimId && x.ConnectionId == connectionId, cancellationToken);
+        if (claim is null) return false;
+        if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı; pazar yeri isteği gönderilmedi."));
+        var returnLines = db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id);
+        if (selectedReturnLineIds is not null) returnLines = returnLines.Where(x => selectedReturnLineIds.Contains(x.Id));
+        var lineIds = await returnLines.OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
+        if (lineIds.Count == 0) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_LINES_REQUIRED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return false; }
+        var evidenceRows = await (from evidence in db.ReturnEvidence.AsNoTracking() where evidence.TenantId == tenantId && evidence.DecisionId == decisionId join asset in db.FileAssets.AsNoTracking() on new { evidence.TenantId, Id = evidence.FileAssetId } equals new { asset.TenantId, asset.Id } select asset).ToListAsync(cancellationToken);
+        var evidenceFiles = new List<ReturnEvidenceFile>(); long totalBytes = 0;
+        foreach (var asset in evidenceRows)
+        {
+            if (asset.SizeBytes <= 0 || asset.SizeBytes > 10 * 1024 * 1024 || totalBytes + asset.SizeBytes > 25 * 1024 * 1024) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_EVIDENCE_LIMIT_EXCEEDED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return false; }
+            await using var source = await files.OpenReadAsync(tenantId, asset.RelativePath, cancellationToken); await using var buffer = new MemoryStream(); await source.CopyToAsync(buffer, cancellationToken); if (buffer.Length != asset.SizeBytes) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_EVIDENCE_SIZE_MISMATCH"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "İade kanıt dosyasının kayıtlı boyutu ile okunan içerik eşleşmedi.")); }
+            var bytes = buffer.ToArray(); var checksum = Convert.ToHexString(SHA256.HashData(bytes)); if (!string.Equals(checksum, asset.Sha256, StringComparison.OrdinalIgnoreCase)) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_EVIDENCE_CHECKSUM_MISMATCH"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "İade kanıt dosyasının checksum doğrulaması başarısız oldu.")); }
+            evidenceFiles.Add(new(asset.OriginalNameSafe ?? $"evidence-{asset.Id:N}", asset.MimeType, bytes)); totalBytes += bytes.LongLength;
+        }
+        var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ReturnAction && x.IdempotencyKey == decision.IdempotencyKey, cancellationToken);
+        if (existingEffect is not null && existingEffect.CompletedAt is null) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "EXTERNAL_EFFECT_AMBIGUOUS"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "Önceki iade aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi.")); }
+        if (existingEffect is not null && existingEffect.CompletedAt is not null)
+        {
+            decision.Status = "SUBMITTED"; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
+            TrackRequest();
+            var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
+            if (readback.IsSuccess) TrackReceived();
+            if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
+            else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu daha önce kabul edildi ancak read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
+            return true;
+        }
+        // The claim and action are recorded as the instant return decision does, so the sweep can verify an unclear outcome.
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ReturnAction, IdempotencyKey = decision.IdempotencyKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connectionId, TargetId = claim.Id, Action = $"RETURN_{decision.Action}" }; db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+        TrackRequest();
+        var result = await returns.ExecuteAsync(Context(tenantId, connectionId, correlationId, decision.IdempotencyKey), new(claim.ExternalClaimId, lineIds, decision.Action, decision.ReasonCode, decision.Explanation, evidenceFiles), cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        if (result.IsSuccess)
+        {
+            TrackReceived();
+            effect.CompletedAt = now; decision.Status = "SUBMITTED"; decision.ExternalOperationId = result.Value!.ExternalOperationId; decision.ErrorCode = null; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
+            TrackRequest();
+            var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
+            if (readback.IsSuccess) TrackReceived();
+            if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
+            else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu kabul edildi ancak anlık read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
+            return true;
+        }
+        var error = result.Error!; decision.ErrorCode = error.Code; decision.ExternalOperationId ??= error.RemoteRequestId;
+        TrackResultFailure(error);
+        if (IsAmbiguous(error)) { decision.Status = "MANUAL_REVIEW"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "İade aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId)); }
+        db.ExternalEffectRecords.Remove(effect); decision.Status = "FAILED"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error);
     }
 
     private async Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) { var cursor = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resource, cancellationToken); if (cursor is not null) return cursor; cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resource, Version = 1 }; db.SyncCursors.Add(cursor); return cursor; }

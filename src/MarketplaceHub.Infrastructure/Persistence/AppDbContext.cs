@@ -336,12 +336,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.ProgressLabel).HasMaxLength(256); entity.Property(x => x.LockGroup).HasMaxLength(48);
             entity.HasIndex(x => new { x.TenantId, x.JobType, x.JobDedupKey }).IsUnique();
             entity.HasIndex(x => new { x.Status, x.Priority, x.AvailableAt, x.CreatedAt });
+            // The job list pages a tenant's jobs newest first (CreatedAt DESC, Id DESC). Created CONCURRENTLY by
+            // migration AddJobListAndAttemptIndexes.
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt, x.Id }).IsDescending(false, true, true);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<JobAttempt>(entity =>
         {
             entity.ToTable("job_attempts", "integration"); entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.JobId, x.AttemptNumber }).IsUnique();
+            // A tenant's recent attempts (connection error history) read by time and joined to their job. It also
+            // serves the tenant foreign key, so the former single-column TenantId index is gone.
+            entity.HasIndex(x => new { x.TenantId, x.StartedAt }).IncludeProperties(x => x.JobId);
             entity.HasOne<IntegrationJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

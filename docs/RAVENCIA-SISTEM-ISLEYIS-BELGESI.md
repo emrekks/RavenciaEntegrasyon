@@ -485,7 +485,11 @@ Her karar yetki, mevcut durum ve sağlayıcı yeteneği bakımından doğrulanı
 
 ### 11.1. Faturalandırılabilir kapsam
 
-Faturalandırma siparişten çok paket bazlı değerlendirilir. Aynı paket için ikinci bir satış faturası oluşturulamaz. Bu kontrol hem iş kuralı hem veritabanı benzersizlik kuralı ile korunur.
+Satış faturası sipariş bazlı kesilir: bir sipariş, güncel paketlerinin tamamı için tek bir mali satış faturası alır. Aynı sipariş için ikinci bir satış faturası oluşturulamaz. Bu kontrol hem iş kuralı hem veritabanı benzersizlik kuralı (sipariş başına tek `SALE` faturası) ile korunur. Fatura ekranı satırları paket olarak listeler; seçilen paket yalnızca siparişi ve teslim bilgisini belirler, faturaya siparişin bütün güncel paketlerinin kalemleri girer.
+
+Güncel paket, siparişler ve pano ekranlarıyla aynı kurala göre belirlenir: yerine yeni paket gelmiş (bölünmüş veya yeniden gönderilmiş) paketler ile yerine gerçek paket gelmiş Trendyol ödeme yer tutucusu (paket no `0`) geçmiş olarak saklanır ve faturaya girmez. İptal edilmiş paketler de faturaya girmez.
+
+İptal edilmiş, iade edilmiş, teslim edilememiş veya ödemesi beklenen sipariş ya da paket için yeni satış faturası oluşturulmaz (`INVOICE_SALE_STATUS_NOT_ELIGIBLE`). Bu siparişler fatura listesinde görünmeye devam eder; daha önce kesilmiş faturanın durumu buradan izlenir.
 
 Fatura bekleyen toplamı ilk 200 pakete göre değil, veritabanındaki bütün uygun ve henüz faturalandırılmamış paketlere göre hesaplanır.
 
@@ -496,13 +500,18 @@ Fatura bekleyen toplamı ilk 200 pakete göre değil, veritabanındaki bütün u
 1. Sipariş ve paket uygunluğu kontrol edilir.
 2. Mevcut fatura ve devam eden fatura işi aranır.
 3. Müşteri ve adres snapshot’ları hazırlanır.
-4. Fatura satırları, miktar, indirim, KDV ve toplamlar hesaplanır.
-5. Müşteri uygunluğuna göre E-Fatura veya E-Arşiv belge tipi seçilir.
+4. Belge türü belirlenir. Otomatik akış yalnızca E-Arşiv fatura keser:
+   - Alıcı e-Fatura mükellefi görünüyorsa (sipariş kaydında alıcı kurumsal ve fatura adresi e-Fatura’ya açık) fatura kesilmez (`EINVOICE_RECIPIENT_REQUIRES_EFATURA`). e-Fatura durum sorgusu doğrulanmadığı için otomatik e-Fatura kapalıdır; fatura E-Faturam portalında e-Fatura olarak düzenlenip panele manuel belge olarak eklenir.
+   - Trendyol dışındaki pazaryerlerinde kurumsal alıcının mükellefiyeti doğrulanamadığından sipariş otomatik E-Arşiv’e gönderilmez, incelemeye bekletilir.
+   - Mikro ihracat veya TRY dışı para birimindeki siparişler yurt içi akıştan çıkarılır (`INVOICE_EXPORT_FLOW_REQUIRED`).
+5. Fatura satırları, miktar, indirim, KDV ve toplamlar hesaplanır. KDV oranı bilinmeyen satır varsa fatura kesilmez. Yuvarlama farkı yalnızca KDV’li bir satırın KDV’sine eklenir; %0 KDV’li satır hiçbir zaman KDV taşımaz.
 6. İdempotent fatura kaydı ve gönderim işi oluşturulur.
 7. E-Faturam provider’ına gönderilir.
 8. Provider sonucu ve ETTN/UUID kaydedilir.
 9. Belge hazır olana kadar durum takip edilir.
-10. Gerekliyse güvenli fatura bağlantısı Trendyol’a iletilir.
+10. Gerekliyse güvenli fatura bağlantısı pazaryerine iletilir.
+
+İade/düzeltme faturası akışı henüz hazır değildir; iade faturası E-Faturam portalında düzenlenir.
 
 ### 11.3. Fatura durumları
 

@@ -81,6 +81,32 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
 
     internal sealed record RunnableDepthRow(string JobType, int Priority, Guid? ConnectionId, bool Running, int Count);
 
+    // The oldest AvailableAt among queued jobs a slot could take now, across every tenant, for /health/queues. Same
+    // rule as RunnableDepthAsync (keep the two in step): a job waiting for its connection's busy lock group or a quota
+    // backoff is waiting by design, so it does not make the queue look stuck.
+    public static async Task<DateTimeOffset?> OldestRunnableAvailableAtAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQuery<OldestRunnableRow>($"""
+            WITH busy AS (
+                SELECT DISTINCT running."ConnectionId", coalesce(running."LockGroup", running_group.lock_group) AS lock_group
+                FROM integration.jobs running
+                LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS running_group(job_type, lock_group)
+                  ON running_group.job_type = running."JobType"
+                WHERE running."Status" = 'LEASED' AND running."LeaseExpiresAt" > {now} AND running."ConnectionId" IS NOT NULL)
+            SELECT min(job."AvailableAt") AS "OldestAvailableAt"
+            FROM integration.jobs job
+            LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS job_group(job_type, lock_group)
+              ON job_group.job_type = job."JobType"
+            WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED') AND job."AvailableAt" <= {now} AND job."AttemptCount" < job."MaxAttempts"
+              AND NOT EXISTS (SELECT 1 FROM busy WHERE busy."ConnectionId" = job."ConnectionId" AND busy.lock_group = coalesce(job."LockGroup", job_group.lock_group))
+              AND NOT EXISTS (SELECT 1 FROM integration.connection_backoffs backoff
+                  WHERE backoff."ConnectionId" = job."ConnectionId" AND backoff."LockGroup" = coalesce(job."LockGroup", job_group.lock_group) AND backoff."Until" > {now})
+            """).ToListAsync(cancellationToken);
+        return rows.Count == 0 ? null : rows[0].OldestAvailableAt;
+    }
+
+    public sealed record OldestRunnableRow(DateTimeOffset? OldestAvailableAt);
+
     // The panel's lane codes; the four lanes it knew before keep their codes.
     internal static string LaneCode(string lane) => lane switch
     {

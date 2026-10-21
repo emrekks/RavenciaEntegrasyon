@@ -563,6 +563,10 @@ public sealed partial class HepsiburadaHttpClient(
             var packages = order.Packages.ToArray();
             for (var index = 0; index < packages.Length; index++)
             {
+                // R5: the detail's own carrier and tracking number are used first. Package status reconciliation reads
+                // the detail to see packages move on, so the tracking read is left out only where it cannot change
+                // anything (TrackingReadCannotChange); an Undelivered, cancelled or returned package is still read.
+                if (TrackingReadCannotChange(packages[index])) continue;
                 var readback = await ReadPackageTrackingInfoAsync(
                     account,
                     new RemoteOrderPackage(order.ExternalOrderId, packages[index]),
@@ -587,27 +591,29 @@ public sealed partial class HepsiburadaHttpClient(
             return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_WINDOW_INVALID", "Hepsiburada paket listelemesi artan ve en fazla 24 saatlik tarih aralığı kabul eder.", HttpStatusCode.BadRequest);
 
         var (offset, limit) = Page(page, settings.PageSize);
+        var (statusOffset, statusLimit) = StatusListPage(offset, limit);
         try
         {
             var query = PackageListQuery(offset, limit, window);
             var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Packages(account, query), cancellationToken);
             if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(response.Error!, response.RateLimit);
 
-            var sources = new List<(string? Status, IReadOnlyList<JsonElement> Items, int? TotalCount)>();
+            var sources = new List<(string? Status, IReadOnlyList<JsonElement> Items, int? TotalCount, int Offset, int Limit)>();
             var openPage = HepsiburadaJsonMapper.PackagePage(response.Value!.RootElement);
-            sources.Add((null, openPage.Items, openPage.TotalCount));
+            sources.Add((null, openPage.Items, openPage.TotalCount, offset, limit));
             var rateLimit = response.RateLimit;
 
             // The generic package list only returns Open packages. Hepsiburada
             // exposes shipped/delivered/undelivered packages through separate
             // read-only endpoints, each with a 30-day lookback and max limit 50.
+            var statusQuery = PackageListQuery(statusOffset, statusLimit, window);
             foreach (var status in window.IncludeStatusLists ? new[] { "shipped", "delivered", "undelivered" } : [])
             {
-                var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, query), cancellationToken);
+                var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, statusQuery), cancellationToken);
                 if (!statusResponse.IsSuccess)
                     return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(statusResponse.Error!, statusResponse.RateLimit ?? rateLimit);
                 var statusPage = HepsiburadaJsonMapper.PackagePage(statusResponse.Value!.RootElement);
-                sources.Add((status, statusPage.Items, statusPage.TotalCount));
+                sources.Add((status, statusPage.Items, statusPage.TotalCount, statusOffset, statusLimit));
                 rateLimit = statusResponse.RateLimit ?? rateLimit;
             }
 
@@ -649,7 +655,8 @@ public sealed partial class HepsiburadaHttpClient(
                 // A package the lists already show as delivered, undelivered, cancelled or returned cannot move on
                 // through the tracking read; asking for it anyway made every page cost one extra request per row.
                 // G13: only when the list already names the carrier and the tracking number, so a package first
-                // seen delivered or undelivered still gets its cargo company once.
+                // seen delivered or undelivered still gets its cargo company once. An open package listed with both
+                // fields is not asked for either (R5).
                 if (SkipsTrackingRead(item))
                 {
                     items.Add(item);
@@ -662,8 +669,8 @@ public sealed partial class HepsiburadaHttpClient(
 
             var nextOffset = offset + limit;
             var hasMore = sources.Any(source => source.TotalCount is { } total
-                ? nextOffset < total
-                : source.Items.Count == limit);
+                ? source.Offset + source.Limit < total
+                : source.Items.Count == source.Limit);
             var totalCount = sources.Where(source => source.TotalCount is not null).Select(source => source.TotalCount!.Value).DefaultIfEmpty().Max();
             return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Success(new(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, totalCount == 0 ? null : totalCount, issues), rateLimit);
         }
@@ -765,6 +772,16 @@ public sealed partial class HepsiburadaHttpClient(
     // The open package list and the shipped/delivered/undelivered lists all take the lower-case "offset" that live
     // reads have used. A schema copy spells it "Offset"; that spelling was never confirmed against the service, so it
     // is not sent until a read past the first page proves it on SIT.
+    // R6: the shipped, delivered and undelivered lists take up to 50 rows, while the open list keeps its page of 10
+    // (each open row can cost a tracking read). The job's cursor is the open list's offset, so the status lists
+    // page by the same page number: page n reads open rows from n*10 and status rows from n*50. A list already read
+    // to its end is still asked (and answers empty) while another list has more, because a plain offset cursor
+    // cannot say which lists are done.
+    internal const int StatusListPageSize = 50;
+
+    internal static (int Offset, int Limit) StatusListPage(int offset, int limit) =>
+        ((int)Math.Min((long)(offset / Math.Max(1, limit)) * StatusListPageSize, int.MaxValue), StatusListPageSize);
+
     internal static string PackageListQuery(int offset, int limit, PackagePollWindow window)
     {
         var query = new List<string>
@@ -777,10 +794,25 @@ public sealed partial class HepsiburadaHttpClient(
         return string.Join('&', query);
     }
 
+    // R5: an open-list package that already names its carrier and tracking number gains only those two fields from
+    // the tracking read, so it is not asked for; its later move on comes from the status lists and from package
+    // status reconciliation.
     internal static bool SkipsTrackingRead(RemoteOrderPackage package) =>
-        HasTerminalListStatus(package)
-        && !string.IsNullOrWhiteSpace(package.Package.CargoProviderExternalId)
-        && !string.IsNullOrWhiteSpace(package.Package.CargoTrackingNumber);
+        HasCarrierAndTracking(package.Package)
+        && (HasTerminalListStatus(package) || IsListedOpen(package.Package));
+
+    // ReadPackageTrackingInfoAsync keeps a Delivered status (and its date) whatever the tracking read says; it would
+    // only restate the carrier and tracking number, so for a delivered package with both known the read is skipped.
+    internal static bool TrackingReadCannotChange(RemotePackage package) =>
+        HasCarrierAndTracking(package)
+        && string.Equals(package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasCarrierAndTracking(RemotePackage package) =>
+        !string.IsNullOrWhiteSpace(package.CargoProviderExternalId)
+        && !string.IsNullOrWhiteSpace(package.CargoTrackingNumber);
+
+    private static bool IsListedOpen(RemotePackage package) =>
+        !package.IsStatusObservation && string.Equals(package.RawStatus, "Open", StringComparison.OrdinalIgnoreCase);
 
     internal static bool HasTerminalListStatus(RemoteOrderPackage package) =>
         ShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered

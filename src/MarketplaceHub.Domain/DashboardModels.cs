@@ -43,6 +43,17 @@ public static class DashboardMetricPolicy
     public static bool IsInvoiceEligibleOrder(string? status) =>
         !InvoiceExcludedOrderStatuses.Contains(status?.Trim().ToUpperInvariant() ?? string.Empty, StringComparer.Ordinal);
 
+    // D6: the invoice lists keep returned, undelivered and unpaid orders visible (an invoice may already exist),
+    // but a new sale invoice is not issued for them: the goods came back, never arrived or were never paid.
+    public const string SaleInvoiceStatusBlockedCode = "INVOICE_SALE_STATUS_NOT_ELIGIBLE";
+    public static readonly string[] SaleInvoiceBlockedOrderStatuses = ["CANCELLED", "CANCELED", "RETURNED", "UNDELIVERED", "PAYMENT_PENDING"];
+
+    public static bool IsSaleInvoiceBlockedOrder(string? status) =>
+        SaleInvoiceBlockedOrderStatuses.Contains(status?.Trim().ToUpperInvariant() ?? string.Empty, StringComparer.Ordinal);
+
+    public static bool IsSaleInvoiceBlockedPackage(ShipmentPackageStatus status) =>
+        status is ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.PaymentPending;
+
     public static bool IsInvoiceDueSoon(DateTimeOffset deliveredAt, DateTimeOffset now)
     {
         var age = now - deliveredAt;

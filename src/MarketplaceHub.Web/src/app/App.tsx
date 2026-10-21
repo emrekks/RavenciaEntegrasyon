@@ -446,6 +446,11 @@ function MfaChallenge() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  // An account with several workspaces learns their names only after the second factor (G8): the server then answers
+  // TENANT_SELECTION_REQUIRED and the next request names the workspace instead of sending a code again.
+  const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([])
+  const [tenantId, setTenantId] = useState('')
+  const choosingTenant = tenantOptions.length > 0
   async function backToLogin() {
     setLeaving(true)
     try { await api('/logout', { method: 'POST' }) } finally { clearPersonalStorage(); clearQuerySnapshot(); window.location.replace(`/?signedOut=${Date.now()}`) }
@@ -456,20 +461,24 @@ function MfaChallenge() {
     setLoading(true)
     const data = new FormData(event.currentTarget)
     try {
-      await api('/mfa/challenge', { method: 'POST', body: JSON.stringify({ code: mode === 'code' ? data.get('code') : null, recoveryCode: mode === 'recovery' ? data.get('recovery') : null }) })
+      const body = choosingTenant
+        ? { code: null, recoveryCode: null, tenantId: tenantId || null }
+        : { code: mode === 'code' ? data.get('code') : null, recoveryCode: mode === 'recovery' ? data.get('recovery') : null }
+      await api('/mfa/challenge', { method: 'POST', body: JSON.stringify(body) })
       await client.invalidateQueries({ queryKey: ['me'] })
     } catch (reason) {
-      setError(mfaChallengeErrorMessage(reason, mode))
+      if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError(choosingTenant ? 'Listeden bir çalışma alanı seçin.' : '') }
+      else setError(mfaChallengeErrorMessage(reason, mode))
     } finally {
       setLoading(false)
     }
   }
   return <AuthPageFrame ariaLabel="Ravencia iki adımlı doğrulama" accessLabel="Kimlik doğrulama" accessMeta="3 / 3" cardTitle="Erişiminizi doğrulayın" cardDescription={mode === 'code' ? 'Authenticator uygulamanızdaki 6 haneli kodu girin.' : 'Tek kullanımlık kurtarma kodlarınızdan birini girin.'} progressStep={3} footerMeta="Doğrulama koruması etkin" topAction={<button type="button" className="rv-auth-back" onClick={() => void backToLogin()} disabled={leaving}><UiIcon name="arrowLeft" size={16} />{leaving ? 'Giriş ekranına dönülüyor…' : 'Giriş ekranına dön'}</button>}>
-    <div className="rv-auth-choice" role="tablist" aria-label="Doğrulama yöntemi"><button type="button" role="tab" aria-selected={mode === 'code'} className={mode === 'code' ? 'is-active' : ''} onClick={() => { setMode('code'); setError('') }}>Authenticator kodu</button><button type="button" role="tab" aria-selected={mode === 'recovery'} className={mode === 'recovery' ? 'is-active' : ''} onClick={() => { setMode('recovery'); setError('') }}>Kurtarma kodu</button></div>
+    {!choosingTenant && <div className="rv-auth-choice" role="tablist" aria-label="Doğrulama yöntemi"><button type="button" role="tab" aria-selected={mode === 'code'} className={mode === 'code' ? 'is-active' : ''} onClick={() => { setMode('code'); setError('') }}>Authenticator kodu</button><button type="button" role="tab" aria-selected={mode === 'recovery'} className={mode === 'recovery' ? 'is-active' : ''} onClick={() => { setMode('recovery'); setError('') }}>Kurtarma kodu</button></div>}
     <form className="rv-auth-form rv-auth-mfa-form" onSubmit={submit}>
-      {mode === 'code' ? <div className="rv-auth-field"><label htmlFor="mfa-code">6 haneli doğrulama kodu</label><div className="rv-auth-control"><UiIcon name="shield" /><input id="mfa-code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required ref={focusOnMount} placeholder="000000" /></div></div> : <div className="rv-auth-field"><label htmlFor="mfa-recovery">Kurtarma kodu</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="mfa-recovery" name="recovery" autoComplete="off" required ref={focusOnMount} placeholder="Kurtarma kodunu girin" /></div></div>}
+      {choosingTenant ? <div className="rv-auth-field"><label htmlFor="mfa-tenant">Çalışma alanı</label><select id="mfa-tenant" value={tenantId} onChange={event => setTenantId(event.target.value)} required ref={focusOnMount}><option value="">Çalışma alanı seçin</option>{tenantOptions.map(option => <option key={option.id} value={option.id}>{option.displayName}</option>)}</select></div> : mode === 'code' ? <div className="rv-auth-field"><label htmlFor="mfa-code">6 haneli doğrulama kodu</label><div className="rv-auth-control"><UiIcon name="shield" /><input id="mfa-code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required ref={focusOnMount} placeholder="000000" /></div></div> : <div className="rv-auth-field"><label htmlFor="mfa-recovery">Kurtarma kodu</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="mfa-recovery" name="recovery" autoComplete="off" required ref={focusOnMount} placeholder="Kurtarma kodunu girin" /></div></div>}
       {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
-      <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Doğrulanıyor…</> : <><span>Erişimi doğrula</span><UiIcon name="arrowRight" /></>}</button>
+      <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Doğrulanıyor…</> : <><span>{choosingTenant ? 'Çalışma alanına gir' : 'Erişimi doğrula'}</span><UiIcon name="arrowRight" /></>}</button>
     </form>
   </AuthPageFrame>
 }

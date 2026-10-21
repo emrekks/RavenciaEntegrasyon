@@ -43,9 +43,22 @@ read_env_or() {
 
 # API and Worker each hold an EF pool, a separate NpgsqlDataSource and a LISTEN
 # connection; without a cap they can exhaust PostgreSQL's max_connections.
+# The file's 25 is the API's pool. The Worker replaces it with Database:MaxPoolSize
+# (45, src/MarketplaceHub.Worker/appsettings.json) and the shared rate limiter's
+# data source is capped at 5 in code, so the file itself needs no change:
+# 25 + 5 + 45 + 5 + LISTEN/migrate/backup sessions stays under max_connections=150.
 warn_on_unbounded_connection_pool() {
   if ! "${sudo_cmd[@]}" grep -qi 'Maximum Pool Size=' "$repository_root/deploy/secrets/app_db_connection.txt"; then
     echo "WARNING: deploy/secrets/app_db_connection.txt has no 'Maximum Pool Size'; append ';Maximum Pool Size=25;Timeout=15;Command Timeout=120' (see docs/CI-CD-DEPLOY.md)." >&2
+  fi
+}
+
+# Alerts (healthwatch, failed backups, deploy rollbacks) go nowhere without a
+# channel; "::warning::" also shows on the GitHub Actions run of a CI deploy.
+warn_when_alerts_unconfigured() {
+  local url_file="$repository_root/deploy/secrets/alert_webhook_url.txt"
+  if [[ ! -s "$url_file" ]] && ! "${sudo_cmd[@]}" test -s "$url_file" 2>/dev/null; then
+    echo "::warning::No alert channel is configured: create deploy/secrets/alert_webhook_url.txt (docs/CI-CD-DEPLOY.md). Health, backup and rollback alerts are only written to the journal until then." >&2
   fi
 }
 
@@ -79,7 +92,10 @@ run_verified_backup() {
     test -s private-volumes.tar.gz
     sha256sum -c SHA256SUMS
     pg_restore --list database.dump >/dev/null
-  ' sh "$backup_set"
+  ' sh "$backup_set" || return
+  # The set's name, for callers that use it next (fast-deploy.sh's migration rehearsal).
+  # shellcheck disable=SC2034
+  verified_backup_set="$backup_set"
 }
 
 # Polls /health/ready through the edge (entered via loopback) until it answers 200.
@@ -121,11 +137,11 @@ verify_frontend() {
   curl --connect-timeout 3 --max-time 10 --silent --show-error --fail --output /dev/null "$site_address$asset_path"
 }
 
+# Chained with && so the result is also correct where errexit does not apply
+# (fast-deploy.sh calls it in an || list to decide on an automatic rollback).
 verify_stack() {
   local site_address="$1"
-  wait_for_readiness "$site_address"
-  wait_for_worker_health 30
-  verify_frontend "$site_address"
+  wait_for_readiness "$site_address" && wait_for_worker_health 30 && verify_frontend "$site_address"
 }
 
 # Deployment state shared with ci-entrypoint.sh and rollback.sh:

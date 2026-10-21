@@ -90,6 +90,33 @@ public sealed class DashboardMetricPolicyTests
     public void ActiveOrdersRemainInvoiceEligible(string status) => Assert.True(DashboardMetricPolicy.IsInvoiceEligibleOrder(status));
 
     [Theory]
+    [InlineData("CANCELLED")]
+    [InlineData("returned")]
+    [InlineData(" UNDELIVERED ")]
+    [InlineData("PAYMENT_PENDING")]
+    public void ReturnedUndeliveredAndUnpaidOrdersGetNoNewSaleInvoice(string status) => Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(status));
+
+    [Theory]
+    [InlineData("NEW")]
+    [InlineData("SHIPPED")]
+    [InlineData("DELIVERED")]
+    [InlineData(null)]
+    public void LiveOrdersCanGetASaleInvoice(string? status) => Assert.False(DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(status));
+
+    [Theory]
+    [InlineData(ShipmentPackageStatus.Cancelled)]
+    [InlineData(ShipmentPackageStatus.Returned)]
+    [InlineData(ShipmentPackageStatus.Undelivered)]
+    [InlineData(ShipmentPackageStatus.PaymentPending)]
+    public void ReturnedUndeliveredAndUnpaidPackagesGetNoNewSaleInvoice(ShipmentPackageStatus status) => Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(status));
+
+    [Theory]
+    [InlineData(ShipmentPackageStatus.New)]
+    [InlineData(ShipmentPackageStatus.Shipped)]
+    [InlineData(ShipmentPackageStatus.Delivered)]
+    public void LivePackagesCanGetASaleInvoice(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(status));
+
+    [Theory]
     [InlineData(JobStatus.Pending)]
     [InlineData(JobStatus.Leased)]
     [InlineData(JobStatus.RetryScheduled)]

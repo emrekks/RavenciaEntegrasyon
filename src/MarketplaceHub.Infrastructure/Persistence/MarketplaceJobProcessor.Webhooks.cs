@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -13,7 +14,7 @@ public sealed partial class MarketplaceJobProcessor
     // in the panel first and asked from Hepsiburada only when unknown. unpack lists its orders in
     // orderNumbers[]; a line item cancel names the line. The event path (packages/{no}/deliver,
     // lineitems/{id}/cancel, orders/{no}/shippingaddress) fills in what the body leaves out.
-    private async Task<bool> ReadHepsiburadaOrderEvent(Guid tenantId, Guid connectionId, JsonElement root, string? eventPath, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> ReadHepsiburadaOrderEvent(Guid tenantId, Guid connectionId, JsonElement root, string eventKey, string? eventPath, string correlationId, CancellationToken cancellationToken)
     {
         var reference = HepsiburadaEventReference(eventPath);
         var orderNumbers = new List<string>();
@@ -46,6 +47,10 @@ public sealed partial class MarketplaceJobProcessor
         }
         // Nothing to read: the scheduled reads still bring the change.
         if (orderNumbers.Count == 0) return true;
+        // An event naming more orders than one run reads (an unpack of many orders) hands the rest to targeted
+        // order reads of their own instead of dropping them; they are queued first, so a retry of this event
+        // after a failed read finds them already there.
+        await QueueHepsiburadaOrderReadsAsync(tenantId, connectionId, orderNumbers.Skip(HepsiburadaPackagePolicy.MaxOrderReadsPerRun), eventKey, correlationId, cancellationToken);
         var completed = true;
         foreach (var orderNumber in orderNumbers.Take(HepsiburadaPackagePolicy.MaxOrderReadsPerRun))
         {
@@ -53,6 +58,40 @@ public sealed partial class MarketplaceJobProcessor
             completed &= await SyncHepsiburadaOrders(tenantId, connectionId, payload, correlationId, "ORDERS", false, cancellationToken);
         }
         return completed;
+    }
+
+    // One targeted Hepsiburada order read per order, keyed by the event (its message id) so the same event
+    // never queues an order twice while a later event for the same order still gets its own read.
+    private async Task QueueHepsiburadaOrderReadsAsync(Guid tenantId, Guid connectionId, IEnumerable<string> orderNumbers, string eventKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var queued = 0;
+        foreach (var orderNumber in orderNumbers)
+        {
+            var dedup = $"hepsiburada-webhook-order:{connectionId:N}:{Hash($"{orderNumber}\n{eventKey}")}";
+            if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.HepsiburadaOrderSync && x.JobDedupKey == dedup, cancellationToken)) continue;
+            var payload = JsonSerializer.Serialize(new { connectionId, externalOrderId = orderNumber, packageNumber = (string?)null });
+            db.IntegrationJobs.Add(new IntegrationJob
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                JobType = MarketplaceJobTypes.HepsiburadaOrderSync,
+                PayloadJson = payload,
+                PayloadVersion = 1,
+                PayloadHash = Hash(payload),
+                JobDedupKey = dedup,
+                EffectIdempotencyKey = dedup,
+                Priority = JobPriorityPolicy.For(MarketplaceJobTypes.HepsiburadaOrderSync, userInitiated: false),
+                Status = JobStatus.Pending,
+                AvailableAt = now,
+                CorrelationId = correlationId,
+                CreatedAt = now,
+                Version = 1
+            });
+            queued++;
+        }
+        if (queued > 0) await db.SaveChangesAsync(cancellationToken);
     }
 
     // ("packages", "123") from "packages/123/deliver": the kind and id of an order event path.
