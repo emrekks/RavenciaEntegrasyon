@@ -65,6 +65,7 @@ public static class MarketplaceJobTypes
     public const string PazaramaOrderRecoverySync = "PAZARAMA_ORDER_RECOVERY_SYNC";
     public const string PazaramaOrderStatusSync = "PAZARAMA_ORDER_STATUS_SYNC";
     public const string PttAvmConnectionTest = "PTTAVM_CONNECTION_TEST";
+    public const string PttAvmReferenceSync = "PTTAVM_REFERENCE_SYNC";
     public const string PttAvmOrderSync = "PTTAVM_ORDER_SYNC";
     public const string PttAvmOrderRecoverySync = "PTTAVM_ORDER_RECOVERY_SYNC";
     public const string PttAvmOrderStatusSync = "PTTAVM_ORDER_STATUS_SYNC";
@@ -76,7 +77,7 @@ public static class MarketplaceJobTypes
     public static readonly IReadOnlyList<string> ProcessorJobTypes =
     [
         ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest, N11ConnectionTest, PazaramaConnectionTest, PttAvmConnectionTest,
-        ReferenceSync, HepsiburadaReferenceSync, N11ReferenceSync, PazaramaReferenceSync,
+        ReferenceSync, HepsiburadaReferenceSync, N11ReferenceSync, PazaramaReferenceSync, PttAvmReferenceSync,
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
         PriceInventorySync, StockProjectionDispatch, ExternalEffectReconcile,
@@ -144,10 +145,11 @@ public static class MarketplaceJobTypes
             OrderStatusSync => PazaramaOrderStatusSync,
             _ => jobType
         },
-        // PTT AVM takes the same path (docs/PTTAVM-ENTEGRASYON-PLANI.md); phase 1 is the connection test, phase 2 the order reads.
+        // PTT AVM takes the same path (docs/PTTAVM-ENTEGRASYON-PLANI.md); phase 1 is the connection test, phase 2 the order reads, phase 3 the category tree.
         "PTTAVM" => jobType switch
         {
             ConnectionTest => PttAvmConnectionTest,
+            ReferenceSync => PttAvmReferenceSync,
             OrderSync => PttAvmOrderSync,
             OrderRecoverySync => PttAvmOrderRecoverySync,
             OrderStatusSync => PttAvmOrderStatusSync,

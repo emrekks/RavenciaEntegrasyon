@@ -886,6 +886,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             jobs.Add(new(MarketplaceJobTypes.PazaramaReferenceSync, "brands", JsonSerializer.Serialize(new { connectionId, resourceType = "BRANDS", parentExternalId = (string?)null })));
         }
 
+        // PTT AVM has a category tree only (no brand or attribute service).
+        if (platform == "PTTAVM")
+            jobs.Add(new(MarketplaceJobTypes.PttAvmReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
+
         if (platform is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM")) return jobs;
         var orderType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderRecoverySync);
         jobs.Add(new(orderType, "orders", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null, full = true })));

@@ -1810,7 +1810,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .GroupBy(item => item.OptionLabel, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(option => option.Key, option => option.Last().ValueLabel, StringComparer.OrdinalIgnoreCase));
         var connections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA"))
+            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"))
             .ToDictionaryAsync(x => x.Id, x => new { x.DisplayName, x.PlatformCode }, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
@@ -2209,7 +2209,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var parts = value.Split(':', 2, StringSplitOptions.TrimEntries);
         platformCode = parts.Length == 2 ? parts[0].ToUpperInvariant() : string.Empty;
         platformState = parts.Length == 2 ? parts[1].ToUpperInvariant() : string.Empty;
-        return platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA"
+        return platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM"
             && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE";
     }
 

@@ -127,8 +127,9 @@ public sealed partial class PttAvmHttpClient(
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, connection.RateLimit ?? orders.RateLimit);
     }
 
-    // GetMainCategoriesResult is {success, main_category, error}; null when the list was read.
-    internal static string? MainCategoryError(XElement result)
+    // GetMainCategoriesResult is {success, main_category, error} and GetCategoryTreeResult {success, category_tree, error};
+    // null when the list was read.
+    internal static string? MainCategoryError(XElement result, string listName = "main_category")
     {
         if (IsNil(result)) return "PTTAVM_CONTRACT_INVALID: boş yanıt";
         if (!string.Equals(ContractValue(result, "success"), "true", StringComparison.OrdinalIgnoreCase))
@@ -136,7 +137,7 @@ public sealed partial class PttAvmHttpClient(
             var error = result.Elements().FirstOrDefault(x => x.Name.LocalName == "error");
             return $"PTTAVM_REQUEST_REJECTED: {Clip(ContractValue(error, "error_message") ?? ContractValue(error, "error_code")) ?? "success=false"}";
         }
-        return result.Elements().Any(x => x.Name.LocalName == "main_category") ? null : $"PTTAVM_CONTRACT_INVALID: {ElementShape(result)}";
+        return result.Elements().Any(x => x.Name.LocalName == listName) ? null : $"PTTAVM_CONTRACT_INVALID: {ElementShape(result)}";
     }
 
     // SiparisKontrolListesiV2: at most 40 days apart; AktifSiparisler=0 returns every status.

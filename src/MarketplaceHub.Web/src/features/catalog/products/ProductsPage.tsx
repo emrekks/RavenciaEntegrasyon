@@ -414,7 +414,7 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
-    const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : 'UNKNOWN')
+    const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : platform.toUpperCase().replace(/\s/g, '').includes('PTTAVM') ? 'PTTAVM' : 'UNKNOWN')
     const key = `${platformCode}:${platform}`
     const current = platformStatusAggregates.get(key)
     if (current) {
@@ -446,9 +446,9 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
   // Every marketplace is listed, those without a match greyed out. The dot is green when every variant is live or
   // connected there, yellow when only some are (or some failed), red when all failed and cycles while it updates.
-  const platformMarks = (['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'SHOPIFY'] as const).map(code => {
+  const platformMarks = (['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY'] as const).map(code => {
     const card = platformCards.find(item => item.platformCode === code)
-    const name = code === 'N11' ? 'N11' : code.charAt(0) + code.slice(1).toLocaleLowerCase('tr-TR')
+    const name = code === 'N11' ? 'N11' : code === 'PTTAVM' ? 'PTT AVM' : code.charAt(0) + code.slice(1).toLocaleLowerCase('tr-TR')
     const linkedTone = card && card.variantCount > 0 && card.matchedVariantCount < card.variantCount ? 'part' : 'on'
     const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', inactive: 'none' } as Record<string, string>)[card.state] ?? 'none' : 'none'
     return { code, state, label: card?.label ?? `${name} ürün eşleşmesi bulunamadı` }

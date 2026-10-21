@@ -727,7 +727,231 @@ public sealed class PttAvmAdapterTests
         Assert.Equal((120, 30), ScheduledOrderPollingCadencePolicy.ForPlatform("PTTAVM", "ORDERS", 60, 30));
         Assert.Equal((900, 30), ScheduledOrderPollingCadencePolicy.ForPlatform("PTTAVM", "ORDER_LIFECYCLE", 120, 60));
         var plan = MarketplaceConnectionService.CreateInitialDataSyncPlan("PTTAVM", Guid.NewGuid(), false);
-        Assert.Equal(MarketplaceJobTypes.PttAvmOrderRecoverySync, Assert.Single(plan).JobType);
+        Assert.Equal([MarketplaceJobTypes.PttAvmReferenceSync, MarketplaceJobTypes.PttAvmOrderRecoverySync], plan.Select(x => x.JobType));
+        Assert.Contains("\"resourceType\":\"CATEGORIES\"", plan[0].PayloadJson);
+    }
+
+    // GetCategoryTree as published (one branch), with a second root and a repeated id.
+    private const string CategoryTreeAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+           <s:Body>
+              <GetCategoryTreeResponse xmlns="http://tempuri.org/">
+                 <GetCategoryTreeResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+                    <a:success>true</a:success>
+                    <a:category_tree>
+                       <a:Category>
+                          <a:id>4</a:id><a:name>Kozmetik &amp; Kişisel Bakım</a:name><a:parent_id>0</a:parent_id><a:updated_at>10/14/2022 1:42:14 AM</a:updated_at>
+                          <a:children>
+                             <a:Category>
+                                <a:id>868</a:id><a:name>Kozmetik</a:name><a:parent_id>4</a:parent_id>
+                                <a:children>
+                                   <a:Category>
+                                      <a:id>869</a:id><a:name>Parfüm</a:name><a:parent_id>868</a:parent_id>
+                                      <a:children>
+                                         <a:Category><a:id>870</a:id><a:name>Erkek Parfüm</a:name><a:parent_id>869</a:parent_id><a:children i:nil="true"/></a:Category>
+                                      </a:children>
+                                   </a:Category>
+                                </a:children>
+                             </a:Category>
+                          </a:children>
+                       </a:Category>
+                       <a:Category>
+                          <a:id>20</a:id><a:name>Elektronik</a:name><a:parent_id>0</a:parent_id><a:children/>
+                       </a:Category>
+                       <a:Category>
+                          <a:id>868</a:id><a:name>Kozmetik (tekrar)</a:name><a:parent_id>0</a:parent_id>
+                       </a:Category>
+                    </a:category_tree>
+                    <a:error i:nil="true"/>
+                 </GetCategoryTreeResult>
+              </GetCategoryTreeResponse>
+           </s:Body>
+        </s:Envelope>
+        """;
+
+    [Fact]
+    public async Task TheCategoryTreeIsReadInOneRequestWithPathsAndLeaves()
+    {
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, CategoryTreeAnswer));
+
+        var result = await Client(handler).ReadCategoriesAsync(Account(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+        var items = result.Value!.Items;
+        // Parents first (by depth, then path); the repeated 868 keeps its first place.
+        Assert.Equal(["20", "4", "868", "869", "870"], items.Select(x => x.ExternalId));
+        var leaf = items.Single(x => x.ExternalId == "870");
+        Assert.Equal("869", leaf.ParentExternalId);
+        Assert.Equal("Kozmetik & Kişisel Bakım / Kozmetik / Parfüm / Erkek Parfüm", leaf.Path);
+        Assert.Equal(3, leaf.Depth);
+        Assert.True(leaf.IsLeaf);
+        Assert.False(items.Single(x => x.ExternalId == "869").IsLeaf);
+        Assert.True(items.Single(x => x.ExternalId == "20").IsLeaf);
+        Assert.Null(items.Single(x => x.ExternalId == "4").ParentExternalId);
+        Assert.Equal("Kozmetik", items.Single(x => x.ExternalId == "868").Name);
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        var body = XDocument.Parse(Assert.Single(handler.Requests).Body!).Descendants(tem + "GetCategoryTree").Single();
+        Assert.Equal("0", body.Element(tem + "parent_id")!.Value);
+    }
+
+    [Fact]
+    public async Task AnUnsuccessfulCategoryAnswerIsAContractViolation()
+    {
+        var failed = CategoryTreeAnswer.Replace("<a:success>true</a:success>", "<a:success>false</a:success>", StringComparison.Ordinal);
+
+        var result = await Client(new CapturingHandler(_ => Respond(HttpStatusCode.OK, failed))).ReadCategoriesAsync(Account(), CancellationToken.None);
+
+        Assert.Equal("PTTAVM_REFERENCE_CONTRACT_INVALID", result.Error!.Code);
+    }
+
+    // StokKontrolListesi as published, with a second product carrying variants in the write-side shape.
+    private const string ProductListAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+           <s:Body>
+              <StokKontrolListesiResponse xmlns="http://tempuri.org/">
+                 <StokKontrolListesiResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+                    <a:StokKontrolDetay>
+                       <a:Aciklama>Kısa açıklama</a:Aciklama>
+                       <a:Aktif>true</a:Aktif>
+                       <a:Barkod>markaekleme1</a:Barkod>
+                       <a:Desi>1</a:Desi>
+                       <a:KDVOran>20</a:KDVOran>
+                       <a:KDVli>0</a:KDVli>
+                       <a:KDVsiz>7499.167</a:KDVsiz>
+                       <a:Miktar>1</a:Miktar>
+                       <a:Resim1Stream i:nil="true"/>
+                       <a:Resim1Url>https://cdn.example.com/a.jpg</a:Resim1Url>
+                       <a:Resim2Url/>
+                       <a:RowCount>4755</a:RowCount>
+                       <a:UrunAdi>marka ekleme Soap UI</a:UrunAdi>
+                       <a:UrunId>1234811128</a:UrunId>
+                       <a:UrunKodu>MARKA_EKLEME_1</a:UrunKodu>
+                       <a:UzunAciklama>uzun açıklama</a:UzunAciklama>
+                       <a:VariantListesi i:nil="true"/>
+                       <a:YeniKategoriId>1632</a:YeniKategoriId>
+                    </a:StokKontrolDetay>
+                    <a:StokKontrolDetay>
+                       <a:Aktif>false</a:Aktif>
+                       <a:Barkod>tshirt-1072</a:Barkod>
+                       <a:KDVOran>10</a:KDVOran>
+                       <a:KDVli>110</a:KDVli>
+                       <a:Miktar>21</a:Miktar>
+                       <a:RowCount>4755</a:RowCount>
+                       <a:UrunAdi>Tişört</a:UrunAdi>
+                       <a:UrunId>744445043</a:UrunId>
+                       <a:VariantListesi>
+                          <a:Variant>
+                             <a:Attributes>
+                                <a:Attribute><a:Definition>Renk</a:Definition><a:Value>Kırmızı</a:Value></a:Attribute>
+                                <a:Attribute><a:Definition>Beden</a:Definition><a:Value>XL</a:Value></a:Attribute>
+                             </a:Attributes>
+                             <a:Price>10</a:Price>
+                             <a:Quantity>16</a:Quantity>
+                             <a:VariantBarcode>tshirt-kirmizi-xl</a:VariantBarcode>
+                          </a:Variant>
+                          <a:Variant>
+                             <a:Attributes>
+                                <a:Attribute><a:Definition>Renk</a:Definition><a:Value>Mavi</a:Value></a:Attribute>
+                             </a:Attributes>
+                             <a:Quantity>5</a:Quantity>
+                          </a:Variant>
+                       </a:VariantListesi>
+                       <a:YeniKategoriId>0</a:YeniKategoriId>
+                    </a:StokKontrolDetay>
+                 </StokKontrolListesiResult>
+              </StokKontrolListesiResponse>
+           </s:Body>
+        </s:Envelope>
+        """;
+
+    [Fact]
+    public async Task AProductPageMapsBarcodesPricesStockAndVariants()
+    {
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, ProductListAnswer));
+
+        var result = await Client(handler).ReadProductPageAsync(Account(), null, null, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+        var page = result.Value!;
+        Assert.Equal(4755, page.TotalCount);
+        Assert.True(page.HasMore);
+        Assert.Equal("1:markaekleme1", page.NextCursor);
+        var simple = page.Items[0];
+        Assert.Equal("1234811128", simple.ExternalProductId);
+        Assert.Equal("1632", simple.CategoryExternalId);
+        Assert.Equal("uzun açıklama", simple.Description);
+        Assert.Equal(["https://cdn.example.com/a.jpg"], simple.ImageUrls);
+        var only = Assert.Single(simple.Variants);
+        Assert.Equal("markaekleme1", only.Barcode);
+        Assert.Equal("markaekleme1", only.Sku);
+        Assert.Null(only.ModelCode);
+        // KDVli is 0 in the sample: the price is worked out from KDVsiz and the VAT rate.
+        Assert.Equal(8999.00m, only.SalePrice);
+        Assert.Equal(20m, only.VatRate);
+        Assert.Equal(1m, only.StockQuantity);
+        Assert.False(only.Archived);
+        var withVariants = page.Items[1];
+        Assert.Null(withVariants.CategoryExternalId);
+        var variant = Assert.Single(withVariants.Variants);
+        Assert.Equal("tshirt-kirmizi-xl", variant.Barcode);
+        Assert.Equal(120m, variant.SalePrice);
+        Assert.Equal(16m, variant.StockQuantity);
+        Assert.True(variant.Archived);
+        Assert.Equal("Kırmızı", variant.Options["Renk"]);
+        Assert.Equal("XL", variant.Options["Beden"]);
+        // The variant without a barcode is reported, not imported.
+        Assert.Contains(page.Issues!, issue => issue.Code == "PRODUCT_VARIANT_INVALID");
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        var body = XDocument.Parse(Assert.Single(handler.Requests).Body!).Descendants(tem + "StokKontrolListesi").Single();
+        Assert.Equal(StoreId, body.Element(tem + "ShopId")!.Value);
+        Assert.Equal("0", body.Element(tem + "SearchAktifPasif")!.Value);
+        Assert.Equal("0", body.Element(tem + "SearchPage")!.Value);
+    }
+
+    [Fact]
+    public async Task APageThatRepeatsTheFirstOneEndsTheScan()
+    {
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, ProductListAnswer));
+
+        var result = await Client(handler).ReadProductPageAsync(Account(), "3:markaekleme1", null, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Items);
+        Assert.False(result.Value.HasMore);
+        Assert.Contains(result.Value.Issues!, issue => issue.Code == "PTTAVM_PRODUCT_PAGE_REPEATED");
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        Assert.Equal("3", XDocument.Parse(handler.Requests[0].Body!).Descendants(tem + "SearchPage").Single().Value);
+    }
+
+    [Fact]
+    public async Task ABarcodeLookupReadsOnePageOnly()
+    {
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, ProductListAnswer));
+
+        var result = await Client(handler).ReadProductPageAsync(Account(), null, "tshirt-1072", CancellationToken.None);
+
+        Assert.False(result.Value!.HasMore);
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        Assert.Equal("tshirt-1072", XDocument.Parse(handler.Requests[0].Body!).Descendants(tem + "SearchBarkod").Single().Value);
+    }
+
+    [Theory]
+    [InlineData(0, 100, 4755, true)]
+    [InlineData(47, 100, 4755, false)]
+    [InlineData(0, 100, null, true)]
+    [InlineData(0, 3, 3, false)]
+    public void TheScanStopsOncePagesCoverTheRowCount(int page, int items, int? total, bool expected) =>
+        Assert.Equal(expected, PttAvmHttpClient.MorePages(page, items, total));
+
+    [Fact]
+    public void PttAvmCategoriesHaveTheirOwnReferenceJobAndDailySchedule()
+    {
+        Assert.Equal(MarketplaceJobTypes.PttAvmReferenceSync, MarketplaceJobTypes.ForPlatform("PTTAVM", MarketplaceJobTypes.ReferenceSync));
+        Assert.True(MarketplaceJobTypes.IsMarketplaceProcessorJob(MarketplaceJobTypes.PttAvmReferenceSync));
+        Assert.Equal(MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ForPlatform("PTTAVM", MarketplaceJobTypes.ProductSync));
+        Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("REFERENCE_DATA"));
+        Assert.True(CatalogService.TryProductPlatformFilter("PTTAVM:ACTIVE", out var code, out _));
+        Assert.Equal("PTTAVM", code);
     }
 
     private static RemoteOrder OrderFromList(string orderNumber)

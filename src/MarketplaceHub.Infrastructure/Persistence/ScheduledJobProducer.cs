@@ -646,10 +646,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or "QUESTIONS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
-    // PTT AVM phase 2 runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the open-order
-    // status scan (ORDER_LIFECYCLE), because the order list has no change filter. The write flows are listed so the
+    // PTT AVM runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the open-order
+    // status scan (ORDER_LIFECYCLE), because the order list has no change filter, plus the daily category tree
+    // (REFERENCE_DATA). The write flows are listed so the
     // policies exist (and stay off) for the later phases.
-    internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE"
+    internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>

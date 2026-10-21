@@ -30,7 +30,7 @@ const catalogue: Record<string, JobPresentation> = {
   TRENDYOL_CAPABILITY_PROBE: job('Bağlantı', 'connection', READ, 'Yetki Kontrolü', 'Bağlantının hangi işlemler için (sipariş, ürün, fiyat ve stok, iade) yetkili olduğu platformdan sorgulanır.'),
   EFATURAM_STAGE_CAPABILITY_PROBE: job('Bağlantı', 'connection', READ, 'Test Ortamı Yetki Kontrolü', 'Test ortamı hesabının fatura oluşturma ve sorgulama yetkileri doğrulanır. Gerçek fatura kesilmez.'),
   TRENDYOL_STAGE_TEST_ORDER: job('Sipariş', 'order', SEND, 'Test Siparişi Oluşturma', 'Entegrasyonu denemek için Trendyol test ortamında örnek sipariş oluşturulur. Canlı mağaza etkilenmez.'),
-  TRENDYOL_REFERENCE_SYNC: referenceSync, HEPSIBURADA_REFERENCE_SYNC: referenceSync, N11_REFERENCE_SYNC: referenceSync, PAZARAMA_REFERENCE_SYNC: referenceSync,
+  TRENDYOL_REFERENCE_SYNC: referenceSync, HEPSIBURADA_REFERENCE_SYNC: referenceSync, N11_REFERENCE_SYNC: referenceSync, PAZARAMA_REFERENCE_SYNC: referenceSync, PTTAVM_REFERENCE_SYNC: referenceSync,
   CATALOG_STRUCTURE_IMPORT: job('Katalog', 'product', READ, 'Ürün Yapısı Çekme', 'Platformdaki ürünlerin kategori, seçenek ve özellik yapısı okunur. Önizleme panele kayıt yazmaz; uygulama yalnızca panel kategorilerini, özelliklerini ve eşleşmelerini oluşturur. Platforma veri gönderilmez.'),
   TRENDYOL_ORDER_SYNC: orderSync, SHOPIFY_ORDER_SYNC: orderSync, HEPSIBURADA_ORDER_SYNC: orderSync, N11_ORDER_SYNC: orderSync, PAZARAMA_ORDER_SYNC: orderSync, PTTAVM_ORDER_SYNC: orderSync,
   TRENDYOL_ORDER_RECOVERY_SYNC: orderRecovery, SHOPIFY_ORDER_RECOVERY_SYNC: orderRecovery, HEPSIBURADA_ORDER_RECOVERY_SYNC: orderRecovery,
