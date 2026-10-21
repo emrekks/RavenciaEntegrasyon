@@ -5,9 +5,9 @@ import { jobPresentation, jobSubtitle, jobTitle } from './job-presentation'
 describe('job presentation', () => {
   it('names the platform first and says which way the data goes', () => {
     expect(jobTitle('N11_ORDER_SYNC', 'N11')).toBe('N11 Sipariş İşlemi')
-    expect(jobSubtitle('N11_ORDER_SYNC')).toBe('Platformdan Okuma · Yeni Sipariş Çekme')
+    expect(jobSubtitle('N11_ORDER_SYNC')).toBe('Okuma · Yeni Sipariş Çekme')
     expect(jobTitle('INVOICE_SUBMIT', 'E-Faturam')).toBe('E-Faturam Fatura İşlemi')
-    expect(jobSubtitle('INVOICE_SUBMIT')).toBe('Platforma Gönderim · Fatura Oluşturma')
+    expect(jobSubtitle('INVOICE_SUBMIT')).toBe('Yazma · Fatura Oluşturma')
   })
 
   it('takes the platform of the connection for shared types and leaves the panel own work without one', () => {

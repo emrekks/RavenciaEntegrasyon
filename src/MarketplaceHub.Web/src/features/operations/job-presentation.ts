@@ -1,14 +1,15 @@
 // How İşlem Takibi names a job. The title is the platform and the area ("N11 Sipariş İşlemi"); the line under it says
-// which way the data goes and what is done ("Platformdan Okuma · Yeni Sipariş Çekme"); the tooltip explains it.
+// which way the data goes and what is done ("Okuma · Yeni Sipariş Çekme"); the tooltip explains it.
 
 export type JobTypeIconName = 'price' | 'order' | 'invoice' | 'return' | 'product' | 'connection' | 'generic'
-export type JobDirection = 'Platformdan Okuma' | 'Platforma Gönderim' | 'Platformdan Bildirim' | 'Panel İçi İşlem'
+// Okuma: read from the platform; Yazma: sent to it; Bildirim: the platform pushed it; Panel İçi: no outside call.
+export type JobDirection = 'Okuma' | 'Yazma' | 'Bildirim' | 'Panel İçi'
 export type JobPresentation = { area: string; icon: JobTypeIconName; direction: JobDirection; action: string; description: string }
 
-const READ: JobDirection = 'Platformdan Okuma'
-const SEND: JobDirection = 'Platforma Gönderim'
-const NOTICE: JobDirection = 'Platformdan Bildirim'
-const PANEL: JobDirection = 'Panel İçi İşlem'
+const READ: JobDirection = 'Okuma'
+const SEND: JobDirection = 'Yazma'
+const NOTICE: JobDirection = 'Bildirim'
+const PANEL: JobDirection = 'Panel İçi'
 
 const job = (area: string, icon: JobTypeIconName, direction: JobDirection, action: string, description: string): JobPresentation => ({ area, icon, direction, action, description })
 
@@ -97,7 +98,7 @@ export function jobTitle(jobType: string, platform?: string | null) {
   return name ? `${name} ${area} İşlemi` : `${area} İşlemi`
 }
 
-/** "Platformdan Okuma · Yeni Sipariş Çekme" */
+/** "Okuma · Yeni Sipariş Çekme" */
 export function jobSubtitle(jobType: string) {
   const { direction, action } = jobPresentation(jobType)
   return `${direction} · ${action}`
