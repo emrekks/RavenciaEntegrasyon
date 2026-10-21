@@ -34,6 +34,7 @@ public static class InvoicingEndpoints
                 .Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId && x.Id == documentId)
                 .Select(x => x.PermanentUrl).SingleOrDefaultAsync(http.RequestAborted);
             if (!Uri.TryCreate(permanentUrl, UriKind.Absolute, out var uri) || uri.AbsolutePath != expectedPath) return Results.NotFound();
+            if (await InvoiceAdjustmentTracking.IsPublicLinkWithdrawnAsync(db, tenantId, invoiceId, http.RequestAborted)) return Results.NotFound();
             LogPublicInvoiceDocumentOpened(http, "invoice", tenantId, documentId);
             try { return Stream(await service.OpenDocumentAsync(tenantId, invoiceId, documentId, http.RequestAborted), http); }
             catch (FileNotFoundException) { return Results.NotFound(); }

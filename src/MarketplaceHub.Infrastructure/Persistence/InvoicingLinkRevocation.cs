@@ -118,7 +118,6 @@ public sealed partial class InvoicingBillingService
         package.Version++;
         db.AuditLogs.Add(new AuditLog { TenantId = invoice.TenantId, Action = "INVOICE_MARKETPLACE_LINK_REVOKED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"package:{package.ExternalPackageId};{outcome};key:{Hash(idempotencyKey)[..16]}", CorrelationId = correlationId, CreatedAt = now });
         await InvoiceAdjustmentTracking.ResolveLinkRevocationIfDoneAsync(db, invoice.TenantId, invoice.Id, now, cancellationToken);
-        await WithdrawPublicInvoiceLinksIfDoneAsync(invoice.TenantId, invoice.Id, cancellationToken);
         try
         {
             try { await db.SaveChangesAsync(cancellationToken); }
@@ -138,17 +137,6 @@ public sealed partial class InvoicingBillingService
             db.ChangeTracker.Clear();
             return false;
         }
-    }
-
-    // A public invoice link has no expiry; it is withdrawn by removing its stored URL (G10), which the public route
-    // treats as the live authorization. Packages still waiting for their link to be removed name that URL to the
-    // marketplace, so the links go once the last one is done. Provider document URLs are not ours and stay.
-    private async Task WithdrawPublicInvoiceLinksIfDoneAsync(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken)
-    {
-        var states = await db.MarketplaceDeliveryStates.Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId).ToListAsync(cancellationToken);
-        if (states.Any(x => MarketplaceInvoiceLinkRevocationPolicy.IsOpen(x.Status))) return;
-        var documents = await db.InvoiceDocuments.Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId && x.PermanentUrl != null).ToListAsync(cancellationToken);
-        foreach (var document in documents.Where(x => InvoiceDocumentLink.IsPublicLink(x.PermanentUrl))) document.PermanentUrl = null;
     }
 
     internal static bool IsConcurrentRevocationWrite(DbUpdateException exception) =>
