@@ -68,15 +68,16 @@ where d.lag between interval '0' and interval '1 day'
 group by 1
 order by 1;
 
-\echo '== 5. Okuma imleçleri: son başarı yaşı, süre, art arda hata =='
-select c."PlatformCode" as platform, s."ResourceType" as kaynak,
+\echo '== 5. Okuma kayıtları: son başarı yaşı, süre, istek sayısı, art arda hata =='
+select c."PlatformCode" as platform, c."DisplayName" as baglanti, c."Status" as baglanti_durumu, s."ResourceType" as kaynak,
        round(extract(epoch from now() - s."LastSuccessAt") / 60, 1) as son_basari_dk,
-       s."LastDurationMs" as son_sure_ms, s."ConsecutiveFailureCount" as ardisik_hata, left(s."LastError", 80) as son_hata
+       s."LastDurationMs" as son_sure_ms, s."LastRequestCount" as istek, s."LastReceivedCount" as alinan,
+       s."ConsecutiveFailureCount" as ardisik_hata, left(s."LastError", 80) as son_hata
 from integration.sync_cursors s
 join integration.platform_connections c on c."Id" = s."ConnectionId"
-where c."Status" in ('ACTIVE', 'VERIFIED')
-  and s."ResourceType" in ('ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'RETURNS', 'QUESTIONS')
-order by 1, 2;
+where c."Status" <> 'DELETED'
+  and s."ResourceType" in ('ORDERS_HOT', 'ORDERS_RECOVERY', 'ORDER_LIFECYCLE', 'RETURNS', 'QUESTIONS')
+order by 1, 2, 4;
 
 \echo '== 6. Son 24 saatte başarısız / incelemeye düşen işler (tür ve hata koduna göre) =='
 select j."JobType" as is_turu, j."Status" as durum, j."LastErrorCode" as hata_kodu, count(*) as adet
@@ -107,5 +108,42 @@ from pg_stat_activity
 where datname = current_database()
 group by 1, 2
 order by 3 desc;
+
+\echo '== 9. Panel stoğu ve pazaryerinde son görülen stok (aktif teklifler) =='
+-- ObservedRemoteQuantity is the stock the last product import of any marketplace saw for the variant.
+select c."PlatformCode" as platform, c."DisplayName" as baglanti, count(*) as teklif,
+       count(*) filter (where i."ObservedRemoteQuantity" is null) as gozlem_yok,
+       count(*) filter (where i."ObservedRemoteQuantity" is not null and i."OnHand" <> i."ObservedRemoteQuantity") as stok_farkli,
+       coalesce(sum(abs(i."OnHand" - i."ObservedRemoteQuantity")), 0) as toplam_fark_adet,
+       count(*) filter (where i."Available" <= 0) as panelde_satilabilir_yok,
+       count(*) filter (where i."Reserved" > 0) as ayrilmis_var,
+       round((percentile_cont(0.5) within group (order by extract(epoch from now() - i."ObservedRemoteAt")) / 86400)::numeric, 1) as gozlem_yasi_gun_p50
+from inventory.channel_offers o
+join inventory.inventory_items i on i."TenantId" = o."TenantId" and i."VariantId" = o."VariantId" and i."LocationCode" = 'MAIN'
+join integration.platform_connections c on c."Id" = o."ConnectionId"
+where o."Status" = 'ACTIVE' and c."Status" in ('ACTIVE', 'VERIFIED')
+group by 1, 2
+order by 1, 2;
+
+\echo '== 10. Stok ve fiyat gönderimi (ikisi de açık olmadan stok gitmez) =='
+select c."PlatformCode" as platform, c."DisplayName" as baglanti,
+       c."SettingsJson"::jsonb ->> 'ExternalWritesEnabled' as dis_yazma,
+       bool_or(p."Enabled") filter (where p."ResourceType" = 'STOCK_WRITE') as stok_yazma,
+       bool_or(p."Enabled") filter (where p."ResourceType" = 'PRICE_WRITE') as fiyat_yazma
+from integration.platform_connections c
+left join integration.connection_sync_policies p on p."ConnectionId" = c."Id" and p."ResourceType" in ('STOCK_WRITE', 'PRICE_WRITE')
+where c."Status" in ('ACTIVE', 'VERIFIED')
+group by 1, 2, 3
+order by 1, 2;
+
+\echo '== 11. Stoğu karşılanamayan sipariş satırları (gün ve platforma göre, son 30 gün) =='
+select date(i."FirstSeenAt" at time zone 'Europe/Istanbul') as gun, c."PlatformCode" as platform, count(*) as satir
+from ops.operational_issues i
+join sales.order_lines l on 'stock-order-consumption:' || replace(l."Id"::text, '-', '') = i."DedupeKey"
+join sales.orders o on o."Id" = l."OrderId"
+join integration.platform_connections c on c."Id" = o."ConnectionId"
+where i."Code" = 'STOCK_ORDER_CONSUMPTION_BLOCKED' and i."FirstSeenAt" > now() - interval '30 days'
+group by 1, 2
+order by 1, 2;
 
 rollback;
