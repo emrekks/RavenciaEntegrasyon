@@ -144,6 +144,38 @@ public sealed class HepsiburadaStageCertificationPolicyTests
         Assert.True(HepsiburadaHttpClient.ValidPriceInventoryPayload(payload, "merchant-17"));
     }
 
+    [Fact]
+    public void ListingSkuPairsReadTheHepsiburadaSkuFieldOfTheListingService()
+    {
+        using var document = JsonDocument.Parse("""
+            {"totalCount":3,"listings":[
+              {"hepsiburadaSku":"HBCV00000ABC1","merchantSku":"HBV000013JHLHL","price":0},
+              {"HepsiburadaSku":"HBCV00000ABC2","MerchantSku":"SKU-2"},
+              {"merchantSku":"NO-HBSKU"}]}
+            """);
+
+        var pairs = HepsiburadaJsonMapper.ListingSkuPairs(HepsiburadaJsonMapper.ListingPage(document.RootElement).Items);
+
+        Assert.Equal(new[] { ("HBV000013JHLHL", "HBCV00000ABC1"), ("SKU-2", "HBCV00000ABC2") }, pairs);
+    }
+
+    [Fact]
+    public void InventoryUploadTakesTheListingHbSkuForAKnownMerchantSkuAndKeepsTheRest()
+    {
+        const string payload = """{"merchantId":"merchant-17","items":[{"hepsiburadaSku":"HBV000013JHLHL","merchantSku":"HBV000013JHLHL","price":100.00,"availableStock":10},{"hepsiburadaSku":"HBV0000OTHER","merchantSku":"HBV0000OTHER","price":100.00,"availableStock":0}]}""";
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["HBV000013JHLHL"] = "HBCV00000ABC1" };
+
+        var rewritten = HepsiburadaHttpClient.WithHepsiburadaSkus(payload, map);
+
+        using var document = JsonDocument.Parse(rewritten);
+        var items = document.RootElement.GetProperty("items");
+        Assert.Equal("HBCV00000ABC1", items[0].GetProperty("hepsiburadaSku").GetString());
+        Assert.Equal("HBV000013JHLHL", items[0].GetProperty("merchantSku").GetString());
+        Assert.Equal("HBV0000OTHER", items[1].GetProperty("hepsiburadaSku").GetString());
+        Assert.True(HepsiburadaHttpClient.ValidPriceInventoryPayload(rewritten, "merchant-17"));
+        Assert.Same(payload, HepsiburadaHttpClient.WithHepsiburadaSkus(payload, new Dictionary<string, string>()));
+    }
+
     private static PlatformConnection Connection(string environment, string platformCode = "HEPSIBURADA") => new()
     {
         Id = Guid.NewGuid(),

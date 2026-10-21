@@ -16,6 +16,13 @@ internal static class HepsiburadaJsonMapper
         return (items.EnumerateArray().ToArray(), total);
     }
 
+    // The listing service names the catalogue SKU "hepsiburadaSku" next to the seller's "merchantSku".
+    public static IReadOnlyList<(string MerchantSku, string HepsiburadaSku)> ListingSkuPairs(IEnumerable<JsonElement> items) =>
+        items.Select(item => (Merchant: Text(item, "merchantSku", "MerchantSku"), Catalogue: Text(item, "hepsiburadaSku", "HepsiburadaSku", "hbSku", "HBSku")))
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Merchant) && !string.IsNullOrWhiteSpace(pair.Catalogue))
+            .Select(pair => (pair.Merchant!.Trim(), pair.Catalogue!.Trim()))
+            .ToArray();
+
     private static JsonElement? CategoryAttributeLists(string resourceType, JsonElement data)
     {
         if (resourceType != "CATEGORY_ATTRIBUTES" || data.ValueKind != JsonValueKind.Object) return null;

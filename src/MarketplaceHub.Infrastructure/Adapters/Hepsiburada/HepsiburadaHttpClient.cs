@@ -509,6 +509,9 @@ public sealed partial class HepsiburadaHttpClient(
             return await Unsupported<RemoteOperationRef>("Hepsiburada fiyat/stok yüklemesi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı PRICE_WRITE/INVENTORY_WRITE SIT kanıtları sağlandığında kullanılabilir.");
         if (!ValidPriceInventoryPayload(payloadJson, account.Connection.ExternalStoreId))
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_PRICE_INVENTORY_PAYLOAD_INVALID", "Hepsiburada fiyat/stok yüklemesi merchantId, hbSku, merchantSku, fiyat ve adet sözleşmesini sağlamıyor.", HttpStatusCode.BadRequest);
+        payloadJson = WithHepsiburadaSkus(payloadJson, await StageHepsiburadaSkusAsync(account, cancellationToken));
+        if (!ValidPriceInventoryPayload(payloadJson, account.Connection.ExternalStoreId))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_PRICE_INVENTORY_PAYLOAD_INVALID", "Hepsiburada listing hbSku eşlemesi fiyat/stok yüklemesinde yinelenen hbSku üretti.", HttpStatusCode.BadRequest);
 
         using var content = new StringContent(BuildInventoryUploadXml(payloadJson), Encoding.UTF8, "application/xml");
         var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Post, InventoryUpload(account), content, cancellationToken);
@@ -908,6 +911,7 @@ public sealed partial class HepsiburadaHttpClient(
             return AdapterResult<StageTestOrderResult>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_TEST_ORDER_STAGE_ONLY", "Hepsiburada test siparişi yalnız kullanıcı tarafından başlatılan Stage capability fixture'ında kullanılabilir.", null, null, null));
         if (account.StageTestOrderBaseAddress is null || !ValidTestOrderSku(sku))
             return Failure<StageTestOrderResult>(AdapterErrorClass.Validation, "HEPSIBURADA_TEST_ORDER_INPUT_INVALID", "Stage test siparişi için doğrulanmış HBSKU ve test ortamı adresi gerekir.", HttpStatusCode.BadRequest);
+        if ((await StageHepsiburadaSkusAsync(account, cancellationToken)).TryGetValue(sku, out var hepsiburadaSku)) sku = hepsiburadaSku;
 
         var orderNumber = RandomNumberGenerator.GetInt32(1_000_000_000, int.MaxValue).ToString(CultureInfo.InvariantCulture);
         using var content = new StringContent(TestOrderPayload(account.Connection.ExternalStoreId, orderNumber, sku, timeProvider.GetUtcNow()), Encoding.UTF8, "application/json");
@@ -1157,6 +1161,38 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string InventoryUpload(HepsiburadaRequestContext context) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/inventory-uploads";
     internal static string InventoryUploadStatus(HepsiburadaRequestContext context, string uploadId) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/inventory-uploads/id/{Uri.EscapeDataString(uploadId)}";
     internal static string InventoryUploadStatus(string merchantId, string uploadId) => $"listings/merchantid/{Uri.EscapeDataString(merchantId)}/inventory-uploads/id/{Uri.EscapeDataString(uploadId)}";
+    // The product import reads a listing's hbSku from "hbSku"/"sku", but the listing service sends it as
+    // "hepsiburadaSku", so imported links hold the merchantSku where the hbSku belongs. A STAGE upload or
+    // test order reads the merchant's listings first and maps each merchantSku to its real hbSku; a
+    // PRODUCTION connection gets an empty map and is sent exactly as before.
+    private async Task<IReadOnlyDictionary<string, string>> StageHepsiburadaSkusAsync(HepsiburadaRequestContext account, CancellationToken cancellationToken)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.Equals(account.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return map;
+        const int limit = 100;
+        for (var offset = 0; offset < 2_000; offset += limit)
+        {
+            var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, Listings(account, $"offset={offset.ToString(CultureInfo.InvariantCulture)}&limit={limit.ToString(CultureInfo.InvariantCulture)}"), cancellationToken);
+            if (!response.IsSuccess) break;
+            IReadOnlyList<JsonElement> items;
+            int? total;
+            try { (items, total) = HepsiburadaJsonMapper.ListingPage(response.Value!.RootElement); }
+            catch (JsonException) { break; }
+            foreach (var (merchantSku, hepsiburadaSku) in HepsiburadaJsonMapper.ListingSkuPairs(items)) map.TryAdd(merchantSku, hepsiburadaSku);
+            if (items.Count < limit || total is { } count && offset + items.Count >= count) break;
+        }
+        logger.LogInformation("Hepsiburada STAGE listing hbSku eşlemesi okundu: {Count} merchantSku, {Changed} farklı hbSku. ConnectionId: {ConnectionId}", map.Count, map.Count(pair => !string.Equals(pair.Key, pair.Value, StringComparison.OrdinalIgnoreCase)), account.Connection.Id);
+        return map;
+    }
+    internal static string WithHepsiburadaSkus(string payloadJson, IReadOnlyDictionary<string, string> hepsiburadaSkus)
+    {
+        if (hepsiburadaSkus.Count == 0) return payloadJson;
+        var root = System.Text.Json.Nodes.JsonNode.Parse(payloadJson)!.AsObject();
+        foreach (var item in root["items"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>())
+            if (item["merchantSku"]?.GetValue<string>() is { } merchantSku && hepsiburadaSkus.TryGetValue(merchantSku, out var hepsiburadaSku))
+                item["hepsiburadaSku"] = hepsiburadaSku;
+        return root.ToJsonString();
+    }
     internal static string StageTestOrder(HepsiburadaRequestContext context, string merchantId) => $"orders/merchantId/{Uri.EscapeDataString(merchantId)}";
     internal static bool ValidTestOrderSku(string? sku) => !string.IsNullOrWhiteSpace(sku) && sku == sku.Trim() && !sku.Any(char.IsWhiteSpace) && sku.Length <= 100;
     internal static string TestOrderPayload(string merchantId, string orderNumber, string sku, DateTimeOffset orderDate) => JsonSerializer.Serialize(new
