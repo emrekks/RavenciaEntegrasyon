@@ -3,13 +3,18 @@ namespace MarketplaceHub.Application;
 /// <summary>
 /// Single source of truth for integration job priorities (lower runs first).
 /// The worker's hot lane takes priority 0..Worker:HotPriorityCeiling (default 2),
-/// the background lane takes everything above it and the initial-data-sync lane takes -1.
+/// the background lane takes everything above it, the initial-data-sync lane takes -1
+/// and the user lane takes BulkUserAction (-2) and below.
 /// </summary>
 public static class JobPriorityPolicy
 {
     // Actions a user waits for (shipment and return actions, labels, a requested order refresh,
     // invoice submission and delivery) run in their own worker lane, ahead of everything else.
-    public const int UserAction = -2;
+    public const int UserAction = -3;
+    // Work in the same lane that nobody is waiting on one by one: a bulk invoice confirmation (150 invoices
+    // become some 300 jobs) and the automatic steps that follow it. The lane leases lower numbers first, so
+    // a single click waits at most for one running bulk job instead of behind the whole batch.
+    public const int BulkUserAction = -2;
     public const int InitialDataSync = -1;
     public const int Realtime = 0;
     public const int Writes = 1;
@@ -30,6 +35,14 @@ public static class JobPriorityPolicy
 
     // Priority of a job a user requested from the panel.
     public static int ForUser(string jobType) => IsUserAction(jobType) ? UserAction : For(jobType, userInitiated: true);
+
+    // A user-lane job requested in bulk (or produced automatically) runs after the single requests.
+    public static int ForUserLane(bool bulk) => bulk ? BulkUserAction : UserAction;
+
+    // An automatic follow-up (status check, document, delivery) keeps the pace of the job that started the
+    // chain: a single user's invoice stays a single request, a bulk one or an unknown start stays bulk.
+    public static int ForFollowUp(int? triggeringPriority) =>
+        triggeringPriority is { } priority && priority <= UserAction ? UserAction : BulkUserAction;
 
     public static int For(string jobType, bool userInitiated) => jobType switch
     {

@@ -1871,7 +1871,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 PayloadHash = Hash(payload),
                 JobDedupKey = dedup,
                 EffectIdempotencyKey = dedup,
-                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery),
+                // A recovery nobody clicked: it yields to single user actions in the user lane.
+                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true),
                 AvailableAt = now,
                 CorrelationId = $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}",
                 Version = 1
@@ -1921,9 +1922,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
         var payload = JsonSerializer.Serialize(new { invoiceId });
-        // Status check, document and marketplace delivery follow a submission the user waits for,
-        // so they run in the user lane.
-        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.UserAction, TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
+        // Status check, document and marketplace delivery follow a submission the user waits for, so they run in
+        // the user lane, at the pace of that submission: a single click's chain stays ahead of a bulk confirmation,
+        // and a bulk (or scheduler-started) chain yields to single user actions.
+        var needle = invoiceId.ToString();
+        var submitPriority = await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.InvoiceSubmit && job.PayloadJson.Contains(needle))
+            .OrderByDescending(job => job.CreatedAt)
+            .Select(job => (int?)job.Priority)
+            .FirstOrDefaultAsync(cancellationToken);
+        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.ForFollowUp(submitPriority), TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
     }
 
     private static readonly HashSet<string> AcceptedDeliveryStatuses = new(StringComparer.Ordinal)

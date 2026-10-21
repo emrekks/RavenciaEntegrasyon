@@ -1419,7 +1419,11 @@ public sealed partial class InvoicingBillingService(
         return await GetAsync(tenantId, id, cancellationToken);
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueSubmitAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    public Task<ServiceResult<Guid>> EnqueueSubmitAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
+        EnqueueSubmitAsync(tenantId, id, expectedVersion, idempotencyKey, correlationId, bulk: false, cancellationToken);
+
+    // bulk: the submission is one of a bulk confirmation, so its job yields to single user actions in the user lane.
+    private async Task<ServiceResult<Guid>> EnqueueSubmitAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, bool bulk, CancellationToken cancellationToken)
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (invoice is null) return NotFound<Guid>();
@@ -1454,7 +1458,7 @@ public sealed partial class InvoicingBillingService(
         invoice.Version++;
         if (safePreProviderRetry)
             db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_PRE_PROVIDER_RETRY_ENQUEUED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"no-external-reference:{previousErrorCode}", CorrelationId = correlationId, CreatedAt = now });
-        return await AddJob(invoice, InvoicingJobTypes.InvoiceSubmit, idempotencyKey, correlationId, cancellationToken);
+        return await AddJob(invoice, InvoicingJobTypes.InvoiceSubmit, idempotencyKey, correlationId, cancellationToken, bulk: bulk);
     }
     public async Task<ServiceResult<Guid>> EnqueueStageCapabilityProbeAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
@@ -1521,7 +1525,10 @@ public sealed partial class InvoicingBillingService(
         return await AddJob(invoice, InvoicingJobTypes.InvoiceReconcile, idempotencyKey, correlationId, cancellationToken);
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    public Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
+        EnqueueDeliveryAsync(tenantId, id, idempotencyKey, correlationId, bulk: false, cancellationToken);
+
+    private async Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, bool bulk, CancellationToken cancellationToken)
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
@@ -1562,7 +1569,7 @@ public sealed partial class InvoicingBillingService(
             }
         }
         invoice.Status = InvoiceStatus.MarketplacePending; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-        return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, packages[0].ConnectionId, manualDeliveryRetry);
+        return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, packages[0].ConnectionId, manualDeliveryRetry, bulk);
     }
 
     public async Task<ServiceResult<(Stream Content, string MimeType, string FileName)>> OpenDocumentAsync(Guid tenantId, Guid invoiceId, Guid documentId, CancellationToken cancellationToken)
@@ -1587,14 +1594,17 @@ public sealed partial class InvoicingBillingService(
         invoice.Status = next; invoice.UpdatedAt = timeProvider.GetUtcNow(); if (jobType == InvoicingJobTypes.InvoiceSubmit) invoice.IssuedAt ??= invoice.UpdatedAt; invoice.Version++; return await AddJob(invoice, jobType, idempotencyKey, correlationId, cancellationToken);
     }
 
-    private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, bool manualDeliveryRetry = false)
+    private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, bool manualDeliveryRetry = false, bool bulk = false)
     {
         var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == invoice.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
+        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType, bulk), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
-    internal static int InvoiceJobPriority(string jobType) => jobType is InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.MarketplaceDelivery ? JobPriorityPolicy.UserAction : 0;
+    // Submission and delivery run in the user lane: a single request ahead of everything, a bulk or automatic one
+    // after the single requests there, so a large batch cannot hold up the next click.
+    internal static int InvoiceJobPriority(string jobType, bool bulk = false) =>
+        jobType is InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.MarketplaceDelivery ? JobPriorityPolicy.ForUserLane(bulk) : 0;
 
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {

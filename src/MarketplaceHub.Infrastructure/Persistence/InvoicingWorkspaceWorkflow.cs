@@ -44,6 +44,8 @@ public sealed partial class InvoicingBillingService
         if (request.Items.Select(item => item.OrderId).Distinct().Count() != request.Items.Count)
             return ServiceResult<InvoiceWorkspaceConfirmResult>.Fail("INVOICE_CONFIRM_DUPLICATE_ORDER", "Sipariş başına tek mali fatura oluşturulabilir; aynı sipariş onay isteğinde bir kez yer almalıdır.", 422);
 
+        // A confirmation of several packages is bulk work: its jobs yield to single user actions in the user lane.
+        var bulk = request.Items.Count > 1;
         var results = new List<InvoiceWorkspaceConfirmItemResult>(request.Items.Count);
         foreach (var confirmation in request.Items)
         {
@@ -91,7 +93,7 @@ public sealed partial class InvoicingBillingService
                 var itemKey = $"{idempotencyKey}:order:{confirmation.OrderId:N}";
                 if (invoice is not null && InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode))
                 {
-                    var queuedDelivery = await EnqueueDeliveryAsync(tenantId, invoice.Id, $"{itemKey}:delivery", correlationId, cancellationToken);
+                    var queuedDelivery = await EnqueueDeliveryAsync(tenantId, invoice.Id, $"{itemKey}:delivery", correlationId, bulk, cancellationToken);
                     if (!queuedDelivery.Succeeded)
                     {
                         await transaction.RollbackAsync(cancellationToken);
@@ -111,7 +113,7 @@ public sealed partial class InvoicingBillingService
                     invoice.UpdatedAt = timeProvider.GetUtcNow();
                     invoice.Version++;
                     await db.SaveChangesAsync(cancellationToken);
-                    var queuedRetry = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit-retry", correlationId, cancellationToken);
+                    var queuedRetry = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit-retry", correlationId, bulk, cancellationToken);
                     if (!queuedRetry.Succeeded)
                     {
                         await transaction.RollbackAsync(cancellationToken);
@@ -168,7 +170,7 @@ public sealed partial class InvoicingBillingService
                     invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == invoice.Id, cancellationToken);
                 }
 
-                var queued = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit", correlationId, cancellationToken);
+                var queued = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit", correlationId, bulk, cancellationToken);
                 if (!queued.Succeeded)
                 {
                     await transaction.RollbackAsync(cancellationToken);
