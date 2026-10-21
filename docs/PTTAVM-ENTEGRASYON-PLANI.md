@@ -1,7 +1,8 @@
 # PTT AVM Entegrasyonu Planı
 
-Durum (21 Ekim 2026): 1. aşama (bağlantı) kodda hazır (`feat/pttavm`): platform kodu, adaptör iskeleti, bağlantı formu ve
-bağlantı testi. Canlı mağazayla doğrulama kullanıcının anahtarlarıyla yapılacak. Dış yazma kapalı başlar; her yazma
+Durum (21 Ekim 2026): 1. aşama (bağlantı) kodda hazır: platform kodu, adaptör, bağlantı formu ve bağlantı testi. Aynı gün
+kimlik **SOAP web servisine** çevrildi (`feat/pttavm-soap`, §2): satıcı paneli API Key/Token değil, Mağaza ID + API
+kullanıcı adı + API şifresi veriyor. Canlı mağazayla doğrulama kullanıcının bilgileriyle yapılacak. Dış yazma kapalı başlar; her yazma
 yeteneği kullanıcı onayıyla, tek kayıtla açılır.
 
 Bu plan Pazarama (`docs/PAZARAMA-ENTEGRASYON-PLANI.md`) ve N11 (`docs/N11-ENTEGRASYON-PLANI.md`) planlarında izlenen
@@ -17,8 +18,13 @@ yolu izler. Yeni platform kontrol listesi Pazarama planı §5.3'tedir; burada ya
 
 ## 2. Kullanıcı kararları (21 Ekim 2026)
 
-- **Kimlik:** kullanıcı PTT AVM satıcı panelinde (Hesap Yönetimi › Entegrasyon Bilgileri) üretilen API Key ve
-  Access Token'ı bağlantı formuna kendisi girer.
+- **Kimlik (21 Ekim 2026, düzeltildi):** PTT AVM satıcı panelinin Hesap Yönetimi › Entegrasyon Bilgileri ekranı
+  yalnız üç değer veriyor: **MAĞAZA ID, API KULLANICI ADI, API ŞİFRESİ**. API Key / Access Token yok. Bu, SOAP web
+  servisinin (`ws.pttavm.com:93`) WS-Security UsernameToken kimliğidir → **adaptör SOAP kullanır**, REST yolu
+  kaldırıldı. Mağaza ID bağlantının `ExternalStoreId`'si (yalnız rakam); kullanıcı adı ve şifre şifreli
+  `{Username, Password}` olarak saklanır (`USERNAME_PASSWORD`, maske = kullanıcı adının son 4 karakteri). Eski
+  `{ApiKey, AccessToken}` kaydı bulunursa "kimlik reddedildi" + yeniden girme mesajı döner (canlıda böyle bağlantı
+  yoktu, taşıma gerekmedi).
 - **Kargo: PTT AVM'nin PTT Kargo akışı** (depo → barkod oluşturma → etiket). Kendi kargo anlaşması yolu yok.
 - **Ürünler PTT AVM'de yayında.** Klasik içe aktarma modları kullanılır: tam çekme, yalnız eşleştirme, yalnız yeni,
   yalnız mevcut. Eşleşme anahtarı barkod; başlangıç fiyatı PTT AVM'deki fiyat.
@@ -26,18 +32,27 @@ yolu izler. Yeni platform kontrol listesi Pazarama planı §5.3'tedir; burada ya
 
 ## 3. PTT AVM API özeti (developers.pttavm.com, 21 Ekim 2026)
 
-Portal Cloudflare arkasında: içerik tarayıcıda okunur (curl/WebFetch 403). `/tr` yeni REST'i, `/en` eski SOAP'ı anlatır.
+Portal Cloudflare arkasında: içerik tarayıcıda okunur (curl/WebFetch 403). `/tr` yeni REST'i, `/en` SOAP'ı da anlatır
+(`*_soap` sayfaları). WSDL ve XSD'ler (`service.svc?wsdl`, `?xsd=xsd0..8`) doğrudan indirilebiliyor. §3.2–3.4 REST
+alan adlarıyla yazıldı; SOAP karşılıkları aynı adların PascalCase hâli (ör. `SiparisNo`, `LineItemId`).
 
 ### 3.1 Adresler ve kimlik
 
 | Yüzey | Adres | Kimlik |
 |---|---|---|
-| REST (kullanılacak) | `https://integration-api.pttavm.com/api/v1/...` (JSON) | `Api-Key`, `Access-Token`, `X-Correlation-Id` başlıkları |
-| Kargo REST | `https://shipment.pttavm.com/api/v1/...` | Doküman aynı başlıkları yazıyor; Postman örneği Basic + `Integration-Key` gösteriyor → canlıda denenir |
-| SOAP (yedek) | `https://ws.pttavm.com:93/service.svc` (WCF, WS-Security) | `wsse:ApikeyToken` (Apikey + Integrationtoken) ya da eski UsernameToken |
+| SOAP (**kullanılan**) | `https://ws.pttavm.com:93/service.svc` (WCF, binding `WsSecured_IService`, SOAP 1.1) | WS-Security: `Timestamp` + `UsernameToken` (Username + Password, `#PasswordText`), HTTPS |
+| REST (kullanılmıyor) | `https://integration-api.pttavm.com/api/v1/...` (JSON) | `Api-Key`, `Access-Token`: satıcı paneli bu değerleri vermiyor |
+| Kargo REST (5. aşamada bakılacak) | `https://shipment.pttavm.com/api/v1/...` | Belgede tutarsız; SOAP'ta `KargoBilgiListesi`, `GetCargoProfiles` var |
 
-- Kimlik bilgileri satıcı panelinde **seçilen entegratör firmaya ve mağazaya özel** üretilir; entegratörü listeye PTT
-  personeli ekler. Kullanıcı adı/şifre yöntemi geçiş sürecinde paralel çalışıyor, kaldırılacak.
+- SOAP zarfı: hedef ad alanı `http://tempuri.org/` (önek `tem`, alt öğeler nitelikli: `elementFormDefault="qualified"`),
+  `SOAPAction: "http://tempuri.org/IService/<İşlem>"`, `Content-Type: text/xml; charset=utf-8`. Başlıkta
+  `wsse:Security soapenv:mustUnderstand="1"` içinde `wsu:Timestamp` (Created/Expires, 5 dk) ve `wsse:UsernameToken`.
+- **Null değer her zaman `i:nil="true"`** gider (`xmlns:i` zarfta tanımlı). WCF bozuk bir öğeye de yanlış şifreye de aynı
+  hatayı verir: "An error occurred when verifying security for the message" (`a:InvalidSecurity`). Adaptör bu hatayı
+  `PTTAVM_CREDENTIALS_REJECTED` sayar; kendi isteklerimizin nil kuralı testle korunur.
+- Mağaza ID, `KullaniciTedarikciBilgisiGetir` yanıtındaki `TedarikciId` ile eşleşmeli; bağlantı testi bunu denetler
+  (eşleşmezse `PTTAVM_STORE_MISMATCH`).
+- Test/sandbox ortamı ve genel hız sınırı belgelenmemiş.
 - Test/sandbox ortamı ve genel hız sınırı belgelenmemiş.
 
 ### 3.2 Servisler (REST)
@@ -102,8 +117,9 @@ Portal Cloudflare arkasında: içerik tarayıcıda okunur (curl/WebFetch 403). `
 
 Pazarama düzeninde, port başına bir `partial` dosya:
 - `PttAvmHttpClient.cs`: `IConnectionPort`; tek yazma kapısı `WriteBlocked<T>`; başlıklar, hata eşleme.
-- `PttAvmOptions.cs` (`SectionName = "PttAvm"`), `PttAvmAuthenticationHandler.cs` (şifreli `{ApiKey, AccessToken}`),
-  `PttAvmRateLimitHandler.cs` (paylaşılan PostgreSQL kovaları).
+- `PttAvmSoap.cs`: SOAP zarfı (WS-Security), nil kuralı, fault eşleme (güvenlik → kimlik reddi, HTML → geçit engeli).
+- `PttAvmOptions.cs` (`SectionName = "PttAvm"`, `SoapBaseAddress`), `PttAvmAuthenticationHandler.cs` (şifreli
+  `{Username, Password}`), `PttAvmRateLimitHandler.cs` (paylaşılan PostgreSQL kovaları; kova SOAP işlem adından seçilir).
 - `PttAvmOrders.cs` + `PttAvmOrderMapper.cs` (`IOrderPort`), `PttAvmReferences.cs` (`IReferenceDataPort`),
   `PttAvmProducts.cs` (`IProductPort`), `PttAvmPriceInventory.cs` (`IInventoryPricePort`),
   `PttAvmShipments.cs` (kargo barkodu/etiket), `PttAvmInvoices.cs` (`IInvoiceMarketplacePort`),
@@ -127,7 +143,8 @@ depo listesinden seçilir).
 | Sipariş | 30 / dk |
 | Ürün okuma, kategori | 30 / dk |
 | Ürün yazma, fiyat/stok | 1 / 15 sn ve aynı içerik 5 dk içinde tekrar yok |
-| Kargo | 30 / dk |
+
+Kova anahtarı API kullanıcı adının SHA-256 özeti (kullanıcı adı mağazaya özel). Kargo kovası 5. aşamada eklenir.
 
 ### 5.5 İş tipleri
 
@@ -139,7 +156,7 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
 
 | # | Aşama | Çıktı |
 |---|---|---|
-| 0 | Ön koşul | Kullanıcı API Key + Access Token üretir (entegratör seçimi) |
+| 0 | Ön koşul | Kullanıcı Entegrasyon Bilgileri'nden Mağaza ID + API kullanıcı adı + API şifresi alır |
 | 1 | Bağlantı | Platform kodu, kayıt listesi, adaptör iskeleti, form alanları, bağlantı testi |
 | 2 | Sipariş okuma | Sipariş/geçmiş/açık durum işleri, satır durum eşlemesi, ayrı şerit |
 | 3 | Kategori + ürün çekme | Kategori ağacı, klasik içe aktarma modları, barkod eşleşmesi |
@@ -152,7 +169,8 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
 
 ## 7. Riskler
 
-- **Entegratör kaydı:** Ravencia PTT AVM'nin entegratör listesinde yoksa anahtar üretilemez; PTT AVM'den eklenmesi istenir.
+- **SOAP kimliğinin ömrü:** REST dokümanı kullanıcı adı/şifrenin "geçiş süresince" çalıştığını yazıyordu; panel bugün
+  yalnız bunu veriyor. PTT AVM API Key'e geçerse REST yolu yeniden açılır.
 - **Varyant silme:** upsert'e varyantsız gönderim tüm varyantları siler → yayınlamada katı kontrol.
 - **Test ortamı yok:** yazmalar tek barkodla ve kullanıcı onayıyla açılır.
 - **Sayfalamasız sipariş listesi ve saat dilimsiz tarih:** canlı veriyle doğrulanır.
@@ -160,41 +178,46 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
 
 ## 8. Doğrulananlar ve doğrulanacaklar
 
-### 8.1 Resmi dokümandan doğrulananlar (developers.pttavm.com/tr, 21 Ekim 2026, tarayıcıyla okundu)
+### 8.1 Resmi kaynaklardan doğrulananlar (21 Ekim 2026)
 
-- **Başlıklar:** her uç için `Api-Key` (zorunlu), `access-token` (zorunlu; curl örneğinde `Access-Token`; HTTP başlık
-  adı büyük/küçük harfe duyarsız), `X-Correlation-Id` (zorunlu), `Content-Type: application/json`. Adaptör her
-  isteğe yeni bir GUID korelasyon kimliği koyar; GET isteklerinde gövde olmadığı için Content-Type yalnız gövdeli
-  isteklerde gider (curl örnekleri de GET'te göndermiyor).
-- **`GET categories/main`** (bağlantı testi): `{"success": true, "main_category": [{"id", "name", "updated_at"}],
-  "error": {"error_code", "error_message"}}`. Hata zarfı `error.error_code` / `error.error_message`.
-- **`GET orders/search?startDate=&endDate=&isActiveOrders=`** (Sipariş Kontrol V2): üçü de zorunlu; aralık ≤ 40 gün,
-  bitiş başlangıçtan önce olamaz; `isActiveOrders=false` tüm siparişler. Yanıt **çıplak dizi**; sipariş alanları
-  `siparisNo`, `islemTarihi`, `kargoBarkod`, `barcodes[{barcode,type}]`, `siparisUrunler[]` (`lineItemId`,
-  `siparisDurumu`, `urunBarkod`, `variantBarkod`, `kdvDahilToplamTutar`, `komisyon`, `isInvoice`...). Sayfalama
-  parametresi yok. Doküman tarih biçimini yazmıyor (`string / date-time`); probe `yyyy-MM-dd` gönderir.
-- **`GET products/search`** (Stok Kontrol Listesi): `categoryId`, `subCategoryId`, `isActive`, `isInStock`,
-  `merchantCategoryId`, `searchPage` **hepsi zorunlu** olarak işaretli; "tüm kategoriler" için hangi değerin
-  gönderileceği yazmıyor. Yanıt çıplak dizi, kayıtta `rowCount`, `barkod`, `urunId`, `variantListesi[]`. Bu yüzden
-  ürün okuma kanıtı bu uçla değil, aşağıdaki barkod sorgusuyla alınır; ürün çekme (aşama 3) parametreleri canlıda
-  denenerek belirlenecek.
-- **`POST products/get-by-barcodes`** (Barkod Kontrol Bulk): gövde `{"barcodes": ["..."]}`, yanıt ürün dizisi (aynı
-  alanlar). Ayrıca `GET products` (Barkod Kontrol) tek ürün döndürüyor; barkod parametresinin adı dokümanda yok.
-- Kimlik: anahtarlar satıcı panelinde Hesap Yönetimi › Entegrasyon Bilgileri'nde, seçilen entegratöre ve mağazaya özel
-  üretilir (Duyurular: "API Key Entegrasyonu"). Kullanıcı adı/şifre yöntemi geçiş süresince paralel çalışıyor.
+WSDL/XSD (`https://ws.pttavm.com:93/service.svc?wsdl`, doğrudan indirildi) ve developers.pttavm.com/en SOAP sayfaları
+(tarayıcıyla okundu):
+
+- **Kimlik:** portalın giriş sayfası "SOAP Web Services Security, username and password" yazıyor. WSDL politikası:
+  `TransportBinding` (HTTPS), `IncludeTimestamp`, `SignedSupportingTokens` › `UsernameToken` (`WssUsernameToken10`).
+- **Adres ve bağlama:** `soap:address https://ws.pttavm.com:93/service.svc`, port `WsSecured_IService`, SOAP 1.1
+  (`soap:binding transport=http`), `soapAction="http://tempuri.org/IService/<İşlem>"`, şema `elementFormDefault=
+  "qualified"`, hedef ad alanı `http://tempuri.org/`; veri sözleşmeleri `http://schemas.datacontract.org/2004/07/ePttAVMService`.
+- **`KullaniciTedarikciBilgisiGetir`** (bağlantı testi): parametresiz; yanıt `Tedarikci {TedarikciAdi, TedarikciId}`
+  (dokümanda "mağaza adı" ve "mağaza ID"). Örnek yanıt testlerde birebir kullanıldı.
+- **`GetMainCategories`**: parametresiz; `categoryMainResponse {success, main_category[category{id, name, updated_at}], error{error_code, error_message}}`.
+- **`SiparisKontrolListesiV2`**: `BaslangicTarihi`, `BitisTarihi` (şemada `xs:dateTime`, doküman örneği
+  `2024-10-05` gönderiyor → adaptör `yyyy-MM-dd` gönderir), `AktifSiparisler` (0 = tümü, 1 = kargo bekleyen);
+  aralık ≤ 40 gün. Yanıt `ArrayOfTedarikciSiparisKontrolV2`; örnek yanıt (kısaltılmış) testlerde kullanıldı.
+- **`StokKontrolListesi`**: `ShopId`, `SearchKategoriId`, `SearchAltKategoriId`, `SearchUrunAdi`, `SearchBarkod`,
+  `SearchAktifPasif`, `SearchMevcut`, `SearchTedarikciKategoriId`, `SearchYeniKategoriId`, `SearchPage`; yanıt
+  `ArrayOfStokKontrolDetay` (kayıtta `RowCount`, `ShopId`, `Barkod`, `UrunId`, `VariantListesi`). Probe dokümandaki
+  örnek filtreleri gönderir.
+- **`BarkodKontrol`** / **`BarkodKontrolBulk`**: tek barkod / `ArrayOfstring`; yanıt `StokKontrolDetay`. Bilinmeyen
+  barkodun yanıtı dokümanda yok → ürün okuma kanıtı bunun yerine StokKontrolListesi ilk sayfasıyla alınır.
+- Yanıtlarda null alanlar `i:nil="true"` olarak geliyor (ör. `AdminCode`, `Resim1Stream`).
 
 ### 8.2 1. aşamada varsayılanlar (canlıda doğrulanacak)
 
-- 401 ve 403 → `PTTAVM_CREDENTIALS_REJECTED` (HTML 403 sayfası → `PTTAVM_GATEWAY_BLOCKED`, geçici). Dokümanda hata
-  durum kodları yazmıyor.
-- Ürün okuma kanıtı: hiçbir mağazada olmayan bir barkodla (`RAVENCIA-CONNECTION-PROBE`) `get-by-barcodes`; yanıt
-  dizi ise SUPPORTED, başka bir şeyse (ör. 400/404) UNKNOWN. UNKNOWN kalırsa etkinleştirme kuralı (ürün + sipariş
-  okuma kanıtı) bağlantıyı etkinleştirmez; o zaman canlı yanıta göre probe düzeltilir.
-- Sipariş probe'u dün–bugün (Türkiye saati) `isActiveOrders=false`; `endDate`in dahil olup olmadığı bilinmiyor.
-- Hız kovaları mağaza başına (Access Token özeti ile); API Key entegratöre ortak olabileceği için anahtar değil.
-- Devre kesici anahtarı ana makine + ilk iki yol parçası olduğundan PTT AVM'de tüm uçlar (`api/v1`) tek devre
-  paylaşır; 2. aşamada aile bazına indirilebilir.
+- SOAP fault `InvalidSecurity` / `FailedAuthentication` ya da "verifying security" metni → `PTTAVM_CREDENTIALS_REJECTED`
+  (yanlış kullanıcı/şifre, süresi geçmiş Timestamp ve bozuk XML aynı yanıtı verir; bizim zarflarımız nil kuralına
+  uyar). Örnek fault metni WCF'nin standart metninden alındı, PTT AVM'den görülmedi.
+- Diğer fault'lar → `PTTAVM_REQUEST_REJECTED` (PTT AVM metni + öneri). HTML yanıt (Cloudflare) → `PTTAVM_GATEWAY_BLOCKED`
+  (geçici, 15 dk); fault'suz 5xx/408/zaman aşımı → geçici; 429 → `PTTAVM_RATE_LIMITED`.
+- Timestamp ömrü 5 dk (PTT AVM yanıtlarındaki kendi Timestamp'i 5 dk); sunucu saat farkına toleransı bilinmiyor.
+- Sipariş probe'u dün–bugün (Türkiye saati), `AktifSiparisler=0`; `BitisTarihi`nin dahil olup olmadığı bilinmiyor.
+- Ürün probe'u: `StokKontrolListesi` `ShopId`=Mağaza ID, `SearchAktifPasif=1`, `SearchMevcut=0`, `SearchPage=0`; boş
+  liste de SUPPORTED sayılır. `SearchAktifPasif=1`'in "yalnız aktif" mi olduğu canlıda görülecek.
+- `TedarikciId` ile Mağaza ID'nin aynı sayı olduğu (doküman ikisine de "store ID" diyor).
+- Devre kesici anahtarı ana makine + yol olduğundan tüm SOAP işlemleri tek devre paylaşır (hesap başına).
 
 ### 8.3 Hâlâ doğrulanacaklar
 
-- `products/search` için "tümü" değerleri ve sayfa boyutu; `IslemTarihi` saat dilimi; kargo API kimliği.
+- Gerçek bir kimlik reddinin fault metni ve HTTP durumu; Cloudflare'in ws.pttavm.com:93 önünde olup olmadığı.
+- `SiparisKontrolListesiV2` sayfalaması (şemada yok); `IslemTarihi` saat dilimi; StokKontrolListesi sayfa boyutu.
+- Kargo akışının (barkod/etiket) SOAP'taki karşılığı ya da shipment REST kimliği.

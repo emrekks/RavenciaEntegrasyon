@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text;
-using System.Text.Json;
+using System.Xml.Linq;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure;
@@ -16,8 +16,73 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class PttAvmAdapterTests
 {
-    private const string ApiKey = "ptt-api-key-1234";
-    private const string AccessToken = "ptt-access-token-5678";
+    private const string Username = "ravencia-api-user";
+    private const string Password = "S3cr3t&<pass>";
+    private const string StoreId = "123456";
+    private static readonly DateTimeOffset Now = new(2026, 10, 21, 22, 30, 0, TimeSpan.Zero);
+
+    // Answers as published on developers.pttavm.com (Supplier Information, Order Control V2 SOAP samples),
+    // shortened: the order sample keeps one order with one line.
+    private const string SupplierAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:u="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+           <s:Header>
+              <ActivityId CorrelationId="218e076b-b502-4487-9815-ef775a4d4eca" xmlns="http://schemas.microsoft.com/2004/09/ServiceModel/Diagnostics">00000000-0000-0000-0000-000000000000</ActivityId>
+              <o:Security s:mustUnderstand="1" xmlns:o="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+                 <u:Timestamp u:Id="_0"><u:Created>2025-04-29T11:58:47.277Z</u:Created><u:Expires>2025-04-29T12:03:47.277Z</u:Expires></u:Timestamp>
+              </o:Security>
+           </s:Header>
+           <s:Body>
+              <KullaniciTedarikciBilgisiGetirResponse xmlns="http://tempuri.org/">
+                 <KullaniciTedarikciBilgisiGetirResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+                    <a:TedarikciAdi>abcdef</a:TedarikciAdi>
+                    <a:TedarikciId>123456</a:TedarikciId>
+                 </KullaniciTedarikciBilgisiGetirResult>
+              </KullaniciTedarikciBilgisiGetirResponse>
+           </s:Body>
+        </s:Envelope>
+        """;
+
+    private const string OrdersAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+           <s:Body>
+              <SiparisKontrolListesiV2Response xmlns="http://tempuri.org/">
+                 <SiparisKontrolListesiV2Result xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+                    <a:TedarikciSiparisKontrolV2>
+                       <a:Barcodes xmlns:b="http://schemas.datacontract.org/2004/07/ePttAVMService.Model"/>
+                       <a:FirmaUnvani/>
+                       <a:IslemTarihi>2024-10-21T14:48:46</a:IslemTarihi>
+                       <a:KargoBarkod/>
+                       <a:KargoTutari>222.3</a:KargoTutari>
+                       <a:SiparisNo>PTT-L6LI1VK2D-211024</a:SiparisNo>
+                       <a:SiparisUrunler>
+                          <a:SiparisUrun>
+                             <a:KdvDahilToplamTutar>49.66</a:KdvDahilToplamTutar>
+                             <a:LineItemId>232318670</a:LineItemId>
+                             <a:SiparisDurumu>iptal</a:SiparisDurumu>
+                             <a:UrunBarkod>10102024-85224</a:UrunBarkod>
+                          </a:SiparisUrun>
+                       </a:SiparisUrunler>
+                       <a:VergiNo/>
+                    </a:TedarikciSiparisKontrolV2>
+                 </SiparisKontrolListesiV2Result>
+              </SiparisKontrolListesiV2Response>
+           </s:Body>
+        </s:Envelope>
+        """;
+
+    // Minimal answers built from the WSDL types (categoryMainResponse, ArrayOfStokKontrolDetay); not copied from PTT AVM.
+    private const string CategoriesAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><GetMainCategoriesResponse xmlns="http://tempuri.org/"><GetMainCategoriesResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><a:error i:nil="true"/><a:main_category><a:category><a:id>1</a:id><a:name>Elektronik</a:name><a:updated_at>2023-06-13T15:24:53</a:updated_at></a:category></a:main_category><a:success>true</a:success></GetMainCategoriesResult></GetMainCategoriesResponse></s:Body></s:Envelope>
+        """;
+
+    private const string StockAnswer = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><StokKontrolListesiResponse xmlns="http://tempuri.org/"><StokKontrolListesiResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"/></StokKontrolListesiResponse></s:Body></s:Envelope>
+        """;
+
+    // The fault WCF gives for a wrong user name or password (and for a malformed request).
+    private const string SecurityFault = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode xmlns:a="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">a:InvalidSecurity</faultcode><faultstring xml:lang="en-US">An error occurred when verifying security for the message.</faultstring></s:Fault></s:Body></s:Envelope>
+        """;
 
     [Fact]
     public void PttAvmIsAMarketplaceWithItsOwnConnectionTest()
@@ -51,146 +116,231 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
-    public async Task EveryRequestCarriesTheKeyTheTokenAndAFreshCorrelationId()
+    public async Task TheConnectionTestSignsASupplierInfoCallWithAUsernameTokenAndATimestamp()
     {
-        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, """{"success":true,"main_category":[{"id":"1","name":"Elektronik","updated_at":"2023-06-13T15:24:53"}],"error":{"error_code":null,"error_message":null}}"""));
-        var client = Client(handler);
+        var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, SupplierAnswer));
 
-        var first = await client.TestAsync(Account("PRODUCTION", "DRAFT", false), CancellationToken.None);
-        await client.TestAsync(Account("PRODUCTION", "DRAFT", false), CancellationToken.None);
+        var result = await Client(handler).TestAsync(Account(), CancellationToken.None);
 
-        Assert.True(first.IsSuccess, first.Error?.SafeMessage);
-        Assert.Equal("PTTAVM", first.Value!.PlatformCode);
-        var request = handler.Requests[0];
-        Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal("https://integration-api.pttavm.com/api/v1/categories/main", request.Uri);
-        Assert.Equal(ApiKey, request.Headers["Api-Key"]);
-        Assert.Equal(AccessToken, request.Headers["Access-Token"]);
-        Assert.True(Guid.TryParse(request.Headers["X-Correlation-Id"], out _));
-        Assert.NotEqual(handler.Requests[0].Headers["X-Correlation-Id"], handler.Requests[1].Headers["X-Correlation-Id"]);
-        Assert.Contains("application/json", request.Headers["Accept"]);
+        Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+        Assert.Equal("PTTAVM", result.Value!.PlatformCode);
+        Assert.Equal(StoreId, result.Value.ScopeFingerprint);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("https://ws.pttavm.com:93/service.svc", request.Uri);
+        Assert.Equal("\"http://tempuri.org/IService/KullaniciTedarikciBilgisiGetir\"", request.Headers["SOAPAction"]);
+        Assert.StartsWith("text/xml", request.ContentType);
+
+        var envelope = XDocument.Parse(request.Body!);
+        XNamespace soap = PttAvmHttpClient.EnvelopeNamespace, tem = PttAvmHttpClient.ServiceNamespace, wsse = PttAvmHttpClient.SecurityNamespace, wsu = PttAvmHttpClient.UtilityNamespace;
+        Assert.Equal("soapenv", envelope.Root!.GetPrefixOfNamespace(soap));
+        Assert.Equal("tem", envelope.Root.GetPrefixOfNamespace(tem));
+        var security = envelope.Root.Element(soap + "Header")!.Element(wsse + "Security")!;
+        Assert.Equal("1", security.Attribute(soap + "mustUnderstand")!.Value);
+        var timestamp = security.Element(wsu + "Timestamp")!;
+        Assert.Equal("2026-10-21T22:30:00.000Z", timestamp.Element(wsu + "Created")!.Value);
+        Assert.Equal("2026-10-21T22:35:00.000Z", timestamp.Element(wsu + "Expires")!.Value);
+        var token = security.Element(wsse + "UsernameToken")!;
+        Assert.Equal(Username, token.Element(wsse + "Username")!.Value);
+        var password = token.Element(wsse + "Password")!;
+        // The password is escaped in the XML and arrives as typed.
+        Assert.Equal(Password, password.Value);
+        Assert.EndsWith("#PasswordText", password.Attribute("Type")!.Value);
+        Assert.NotNull(envelope.Root.Element(soap + "Body")!.Element(tem + "KullaniciTedarikciBilgisiGetir"));
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.Unauthorized)]
-    [InlineData(HttpStatusCode.Forbidden)]
-    public async Task ARefusedKeyIsReportedAsRejectedCredentialsWithoutLeakingThem(HttpStatusCode status)
+    [Fact]
+    public async Task AnApiUserOfAnotherStoreIsNotAcceptedForThisStore()
+    {
+        var client = Client(new CapturingHandler(_ => Respond(HttpStatusCode.OK, SupplierAnswer)));
+
+        var result = await client.TestAsync(Account(storeId: "654321"), CancellationToken.None);
+
+        Assert.Equal("PTTAVM_STORE_MISMATCH", result.Error!.Code);
+        Assert.Contains("123456", result.Error.SafeMessage);
+        Assert.Contains("654321", result.Error.SafeMessage);
+    }
+
+    [Fact]
+    public async Task ANonNumericStoreIdIsRefusedBeforeAnyCall()
+    {
+        var handler = new CapturingHandler(_ => throw new InvalidOperationException());
+
+        var result = await Client(handler).TestAsync(Account(storeId: "Ravencia"), CancellationToken.None);
+
+        Assert.Equal("PTTAVM_STORE_ID_INVALID", result.Error!.Code);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ASecurityFaultIsReportedAsRejectedCredentialsWithoutLeakingThem()
     {
         var logger = new CapturingLogger();
-        var client = Client(new CapturingHandler(_ => Respond(status, """{"success":false,"error":{"error_code":"401","error_message":"Geçersiz token"}}""")), logger: logger);
+        var client = Client(new CapturingHandler(_ => Respond(HttpStatusCode.InternalServerError, SecurityFault)), logger: logger);
 
-        var result = await client.TestAsync(Account("PRODUCTION", "DRAFT", false), CancellationToken.None);
+        var result = await client.TestAsync(Account(), CancellationToken.None);
 
         Assert.Equal("PTTAVM_CREDENTIALS_REJECTED", result.Error!.Code);
         Assert.Equal(AdapterErrorClass.Authentication, result.Error.Class);
         Assert.Contains("Hesap Yönetimi › Entegrasyon Bilgileri", result.Error.SafeMessage);
-        Assert.Contains("Ravencia", result.Error.SafeMessage);
-        Assert.Contains("Geçersiz token", result.Error.SafeMessage);
+        Assert.Contains("API Kullanıcı Adı", result.Error.SafeMessage);
         Assert.NotEmpty(logger.Messages);
         Assert.All(logger.Messages, message =>
         {
-            Assert.DoesNotContain(ApiKey, message);
-            Assert.DoesNotContain(AccessToken, message);
+            Assert.DoesNotContain(Username, message);
+            Assert.DoesNotContain(Password, message);
         });
+    }
+
+    [Fact]
+    public void AnOrdinaryFaultIsARejectionWithPttAvmsSentence()
+    {
+        var (result, error) = PttAvmHttpClient.SoapResponse(HttpStatusCode.InternalServerError,
+            """<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Client</faultcode><faultstring>Bitiş tarihi başlangıç tarihinden önce olamaz.</faultstring></s:Fault></s:Body></s:Envelope>""",
+            PttAvmHttpClient.Orders);
+
+        Assert.Null(result);
+        Assert.Equal("PTTAVM_REQUEST_REJECTED", error!.Code);
+        Assert.Contains("Bitiş tarihi", error.SafeMessage);
+        Assert.Contains("40 gün", error.SafeMessage);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public void AGatewayPageIsATransientBlockNotACredentialsRefusal(HttpStatusCode status)
+    {
+        var (_, error) = PttAvmHttpClient.SoapResponse(status, "<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>cloudflare</body></html>", PttAvmHttpClient.SupplierInfo);
+
+        Assert.Equal("PTTAVM_GATEWAY_BLOCKED", error!.Code);
+        Assert.Equal(AdapterErrorClass.RateLimit, error.Class);
+        Assert.Equal(TimeSpan.FromMinutes(15), error.RetryAfter);
     }
 
     [Theory]
     [InlineData(HttpStatusCode.InternalServerError, "PTTAVM_REMOTE_ERROR", AdapterErrorClass.Remote5xx)]
+    [InlineData(HttpStatusCode.BadGateway, "PTTAVM_REMOTE_ERROR", AdapterErrorClass.Remote5xx)]
     [InlineData(HttpStatusCode.TooManyRequests, "PTTAVM_RATE_LIMITED", AdapterErrorClass.RateLimit)]
     [InlineData(HttpStatusCode.RequestTimeout, "PTTAVM_REMOTE_TIMEOUT", AdapterErrorClass.TransientNetwork)]
     public void OtherFailuresAreTransient(HttpStatusCode status, string code, AdapterErrorClass @class)
     {
-        var error = PttAvmHttpClient.Error(status, "", null);
+        var (_, error) = PttAvmHttpClient.SoapResponse(status, "", PttAvmHttpClient.SupplierInfo);
 
-        Assert.Equal(code, error.Code);
+        Assert.Equal(code, error!.Code);
         Assert.Equal(@class, error.Class);
     }
 
     [Fact]
-    public void AGatewayBlockPageIsNotACredentialsRefusal()
+    public void NullParametersAreSentAsNilNeverAsEmptyOrMissingElements()
     {
-        var error = PttAvmHttpClient.Error(HttpStatusCode.Forbidden, "<!DOCTYPE html><html><body>blocked</body></html>", null);
+        var envelope = PttAvmHttpClient.SoapEnvelope("BarkodKontrol", Account(), Now, [new("Barkod", null), new("SearchUrunAdi", "")]);
 
-        Assert.Equal("PTTAVM_GATEWAY_BLOCKED", error.Code);
-        Assert.Equal(AdapterErrorClass.RateLimit, error.Class);
+        Assert.Contains("""<tem:Barkod i:nil="true"/>""", envelope);
+        Assert.Contains("<tem:SearchUrunAdi></tem:SearchUrunAdi>", envelope);
+        Assert.Contains($"""xmlns:i="{PttAvmHttpClient.InstanceNamespace}" """.TrimEnd(), envelope);
+        var nil = XDocument.Parse(envelope).Descendants(XName.Get("Barkod", PttAvmHttpClient.ServiceNamespace)).Single();
+        Assert.True(PttAvmHttpClient.IsNil(nil));
     }
 
     [Fact]
-    public void ASuccessfulHttpAnswerWithSuccessFalseIsARejection()
-    {
-        using var refused = JsonDocument.Parse("""{"success":false,"main_category":null,"error":{"error_code":"E1","error_message":"Kategori bulunamadı"}}""");
-        using var accepted = JsonDocument.Parse("""{"success":true,"main_category":[],"error":{"error_code":null,"error_message":null}}""");
-        using var bareList = JsonDocument.Parse("[]");
+    public void AnOperationWithoutParametersHasAnEmptyElement() =>
+        Assert.Contains("<soapenv:Body><tem:GetMainCategories/></soapenv:Body>", PttAvmHttpClient.SoapEnvelope("GetMainCategories", Account(), Now, []));
 
-        Assert.Contains("Kategori bulunamadı", PttAvmHttpClient.EnvelopeError(refused.RootElement)!.SafeMessage);
-        Assert.Null(PttAvmHttpClient.EnvelopeError(accepted.RootElement));
-        Assert.Null(PttAvmHttpClient.EnvelopeError(bareList.RootElement));
-        Assert.True(PttAvmHttpClient.MainCategoryList(accepted.RootElement));
-        Assert.False(PttAvmHttpClient.MainCategoryList(bareList.RootElement));
+    [Fact]
+    public void TheDocumentedSupplierAndOrderAnswersAreRead()
+    {
+        var (supplierResult, supplierError) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, SupplierAnswer, PttAvmHttpClient.SupplierInfo);
+        var (ordersResult, ordersError) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, OrdersAnswer, PttAvmHttpClient.Orders);
+
+        Assert.Null(supplierError);
+        Assert.Equal(("123456", "abcdef"), PttAvmHttpClient.Supplier(supplierResult!));
+        Assert.Null(ordersError);
+        var order = Assert.Single(PttAvmHttpClient.ContractItems(ordersResult!, "TedarikciSiparisKontrolV2"));
+        Assert.Equal("PTT-L6LI1VK2D-211024", PttAvmHttpClient.ContractValue(order, "SiparisNo"));
+        Assert.Null(PttAvmHttpClient.ContractValue(order, "VergiNo"));
+        var line = order.Elements().Single(x => x.Name.LocalName == "SiparisUrunler").Elements().Single();
+        Assert.Equal("232318670", PttAvmHttpClient.ContractValue(line, "LineItemId"));
     }
 
     [Fact]
-    public async Task AnUnexpectedCategoryAnswerNamesItsFieldsButNotTheirValues()
+    public void ANilOrMissingSupplierIsAContractProblem()
     {
-        var client = Client(new CapturingHandler(_ => Respond(HttpStatusCode.OK, """{"items":"secret-value"}""")));
+        var nil = XElement.Parse("""<KullaniciTedarikciBilgisiGetirResult xmlns="http://tempuri.org/" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" i:nil="true"/>""");
+        var (_, wrongOperation) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, OrdersAnswer, PttAvmHttpClient.SupplierInfo);
 
-        var result = await client.TestAsync(Account("PRODUCTION", "DRAFT", false), CancellationToken.None);
-
-        Assert.Equal("PTTAVM_CONNECTION_CONTRACT_INVALID", result.Error!.Code);
-        Assert.Contains("items", result.Error.SafeMessage);
-        Assert.DoesNotContain("secret-value", result.Error.SafeMessage);
+        Assert.Null(PttAvmHttpClient.Supplier(nil));
+        Assert.Equal("PTTAVM_SOAP_CONTRACT_INVALID", wrongOperation!.Code);
+        Assert.DoesNotContain("PTT-L6LI1VK2D", wrongOperation.SafeMessage);
     }
 
     [Fact]
     public async Task TheProbeProvesReadsOnlyWithTheDocumentedAnswers()
     {
-        var handler = new CapturingHandler(request => request.RequestUri!.AbsolutePath switch
+        var handler = new CapturingHandler(request => Operation(request) switch
         {
-            "/api/v1/categories/main" => Respond(HttpStatusCode.OK, """{"success":true,"main_category":[]}"""),
-            "/api/v1/orders/search" => Respond(HttpStatusCode.OK, "[]"),
-            _ => Respond(HttpStatusCode.BadRequest, """{"success":false,"error":{"error_code":"400","error_message":"Barkod bulunamadı"}}""")
+            "KullaniciTedarikciBilgisiGetir" => Respond(HttpStatusCode.OK, SupplierAnswer),
+            "GetMainCategories" => Respond(HttpStatusCode.OK, CategoriesAnswer),
+            "SiparisKontrolListesiV2" => Respond(HttpStatusCode.OK, OrdersAnswer),
+            _ => Respond(HttpStatusCode.InternalServerError, """<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Client</faultcode><faultstring>Ürün bulunamadı</faultstring></s:Fault></s:Body></s:Envelope>""")
         });
-        var client = Client(handler, new DateTimeOffset(2026, 10, 21, 22, 30, 0, TimeSpan.Zero));
 
-        var result = await client.DiscoverCapabilitiesAsync(Account("PRODUCTION", "DRAFT", false), CancellationToken.None);
+        var result = await Client(handler).DiscoverCapabilitiesAsync(Account(), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
+        Assert.True(result.IsSuccess, result.Error?.SafeMessage);
         var evidence = result.Value!.ToDictionary(x => x.Code, x => x.SupportLevel);
         Assert.Equal("SUPPORTED", evidence[MarketplaceCapabilities.ConnectionTest]);
         Assert.Equal("SUPPORTED", evidence[MarketplaceCapabilities.ReferenceRead]);
         Assert.Equal("SUPPORTED", evidence[MarketplaceCapabilities.OrderRead]);
         Assert.Equal("UNKNOWN", evidence[MarketplaceCapabilities.ProductRead]);
         Assert.All(result.Value!, item => Assert.StartsWith("https://developers.pttavm.com/", item.SourceUrl));
+        Assert.All(result.Value!, item => Assert.Equal("soap", item.SourceVersion));
         // 22:30 UTC is already the 22nd in Turkey.
-        var orders = handler.Requests.Single(x => x.Uri.Contains("orders/search", StringComparison.Ordinal));
-        Assert.EndsWith("orders/search?startDate=2026-10-21&endDate=2026-10-22&isActiveOrders=false", orders.Uri);
-        var products = handler.Requests.Single(x => x.Uri.EndsWith("products/get-by-barcodes", StringComparison.Ordinal));
-        Assert.Equal(HttpMethod.Post, products.Method);
-        Assert.Equal($$"""{"barcodes":["{{PttAvmHttpClient.ProbeBarcode}}"]}""", products.Body);
+        var orders = XDocument.Parse(handler.Requests.Single(x => x.Headers["SOAPAction"].Contains("SiparisKontrolListesiV2", StringComparison.Ordinal)).Body!);
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        Assert.Equal("2026-10-21", orders.Descendants(tem + "BaslangicTarihi").Single().Value);
+        Assert.Equal("2026-10-22", orders.Descendants(tem + "BitisTarihi").Single().Value);
+        Assert.Equal("0", orders.Descendants(tem + "AktifSiparisler").Single().Value);
+        var stock = XDocument.Parse(handler.Requests.Single(x => x.Headers["SOAPAction"].Contains("StokKontrolListesi", StringComparison.Ordinal)).Body!);
+        Assert.Equal(StoreId, stock.Descendants(tem + "ShopId").Single().Value);
+        Assert.Equal("0", stock.Descendants(tem + "SearchPage").Single().Value);
     }
 
     [Fact]
-    public async Task AProductListAnswerProvesProductRead()
+    public async Task AnEmptyStockListStillProvesProductRead()
     {
-        var handler = new CapturingHandler(request => request.RequestUri!.AbsolutePath == "/api/v1/categories/main"
-            ? Respond(HttpStatusCode.OK, """{"success":true,"main_category":[]}""")
-            : Respond(HttpStatusCode.OK, "[]"));
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "KullaniciTedarikciBilgisiGetir" => Respond(HttpStatusCode.OK, SupplierAnswer),
+            "GetMainCategories" => Respond(HttpStatusCode.OK, CategoriesAnswer),
+            "SiparisKontrolListesiV2" => Respond(HttpStatusCode.OK, OrdersAnswer),
+            _ => Respond(HttpStatusCode.OK, StockAnswer)
+        });
 
-        var result = await Client(handler).DiscoverCapabilitiesAsync(Account("PRODUCTION", "DRAFT", false), CancellationToken.None);
+        var result = await Client(handler).DiscoverCapabilitiesAsync(Account(), CancellationToken.None);
 
         Assert.All(result.Value!, item => Assert.Equal("SUPPORTED", item.SupportLevel));
     }
 
+    [Fact]
+    public void ACategoryAnswerWithSuccessFalseLeavesReferenceReadUnknown()
+    {
+        var refused = XElement.Parse("""<GetMainCategoriesResult xmlns="http://tempuri.org/" xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService"><a:error><a:error_code>E1</a:error_code><a:error_message>Kategori bulunamadı</a:error_message></a:error><a:success>false</a:success></GetMainCategoriesResult>""");
+
+        Assert.Contains("Kategori bulunamadı", PttAvmHttpClient.MainCategoryError(refused));
+    }
+
     [Theory]
-    [InlineData("https://integration-api.pttavm.com/api/v1/orders/search?startDate=2026-10-01", "orders")]
-    [InlineData("https://integration-api.pttavm.com/api/v1/orders/123/cargo-infos", "orders")]
-    [InlineData("https://integration-api.pttavm.com/api/v1/products/upsert", "product-write")]
-    [InlineData("https://integration-api.pttavm.com/api/v1/products/stock-prices", "product-write")]
-    [InlineData("https://integration-api.pttavm.com/api/v1/products/search", "reads")]
-    [InlineData("https://integration-api.pttavm.com/api/v1/categories/main", "reads")]
-    [InlineData("https://shipment.pttavm.com/api/v1/create-barcode", "shipment")]
-    public void RequestsAreCountedInTheirPttAvmBucket(string url, string bucket) =>
-        Assert.Equal(bucket, PttAvmRateLimitHandler.BucketFor(new Uri(url)));
+    [InlineData("SiparisKontrolListesiV2", "orders")]
+    [InlineData("SiparisDetay", "orders")]
+    [InlineData("KargoBilgiListesi", "orders")]
+    [InlineData("StokFiyatGuncelle3", "product-write")]
+    [InlineData("StokGuncelleV2Bulk", "product-write")]
+    [InlineData("UpdateProductsV3", "product-write")]
+    [InlineData("StokKontrolListesi", "reads")]
+    [InlineData("KullaniciTedarikciBilgisiGetir", "reads")]
+    [InlineData(null, "reads")]
+    public void RequestsAreCountedInTheirPttAvmBucket(string? operation, string bucket) =>
+        Assert.Equal(bucket, PttAvmRateLimitHandler.BucketFor(operation));
 
     [Fact]
     public void ProductWritesAreSpacedFifteenSecondsApart()
@@ -199,6 +349,7 @@ public sealed class PttAvmAdapterTests
 
         Assert.Equal(1d / 15, PttAvmRateLimitHandler.BucketShape(options, "product-write").TokensPerSecond, 6);
         Assert.Equal(1d, PttAvmRateLimitHandler.BucketShape(options, "product-write").Capacity);
+        Assert.Equal(new Uri("https://ws.pttavm.com:93/service.svc"), options.SoapBaseAddress);
     }
 
     [Theory]
@@ -221,20 +372,71 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
-    public void LoggedRequestContextDoesNotPrintTheKeyOrTheToken()
+    public void LoggedRequestContextDoesNotPrintTheUserNameOrThePassword()
     {
-        var context = Account("PRODUCTION", "ACTIVE", false);
+        var context = Account();
+        var request = PttAvmHttpClient.BuildSoapRequest(context, new PttAvmOptions().SoapBaseAddress, PttAvmHttpClient.SupplierInfo, Now, []);
 
-        Assert.DoesNotContain(ApiKey, context.ToString());
-        Assert.DoesNotContain(AccessToken, context.ToString());
-        Assert.DoesNotContain(AccessToken, PttAvmRateLimitHandler.StoreKey(AccessToken));
+        Assert.DoesNotContain(Username, context.ToString());
+        Assert.DoesNotContain(Password, context.ToString());
+        Assert.True(request.Options.TryGetValue(PttAvmRateLimitHandler.AccountKeyOption, out var bucket));
+        Assert.Equal(PttAvmRateLimitHandler.AccountKey(Username), bucket);
+        Assert.DoesNotContain(Username, bucket);
+        Assert.DoesNotContain(Password, string.Join(",", request.Headers.Select(x => x.Key + "=" + string.Join(",", x.Value))));
     }
 
-    private static PttAvmHttpClient Client(CapturingHandler handler, DateTimeOffset? now = null, bool globalWrites = false, ILogger<PttAvmHttpClient>? logger = null) => new(
-        new SingleClientFactory(handler), null!, Options.Create(new PttAvmOptions()), new FixedClock(now ?? DateTimeOffset.UtcNow), logger ?? new CapturingLogger(),
+    [Fact]
+    public void AStoredUsernameAndPasswordAreRead()
+    {
+        var load = PttAvmAuthenticationHandler.Read(Account().Connection, """{"Username":" ravencia-api-user ","Password":"S3cr3t&<pass>"}""");
+
+        Assert.False(load.LegacyApiKeyPayload);
+        Assert.Equal(Username, load.Account!.Username);
+        Assert.Equal(Password, load.Account.Password);
+    }
+
+    [Fact]
+    public void AnOldApiKeyPayloadIsReportedAsRejectedCredentialsAskingForTheNewValues()
+    {
+        var load = PttAvmAuthenticationHandler.Read(Account().Connection, """{"ApiKey":"old-key","AccessToken":"old-token"}""");
+
+        Assert.Null(load.Account);
+        Assert.True(load.LegacyApiKeyPayload);
+        Assert.False(PttAvmAuthenticationHandler.Read(Account().Connection, "{}").LegacyApiKeyPayload);
+        Assert.Equal("PTTAVM_CREDENTIAL_INVALID", PttAvmHttpClient.CredentialFailure<bool>(PttAvmCredentialLoad.Missing).Error!.Code);
+
+        var result = PttAvmHttpClient.CredentialFailure<ConnectionIdentity>(load);
+        Assert.Equal("PTTAVM_CREDENTIALS_REJECTED", result.Error!.Code);
+        Assert.Equal(AdapterErrorClass.Authentication, result.Error.Class);
+        Assert.Contains("Mağaza ID, API Kullanıcı Adı ve API Şifresi", result.Error.SafeMessage);
+    }
+
+    [Theory]
+    [InlineData("123456", "123456")]
+    [InlineData(" 123456 ", "123456")]
+    [InlineData("Ravencia", null)]
+    [InlineData("12 34", null)]
+    [InlineData("0", null)]
+    [InlineData("", null)]
+    public void TheStoreIdIsTheNumericMağazaId(string value, string? expected) =>
+        Assert.Equal(expected, PttAvmHttpClient.StoreId(value));
+
+    [Theory]
+    [InlineData(" pass word ", "pass word")]
+    [InlineData("​şifre123", "şifre123")]
+    [InlineData("pa\u0001ss", null)]
+    [InlineData("   ", null)]
+    public void ThePasswordIsKeptAsTypedApartFromInvisibleCharacters(string value, string? expected) =>
+        Assert.Equal(expected, MarketplaceConnectionService.PttAvmPasswordValue(value));
+
+    private static string Operation(HttpRequestMessage request) =>
+        request.Headers.GetValues("SOAPAction").Single().Trim('"')[PttAvmHttpClient.SoapActionPrefix.Length..];
+
+    private static PttAvmHttpClient Client(CapturingHandler handler, bool globalWrites = false, ILogger<PttAvmHttpClient>? logger = null) => new(
+        new SingleClientFactory(handler), null!, Options.Create(new PttAvmOptions()), new FixedClock(Now), logger ?? new CapturingLogger(),
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = globalWrites ? "true" : "false" }).Build());
 
-    private static PttAvmRequestContext Account(string environment, string status, bool connectionWrites) => new(
+    private static PttAvmRequestContext Account(string environment = "PRODUCTION", string status = "DRAFT", bool connectionWrites = false, string storeId = StoreId) => new(
         new PlatformConnection
         {
             Id = Guid.NewGuid(),
@@ -242,16 +444,16 @@ public sealed class PttAvmAdapterTests
             Environment = environment,
             Status = status,
             DisplayName = "PTT AVM",
-            ExternalStoreId = "Ravencia",
+            ExternalStoreId = storeId,
             ApiVersion = "V1",
             SettingsJson = connectionWrites ? """{"ExternalWritesEnabled":true}""" : """{"ExternalWritesEnabled":false}"""
         },
-        ApiKey, AccessToken);
+        Username, Password);
 
     private static HttpResponseMessage Respond(HttpStatusCode status, string body) =>
-        new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        new(status) { Content = new StringContent(body, Encoding.UTF8, body.TrimStart().StartsWith("<!DOCTYPE", StringComparison.Ordinal) ? "text/html" : "text/xml") };
 
-    private sealed record CapturedRequest(HttpMethod Method, string Uri, Dictionary<string, string> Headers, string? Body);
+    private sealed record CapturedRequest(HttpMethod Method, string Uri, Dictionary<string, string> Headers, string? ContentType, string? Body);
 
     private sealed class CapturingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
@@ -261,7 +463,7 @@ public sealed class PttAvmAdapterTests
         {
             var headers = request.Headers.ToDictionary(x => x.Key, x => string.Join(",", x.Value), StringComparer.OrdinalIgnoreCase);
             var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            Requests.Add(new(request.Method, request.RequestUri!.ToString(), headers, body));
+            Requests.Add(new(request.Method, request.RequestUri!.ToString(), headers, request.Content?.Headers.ContentType?.ToString(), body));
             return respond(request);
         }
     }

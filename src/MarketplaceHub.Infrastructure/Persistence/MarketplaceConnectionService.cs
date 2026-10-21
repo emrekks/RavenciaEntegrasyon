@@ -123,7 +123,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "HEPSIBURADA" && !string.Equals(apiVersion, "V1.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Hepsiburada bağlantısı sipariş/listeleme API sürümü V1.0 ile pinlenmelidir.");
         if (platform == "N11" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "N11 bağlantısı REST API sürümü V1 ile pinlenmelidir.");
         if (platform == "PAZARAMA" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Pazarama bağlantısı API sürümü V1 ile pinlenmelidir.");
-        if (platform == "PTTAVM" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "PTT AVM bağlantısı REST API sürümü V1 ile pinlenmelidir.");
+        if (platform == "PTTAVM" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "PTT AVM bağlantısı API sürümü V1 ile pinlenmelidir.");
         if (platform == "TRENDYOL_EFATURAM" && !string.Equals(apiVersion, "1.0.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "E-Faturam bağlantısı doğrulanmış doküman sürümü 1.0.0 ile pinlenmelidir.");
         if (string.IsNullOrWhiteSpace(command.DisplayName) || string.IsNullOrWhiteSpace(command.ExternalStoreId) || platform == "TRENDYOL" && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad ve mağaza kapsamı; Trendyol için ayrıca User-Agent kimliği zorunludur.");
         // Owner decision: a format other than "SatıcıID - FirmaAdı" is only a warning. An identity that cannot be sent
@@ -146,12 +146,15 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var pazaramaClientSecret = platform == "PAZARAMA" ? N11CredentialFormat.Normalize(command.PazaramaClientSecret) : null;
         if (platform == "PAZARAMA" && pazaramaClientId is null) return Invalid<ConnectionView>("pazaramaClientId", PazaramaInvalidCharacters("Client Id"));
         if (platform == "PAZARAMA" && pazaramaClientSecret is null) return Invalid<ConnectionView>("pazaramaClientSecret", PazaramaInvalidCharacters("Client Secret"));
-        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmApiKey)) return Invalid<ConnectionView>("pttAvmApiKey", "PTT AVM API Key zorunludur.");
-        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmAccessToken)) return Invalid<ConnectionView>("pttAvmAccessToken", "PTT AVM Access Token zorunludur.");
-        var pttAvmApiKey = platform == "PTTAVM" ? N11CredentialFormat.Normalize(command.PttAvmApiKey) : null;
-        var pttAvmAccessToken = platform == "PTTAVM" ? N11CredentialFormat.Normalize(command.PttAvmAccessToken) : null;
-        if (platform == "PTTAVM" && pttAvmApiKey is null) return Invalid<ConnectionView>("pttAvmApiKey", PttAvmInvalidCharacters("API Key"));
-        if (platform == "PTTAVM" && pttAvmAccessToken is null) return Invalid<ConnectionView>("pttAvmAccessToken", PttAvmInvalidCharacters("Access Token"));
+        // PTT AVM: the Mağaza ID is the connection's store scope; the API user name and password sign every SOAP call.
+        if (platform == "PTTAVM" && PttAvmStoreId(externalStoreId) is null) return Invalid<ConnectionView>("externalStoreId", PttAvmStoreIdMessage);
+        if (platform == "PTTAVM") externalStoreId = PttAvmStoreId(externalStoreId);
+        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmUsername)) return Invalid<ConnectionView>("pttAvmUsername", "PTT AVM API Kullanıcı Adı zorunludur.");
+        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmPassword)) return Invalid<ConnectionView>("pttAvmPassword", "PTT AVM API Şifresi zorunludur.");
+        var pttAvmUsername = platform == "PTTAVM" ? N11CredentialFormat.Normalize(command.PttAvmUsername) : null;
+        var pttAvmPassword = platform == "PTTAVM" ? PttAvmPasswordValue(command.PttAvmPassword) : null;
+        if (platform == "PTTAVM" && pttAvmUsername is null) return Invalid<ConnectionView>("pttAvmUsername", PttAvmInvalidCharacters("API Kullanıcı Adı"));
+        if (platform == "PTTAVM" && pttAvmPassword is null) return Invalid<ConnectionView>("pttAvmPassword", PttAvmInvalidCharacters("API Şifresi"));
         if (await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Status != "DELETED" && x.PlatformCode == platform && x.Environment == environment && x.ExternalStoreId == externalStoreId, cancellationToken)) return ServiceResult<ConnectionView>.Fail("CONNECTION_ALREADY_EXISTS", "Bu platform kapsamı ve environment için bağlantı zaten var.", 409);
 
         var now = timeProvider.GetUtcNow(); var connection = new PlatformConnection
@@ -244,15 +247,15 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         }
         else if (platform == "PTTAVM")
         {
-            var apiKey = pttAvmApiKey!;
+            var username = pttAvmUsername!;
             db.PlatformCredentials.Add(new PlatformCredential
             {
                 Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 ConnectionId = connection.Id,
-                CredentialType = "API_KEY_TOKEN",
-                ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, connection.Id, JsonSerializer.Serialize(new PttAvmCredentialPayload(apiKey, pttAvmAccessToken!))),
-                MaskedHint = Mask(apiKey),
+                CredentialType = "USERNAME_PASSWORD",
+                ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, connection.Id, JsonSerializer.Serialize(new PttAvmCredentialPayload(username, pttAvmPassword!))),
+                MaskedHint = Mask(username),
                 CreatedAt = now,
                 Version = 1
             });
@@ -300,6 +303,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ? NormalizeShopifyStore(command.ExternalStoreId)
             : command.ExternalStoreId?.Trim();
         if (connection.PlatformCode == "SHOPIFY" && command.ExternalStoreId is not null && requestedStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
+        if (connection.PlatformCode == "PTTAVM" && command.ExternalStoreId is not null)
+        {
+            requestedStoreId = PttAvmStoreId(command.ExternalStoreId);
+            if (requestedStoreId is null) return Invalid<ConnectionView>("externalStoreId", PttAvmStoreIdMessage);
+        }
         var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson);
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
         var hepsiburadaSettings = connection.PlatformCode == "HEPSIBURADA" ? ReadHepsiburadaSettings(connection) : null;
@@ -446,14 +454,14 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var pazaramaRotatedSecret = connection.PlatformCode == "PAZARAMA" ? N11CredentialFormat.Normalize(command.ApiSecret) : null;
         if (connection.PlatformCode == "PAZARAMA" && pazaramaRotatedId is null) return Invalid<ConnectionView>("apiKey", PazaramaInvalidCharacters("Client Id"));
         if (connection.PlatformCode == "PAZARAMA" && pazaramaRotatedSecret is null) return Invalid<ConnectionView>("apiSecret", PazaramaInvalidCharacters("Client Secret"));
-        // PTT AVM: the API Key comes as PttAvmApiKey (or ApiKey), the Access Token as PttAvmAccessToken (or ApiSecret).
-        var pttAvmRotatedKeyInput = command.PttAvmApiKey ?? command.ApiKey;
-        var pttAvmRotatedTokenInput = command.PttAvmAccessToken ?? command.ApiSecret;
-        if (connection.PlatformCode == "PTTAVM" && (string.IsNullOrWhiteSpace(pttAvmRotatedKeyInput) || string.IsNullOrWhiteSpace(pttAvmRotatedTokenInput))) return Invalid<ConnectionView>("credential", "PTT AVM API Key ve Access Token zorunludur.");
-        var pttAvmRotatedKey = connection.PlatformCode == "PTTAVM" ? N11CredentialFormat.Normalize(pttAvmRotatedKeyInput) : null;
-        var pttAvmRotatedToken = connection.PlatformCode == "PTTAVM" ? N11CredentialFormat.Normalize(pttAvmRotatedTokenInput) : null;
-        if (connection.PlatformCode == "PTTAVM" && pttAvmRotatedKey is null) return Invalid<ConnectionView>("pttAvmApiKey", PttAvmInvalidCharacters("API Key"));
-        if (connection.PlatformCode == "PTTAVM" && pttAvmRotatedToken is null) return Invalid<ConnectionView>("pttAvmAccessToken", PttAvmInvalidCharacters("Access Token"));
+        // PTT AVM: the API user name comes as PttAvmUsername (or ApiKey), the API password as PttAvmPassword (or ApiSecret).
+        var pttAvmRotatedUsernameInput = command.PttAvmUsername ?? command.ApiKey;
+        var pttAvmRotatedPasswordInput = command.PttAvmPassword ?? command.ApiSecret;
+        if (connection.PlatformCode == "PTTAVM" && (string.IsNullOrWhiteSpace(pttAvmRotatedUsernameInput) || string.IsNullOrWhiteSpace(pttAvmRotatedPasswordInput))) return Invalid<ConnectionView>("credential", "PTT AVM API Kullanıcı Adı ve API Şifresi zorunludur.");
+        var pttAvmRotatedUsername = connection.PlatformCode == "PTTAVM" ? N11CredentialFormat.Normalize(pttAvmRotatedUsernameInput) : null;
+        var pttAvmRotatedPassword = connection.PlatformCode == "PTTAVM" ? PttAvmPasswordValue(pttAvmRotatedPasswordInput) : null;
+        if (connection.PlatformCode == "PTTAVM" && pttAvmRotatedUsername is null) return Invalid<ConnectionView>("pttAvmUsername", PttAvmInvalidCharacters("API Kullanıcı Adı"));
+        if (connection.PlatformCode == "PTTAVM" && pttAvmRotatedPassword is null) return Invalid<ConnectionView>("pttAvmPassword", PttAvmInvalidCharacters("API Şifresi"));
         TrendyolEFaturamCredentialPayload? efaturamCredential = null;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
         {
@@ -469,7 +477,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             "SHOPIFY" => JsonSerializer.Serialize(new ShopifyCredentialPayload(command.ShopifyAccessToken!.Trim())),
             "N11" => JsonSerializer.Serialize(new CredentialPayload(n11RotatedKey!, n11RotatedSecret!)),
             "PAZARAMA" => JsonSerializer.Serialize(new CredentialPayload(pazaramaRotatedId!, pazaramaRotatedSecret!)),
-            "PTTAVM" => JsonSerializer.Serialize(new PttAvmCredentialPayload(pttAvmRotatedKey!, pttAvmRotatedToken!)),
+            "PTTAVM" => JsonSerializer.Serialize(new PttAvmCredentialPayload(pttAvmRotatedUsername!, pttAvmRotatedPassword!)),
             _ => JsonSerializer.Serialize(efaturamCredential!)
         };
         var hint = connection.PlatformCode switch
@@ -479,10 +487,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             "SHOPIFY" => Mask(command.ShopifyAccessToken!.Trim()),
             "N11" => Mask(n11RotatedKey!),
             "PAZARAMA" => Mask(pazaramaRotatedId!),
-            "PTTAVM" => Mask(pttAvmRotatedKey!),
+            "PTTAVM" => Mask(pttAvmRotatedUsername!),
             _ => MaskEmail(efaturamCredential!.Email!)
         };
-        var credentialType = connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : connection.PlatformCode == "N11" ? "APP_KEY_SECRET" : connection.PlatformCode == "PAZARAMA" ? "CLIENT_CREDENTIALS" : connection.PlatformCode == "PTTAVM" ? "API_KEY_TOKEN" : "EMAIL_PASSWORD";
+        var credentialType = connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : connection.PlatformCode == "N11" ? "APP_KEY_SECRET" : connection.PlatformCode == "PAZARAMA" ? "CLIENT_CREDENTIALS" : connection.PlatformCode == "PTTAVM" ? "USERNAME_PASSWORD" : "EMAIL_PASSWORD";
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = BoundSecret.ProtectForConnection(_credentialProtector, tenantId, id, payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
@@ -979,6 +987,16 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static string N11InvalidCharacters(string field) => $"N11 {field} değerinde geçersiz karakter var. Değeri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
     private static string PazaramaInvalidCharacters(string field) => $"Pazarama {field} değerinde geçersiz karakter var. Değeri Pazarama satıcı panelindeki Hesabım → Entegrasyon Bilgileri ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
     private static string PttAvmInvalidCharacters(string field) => $"PTT AVM {field} değerinde geçersiz karakter var. Değeri PTT AVM satıcı panelindeki Hesap Yönetimi › Entegrasyon Bilgileri ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
+    private const string PttAvmStoreIdMessage = Adapters.PttAvm.PttAvmErrorAdvice.StoreIdInvalid;
+    private static string? PttAvmStoreId(string? value) => Adapters.PttAvm.PttAvmHttpClient.StoreId(value);
+    // The API password is sent as typed (PasswordText): only invisible characters a copy may bring along and the
+    // surrounding spaces are dropped; a control character can never be part of it.
+    internal static string? PttAvmPasswordValue(string? value)
+    {
+        if (value is null) return null;
+        var cleaned = new string(value.Where(character => character is not ('​' or '‌' or '‍' or '⁠' or '﻿')).ToArray()).Trim();
+        return cleaned.Length > 0 && !cleaned.Any(char.IsControl) ? cleaned : null;
+    }
     private static string? NormalizeShopifyStore(string value)
     {
         var normalized = value.Trim().ToLowerInvariant();
@@ -1016,7 +1034,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     // PTT AVM starts with external writes and invoice creation off; each write is opened with the owner's
     // approval (docs/PTTAVM-ENTEGRASYON-PLANI.md §5.3).
     private sealed record PttAvmConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = false);
-    private sealed record PttAvmCredentialPayload(string ApiKey, string AccessToken);
+    private sealed record PttAvmCredentialPayload(string Username, string Password);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }
 

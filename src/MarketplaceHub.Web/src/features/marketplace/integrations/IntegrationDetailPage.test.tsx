@@ -143,26 +143,28 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(container.querySelector('.im-field-notice.is-warning')).not.toBeNull()
   })
 
-  it('asks a new PTT AVM connection for its API Key and Access Token on the live store only', async () => {
+  it('asks a new PTT AVM connection for its store id, API user name and API password on the live store only', async () => {
     await renderList('/integrations')
     act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })
     const pttAvm = Array.from(container.querySelectorAll<HTMLButtonElement>('.im-platforms button')).find(button => button.textContent === 'PTT AVM')!
     act(() => { pttAvm.click() })
 
     expect(pttAvm.getAttribute('aria-checked')).toBe('true')
-    expect(container.querySelector('input[name="pttAvmApiKey"]')).not.toBeNull()
-    expect(container.querySelector<HTMLInputElement>('input[name="pttAvmAccessToken"]')!.type).toBe('password')
+    expect(container.querySelector('input[name="pttAvmUsername"]')).not.toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[name="pttAvmPassword"]')!.type).toBe('password')
+    expect(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!.inputMode).toBe('numeric')
+    expect(container.querySelector('input[name="pttAvmApiKey"]')).toBeNull()
     expect(container.querySelector('select[name="environment"]')).toBeNull()
-    expect(container.querySelector('.integration-modal')!.textContent).toContain('Hesap Yönetimi → Entegrasyon Bilgileri')
+    expect(container.querySelector('.integration-modal')!.textContent).toContain('PTT AVM satıcı paneli › Hesap Yönetimi › Entegrasyon Bilgileri')
 
     act(() => setValue(container.querySelector<HTMLInputElement>('input[name="displayName"]')!, 'PTT AVM Canlı'))
-    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!, 'Ravencia'))
-    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="pttAvmApiKey"]')!, 'key-1'))
-    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="pttAvmAccessToken"]')!, 'token-1'))
+    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!, '123456'))
+    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="pttAvmUsername"]')!, 'user-1'))
+    act(() => setValue(container.querySelector<HTMLInputElement>('input[name="pttAvmPassword"]')!, 'pass-1'))
     await act(async () => { container.querySelector<HTMLButtonElement>('.im-foot button[type="submit"]')!.click() })
     await settle()
 
     const created = apiState.calls.find(call => call.path === '/connections' && call.method === 'POST')!
-    expect(JSON.parse(created.body!)).toMatchObject({ platformCode: 'PTTAVM', environment: 'PRODUCTION', apiVersion: 'V1', pttAvmApiKey: 'key-1', pttAvmAccessToken: 'token-1' })
+    expect(JSON.parse(created.body!)).toMatchObject({ platformCode: 'PTTAVM', environment: 'PRODUCTION', apiVersion: 'V1', externalStoreId: '123456', pttAvmUsername: 'user-1', pttAvmPassword: 'pass-1' })
   })
 })
