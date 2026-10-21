@@ -7,6 +7,11 @@ import type { Me } from '../../shared/api'
 
 const apiState = vi.hoisted(() => ({ calls: [] as string[], failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }> }))
 
+// The page shows the last 24 hours by default, so the fixture's jobs are dated relative to the run.
+function hoursAgo(hours: number) {
+  return new Date(Date.now() - hours * 3_600_000).toISOString()
+}
+
 function job(id: string, jobType: string, status: string, createdAt: string) {
   return {
     id, connectionId: null, jobType, status, attemptCount: 1, maxAttempts: 3, availableAt: createdAt, lastErrorCode: null, lastErrorSummary: null,
@@ -37,10 +42,10 @@ vi.mock('../../shared/api', () => {
       const params = new URLSearchParams(path.slice(path.indexOf('?') + 1))
       if (params.get('after') === 'cursor-1') {
         if (apiState.failNextPage) throw new Error('Listenin devamı okunamadı. Listeyi yenileyip tekrar deneyin.')
-        return { items: [job('job-3', 'TRENDYOL_ORDER_SYNC', 'DEAD', '2026-10-20T07:00:00Z')], nextCursor: null, hasMore: false }
+        return { items: [job('job-3', 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(3))], nextCursor: null, hasMore: false }
       }
       return {
-        items: [job('job-1', 'TRENDYOL_ORDER_SYNC', 'SUCCEEDED', '2026-10-20T09:00:00Z'), job('job-2', 'TRENDYOL_ORDER_SYNC', 'SUCCEEDED', '2026-10-20T08:00:00Z')],
+        items: [job('job-1', 'TRENDYOL_ORDER_SYNC', 'SUCCEEDED', hoursAgo(1)), job('job-2', 'TRENDYOL_ORDER_SYNC', 'SUCCEEDED', hoursAgo(2))],
         nextCursor: 'cursor-1',
         hasMore: true
       }
