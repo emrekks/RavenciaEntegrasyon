@@ -282,7 +282,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal("8690000000203", links[small.Id]);
         Assert.Equal("M1-M", links[medium.Id]);
         Assert.False(links.ContainsKey(large.Id));
-        Assert.Equal(["8690000000203", "8690000000210", "M1-M", "8690000000227", "M1-L"], asked);
+        // Each variant is asked by its barcode first and by its stock code only when PTT AVM does not know the barcode.
+        Assert.Equal(["8690000000203", "8690000000210", "8690000000227", "M1-L", "M1-M"], asked.Order(StringComparer.Ordinal));
+        Assert.True(asked.IndexOf("8690000000210") < asked.IndexOf("M1-M"));
+        Assert.True(asked.IndexOf("8690000000227") < asked.IndexOf("M1-L"));
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "PRODUCT_MAPPING_UNMATCHED"));
     }
 
