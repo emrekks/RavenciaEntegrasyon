@@ -118,15 +118,20 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
         var lateEvening = NewOrder(tenant.Id, draft.Id, "draft-1", new DateTimeOffset(2026, 10, 15, 23, 30, 0, TimeSpan.Zero), 150m, "DELIVERED");
         var nextDay = NewOrder(tenant.Id, draft.Id, "draft-2", new DateTimeOffset(2026, 10, 16, 1, 30, 0, TimeSpan.Zero), 70m, "DELIVERED");
         var hiddenOrder = NewOrder(tenant.Id, hidden.Id, "hidden-1", Noon, 500m, "DELIVERED");
+        // A test-environment store (Hepsiburada SIT) is not sales: neither its order nor the store shows.
+        var stage = NewConnection(tenant.Id, "HEPSIBURADA", "ACTIVE");
+        stage.Environment = "STAGE";
+        var stageOrder = NewOrder(tenant.Id, stage.Id, "stage-1", Noon, 1m, "DELIVERED");
         try
         {
-            await SeedAsync(tenant, [draft, hidden], db =>
+            await SeedAsync(tenant, [draft, hidden, stage], db =>
             {
-                db.Orders.AddRange(lateEvening, nextDay, hiddenOrder);
+                db.Orders.AddRange(lateEvening, nextDay, hiddenOrder, stageOrder);
                 db.ShipmentPackages.AddRange(
                     NewPackage(lateEvening, "draft-1-p", 150m, ShipmentPackageStatus.Delivered),
                     NewPackage(nextDay, "draft-2-p", 70m, ShipmentPackageStatus.Delivered),
-                    NewPackage(hiddenOrder, "hidden-1-p", 500m, ShipmentPackageStatus.Delivered));
+                    NewPackage(hiddenOrder, "hidden-1-p", 500m, ShipmentPackageStatus.Delivered),
+                    NewPackage(stageOrder, "stage-1-p", 1m, ShipmentPackageStatus.Delivered));
             });
 
             var performance = await PerformanceAsync(tenant.Id);
@@ -141,6 +146,7 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
             Assert.Equal(1, hour.OrderCount);
             Assert.Contains(performance.Channels, channel => channel.ConnectionId == draft.Id);
             Assert.DoesNotContain(performance.Channels, channel => channel.ConnectionId == hidden.Id);
+            Assert.DoesNotContain(performance.Channels, channel => channel.ConnectionId == stage.Id);
         }
         finally
         {

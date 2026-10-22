@@ -377,15 +377,15 @@ function Cancellations({ data }: { data: ReportSales }) {
 
 function Cargo({ data }: { data: ReportSales }) {
   return <div className="reports-grid">
-    <div className="is-wide"><DataTable title="Kargo Firmaları" description="Süreler pazaryerinin bildirdiği durum zamanlarından hesaplanır (yaklaşık); ölçülen paket sayısı yanında. Geç kargo: son kargolama zamanından sonra kargoya verilen." csvName="rapor-kargo"
+    <div className="is-wide"><DataTable title="Kargo Firmaları" description="Süreler pazaryerinin bildirdiği durum zamanlarından hesaplanır (yaklaşık); ölçülen paket sayısı yanında. Teslim alma, kargo firmasının paketi okuttuğu andır; satıcının paketi bıraktığı an değildir." csvName="rapor-kargo"
       rows={data.cargo} rowKey={row => row.label} unknown={row => !row.known} initialSort="packages" columns={[
         { key: 'label', header: 'Kargo Firması', value: row => row.label },
         { key: 'packages', header: 'Paket', value: row => row.packages, render: row => formatCount(row.packages), numeric: true },
         { key: 'share', header: 'Pay', value: row => row.share, render: row => formatPercent(row.share), numeric: true },
-        { key: 'ship', header: 'Kargoya Verme', value: row => row.averageHoursToShip, render: row => <Measured value={formatHours(row.averageHoursToShip)} count={row.measuredShip} />, numeric: true, csv: row => row.averageHoursToShip },
-        { key: 'deliver', header: 'Teslimat', value: row => row.averageHoursToDeliver, render: row => <Measured value={formatHours(row.averageHoursToDeliver)} count={row.measuredDeliver} />, numeric: true, csv: row => row.averageHoursToDeliver },
-        { key: 'late', header: 'Geç Kargo', value: row => row.lateShipments, render: row => <Measured value={formatCount(row.lateShipments)} count={row.measuredLate} />, numeric: true },
-        { key: 'lateRate', header: 'Geç Oranı', value: row => row.lateRate, render: row => formatPercent(row.lateRate), numeric: true }
+        { key: 'ship', header: 'Kargo Teslim Alma', value: row => row.averageHoursToShip, render: row => <Measured value={formatHours(row.averageHoursToShip)} count={row.measuredShip} />, numeric: true, csv: row => row.averageHoursToShip },
+        { key: 'deliver', header: 'Teslimat', value: row => row.averageHoursToDeliver, render: row => <Measured value={formatHours(row.averageHoursToDeliver)} count={row.measuredDeliver} />, numeric: true, csv: row => row.averageHoursToDeliver }
+        // No "late shipment" column: the shipped time is the carrier's scan, which can fall after the seller's deadline
+        // although the package was handed over in time, so a late count would overstate (live check 23 Oct 2026).
       ]} empty="Bu dönemde paket yok." /></div>
   </div>
 }

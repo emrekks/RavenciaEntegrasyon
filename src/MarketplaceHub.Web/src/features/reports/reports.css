@@ -38,7 +38,8 @@
 .app-shell.stitch-shell main .reports-page .reports-grid > .is-wide { grid-column: 1 / -1; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 
-.app-shell.stitch-shell main .reports-page .reports-panel { display: grid; gap: 12px; min-width: 0; padding: 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; }
+/* Content sits at the top: beside a taller card the panel stretches, and its rows must not share out the extra height. */
+.app-shell.stitch-shell main .reports-page .reports-panel { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; }
 .app-shell.stitch-shell main .reports-page .reports-panel > header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
 .app-shell.stitch-shell main .reports-page .reports-panel h2 { margin: 0; color: var(--rv-color-ink); font-size: 15px; font-weight: 600; }
 .app-shell.stitch-shell main .reports-page .reports-panel header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; max-width: 80ch; }

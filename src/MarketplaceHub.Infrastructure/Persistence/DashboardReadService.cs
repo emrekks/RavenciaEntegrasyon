@@ -86,7 +86,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         // Every store the report can hold a row for, so a store waiting for credentials or switched off keeps its name.
         var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
         var channels = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status))
+            .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status) && x.Environment.ToUpper() == "PRODUCTION")
             .OrderBy(x => x.DisplayName)
             .Select(x => new DashboardChannelView(x.Id, x.PlatformCode, x.DisplayName, x.Status))
             .ToListAsync(cancellationToken);
@@ -239,6 +239,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                // whose data was hidden or deleted are left out.
                where order.TenantId == tenantId
                    && !excludedConnections.Contains(connection.Status)
+                   // Test-environment stores (Hepsiburada SIT and the like) are not sales: the reports leave them out too.
+                   && connection.Environment.ToUpper() == "PRODUCTION"
                    && order.OrderedAt >= previousStart && order.OrderedAt < scanEnd
                    && !cancelled.Contains(order.DerivedStatus)
                    && (order.NetAmount > 0 || order.GrossAmount > 0)
