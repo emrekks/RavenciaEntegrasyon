@@ -7,19 +7,31 @@ type VariantGenerationDefaultsInput = {
   fallbackListPrice: number
 }
 
-export function buildSequentialVariantCode(modelCode: string, sequence: number): string {
-  const safeSequence = Math.max(1, Math.floor(sequence))
-  const suffix = `-${String(safeSequence).padStart(2, '0')}`
-  const barcodePrefix = (modelCode || 'URUN')
+// Generated codes use only A-Z, 0-9, '.', '-' and '_' (Turkish letters folded, spaces as '-'), which every
+// marketplace takes as a barcode and a stock code; barcodes stay within Trendyol's and Shopify's 40 characters and
+// stock codes within the 100 the panel and most marketplaces allow. A barcode built from the model code can never
+// be the EAN-13 Hepsiburada requires; the editor's platform rules show that.
+export const GeneratedBarcodeMaxLength = 40
+export const GeneratedStockCodeMaxLength = 100
+
+function codeText(value: string) {
+  return value
     .trim()
     .replace(/\s+/g, '-')
     .toLocaleUpperCase('tr-TR')
     .normalize('NFKD')
     .replace(/\p{M}/gu, '')
     .replace(/[^A-Z0-9._-]/g, '')
-  const prefix = (barcodePrefix || 'URUN').slice(0, Math.max(1, 40 - suffix.length))
+    .replace(/-{2,}/g, '-')
+}
 
-  return `${prefix}${suffix}`
+function codeWithSuffix(base: string, suffix: string, maximum: number) {
+  return `${(codeText(base) || 'URUN').slice(0, Math.max(1, maximum - suffix.length))}${suffix}`
+}
+
+export function buildSequentialVariantCode(modelCode: string, sequence: number): string {
+  const safeSequence = Math.max(1, Math.floor(sequence))
+  return codeWithSuffix(modelCode || 'URUN', `-${String(safeSequence).padStart(2, '0')}`, GeneratedBarcodeMaxLength)
 }
 
 export function buildSequentialVariantIdentifiers(modelCode: string, variantCount: number) {
@@ -40,10 +52,9 @@ export function applyGeneratedVariantCodes<T extends { barcode: string; sku: str
 
 export function buildVariantGenerationDefaults({ baseSku, modelCode, sequence, automaticBarcodes, fallbackSalePrice, fallbackListPrice }: VariantGenerationDefaultsInput) {
   const safeSequence = Math.max(1, Math.floor(sequence))
-  const skuPrefix = (baseSku || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR')
   if (!automaticBarcodes) {
     return {
-      sku: `${skuPrefix}-${safeSequence}`,
+      sku: codeWithSuffix(baseSku || 'URUN', `-${safeSequence}`, GeneratedStockCodeMaxLength),
       barcode: '',
       salePrice: fallbackSalePrice,
       listPrice: fallbackListPrice || fallbackSalePrice,

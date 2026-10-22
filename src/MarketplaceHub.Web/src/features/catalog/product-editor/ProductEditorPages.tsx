@@ -25,6 +25,8 @@ import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinV
 import { classifyPublicationAttributeIssues, fixableValueMappings, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
+import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
+import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
@@ -999,6 +1001,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [bulkOptionSyncOpen, setBulkOptionSyncOpen] = useState(false)
+  const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
   const [bulkOptionSyncSelection, setBulkOptionSyncSelection] = useState<string[]>([])
   const [attributeValueQueries, setAttributeValueQueries] = useState<Record<string, string>>({})
   const initializedEditProductKey = useRef<string | null>(null)
@@ -1915,8 +1918,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
     setVariantRows(rows => applyGeneratedVariantCodes(rows, request.target, request.codes))
     if (request.target === 'barcode') setForm(current => ({ ...current, barcode: request.codes[0] }))
-    const message = `${request.codes.length} varyantın ${request.target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu.${request.target === 'barcode' ? ' Üst barkod alanı ilk varyantla eşitlendi.' : ''} Kalıcı olması için Kaydet’e basın.`
-    setNotice(message); showFeedback(message, 'success'); setPendingVariantCodeGeneration(null)
+    // A generated code that some active marketplace refuses (a model-code barcode is never Hepsiburada's EAN-13) is named.
+    const ruleIssues = platformCodeIssues(codeRulePlatforms, request.target === 'barcode' ? request.codes[0] : '', request.target === 'sku' ? request.codes[0] : '')
+    const ruleText = describePlatformCodeIssues(ruleIssues, request.target)
+    const message = `${request.codes.length} varyantın ${request.target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu.${request.target === 'barcode' ? ' Üst barkod alanı ilk varyantla eşitlendi.' : ''} Kalıcı olması için Kaydet’e basın.${ruleText ? ` Uyarı: ${ruleText}.` : ''}`
+    setNotice(message); showFeedback(message, ruleText ? 'info' : 'success'); setPendingVariantCodeGeneration(null)
   }
 
   async function pasteBarcodesFromClipboard(mode: 'missing' | 'all') {
@@ -2367,6 +2373,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     connection,
     mode: productPublicationMode(connection)!
   }))
+  // Every active connection's barcode and stock code rules: a product goes to all of them with one pair of codes.
+  const codeRulePlatforms = useMemo(() => [...new Set((connections.data?.items ?? []).filter(connection => connection.status === 'ACTIVE' || connection.status === 'VERIFIED').map(connection => connection.platformCode))], [connections.data])
+  const variantCodeIssues = useMemo(() => new Map(variantRows.map(row => [row.key, platformCodeIssues(codeRulePlatforms, row.barcode, row.sku)])), [codeRulePlatforms, variantRows])
+  const variantCodeIssueSummary = useMemo(() => {
+    const rowsWithIssues = [...variantCodeIssues.values()].filter(issues => issues.length > 0)
+    const platforms = [...new Set(rowsWithIssues.flat().map(issue => platformCodeNames[issue.platformCode] ?? issue.platformCode))]
+    return rowsWithIssues.length ? { rows: rowsWithIssues.length, platforms } : null
+  }, [variantCodeIssues])
   const variantPricingPlatforms = useMemo<VariantPlatformStatus[]>(() => (connections.data?.items ?? []).filter(isProductPublicationConnection).map(connection => {
     const pricing = channelPricing[connection.id]
     return {
@@ -2622,6 +2636,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       onToggleWebColorAuto={toggleWebColorAuto}
       onManualWebColorValueChange={setManualWebColorValueId}
     />}
+    {marketplaceCodesOpen && editProductId && <MarketplaceCodesDialog productId={editProductId} rows={variantRows.map(row => ({ variantId: row.key, label: displayVariantOptionSignature(row.optionSignature, row.options) }))} onClose={() => setMarketplaceCodesOpen(false)} />}
     {bulkOptionSyncOpen && <div className="workspace-modal-backdrop bulk-option-sync-backdrop" role="presentation" onMouseDown={() => setBulkOptionSyncOpen(false)}><DialogSurface as="section" onClose={() => setBulkOptionSyncOpen(false)} className="workspace-modal bulk-option-sync-modal" aria-labelledby="bulk-option-sync-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">ÜRÜN SEÇENEKLERİ</p><h2 id="bulk-option-sync-title">Toplu eşitleme</h2><p>Seçenek gruplarındaki işaretli değerleri varyant satırlarına ekleyin.</p></div><button type="button" className="modal-close" onClick={() => setBulkOptionSyncOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="bulk-option-sync-body"><fieldset><legend>Eşitlenecek gruplar</legend><div className="bulk-option-sync-options">{bulkSyncOptionRequirements.map(item => { const selectedCount = attributeSelections[item.attributeId]?.length ?? 0; const checked = bulkOptionSyncSelection.includes(item.attributeId); const label = isColorOptionName(item.attribute.name) ? 'Renkler' : 'Bedenler'; return <label className={`bulk-option-sync-option${checked ? ' is-selected' : ''}`} key={item.attributeId}><input type="checkbox" checked={checked} disabled={!selectedCount} onChange={() => setBulkOptionSyncSelection(current => checked ? current.filter(id => id !== item.attributeId) : [...current, item.attributeId])} /><span><strong>{label}</strong><small>{selectedCount} seçili değer · {item.attribute.name}</small></span></label> })}</div></fieldset><p className="bulk-option-sync-note">Hiçbir grup seçmezseniz listelenen tüm gruplar birlikte eşitlenir. Tek grup seçildiğinde diğer etkin seçenek ekseni korunur; mevcut varyant satırlarındaki stok, fiyat, barkod ve görseller değiştirilmez.</p></div><footer><button type="button" className="secondary" onClick={() => setBulkOptionSyncOpen(false)}>Vazgeç</button><button type="button" onClick={syncOptionGroups} disabled={!bulkSyncOptionRequirements.length}>{bulkOptionSyncSelection.length ? 'Seçilenleri eşitle' : 'Tümünü eşitle'}</button></footer></DialogSurface></div>}
     {desiCalculatorOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setDesiCalculatorOpen(false)}><DialogSurface as="section" onClose={() => setDesiCalculatorOpen(false)} className="workspace-modal desi-calculator-modal" aria-labelledby="desi-calculator-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="desi-calculator-title">Desi hesapla</h2><p>En × Boy × Yükseklik / 3000 formülü kullanılır.</p></div><button type="button" className="modal-close" onClick={() => setDesiCalculatorOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="desi-calculator-body"><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label></div><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : 'Ölçüleri girin'}</strong></div></div><footer><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(false)}>İptal</button><button type="button" disabled={!desi} onClick={() => { updateField('desi', String(Number(desi.toFixed(2)))); setCalculateDesi(true); setDesiCalculatorOpen(false) }}>Uygula</button></footer></DialogSurface></div>}
 
@@ -2770,9 +2785,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               </div>
             </div>}
           </div>
-            <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>
+            <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri kodları</button>}</div></div>
         </>}
             {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Fiyat'], ['cost', 'Maliyet'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
+            {variantCodeIssueSummary && <p className="variant-code-rule-notice" role="status"><UiIcon name="alert" size={14} /> {variantCodeIssueSummary.rows} varyantın barkodu veya stok kodu şu platformların kuralına uymuyor: {variantCodeIssueSummary.platforms.join(', ')}. Kırmızı alanların üzerine gelince ayrıntı görünür; bu ürün o platformlara bu kodlarla gönderilemez.</p>}
             <div className={`variant-table-editor is-mobile-${variantMobileGroup}`}>
               <div className="variant-table-head">
                 <span>#</span><span>Seçenek</span>
@@ -2784,11 +2800,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               {variantRows.length ? variantRows.map((row, index) => {
                 const matchesFilter = rowMatchesVariantFilters(row)
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
+                const codeIssues = variantCodeIssues.get(row.key) ?? []
+                const barcodeIssueText = describePlatformCodeIssues(codeIssues, 'barcode')
+                const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku')
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <input aria-label={`${index + 1}. varyant seçenekleri`} value={displayVariantOptionSignature(row.optionSignature, row.options)} readOnly />
-                  <input aria-label={`${row.optionSignature} barkod`} className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
-                  <input aria-label={`${row.optionSignature} stok kodu`} className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
+                  <input aria-label={`${row.optionSignature} barkod`} className={`technical-field barcode-value${barcodeIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={barcodeIssueText ? true : undefined} title={barcodeIssueText || undefined} value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
+                  <input aria-label={`${row.optionSignature} stok kodu`} className={`technical-field sku-value${skuIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={skuIssueText ? true : undefined} title={skuIssueText || undefined} value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
                   <input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" />
                   <input aria-label={`${row.optionSignature} satış fiyatı`} value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" />
                   <input aria-label={`${row.optionSignature} maliyeti`} value={row.costPrice} onChange={event => updateVariantRow(row.key, 'costPrice', event.target.value)} type="number" min="0" step="0.01" />
@@ -2837,7 +2856,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
         <p className="variant-header-action-menu-title">Model koduyla üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('barcode')}><span><strong>Model kodundan barkod üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('barcode')}><span><strong>Model kodundan barkod üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small>{codeRulePlatforms.includes('HEPSIBURADA') && <small className="variant-code-generation-warning">Hepsiburada EAN-13 ister; model kodundan üretilen barkodla gönderilemez.</small>}</span><UiIcon name="refresh" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Panodan barkod yapıştır">
         <p className="variant-header-action-menu-title">Panodan barkod yapıştır</p>
