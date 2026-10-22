@@ -352,6 +352,10 @@ public sealed class MarketplaceVariantLink
     public Guid ConnectionId { get; set; }
     public Guid VariantId { get; set; }
     public required string ExternalId { get; set; }
+    // The barcode and stock code the marketplace holds for the variant, as its last import read them. They may
+    // differ from the panel's: writes address the marketplace by its own codes.
+    public string? ExternalBarcode { get; set; }
+    public string? ExternalSku { get; set; }
     public long Version { get; set; } = 1;
 }
 

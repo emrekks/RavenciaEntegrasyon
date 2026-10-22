@@ -92,6 +92,16 @@ public static class PttAvmVariantMapper
         return reads;
     }
 
+    // A variant GetProductsWithVariants names only by its id is linked as "{model barcode}/{VariantId}".
+    public static string ModelVariantId(string productBarcode, string variantId) => $"{productBarcode}/{variantId}";
+
+    // True for such a link: PTT AVM knows no barcode by that text, so price and stock go by the panel barcode.
+    public static bool IsModelVariantId(string externalId)
+    {
+        var separator = externalId.LastIndexOf('/');
+        return separator > 0 && separator < externalId.Length - 1 && externalId.AsSpan(separator + 1).IndexOfAnyExceptInRange('0', '9') < 0;
+    }
+
     // The sale price of a variant: the product price plus the difference, or the variant's own price.
     public static decimal? SalePrice(VariantRead variant, decimal? productPrice) =>
         variant.Price is not { } price || price == 0 ? productPrice

@@ -24,6 +24,23 @@ Kodda nasıl çalışıyor:
 - Stok ve fiyat birlikte gider; **fiyat yazma açılmadan stok gönderilemez**, açıldığında panel fiyatı da pazaryerine yazılır.
 - Yedek uzlaştırma (15 dk / 1 sa / günlük) yalnız Trendyol ve N11'de var.
 
+**Pazaryeri kodları (22 Ekim 2026):** Satıcı her pazaryerinde panelle aynı barkodu ya da stok kodunu kullanmayabilir.
+- Ürün aktarımı, eşleştirme hangi kodla yapılmış olursa olsun, her bağa pazaryerinin kendi barkodunu ve stok kodunu
+  yazar (`marketplace_variant_links.ExternalBarcode` / `ExternalSku`) [Kesin].
+- Fiyat/stok o pazaryerinin anahtarıyla gider:
+  - Trendyol ve Shopify: pazaryeri barkodu.
+  - Hepsiburada: pazaryerinin merchantSku'su + hbSku.
+  - N11: n11 stok kodu.
+  - Pazarama ve PTT AVM: kendi barkodları.
+
+  Panelden yayınlanmamış, içe aktarılmış Trendyol/Hepsiburada/Shopify ürünleri de artık gönderilir. Önceden bunlar
+  `LIVE_OFFER_REQUIRED` ile sessizce atlanıyordu [Kesin].
+- Sipariş satırı önce bu bağlantının bağlarındaki pazaryeri kodlarıyla, bulunamazsa panelin barkod/stok koduyla
+  panel varyantına bağlanır. Kodları panelden farklı ürünlerin satışları da stoğu düşürür [Kesin].
+- Kodlar ancak bir ürün aktarımından sonra dolar. Bu sürüm canlıya çıktıktan sonra her bağlantıda bir kez ürün aktarımı
+  çalıştırılmalıdır; "yalnız eşleştirme" modu yeterlidir. Aktarılmamış bağlarda Trendyol/Hepsiburada/Shopify gönderimi
+  yapılmaz.
+
 ---
 
 ## 2. Karar gerektiren noktalar
@@ -59,6 +76,7 @@ Bölüm 2'deki dört soru yanıtlanır. Pazaryeri panellerinden stok girişinin 
 **Çıkış koşulu:** Bölüm 9'da `stok_farkli` 0'a yakın; yeni `STOCK_ORDER_CONSUMPTION_BLOCKED` oluşmuyor (1–2 gün izleme).
 
 ### Aşama 3 — İlk kanal: Trendyol
+0. Bu sürümden sonra Trendyol ürün aktarımı en az bir kez çalışmış olmalı (bağlara pazaryeri kodları yazılır).
 1. Trendyol bağlantısında `PRICE_WRITE` ve `STOCK_WRITE` açılır (Entegrasyonlar → bağlantı → akış ayarları).
 2. İlk gün: İşlem Takibi'nde `PRICE_INVENTORY_SYNC` işleri ve hata kodları izlenir; birkaç ürünün Trendyol stoğu panelle karşılaştırılır.
 3. Trendyol kaynak olduğu için gönderilen değerler zaten aynı olmalı; bu aşama gönderim hattının doğruluğunu düşük riskle sınar.

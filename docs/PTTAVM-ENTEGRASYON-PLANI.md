@@ -1,6 +1,6 @@
 # PTT AVM Entegrasyonu Planı
 
-Durum (21 Ekim 2026): 1. aşama (bağlantı) kodda hazır: platform kodu, adaptör, bağlantı formu ve bağlantı testi. Aynı gün
+Durum (22 Ekim 2026; ayrıntı §6.1): 1. aşama (bağlantı) kodda hazır: platform kodu, adaptör, bağlantı formu ve bağlantı testi. Aynı gün
 kimlik **SOAP web servisine** çevrildi (`feat/pttavm-soap`, §2): satıcı paneli API Key/Token değil, Mağaza ID + API
 kullanıcı adı + API şifresi veriyor. Canlı mağazayla doğrulama kullanıcının bilgileriyle yapılacak. Dış yazma kapalı başlar; her yazma
 yeteneği kullanıcı onayıyla, tek kayıtla açılır.
@@ -52,7 +52,6 @@ alan adlarıyla yazıldı; SOAP karşılıkları aynı adların PascalCase hâli
   `PTTAVM_CREDENTIALS_REJECTED` sayar; kendi isteklerimizin nil kuralı testle korunur.
 - Mağaza ID, `KullaniciTedarikciBilgisiGetir` yanıtındaki `TedarikciId` ile eşleşmeli; bağlantı testi bunu denetler
   (eşleşmezse `PTTAVM_STORE_MISMATCH`).
-- Test/sandbox ortamı ve genel hız sınırı belgelenmemiş.
 - Test/sandbox ortamı ve genel hız sınırı belgelenmemiş.
 
 ### 3.2 Servisler (REST)
@@ -205,7 +204,20 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   PTT AVM panelinden yönetilir.
 - **8. aşama (iade görünümü, salt okunur):** Satırı `iade` olan her sipariş, yalnız o satırlarla tamamlanmış bir iade kaydıdır (`iade:{sipariş no}`).
   Kaydedilmesi stoğu değiştirmez; iade kararları PTT AVM paneline bırakılır ve panelden gönderilmez.
+- **Varyantlar (22 Ekim 2026, canlı mağazadan):** İlk eşleştirmede 198 üründen 25'i eşleşti; eşleşmeyen 172 barkod panelin
+  model kodlarıydı. PTT AVM bu ürünleri model olarak tutuyor, `StokKontrolListesi` varyantlarını vermiyor.
+  - Varyantlar `GetProductsWithVariants(page, size)` ile okunur; sayfalar **1'den** başlar (canlı: "Page 0'dan büyük olmalıdır").
+  - Bu servis varyantı barkodsuz verir: `VariantId`, `VariantName` ("S"), `Quantity`, `PriceDifference`, `Limit`.
+    Varyant `FK4530/7101` kimliğiyle, `FK4530-S` stok koduyla, `FK4530` model koduyla okunur; eşleme model kodu, beden ve
+    başlıktaki renkle yapılır.
+  - Sipariş satırında `UrunBarkod` modelin barkodu, `VariantBarkod` satılan varyantın barkodudur (canlı: `RYP001` / `RYP00105`);
+    satır `VariantBarkod` ile panel varyantına bağlanır.
+  - Fiyat/stok gönderimi `FK4530/7101` gibi kimlikle bağlı varyantta panel barkodunu, barkodu olmayan varyantta stok kodunu
+    gönderir (PTT AVM barkod alanında barkod yoksa stok kodu kullanır; siparişlerdeki `VariantBarkod` da böyle). PTT AVM barkodu kabul etmezse takip sonucunda satır hatası görünür.
+  - Ürün gönderimi bu varyantlara gitmez (tek varyant + barkod bağı koşulu).
 - **Canlıda doğrulanacak:**
+  - Varyant eşleştirmesinin yeniden çalıştırılmış sonucu (25/198'den ne kadar yükseldiği).
+  - Model varyantında panel barkoduyla fiyat/stok gönderiminin kabul edildiği (tek ürünle).
   - `IslemTarihi` gerçekten sipariş tarihi mi.
   - `BitisTarihi` sonuca dahil mi.
   - `KdvDahilToplamTutar` indirim sonrası mı (brüt = ödenen + `IndirimToplam` varsayımı).

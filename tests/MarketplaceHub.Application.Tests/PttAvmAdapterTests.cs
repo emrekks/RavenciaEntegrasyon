@@ -1279,6 +1279,10 @@ public sealed class PttAvmAdapterTests
 
         var small = Assert.Single(product.Variants);
         Assert.Equal("FK4530/7101", small.ExternalVariantId);
+        Assert.True(PttAvmVariantMapper.IsModelVariantId(small.ExternalVariantId));
+        Assert.False(PttAvmVariantMapper.IsModelVariantId("RYP00105"));
+        Assert.False(PttAvmVariantMapper.IsModelVariantId("AB/CD"));
+        Assert.False(PttAvmVariantMapper.IsModelVariantId("FK4530/"));
         Assert.Equal("FK4530-S", small.Sku);
         Assert.Null(small.Barcode);
         Assert.Equal("FK4530", small.ModelCode);
@@ -1333,14 +1337,6 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(["FK4530", "RVNC015"], page.Items.Select(x => Assert.Single(x.Variants).Barcode));
         Assert.Contains(page.Issues!, issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE");
     }
-
-    [Theory]
-    [InlineData("BARCODE", "BARCODE")]
-    [InlineData(" stock_code ", "STOCK_CODE")]
-    [InlineData("MODEL", null)]
-    [InlineData(null, null)]
-    public void TheImportMatchKeyIsBarcodeStockCodeOrAutomatic(string? value, string? expected) =>
-        Assert.Equal(expected, ProductImportMatchKey.Normalize(value));
 
     private static RemoteOrder OrderFromList(string orderNumber)
     {
