@@ -428,7 +428,10 @@
    view tabs scroll inside it instead of pushing the page to the right. */
 @media (max-width: 1100px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-table > .invoice-reference-head { height: auto; }
-  .app-shell.stitch-shell main .reference-invoices-page { grid-template-columns: minmax(0, 1fr); }
-  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
-  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { min-width: 0; max-width: 100%; }
 }
+/* At every window width (22 Oct 2026): with the sidebar pinned a 1160 px window leaves the page 914 px, and the
+   view tabs widened the page's single column to 960 px; the body clips the overflow, so the filters, the tabs and the
+   package table's right end were cut off and the table could not scroll to its last column. */
+.app-shell.stitch-shell main .reference-invoices-page { grid-template-columns: minmax(0, 1fr); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { min-width: 0; max-width: 100%; }

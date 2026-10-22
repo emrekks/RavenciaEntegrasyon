@@ -33,6 +33,14 @@
    minimum widths here pushed the row past the page between 900 and 1100 px). */
 @media (min-width: 1101px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: minmax(180px, 1fr) minmax(150px, .85fr) minmax(240px, 1.1fr) minmax(170px, .85fr) auto; align-items: end; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+  /* The window can be wide while the page is not (a pinned sidebar takes 232 px): below 940 px of filter area the
+     four filters share the row and Filtreleri Temizle moves under them, instead of running past the page. */
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { container-type: inline-size; }
+  @container (max-width: 940px) {
+    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters > * { min-width: 0; }
+    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters > .invoice-reference-filter-reset { grid-column: 1 / -1; justify-self: end; }
+  }
 }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.invoice-reference-search > span:first-child, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-reset { height: 36px; min-height: 36px; color: var(--rv-color-muted); background: none; border-color: transparent; box-shadow: none; font-size: 13px; }
