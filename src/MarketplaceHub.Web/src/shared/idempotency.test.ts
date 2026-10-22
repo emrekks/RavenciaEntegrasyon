@@ -38,6 +38,13 @@ describe('versioned key attempts (G4)', () => {
     expect(await attempt('ok')).not.toBe(second)
   })
 
+  it('remembers an answered key past a reload, so the old refusal is not replayed after the page opens again', async () => {
+    await attempt(422)
+    const stored = new Map(JSON.parse(localStorage.getItem('rv-answered-idempotency-keys') ?? '[]') as Array<[string, string]>)
+    expect(stored.get(versioned)).toBe(idempotencyKeyForAttempt(versioned))
+    expect(stored.get(versioned)).not.toBe(versioned)
+  })
+
   it('keeps the key that succeeded, so a repeat on the same version replays instead of acting twice', async () => {
     expect(await attempt('ok')).toBe(versioned)
     expect(idempotencyKeyForAttempt(versioned)).toBe(versioned)

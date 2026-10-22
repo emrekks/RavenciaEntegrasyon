@@ -27,9 +27,24 @@ export function versionedIdempotencyKey(scope: string, id: string, version: numb
 
 // Versioned keys that already received an HTTP answer, mapped to the fresh key that replaces them. The server stores
 // every answered key (a 4xx is replayed, a 5xx leaves it UNKNOWN and later uses get 409), so only a resend after a
-// network error with no answer may reuse the versioned key. Bounded so a long session cannot grow it without limit.
-const answeredVersionedKeys = new Map<string, string>()
+// network error with no answer may reuse the versioned key. Kept in localStorage so a reload or another tab does not
+// send the answered key again and get the old refusal replayed; bounded so it cannot grow without limit.
+const answeredVersionedKeyStorage = 'rv-answered-idempotency-keys'
+const answeredVersionedKeys = readAnsweredVersionedKeys()
 const answeredVersionedKeyLimit = 200
+
+function readAnsweredVersionedKeys() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(answeredVersionedKeyStorage) ?? '[]') as unknown
+    return new Map(Array.isArray(stored) ? stored.filter((pair): pair is [string, string] => Array.isArray(pair) && typeof pair[0] === 'string' && typeof pair[1] === 'string') : [])
+  } catch {
+    return new Map<string, string>()
+  }
+}
+
+function writeAnsweredVersionedKeys() {
+  try { localStorage.setItem(answeredVersionedKeyStorage, JSON.stringify([...answeredVersionedKeys])) } catch { /* storage unavailable: the in-memory map still covers this page */ }
+}
 
 /** True when the failed request reached the server and got an HTTP answer (any status); false for a network error. */
 export function failedWithHttpAnswer(error: unknown) {
@@ -60,6 +75,7 @@ export async function sendWithVersionedIdempotencyKey<T>(versionedKey: string, s
         if (oldest === undefined) break
         answeredVersionedKeys.delete(oldest)
       }
+      writeAnsweredVersionedKeys()
     }
     throw error
   }
@@ -68,4 +84,5 @@ export async function sendWithVersionedIdempotencyKey<T>(versionedKey: string, s
 /** Test hook: forgets which versioned keys were answered. */
 export function resetAnsweredIdempotencyKeys() {
   answeredVersionedKeys.clear()
+  writeAnsweredVersionedKeys()
 }
