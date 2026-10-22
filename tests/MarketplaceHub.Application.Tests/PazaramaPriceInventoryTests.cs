@@ -262,6 +262,21 @@ public sealed class PazaramaPriceInventoryTests
     }
 
     [Fact]
+    public void A_value_Pazarama_already_holds_is_up_to_date_not_failed()
+    {
+        Assert.True(PazaramaPriceInventoryRules.AlreadyHeld("Pazarama isteği reddetti: İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz — Pazarama bu fiyat veya stok değerini zaten tutuyor."));
+        Assert.False(PazaramaPriceInventoryRules.AlreadyHeld("Pazarama isteği reddetti: Ürün bulunamadı"));
+        Assert.False(PazaramaPriceInventoryRules.AlreadyHeld(null));
+
+        var parts = PazaramaBatchMapper.ParseOperation($"s:bbb:1|p=:{PazaramaBatchMapper.AlreadyHeldMarker}:1");
+        Assert.Equal([("s", true, false), ("p", false, true)], parts.Select(x => (x.Family, x.Sent, x.Held)));
+        // A held part reads nothing back and does not hold the operation open.
+        var status = PazaramaBatchMapper.Merge("op", [(parts[0], [new PazaramaBatchMapper.BatchItem("B1", PazaramaBatchMapper.BatchState.Succeeded, null)]), (parts[1], [])]);
+        Assert.Equal("COMPLETED", status.Status);
+        Assert.True(status.Lines.Single().Succeeded);
+    }
+
+    [Fact]
     public void A_barcode_refused_for_both_says_so()
     {
         var status = PazaramaBatchMapper.Merge("op", [

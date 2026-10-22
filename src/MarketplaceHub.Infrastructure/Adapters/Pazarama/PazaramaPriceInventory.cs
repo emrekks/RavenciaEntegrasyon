@@ -48,6 +48,14 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
             rate = result.RateLimit ?? rate;
             if (!result.IsSuccess)
             {
+                // One barcode whose value Pazarama already holds is refused ("… önceki değerleriyle aynı olamaz"): that
+                // part is up to date, not failed. A larger request does not say which barcode it meant, so it stays a failure.
+                if (count == 1 && PazaramaPriceInventoryRules.AlreadyHeld(result.Error!.SafeMessage))
+                {
+                    parts.Add($"{kind}=:{PazaramaBatchMapper.AlreadyHeldMarker}:1");
+                    accepted++;
+                    continue;
+                }
                 lastError = result.Error!;
                 // Nothing accepted and the failure may be passing: the whole send is retried.
                 if (accepted == 0 && result.Error!.Class is not AdapterErrorClass.Validation) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
@@ -138,6 +146,10 @@ public static class PazaramaPriceInventoryRules
         return new JsonObject { ["price"] = price, ["stock"] = stock }.ToJsonString();
     }
 
+    // Pazarama's refusal of a value it already holds: "İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz".
+    public static bool AlreadyHeld(string? message) =>
+        message is not null && message.Contains("önceki değerleriyle aynı olamaz", StringComparison.OrdinalIgnoreCase);
+
     // The hash that marks a price as sent; the composer and the catalog mapping must agree on it.
     public static string PriceHash(decimal listPrice, decimal salePrice, long priceVersion) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{listPrice:0.00}|{salePrice:0.00}|TRY|{priceVersion}")));
@@ -174,12 +186,15 @@ public static class PazaramaBatchMapper
     public const int MaxPages = 10;
 
     // Kind "p" or "s" for a sent batch (DataId is Pazarama's id); "p!" or "s!" for a part that was not
-    // accepted (DataId is the error code).
+    // accepted (DataId is the error code); "p=" or "s=" for a value Pazarama already held (nothing to read back).
     public sealed record BatchPart(string Kind, string DataId, int ExpectedCount)
     {
-        public bool Sent => !Kind.EndsWith('!');
-        public string Family => Kind.TrimEnd('!');
+        public bool Sent => !Kind.EndsWith('!') && !Held;
+        public bool Held => Kind.EndsWith('=');
+        public string Family => Kind.TrimEnd('!', '=');
     }
+
+    public const string AlreadyHeldMarker = "PAZARAMA_VALUE_ALREADY_HELD";
 
     // An error code kept inside an operation id: letters, digits and underscores only.
     public static string MarkerCode(string? code)
@@ -205,7 +220,7 @@ public static class PazaramaBatchMapper
         foreach (var raw in (operationId ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var fields = raw.Split(':');
-            if (fields.Length != 3 || fields[0] is not ("p" or "s" or "p!" or "s!") || fields[1].Length == 0 || !int.TryParse(fields[2], NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count <= 0) return [];
+            if (fields.Length != 3 || fields[0] is not ("p" or "s" or "p!" or "s!" or "p=" or "s=") || fields[1].Length == 0 || !int.TryParse(fields[2], NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count <= 0) return [];
             parts.Add(new(fields[0], fields[1], count));
         }
         return parts;

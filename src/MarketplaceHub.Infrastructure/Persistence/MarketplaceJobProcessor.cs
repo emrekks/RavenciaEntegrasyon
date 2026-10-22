@@ -1687,6 +1687,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var stockSent = parts.Any(part => part.Kind == "s");
         var priceNotSent = parts.FirstOrDefault(part => part.Kind == "p!")?.DataId;
         var stockNotSent = parts.FirstOrDefault(part => part.Kind == "s!")?.DataId;
+        // A value Pazarama refused because it already holds it is recorded as sent.
+        var priceHeld = parts.Any(part => part.Kind == "p=");
+        var stockHeld = parts.Any(part => part.Kind == "s=");
         var success = 0; var failed = 0;
         foreach (var line in payload.Lines)
         {
@@ -1696,8 +1699,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (remote is null && (inPrice && priceSent || inStock && stockSent))
                 return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
             var code = remote?.ErrorCode;
-            var priceOk = !inPrice || priceSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
-            var stockOk = !inStock || stockSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.StockRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
+            var priceOk = !inPrice || priceHeld || priceSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
+            var stockOk = !inStock || stockHeld || stockSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.StockRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
             var offer = offers[line.OfferId];
             if (priceOk) offer.LastPriceHash = line.PriceHash;
             if (stockOk) offer.LastStockProjectionVersion = line.ProjectionVersion;
