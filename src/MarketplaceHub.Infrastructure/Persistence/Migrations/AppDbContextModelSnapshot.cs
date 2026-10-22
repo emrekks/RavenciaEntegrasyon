@@ -3409,8 +3409,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ConnectionId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ExternalBarcode")
+                        .HasColumnType("text");
+
                     b.Property<string>("ExternalId")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalSku")
                         .HasColumnType("text");
 
                     b.Property<Guid>("TenantId")

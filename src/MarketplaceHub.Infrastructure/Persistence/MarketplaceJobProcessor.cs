@@ -1012,6 +1012,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (variantLink is null) db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = externalVariantId, Version = 1 });
     }
 
+    // Every link the import read keeps the marketplace's own barcode and stock code, whichever code paired it with
+    // the panel variant: price, stock and order reads address the marketplace by them, not by the panel's codes.
+    private async Task RecordVariantLinkCodes(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
+    {
+        var remotes = new Dictionary<string, RemoteCatalogVariant>(StringComparer.Ordinal);
+        foreach (var remote in snapshots.SelectMany(snapshot => snapshot.Variants))
+            if (Short(remote.ExternalVariantId, 256) is { Length: > 0 } externalId) remotes.TryAdd(externalId, remote);
+        if (remotes.Count == 0) return;
+        var externalIds = remotes.Keys.ToArray();
+        var links = await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId)).ToListAsync(cancellationToken);
+        links.AddRange(db.MarketplaceVariantLinks.Local.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && remotes.ContainsKey(x.ExternalId) && !links.Contains(x)));
+        foreach (var link in links)
+        {
+            var remote = remotes[link.ExternalId];
+            var barcode = string.IsNullOrWhiteSpace(remote.Barcode) ? null : Short(remote.Barcode.Trim(), 160);
+            var sku = string.IsNullOrWhiteSpace(remote.Sku) ? null : Short(remote.Sku.Trim(), 160);
+            if (link.ExternalBarcode == barcode && link.ExternalSku == sku) continue;
+            link.ExternalBarcode = barcode;
+            link.ExternalSku = sku;
+            if (db.Entry(link).State != EntityState.Added) link.Version++;
+        }
+    }
+
     private async Task<JobExecutionResult> MarkPublicationResult(Guid tenantId, Guid connectionId, ChannelListingProfile profile, string status, string? rejectionCode, JobExecutionResult result, CancellationToken cancellationToken)
     {
         profile.ActualStatus = status;
@@ -5086,6 +5109,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
+                await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
@@ -7955,7 +7979,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var group in history.GroupBy(x => x.OrderId)) batch.EventIdsByOrder[group.Key] = group.Select(x => x.SourceEventId).ToHashSet(StringComparer.Ordinal);
         }
 
-        var variantIds = await ResolveOrderLineVariantIds(tenantId, remotes.SelectMany(x => x.Lines).ToList(), cancellationToken);
+        var variantIds = await ResolveOrderLineVariantIds(tenantId, connectionId, remotes.SelectMany(x => x.Lines).ToList(), cancellationToken);
         foreach (var pair in variantIds) batch.VariantIdsByKey[pair.Key] = pair.Value;
         foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false, persistFinancialObservations: isShopify);
         await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
@@ -8140,7 +8164,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var allocationsByKey = batch is not null
             ? batch.AllocationsByKey.Where(x => packageIds.Contains(x.Value.PackageId)).ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
             : (await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken)).ToDictionary(x => AllocationKey(x.PackageId, x.OrderLineId, x.SourceEventId), StringComparer.Ordinal);
-        var variantIdsByKey = batch?.VariantIdsByKey ?? await ResolveOrderLineVariantIds(tenantId, remote.Lines, cancellationToken);
+        var variantIdsByKey = batch?.VariantIdsByKey ?? await ResolveOrderLineVariantIds(tenantId, connectionId, remote.Lines, cancellationToken);
         if (batch is not null)
         {
             batch.LinesByOrder[order.Id] = existingLines;
@@ -8946,7 +8970,51 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         state.Version++;
     }
 
-    private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
+    {
+        var result = await ResolveOrderLineVariantIdsByPanelCodes(tenantId, remoteLines, cancellationToken);
+        // The marketplace's own codes on this connection's variant links come first: a seller need not use the
+        // panel's barcode or stock code on every marketplace, and a code the link names is this marketplace's.
+        var codes = remoteLines.SelectMany(line => new[] { line.Barcode, line.Sku })
+            .Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!.Trim()).Distinct(StringComparer.Ordinal).ToArray();
+        if (codes.Length == 0) return result;
+        var links = await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                && ((x.ExternalBarcode != null && codes.Contains(x.ExternalBarcode)) || (x.ExternalSku != null && codes.Contains(x.ExternalSku)) || codes.Contains(x.ExternalId)))
+            .OrderBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        if (links.Count == 0) return result;
+        foreach (var line in remoteLines)
+        {
+            var barcode = line.Barcode?.Trim();
+            var sku = line.Sku?.Trim();
+            var byBarcode = string.IsNullOrEmpty(barcode) ? null : OrderLineLink(links, barcode, preferBarcode: true);
+            var bySku = string.IsNullOrEmpty(sku) ? null : OrderLineLink(links, sku, preferBarcode: false);
+            if (byBarcode is not null && VariantLookupKey(barcode, true) is { } barcodeKey) result[barcodeKey] = byBarcode.Value;
+            if (bySku is not null && VariantLookupKey(sku, false) is { } skuKey) result[skuKey] = bySku.Value;
+        }
+        return result;
+    }
+
+    // The link whose barcode (for a line's barcode) or stock code (for its stock code) is the code, else whose id
+    // is; a code two links share names no variant.
+    private static Guid? OrderLineLink(IReadOnlyList<MarketplaceVariantLink> links, string code, bool preferBarcode)
+    {
+        foreach (var match in new Func<MarketplaceVariantLink, bool>[]
+                 {
+                     link => string.Equals(preferBarcode ? link.ExternalBarcode : link.ExternalSku, code, StringComparison.Ordinal),
+                     link => string.Equals(preferBarcode ? link.ExternalSku : link.ExternalBarcode, code, StringComparison.Ordinal),
+                     link => string.Equals(link.ExternalId, code, StringComparison.Ordinal)
+                 })
+        {
+            var variants = links.Where(match).Select(link => link.VariantId).Distinct().ToList();
+            if (variants.Count == 1) return variants[0];
+            if (variants.Count > 1) return null;
+        }
+        return null;
+    }
+
+    private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIdsByPanelCodes(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
     {
         // Stored keys may still be in a legacy form ("ABC_01" instead of "ABC-01") until the variant is saved
         // again, so query every stored form like the other catalog lookups (K1). The result is keyed by the

@@ -139,6 +139,105 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.DoesNotContain("FK4530/", draft.Value.PayloadJson, StringComparison.Ordinal);
     }
 
+    // An imported Trendyol variant has no listing rows; its price and stock go by the barcode Trendyol holds,
+    // which differs from the panel's when the seller keyed it differently there.
+    [PostgreSqlFact]
+    public async Task ImportedTrendyolVariant_IsSentByTheMarketplaceBarcode()
+    {
+        var tenant = NewTenant("imported-trendyol-codes");
+        var trendyol = NewConnection(tenant, "TRENDYOL", writesEnabled: true);
+        var (product, variant) = NewVariant(tenant, "IMP-1", "8690000000110");
+        var withoutCodes = NewVariant(tenant, "IMP-2", "8690000000127", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(variant, withoutCodes);
+            seed.InventoryItems.AddRange(NewInventory(tenant, variant, 3m), NewInventory(tenant, withoutCodes, 3m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, trendyol, variant), NewOffer(tenant, trendyol, withoutCodes));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = variant.Id, ExternalId = "777001", ExternalBarcode = "TY-BARKOD-1", ExternalSku = "TY-STOK-1" },
+                // Linked before the codes were kept: nothing to address it by until the next import.
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = withoutCodes.Id, ExternalId = "777002" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var draft = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, trendyol.Id, CancellationToken.None);
+
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        var line = Assert.Single(draft.Value!.Lines);
+        Assert.Equal(variant.Id, line.VariantId);
+        Assert.Equal("TY-BARKOD-1", line.Barcode);
+    }
+
+    // An import keeps the marketplace's barcode and stock code on the links it read, whatever code paired them.
+    [PostgreSqlFact]
+    public async Task ProductImport_RecordsTheMarketplaceCodesOnItsLinks()
+    {
+        var tenant = NewTenant("import-link-codes");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (product, variant) = NewVariant(tenant, "PANEL-STOK", "8690000000158");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = variant.Id, ExternalId = "888001" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var record = typeof(MarketplaceJobProcessor).GetMethod("RecordVariantLinkCodes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var remote = new RemoteCatalogVariant("888001", " TY-STOK ", "TY-BARKOD", null, new Dictionary<string, string>(), false, 100m, 120m, 20m, 2m, "TRY", "{}");
+        var snapshots = new List<RemoteCatalogProduct> { new("p-1", null, "Ürün", "", null, null, null, null, [], [remote], "{}") };
+        await (Task)record.Invoke(processor, [tenant.Id, trendyol.Id, snapshots, CancellationToken.None])!;
+        await db.SaveChangesAsync();
+
+        var link = await db.MarketplaceVariantLinks.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == trendyol.Id);
+        Assert.Equal("TY-BARKOD", link.ExternalBarcode);
+        Assert.Equal("TY-STOK", link.ExternalSku);
+        Assert.Equal(2, link.Version);
+    }
+
+    // An order line names the variant by the marketplace's codes; a link holding them finds the panel variant
+    // even when the panel's barcode and stock code differ.
+    [PostgreSqlFact]
+    public async Task OrderLine_ResolvesThroughTheConnectionsVariantLinkCodes()
+    {
+        var tenant = NewTenant("order-line-link-codes");
+        var n11 = NewConnection(tenant, "N11");
+        var other = NewConnection(tenant, "PAZARAMA");
+        var (product, linked) = NewVariant(tenant, "PANEL-1", "8690000000134");
+        var panelMatch = NewVariant(tenant, "N11-STOK-9", "8690000000141", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(n11, other);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(linked, panelMatch);
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = linked.Id, ExternalId = "N11-STOK-9", ExternalBarcode = "N11-BARKOD-9", ExternalSku = "N11-STOK-9" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = other.Id, VariantId = panelMatch.Id, ExternalId = "N11-BARKOD-9" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var resolve = typeof(MarketplaceJobProcessor).GetMethod("ResolveOrderLineVariantIds", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var lines = new List<RemoteOrderLine> { new("line-1", "N11-STOK-9", "N11-BARKOD-9", "Ürün", 1m, 100m, 20m, "Created"), new("line-2", "PANEL-ONLY", "8690000000141", "Ürün", 1m, 100m, 20m, "Created") };
+        var keys = await (Task<Dictionary<string, Guid>>)resolve.Invoke(processor, [tenant.Id, n11.Id, lines, CancellationToken.None])!;
+
+        // The n11 stock code is also a panel SKU of another variant; the n11 link wins on its own connection.
+        Assert.Equal(linked.Id, keys["s:N11-STOK-9"]);
+        Assert.Equal(linked.Id, keys["b:N11-BARKOD-9"]);
+        // A code no link of this connection names still resolves by the panel's codes.
+        Assert.Equal(panelMatch.Id, keys["b:8690000000141"]);
+    }
+
     // K6: an order line that cannot take its units from physical stock keeps them reserved, also under a
     // DISABLED or missing connection inventory policy (the policy fields are not applied).
     [PostgreSqlFact]

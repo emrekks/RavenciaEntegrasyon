@@ -136,7 +136,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             return await BuildPttAvmAsync(tenantId, connectionId, cancellationToken, variantId, productId);
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isTrendyol = string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
-        var rows = await (from offer in db.ChannelOffers.AsNoTracking()
+        var published = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
                           join listingState in db.MarketplaceListingStates.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { listingState.TenantId, listingState.ConnectionId, listingState.VariantId }
                           join profile in db.ChannelListingProfiles.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, ProductId = variant.ProductId } equals new { profile.TenantId, profile.ConnectionId, profile.ProductId }
@@ -150,26 +150,58 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                                && (variantId == null || offer.VariantId == variantId)
                                && (productId == null || variant.ProductId == productId)
                           orderby variant.Id
-                          select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = listingVariant.ExternalBarcode!, MerchantSku = listingVariant.ExternalSku, HepsiburadaSku = remoteLink == null ? null : remoteLink.ExternalId }).ToListAsync(cancellationToken);
-        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş varyant ve ACTIVE teklif gerekir.", 422);
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, ListingBarcode = listingVariant.ExternalBarcode!, ListingSku = listingVariant.ExternalSku, Link = remoteLink }).ToListAsync(cancellationToken);
+        // A published variant goes by the codes the marketplace holds when its import read them (the seller may have
+        // changed them there), else by the codes it was published with. Codes the marketplace confirmed (read back
+        // by an import) need not equal the panel's.
+        var rows = published.Select(row => new GenericPriceInventoryRow(row.Offer, row.Variant, row.Inventory,
+                isHepsiburada ? row.ListingBarcode : row.Link?.ExternalBarcode ?? row.ListingBarcode,
+                row.Link?.ExternalSku ?? row.ListingSku, row.Link?.ExternalId, row.Link?.ExternalSku is not null))
+            .ToList();
+        // An imported variant has no listing rows: it goes by the marketplace codes its link carries.
+        var publishedVariantIds = published.Select(row => row.Variant.Id).ToHashSet();
+        var listedVariantIds = await (from profile in db.ChannelListingProfiles.AsNoTracking()
+                                      join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId }
+                                      where profile.TenantId == tenantId && profile.ConnectionId == connectionId
+                                      select listingVariant.VariantId).Distinct().ToListAsync(cancellationToken);
+        var imported = await (from offer in db.ChannelOffers.AsNoTracking()
+                              join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                              join link in db.MarketplaceVariantLinks.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { link.TenantId, link.ConnectionId, link.VariantId }
+                              join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
+                              from inventory in inventories.DefaultIfEmpty()
+                              where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                                   && (isHepsiburada ? link.ExternalSku != null : link.ExternalBarcode != null)
+                                   && (variantId == null || offer.VariantId == variantId)
+                                   && (productId == null || variant.ProductId == productId)
+                              orderby variant.Id
+                              select new { Offer = offer, Variant = variant, Inventory = inventory, Link = link }).ToListAsync(cancellationToken);
+        foreach (var row in imported.Where(row => !publishedVariantIds.Contains(row.Variant.Id) && !listedVariantIds.Contains(row.Variant.Id)))
+        {
+            // Hepsiburada needs the hbSku beside the merchant SKU; a link that holds the merchant SKU instead stays out.
+            if (isHepsiburada && !HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.Link.ExternalId)) continue;
+            rows.Add(new(row.Offer, row.Variant, row.Inventory, row.Link.ExternalBarcode ?? row.Link.ExternalSku!, row.Link.ExternalSku, row.Link.ExternalId, true));
+        }
+        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş ya da pazar yerinden içe aktarılmış varyant ve ACTIVE teklif gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
 
         var lines = new List<PriceInventoryPushLine>();
-        foreach (var row in rows.Where(row => row.Inventory is not null))
+        foreach (var row in rows)
         {
+            if (row.Inventory is not { } inventory) continue;
             var salePrice = OutboundSalePrice(row.Offer);
             var listPrice = OutboundListPrice(row.Offer);
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.", 422);
-            if (isHepsiburada && (string.IsNullOrWhiteSpace(row.MerchantSku) || !string.Equals(row.MerchantSku, row.Variant.Sku, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(row.HepsiburadaSku)))
+            // The merchant SKU is the panel SKU unless Hepsiburada itself reported it (an import read it back).
+            if (isHepsiburada && (string.IsNullOrWhiteSpace(row.MerchantSku) || !row.MarketplaceCodes && !string.Equals(row.MerchantSku, row.Variant.Sku, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(row.HepsiburadaSku)))
                 return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_LISTING_LINK_REQUIRED", $"'{row.Variant.Sku}' için doğrulanmış merchantSku ve hbSku eşleştirmesi gerekir.", 409);
-            var publishable = Math.Max(0, row.Inventory!.Available - row.Offer.SafetyStock);
+            var publishable = Math.Max(0, inventory.Available - row.Offer.SafetyStock);
             // C10: Trendyol stock is capped at 20,000; the capped quantity is what the payload (and its hash) carries.
             var quantity = isTrendyol ? TrendyolStockRules.Quantity(publishable) : decimal.Floor(publishable);
             var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
-            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim()));
+            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == inventory.ProjectionVersion) continue;
+            lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim()));
         }
         if (lines.Count == 0) return NoChanges(missingInventory);
         // Dirty filtering must happen before the provider batch limit. A large
@@ -185,6 +217,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             : JsonSerializer.Serialize(new { items = lines.Select(x => new { barcode = x.Barcode, quantity = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)), salePrice = x.SalePrice, listPrice = x.ListPrice }).ToArray() });
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines) { MissingInventorySkus = missingInventory });
     }
+
+    private sealed record GenericPriceInventoryRow(ChannelOffer Offer, ProductVariant Variant, InventoryItem? Inventory, string Barcode, string? MerchantSku, string? HepsiburadaSku, bool MarketplaceCodes);
 
     // Hepsiburada SIT certification (STAGE connection, manual send from the panel only). The inventory
     // products Hepsiburada loads into the SIT account reach the panel through the product import (a
@@ -270,6 +304,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var listPrice = Math.Max(N11PriceInventoryRules.Price(OutboundListPrice(row.Offer)), salePrice);
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.", 422);
+            // An n11 product read without a stock code is linked as "n11:{productId}"; n11 takes price and stock by
+            // stock code only, so it cannot be addressed and stays out.
+            if (row.StockCode.StartsWith("n11:", StringComparison.Ordinal)) continue;
             var quantity = N11PriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
             var priceHash = Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{row.Offer.PriceVersion}");
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
