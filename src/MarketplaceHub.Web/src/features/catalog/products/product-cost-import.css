@@ -1,0 +1,72 @@
+/* Maliyet Excel dialog on the products page: template step, upload step, preview and result. */
+@layer features {
+  .pci-modal .rr-m-body { display: grid; gap: var(--rv-space-3); min-width: 0; }
+
+  .pci-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-warning-soft); border-radius: 12px; font-size: 13px; }
+  .pci-hint > .rr-ico { flex: none; color: var(--rv-color-warning); }
+  .pci-hint > span { flex: 1 1 260px; min-width: 0; }
+  .pci-hint b { font-weight: 600; }
+  .pci-hint .rr-btn { min-height: 36px; }
+
+  .pci-steps { display: grid; gap: var(--rv-space-3); margin: 0; padding: 0; list-style: none; }
+  .pci-step { display: flex; gap: 12px; min-width: 0; padding: 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 14px; }
+  .pci-step-n { display: inline-grid; flex: none; place-items: center; width: 26px; height: 26px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 13px; font-weight: 700; }
+  .pci-step-b { display: grid; flex: 1; gap: 8px; min-width: 0; }
+  .pci-step-b > strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; line-height: 26px; }
+  .pci-step-b > p { margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+  .pci-step-b > p b { color: var(--rv-color-ink); font-weight: 600; }
+  .pci-step-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  .pci-step-acts .rr-btn { min-height: 36px; }
+  .pci-check { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 13px; cursor: pointer; }
+  .pci-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); }
+
+  .pci-drop { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; color: var(--rv-color-muted); text-align: center; background: var(--rv-color-surface); border: 1px dashed var(--rv-color-border-strong); border-radius: 12px; transition: border-color 120ms ease, background-color 120ms ease; }
+  .pci-drop > b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+  .pci-drop > span { font-size: 12px; }
+  .pci-drop .rr-btn { min-height: 36px; margin-top: 4px; }
+  .pci-drop:hover, .pci-drop.is-dragging { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+
+  .pci-error { margin: 0; padding: 10px 12px; color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-radius: 12px; font-size: 13px; }
+  .pci-note, .pci-more, .pci-empty { margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+
+  .pci-preview { display: grid; gap: var(--rv-space-3); min-width: 0; }
+  .pci-file { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+  .pci-file b { color: var(--rv-color-ink); font-weight: 600; overflow-wrap: anywhere; }
+  .pci-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+  .pci-stat { display: grid; gap: 2px; padding: 10px 12px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .pci-stat small { color: var(--rv-color-muted); font-size: 12px; }
+  .pci-stat strong { color: var(--rv-color-ink); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pci-stat.is-ok strong { color: var(--rv-color-accent); }
+  .pci-stat.is-warn strong { color: var(--rv-color-warning); }
+  .pci-stat.is-bad strong { color: var(--rv-color-danger); }
+
+  .pci-tblwrap { max-height: min(46vh, 420px); overflow: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .pci-tbl { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13px; }
+  .pci-tbl :is(th, td) { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
+  .pci-tbl thead th { position: sticky; top: 0; z-index: 1; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .pci-tbl tbody tr:last-child td { border-bottom: 0; }
+  .pci-tbl tbody tr:hover { background: var(--rv-color-surface-soft); }
+  .pci-tbl small { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .pci-title { display: block; max-width: 300px; color: var(--rv-color-ink); font-weight: 600; overflow-wrap: anywhere; }
+  .pci-num, .pci-money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pci-num { color: var(--rv-color-muted); }
+  .pci-money { color: var(--rv-color-ink); }
+
+  .pci-badge { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; white-space: nowrap; }
+  .pci-badge.is-ok { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+  .pci-badge.is-warn { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+  .pci-badge.is-bad { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+  .pci-badge.is-info { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+  .pci-badge.is-muted { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
+
+  .pci-done { display: grid; justify-items: center; gap: 8px; padding: 24px 12px; text-align: center; }
+  .pci-done-mark { display: inline-grid; place-items: center; width: 44px; height: 44px; color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-radius: 999px; }
+  .pci-done strong { color: var(--rv-color-ink); font-size: 16px; font-weight: 600; }
+  .pci-done p { max-width: 460px; margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+
+  @media (max-width: 640px) {
+    .pci-step { padding: 12px; }
+    .pci-step-acts { align-items: stretch; flex-direction: column; }
+    .pci-step-acts .rr-btn { justify-content: center; }
+  }
+}
