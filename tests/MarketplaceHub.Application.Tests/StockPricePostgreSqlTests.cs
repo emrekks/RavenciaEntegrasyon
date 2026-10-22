@@ -109,15 +109,20 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
         var (product, modelVariant) = NewVariant(tenant, "FK4530-S", "8690000000097");
         var plainVariant = NewVariant(tenant, "FK4530-M", "8690000000103", product.Id).Variant;
+        // A panel variant without a barcode is known to PTT AVM by its stock code.
+        var noBarcodeVariant = NewVariant(tenant, "FK4530-L", "unused", product.Id).Variant;
+        noBarcodeVariant.Barcode = null;
+        noBarcodeVariant.BarcodeNormalized = null;
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
             seed.PlatformConnections.Add(pttAvm);
             seed.Products.Add(product);
-            seed.ProductVariants.AddRange(modelVariant, plainVariant);
-            seed.InventoryItems.AddRange(NewInventory(tenant, modelVariant, 4m), NewInventory(tenant, plainVariant, 2m));
-            seed.ChannelOffers.AddRange(NewOffer(tenant, pttAvm, modelVariant), NewOffer(tenant, pttAvm, plainVariant));
+            seed.ProductVariants.AddRange(modelVariant, plainVariant, noBarcodeVariant);
+            seed.InventoryItems.AddRange(NewInventory(tenant, modelVariant, 4m), NewInventory(tenant, plainVariant, 2m), NewInventory(tenant, noBarcodeVariant, 1m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, pttAvm, modelVariant), NewOffer(tenant, pttAvm, plainVariant), NewOffer(tenant, pttAvm, noBarcodeVariant));
             seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = noBarcodeVariant.Id, ExternalId = "FK4530/7102" },
                 new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = modelVariant.Id, ExternalId = "FK4530/7101" },
                 new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = plainVariant.Id, ExternalId = "PTT-FK4530-M" });
             await seed.SaveChangesAsync();
@@ -130,7 +135,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var barcodes = draft.Value!.Lines.ToDictionary(x => x.VariantId, x => x.Barcode);
         Assert.Equal("8690000000097", barcodes[modelVariant.Id]);
         Assert.Equal("PTT-FK4530-M", barcodes[plainVariant.Id]);
-        Assert.DoesNotContain("FK4530/7101", draft.Value.PayloadJson, StringComparison.Ordinal);
+        Assert.Equal("FK4530-L", barcodes[noBarcodeVariant.Id]);
+        Assert.DoesNotContain("FK4530/", draft.Value.PayloadJson, StringComparison.Ordinal);
     }
 
     // K6: an order line that cannot take its units from physical stock keeps them reserved, also under a

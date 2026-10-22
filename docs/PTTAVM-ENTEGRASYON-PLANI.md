@@ -212,8 +212,8 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     başlıktaki renkle yapılır.
   - Sipariş satırında `UrunBarkod` modelin barkodu, `VariantBarkod` satılan varyantın barkodudur (canlı: `RYP001` / `RYP00105`);
     satır `VariantBarkod` ile panel varyantına bağlanır.
-  - Fiyat/stok gönderimi `FK4530/7101` gibi kimlikle bağlı varyantta panel barkodunu gönderir (PTT AVM barkod anahtarı ister;
-    siparişlerdeki `VariantBarkod` panel barkoduyla aynı). PTT AVM barkodu kabul etmezse takip sonucunda satır hatası görünür.
+  - Fiyat/stok gönderimi `FK4530/7101` gibi kimlikle bağlı varyantta panel barkodunu, barkodu olmayan varyantta stok kodunu
+    gönderir (PTT AVM barkod alanında barkod yoksa stok kodu kullanır; siparişlerdeki `VariantBarkod` da böyle). PTT AVM barkodu kabul etmezse takip sonucunda satır hatası görünür.
   - Ürün gönderimi bu varyantlara gitmez (tek varyant + barkod bağı koşulu).
 - **Canlıda doğrulanacak:**
   - Varyant eşleştirmesinin yeniden çalıştırılmış sonucu (25/198'den ne kadar yükseldiği).
