@@ -3137,6 +3137,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("DirtyFieldsJson")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("ExternalCode")
+                        .HasColumnType("text");
+
                     b.Property<string>("ExternalId")
                         .IsRequired()
                         .HasColumnType("text");

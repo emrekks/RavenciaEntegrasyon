@@ -334,6 +334,9 @@ public sealed class MarketplaceProductLink
     public Guid ConnectionId { get; set; }
     public Guid ProductId { get; set; }
     public required string ExternalId { get; set; }
+    // The code the marketplace keeps the product by when ExternalId is its numeric id: PTT AVM's product barcode
+    // (the model code of a product with variants, the product's own code otherwise), which price and stock go by.
+    public string? ExternalCode { get; set; }
     public string? LastImportedPayloadHash { get; set; }
     public long LastImportedProductVersion { get; set; }
     public long LastPublishedProductVersion { get; set; }

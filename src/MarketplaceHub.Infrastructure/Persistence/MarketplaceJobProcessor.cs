@@ -4746,20 +4746,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var fullCatalogForMapping = ProductImportScanPolicy.RequiresFullCatalogForMapping(mappingOnly, includeArchived, includeDrafts);
         var effectiveFullScan = fullScan || fullCatalogForMapping;
         var productLookup = ReadText(payloadJson, "productLookup");
-        // PTT AVM model variants are mapped by the codes PTT AVM confirms (PttAvmCodeLookup); after a failed lookup the
-        // rest of the run asks no more and leaves those variants unmatched.
-        var pttCodeCheckFailed = false;
-        var codeLookup = isPttAvm ? products as IProductVisualLookupPort : null;
-        async Task<RemoteProduct?> CheckPttAvmCode(string code)
-        {
-            if (pttCodeCheckFailed || codeLookup is null) return null;
-            var answer = await codeLookup.FindByBarcodeAsync(Context(tenantId, connectionId, correlationId, $"pttavm-code:{code}"), code, cancellationToken);
-            if (answer.IsSuccess) return answer.Value;
-            pttCodeCheckFailed = true;
-            await RecordIssue(tenantId, $"pttavm-code-check:{connectionId}", "PTTAVM_CODE_CHECK_FAILED", Short($"PTT AVM kod sorgusu yapılamadı ({answer.Error!.Code}); model varyantları bu çalıştırmada eşlenmedi.", 1000), cancellationToken);
-            return null;
-        }
-        Func<string, Task<RemoteProduct?>>? pttCodeCheck = codeLookup is null ? null : CheckPttAvmCode;
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
             ? "Tekil ürün çekimi"
@@ -5076,7 +5062,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     if (mappingOnly)
                     {
-                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11", confirmCode: pttCodeCheck);
+                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11", pttAvm: isPttAvm);
                         if (!mapped) telemetryImportSkippedCount++;
                         else telemetryImportProcessedCount++;
                         continue;
@@ -6044,8 +6030,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // variant that found no local variant so it can be fixed by hand. seedOffers (n11)
     // opens the channel offer of a linked variant from the remote price when
     // the variant has none yet; existing offers are never changed.
-    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null, string seedSource = "N11", Func<string, Task<RemoteProduct?>>? confirmCode = null)
+    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null, string seedSource = "N11", bool pttAvm = false)
     {
+        if (pttAvm) return await MapPttAvmProduct(tenantId, connectionId, snapshot, reportUnmatched, seedOffers, inventoryPolicy, cancellationToken);
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         if (string.IsNullOrWhiteSpace(externalProductId)) return false;
         var remoteVariants = snapshot.Variants
@@ -6129,68 +6116,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .ToHashSet();
         var matchedVariantCount = 0;
         var matchedProductIds = new HashSet<Guid>();
-
-        // PTT AVM lists a model's variants without their codes ("FK4530/7101", a size name): the panel variants of the
-        // model are linked by the code PTT AVM itself confirms for them (their barcode, else their stock code), never by
-        // the variant name or the title's colour. The link then carries that code, which price and stock go by.
-        var codelessVariants = confirmCode is null
-            ? []
-            : remoteVariants.Where(variant => string.IsNullOrWhiteSpace(variant.Barcode) && PttAvmVariantMapper.IsModelVariantId(Short(variant.ExternalVariantId, 256))).ToList();
-        if (codelessVariants.Count > 0)
-        {
-            remoteVariants = remoteVariants.Except(codelessVariants).ToList();
-            var modelKey = NormalizeCatalogKey(codelessVariants[0].ModelCode ?? snapshot.ProductMainId, 160);
-            var modelVariants = localVariants.Where(variant => modelKey.Length > 0 && string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), modelKey, StringComparison.Ordinal)).OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id).ToList();
-            foreach (var candidate in modelVariants)
-            {
-                var existing = existingVariantLinks.FirstOrDefault(item => item.VariantId == candidate.Id);
-                if (existing is not null && !PttAvmVariantMapper.IsModelVariantId(existing.ExternalId))
-                {
-                    // Confirmed by an earlier run: nothing to ask.
-                    matchedVariantCount++;
-                    matchedProductIds.Add(candidate.ProductId);
-                    continue;
-                }
-                string? confirmed = null;
-                // What PTT AVM answered for each code that did not confirm the variant: no product, or another product.
-                var answers = new List<string>();
-                foreach (var code in new[] { candidate.Barcode, candidate.Sku }.Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!.Trim()).Distinct(StringComparer.Ordinal))
-                {
-                    var answer = await confirmCode!(code);
-                    if (answer is not null && (answer.ExternalProductId == externalProductId || CatalogKeyNormalizer.SameKey(answer.Barcode, snapshot.ProductMainId)))
-                    {
-                        confirmed = code;
-                        break;
-                    }
-                    answers.Add(answer is null ? $"{code}: ürün yok" : $"{code}: UrunId {answer.ExternalProductId}, barkod {answer.Barcode ?? "yok"}");
-                }
-                if (confirmed is null || existingVariantLinks.Any(item => string.Equals(item.ExternalId, confirmed, StringComparison.OrdinalIgnoreCase) && item.VariantId != candidate.Id))
-                {
-                    if (reportUnmatched)
-                        await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{candidate.Id:N}", "PRODUCT_MAPPING_UNMATCHED",
-                            Short(confirmed is null
-                                ? $"PTT AVM panel varyantını tanımadı: barkod {candidate.Barcode ?? "yok"}, stok kodu {candidate.Sku} bu model ürününde ({snapshot.ProductMainId}, UrunId {externalProductId}) bulunamadı; PTT cevabı: {string.Join("; ", answers)} · {snapshot.Title}."
-                                : $"PTT AVM kodu {confirmed} başka bir panel varyantına bağlı; {candidate.Sku} bağlanmadı · {snapshot.Title}.", 1000), cancellationToken);
-                    continue;
-                }
-                if (existing is not null)
-                {
-                    existing.ExternalId = confirmed;
-                    existing.Version++;
-                }
-                else
-                {
-                    db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = confirmed, Version = 1 });
-                    existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = confirmed, Version = 1 });
-                    telemetryInsertedCount++;
-                }
-                claimedVariantIds.Add(candidate.Id);
-                matchedVariantCount++;
-                matchedProductIds.Add(candidate.ProductId);
-                if (seedOffers)
-                    await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, codelessVariants.FirstOrDefault(remote => HasOptionValues(candidate.OptionSignature, remote.Options)) ?? codelessVariants[0], inventoryPolicy, now, cancellationToken, seedSource);
-            }
-        }
 
         foreach (var remote in remoteVariants)
         {
@@ -6297,6 +6222,174 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         return true;
+    }
+
+    // PTT AVM keeps a product by its barcode, which is also its seller stock code: the model code for a product with
+    // variants, the product's own code for one without. Its variants are colour and size combinations, each with a
+    // variant stock code equal to the panel variant's stock code; the SOAP service lists only the colour and size
+    // values of a product ("FK4530/7101" = "Lacivert"), never the combinations or their codes. So the product is
+    // found by its barcode (a panel model code, else a panel variant's code), every active panel variant of that
+    // model is linked by its own stock code, and a variant whose colour or size PTT AVM does not list is left out.
+    private async Task<bool> MapPttAvmProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool reportUnmatched, bool seedOffers, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken)
+    {
+        var externalProductId = Short(snapshot.ExternalProductId, 256);
+        var productCode = snapshot.ProductMainId?.Trim();
+        var codeKey = NormalizeCatalogKey(productCode, 160);
+        if (string.IsNullOrWhiteSpace(externalProductId) || codeKey.Length == 0) return false;
+        var remoteVariants = snapshot.Variants.Where(variant => !string.IsNullOrWhiteSpace(variant.ExternalVariantId)).ToList();
+        if (remoteVariants.Count == 0) return false;
+        var now = timeProvider.GetUtcNow();
+        var lookupKeys = CatalogKeyNormalizer.LookupKeys(productCode);
+
+        // A product with variants: the panel model whose code is the product barcode; else the model of the panel
+        // variant whose own code it is (a product kept on PTT AVM under one variant's code).
+        var byModel = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenantId && variant.Status != ProductStatus.Archived && variant.ModelCode != null && variant.ModelCode == productCode)
+            .ToListAsync(cancellationToken);
+        var byCode = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenantId && variant.Status != ProductStatus.Archived
+                && ((variant.SkuNormalized != null && lookupKeys.Contains(variant.SkuNormalized)) || (variant.BarcodeNormalized != null && lookupKeys.Contains(variant.BarcodeNormalized))))
+            .ToListAsync(cancellationToken);
+        var optionValues = PttAvmOptionValues(remoteVariants);
+        List<ProductVariant> modelVariants;
+        var compliant = true;
+        if (byModel.Count > 0)
+        {
+            modelVariants = byModel;
+        }
+        else if (byCode.Count == 1 && (optionValues.Count == 0 || string.IsNullOrWhiteSpace(byCode[0].ModelCode)))
+        {
+            // A product without variants: its barcode is the panel variant's own code.
+            modelVariants = byCode;
+        }
+        else if (byCode.Count == 1)
+        {
+            var modelCode = byCode[0].ModelCode;
+            modelVariants = await db.ProductVariants.AsNoTracking()
+                .Where(variant => variant.TenantId == tenantId && variant.Status != ProductStatus.Archived && variant.ProductId == byCode[0].ProductId && variant.ModelCode == modelCode)
+                .ToListAsync(cancellationToken);
+            compliant = false;
+        }
+        else
+        {
+            if (reportUnmatched)
+                await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:ptt:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
+                    Short(byCode.Count > 1
+                        ? $"PTT AVM ürün kodu {productCode} panelde {byCode.Count} varyantın kodu; hangisi olduğu seçilemedi · {snapshot.Title}."
+                        : $"PTT AVM ürün kodu {productCode} panelde yok: aynı model kodu veya stok kodu bulunamadı · {snapshot.Title}.", 1000), cancellationToken);
+            return false;
+        }
+
+        // The products the model spans in the panel; the product link goes to the one the variants belong to.
+        var productIds = modelVariants.Select(variant => variant.ProductId).Distinct().ToArray();
+        if (productIds.Length != 1)
+        {
+            if (reportUnmatched)
+                await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:ptt:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
+                    Short($"PTT AVM ürünü {productCode} panelde {productIds.Length} ayrı ürüne dağılıyor; tek panel ürününe bağlanabilir · {snapshot.Title}.", 1000), cancellationToken);
+            return false;
+        }
+        var productId = productIds[0];
+        if (!compliant && reportUnmatched)
+            await RecordIssue(tenantId, $"pttavm-product-code:{connectionId}:{externalProductId}", "PTTAVM_PRODUCT_CODE_NOT_MODEL",
+                Short($"PTT AVM'de varyantlı ürünün barkodu/satıcı stok kodu {productCode}, panel model kodu {modelVariants[0].ModelCode}. Kurala göre PTT AVM'de model koduna çevirin · {snapshot.Title}.", 1000), cancellationToken);
+
+        var variantIds = modelVariants.Select(variant => variant.Id).ToArray();
+        var codes = modelVariants.Select(PttAvmVariantCode).Where(code => code is not null).Select(code => code!).ToArray();
+        var existingVariantLinks = await db.MarketplaceVariantLinks
+            .Where(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && (variantIds.Contains(existing.VariantId) || codes.Contains(existing.ExternalId)))
+            .ToListAsync(cancellationToken);
+        var matched = 0;
+        foreach (var variant in modelVariants.OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id))
+        {
+            var code = PttAvmVariantCode(variant);
+            var own = existingVariantLinks.FirstOrDefault(existing => existing.VariantId == variant.Id);
+            var missing = code is null ? [] : PttAvmMissingOptionValues(variant.OptionSignature, optionValues);
+            if (code is null || missing.Count > 0)
+            {
+                // A stale link (an old "MODEL/123" option id) of a variant PTT AVM does not sell is removed, so price and
+                // stock are never sent for it.
+                if (own is not null && PttAvmVariantMapper.IsModelVariantId(own.ExternalId)) db.MarketplaceVariantLinks.Remove(own);
+                if (reportUnmatched)
+                    await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{variant.Id:N}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short(code is null
+                            ? $"PTT AVM varyantı bağlanmadı: panel varyantının stok kodu ve barkodu yok · {snapshot.Title}."
+                            : $"PTT AVM'de bu renk/beden yok: {string.Join(", ", missing)} ({code}); ürün {productCode} · {snapshot.Title}.", 1000), cancellationToken);
+                continue;
+            }
+            var taken = existingVariantLinks.FirstOrDefault(existing => existing.VariantId != variant.Id && string.Equals(existing.ExternalId, code, StringComparison.OrdinalIgnoreCase));
+            if (taken is not null)
+            {
+                if (reportUnmatched)
+                    await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{variant.Id:N}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short($"PTT AVM kodu {code} başka bir panel varyantına bağlı; {variant.Sku} bağlanmadı · {snapshot.Title}.", 1000), cancellationToken);
+                continue;
+            }
+            if (own is null)
+            {
+                own = new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = code, ExternalBarcode = variant.Barcode?.Trim(), ExternalSku = variant.Sku.Trim(), Version = 1 };
+                db.MarketplaceVariantLinks.Add(own);
+                existingVariantLinks.Add(own);
+                telemetryInsertedCount++;
+            }
+            else if (own.ExternalId != code || own.ExternalBarcode != variant.Barcode?.Trim() || own.ExternalSku != variant.Sku.Trim())
+            {
+                own.ExternalId = code;
+                own.ExternalBarcode = variant.Barcode?.Trim();
+                own.ExternalSku = variant.Sku.Trim();
+                own.Version++;
+            }
+            matched++;
+            if (seedOffers)
+                await SeedChannelOfferAsync(tenantId, connectionId, variant.Id, remoteVariants.FirstOrDefault(remote => HasOptionValues(variant.OptionSignature, remote.Options)) ?? remoteVariants[0], inventoryPolicy, now, cancellationToken, "PTTAVM");
+        }
+        if (matched == 0) return false;
+
+        var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
+        if (link is null)
+        {
+            if (await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId, cancellationToken))
+            {
+                if (reportUnmatched)
+                    await RecordIssue(tenantId, $"pttavm-product-link:{connectionId}:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short($"Panel ürünü başka bir PTT AVM ürününe bağlı; {productCode} varyantları bağlandı, ürün bağı kurulmadı · {snapshot.Title}.", 1000), cancellationToken);
+                return true;
+            }
+            db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = externalProductId, ExternalCode = productCode, SyncStatus = "MAPPED", LastImportedAt = now, Version = 1 });
+            telemetryInsertedCount++;
+        }
+        else
+        {
+            link.ExternalCode = productCode;
+            link.LastImportedAt = now;
+            link.SyncStatus = "MAPPED";
+            link.Version++;
+        }
+        return true;
+    }
+
+    // The code PTT AVM keeps a panel variant by: its stock code (PTT AVM's variant stock code), else its barcode.
+    private static string? PttAvmVariantCode(ProductVariant variant) =>
+        !string.IsNullOrWhiteSpace(variant.Sku) ? variant.Sku.Trim() : string.IsNullOrWhiteSpace(variant.Barcode) ? null : variant.Barcode.Trim();
+
+    // The colour and size values PTT AVM lists for a product (its "variants" are these values, one per row).
+    internal static IReadOnlySet<string> PttAvmOptionValues(IEnumerable<RemoteCatalogVariant> remoteVariants) =>
+        remoteVariants
+            .Where(variant => PttAvmVariantMapper.IsModelVariantId(variant.ExternalVariantId))
+            .SelectMany(variant => variant.Options.Values)
+            .Select(value => NormalizeCatalogKey(CleanCatalogOptionValue(value), 120))
+            .Where(value => value.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+
+    // The panel variant's colour and size values PTT AVM does not list for the product; none when it lists no values.
+    internal static IReadOnlyList<string> PttAvmMissingOptionValues(string? localSignature, IReadOnlySet<string> optionValues)
+    {
+        if (optionValues.Count == 0 || string.IsNullOrWhiteSpace(localSignature)) return [];
+        return VariantOptionSignature.ParseKeyed(localSignature)
+            .Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key))
+            .Select(option => option.Value)
+            .Where(value => value.Length > 0 && !optionValues.Contains(value))
+            .ToList();
     }
 
     private async Task SeedChannelOfferAsync(Guid tenantId, Guid connectionId, Guid variantId, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, string source = "N11")
