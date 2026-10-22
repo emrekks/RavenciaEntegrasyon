@@ -15,6 +15,8 @@ export type MarketplaceCodeRow = { variantId: string; label: string }
 // What each marketplace calls the code a variant is linked by: Hepsiburada's SKU (HBCV…), Shopify's Variant ID.
 const platformCodeNames: Record<string, string> = { HEPSIBURADA: 'SKU', SHOPIFY: 'Variant ID' }
 const platformNames: Record<string, string> = { HEPSIBURADA: 'Hepsiburada', SHOPIFY: 'Shopify' }
+const codePlaceholders: Record<string, string> = { HEPSIBURADA: 'HBCV…', SHOPIFY: 'Variant ID' }
+const codeStateLabels = { linked: 'Bağlı', empty: 'Bağlı değil', changed: 'Değişti', invalid: 'Hatalı' } as const
 
 // The column a connection's codes fill: "SKU" / "Variant ID" under the platform's logo, with the connection name when
 // a platform has more than one connection.
@@ -89,14 +91,20 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
     event.preventDefault()
     if (canSave) save.mutate()
   }
-  const codeInput = (variantId: string, connection: MarketplaceCodeConnection, label: string) => {
+  // A cell's code as saved and as typed, and what that means for the link: invalid, changed, linked or not linked.
+  const cell = (variantId: string, connection: MarketplaceCodeConnection) => {
     const key = marketplaceCodeKey(variantId, connection.connectionId)
     const saved = data ? marketplaceCodeFor(data, variantId, connection.connectionId) ?? '' : ''
     const value = drafts[key] ?? saved
-    const known = knownVariants.has(variantId)
     const error = cellErrors[key]
-    return <td key={connection.connectionId}>
-      <input className={`marketplace-code-input technical-field${value.trim() !== saved ? ' is-changed' : ''}`} value={value} placeholder="—" autoComplete="off" spellCheck={false}
+    const state: keyof typeof codeStateLabels = error ? 'invalid' : value.trim() !== saved ? 'changed' : saved ? 'linked' : 'empty'
+    return { key, value, error, state }
+  }
+  const codeField = (variantId: string, connection: MarketplaceCodeConnection, label: string) => {
+    const { key, value, error, state } = cell(variantId, connection)
+    const known = knownVariants.has(variantId)
+    return <>
+      <input className={`marketplace-code-input technical-field${state === 'changed' ? ' is-changed' : ''}`} value={value} placeholder={codePlaceholders[connection.platformCode] ?? 'Kod'} autoComplete="off" spellCheck={false}
         disabled={!known || save.isPending} title={!known ? 'Önce ürünü kaydedin.' : undefined} aria-label={label} aria-invalid={error ? true : undefined}
         onChange={event => {
           const next = event.target.value
@@ -106,28 +114,38 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
         }}
         onKeyDown={onKeyDown} />
       {error && <small className="marketplace-code-error" role="alert">{error}</small>}
-    </td>
+    </>
   }
+  const fieldLabel = (variantLabel: string, connection: MarketplaceCodeConnection) => `${variantLabel} ${platformNames[connection.platformCode] ?? connection.platformCode} ${marketplaceCodeColumnLabel(connection, connections)}`
 
   return <div className="workspace-modal-backdrop marketplace-codes-backdrop" role="presentation" onMouseDown={onClose}>
     <DialogSurface as="section" onClose={onClose} className="workspace-modal marketplace-codes-modal" aria-labelledby="marketplace-codes-title" onMouseDown={event => event.stopPropagation()}>
-      <header><div><p className="eyebrow">{single ? 'VARYANT EŞLEŞTİRME' : 'VARYANTLAR'}</p><h2 id="marketplace-codes-title">{single ? single.label : 'Pazaryeri Kodları'}</h2><p>{single ? 'Bu varyantın Hepsiburada SKU’su ve Shopify Variant ID’si. Fiyat ve stok bu kodlarla gönderilir.' : 'Her varyantın Hepsiburada SKU’su ve Shopify Variant ID’si. Ürün aktarımında okunur, burada düzeltilebilir; fiyat ve stok bu kodlarla gönderilir.'}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
+      <header><div><p className="eyebrow">{single ? 'Varyant Eşleştirme' : 'Varyantlar'}</p><h2 id="marketplace-codes-title">{single ? single.label : 'Pazaryeri Kodları'}</h2><p>{single ? 'Bu varyantın pazaryerlerindeki kodları. Fiyat ve stok bu kodlarla gönderilir.' : 'Her varyantın Hepsiburada SKU’su ve Shopify Variant ID’si. Fiyat ve stok bu kodlarla gönderilir.'}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
       <div className="marketplace-codes-body">
         {codes.isLoading ? <p className="marketplace-codes-note">Kodlar yükleniyor…</p>
           : codes.isError ? <p className="marketplace-codes-note" role="alert">Pazaryeri kodları okunamadı.</p>
             : !connections.length ? <p className="marketplace-codes-note">Etkin Hepsiburada veya Shopify bağlantısı yok.</p>
-              : single ? <div className="marketplace-codes-table-wrap"><table className="marketplace-codes-table">
-                <thead><tr><th scope="col">Bağlantı</th><th scope="col">Kod</th></tr></thead>
-                <tbody>{connections.map(connection => <tr key={connection.connectionId}>
-                  <th scope="row"><CodeHead connection={connection} connections={connections} /></th>
-                  {codeInput(single.variantId, connection, `${single.label} ${platformNames[connection.platformCode] ?? connection.platformCode} ${marketplaceCodeColumnLabel(connection, connections)}`)}
-                </tr>)}</tbody>
-              </table></div>
+              : single ? <ul className="marketplace-code-list">{connections.map(connection => {
+                const { state } = cell(single.variantId, connection)
+                const logo = platformLogoSource(connection.platformCode)
+                const platform = platformNames[connection.platformCode] ?? connection.platformCode
+                const named = connection.displayName.trim().toLocaleLowerCase('tr-TR') !== platform.toLocaleLowerCase('tr-TR')
+                return <li key={connection.connectionId} className={`marketplace-code-row is-${state}`}>
+                  <span className="marketplace-code-platform">
+                    {logo ? <img src={logo} alt="" /> : <span className="marketplace-code-logo-fallback" aria-hidden="true">{platform.slice(0, 1)}</span>}
+                    <span className="marketplace-code-name">
+                      <strong>{platform}<em className={`marketplace-code-state is-${state}`}>{codeStateLabels[state]}</em></strong>
+                      <small>{platformCodeNames[connection.platformCode] ?? 'Kod'}{named ? ` · ${connection.displayName}` : ''}</small>
+                    </span>
+                  </span>
+                  <span className="marketplace-code-field">{codeField(single.variantId, connection, fieldLabel(single.label, connection))}</span>
+                </li>
+              })}</ul>
               : <div className="marketplace-codes-table-wrap"><table className="marketplace-codes-table">
                 <thead><tr><th scope="col">Varyant</th>{connections.map(connection => <th scope="col" key={connection.connectionId}><CodeHead connection={connection} connections={connections} /></th>)}</tr></thead>
-                <tbody>{rows.map(row => <tr key={row.variantId}><th scope="row">{row.label}</th>{connections.map(connection => codeInput(row.variantId, connection, `${row.label} ${platformNames[connection.platformCode] ?? connection.platformCode} ${marketplaceCodeColumnLabel(connection, connections)}`))}</tr>)}</tbody>
+                <tbody>{rows.map(row => <tr key={row.variantId}><th scope="row">{row.label}</th>{connections.map(connection => <td key={connection.connectionId}>{codeField(row.variantId, connection, fieldLabel(row.label, connection))}</td>)}</tr>)}</tbody>
               </table></div>}
-        <p className="marketplace-codes-note">Kodu yazıp kaydedin; boşaltılan kod bağlantıyı kaldırır. Değişen kodun pazar yerindeki stok kodu ve barkodu bir sonraki ürün aktarımında okunur, fiyat ve stok ondan sonra bu kodla gönderilir.</p>
+        <p className="marketplace-codes-note">Kodu yazıp kaydedin; boşaltılan kod eşleşmeyi kaldırır. Yeni kodun stok kodu ve barkodu bir sonraki ürün aktarımında okunur.</p>
         {status && <p className={`marketplace-codes-status is-${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>{status.message}</p>}
       </div>
       <footer><button type="button" className="secondary" onClick={onClose}>Kapat</button><button type="button" disabled={!canSave} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : changes.length ? `Kaydet (${changes.length.toLocaleString('tr-TR')})` : 'Kaydet'}</button></footer>
