@@ -3078,6 +3078,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
             var includeUnpackagedOnHoldOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "ON_HOLD");
             var unpackagedCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(timeProvider.GetUtcNow());
+            // Unpackaged as the order list counts it (O14): a package the panel unpacked (UNPACKED_BY_PANEL,
+            // cancelled) leaves the order to be read again.
             var lifecycleOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId
                 && (db.ShipmentPackages.Any(package => package.TenantId == tenantId
@@ -3089,8 +3091,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     || (order.OrderedAt >= unpackagedCutoff
                         && (includeUnpackagedNewOrders && order.DerivedStatus == "NEW"
                             || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD")
-                        // Unpackaged as the order list counts it (O14): a package the panel unpacked
-                        // (UNPACKED_BY_PANEL, cancelled) leaves the order to be read again.
                         && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
                             && package.ConnectionId == connectionId
                             && package.OrderId == order.Id
@@ -4749,17 +4749,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // PTT AVM model variants are mapped by the codes PTT AVM confirms (PttAvmCodeLookup); after a failed lookup the
         // rest of the run asks no more and leaves those variants unmatched.
         var pttCodeCheckFailed = false;
-        Func<string, Task<RemoteProduct?>>? pttCodeCheck = isPttAvm && products is IProductVisualLookupPort codeLookup
-            ? async code =>
-            {
-                if (pttCodeCheckFailed) return null;
-                var answer = await codeLookup.FindByBarcodeAsync(Context(tenantId, connectionId, correlationId, $"pttavm-code:{code}"), code, cancellationToken);
-                if (answer.IsSuccess) return answer.Value;
-                pttCodeCheckFailed = true;
-                await RecordIssue(tenantId, $"pttavm-code-check:{connectionId}", "PTTAVM_CODE_CHECK_FAILED", Short($"PTT AVM kod sorgusu yapılamadı ({answer.Error!.Code}); model varyantları bu çalıştırmada eşlenmedi.", 1000), cancellationToken);
-                return null;
-            }
-            : null;
+        var codeLookup = isPttAvm ? products as IProductVisualLookupPort : null;
+        async Task<RemoteProduct?> CheckPttAvmCode(string code)
+        {
+            if (pttCodeCheckFailed || codeLookup is null) return null;
+            var answer = await codeLookup.FindByBarcodeAsync(Context(tenantId, connectionId, correlationId, $"pttavm-code:{code}"), code, cancellationToken);
+            if (answer.IsSuccess) return answer.Value;
+            pttCodeCheckFailed = true;
+            await RecordIssue(tenantId, $"pttavm-code-check:{connectionId}", "PTTAVM_CODE_CHECK_FAILED", Short($"PTT AVM kod sorgusu yapılamadı ({answer.Error!.Code}); model varyantları bu çalıştırmada eşlenmedi.", 1000), cancellationToken);
+            return null;
+        }
+        Func<string, Task<RemoteProduct?>>? pttCodeCheck = codeLookup is null ? null : CheckPttAvmCode;
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
             ? "Tekil ürün çekimi"
@@ -7951,14 +7951,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The stream is package-shaped: one order can occur once per package.
         // Merge the page before materializing the order so split-package line
         // quantities are summed instead of the last package overwriting them.
+        // Shopify returns a complete order snapshot, including all fulfillments
+        // and refunds. The Trendyol package merger only sums active package
+        // quantities and would erase Shopify cancellation quantities, so the
+        // newest Shopify snapshot is retained.
         var mergedRemotes = remotes
             .Where(remote => !string.IsNullOrWhiteSpace(remote.ExternalOrderId))
             .GroupBy(remote => remote.ExternalOrderId, StringComparer.Ordinal)
             .Select(group => isShopify
-                // Shopify returns a complete order snapshot, including all
-                // fulfillments and refunds. The Trendyol package merger only
-                // sums active package quantities and would erase Shopify
-                // cancellation quantities, so retain the newest snapshot.
                 ? group.OrderByDescending(remote => remote.LastModifiedAt).First()
                 : isHepsiburada
                     ? MergeHepsiburadaOrderLines(group)
@@ -8252,10 +8252,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : null;
             var sku = isShopify ? ShopifyOrderCsvSnapshotPolicy.PreserveRemoteSku(remoteLine.Sku, line) ?? line.Sku : remoteLine.Sku;
             var title = isShopify ? ShopifyOrderCsvSnapshotPolicy.PreserveRemoteTitle(remoteLine.Title, line) : remoteLine.Title;
+            // Hepsiburada order details may omit the image field present in
+            // paid-order/package lists. Keep previously observed line data
+            // when a later read does not repeat it.
             var sourceSnapshot = isShopify || isHepsiburada
-                // Hepsiburada order details may omit the image field present in
-                // paid-order/package lists. Keep previously observed line data
-                // when a later read does not repeat it.
                 ? ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(remoteLine.SourceSnapshotJson, line.SourceSnapshotJson)
                 : remoteLine.SourceSnapshotJson;
             var previousExternalLineId = line.ExternalLineId;
