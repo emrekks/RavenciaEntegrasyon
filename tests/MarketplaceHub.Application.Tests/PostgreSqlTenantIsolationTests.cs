@@ -4607,6 +4607,19 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 CancellationToken.None);
             Assert.Equal(0, invoicedPage.TotalCount);
             Assert.Empty(invoicedPage.Items);
+
+            // "Tümü" lists every visible package, whichever side of the invoiced line it is on.
+            package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+            await using (var updateDb = fixture.CreateContext())
+            {
+                updateDb.ShipmentPackages.Update(package);
+                await updateDb.SaveChangesAsync();
+            }
+            var allPage = await service.WorkspacePageAsync(tenant.Id,
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "ALL"),
+                CancellationToken.None);
+            Assert.Equal(1, allPage.InvoicedCount);
+            Assert.Equal(package.Id, Assert.Single(allPage.Items).PackageId);
         }
         finally
         {

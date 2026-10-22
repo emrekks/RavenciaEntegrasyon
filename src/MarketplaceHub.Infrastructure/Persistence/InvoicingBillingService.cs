@@ -345,7 +345,7 @@ public sealed partial class InvoicingBillingService(
     {
         var pageSize = request.PageSize is 20 or 50 or 100 or 200 ? request.PageSize : 20;
         var requestedPage = Math.Max(1, request.PageNumber);
-        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "INVOICED" or "DUE_SOON" or "HIDDEN"
+        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "ALL" or "INVOICED" or "DUE_SOON" or "HIDDEN"
             ? request.Tab.Trim().ToUpperInvariant()
             : "UNINVOICED";
         var hiddenSetting = await db.TenantSettings.AsNoTracking()
@@ -638,6 +638,7 @@ public sealed partial class InvoicingBillingService(
     {
         var tabMatch = normalizedTab switch
         {
+            "ALL" => !isHidden,
             "HIDDEN" => isHidden,
             "INVOICED" => !isHidden && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate)),
             "DUE_SOON" => !isHidden && candidate.IsDueSoon,
@@ -921,7 +922,7 @@ public sealed partial class InvoicingBillingService(
     private static string WorkspaceInvoiceDisplayStatus(WorkspaceCandidate candidate)
     {
         if (HasMarketplaceInvoiceObservation(candidate)) return "FATURA_KONTROLDE";
-        if (candidate.Invoice is null || candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
+        if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
         if (candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED") return candidate.InvoiceStatus;
         if (candidate.InvoiceStatus is "FATURA_YUKLENDI" or "FATURA_KESILDI" or "COMPLETED") return "FATURA_KONTROLDE";
         if (candidate.InvoiceStatus == "FATURA_PLATFORMA_BEKLIYOR") return "FATURA_ISLENIYOR";

@@ -161,11 +161,12 @@ function invoiceRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind, faile
   if (kind === 'sending') return 'Yanıt bekleniyor'
   if (kind === 'done') return item.invoiceNumber || item.manualInvoiceNumber || 'Pazaryerinde'
   if (kind === 'cancelled') return 'İptal edildi'
+  if (!item.invoiceId && item.invoiceStatus === 'FATURA_BILINMIYOR') return 'Pazaryeri bildirmiyor'
   return undefined
 }
 function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invoiceStatus' | 'canCreateInvoice' | 'platformInvoiceStatus'>) {
   if (['INVOICED', 'RECEIVED'].includes(item.platformInvoiceStatus?.trim().toUpperCase() ?? '')) return { value: 'FATURA_KONTROLDE', tone: 'success' as const }
-  if (!item.invoiceId || item.canCreateInvoice || item.invoiceStatus === 'FATURA_BEKLIYOR') return { value: 'FATURA_BEKLIYOR', tone: 'warning' as const }
+  if (item.canCreateInvoice || item.invoiceStatus === 'FATURA_BEKLIYOR') return { value: 'FATURA_BEKLIYOR', tone: 'warning' as const }
   if (isInvoiceFailureStatus(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'danger' as const }
   if (item.invoiceStatus === 'FATURA_BELIRSIZ' || item.invoiceStatus === adjustmentRequiredStatus) return { value: item.invoiceStatus, tone: 'warning' as const }
   if (item.invoiceStatus === 'FATURA_PLATFORMA_BEKLIYOR') return { value: item.invoiceStatus, tone: 'warning' as const }
