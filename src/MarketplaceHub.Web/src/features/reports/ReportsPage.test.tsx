@@ -44,10 +44,11 @@ const report: ReportSales = {
 }
 
 const requests = vi.hoisted(() => [] as string[])
+const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string) => {
     requests.push(path)
-    if (path.startsWith('/reports/sales?')) return report
+    if (path.startsWith('/reports/sales?')) return fixture.current
     throw new Error(`Test API fixture does not handle ${path}`)
   })
 }))
@@ -58,47 +59,85 @@ let container: HTMLDivElement | null = null
 let root: Root | null = null
 let client: QueryClient | null = null
 
-async function open(tab: string) {
+async function open(search = '', data: ReportSales = report) {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  fixture.current = data
   container = document.createElement('div')
   document.body.append(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   root = createRoot(container)
-  await act(async () => { root!.render(<QueryClientProvider client={client!}><MemoryRouter initialEntries={[`/reports?tab=${tab}`]}><ReportsPage /></MemoryRouter></QueryClientProvider>) })
+  await act(async () => { root!.render(<QueryClientProvider client={client!}><MemoryRouter initialEntries={[`/reports${search}`]}><ReportsPage /></MemoryRouter></QueryClientProvider>) })
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
   return container
 }
 
+const drawer = (page: HTMLElement) => page.querySelector<HTMLElement>('.reports-drawer')
+
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0 })
 
 describe('ReportsPage', () => {
-  it('asks for the last 30 days and shows the KPIs with their change against the previous period', async () => {
-    const page = await open('overview')
+  it('asks for the last 30 days and shows the summary on one screen', async () => {
+    const page = await open()
     expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
-    const kpis = page.querySelector('.reports-kpis')!.textContent!
-    expect(kpis).toContain('Net Ciro')
-    expect(kpis).toContain('+%25')
+    const kpis = page.querySelector('.reports-kpis')!
+    expect(kpis.textContent).toContain('Net Ciro')
+    expect(kpis.textContent).toContain('+%25')
+    expect(kpis.querySelectorAll('[role="tooltip"]')).toHaveLength(8)
     expect(page.querySelector('.reports-kpi.is-warn')?.textContent).toContain('İptal Oranı')
     expect(page.querySelector('.reports-chart')).not.toBeNull()
+    expect(page.querySelector('.reports-flow')?.textContent).toContain('Tahmini Net Kâr')
+    expect(page.querySelector('.reports-legend')?.textContent).toContain('Henüz okunmuyor')
+    expect(page.querySelectorAll('.reports-metric')).toHaveLength(6)
+    expect(page.querySelector('.reports-heatmap.is-compact')).not.toBeNull()
+    expect(drawer(page)).toBeNull()
   })
 
-  it('shows a platform without amounts as "Tutar yok", not as 0 ₺, and the commission as an estimate', async () => {
-    const page = await open('platforms')
-    const shopify = Array.from(page.querySelectorAll('.reports-table tbody tr')).find(row => row.textContent?.includes('Shopify'))!
-    expect(shopify.textContent).toContain('Tutar yok')
-    expect(shopify.textContent).not.toContain('₺0,00')
-    expect(page.textContent).toContain('Tahmini Hakediş')
-  })
-
-  it('keeps the unknown city last and muted', async () => {
-    const page = await open('cities')
-    const rows = Array.from(page.querySelectorAll('.reports-table tbody tr'))
+  it('keeps the unknown city last and muted in the summary list', async () => {
+    const page = await open()
+    const list = Array.from(page.querySelectorAll('.reports-list')).find(panel => panel.textContent?.includes('Satış Alan İller'))!
+    const rows = Array.from(list.querySelectorAll('.reports-bars li'))
     expect(rows.at(-1)?.textContent).toContain('Bilinmiyor')
     expect(rows.at(-1)?.classList.contains('is-unknown')).toBe(true)
   })
 
-  it.each(['products', 'brands', 'returns', 'cancellations', 'cargo', 'time', 'customers', 'stock', 'cost', 'invoices'])('renders the %s section', async tab => {
-    const page = await open(tab)
+  it('opens a section\'s full table in the drawer, with its CSV export, and closes it', async () => {
+    const page = await open()
+    const more = page.querySelector<HTMLButtonElement>('button[aria-label="Platform Payı: Tümünü Gör"]')!
+    await act(async () => { more.click() })
+    const panel = drawer(page)!
+    expect(panel.getAttribute('role')).toBe('dialog')
+    expect(panel.textContent).toContain('Platformlar')
+    const shopify = Array.from(panel.querySelectorAll('.reports-table tbody tr')).find(row => row.textContent?.includes('Shopify'))!
+    expect(shopify.textContent).toContain('Tutar yok')
+    expect(shopify.textContent).not.toContain('₺0,00')
+    expect(Array.from(panel.querySelectorAll('button')).some(button => button.textContent?.includes('CSV'))).toBe(true)
+    await act(async () => { panel.querySelector<HTMLButtonElement>('.reports-drawer-close')!.click() })
+    expect(drawer(page)).toBeNull()
+  })
+
+  it('opens the drawer from a shared link and keeps the unknown city row last', async () => {
+    const page = await open('?detail=cities')
+    const rows = Array.from(drawer(page)!.querySelectorAll('.reports-table tbody tr'))
+    expect(rows.at(-1)?.textContent).toContain('Bilinmiyor')
+    expect(rows.at(-1)?.classList.contains('is-unknown')).toBe(true)
+  })
+
+  it.each(['products', 'brands', 'returns', 'cancellations', 'cargo', 'time', 'customers', 'stock', 'cost', 'invoices'])('renders the %s detail', async key => {
+    const page = await open(`?detail=${key}`)
+    expect(drawer(page)?.querySelector('.reports-drawer-body')?.textContent?.length).toBeGreaterThan(0)
+  })
+
+  it('says the cost is not entered instead of showing a profit when no cost is known', async () => {
+    const page = await open('', { ...report, cost: { ...report.cost, costedQuantity: 0, coverage: 0, costTotal: 0, grossProfit: 0, profitQuantity: 0, profitCoverage: 0, netProfit: 0 } })
+    const flow = page.querySelector('.reports-flow')!
+    expect(flow.textContent).toContain('Maliyet girilmemiş')
+    expect(flow.textContent).not.toContain('Tahmini Net Kâr')
+    expect(page.querySelector('.reports-legend')?.textContent).toContain('Maliyet girilmemiş')
+  })
+
+  it('shows the commission tariffs as the second view', async () => {
+    const page = await open('?view=tariffs')
+    expect(page.querySelector('.reports-kpis')).toBeNull()
     expect(page.querySelector('.reports-body')?.textContent?.length).toBeGreaterThan(0)
   })
 })
