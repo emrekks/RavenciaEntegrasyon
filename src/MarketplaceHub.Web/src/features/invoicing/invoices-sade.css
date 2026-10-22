@@ -29,9 +29,9 @@
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button.is-active { color: var(--inv-violet); background: var(--rv-color-primary-soft); border-color: var(--inv-violet-line); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button.is-active::after { display: none; }
-/* Five filters in one row only on wide screens; up to 1100 px the shared two-column filter grid applies (the fixed
+/* Five filters in one row only on wide screens; up to 1024 px the shared two-column filter grid applies (the fixed
    minimum widths here pushed the row past the page between 900 and 1100 px). */
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: minmax(180px, 1fr) minmax(150px, .85fr) minmax(240px, 1.1fr) minmax(170px, .85fr) auto; align-items: end; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
   /* The window can be wide while the page is not (a pinned sidebar takes 232 px): below 940 px of filter area the
      four filters share the row and Filtreleri Temizle moves under them, instead of running past the page. */
@@ -57,7 +57,7 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-table { border-top: 0; }
 }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
   .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 21fr) minmax(0, 13fr) minmax(0, 13fr) minmax(0, 14fr) minmax(0, 15fr) minmax(0, 12fr) minmax(0, 12fr); }
 }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head { min-height: 44px; background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); }
@@ -345,7 +345,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .reference-invoices-page .status-ring.is-failed { --ring: var(--rv-color-danger); }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) { place-content: center; place-items: center; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) > * { justify-self: center !important; }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
   .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 19fr) minmax(0, 12fr) minmax(0, 12fr) minmax(0, 16fr) minmax(0, 17fr) minmax(0, 11fr) minmax(0, 12fr); }
 }
 .reference-invoices-page .status-ring svg { width: 18px; height: 18px; }
@@ -360,7 +360,7 @@ body .invoice-reference-actions-popover > .invoice-reference-actions-separator {
 /* Actions heading: the label keeps its room instead of shrinking to "İşleml…" */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter:last-child { padding-left: 12px; }
 /* Narrower screens: tracking numbers stay on one line, status headings keep their full label */
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
   .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 18fr) minmax(0, 12fr) minmax(0, 13fr) minmax(0, 16fr) minmax(0, 17fr) minmax(0, 11fr) minmax(0, 12fr); }
 }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > :nth-child(3) small { overflow: hidden; max-width: 100%; font-size: 11.5px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }

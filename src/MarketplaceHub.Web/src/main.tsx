@@ -18,7 +18,7 @@ import { persistQuerySnapshot, restoreQuerySnapshot } from './shared/query-snaps
 const responsiveLink = document.createElement('link')
 responsiveLink.rel = 'stylesheet'
 responsiveLink.href = responsiveStylesheet
-responsiveLink.media = '(max-width: 1100px)'
+responsiveLink.media = '(max-width: 1024px)'
 document.head.appendChild(responsiveLink)
 // The phone spacing scale (gutter, gaps, block padding) for every page and window, phones only.
 const phoneSpacingLink = document.createElement('link')

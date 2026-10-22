@@ -3082,8 +3082,17 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // record matches it, so it is shown for review; without one the state stays unknown, never "waiting".
         else if (label == "FATURA_BILINMIYOR" && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(JsonText(customerJson, "invoiceLink")))
             return "FATURA_KONTROLDE";
+        // n11 and PTT AVM never show an invoice uploaded in their seller panel, so an unknown state there cannot be
+        // checked from the marketplace: it waits for the seller to mark it, apart from orders that wait for an invoice.
+        else if (label == "FATURA_BILINMIYOR" && IsUnverifiableInvoicePlatform(platformCode))
+            return UnverifiedInvoiceLabel;
         return label;
     }
+
+    internal const string UnverifiedInvoiceLabel = "FATURA_DOGRULANAMADI";
+
+    internal static bool IsUnverifiableInvoicePlatform(string? platformCode) =>
+        platformCode?.Trim().ToUpperInvariant() is "N11" or "PTTAVM";
 
     internal static ShipmentPackage? SelectDisplayPackage(IEnumerable<ShipmentPackage> packages, string? platformCode)
     {

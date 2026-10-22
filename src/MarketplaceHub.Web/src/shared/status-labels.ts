@@ -31,6 +31,7 @@ const statusLabels: Record<string, string> = {
   FATURA_IPTAL: 'Fatura iptal edildi',
   FATURA_REDDEDILDI: 'Fatura reddedildi',
   FATURA_BELIRSIZ: 'Fatura sonucu belirsiz',
+  FATURA_DOGRULANAMADI: 'Pazaryerinden doğrulanamıyor',
   ADJUSTMENT_REQUIRED: 'Düzeltme gerekli',
   REVOCATION_REQUIRED: 'Pazaryerinden kaldırılmalı',
   HEALTHY: 'Sağlıklı',
@@ -124,6 +125,8 @@ export function invoiceStatusLabel(value: string | null | undefined) {
   if (['ADJUSTMENT_REQUIRED', 'FATURA_DUZELTME_GEREKLI'].includes(normalized)) return 'Fatura Düzeltme Gerekli'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW'].includes(normalized)) return 'Fatura Oluşturulamadı'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'Fatura İptal'
+  // n11 / PTT AVM do not show an invoice uploaded in their seller panel; the seller marks it by hand.
+  if (normalized === 'FATURA_DOGRULANAMADI') return 'Fatura Doğrulanamadı'
   return 'Fatura durumu bilinmiyor'
 }
 
@@ -136,7 +139,7 @@ export function invoiceStatusTone(value: string | null | undefined): InvoiceStat
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'warning'
   if (['FATURA_ISLENIYOR', 'FATURA_PLATFORMA_BEKLIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY', 'ACCEPTED'].includes(normalized)) return 'info'
-  if (['FATURA_BELIRSIZ', 'UNKNOWN_RESULT', 'ADJUSTMENT_REQUIRED', 'FATURA_DUZELTME_GEREKLI'].includes(normalized)) return 'warning'
+  if (['FATURA_BELIRSIZ', 'UNKNOWN_RESULT', 'ADJUSTMENT_REQUIRED', 'FATURA_DUZELTME_GEREKLI', 'FATURA_DOGRULANAMADI'].includes(normalized)) return 'warning'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MARKETPLACE_FAILED', 'MANUAL_REVIEW', 'FATURA_PLATFORMA_AKTARILMADI'].includes(normalized)) return 'danger'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'neutral'
   if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'FATURA_KONTROLDE', 'COMPLETED'].includes(normalized)) return 'success'

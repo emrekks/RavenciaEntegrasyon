@@ -2,7 +2,7 @@
    which holds the shared parts of the new design; every rule here is scoped to this page or to the popup layer. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-bad strong { color: var(--rr-bad); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ph .rr-acts { flex-wrap: wrap; }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-order,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-order { width: 200px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 8%; }
@@ -89,7 +89,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-act,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 11%; }
 }
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1025px) and (max-width: 1280px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-order,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-order { width: 176px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 7%; }
@@ -137,7 +137,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell { width: auto; margin-inline: 0; justify-items: start; text-align: left; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-m { justify-items: start; justify-content: start; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ring, :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ring > span { justify-items: start; text-align: left; }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell { width: auto; margin-inline: 0; justify-items: start; text-align: left; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-m { justify-items: start; justify-content: start; }
 }

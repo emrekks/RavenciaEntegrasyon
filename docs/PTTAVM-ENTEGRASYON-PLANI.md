@@ -230,7 +230,7 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   - `BitisTarihi` sonuca dahil mi.
   - `KdvDahilToplamTutar` indirim sonrası mı (brüt = ödenen + `IndirimToplam` varsayımı).
   - `StokKontrolListesi` sayfa boyu ve `VariantListesi` yapısı.
-  - `IsInvoice` alanı gerçekten geliyor mu.
+  - `IsInvoice` alanı gerçekten geliyor mu. **Geliyor (23 Ekim 2026), ama yalnız API ile gönderilen faturada true oluyor:** panelden faturalanmış teslim edilmiş siparişlerde false. SOAP'ta `SaveInvoince` dışında fatura işlemi yok, REST'te fatura GET ucu yok (`siparisUrunler[].isInvoice` aynı bayrak). false bu yüzden "fatura yok" değil UNVERIFIED sayılır; panelde "Doğrulanamadı" sekmesi, satıcı elle işaretler. REST `isInvoice`'ın panel yüklemesinde farklı davranıp davranmadığı canlı bir okumayla henüz denenmedi.
 
 ## 7. Riskler
 

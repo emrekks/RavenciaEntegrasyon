@@ -6,7 +6,7 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-metrics > article { min-width: 0; padding: 14px; }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table {
     overflow: visible;
     background: transparent;
@@ -104,7 +104,7 @@
 }
 
 /* Tablets: order, buyer and amount on top; shipping and both statuses below. */
-@media (min-width: 761px) and (max-width: 1100px) {
+@media (min-width: 761px) and (max-width: 1024px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row {
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
     grid-template-areas:
@@ -405,7 +405,7 @@
 
 /* Wider screens: like the order table, the invoice table keeps a readable width and scrolls sideways inside its panel,
    and tracking numbers show whole. */
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace { min-width: 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > :is(.invoice-reference-head, .invoice-reference-row) { min-width: 1100px; }
@@ -426,7 +426,7 @@
 /* Narrow desktop windows (20 Oct 2026): the header row of filter chips grows with its rows instead of keeping the
    desktop 44 px height (the chips covered the first packages), and the filter area stays the page's width so the
    view tabs scroll inside it instead of pushing the page to the right. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-table > .invoice-reference-head { height: auto; }
 }
 /* At every window width (22 Oct 2026): with the sidebar pinned a 1160 px window leaves the page 914 px, and the

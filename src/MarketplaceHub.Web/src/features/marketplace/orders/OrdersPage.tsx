@@ -553,7 +553,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   useLayoutEffect(() => {
     const row = rowRef.current
     if (!row) return
-    const align = () => { const products = row.querySelectorAll<HTMLElement>('.rr-pline'), prices = row.querySelectorAll<HTMLElement>('.rr-pr'); const table = window.innerWidth > 1100; prices.forEach((price, index) => { price.style.height = table && products[index] ? `${products[index].getBoundingClientRect().height}px` : '' }) }
+    const align = () => { const products = row.querySelectorAll<HTMLElement>('.rr-pline'), prices = row.querySelectorAll<HTMLElement>('.rr-pr'); const table = window.innerWidth > 1024; prices.forEach((price, index) => { price.style.height = table && products[index] ? `${products[index].getBoundingClientRect().height}px` : '' }) }
     align()
     if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(align)
@@ -852,7 +852,7 @@ export function OrdersPage() {
   // Metric cards: late orders come from the dashboard summary, invoices waiting to be cut from the invoice workspace.
   const lateOrdersQuery = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<{ metrics: { lateOrders: number; uninvoicedInvoices: number } }>('/dashboard/bootstrap'), staleTime: 30_000 })
   const invoiceSummaryQuery = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000 })
-  const noBuyer = useMediaQuery('(min-width: 1101px) and (max-width: 1240px)')
+  const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
   const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => loadAllPages<Connection>('/connections') })
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const marketplaceConnections = connections.data?.items.filter(isActiveMarketplaceConnection) ?? []

@@ -80,7 +80,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px; color: var(--rr-muted); border-top: 1px solid var(--rr-line); font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-hpill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 7px; color: var(--rr-ink); border: 1px solid var(--rr-line-strong); border-radius: 999px; font-size: 12.5px; font-weight: 500; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-hpill .rr-st { width: 15px; height: 15px; }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-detail-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
@@ -147,7 +147,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px; color: var(--rr-muted); border-top: 1px solid var(--rr-line); font-size: 12.5px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-foot b { color: var(--rr-ink); font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-foot .rr-legend { gap: 14px; font-size: 12px; }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt thead { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tbody,
@@ -243,7 +243,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-cv small { font-size: 12px; font-weight: 600 !important; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-cv small.rr-up { color: var(--rr-ok); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-cv small.rr-down { color: var(--rr-bad); }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid { grid-template-columns: 1fr 1fr; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc:nth-child(2) { border-right: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc:nth-child(-n+2) { border-bottom: 1px solid var(--rr-line); }
@@ -300,7 +300,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow > .rr-cv { min-width: 64px; font-variant-numeric: tabular-nums; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend .rr-trend-v { min-width: 8.5ch; font-variant-numeric: tabular-nums; }
 /* when the integration rows turn into grid cards the hover fills the whole row, not each cell with the gaps left bare */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover td { background: none; }
 }

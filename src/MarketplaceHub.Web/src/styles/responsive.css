@@ -1,10 +1,10 @@
 /* Phone and tablet layout for screens in the main bundle (dashboard, shell). Loaded by main.tsx
-   as its own file with media="(max-width: 1100px)", so desktop never applies it and the main
+   as its own file with media="(max-width: 1024px)", so desktop never applies it and the main
    CSS budget is untouched. Feature pages keep their own *-responsive.css next to the page. */
 
 /* Page grids: a column may shrink below its widest content. Without this a single wide toolbar or
    form row makes the whole page wider than the phone and it scrolls sideways. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main .content { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .content > * { min-width: 0; }
 }
@@ -49,7 +49,7 @@
 /* Marketplace and cargo logos are dark artwork that vanishes on the dark cards. Without a badge,
    the dark theme lightens them (invert, then turn the hue back so the orange stays orange); the
    light theme shows them as they are. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   :root:not([data-theme="light"]) .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row, .rv-question-card) :is(.order-platform-logo, .cargo-provider-icon) {
     filter: invert(1) hue-rotate(180deg);
   }

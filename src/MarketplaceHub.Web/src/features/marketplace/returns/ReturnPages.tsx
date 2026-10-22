@@ -133,7 +133,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
     if (!row) return
     const align = () => {
       const products = row.querySelectorAll<HTMLElement>('.rr-pline'), prices = row.querySelectorAll<HTMLElement>('.rr-pr')
-      const table = window.innerWidth > 1100
+      const table = window.innerWidth > 1024
       prices.forEach((price, index) => { price.style.height = table && products[index] ? `${products[index].getBoundingClientRect().height}px` : '' })
     }
     align()
@@ -365,8 +365,8 @@ export function ReturnsPage() {
   const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
   const [bulkIds, setBulkIds] = useState<string[]>([])
   const [bulkMode, setBulkMode] = useState<'APPROVE' | 'REJECT' | null>(null)
-  // On 1101-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
-  const noBuyer = useMediaQuery('(min-width: 1101px) and (max-width: 1240px)')
+  // On 1025-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
+  const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
   // One page of cards: a claim with accepted and waiting lines arrives as two cards, each in its own tab.
   const visibleItems = query.data?.items ?? []
   const totalCount = query.data?.totalCount ?? visibleItems.length

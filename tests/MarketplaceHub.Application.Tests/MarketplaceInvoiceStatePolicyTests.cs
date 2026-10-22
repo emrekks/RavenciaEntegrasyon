@@ -18,6 +18,25 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         Assert.Equal(expected, MarketplaceInvoiceStatePolicy.FromRemote(rawStatus));
     }
 
+    // n11 / PTT AVM: "no invoice sent through the API" is UNVERIFIED and never becomes NotInvoiced on a package.
+    [Fact]
+    public void UnverifiedReadMapsToUnknownSoItIsNeverStored()
+    {
+        Assert.True(MarketplaceInvoiceStatePolicy.IsUnverified("unverified"));
+        Assert.Equal(MarketplaceInvoiceStatus.Unknown, MarketplaceInvoiceStatePolicy.FromRemote(MarketplaceInvoiceStatePolicy.Unverified));
+        Assert.False(MarketplaceInvoiceStatePolicy.ShouldApply(MarketplaceInvoiceStatus.NotInvoiced, null, null,
+            MarketplaceInvoiceStatePolicy.FromRemote(MarketplaceInvoiceStatePolicy.Unverified), null, DateTimeOffset.UtcNow));
+    }
+
+    [Theory]
+    [InlineData(MarketplaceInvoiceStatus.Unknown, null, false)]
+    [InlineData(MarketplaceInvoiceStatus.Unknown, "PENDING", false)]
+    [InlineData(MarketplaceInvoiceStatus.Unknown, "UPLOADED", true)]
+    [InlineData(MarketplaceInvoiceStatus.Invoiced, null, true)]
+    [InlineData(MarketplaceInvoiceStatus.Received, null, true)]
+    public void UnverifiedReadDefersToLocalInvoiceEvidence(MarketplaceInvoiceStatus current, string? manual, bool expected) =>
+        Assert.Equal(expected, MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(current, manual));
+
     [Fact]
     public void InvoicedStateCannotBeDowngradedByAnOlderOrIncompleteSnapshot()
     {

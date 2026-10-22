@@ -1,7 +1,7 @@
 /* Orders on phones and tablets: every order is a card instead of a 1180px table row, and the column
    headers shrink to the filters they carry. Loaded with the marketplace pages only. Selectors repeat the
    full table path so they outrank the desktop table rules. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main .orders-page .order-reference-table {
     overflow: visible;
     background: transparent;
@@ -148,7 +148,7 @@
 
 /* Tablets: two columns inside the card. Order, buyer and amount on top; the product on the left,
    shipping and invoice on the right; actions along the bottom. */
-@media (min-width: 761px) and (max-width: 1100px) {
+@media (min-width: 761px) and (max-width: 1024px) {
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
     grid-template-columns: 30px minmax(0, 1.15fr) minmax(0, 1fr) auto;
     grid-template-areas:
@@ -221,7 +221,7 @@
 /* Column filters on phones and tablets: select-all on its own quiet line, the filters in a tidy
    two-column grid of 8px-radius cells (the round chips read as tags), each cell tappable as a
    whole. The marketplace logo sits on its own line above the order number. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main :is(.orders-page .order-reference-table > .order-reference-head, .returns-page .return-reference-table > .return-reference-head, .invoices-page .invoice-reference-table > .invoice-reference-head) {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -293,11 +293,11 @@
 
 /* Filter popovers on phones: cells in the right-hand column (the odd filters, as the platform
    filter takes the first left cell) open from their right edge so the popover stays on screen. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .order-column-filter-popover { width: min(320px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) > :nth-child(odd of .order-column-filter) .order-column-filter-popover { left: auto; right: 0; }
 }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   /* The platform filter funnel was positioned absolutely by the desktop rule; in the grid cell it
      sits at the right edge like the other filters. */
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .platform-multi-select-trigger > svg { position: static; inset: auto; transform: none; }
@@ -357,7 +357,7 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
 /* Orders with several products on phones/tablets: the grid's inline desktop row heights (one fixed
    row per product line) squeezed the products area, so the product cards overlapped. Rows size to
    their content here and the products stack with a gap. Desktop is untouched. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid { grid-template-rows: none !important; grid-auto-rows: auto; }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-products { display: grid; grid-template-rows: none; grid-auto-rows: auto; align-content: start; align-self: start; row-gap: 12px; height: auto; min-height: 0; overflow: visible; }
   .app-shell.stitch-shell main .orders-page .order-reference-products > article { grid-row: auto; height: auto; min-height: 0; }
@@ -475,7 +475,7 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
 
 /* Multi-product orders: the desktop divider lines between product rows are placed on grid columns 4-6,
    which added implicit columns on phones/tablets and narrowed the strip and products on the right. */
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main .orders-page .order-reference-grid > .order-row-divider { display: none; }
 }
 
