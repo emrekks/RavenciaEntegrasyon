@@ -384,13 +384,21 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             productId = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == onlyVariant).Select(x => (Guid?)x.ProductId).SingleOrDefaultAsync(cancellationToken);
             if (productId is null) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PTT AVM fiyat-stok gönderimi için PTT AVM'ye bağlı varyant ve ACTIVE PTT AVM teklifi gerekir.", 422);
         }
+        // A product send covers its model's other panel products (one per colour) too: they are one PTT AVM product.
+        Guid[]? scope = null;
+        if (productId is { } onlyProduct)
+        {
+            var models = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == onlyProduct && x.ModelCode != null).Select(x => x.ModelCode!).Distinct().ToListAsync(cancellationToken);
+            scope = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCode != null && models.Contains(x.ModelCode)).Select(x => x.ProductId).Distinct().ToArrayAsync(cancellationToken);
+            scope = scope.Append(onlyProduct).Distinct().ToArray();
+        }
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
                           join remoteLink in db.MarketplaceVariantLinks.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId }
                           join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
                           from inventory in inventories.DefaultIfEmpty()
                           where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
-                               && (productId == null || variant.ProductId == productId)
+                               && (scope == null || scope.Contains(variant.ProductId))
                           orderby variant.ProductId, variant.SortOrder, variant.Id
                           select new { Offer = offer, Variant = variant, Inventory = inventory, Code = remoteLink.ExternalId })
             .ToListAsync(cancellationToken);
@@ -404,11 +412,24 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 .ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId)
             .ToDictionary(group => group.Key, group => group.First().ExternalCode!.Trim());
+        // A model the panel keeps as several products (one per colour) is one PTT AVM product, linked to one of them;
+        // the other products reach its barcode through their model code (a product with variants is kept by it).
+        var modelCodes = rows.Select(row => row.Variant.ModelCode).Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!).Distinct().ToArray();
+        var codesByModel = (await (from productLink in db.MarketplaceProductLinks.AsNoTracking()
+                                   join variant in db.ProductVariants.AsNoTracking() on new { productLink.TenantId, productLink.ProductId } equals new { variant.TenantId, variant.ProductId }
+                                   where productLink.TenantId == tenantId && productLink.ConnectionId == connectionId && productLink.ExternalCode != null
+                                       && variant.ModelCode != null && modelCodes.Contains(variant.ModelCode) && variant.ModelCode == productLink.ExternalCode
+                                   select variant.ModelCode)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
+        string? PttProductCode(Guid productId, string? modelCode) =>
+            productCodes.TryGetValue(productId, out var code) ? code : modelCode is not null && codesByModel.Contains(modelCode) ? modelCode.Trim() : null;
 
         var items = new List<PttAvmPriceInventoryRules.Item>();
         var lines = new List<PriceInventoryPushLine>();
         var sentBarcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var group in rows.Where(row => row.Inventory is not null).GroupBy(row => row.Variant.ProductId))
+        foreach (var group in rows.Where(row => row.Inventory is not null).GroupBy(row => PttProductCode(row.Variant.ProductId, row.Variant.ModelCode) ?? $"panel:{row.Variant.ProductId:N}"))
         {
             var priced = new List<(PriceInventoryPushLine Line, decimal? VatRate, bool PriceChanged, bool Changed, string? OptionSignature)>();
             foreach (var row in group)
@@ -428,7 +449,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 priced.Add((new(row.Variant.Id, row.Offer.Id, code, quantity, salePrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash), vatRate, priceChanged, changed, row.Variant.OptionSignature));
             }
             if (!priced.Any(x => x.Changed)) continue;
-            productCodes.TryGetValue(group.Key, out var productCode);
+            var productCode = group.Key.StartsWith("panel:", StringComparison.Ordinal) ? null : group.Key;
             var only = priced.Count == 1 ? priced[0] : default;
             // A product without variants: PTT AVM keeps it by the variant's own code. An old option-id link
             // ("FK4530/7101") names no product; it waits for the next product mapping.

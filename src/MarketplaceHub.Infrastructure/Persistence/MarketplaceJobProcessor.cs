@@ -6279,7 +6279,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var modelCode = byCode[0].ModelCode;
             modelVariants = await db.ProductVariants.AsNoTracking()
-                .Where(variant => variant.TenantId == tenantId && variant.Status != ProductStatus.Archived && variant.ProductId == byCode[0].ProductId && variant.ModelCode == modelCode)
+                .Where(variant => variant.TenantId == tenantId && variant.Status != ProductStatus.Archived && variant.ModelCode == modelCode)
                 .ToListAsync(cancellationToken);
             compliant = false;
         }
@@ -6293,16 +6293,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return false;
         }
 
-        // The products the model spans in the panel; the product link goes to the one the variants belong to.
-        var productIds = modelVariants.Select(variant => variant.ProductId).Distinct().ToArray();
-        if (productIds.Length != 1)
-        {
-            if (reportUnmatched)
-                await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:ptt:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
-                    Short($"PTT AVM ürünü {productCode} panelde {productIds.Length} ayrı ürüne dağılıyor; tek panel ürününe bağlanabilir · {snapshot.Title}.", 1000), cancellationToken);
-            return false;
-        }
-        var productId = productIds[0];
+        // The panel may keep one model as several products (one per colour, as Trendyol lists it): every variant is
+        // linked, and the PTT AVM product links to the product of the model's first variant; the others reach the
+        // product's barcode through the model code when price and stock are sent.
+        var productId = modelVariants.OrderBy(variant => variant.Sku, StringComparer.Ordinal).ThenBy(variant => variant.Id).First().ProductId;
         if (!compliant && reportUnmatched)
             await RecordIssue(tenantId, $"pttavm-product-code:{connectionId}:{externalProductId}", "PTTAVM_PRODUCT_CODE_NOT_MODEL",
                 Short($"PTT AVM'de varyantlı ürünün barkodu/satıcı stok kodu {productCode}, panel model kodu {modelVariants[0].ModelCode}. Kurala göre PTT AVM'de model koduna çevirin · {snapshot.Title}.", 1000), cancellationToken);

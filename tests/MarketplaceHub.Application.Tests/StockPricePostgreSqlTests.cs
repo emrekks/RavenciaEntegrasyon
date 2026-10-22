@@ -308,6 +308,53 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal("MODEL-1", productLink.ExternalCode);
     }
 
+    // The panel keeps one model as a product per colour (as Trendyol lists it) while PTT AVM keeps it as one product:
+    // every variant is linked, and price and stock go as one product with all of the model's variants.
+    [PostgreSqlFact]
+    public async Task PttAvmModelSplitByColour_IsMappedAndSentAsOneProduct()
+    {
+        var tenant = NewTenant("pttavm-colour-products");
+        var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
+        var (navy, navyXl) = NewVariant(tenant, "MZDT002ECD05", "MZDT002ECD05");
+        var (black, blackXl) = NewVariant(tenant, "MZDT002ECD09", "MZDT002ECD09");
+        navyXl.ModelCode = blackXl.ModelCode = "MZDT002ECD";
+        navyXl.OptionSignature = "Renk: Lacivert | Beden: XL";
+        blackXl.OptionSignature = "Renk: Siyah | Beden: XL";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(pttAvm);
+            seed.Products.AddRange(navy, black);
+            seed.ProductVariants.AddRange(navyXl, blackXl);
+            seed.InventoryItems.AddRange(NewInventory(tenant, navyXl, 2m), NewInventory(tenant, blackXl, 3m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, pttAvm, navyXl), NewOffer(tenant, pttAvm, blackXl));
+            await seed.SaveChangesAsync();
+        }
+        RemoteCatalogVariant Option(string id, string value) => new($"MZDT002ECD/{id}", $"MZDT002ECD-{value}", null, "MZDT002ECD", new Dictionary<string, string> { ["Varyant"] = value }, false, 120m, null, 20m, 0m, "TRY", "{}");
+        var snapshot = new RemoteCatalogProduct("1533250134", "MZDT002ECD", "Tunik", "", null, null, null, null, [], [Option("1", "Lacivert"), Option("2", "Siyah"), Option("3", "XL")], "{}");
+
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Assert.True(await (Task<bool>)map.Invoke(processor, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!);
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = fixture.CreateContext();
+        var links = await check.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id).ToDictionaryAsync(x => x.VariantId, x => x.ExternalId);
+        Assert.Equal("MZDT002ECD05", links[navyXl.Id]);
+        Assert.Equal("MZDT002ECD09", links[blackXl.Id]);
+        var draft = await new PriceInventoryComposer(check).BuildAsync(tenant.Id, pttAvm.Id, CancellationToken.None);
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        var item = Assert.Single(PttAvmPriceInventoryRules.Items(draft.Value!.PayloadJson)!);
+        Assert.Equal("MZDT002ECD", item.Barcode);
+        Assert.Equal(2, item.Variants!.Count);
+        // A send started from one colour's product covers the whole model.
+        var single = await new PriceInventoryComposer(check).BuildAsync(tenant.Id, pttAvm.Id, CancellationToken.None, blackXl.Id);
+        Assert.Equal(2, Assert.Single(PttAvmPriceInventoryRules.Items(single.Value!.PayloadJson)!).Variants!.Count);
+    }
+
     // A PTT AVM product without variants is kept by the product's own code, which may differ from its panel model code.
     [PostgreSqlFact]
     public async Task PttAvmMapping_LinksAProductWithoutVariantsByItsOwnCode()
