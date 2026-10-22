@@ -94,10 +94,15 @@ public static class PttAvmOrderMapper
         var trackingNumber = Value(order, "KargoBarkod") ?? CargoBarcodes(order).FirstOrDefault();
         var occurredAt = StatusObservedAt(ordered.Value, packageStatus);
         var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, occurredAt, trackingNumber is null ? null : "PTT Kargo", trackingNumber, allocations, gross, discount, net);
-        return new(orderNumber, orderNumber, ordered.Value, occurredAt, "TRY", gross, discount, net,
+        var remote = new RemoteOrder(orderNumber, orderNumber, ordered.Value, occurredAt, "TRY", gross, discount, net,
             CustomerSnapshot(order), Address(order, "Siparis", Value(order, "MusteriAdi"), Value(order, "MusteriSoyadi")),
             Address(order, "Fatura", Value(order, "FaturaMusteriAdi") ?? Value(order, "MusteriAdi"), Value(order, "FaturaMusteriSoyadi") ?? Value(order, "MusteriSoyadi")),
             lines, [package], OrderSnapshot(order).ToJsonString());
+        // PTT AVM's own word on the invoice: every live line IsInvoice=true means it holds one, a false on any line
+        // means it does not. Without the flag the package keeps the state it has.
+        return PttAvmInvoiceMapper.Invoiced(remote) is { } invoiced
+            ? remote with { Packages = [package with { Invoice = new(invoiced ? "INVOICED" : "NOT_INVOICED", null, null, null) }] }
+            : remote;
     }
 
     // SiparisDurumu values of the documentation, in the panel's package vocabulary. The Turkish letters are

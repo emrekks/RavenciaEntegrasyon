@@ -82,7 +82,7 @@ public static class N11OrderMapper
         var modified = Instant(package, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch;
         var ordered = CreatedAt(package) ?? modified;
         var status = Text(package, "shipmentPackageStatus") ?? "";
-        var remotePackage = new RemotePackage(packageId, null, status, modified, Text(package, "cargoProviderName") ?? Text(package, "shipmentCompanyId"), cargoCode, allocations, gross, gross - net, net);
+        var remotePackage = new RemotePackage(packageId, null, status, modified, Text(package, "cargoProviderName") ?? Text(package, "shipmentCompanyId"), cargoCode, allocations, gross, gross - net, net, Invoice(package));
         return new(orderNumber, orderNumber, ordered, modified, "TRY", gross, gross - net, net,
             CustomerSnapshot(package), AddressSnapshot(package, "shippingAddress"), AddressSnapshot(package, "billingAddress"),
             lines, [remotePackage], package.GetRawText(), Instant(package, "agreedDeliveryDate"));
@@ -148,6 +148,17 @@ public static class N11OrderMapper
     // are in billingAddress, so the customer is read from there and the order carries the point type.
     internal static string? DeliveryPointType(JsonElement package) =>
         Text(package, "deliveryAddressType") is { Length: > 0 } type && !string.Equals(type, "null", StringComparison.OrdinalIgnoreCase) ? type.Trim().ToUpperInvariant() : null;
+
+    // n11 has no invoice state, only invoiceLink: the link of the invoice attached to the package, empty until one is.
+    // A link means n11 holds an invoice, an empty one that it does not; a package without the field says nothing.
+    internal static RemotePackageInvoiceObservation? Invoice(JsonElement package)
+    {
+        if (!package.TryGetProperty("invoiceLink", out var link)) return null;
+        var url = link.ValueKind == JsonValueKind.String ? link.GetString()?.Trim() : null;
+        return string.IsNullOrEmpty(url)
+            ? new("NOT_INVOICED", null, null, null)
+            : new("INVOICED", null, url, null);
+    }
 
     internal static string CustomerSnapshot(JsonElement package)
     {

@@ -198,4 +198,17 @@ public sealed class N11OrderMapperTests
         Assert.Equal("rest/delivery/v1/shipmentPackages?startDate=1000&endDate=2000&page=0&size=100&orderByField=true&orderByDirection=ASC&sender=ALL", N11HttpClient.ModifiedShipmentPackages(start, end, 0, 100));
         Assert.Equal("rest/delivery/v1/shipmentPackages?orderNumber=203%2F1&page=0&size=100&sender=ALL", N11HttpClient.OrderNumberPackages("203/1"));
     }
+
+    [Fact]
+    public void ThePackageInvoiceLinkTellsWhetherN11HoldsAnInvoice()
+    {
+        static RemotePackageInvoiceObservation? Read(string json) { using var document = JsonDocument.Parse(json); return N11OrderMapper.Invoice(document.RootElement); }
+
+        Assert.Null(Read("""{"id":"1"}"""));
+        Assert.Equal("NOT_INVOICED", Read("""{"invoiceLink":""}""")?.RawStatus);
+        Assert.Equal("NOT_INVOICED", Read("""{"invoiceLink":null}""")?.RawStatus);
+        var invoiced = Read("""{"invoiceLink":"https://example.test/fatura.pdf"}""");
+        Assert.Equal("INVOICED", invoiced?.RawStatus);
+        Assert.Equal("https://example.test/fatura.pdf", invoiced?.InvoiceUrl);
+    }
 }
