@@ -209,10 +209,12 @@
    so a long one no longer runs out of the table or makes it wider than the page. */
 @media (min-width: 761px) {
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(.jobs-reference-correlation, .jobs-reference-time small) { max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap; }
-  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table .jobs-reference-correlation { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  /* Doubled class: the :is() rule above counts as ".jobs-reference-time small" and kept the id on one line past its cell. */
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table .jobs-reference-correlation.jobs-reference-correlation { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(th, td) { max-width: none; }
-  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 840px; }
-  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(240px, 1.9fr) minmax(150px, 1.05fr) minmax(86px, .6fr) minmax(164px, 1.05fr) minmax(200px, 1.1fr); }
+  /* The time column fits "Bugün · son deneme 4 dk 21 sn" on one line (164 px left it running into the next column). */
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 860px; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(240px, 1.9fr) minmax(150px, 1.05fr) minmax(86px, .6fr) minmax(184px, 1.05fr) minmax(200px, 1.1fr); }
 }
 
 /* Status counts are filters: each one toggles, several can be on, the chosen ones sit on a soft violet box. */
