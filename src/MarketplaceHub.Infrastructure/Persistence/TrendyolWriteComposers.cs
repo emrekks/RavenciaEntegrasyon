@@ -352,7 +352,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             // PTT AVM refuses a price of 1 or less.
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.", 422);
-            var barcode = row.Barcode.Trim();
+            // A model variant read without a barcode is linked by its PTT AVM id ("FK4530/7101"); PTT AVM keys price and
+            // stock by the variant barcode, which its orders show to be the panel barcode (VariantBarkod).
+            var barcode = PttAvmVariantMapper.IsModelVariantId(row.Barcode.Trim()) ? row.Variant.Barcode?.Trim() ?? "" : row.Barcode.Trim();
             if (barcode.Length == 0 || barcode.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM barkodu boş veya {PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.", 422);
             var vatRate = PttAvmPriceInventoryRules.VatRate(row.Offer.VatRate);

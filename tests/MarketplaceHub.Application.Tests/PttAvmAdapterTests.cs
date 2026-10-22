@@ -1279,6 +1279,10 @@ public sealed class PttAvmAdapterTests
 
         var small = Assert.Single(product.Variants);
         Assert.Equal("FK4530/7101", small.ExternalVariantId);
+        Assert.True(PttAvmVariantMapper.IsModelVariantId(small.ExternalVariantId));
+        Assert.False(PttAvmVariantMapper.IsModelVariantId("RYP00105"));
+        Assert.False(PttAvmVariantMapper.IsModelVariantId("AB/CD"));
+        Assert.False(PttAvmVariantMapper.IsModelVariantId("FK4530/"));
         Assert.Equal("FK4530-S", small.Sku);
         Assert.Null(small.Barcode);
         Assert.Equal("FK4530", small.ModelCode);

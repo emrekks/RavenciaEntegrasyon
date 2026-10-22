@@ -100,6 +100,39 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
     }
 
+    // A PTT AVM model variant read without a barcode is linked by its id ("FK4530/7101"); its price and stock go by
+    // the panel barcode, while a variant linked by its barcode keeps that barcode.
+    [PostgreSqlFact]
+    public async Task PttAvmPriceStock_SendsThePanelBarcodeForAVariantLinkedByItsModelId()
+    {
+        var tenant = NewTenant("pttavm-model-variant");
+        var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
+        var (product, modelVariant) = NewVariant(tenant, "FK4530-S", "8690000000097");
+        var plainVariant = NewVariant(tenant, "FK4530-M", "8690000000103", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(pttAvm);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(modelVariant, plainVariant);
+            seed.InventoryItems.AddRange(NewInventory(tenant, modelVariant, 4m), NewInventory(tenant, plainVariant, 2m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, pttAvm, modelVariant), NewOffer(tenant, pttAvm, plainVariant));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = modelVariant.Id, ExternalId = "FK4530/7101" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = plainVariant.Id, ExternalId = "PTT-FK4530-M" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var draft = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, pttAvm.Id, CancellationToken.None);
+
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        var barcodes = draft.Value!.Lines.ToDictionary(x => x.VariantId, x => x.Barcode);
+        Assert.Equal("8690000000097", barcodes[modelVariant.Id]);
+        Assert.Equal("PTT-FK4530-M", barcodes[plainVariant.Id]);
+        Assert.DoesNotContain("FK4530/7101", draft.Value.PayloadJson, StringComparison.Ordinal);
+    }
+
     // K6: an order line that cannot take its units from physical stock keeps them reserved, also under a
     // DISABLED or missing connection inventory policy (the policy fields are not applied).
     [PostgreSqlFact]

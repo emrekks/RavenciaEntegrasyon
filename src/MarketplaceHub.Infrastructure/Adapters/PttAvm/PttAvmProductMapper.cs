@@ -58,7 +58,7 @@ public static class PttAvmProductMapper
             // The product barcode is the variants' model code. A variant without a barcode is named under its
             // model ("FK4530/1234"), and its stock code is the model and its name ("FK4530-S").
             foreach (var read in reads)
-                variants.Add(new(read.Barcode ?? $"{barcode}/{read.VariantId}", read.Barcode ?? $"{barcode}-{read.Options[PttAvmVariantMapper.VariantNameOption]}", read.Barcode, barcode,
+                variants.Add(new(read.Barcode ?? PttAvmVariantMapper.ModelVariantId(barcode, read.VariantId!), read.Barcode ?? $"{barcode}-{read.Options[PttAvmVariantMapper.VariantNameOption]}", read.Barcode, barcode,
                     read.Options, !active || read.Active == false,
                     PttAvmVariantMapper.SalePrice(read, price), null, vatRate, read.Quantity, "TRY", Snapshot(read.Source).ToJsonString(), images, Desi: desi));
         }
