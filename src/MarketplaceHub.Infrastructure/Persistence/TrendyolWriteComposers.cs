@@ -137,20 +137,20 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isTrendyol = string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         var published = await (from offer in db.ChannelOffers.AsNoTracking()
-                          join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
-                          join listingState in db.MarketplaceListingStates.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { listingState.TenantId, listingState.ConnectionId, listingState.VariantId }
-                          join profile in db.ChannelListingProfiles.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, ProductId = variant.ProductId } equals new { profile.TenantId, profile.ConnectionId, profile.ProductId }
-                          join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id, VariantId = variant.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId, listingVariant.VariantId }
-                          join remoteLink in db.MarketplaceVariantLinks.AsNoTracking().Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId)
-                              on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId } into remoteLinks
-                          from remoteLink in remoteLinks.DefaultIfEmpty()
-                          join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
-                          from inventory in inventories.DefaultIfEmpty()
-                          where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE" && listingState.ActualStatus == "LIVE" && listingVariant.ExternalBarcode != null
-                               && (variantId == null || offer.VariantId == variantId)
-                               && (productId == null || variant.ProductId == productId)
-                          orderby variant.Id
-                          select new { Offer = offer, Variant = variant, Inventory = inventory, ListingBarcode = listingVariant.ExternalBarcode!, ListingSku = listingVariant.ExternalSku, Link = remoteLink }).ToListAsync(cancellationToken);
+                               join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                               join listingState in db.MarketplaceListingStates.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { listingState.TenantId, listingState.ConnectionId, listingState.VariantId }
+                               join profile in db.ChannelListingProfiles.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, ProductId = variant.ProductId } equals new { profile.TenantId, profile.ConnectionId, profile.ProductId }
+                               join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id, VariantId = variant.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId, listingVariant.VariantId }
+                               join remoteLink in db.MarketplaceVariantLinks.AsNoTracking().Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId)
+                                   on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId } into remoteLinks
+                               from remoteLink in remoteLinks.DefaultIfEmpty()
+                               join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
+                               from inventory in inventories.DefaultIfEmpty()
+                               where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE" && listingState.ActualStatus == "LIVE" && listingVariant.ExternalBarcode != null
+                                    && (variantId == null || offer.VariantId == variantId)
+                                    && (productId == null || variant.ProductId == productId)
+                               orderby variant.Id
+                               select new { Offer = offer, Variant = variant, Inventory = inventory, ListingBarcode = listingVariant.ExternalBarcode!, ListingSku = listingVariant.ExternalSku, Link = remoteLink }).ToListAsync(cancellationToken);
         // A published variant goes by the codes the marketplace holds when its import read them (the seller may have
         // changed them there), else by the codes it was published with. Codes the marketplace confirmed (read back
         // by an import) need not equal the panel's.
