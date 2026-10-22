@@ -6,7 +6,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn small { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-size: 24px; font-weight: 600; line-height: 1.3; color: var(--rr-warn); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn span { display: inline-flex; align-items: center; gap: 4px; color: var(--rr-violet); font-size: 12px; font-weight: 500; }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pd { width: 27%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-var { width: 9%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pr { width: 11%; }
@@ -148,7 +148,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowv small { color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowv .rr-zero { color: var(--rr-bad); font-weight: 500; font-size: 12.5px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowv .rr-low { color: var(--rr-warn); font-size: 12.5px; }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td.rr-wide:first-child { grid-column: 1 / -1; order: -1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="İşlemler"] { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="İşlemler"]::before { display: none !important; }
@@ -170,7 +170,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { margin-left: 0; width: 100%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-size: 22px; }
 }
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1025px) and (max-width: 1280px) {
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
 }
@@ -290,7 +290,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-qbtn.rr-qbtn { margin: -4px -8px; padding: 4px 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn.rr-qbtn:hover { border-color: transparent; }
 /* wider screens: the product table scrolls sideways inside its panel like the order table, and codes show whole */
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 main .rr.rr-products > .rr-panel { min-width: 0; }
 main .rr.rr-products .rr-tblwrap.rr-tblwrap { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
 main .rr.rr-products .rr-ptbl.rr-ptbl { min-width: 1060px; }

@@ -362,7 +362,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-disp { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-disp:first-of-type { border-top: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-disp form { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1.4fr) 90px minmax(0, 1fr) auto; gap: 8px; }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl colgroup,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl thead { display: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl,
@@ -385,7 +385,7 @@ main .rr, .rr-layer {
 }
 @media (max-width: 760px) {
 }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: 1fr 1fr; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters .rr-search { grid-column: 1 / -1; }
@@ -395,7 +395,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: 1fr; }
 }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics { grid-template-columns: 1fr 1fr; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-two { grid-template-columns: 1fr; }
 }
@@ -519,7 +519,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 21%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-status { width: 11%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 11%; }
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1025px) and (max-width: 1280px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-order { width: 17%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 22%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-status { width: 12%; }
@@ -554,7 +554,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-state.rr-loading .rr-mark::after,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-state .rr-bar i { animation-duration: 3s; }
 }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td:first-child,
@@ -605,7 +605,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-reason { width: 10%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 12%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-act { width: 10%; }
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1025px) and (max-width: 1280px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td { padding: 16px 8px; font-size: 12.5px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td:first-child { padding-left: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th { padding: 0 30px 0 8px; font-size: 12px; }
@@ -626,7 +626,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th { padding-right: 28px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-hf { white-space: nowrap; }
 }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-order { width: 172px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-order { width: 200px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-reason { width: 10%; }
@@ -645,7 +645,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring small { overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-plines { gap: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-plines > .rr-pline + .rr-pline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rr-line); }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 12%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 13%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-status { width: 13%; }
@@ -657,7 +657,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-status { width: 15%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-act { width: 14%; }
 }
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1025px) and (max-width: 1280px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring { gap: 7px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring b { font-size: 12.5px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring svg { width: 16px; height: 16px; }
@@ -702,7 +702,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td { background: var(--rr-hover); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-on { background: var(--rr-hover); color: var(--rr-ink); }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td { background: var(--rr-hover); }
 }
@@ -713,7 +713,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices .rr-pr + .rr-pr { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rr-line); box-sizing: content-box; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices .rr-pr b { font-weight: 600; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices .rr-pr small { color: var(--rr-subtle); font-size: 11.5px; }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod { width: 19%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-reason { width: 9%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 12%; }
@@ -723,7 +723,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-cargo { width: 9%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-reason { width: 9%; }
 }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td.rr-price-col { display: none !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline .rr-card-only { display: block; }
 }
@@ -731,7 +731,7 @@ main .rr, .rr-layer {
 @media (max-width: 760px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 7%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod { width: 23%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-price { width: 7%; }
@@ -750,7 +750,7 @@ main .rr, .rr-layer {
 }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td[data-l="Bilgiler"],
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td.rr-price-col { --rr-cp: 12px; padding-left: var(--rr-cp); padding-right: var(--rr-cp); }
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1025px) and (max-width: 1280px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td[data-l="Bilgiler"],
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td.rr-price-col { --rr-cp: 8px; }
 }
@@ -768,7 +768,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head { padding-left: 16px; padding-right: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-foot { padding-left: 16px; padding-right: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head > div { display: flex; flex-direction: column-reverse; gap: 2px; }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-price,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-price { width: 8%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-inv { width: 11%; }
@@ -780,7 +780,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-hf { white-space: normal !important; text-align: center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th:not(:has(.rr-anchor)) { padding-right: 10px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th:first-child { padding-left: 16px; }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 8%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod { width: 22%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-price { width: 8%; }
@@ -853,7 +853,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cb.rr-cb { width: 17px; height: 17px; border-radius: 50%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cb.rr-cb:checked { background: var(--rr-primary); border-color: var(--rr-primary); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cb.rr-cb:checked::after { left: 5.5px; top: 2.5px; width: 3.5px; height: 7.5px; border-color: #fff; }
-@media (max-width: 1100px) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-cargocell .rr-cargo-img { object-position: left center; } }
+@media (max-width: 1024px) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-cargocell .rr-cargo-img { object-position: left center; } }
 /* the page frame: 28px top and bottom, 24px sides; 16px all round on phones */
 .app-shell.stitch-shell > main > .content.f3.rr { padding: 28px 24px; }
 @media (max-width: 760px) { .app-shell.stitch-shell > main > .content.f3.rr { padding: 16px; } }
@@ -964,13 +964,13 @@ main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12p
 }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-anchor-scrim { display: none; }
 /* narrow desktops: the return invoice column keeps room for its one-line state, taken from the order and product columns */
-@media (min-width: 1101px) and (max-width: 1366px) {
+@media (min-width: 1025px) and (max-width: 1366px) {
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 136px; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 152px; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 16%; }
 }
 /* when the screen is too narrow for the order and return tables they keep a readable width and scroll sideways in their panel */
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tblwrap.rr-tblwrap { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
 main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1060px; }
 main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1120px; }
@@ -1001,7 +1001,7 @@ main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts .rr-fact-track { font-size: 13px; }
 /* product facts are never cut and stay on one line; the product column is wide enough for them (the tables scroll sideways when the screen is narrow) */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > small:not(.rr-card-only) { overflow: visible; text-overflow: clip; white-space: nowrap; }
-@media (min-width: 1101px) {
+@media (min-width: 1025px) {
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 276px; }
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: 76px; height: 114px; }

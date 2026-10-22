@@ -6280,7 +6280,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 @keyframes operation-feedback-toast-countdown { to { transform: scaleX(0); } }
 @keyframes operation-feedback-toast-indeterminate { to { transform: translateX(460%); } }
 
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .publish-platform-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
@@ -6445,7 +6445,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-workspace-preview-facts > .is-carrier { order: 7; }
 .invoice-workspace-preview-facts dt { margin: 0; }
 .invoice-workspace-preview-facts dd { margin: 0; color: var(--rv-color-ink); font-size: 14px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .invoice-workspace-preview-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .invoice-workspace-preview-lines { overflow-x: auto; border: 1px solid var(--rv-color-border-strong); border-radius: 8px; }
@@ -6846,7 +6846,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-search input,
 .app-shell.stitch-shell main .invoice-reference-filters .platform-multi-select-trigger,
 .app-shell.stitch-shell main .invoice-reference-filters .date-range-picker-trigger { font-size: 14px; font-weight: 500; }
-@media (max-width: 1100px) { .app-shell.stitch-shell main .invoice-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1024px) { .app-shell.stitch-shell main .invoice-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .app-shell.stitch-shell main .invoice-reference-filters { grid-template-columns: minmax(0, 1fr); } }
 
 /* Sidebar labels read a little heavier; the open page is heavier still. */
@@ -7020,7 +7020,7 @@ h1, h2, h3, h4, :is(.orders-control-bar, .invoice-reference-filters, .return-ref
 .integration-settings-modal :is(.integration-detail-section-heading, .integration-detail-write-heading) h2 { margin: 2px 0 4px; font-size: 16px; font-weight: 600; }
 .integration-settings-modal :is(.integration-detail-section-heading, .integration-detail-write-heading) p:not(.eyebrow) { margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
 
-/* The phone filter sheet pieces never show above phone width (responsive.css only loads up to 1100px, so this lives in the main sheet). */
+/* The phone filter sheet pieces never show above phone width (responsive.css only loads up to 1024px, so this lives in the main sheet). */
 .mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer, .mfs > .mfs-sort { display: none; }
 @media (min-width: 761px) { .mfs > .mfs-sheet-only { display: none !important; } }
 
@@ -7091,8 +7091,8 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 .app-shell.stitch-shell :is(.rr-layer) .rr-tbl thead th,
 .app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { background-color: var(--rv-color-surface-soft) !important; }
 @media (min-width: 761px) { .app-shell.stitch-shell main :is(.rr-tbl, .jobs-reference-table, .mapping-saved-table table) tbody tr:hover > td { background-color: var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent)) !important; } }
-/* Up to 1100 px the .rr-tbl rows are cards (a grid of cells with gaps): the hover colours the whole card, not each cell. */
-@media (max-width: 1100px) {
+/* Up to 1024 px the .rr-tbl rows are cards (a grid of cells with gaps): the hover colours the whole card, not each cell. */
+@media (max-width: 1024px) {
   .app-shell.stitch-shell main .rr-tbl.rr-tbl tbody tr:hover { background-color: var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent)); }
   .app-shell.stitch-shell main .rr-tbl.rr-tbl tbody tr:hover > td { background-color: transparent !important; }
 }
