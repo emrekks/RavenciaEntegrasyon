@@ -33,7 +33,9 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     {
         var group = jobType == MarketplaceJobTypes.ExternalEffectReconcile && payloadJson is not null
             ? EffectReconcileGroup(await EffectActionAsync(db, payloadJson, cancellationToken))
-            : GroupFor(jobType);
+            : jobType.EndsWith("_WEBHOOK_INGEST", StringComparison.OrdinalIgnoreCase) && WebhookIngestGroup(WebhookResourceType(payloadJson)) is { } webhookGroup
+                ? webhookGroup
+                : GroupFor(jobType);
         return await TryAcquireKeyAsync(db, LockKey(connectionId, group), cancellationToken);
     }
 
@@ -134,6 +136,22 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     // too; it serializes with them. Package and order checks stay with the order reads. The same group is
     // stored on the verification job (ExternalEffectReconcilePolicy.NewJob) for the lease query.
     internal static string EffectReconcileGroup(string? action) => ExternalEffectReconcilePolicy.LockGroup(action);
+
+    // A claim notice writes return claims, and a CLAIM_EVENT reads them again with the return reads' cursor: it
+    // serializes with the return reads. Order notices and claim packages (they write orders) keep the order lock. The
+    // same group is stored on the job (MarketplaceWebhookService) for the lease query.
+    internal static string? WebhookIngestGroup(string? resourceType) => resourceType is "RETURNS" or "CLAIM_EVENT" ? "returns" : null;
+
+    private static string? WebhookResourceType(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("resourceType", out var type) && type.ValueKind == JsonValueKind.String ? type.GetString() : null;
+        }
+        catch (JsonException) { return null; }
+    }
 
     private static async Task<string?> EffectActionAsync(AppDbContext db, string payloadJson, CancellationToken cancellationToken)
     {

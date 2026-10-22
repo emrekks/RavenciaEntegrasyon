@@ -331,7 +331,7 @@
 .instant-notifications-status strong { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
 .instant-notifications-status strong > i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rv-color-subtle); }
 .instant-notifications-status[data-state="ACTIVE"] strong > i { background: var(--rv-color-accent); box-shadow: 0 0 0 3px var(--rv-color-accent-soft); }
-.instant-notifications-status:is([data-state="PASSIVE"], [data-state="MISSING"], [data-state="UNKNOWN"], [data-state="QUIET"]) strong > i { background: var(--rv-color-warning); box-shadow: 0 0 0 3px var(--rv-color-warning-soft); }
+.instant-notifications-status:is([data-state="PASSIVE"], [data-state="MISSING"], [data-state="UNKNOWN"], [data-state="QUIET"], [data-state="CONNECTION_INACTIVE"]) strong > i { background: var(--rv-color-warning); box-shadow: 0 0 0 3px var(--rv-color-warning-soft); }
 .instant-notifications-status[data-state="WAITING"] strong > i { background: var(--rv-color-primary); box-shadow: 0 0 0 3px var(--rv-color-primary-soft); }
 .instant-notifications-actions { display: flex; flex: none; gap: 8px; }
 .instant-notifications-actions > button { min-height: 36px; }

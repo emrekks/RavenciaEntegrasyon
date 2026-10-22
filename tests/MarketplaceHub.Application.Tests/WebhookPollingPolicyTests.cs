@@ -246,6 +246,20 @@ public sealed class WebhookEventPathTests
         Assert.Equal("57b1850c", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "packageNumber"));
     }
 
+    // An awaiting-action claim body the mapper could read still has no status date: the claims are read again, and
+    // claim notices take the return reads' lock while order notices and claim packages keep the order lock.
+    [Fact]
+    public void AwaitingClaimNoticesReadTheClaimsAgainUnderTheReturnLock()
+    {
+        var awaitingAction = System.Text.Encoding.UTF8.GetBytes("""{"claimNumber":"356189794","type":"Return","quantity":1,"status":"AwaitingAction","orderNumber":"2152988946","claimDate":"2021-10-14T11:03:17.676Z","line":{"lineItemId":"61680dc6","merchantId":"1a514334","hbSku":"GYGEO11009AXL","merchantSku":"KIVIRCIK20","price":{"currency":"TRY","amount":56.0}}}""");
+
+        Assert.Equal("CLAIM_EVENT", MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(awaitingAction, "claims/awaitingaction")!.ResourceType);
+        Assert.Equal("returns", MarketplaceHub.Infrastructure.Persistence.MarketplaceSyncExecutionLock.WebhookIngestGroup("CLAIM_EVENT"));
+        Assert.Equal("returns", MarketplaceHub.Infrastructure.Persistence.MarketplaceSyncExecutionLock.WebhookIngestGroup("RETURNS"));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceSyncExecutionLock.WebhookIngestGroup("ORDER_EVENT"));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceSyncExecutionLock.WebhookIngestGroup("CLAIM_PACKAGE"));
+    }
+
     [Fact]
     public void APackageEventFindsItsPackageInThePathAndUnpackListsItsOrders()
     {

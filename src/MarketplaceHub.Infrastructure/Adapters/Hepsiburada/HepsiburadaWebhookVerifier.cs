@@ -117,6 +117,9 @@ internal static class HepsiburadaWebhookIdentity
     private static (string Identity, string ResourceType)? ClaimEventIdentity(JsonElement root, string? eventPath)
     {
         if (!WebhookEventPath.IsHepsiburadaClaimEvent(eventPath)) return null;
+        // awaitingaction and awaitingpreapproval bodies carry no status date: applied as they are, they count as older
+        // than a claim the panel saw change since and are skipped. The claims are read again instead.
+        if (WebhookEventPath.Normalize(eventPath) is "claims/awaitingaction" or "claims/awaitingpreapproval") return (WebhookEventPath.Normalize(eventPath)!, "CLAIM_EVENT");
         try
         {
             if (HepsiburadaJsonMapper.IsClaimPackageNotification(root)) return null;

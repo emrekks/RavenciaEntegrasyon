@@ -47,6 +47,10 @@ public sealed class InstantNotificationService(
         if (subscription is null) return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
         if (subscription.ExternalSubscriptionId == ManualRegistration)
         {
+            // A connection that is not active refuses every delivery (the address answers 404), so the panel says so
+            // instead of waiting for Hepsiburada.
+            if (connection.Status is not ("ACTIVE" or "VERIFIED"))
+                return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "CONNECTION_INACTIVE", "Bağlantı aktif değil; Hepsiburada'dan gelen bildirimler bağlantı etkinleşene kadar reddediliyor. Bağlantıyı kontrol edip etkinleştirin.", cancellationToken));
             // Nothing to ask Hepsiburada: the first notification shows that it has set the address up.
             var quiet = subscription.LastReceivedAt is not { } last || timeProvider.GetUtcNow() - last > WebhookPollingPolicy.SilenceLimit;
             var manualState = subscription.LastReceivedAt is null ? "WAITING" : quiet ? "QUIET" : "ACTIVE";

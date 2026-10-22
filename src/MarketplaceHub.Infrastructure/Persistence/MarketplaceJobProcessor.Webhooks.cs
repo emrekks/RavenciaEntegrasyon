@@ -17,16 +17,37 @@ public sealed partial class MarketplaceJobProcessor
     private async Task<bool> ReadHepsiburadaOrderEvent(Guid tenantId, Guid connectionId, JsonElement root, string eventKey, string? eventPath, string correlationId, CancellationToken cancellationToken)
     {
         var reference = HepsiburadaEventReference(eventPath);
+        // An address change carries the whole new delivery address, while a read of the order may count as older
+        // than the order and keep the old one: the body is written first.
+        if (reference is ("orders", var addressOrder) && WebhookEventPath.Normalize(eventPath)?.EndsWith("/shippingaddress", StringComparison.Ordinal) == true)
+            await ApplyHepsiburadaShippingAddressAsync(tenantId, connectionId, addressOrder, root, cancellationToken);
         var orderNumbers = new List<string>();
         void AddOrder(string? value)
         {
             if (!string.IsNullOrWhiteSpace(value) && !orderNumbers.Contains(value.Trim(), StringComparer.Ordinal)) orderNumbers.Add(value.Trim());
         }
-        AddOrder(FindString(root, "orderNumber"));
+        // A package can hold the lines of several orders of one buyer: every orderNumber in the body is read.
+        foreach (var number in FindStrings(root, "orderNumber")) AddOrder(number);
         foreach (var number in FindStrings(root, "orderNumbers")) AddOrder(number);
         if (reference is ("orders", var pathOrder)) AddOrder(pathOrder);
         var packageNumber = FindString(root, "packageNumber") ?? (reference is ("packages", var pathPackage) ? pathPackage : null);
         var lineItemId = FindString(root, "lineItemId") ?? (reference is ("lineitems", var pathLine) ? pathLine : null);
+        // An unpacked package no longer exists on Hepsiburada (its lines return to the order and reads stop listing
+        // it): the panel's package is closed as the panel's own unpack does, and its orders are read without it.
+        var unpack = WebhookEventPath.Normalize(eventPath)?.EndsWith("/unpack", StringComparison.Ordinal) == true;
+        if (unpack && packageNumber is not null)
+        {
+            var unpackedAt = DateTimeOffset.TryParse(FindString(root, "unpackedDate"), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var date) ? date : timeProvider.GetUtcNow();
+            var packages = await (from package in db.ShipmentPackages.AsNoTracking()
+                                  join order in db.Orders.AsNoTracking() on package.OrderId equals order.Id
+                                  where package.TenantId == tenantId && order.ConnectionId == connectionId && package.ExternalPackageId == packageNumber
+                                  select new { package.Id, order.ExternalOrderId }).ToListAsync(cancellationToken);
+            foreach (var package in packages)
+            {
+                await MarkHepsiburadaPackageUnpackedAsync(tenantId, connectionId, package.Id, unpackedAt, cancellationToken);
+                AddOrder(package.ExternalOrderId);
+            }
+        }
 
         if (orderNumbers.Count == 0 && packageNumber is not null)
             AddOrder(await (from package in db.ShipmentPackages.AsNoTracking()
@@ -38,7 +59,7 @@ public sealed partial class MarketplaceJobProcessor
                             join order in db.Orders.AsNoTracking() on line.OrderId equals order.Id
                             where order.TenantId == tenantId && order.ConnectionId == connectionId && line.ExternalLineId == lineItemId
                             select order.ExternalOrderId).FirstOrDefaultAsync(cancellationToken));
-        if (orderNumbers.Count == 0 && packageNumber is not null)
+        if (orderNumbers.Count == 0 && packageNumber is not null && !unpack)
         {
             TrackRequest();
             var tracking = await orderPackages.GetPackageTrackingInfoAsync(Context(tenantId, connectionId, correlationId, $"hepsiburada-webhook-package:{packageNumber}"), packageNumber, cancellationToken);
@@ -54,10 +75,31 @@ public sealed partial class MarketplaceJobProcessor
         var completed = true;
         foreach (var orderNumber in orderNumbers.Take(HepsiburadaPackagePolicy.MaxOrderReadsPerRun))
         {
-            var payload = JsonSerializer.Serialize(new { connectionId, externalOrderId = orderNumber, packageNumber = orderNumbers.Count == 1 ? packageNumber : null });
+            var payload = JsonSerializer.Serialize(new { connectionId, externalOrderId = orderNumber, packageNumber = orderNumbers.Count == 1 && !unpack ? packageNumber : null });
             completed &= await SyncHepsiburadaOrders(tenantId, connectionId, payload, correlationId, "ORDERS", false, cancellationToken);
         }
         return completed;
+    }
+
+    // The new delivery address of PUT /orders/{n}/shippingaddress (addressId, address, name, email, countryCode, phone
+    // numbers, district, city, town: the names of the order's shippingAddress) replaces the stored one's fields.
+    private async Task ApplyHepsiburadaShippingAddressAsync(Guid tenantId, Guid connectionId, string orderNumber, JsonElement root, CancellationToken cancellationToken)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return;
+        if (FindString(root, "orderNumber") is { } bodyOrder && !string.Equals(bodyOrder, orderNumber, StringComparison.Ordinal)) return;
+        var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == orderNumber, cancellationToken);
+        if (order is null) return;
+        var address = new System.Text.Json.Nodes.JsonObject();
+        foreach (var property in root.EnumerateObject())
+            if (!string.Equals(property.Name, "orderNumber", StringComparison.OrdinalIgnoreCase))
+                address[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
+        if (address.Count == 0) return;
+        var merged = MarketplaceHub.Infrastructure.Imports.ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(address.ToJsonString(), order.ShipmentAddressSnapshotJson);
+        if (string.Equals(merged, order.ShipmentAddressSnapshotJson, StringComparison.Ordinal)) return;
+        order.ShipmentAddressSnapshotJson = merged;
+        order.UpdatedAt = timeProvider.GetUtcNow();
+        order.Version++;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     // One targeted Hepsiburada order read per order, keyed by the event (its message id) so the same event

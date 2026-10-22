@@ -8029,6 +8029,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     var order = HepsiburadaJsonMapper.ClaimPackageOrder(document.RootElement);
                     TrackReceived();
+                    // A claim names its order's line but not its date, VAT, title or discount: for an order the panel
+                    // already has only the package is merged (an older modification time keeps the order and its lines).
+                    var knownOrderModifiedAt = await db.Orders.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == order.ExternalOrderId)
+                        .Select(x => (DateTimeOffset?)x.LastRemoteModifiedAt).FirstOrDefaultAsync(cancellationToken);
+                    if (knownOrderModifiedAt is { } knownModifiedAt && order.LastModifiedAt >= knownModifiedAt)
+                        order = order with { LastModifiedAt = knownModifiedAt.AddTicks(-1) };
                     await UpsertOrder(tenantId, connectionId, order, cancellationToken);
                     foreach (var claimElement in HepsiburadaJsonMapper.ClaimPackageClaims(document.RootElement))
                     {
@@ -8618,6 +8625,25 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
+            // A Hepsiburada package first seen through a status observation (a webhook, a shipping list) was stored
+            // without lines; a detailed read of it brings them even when its status time is older than that observation.
+            // Only the lines are added: the status stays as it is.
+            else if (isHepsiburada && package is not null && !remotePackage.IsStatusObservation && safeAllocations.Count > 0
+                && !allocationsByKey.Values.Any(allocation => allocation.PackageId == package.Id))
+            {
+                foreach (var remoteAllocation in packageObservation.Allocations)
+                {
+                    if (!lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) || !safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) continue;
+                    var allocationKey = AllocationKey(package.Id, line.Id, eventId);
+                    // The quantities follow the package's current (newer) status, as a status observation's do.
+                    var shipped = package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered ? safe.ActiveAllocatedQuantity : safe.ShippedQuantity;
+                    var delivered = package.Status == ShipmentPackageStatus.Delivered ? safe.ActiveAllocatedQuantity : safe.DeliveredQuantity;
+                    var allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = shipped, DeliveredQuantity = delivered, ReturnedQuantity = safe.ReturnedQuantity };
+                    db.PackageLineAllocations.Add(allocation);
+                    allocationsByKey[allocationKey] = allocation;
+                    telemetryInsertedCount++;
+                }
+            }
         }
         if (isTrendyol && remote.Packages.Any(package =>
                 !string.IsNullOrWhiteSpace(package.ExternalPackageId)
@@ -8655,6 +8681,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             line.DeliveredQuantity = projection.DeliveredQuantity;
             line.ReturnedQuantity = projection.ReturnedQuantity;
         }
+        // A Hepsiburada line cancelled before it was packed has no package to project from: the cancelled quantity
+        // Hepsiburada reports is kept (it only grows), also when the read is older than the order.
+        if (isHepsiburada)
+            foreach (var remoteLine in remote.Lines.Where(x => x.CancelledQuantity > 0))
+            {
+                var line = lines.GetValueOrDefault(remoteLine.ExternalLineId) ?? HepsiburadaOrderLineMatcher.FindExistingLine(remoteLine, existingLines, remote.Lines);
+                if (line is null || projectedLineQuantities.ContainsKey(line.Id)) continue;
+                var cancelled = Math.Min(line.OrderedQuantity, remoteLine.CancelledQuantity);
+                if (cancelled <= line.CancelledQuantity) continue;
+                line.CancelledQuantity = cancelled;
+                if (db.Entry(line).State != EntityState.Added) { line.Version++; telemetryUpdatedCount++; }
+            }
         if (isHepsiburada)
         {
             // Cancelled quantities are not part of the order value.

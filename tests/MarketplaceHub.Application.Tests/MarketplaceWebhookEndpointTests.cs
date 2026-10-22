@@ -67,6 +67,26 @@ public sealed class MarketplaceWebhookEndpointTests
         Assert.False(plain.Headers.ContainsKey(WebhookEventPath.Header));
     }
 
+    // Hepsiburada's contract: POST orders, packages and claims/packages answer 201 Created, every PUT answers 204.
+    [Theory]
+    [InlineData("POST", "orders", StatusCodes.Status201Created)]
+    [InlineData("POST", "packages", StatusCodes.Status201Created)]
+    [InlineData("POST", "claims/packages", StatusCodes.Status201Created)]
+    [InlineData("PUT", "lineitems/6ad0b850/cancel", StatusCodes.Status204NoContent)]
+    [InlineData("PUT", "packages/1234567890/intransit", StatusCodes.Status204NoContent)]
+    [InlineData("PUT", "orders/999999999/shippingaddress", StatusCodes.Status204NoContent)]
+    [InlineData("PUT", "claims/awaitingaction", StatusCodes.Status204NoContent)]
+    public async Task ReceiveWebhookEvent_AnswersTheCodeHepsiburadasContractNames(string method, string path, int expected)
+    {
+        var body = Encoding.UTF8.GetBytes("{\"orderNumber\":\"999999999\"}");
+        var context = NewContext(body, body.Length);
+        context.Request.Method = method;
+
+        await (await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", path, context, new RecordingWebhookService(), KnownGate)).ExecuteAsync(context);
+
+        Assert.Equal(expected, context.Response.StatusCode);
+    }
+
     [Fact]
     public async Task ReceiveWebhook_ForAnUnknownConnection_Answers404WithoutReadingTheBody()
     {

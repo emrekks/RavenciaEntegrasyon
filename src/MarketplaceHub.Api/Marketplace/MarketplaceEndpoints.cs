@@ -378,8 +378,10 @@ public static class MarketplaceEndpoints
         if (!result.Value)
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
                 .LogWarning("Webhook acknowledged but not processed (stale delivery) for connection {ConnectionPublicId}.", connectionPublicId);
-        // Hepsiburada's event paths answer 204 as its contracts show; the base address keeps its body.
-        return eventPath is null ? Results.Ok(new { accepted = true }) : Results.NoContent();
+        // Hepsiburada's event paths answer as its contracts show: a POST (orders, packages, claims/packages) 201 Created,
+        // a PUT 204; a repeated delivery gets the same answer. The base address keeps its body.
+        if (eventPath is null) return Results.Ok(new { accepted = true });
+        return HttpMethods.IsPost(http.Request.Method) ? Results.StatusCode(StatusCodes.Status201Created) : Results.NoContent();
     }
     internal static string WebhookBodyOutline(ReadOnlyMemory<byte> body)
     {
