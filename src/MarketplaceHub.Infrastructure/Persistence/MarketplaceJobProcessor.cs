@@ -6152,18 +6152,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     continue;
                 }
                 string? confirmed = null;
+                // What PTT AVM answered for each code that did not confirm the variant: no product, or another product.
+                var answers = new List<string>();
                 foreach (var code in new[] { candidate.Barcode, candidate.Sku }.Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!.Trim()).Distinct(StringComparer.Ordinal))
-                    if (await confirmCode!(code) is { } answer && (answer.ExternalProductId == externalProductId || CatalogKeyNormalizer.SameKey(answer.Barcode, snapshot.ProductMainId)))
+                {
+                    var answer = await confirmCode!(code);
+                    if (answer is not null && (answer.ExternalProductId == externalProductId || CatalogKeyNormalizer.SameKey(answer.Barcode, snapshot.ProductMainId)))
                     {
                         confirmed = code;
                         break;
                     }
+                    answers.Add(answer is null ? $"{code}: ürün yok" : $"{code}: UrunId {answer.ExternalProductId}, barkod {answer.Barcode ?? "yok"}");
+                }
                 if (confirmed is null || existingVariantLinks.Any(item => string.Equals(item.ExternalId, confirmed, StringComparison.OrdinalIgnoreCase) && item.VariantId != candidate.Id))
                 {
                     if (reportUnmatched)
                         await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{candidate.Id:N}", "PRODUCT_MAPPING_UNMATCHED",
                             Short(confirmed is null
-                                ? $"PTT AVM panel varyantını tanımadı: barkod {candidate.Barcode ?? "yok"}, stok kodu {candidate.Sku} bu model ürününde ({snapshot.ProductMainId}) bulunamadı · {snapshot.Title}."
+                                ? $"PTT AVM panel varyantını tanımadı: barkod {candidate.Barcode ?? "yok"}, stok kodu {candidate.Sku} bu model ürününde ({snapshot.ProductMainId}, UrunId {externalProductId}) bulunamadı; PTT cevabı: {string.Join("; ", answers)} · {snapshot.Title}."
                                 : $"PTT AVM kodu {confirmed} başka bir panel varyantına bağlı; {candidate.Sku} bağlanmadı · {snapshot.Title}.", 1000), cancellationToken);
                     continue;
                 }
