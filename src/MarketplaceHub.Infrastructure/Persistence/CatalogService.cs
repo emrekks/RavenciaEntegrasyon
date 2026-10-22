@@ -969,6 +969,35 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return await GetProductAsync(tenantId, copyProductIds[productId], cancellationToken);
     }
 
+    // Hepsiburada and Shopify address a variant by their own code (hbSku, variant id); the product editor shows
+    // them for every variant of the colour family it edits.
+    private static readonly string[] MarketplaceCodePlatforms = ["HEPSIBURADA", "SHOPIFY"];
+
+    public async Task<ServiceResult<ProductMarketplaceCodesView>> GetProductMarketplaceCodesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
+    {
+        var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (product is null) return NotFound<ProductMarketplaceCodesView>();
+        var modelCode = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.ModelCode != null && x.ModelCode != "")
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefaultAsync(cancellationToken);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode?.Trim(), cancellationToken);
+        if (!familyProductIds.Contains(id)) familyProductIds.Add(id);
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && familyProductIds.Contains(x.ProductId))
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => new { x.Id, x.Sku, x.Barcode }).ToListAsync(cancellationToken);
+        var connections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && MarketplaceCodePlatforms.Contains(x.PlatformCode) && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
+            .OrderBy(x => x.PlatformCode).ThenBy(x => x.DisplayName)
+            .Select(x => new MarketplaceCodeConnectionView(x.Id, x.PlatformCode, x.DisplayName)).ToListAsync(cancellationToken);
+        var variantIds = variants.Select(x => x.Id).ToArray();
+        var connectionIds = connections.Select(x => x.ConnectionId).ToArray();
+        var links = await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && connectionIds.Contains(x.ConnectionId))
+            .Select(x => new { x.VariantId, Code = new VariantMarketplaceCodeView(x.ConnectionId, x.ExternalId, x.ExternalBarcode, x.ExternalSku) })
+            .ToListAsync(cancellationToken);
+        var codesByVariant = links.GroupBy(x => x.VariantId).ToDictionary(group => group.Key, group => (IReadOnlyList<VariantMarketplaceCodeView>)group.Select(x => x.Code).ToList());
+        return ServiceResult<ProductMarketplaceCodesView>.Ok(new(connections,
+            variants.Select(x => new VariantMarketplaceCodesView(x.Id, x.Sku, x.Barcode, codesByVariant.GetValueOrDefault(x.Id) ?? [])).ToList()));
+    }
+
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();

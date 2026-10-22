@@ -133,6 +133,13 @@ public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null);
 public sealed record UpsertListingProfileCommand(string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled);
 
+// The codes a marketplace holds for each variant of a product's colour family, as its last import read them:
+// the Hepsiburada hbSku and the Shopify variant id are the link ids, beside the marketplace barcode and stock code.
+public sealed record ProductMarketplaceCodesView(IReadOnlyList<MarketplaceCodeConnectionView> Connections, IReadOnlyList<VariantMarketplaceCodesView> Variants);
+public sealed record MarketplaceCodeConnectionView(Guid ConnectionId, string PlatformCode, string DisplayName);
+public sealed record VariantMarketplaceCodesView(Guid VariantId, string Sku, string? Barcode, IReadOnlyList<VariantMarketplaceCodeView> Codes);
+public sealed record VariantMarketplaceCodeView(Guid ConnectionId, string ExternalId, string? ExternalBarcode, string? ExternalSku);
+
 public interface ICatalogService
 {
     Task<PageResult<CategoryView>> ListCategoriesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken);
@@ -161,6 +168,7 @@ public interface ICatalogService
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> DuplicateProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductMarketplaceCodesView>> GetProductMarketplaceCodesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);

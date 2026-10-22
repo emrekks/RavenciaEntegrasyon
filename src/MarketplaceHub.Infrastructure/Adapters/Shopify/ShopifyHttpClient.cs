@@ -446,6 +446,17 @@ public sealed partial class ShopifyHttpClient(
     }
     public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Unsupported<RemotePublicationStatus>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
+    private const string PriceInventoryVariantFields = "id product{id} inventoryItem{id tracked inventoryLevels(first:250){nodes{location{id isActive} quantities(names:[\"available\"]){name quantity}} pageInfo{hasNextPage}}}";
+
+    // An import stores a variant's numeric id ("44791234567890"); a full gid is taken as it is.
+    internal static string? VariantGid(string? value)
+    {
+        var id = value?.Trim();
+        if (string.IsNullOrEmpty(id)) return null;
+        if (id.StartsWith("gid://shopify/ProductVariant/", StringComparison.Ordinal)) return id;
+        return id.All(char.IsAsciiDigit) ? $"gid://shopify/ProductVariant/{id}" : null;
+    }
+
     public async Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
@@ -471,15 +482,32 @@ public sealed partial class ShopifyHttpClient(
                     results.Add(new(barcode ?? "", false, null, "SHOPIFY_PRICE_INVENTORY_LINE_INVALID", false, "REJECTED"));
                     continue;
                 }
-                var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{id product{id} inventoryItem{id tracked inventoryLevels(first:250){nodes{location{id isActive} quantities(names:[\"available\"]){name quantity}} pageInfo{hasNextPage}}}}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
-                if (!lookup.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(lookup.Error!, lookup.RateLimit);
-                var variants = lookup.Value!.RootElement.GetProperty("productVariants").GetProperty("nodes");
-                if (variants.GetArrayLength() != 1)
+                // The variant id an import stored addresses the variant directly; a variant known only by its barcode
+                // (published from the panel, never imported) is searched by it.
+                JsonElement variant;
+                if (VariantGid(TextValue(item, "variantId")) is { } knownVariantId)
                 {
-                    results.Add(new(barcode, false, null, variants.GetArrayLength() == 0 ? "SHOPIFY_VARIANT_NOT_FOUND" : "SHOPIFY_BARCODE_AMBIGUOUS", false, "REJECTED"));
-                    continue;
+                    var byId = await QueryAsync(shop, "query($id:ID!){productVariant(id:$id){" + PriceInventoryVariantFields + "}}", new { id = knownVariantId }, cancellationToken);
+                    if (!byId.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(byId.Error!, byId.RateLimit);
+                    if (!byId.Value!.RootElement.TryGetProperty("productVariant", out var found) || found.ValueKind != JsonValueKind.Object)
+                    {
+                        results.Add(new(barcode, false, null, "SHOPIFY_VARIANT_NOT_FOUND", false, "REJECTED"));
+                        continue;
+                    }
+                    variant = found;
                 }
-                var variant = variants[0];
+                else
+                {
+                    var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{" + PriceInventoryVariantFields + "}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
+                    if (!lookup.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(lookup.Error!, lookup.RateLimit);
+                    var variants = lookup.Value!.RootElement.GetProperty("productVariants").GetProperty("nodes");
+                    if (variants.GetArrayLength() != 1)
+                    {
+                        results.Add(new(barcode, false, null, variants.GetArrayLength() == 0 ? "SHOPIFY_VARIANT_NOT_FOUND" : "SHOPIFY_BARCODE_AMBIGUOUS", false, "REJECTED"));
+                        continue;
+                    }
+                    variant = variants[0];
+                }
                 if (!variant.TryGetProperty("inventoryItem", out var inventoryItem) || inventoryItem.ValueKind != JsonValueKind.Object || !inventoryItem.GetProperty("tracked").GetBoolean())
                 {
                     results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_NOT_TRACKED", false, "REJECTED"));

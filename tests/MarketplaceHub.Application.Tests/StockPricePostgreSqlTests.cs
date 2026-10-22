@@ -172,6 +172,76 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal("TY-BARKOD-1", line.Barcode);
     }
 
+    // Shopify addresses a variant by its own id: an imported variant without a barcode is still sent, keyed by it.
+    [PostgreSqlFact]
+    public async Task ImportedShopifyVariant_IsSentByItsVariantId()
+    {
+        var tenant = NewTenant("imported-shopify-variant-id");
+        var shopify = NewConnection(tenant, "SHOPIFY", writesEnabled: true);
+        var (product, withoutBarcode) = NewVariant(tenant, "SHP-1", "8690000000165");
+        var withBarcode = NewVariant(tenant, "SHP-2", "8690000000172", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(withoutBarcode, withBarcode);
+            seed.InventoryItems.AddRange(NewInventory(tenant, withoutBarcode, 2m), NewInventory(tenant, withBarcode, 5m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, shopify, withoutBarcode), NewOffer(tenant, shopify, withBarcode));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = withoutBarcode.Id, ExternalId = "44791234567890", ExternalSku = "SHP-1" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = withBarcode.Id, ExternalId = "44791234567891", ExternalBarcode = "SH-BARKOD-2", ExternalSku = "SHP-2" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var draft = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, shopify.Id, CancellationToken.None);
+
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        var lines = draft.Value!.Lines.ToDictionary(x => x.VariantId);
+        Assert.Equal("44791234567890", lines[withoutBarcode.Id].Barcode);
+        Assert.Equal("44791234567890", lines[withoutBarcode.Id].ExternalVariantId);
+        Assert.Equal("SH-BARKOD-2", lines[withBarcode.Id].Barcode);
+        Assert.Equal("44791234567891", lines[withBarcode.Id].ExternalVariantId);
+        Assert.Contains("\"variantId\":\"44791234567890\"", draft.Value.PayloadJson, StringComparison.Ordinal);
+    }
+
+    // The product editor lists the Hepsiburada and Shopify codes of each variant.
+    [PostgreSqlFact]
+    public async Task ProductMarketplaceCodes_ListTheHepsiburadaAndShopifyCodesOfEachVariant()
+    {
+        var tenant = NewTenant("product-marketplace-codes");
+        var hepsiburada = NewConnection(tenant, "HEPSIBURADA");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (product, small) = NewVariant(tenant, "CODE-S", "8690000000189");
+        var medium = NewVariant(tenant, "CODE-M", "8690000000196", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(hepsiburada, shopify, trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(small, medium);
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = small.Id, ExternalId = "HBCV00001ABCD", ExternalSku = "CODE-S" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = small.Id, ExternalId = "44791234567892" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = medium.Id, ExternalId = "999" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new CatalogService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+        var result = await service.GetProductMarketplaceCodesAsync(tenant.Id, product.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(new[] { "HEPSIBURADA", "SHOPIFY" }, result.Value!.Connections.Select(x => x.PlatformCode));
+        var smallCodes = result.Value.Variants.Single(x => x.VariantId == small.Id).Codes;
+        Assert.Equal("HBCV00001ABCD", smallCodes.Single(x => x.ConnectionId == hepsiburada.Id).ExternalId);
+        Assert.Equal("44791234567892", smallCodes.Single(x => x.ConnectionId == shopify.Id).ExternalId);
+        // A Trendyol link is not a Hepsiburada or Shopify code.
+        Assert.Empty(result.Value.Variants.Single(x => x.VariantId == medium.Id).Codes);
+    }
+
     // An import keeps the marketplace's barcode and stock code on the links it read, whatever code paired them.
     [PostgreSqlFact]
     public async Task ProductImport_RecordsTheMarketplaceCodesOnItsLinks()

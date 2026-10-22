@@ -28,7 +28,8 @@ Kodda nasıl çalışıyor:
 - Ürün aktarımı, eşleştirme hangi kodla yapılmış olursa olsun, her bağa pazaryerinin kendi barkodunu ve stok kodunu
   yazar (`marketplace_variant_links.ExternalBarcode` / `ExternalSku`) [Kesin].
 - Fiyat/stok o pazaryerinin anahtarıyla gider:
-  - Trendyol ve Shopify: pazaryeri barkodu.
+  - Trendyol: pazaryeri barkodu.
+  - Shopify: Shopify'ın varyant kimliği (aktarımla kaydedilir); kimliği olmayan varyant için barkod.
   - Hepsiburada: pazaryerinin merchantSku'su + hbSku.
   - N11: n11 stok kodu.
   - Pazarama ve PTT AVM: kendi barkodları.
@@ -37,6 +38,8 @@ Kodda nasıl çalışıyor:
   `LIVE_OFFER_REQUIRED` ile sessizce atlanıyordu [Kesin].
 - Sipariş satırı önce bu bağlantının bağlarındaki pazaryeri kodlarıyla, bulunamazsa panelin barkod/stok koduyla
   panel varyantına bağlanır. Kodları panelden farklı ürünlerin satışları da stoğu düşürür [Kesin].
+- Ürün düzenleme ekranındaki varyant tablosunda "Pazaryeri kodları" penceresi, her varyantın HB Kod (hbSku) ve Shopify Kod
+  (varyant kimliği) değerlerini gösterir.
 - Kodlar ancak bir ürün aktarımından sonra dolar. Bu sürüm canlıya çıktıktan sonra her bağlantıda bir kez ürün aktarımı
   çalıştırılmalıdır; "yalnız eşleştirme" modu yeterlidir. Aktarılmamış bağlarda Trendyol/Hepsiburada/Shopify gönderimi
   yapılmaz.

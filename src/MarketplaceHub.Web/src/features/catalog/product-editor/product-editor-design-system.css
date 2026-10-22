@@ -208,6 +208,18 @@
 }
 
 @layer features {
+  .variant-marketplace-codes-button { margin-left: auto; }
+  .marketplace-codes-modal { width: min(760px, 100%); }
+  .marketplace-codes-body { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4) var(--rv-space-5); min-width: 0; }
+  .marketplace-codes-table-wrap { max-height: min(60vh, 520px); overflow: auto; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .marketplace-codes-table { width: 100%; border-collapse: collapse; font-size: var(--rv-font-size-sm); }
+  .marketplace-codes-table :is(th, td) { padding: var(--rv-space-2) var(--rv-space-3); text-align: left; border-bottom: 1px solid var(--rv-color-border); white-space: nowrap; }
+  .marketplace-codes-table thead th { position: sticky; top: 0; background: var(--rv-color-surface); font-weight: 600; }
+  .marketplace-codes-table td.is-empty { color: var(--rv-color-muted); }
+  .marketplace-codes-note { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+}
+
+@layer features {
   .variant-bulk-edit-modal { width: min(500px, 100%); }
 }
 
