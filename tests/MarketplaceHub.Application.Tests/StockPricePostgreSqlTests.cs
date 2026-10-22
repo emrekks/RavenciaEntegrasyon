@@ -369,6 +369,38 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(2, link.Version);
     }
 
+    // A link the mapping re-keyed in memory (old id → variant code) is still found by its stored id; recording the
+    // read codes passes over it instead of failing the whole product.
+    [PostgreSqlFact]
+    public async Task ProductImport_LinkCodesSkipALinkReKeyedInTheSameBatch()
+    {
+        var tenant = NewTenant("import-link-rekeyed");
+        var pttAvm = NewConnection(tenant, "PTTAVM");
+        var (product, variant) = NewVariant(tenant, "M1-S", "8690000000203");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(pttAvm);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = variant.Id, ExternalId = "MODEL-1/7101" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var link = await db.MarketplaceVariantLinks.SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id);
+        link.ExternalId = "M1-S";
+        var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var record = typeof(MarketplaceJobProcessor).GetMethod("RecordVariantLinkCodes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var remote = new RemoteCatalogVariant("MODEL-1/7101", "MODEL-1-S", null, "MODEL-1", new Dictionary<string, string> { ["Varyant"] = "S" }, false, 100m, null, 20m, 1m, "TRY", "{}");
+        var snapshots = new List<RemoteCatalogProduct> { new("900001", "MODEL-1", "Etek", "", null, null, null, null, [], [remote], "{}") };
+
+        await (Task)record.Invoke(processor, [tenant.Id, pttAvm.Id, snapshots, CancellationToken.None])!;
+
+        Assert.Equal("M1-S", link.ExternalId);
+        Assert.Null(link.ExternalSku);
+    }
+
     // An order line names the variant by the marketplace's codes; a link holding them finds the panel variant
     // even when the panel's barcode and stock code differ.
     [PostgreSqlFact]

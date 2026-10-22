@@ -1026,7 +1026,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         links.AddRange(db.MarketplaceVariantLinks.Local.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && remotes.ContainsKey(x.ExternalId) && !links.Contains(x)));
         foreach (var link in links)
         {
-            var remote = remotes[link.ExternalId];
+            // A link the mapping of this batch re-keyed in memory (an old id replaced by the variant's code) is loaded
+            // by its stored id but carries the new one; it is not a remote read here.
+            if (!remotes.TryGetValue(link.ExternalId, out var remote)) continue;
             var barcode = string.IsNullOrWhiteSpace(remote.Barcode) ? null : Short(remote.Barcode.Trim(), 160);
             var sku = string.IsNullOrWhiteSpace(remote.Sku) ? null : Short(remote.Sku.Trim(), 160);
             if (link.ExternalBarcode == barcode && link.ExternalSku == sku) continue;
@@ -5119,7 +5121,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
-                await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
+                // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself.
+                if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
