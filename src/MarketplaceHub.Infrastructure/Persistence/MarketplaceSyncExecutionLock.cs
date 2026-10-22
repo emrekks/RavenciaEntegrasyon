@@ -41,6 +41,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
 
     internal const string OrdersGroup = "orders";
     internal const string OrderInvoicesGroup = "order-invoices";
+    internal const string FinanceGroup = "finance";
     private static readonly TimeSpan GroupPollInterval = TimeSpan.FromMilliseconds(200);
 
     // The API's instant actions project an accepted marketplace write onto the same orders and
@@ -114,6 +115,8 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // Historical cargo lookups can scan many pages; keep them out of the
         // lifecycle lane so a slow metadata repair cannot hold up status polling.
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return "order-cargo-info";
+        // The accounting read writes only its own tables; it neither waits behind the order reads nor holds them up.
+        if (type == MarketplaceJobTypes.TrendyolFinanceSync) return FinanceGroup;
         // Trendyol invoice reconciliation has its own group again: it writes only the packages' invoice columns
         // and the order snapshot of partial return-claim orders, without checking or bumping their versions
         // (ExecuteUpdate), so it neither waits behind the long order reads nor makes them conflict. The partial
@@ -212,7 +215,8 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation
         or MarketplaceJobTypes.StockReconciliation
         or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync
-        or MarketplaceJobTypes.QuestionSync;
+        or MarketplaceJobTypes.QuestionSync
+        or MarketplaceJobTypes.TrendyolFinanceSync;
 
     internal static long LockKey(Guid connectionId, string group)
     {

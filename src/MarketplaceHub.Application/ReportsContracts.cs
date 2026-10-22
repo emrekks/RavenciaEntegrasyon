@@ -42,7 +42,8 @@ public sealed record ReportSalesView(
     ReportInvoiceView Invoices,
     ReportStockView Stock,
     IReadOnlyList<ReportChannelView> Channels,
-    IReadOnlyList<string> DataNotes);
+    IReadOnlyList<string> DataNotes,
+    ReportCostsView Costs);
 
 // Orders: non-cancelled orders. CancelRate: cancelled / (orders + cancelled). SoldQuantity: ordered minus cancelled
 // units of non-cancelled orders. ReturnedQuantity: units sent back (a returned order whole; otherwise the larger of the
@@ -179,6 +180,51 @@ public sealed record ReportStockRowView(Guid? VariantId, string Title, string Sk
 public sealed record ReportStockView(int PeriodDays, IReadOnlyList<ReportStockRowView> BestSellers, IReadOnlyList<ReportStockRowView> SoldOut);
 
 public sealed record ReportChannelView(Guid Id, string PlatformCode, string DisplayName, bool IsTest);
+
+// Real marketplace costs, read from the marketplace's own accounting (today Trendyol's current account statement of
+// production stores), next to the estimates above, which keep their meaning. Source is "trendyol-finance" when the
+// period has real records, else "estimate": then RealCostTotal and Commission are null and the lists are empty, never
+// zeros. A record tied to an order counts in the period of the order; one without (service fee, withholding tax,
+// penalty, a cargo invoice whose lines could not be read) by its own date. Amounts are what the seller was charged
+// (debt - credit); a negative amount was paid back or credited (sales are negative).
+// LastSyncedAt: the oldest last finished read among the report's Trendyol stores (null while one was never read);
+// CoveredFrom/CoveredThrough: the dates every one of them has read. FinanceOrders: the period's Trendyol orders (not
+// cancelled, TRY); SettledOrders: those with a settlement record (Trendyol writes them after delivery).
+public sealed record ReportCostsView(
+    string Source,
+    DateTimeOffset? LastSyncedAt,
+    DateTimeOffset? CoveredFrom,
+    DateTimeOffset? CoveredThrough,
+    int FinanceOrders,
+    int SettledOrders,
+    decimal? Coverage,
+    decimal? RealCostTotal,
+    ReportRealCommissionView? Commission,
+    IReadOnlyList<ReportCostLineView> Lines,
+    IReadOnlyList<ReportCostChannelView> Channels,
+    IReadOnlyList<ReportCostProductView> Products);
+
+// One category (SALE, RETURN, DISCOUNT, COUPON, COMMISSION, CARGO, SERVICE_FEE, STOPPAGE, PENALTY, EARLY_PAYMENT,
+// ADVERTISING, OTHER). IsCost: added to RealCostTotal (OTHER is not: an unrecognised record may go either way).
+// COMMISSION is the commission of the settlement lines plus the commission corrections; CARGO the lines of the cargo
+// invoices. OrderLinked: the part tied to an order of the period; Unlinked: the part counted by date.
+public sealed record ReportCostLineView(string Category, string Label, bool IsCost, decimal Amount, int Records, decimal OrderLinked, decimal Unlinked);
+
+// The commission of the period's orders, real where Trendyol settled it: Real over the orders with settlement records
+// (RealOrders), what the estimate said for those same orders, the estimate for every other order (all platforms), and
+// Combined = Real + EstimatedForUnsettled.
+public sealed record ReportRealCommissionView(decimal Real, int RealOrders, decimal EstimatedForSettled, decimal EstimatedForUnsettled, decimal Combined);
+
+// One store. RealCommission: its settled orders and its commission records tied to no order of the period;
+// EstimatedCommission: its other orders; Amounts: its real costs by category (commission apart). Source: "trendyol-finance" for a store with records, else "estimate".
+public sealed record ReportCostChannelView(Guid ConnectionId, string PlatformCode, string DisplayName, string Source, decimal RealCommission, decimal EstimatedCommission,
+    IReadOnlyList<ReportCostAmountView> Amounts, decimal Total);
+
+public sealed record ReportCostAmountView(string Category, decimal Amount);
+
+// Records that carry a barcode found on a line of their order (the settlement lines). Cargo and fees belong to the
+// order or the store and are not shared out to products.
+public sealed record ReportCostProductView(Guid? VariantId, string Title, string Sku, string Barcode, decimal Commission, decimal Discount, decimal Coupon, int Records);
 
 public interface IReportsService
 {

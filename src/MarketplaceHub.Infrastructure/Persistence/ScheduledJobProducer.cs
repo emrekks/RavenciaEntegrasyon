@@ -62,6 +62,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         foreach (var row in policies)
         {
             if (bootstrapConnections.Contains(row.Connection.Id)) continue;
+            // A test store has no real money movements to read.
+            if (row.Policy.ResourceType == "FINANCE" && !string.Equals(row.Connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) continue;
             var definition = Definition(row.Policy.ResourceType, row.Connection.Id, row.Connection.PlatformCode);
             if (definition is null) continue;
 
@@ -420,7 +422,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
         var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies
-            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_CARGO_INFO" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "REFERENCE_DATA" || x.ResourceType == "QUESTIONS" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return))
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_CARGO_INFO" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "REFERENCE_DATA" || x.ResourceType == "QUESTIONS" || x.ResourceType == "FINANCE" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return))
             .ToListAsync(cancellationToken);
         var obsoleteProductPolicies = await (from policy in db.ConnectionSyncPolicies
                                              join connection in db.PlatformConnections
@@ -510,6 +512,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new("RETURN_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyJitterSeconds", 900)),
         new("REFERENCE_DATA", configuration.GetValue("MarketplaceSync:ReferenceData:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReferenceData:JitterSeconds", 60)),
         new("QUESTIONS", configuration.GetValue("MarketplaceSync:Questions:IntervalSeconds", 120), 0, 0),
+        // Trendyol's accounting records (only Trendyol supports it; production stores only, see EnqueueDueAsync).
+        new("FINANCE", configuration.GetValue("MarketplaceSync:TrendyolFinance:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:TrendyolFinance:JitterSeconds", 900)),
         new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
         new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
         new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:DailyJitterSeconds", 900)),
@@ -571,6 +575,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                     || current.IntervalSeconds == 300 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
                 : current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
             "REFERENCE_DATA" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 60),
+            "FINANCE" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             _ => false
         };
     }
@@ -601,6 +606,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "STOCK_RECONCILE_SHORT" => 70,
         "STOCK_RECONCILE_MEDIUM" => 71,
         "STOCK_RECONCILE_DAILY" => 72,
+        "FINANCE" => 80,
         _ => 100
     };
 
@@ -678,6 +684,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "STOCK_RECONCILE_DAILY" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = ConfigInt("MarketplaceSync:StockReconciliation:DailyLookbackHours", 720, 1, 24 * 90) })),
         "REFERENCE_DATA" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.ReferenceSync), $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         "QUESTIONS" => (MarketplaceJobTypes.QuestionSync, $"scheduled:questions:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, kind = (string?)null })),
+        "FINANCE" when platformCode == "TRENDYOL" => (MarketplaceJobTypes.TrendyolFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         _ => null
     };
 

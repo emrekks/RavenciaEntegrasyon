@@ -61,6 +61,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<MarketplaceVariantLink> MarketplaceVariantLinks => Set<MarketplaceVariantLink>();
     public DbSet<CommissionTariff> CommissionTariffs => Set<CommissionTariff>();
     public DbSet<CommissionTariffRow> CommissionTariffRows => Set<CommissionTariffRow>();
+    public DbSet<MarketplaceFinanceTransaction> MarketplaceFinanceTransactions => Set<MarketplaceFinanceTransaction>();
+    public DbSet<MarketplaceCargoInvoiceItem> MarketplaceCargoInvoiceItems => Set<MarketplaceCargoInvoiceItem>();
+    public DbSet<MarketplaceFinanceSyncState> MarketplaceFinanceSyncStates => Set<MarketplaceFinanceSyncState>();
     public DbSet<MarketplaceListingState> MarketplaceListingStates => Set<MarketplaceListingState>();
     public DbSet<ExternalIdentifierAlias> ExternalIdentifierAliases => Set<ExternalIdentifierAlias>();
     public DbSet<ChannelListingProfile> ChannelListingProfiles => Set<ChannelListingProfile>();
@@ -139,6 +142,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.ConfigureInvoicingModels();
         builder.ConfigureQuestionModels();
         builder.ConfigureCommissionTariffModels();
+        builder.ConfigureMarketplaceFinanceModels();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess) { TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }

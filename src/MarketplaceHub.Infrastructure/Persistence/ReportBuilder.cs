@@ -24,7 +24,8 @@ internal sealed record ReportInput(
     IReadOnlyList<ReportPackageRow> Packages,
     ReportCatalogNames Names,
     bool IncludesTest,
-    ReportCommissionTariffs? Tariffs = null);
+    ReportCommissionTariffs? Tariffs = null,
+    ReportFinance? Finance = null);
 
 // The commission tariffs uploaded for the report's stores (Komisyon Tarifeleri): a line the marketplace sent no
 // commission for takes the rate of the band its paid unit price falls in, in the tariff week the sale was made.
@@ -61,6 +62,7 @@ internal sealed class ReportOrderRow
 {
     public Guid Id { get; init; }
     public Guid ConnectionId { get; init; }
+    public string OrderNumber { get; init; } = "";
     public string Currency { get; init; } = "TRY";
     public string DerivedStatus { get; init; } = "";
     public decimal Amount { get; init; }
@@ -270,6 +272,9 @@ internal static class ReportBuilder
         var reasons = Reasons(validClaims.Select(claim => Label(claim.ReasonText, claim.ReasonCode)));
 
         var stockView = StockView(products, stock, input.Period.Days);
+        var costs = ReportCosts.Build(input, orders);
+        var notes = Notes(summary, commission, cost, orders, cancelled, input);
+        notes.AddRange(ReportCosts.Notes(costs, input));
         var view = new ReportSalesView(
             input.Period.From, input.Period.To, previous.Period.From, previous.Period.To, input.Granularity, input.IncludesTest, default,
             summary, previousSummary, commission, cost, platforms, cities,
@@ -284,7 +289,8 @@ internal static class ReportBuilder
             Invoices(orders, input.Packages),
             stockView,
             [],
-            Notes(summary, commission, cost, orders, cancelled, input));
+            notes,
+            costs);
         return view;
     }
 

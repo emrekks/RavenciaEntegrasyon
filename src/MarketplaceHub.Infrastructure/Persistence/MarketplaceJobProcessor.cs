@@ -222,6 +222,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         MarketplaceJobTypes.StockProjectionDispatch => "STOCK_PROJECTION",
         MarketplaceJobTypes.StockReconciliation => "STOCK_RECONCILIATION",
         MarketplaceJobTypes.QuestionSync => "QUESTIONS",
+        MarketplaceJobTypes.TrendyolFinanceSync => "FINANCE",
         MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest => "WEBHOOK_INGEST",
         MarketplaceJobTypes.ShipmentAction => "SHIPMENT_ACTION",
         MarketplaceJobTypes.ReturnAction => "RETURN_ACTION",

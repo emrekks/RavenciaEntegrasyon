@@ -19,6 +19,8 @@ public static class MarketplaceJobTypes
     public const string OrderRecoverySync = "TRENDYOL_ORDER_RECOVERY_SYNC";
     public const string OrderStatusSync = "ORDER_STATUS_SYNC";
     public const string TrendyolOrderCargoInfoReconciliation = "TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION";
+    // Trendyol current account statement (settlements, deduction invoices, cargo invoice lines); read only.
+    public const string TrendyolFinanceSync = "TRENDYOL_FINANCE_SYNC";
     public const string OrderReconciliation = "ORDER_RECONCILIATION";
     public const string OrderInvoiceReconciliation = "ORDER_INVOICE_RECONCILIATION";
     public const string ProductSync = "PRODUCT_SYNC";
@@ -90,7 +92,7 @@ public static class MarketplaceJobTypes
         ReturnSync, HepsiburadaReturnSync, ReturnStatusSync, ReturnReconciliation, ReturnAction,
         StockReconciliation,
         WebhookIngest, ShopifyWebhookIngest, HepsiburadaWebhookIngest,
-        QuestionSync, CatalogStructureImport
+        QuestionSync, CatalogStructureImport, TrendyolFinanceSync
     ];
 
     public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is not null && ProcessorJobTypes.Contains(jobType);
