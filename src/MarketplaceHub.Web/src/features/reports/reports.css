@@ -165,6 +165,11 @@
 .app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i).is-commission { stroke: var(--rv-color-primary); background: var(--rv-color-primary); }
 .app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i).is-cost { stroke: var(--rv-color-warning); background: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i).is-returned { stroke: var(--rv-color-danger); background: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i).is-cargo { stroke: var(--rv-color-info); background: var(--rv-color-info); }
+.app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i).is-fee { stroke: var(--rv-color-accent); background: var(--rv-color-accent); }
+.app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i).is-stoppage { stroke: color-mix(in srgb, var(--rv-color-accent) 50%, var(--rv-color-surface)); background: color-mix(in srgb, var(--rv-color-accent) 50%, var(--rv-color-surface)); }
+.app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i).is-ads { stroke: color-mix(in srgb, var(--rv-color-info) 50%, var(--rv-color-surface)); background: color-mix(in srgb, var(--rv-color-info) 50%, var(--rv-color-surface)); }
+.app-shell.stitch-shell main .reports-page :is(.reports-donut-segment, .reports-legend i):is(.is-penalty, .is-early) { stroke: color-mix(in srgb, var(--rv-color-danger) 50%, var(--rv-color-surface)); background: color-mix(in srgb, var(--rv-color-danger) 50%, var(--rv-color-surface)); }
 .app-shell.stitch-shell main .reports-page .reports-donut-total { fill: var(--rv-color-ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .reports-page .reports-donut-caption { fill: var(--rv-color-subtle); font-size: 9px; }
 .app-shell.stitch-shell main .reports-page .reports-legend { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }

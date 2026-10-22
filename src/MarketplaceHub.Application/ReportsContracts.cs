@@ -200,14 +200,16 @@ public sealed record ReportCostsView(
     decimal? Coverage,
     decimal? RealCostTotal,
     ReportRealCommissionView? Commission,
+    ReportCargoCostView? Cargo,
     IReadOnlyList<ReportCostLineView> Lines,
     IReadOnlyList<ReportCostChannelView> Channels,
     IReadOnlyList<ReportCostProductView> Products);
 
 // One category (SALE, RETURN, DISCOUNT, COUPON, COMMISSION, CARGO, SERVICE_FEE, STOPPAGE, PENALTY, EARLY_PAYMENT,
 // ADVERTISING, OTHER). IsCost: added to RealCostTotal (OTHER is not: an unrecognised record may go either way).
-// COMMISSION is the commission of the settlement lines plus the commission corrections; CARGO the lines of the cargo
-// invoices. OrderLinked: the part tied to an order of the period; Unlinked: the part counted by date.
+// COMMISSION is the commission of the settlement lines plus the commission corrections (Trendyol's commission invoice
+// bills that same commission and is not added again); CARGO the lines of the cargo invoices. OrderLinked: the part
+// tied to an order of the period; Unlinked: the part counted by date.
 public sealed record ReportCostLineView(string Category, string Label, bool IsCost, decimal Amount, int Records, decimal OrderLinked, decimal Unlinked);
 
 // The commission of the period's orders, real where Trendyol settled it: Real over the orders with settlement records
@@ -215,10 +217,18 @@ public sealed record ReportCostLineView(string Category, string Label, bool IsCo
 // Combined = Real + EstimatedForUnsettled.
 public sealed record ReportRealCommissionView(decimal Real, int RealOrders, decimal EstimatedForSettled, decimal EstimatedForUnsettled, decimal Combined);
 
+// The cargo of the period's Trendyol orders. Trendyol bills cargo weeks after shipping, so a recent order
+// often has no cargo invoice line yet. Real: the cargo invoice lines counted (BilledOrders of the period have one);
+// UnbilledOrders: the period's Trendyol orders without one, estimated at the store's cargo per billed order of the
+// last 60 days (AveragePerOrder over SampleOrders). Estimated is null when no store has such a sample;
+// Combined = Real + Estimated.
+public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int UnbilledOrders, decimal? AveragePerOrder, int SampleOrders, decimal? Estimated, decimal Combined);
+
 // One store. RealCommission: its settled orders and its commission records tied to no order of the period;
-// EstimatedCommission: its other orders; Amounts: its real costs by category (commission apart). Source: "trendyol-finance" for a store with records, else "estimate".
+// EstimatedCommission: its other orders; Amounts: its real costs by category (commission apart); EstimatedCargo: the
+// cargo of its orders not billed yet. Source: "trendyol-finance" for a store with records, else "estimate".
 public sealed record ReportCostChannelView(Guid ConnectionId, string PlatformCode, string DisplayName, string Source, decimal RealCommission, decimal EstimatedCommission,
-    IReadOnlyList<ReportCostAmountView> Amounts, decimal Total);
+    IReadOnlyList<ReportCostAmountView> Amounts, decimal EstimatedCargo, decimal Total);
 
 public sealed record ReportCostAmountView(string Category, decimal Amount);
 

@@ -97,12 +97,19 @@ ManuelRefund: satıcıya geri döner). Komisyon düzeltme satırları (Commissio
   paylaştırılmaz (paylaştırma tahmin olur).
 - Hesap kesimi olan siparişlerde gerçek komisyon, tahmini komisyonun yerine kullanılır; mevcut tahmin alanları
   anlamını korur.
+- Kesinti faturalarındaki "Komisyon Faturası", hesap kesimindeki komisyonun faturasıdır; komisyona ikinci kez
+  eklenmez (23 Ekim canlı ölçüm, 90 gün: 258.470 ₺ fatura / 251.482 ₺ hesap kesimi komisyonu).
+- Kargo: Trendyol kargoyu gönderiden haftalar sonra faturalar (23 Ekim ölçümü: Eylül başına kadar siparişlerin
+  ~%95'i faturalı, Eylül ortasından sonrakilerin yarısından azı). Gönderi kargo satırı olmayan siparişin kargosu,
+  mağazanın dönem sonundan önceki 60 günde faturalanan gönderi kargosunun sipariş başına ortalamasıyla tahmin
+  edilir ve "tahmini" diye ayrı gösterilir (`costs.cargo`); örnek yoksa tahmin yapılmaz, eksik olduğu söylenir.
+  İade kargo satırı gerçek masraftır ama siparişi "faturalı" saydırmaz.
 - Veri yoksa bölüm boş gelir ve not düşülür; sıfır uydurulmaz.
 
 ## Canlı veriyle doğrulanmayanlar
 
-- `commissionAmount` ve `debt/credit` değerlerinin mutlak mı işaretli mi geldiği (kod mutlak değer alıp işaret
-  tablosunu uygular). Doküman örneğindeki sayılar kendi içinde tutarsız.
+- Satış ve iade satırlarında `commissionAmount` canlıda doğrulandı (23 Ekim): hesap kesimi olan 69 siparişte gerçek
+  komisyon 12.832,12 ₺, satır komisyonundan tahmin 12.831,93 ₺.
 - Komisyon düzeltme türlerinin (CommissionPositive vb.) tutarının `debt/credit`'te mi `commissionAmount`'ta mı olduğu.
 - Kesinti faturalarındaki ceza, reklam ve erken ödeme kayıtlarının Türkçe adları (dokümanda yok; anahtar kelimeyle
   eşleniyor, eşleşmeyen OTHER'da kalır ve toplam masrafa eklenmez).

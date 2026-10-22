@@ -8,7 +8,7 @@ import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
 import {
   change, downloadCsv, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, moneyOrMissing, platformName, reportQuery, sortRows, toCsv, unknownLabel,
-  type Change, type CsvColumn, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow, type ReportTimePoint
+  type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow, type ReportTimePoint
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
 import './reports.css'
@@ -285,26 +285,86 @@ function MoreButton({ title, onClick }: { title: string; onClick: () => void }) 
 
 type FlowStep = { key: string; label: string; value: number | null; kind: 'total' | 'minus' | 'subset'; missing?: string; note?: string }
 
-// Satış Tutarı → Net Ciro → komisyon düşülmüş → kâr, from known amounts only. Each step says what it leaves out; the
-// profit step is drawn hatched because it covers only the sales whose cost (and commission) is known.
+// Trendyol's account statement when it was read for the period (else null): the commission and cargo of the period's
+// orders, real where Trendyol settled or billed them and estimated for the rest, and the store's fees by their date.
+function financeCosts(data: ReportSales): ReportCosts | null { return data.costs?.source === 'trendyol-finance' ? data.costs : null }
+
+const feeCategories = [
+  { category: 'SERVICE_FEE', key: 'fee', label: 'Hizmet Bedeli' },
+  { category: 'STOPPAGE', key: 'stoppage', label: 'Stopaj' },
+  { category: 'ADVERTISING', key: 'ads', label: 'Reklam' },
+  { category: 'PENALTY', key: 'penalty', label: 'Ceza' },
+  { category: 'EARLY_PAYMENT', key: 'early', label: 'Erken Ödeme' }
+]
+
+function feeLines(costs: ReportCosts) {
+  return feeCategories.flatMap(fee => {
+    const line = costs.lines.find(item => item.category === fee.category)
+    return line && line.amount !== 0 ? [{ ...fee, value: line.amount }] : []
+  })
+}
+
+function commissionNote(costs: ReportCosts) {
+  const commission = costs.commission
+  if (!commission) return ''
+  return commission.realOrders > 0
+    ? `Gerçek ${formatCount(commission.realOrders)} sipariş ${formatTl(commission.real)} · kalanı tahmini ${formatTl(commission.estimatedForUnsettled)}`
+    : 'Hesap kesimi henüz yok; tümü tahmini'
+}
+
+function cargoNote(cargo: NonNullable<ReportCosts['cargo']>) {
+  const billed = `Fatura ${formatTl(cargo.real)} (${formatCount(cargo.billedOrders)} sipariş)`
+  if (cargo.unbilledOrders === 0) return billed
+  return cargo.estimated === null
+    ? `${billed} · faturası gelmeyen ${formatCount(cargo.unbilledOrders)} siparişin kargosu tahmin edilemedi`
+    : `${billed} · faturası gelmeyen ${formatCount(cargo.unbilledOrders)} sipariş tahmini ${formatTl(cargo.estimated)}`
+}
+
+// Platforms with orders in the period whose cargo and fees are not read (only Trendyol's statement is).
+function unreadFeePlatforms(data: ReportSales) {
+  return data.platforms.filter(group => group.known && group.key !== 'TRENDYOL' && group.orders > 0).map(group => platformName(group.key))
+}
+
+// Satış Tutarı → Net Ciro → komisyon (and, with Trendyol's statement, cargo and fees) → kâr, from known amounts only.
+// Each step says what it leaves out; the profit step is drawn hatched because it covers only the sales whose cost
+// (and commission) is known.
 function ProfitFlow({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const now = data.summary
   const commission = data.commission
   const cost = data.cost
+  const finance = financeCosts(data)
+  const unread = unreadFeePlatforms(data)
   const more = <MoreButton title="Kâr Akışı" onClick={() => onMore('cost')} />
-  const description = 'Yalnız okunabilen kalemlerle; kargo, hizmet bedeli, stopaj, reklam ve ceza düşülmedi.'
+  const description = finance
+    ? `Komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; kesintiler Trendyol cari hesabından.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
+    : 'Yalnız okunabilen kalemlerle; kargo, hizmet bedeli, stopaj, reklam ve ceza düşülmedi.'
   if (now.ordersWithAmount === 0) return <Panel title="Kâr Akışı" description={description} actions={more}><p className="reports-empty">Bu dönemde tutarı olan sipariş yok; akış hesaplanamaz.</p></Panel>
   const hasCommission = commission.coveredRevenue > 0
   const partialCommission = (commission.coverage ?? 0) < 1
   const steps: FlowStep[] = [
     { key: 'gross', label: 'Satış Tutarı', value: now.grossSales, kind: 'total', note: now.ordersWithoutAmount > 0 ? `İade öncesi; tutarı olmayan ${formatCount(now.ordersWithoutAmount)} sipariş hariç` : 'İptaller hariç, iade öncesi' },
     { key: 'returned', label: 'İade Edilen Tutar', value: now.returnedAmount, kind: 'minus' },
-    { key: 'net', label: 'Net Ciro', value: now.netRevenue, kind: 'total' },
+    { key: 'net', label: 'Net Ciro', value: now.netRevenue, kind: 'total' }
+  ]
+  if (finance?.commission && finance.cargo) {
+    const fees = feeLines(finance)
+    const feeTotal = fees.reduce((sum, fee) => sum + fee.value, 0)
+    const charged = finance.commission.combined + finance.cargo.combined + feeTotal
+    steps.push(
+      { key: 'commission', label: 'Komisyon', value: finance.commission.combined, kind: 'minus',
+        note: `${commissionNote(finance)}${partialCommission ? '; komisyonu bilinmeyen cirodan düşülmedi' : ''}` },
+      { key: 'cargo', label: 'Kargo', value: finance.cargo.combined, kind: 'minus', note: cargoNote(finance.cargo) },
+      { key: 'fees', label: 'Kesintiler', value: feeTotal, kind: 'minus',
+        note: fees.length ? `${fees.map(fee => fee.label).join(', ')} · Trendyol, işlem tarihine göre` : 'Bu dönemde Trendyol kesintisi yok' },
+      { key: 'payout', label: 'Masraflar Düşülmüş', value: now.netRevenue - charged, kind: 'total',
+        note: finance.cargo.estimated === null && finance.cargo.unbilledOrders > 0 ? 'Faturası gelmeyen kargo eksik; ürün maliyeti hariç' : 'Gerçek ve tahmini kalemlerle; ürün maliyeti hariç' }
+    )
+  } else steps.push(
     { key: 'commission', label: 'Tahmini Komisyon', value: hasCommission ? commission.estimatedCommission : null, kind: 'minus', missing: 'Komisyon bilinmiyor',
       note: hasCommission ? `Kapsam ${formatPercent(commission.coverage)}${partialCommission ? '; kapsam dışı cirodan komisyon düşülmedi' : ''}` : 'Siparişte komisyon gelmedi, tarife de yüklenmedi' },
     { key: 'payout', label: 'Komisyon Düşülmüş', value: hasCommission ? now.netRevenue - commission.estimatedCommission : null, kind: 'total', missing: '—',
       note: hasCommission ? (partialCommission ? 'Tahmini; gerçek tutar daha düşük olabilir' : 'Tahmini; kesinleşmiş hakediş değil') : undefined }
-  ]
+  )
   if ((cost.coverage ?? 0) === 0 || cost.costedQuantity === 0) steps.push({ key: 'profit', label: 'Tahmini Kâr', value: null, kind: 'subset', missing: 'Maliyet girilmemiş', note: 'Ürün kartında varyant maliyeti girildiğinde kâr burada görünür' })
   else if (cost.profitQuantity > 0) steps.push({ key: 'profit', label: 'Tahmini Net Kâr', value: cost.netProfit, kind: 'subset',
     note: `Yalnız maliyeti ve komisyonu bilinen ${formatNumber(cost.profitQuantity)} adet (${formatPercent(cost.profitCoverage)}, ${formatTl(cost.profitRevenue)} satış) üzerinden · marj ${formatPercent(cost.netMargin)}` })
@@ -333,15 +393,24 @@ function ProfitFlow({ data, onMore }: { data: ReportSales; onMore: OpenDetail })
 
 const unreadCostLines = ['Kargo Faturası', 'Hizmet Bedeli', 'Stopaj', 'Reklam', 'Ceza']
 
-// The cost lines the report can read, as a donut of their shares, and the ones it cannot read yet, greyed. The shares
-// are among the known lines only; their sum is not the total expense.
+// The cost lines the report can read, as a donut of their shares, and the ones it cannot read, greyed. With Trendyol's
+// statement the commission and cargo are real plus estimated and the fees real; without it the commission is an
+// estimate and the rest is not read. The shares are among the listed lines only.
 function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const now = data.summary
   const commission = data.commission
   const cost = data.cost
   const noAmount = now.ordersWithAmount === 0
+  const finance = financeCosts(data)
+  const unread = finance ? unreadFeePlatforms(data).map(label => `${label} kargo ve hizmet bedeli`) : unreadCostLines
   const lines = [
-    { key: 'commission', label: 'Tahmini Komisyon', value: commission.coveredRevenue > 0 ? commission.estimatedCommission : null, missing: 'Bilinmiyor', note: `Kapsam ${formatPercent(commission.coverage)}` },
+    ...(finance?.commission && finance.cargo ? [
+      { key: 'commission', label: 'Komisyon', value: finance.commission.combined as number | null, missing: 'Bilinmiyor', note: commissionNote(finance) },
+      { key: 'cargo', label: 'Kargo', value: finance.cargo.combined as number | null, missing: 'Bilinmiyor', note: cargoNote(finance.cargo) },
+      ...feeLines(finance).map(fee => ({ key: fee.key, label: fee.label, value: fee.value as number | null, missing: '', note: 'Trendyol, işlem tarihine göre' }))
+    ] : [
+      { key: 'commission', label: 'Tahmini Komisyon', value: commission.coveredRevenue > 0 ? commission.estimatedCommission : null, missing: 'Bilinmiyor', note: `Kapsam ${formatPercent(commission.coverage)}` }
+    ]),
     { key: 'cost', label: 'Ürün Maliyeti', value: cost.costedQuantity > 0 ? cost.costTotal : null, missing: 'Maliyet girilmemiş', note: cost.costedQuantity > 0 ? `Kapsam ${formatPercent(cost.coverage)} · güncel maliyet` : 'Ürün kartında varyant maliyeti' },
     { key: 'returned', label: 'İade Edilen Tutar', value: noAmount ? null : now.returnedAmount, missing: 'Tutar yok', note: 'Satıştan düşülen' }
   ]
@@ -349,7 +418,8 @@ function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
   const radius = 52
   const circumference = 2 * Math.PI * radius
   let offset = 0
-  return <Panel title="Masraf Kalemleri" description="Paylar yalnız okunabilen kalemler arasındadır; toplam gider değildir." actions={<MoreButton title="Masraf Kalemleri" onClick={() => onMore('cost')} />} className="reports-cost-panel">
+  return <Panel title="Masraf Kalemleri" description={finance ? 'Komisyon ve kargo gerçek ve tahmini toplamdır; kesintiler Trendyol cari hesabından.' : 'Paylar yalnız okunabilen kalemler arasındadır; toplam gider değildir.'}
+    actions={<MoreButton title="Masraf Kalemleri" onClick={() => onMore('cost')} />} className="reports-cost-panel">
     <div className="reports-donut-wrap">
       <svg className="reports-donut" viewBox="0 0 128 128" role="img" aria-label={`Bilinen kalemler toplamı ${formatTl(total)}`}>
         <circle className="reports-donut-base" cx="64" cy="64" r={radius} />
@@ -368,7 +438,7 @@ function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
           <span>{line.label}<small>{line.note}</small></span>
           <strong>{line.value === null ? line.missing : formatTl(line.value)}<small>{line.value !== null && total > 0 ? formatPercent(Math.max(0, line.value) / total) : ''}</small></strong>
         </li>)}
-        {unreadCostLines.map(label => <li key={label} className="is-unread"><i aria-hidden="true" /><span>{label}</span><strong>Henüz okunmuyor</strong></li>)}
+        {unread.map(label => <li key={label} className="is-unread"><i aria-hidden="true" /><span>{label}</span><strong>{finance ? 'Okunmuyor' : 'Henüz okunmuyor'}</strong></li>)}
       </ul>
     </div>
   </Panel>
@@ -802,7 +872,35 @@ function CostAndProfit({ data }: { data: ReportSales }) {
       <Stat label="Tahmini Hakediş" value={commission.coveredRevenue > 0 ? formatTl(commission.estimatedPayout) : '—'} hint="Kesinleşmiş hakediş değildir" />
       <Stat label="Net Kârdaki Komisyon" value={cost.profitQuantity > 0 ? formatTl(cost.profitCommission) : '—'} />
     </div>
+    <TrendyolCosts data={data} />
   </div>
+}
+
+type CostLine = ReportCosts['lines'][number]
+
+// What Trendyol's account statement charged in the period, line by line: the part tied to the period's orders and the
+// part counted by its own date. Sales, discounts and coupons are listed for reference (negative: paid to the seller).
+function TrendyolCosts({ data }: { data: ReportSales }) {
+  const finance = financeCosts(data)
+  if (!finance?.commission || !finance.cargo) return null
+  const { commission, cargo } = finance
+  return <>
+    <div className="reports-stat-row is-wide">
+      <Stat label="Komisyon" value={formatTl(commission.combined)} hint={commissionNote(finance)} />
+      <Stat label="Hesap Kesimi Olan Sipariş" value={`${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`} hint={`Aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}`} />
+      <Stat label="Kargo" value={formatTl(cargo.combined)} hint={cargoNote(cargo)} warn={cargo.estimated === null && cargo.unbilledOrders > 0} />
+      <Stat label="Sipariş Başına Kargo" value={cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder)} hint={`Son 60 günün ${formatCount(cargo.sampleOrders)} faturalı siparişi`} />
+    </div>
+    <div className="is-wide"><DataTable<CostLine> title="Trendyol Cari Hesap Kalemleri" csvName="rapor-trendyol-masraf" rows={finance.lines} rowKey={row => row.category} initialSort="amount"
+      description="Siparişe bağlı kalemler siparişin dönemine, bağlı olmayanlar işlem tarihine göre; eksi tutar satıcıya ödenendir."
+      columns={[
+        { key: 'label', header: 'Kalem', value: row => row.label, render: row => <span className="reports-cell-label">{row.label}{!row.isCost && <em className="reports-tag">Masraf Değil</em>}</span> },
+        { key: 'amount', header: 'Tutar', value: row => row.amount, render: row => formatTl(row.amount), numeric: true },
+        { key: 'linked', header: 'Siparişe Bağlı', value: row => row.orderLinked, render: row => formatTl(row.orderLinked), numeric: true },
+        { key: 'unlinked', header: 'Tarihe Göre', value: row => row.unlinked, render: row => formatTl(row.unlinked), numeric: true },
+        { key: 'records', header: 'Kayıt', value: row => row.records, render: row => formatCount(row.records), numeric: true }
+      ]} /></div>
+  </>
 }
 
 function Coverage({ label, rate, detail }: { label: string; rate: number | null; detail: string }) {

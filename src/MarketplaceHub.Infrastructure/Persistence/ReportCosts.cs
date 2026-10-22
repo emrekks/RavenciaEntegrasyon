@@ -7,18 +7,28 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // The accounting records the report reads (ReportsService.FinanceAsync): those tied to an order of the period and
 // those of the period's dates that belong to no known order, the cargo invoice lines of the same, which cargo invoices
-// have lines (their lines count instead of the invoice), and how far each store has been read.
+// have lines (their lines count instead of the invoice), each store's recent cargo per billed order and how far each
+// store has been read.
 internal sealed class ReportFinance(
     IReadOnlyList<ReportFinanceRow> rows,
     IReadOnlyList<ReportCargoItemRow> cargoItems,
     IReadOnlySet<(Guid ConnectionId, string Serial)> itemizedInvoices,
-    IReadOnlyDictionary<Guid, MarketplaceFinanceSyncState?> states)
+    IReadOnlyDictionary<Guid, MarketplaceFinanceSyncState?> states,
+    IReadOnlyDictionary<Guid, ReportCargoSample>? cargoSamples = null)
 {
     public IReadOnlyList<ReportFinanceRow> Rows { get; } = rows;
     public IReadOnlyList<ReportCargoItemRow> CargoItems { get; } = cargoItems;
     public IReadOnlySet<(Guid ConnectionId, string Serial)> ItemizedInvoices { get; } = itemizedInvoices;
     // Every Trendyol production store of the report, with its read state (null: never read).
     public IReadOnlyDictionary<Guid, MarketplaceFinanceSyncState?> States { get; } = states;
+    // By store: the shipping cargo billed per order over the cargo invoices of the 60 days before the period's end.
+    public IReadOnlyDictionary<Guid, ReportCargoSample> CargoSamples { get; } = cargoSamples ?? new Dictionary<Guid, ReportCargoSample>();
+}
+
+// Shipping cargo (return cargo apart) billed for Orders distinct orders, Amount in total.
+internal sealed record ReportCargoSample(decimal Amount, int Orders)
+{
+    public decimal? PerOrder => Orders > 0 ? Amount / Orders : null;
 }
 
 internal sealed class ReportFinanceRow
@@ -41,7 +51,11 @@ internal sealed class ReportCargoItemRow
     public Guid ConnectionId { get; init; }
     public string InvoiceSerialNumber { get; init; } = "";
     public string? OrderNumber { get; init; }
+    public string? ShipmentPackageType { get; init; }
     public decimal Amount { get; init; }
+
+    // "İade Kargo Bedeli": the cargo of a return; "Gönderi Kargo Bedeli": of the shipment.
+    public bool IsReturn => TrendyolFinanceCategorizer.Fold(ShipmentPackageType).Contains("iade", StringComparison.Ordinal);
 }
 
 internal static class ReportCosts
@@ -75,7 +89,7 @@ internal static class ReportCosts
         var coveredFrom = states.Count == 0 || states.Values.Any(state => state?.CoveredFrom is null) ? null : states.Values.Max(state => state!.CoveredFrom);
         var coveredThrough = states.Count == 0 || states.Values.Any(state => state?.CoveredThrough is null) ? null : states.Values.Min(state => state!.CoveredThrough);
         if (finance is null || finance.Rows.Count == 0 && finance.CargoItems.Count == 0)
-            return new(EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, 0, null, null, null, [], [], []);
+            return new(EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, 0, null, null, null, null, [], [], []);
 
         // The period's orders (any status) by store and order number; a record of another period's order is not here.
         var periodOrders = input.Orders.GroupBy(order => (order.ConnectionId, order.OrderNumber)).ToDictionary(group => group.Key, group => group.First().Id);
@@ -99,6 +113,9 @@ internal static class ReportCosts
             if (TrendyolFinanceCategorizer.IsCargoInvoice(row.Source, row.RequestedType, row.Category) && finance.ItemizedInvoices.Contains((row.ConnectionId, row.ExternalId)))
                 continue;
             financeStores.Add(row.ConnectionId);
+            // Trendyol's commission invoice bills the commission its settlement lines already carry (over 90 days of one
+            // store: 258,470 TL of invoices against 251,482 TL of settled commission); counting it would charge it twice.
+            if (IsCommissionInvoice(row)) continue;
             var orderId = OrderOf(row.ConnectionId, row.OrderNumber);
             if (orderId is { } settledOrder && row.Source == TrendyolFinanceRequestContract.Settlements) settled.Add(settledOrder);
 
@@ -132,13 +149,30 @@ internal static class ReportCosts
                 if (row.Category == MarketplaceFinanceCategories.Coupon) product.Coupon += TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit);
             }
         }
+        var billed = new HashSet<Guid>();
         foreach (var item in finance.CargoItems)
         {
             financeStores.Add(item.ConnectionId);
-            Line(MarketplaceFinanceCategories.Cargo).Add(item.Amount, OrderOf(item.ConnectionId, item.OrderNumber) is not null);
+            var cargoOrder = OrderOf(item.ConnectionId, item.OrderNumber);
+            if (cargoOrder is { } billedOrder && !item.IsReturn) billed.Add(billedOrder);
+            Line(MarketplaceFinanceCategories.Cargo).Add(item.Amount, cargoOrder is not null);
             var key = (item.ConnectionId, MarketplaceFinanceCategories.Cargo);
             channelCosts[key] = channelCosts.GetValueOrDefault(key) + item.Amount;
         }
+
+        // The period's Trendyol orders without a shipping cargo line yet, at their store's recent cargo per order.
+        var unbilledByStore = financeOrders.Where(order => !billed.Contains(order.Order.Id)).GroupBy(order => order.Order.ConnectionId).ToDictionary(group => group.Key, group => group.Count());
+        var estimatedCargo = new Dictionary<Guid, decimal>();
+        foreach (var (storeId, count) in unbilledByStore)
+            if (finance.CargoSamples.GetValueOrDefault(storeId)?.PerOrder is { } perOrder)
+                estimatedCargo[storeId] = Round(count * perOrder);
+        var samples = finance.CargoSamples.Where(sample => financeOrders.Any(order => order.Order.ConnectionId == sample.Key) && sample.Value.Orders > 0).Select(sample => sample.Value).ToList();
+        var sampleOrders = samples.Sum(sample => sample.Orders);
+        var realCargo = Round(lines.TryGetValue(MarketplaceFinanceCategories.Cargo, out var cargoLine) ? cargoLine.Amount : 0m);
+        var unbilledCount = unbilledByStore.Values.Sum();
+        decimal? cargoEstimate = unbilledCount == 0 ? 0m : estimatedCargo.Count > 0 ? estimatedCargo.Values.Sum() : null;
+        var cargoView = new ReportCargoCostView(realCargo, financeOrders.Count(order => billed.Contains(order.Order.Id)), unbilledCount,
+            sampleOrders > 0 ? Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders, cargoEstimate, realCargo + (cargoEstimate ?? 0m));
 
         var settledFacts = orders.Where(order => settled.Contains(order.Order.Id)).ToList();
         var real = Round(settledFacts.Sum(order => realCommission.GetValueOrDefault(order.Order.Id)));
@@ -162,8 +196,9 @@ internal static class ReportCosts
                 var amounts = MarketplaceFinanceCategories.Costs.Where(category => category != MarketplaceFinanceCategories.Commission && channelCosts.ContainsKey((channel.Id, category)))
                     .Select(category => new ReportCostAmountView(category, Round(channelCosts[(channel.Id, category)])))
                     .ToList();
+                var channelCargo = estimatedCargo.GetValueOrDefault(channel.Id);
                 return new ReportCostChannelView(channel.Id, channel.PlatformCode, channel.DisplayName, financeStores.Contains(channel.Id) ? FinanceSource : EstimateSource,
-                    channelReal, channelEstimate, amounts, channelReal + channelEstimate + amounts.Sum(amount => amount.Amount));
+                    channelReal, channelEstimate, amounts, channelCargo, channelReal + channelEstimate + amounts.Sum(amount => amount.Amount) + channelCargo);
             })
             .OrderByDescending(channel => channel.Total).ThenBy(channel => channel.DisplayName, StringComparer.Ordinal)
             .ToList();
@@ -176,8 +211,13 @@ internal static class ReportCosts
         var total = Round(lineViews.Where(line => line.IsCost).Sum(line => line.Amount));
         return new(FinanceSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, settledFinanceOrders,
             financeOrders.Count > 0 ? Math.Round((decimal)settledFinanceOrders / financeOrders.Count, 4) : null,
-            total, commissionView, lineViews, channels, productViews);
+            total, commissionView, cargoView, lineViews, channels, productViews);
     }
+
+    private static bool IsCommissionInvoice(ReportFinanceRow row) =>
+        row.Source == TrendyolFinanceRequestContract.OtherFinancials
+        && string.Equals(row.RequestedType, TrendyolFinanceCategorizer.DeductionInvoices, StringComparison.OrdinalIgnoreCase)
+        && row.Category == MarketplaceFinanceCategories.Commission;
 
     // The notes the costs add to the report's DataNotes.
     public static IEnumerable<string> Notes(ReportCostsView costs, ReportInput input)
@@ -209,7 +249,17 @@ internal static class ReportCosts
         var rejected = input.Finance!.States.Values.Where(state => !string.IsNullOrWhiteSpace(state?.RejectedTypes)).SelectMany(state => state!.RejectedTypes!.Split(',')).Distinct(StringComparer.Ordinal).ToList();
         if (rejected.Count > 0)
             yield return $"Trendyol şu kayıt türlerini vermedi, bu türler masraflarda yok: {string.Join(", ", rejected)}.";
-        yield return "Kargo masrafı Trendyol kargo faturalarının paket satırlarıdır; kargo ve hizmet bedelleri ürünlere paylaştırılmaz.";
+        yield return "Trendyol'un komisyon faturaları, hesap kesimindeki komisyonun faturasıdır; komisyona ikinci kez eklenmez.";
+        if (costs.Cargo is { } cargo)
+        {
+            var billed = $"Kargo, Trendyol kargo faturalarının paket satırlarından okunur: {cargo.BilledOrders.ToString("N0", tr)} siparişin kargo faturası geldi ({Money(cargo.Real)}).";
+            yield return cargo.UnbilledOrders == 0
+                ? billed
+                : cargo.Estimated is { } estimated && cargo.AveragePerOrder is { } average
+                    ? $"{billed} Trendyol kargoyu gönderiden haftalar sonra faturalar; faturası henüz gelmeyen {cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu son 60 günün sipariş başına ortalamasıyla ({Money(average)}, {cargo.SampleOrders.ToString("N0", tr)} sipariş) tahmin edildi: {Money(estimated)}."
+                    : $"{billed} Faturası henüz gelmeyen {cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu tahmin edilemedi (son 60 günde faturalanmış kargo yok); kargo eksiktir.";
+        }
+        yield return "Kargo ve hizmet bedelleri ürünlere paylaştırılmaz.";
     }
 
     private static bool IsFinanceStore(ReportInput input, Guid connectionId) =>

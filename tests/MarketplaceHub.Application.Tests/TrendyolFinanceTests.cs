@@ -217,14 +217,21 @@ public sealed class TrendyolFinanceTests
                 // A cargo invoice whose lines were read counts through its lines; one without lines counts whole.
                 Row(store, Others, "INV-1", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.Cargo, null, null, debt: 500m),
                 Row(store, Others, "INV-2", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.Cargo, null, null, debt: 40m),
-                Row(store, Others, "5", "FinancialItem", MarketplaceFinanceCategories.Other, null, null, credit: 3m)
+                Row(store, Others, "5", "FinancialItem", MarketplaceFinanceCategories.Other, null, null, credit: 3m),
+                // Trendyol's commission invoice bills the settled commission above; it is not added again.
+                Row(store, Others, "6", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.Commission, null, null, debt: 17m)
             ],
-            [new ReportCargoItemRow { ConnectionId = store, InvoiceSerialNumber = "INV-1", OrderNumber = "A-1", Amount = 34.24m }],
+            [
+                new ReportCargoItemRow { ConnectionId = store, InvoiceSerialNumber = "INV-1", OrderNumber = "A-1", ShipmentPackageType = "Gönderi Kargo Bedeli", Amount = 34.24m },
+                // A return's cargo is real cost but does not mean order B's shipment was billed.
+                new ReportCargoItemRow { ConnectionId = store, InvoiceSerialNumber = "INV-1", OrderNumber = "B-1", ShipmentPackageType = "İade Kargo Bedeli", Amount = 10m }
+            ],
             new HashSet<(Guid, string)> { (store, "INV-1") },
             new Dictionary<Guid, MarketplaceFinanceSyncState?>
             {
                 [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, CoveredFrom = input.Period.Start.AddDays(-90), CoveredThrough = input.Period.End.AddDays(1), LastSyncedAt = input.Period.End.AddDays(1) }
-            });
+            },
+            new Dictionary<Guid, ReportCargoSample> { [store] = new(196.68m, 2) });
         var report = ReportBuilder.Build(input with { Finance = finance }, Empty(input), new Dictionary<Guid, decimal>());
         var costs = report.Costs;
 
@@ -233,17 +240,27 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(1, costs.SettledOrders);
         Assert.Equal(0.5m, costs.Coverage);
         Amount(costs, MarketplaceFinanceCategories.Commission, 17m);
-        Amount(costs, MarketplaceFinanceCategories.Cargo, 74.24m);
+        Amount(costs, MarketplaceFinanceCategories.Cargo, 84.24m);
         Amount(costs, MarketplaceFinanceCategories.ServiceFee, 9.99m);
         Amount(costs, MarketplaceFinanceCategories.Stoppage, 1m);
         Amount(costs, MarketplaceFinanceCategories.Sale, -100m);
         Amount(costs, MarketplaceFinanceCategories.Discount, 5m);
         Amount(costs, MarketplaceFinanceCategories.Other, -3m);
         // Commission, cargo, service fee and withholding tax; OTHER is shown but not added.
-        Assert.Equal(17m + 74.24m + 9.99m + 1m, costs.RealCostTotal);
+        Assert.Equal(17m + 84.24m + 9.99m + 1m, costs.RealCostTotal);
         var cargo = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.Cargo);
-        Assert.Equal(34.24m, cargo.OrderLinked);
+        Assert.Equal(44.24m, cargo.OrderLinked);
         Assert.Equal(40m, cargo.Unlinked);
+
+        // Order A's shipment was billed; order B's not yet: it is estimated at the store's recent cargo per order.
+        var cargoCost = Assert.IsType<ReportCargoCostView>(costs.Cargo);
+        Assert.Equal(84.24m, cargoCost.Real);
+        Assert.Equal(1, cargoCost.BilledOrders);
+        Assert.Equal(1, cargoCost.UnbilledOrders);
+        Assert.Equal(98.34m, cargoCost.AveragePerOrder);
+        Assert.Equal(2, cargoCost.SampleOrders);
+        Assert.Equal(98.34m, cargoCost.Estimated);
+        Assert.Equal(84.24m + 98.34m, cargoCost.Combined);
 
         var commission = Assert.IsType<ReportRealCommissionView>(costs.Commission);
         Assert.Equal(17m, commission.Real);
@@ -258,7 +275,8 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(ReportCosts.FinanceSource, channel.Source);
         Assert.Equal(17m, channel.RealCommission);
         Assert.Equal(10.75m, channel.EstimatedCommission);
-        Assert.Equal(17m + 10.75m + 74.24m + 9.99m + 1m, channel.Total);
+        Assert.Equal(98.34m, channel.EstimatedCargo);
+        Assert.Equal(17m + 10.75m + 84.24m + 9.99m + 1m + 98.34m, channel.Total);
 
         var product = Assert.Single(costs.Products);
         Assert.Equal("BAR-1", product.Barcode);
@@ -269,6 +287,26 @@ public sealed class TrendyolFinanceTests
         Assert.Contains(report.DataNotes, note => note.Contains("cari hesap ekstresinden", StringComparison.Ordinal));
         Assert.Contains(report.DataNotes, note => note.Contains("tahmin yerine gerçek tutarla", StringComparison.Ordinal));
         Assert.Contains(report.DataNotes, note => note.Contains("Sınıflandırılamayan 1", StringComparison.Ordinal));
+        Assert.Contains(report.DataNotes, note => note.Contains("ikinci kez eklenmez", StringComparison.Ordinal));
+        Assert.Contains(report.DataNotes, note => note.Contains("faturası henüz gelmeyen 1 siparişin kargosu", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Without_a_recent_cargo_sample_the_unbilled_cargo_is_reported_missing_not_zero()
+    {
+        var (input, _, _, store) = ReportFixture();
+        var finance = new ReportFinance(
+            [Row(store, Settlements, "1", "Sale", MarketplaceFinanceCategories.Sale, "A-1", "BAR-1", credit: 100m, commission: 18m)], [],
+            new HashSet<(Guid, string)>(),
+            new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, LastSyncedAt = input.Period.End } });
+        var report = ReportBuilder.Build(input with { Finance = finance }, Empty(input), new Dictionary<Guid, decimal>());
+
+        var cargo = Assert.IsType<ReportCargoCostView>(report.Costs.Cargo);
+        Assert.Equal(0m, cargo.Real);
+        Assert.Equal(2, cargo.UnbilledOrders);
+        Assert.Null(cargo.AveragePerOrder);
+        Assert.Null(cargo.Estimated);
+        Assert.Contains(report.DataNotes, note => note.Contains("tahmin edilemedi", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -280,6 +318,7 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(ReportCosts.EstimateSource, never.Costs.Source);
         Assert.Null(never.Costs.RealCostTotal);
         Assert.Null(never.Costs.Commission);
+        Assert.Null(never.Costs.Cargo);
         Assert.Null(never.Costs.Coverage);
         Assert.Null(never.Costs.LastSyncedAt);
         Assert.Empty(never.Costs.Lines);

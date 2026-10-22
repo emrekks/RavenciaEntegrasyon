@@ -37,7 +37,20 @@ export type ReportSales = {
   invoices: { buckets: Array<{ key: string; label: string; packages: number; amount: number }>; platforms: Array<{ platformCode: string; invoiced: number; notInvoiced: number; unknown: number }> }
   stock: { periodDays: number; bestSellers: ReportStockRow[]; soldOut: ReportStockRow[] }
   channels: Array<{ id: string; platformCode: string; displayName: string; isTest: boolean }>
+  costs: ReportCosts
   dataNotes: string[]
+}
+
+// The real costs read from Trendyol's account statement (source "trendyol-finance"), next to the estimates; with
+// "estimate" nothing was read for the period and every field below the counts is null or empty.
+export type ReportCosts = {
+  source: 'trendyol-finance' | 'estimate'; lastSyncedAt: string | null; coveredFrom: string | null; coveredThrough: string | null
+  financeOrders: number; settledOrders: number; coverage: number | null; realCostTotal: number | null
+  commission: { real: number; realOrders: number; estimatedForSettled: number; estimatedForUnsettled: number; combined: number } | null
+  cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number } | null
+  lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; unlinked: number }>
+  channels: Array<{ connectionId: string; platformCode: string; displayName: string; source: string; realCommission: number; estimatedCommission: number; amounts: Array<{ category: string; amount: number }>; estimatedCargo: number; total: number }>
+  products: Array<{ variantId: string | null; title: string; sku: string; barcode: string; commission: number; discount: number; coupon: number; records: number }>
 }
 
 export const unknownLabel = 'Bilinmiyor'

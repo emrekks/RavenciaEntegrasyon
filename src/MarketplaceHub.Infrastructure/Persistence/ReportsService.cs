@@ -304,6 +304,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var rows = new List<ReportFinanceRow>();
         var items = new List<ReportCargoItemRow>();
         var itemized = new HashSet<(Guid ConnectionId, string Serial)>();
+        var samples = new Dictionary<Guid, ReportCargoSample>();
         // Store by store: an order number is only that store's order.
         foreach (var storeId in stored.Keys)
         {
@@ -338,15 +339,31 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                     && ((x.OrderNumber != null && numbers.Contains(x.OrderNumber))
                         || (datedInvoices.Contains(x.InvoiceSerialNumber)
                             && (x.OrderNumber == null || !db.Orders.Any(order => order.TenantId == tenantId && order.ConnectionId == storeId && order.OrderNumber == x.OrderNumber)))))
-                .Select(x => new ReportCargoItemRow { ConnectionId = x.ConnectionId, InvoiceSerialNumber = x.InvoiceSerialNumber, OrderNumber = x.OrderNumber, Amount = x.Amount })
+                .Select(x => new ReportCargoItemRow { ConnectionId = x.ConnectionId, InvoiceSerialNumber = x.InvoiceSerialNumber, OrderNumber = x.OrderNumber, ShipmentPackageType = x.ShipmentPackageType, Amount = x.Amount })
                 .ToListAsync(cancellationToken));
             if (datedInvoices.Length > 0)
                 foreach (var serial in await db.MarketplaceCargoInvoiceItems.AsNoTracking()
                              .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId && datedInvoices.Contains(x.InvoiceSerialNumber))
                              .Select(x => x.InvoiceSerialNumber).Distinct().ToListAsync(cancellationToken))
                     itemized.Add((storeId, serial));
+
+            // The store's recent cargo per order, for the period's orders Trendyol has not billed cargo for yet: the
+            // shipping lines of its cargo invoices dated in the 60 days before the period's end.
+            var sampleFrom = end.AddDays(-60);
+            var sampleSerials = db.MarketplaceFinanceTransactions
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId && x.Source == TrendyolFinanceRequestContract.OtherFinancials
+                    && x.RequestedType == TrendyolFinanceCategorizer.DeductionInvoices && x.Category == MarketplaceFinanceCategories.Cargo
+                    && x.TransactionDate >= sampleFrom && x.TransactionDate < end)
+                .Select(x => x.ExternalId);
+            var shipping = (await db.MarketplaceCargoInvoiceItems.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId && x.OrderNumber != null && sampleSerials.Contains(x.InvoiceSerialNumber))
+                    .Select(x => new ReportCargoItemRow { ConnectionId = x.ConnectionId, InvoiceSerialNumber = x.InvoiceSerialNumber, OrderNumber = x.OrderNumber, ShipmentPackageType = x.ShipmentPackageType, Amount = x.Amount })
+                    .ToListAsync(cancellationToken))
+                .Where(x => !x.IsReturn)
+                .ToList();
+            if (shipping.Count > 0) samples[storeId] = new(shipping.Sum(x => x.Amount), shipping.Select(x => x.OrderNumber).Distinct(StringComparer.Ordinal).Count());
         }
-        return new(rows, items, itemized, states);
+        return new(rows, items, itemized, states, samples);
     }
 
     private async Task<ReportCatalogNames> CatalogNamesAsync(Guid tenantId, IReadOnlyList<ReportLineRow> lines, CancellationToken cancellationToken)

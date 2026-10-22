@@ -40,7 +40,26 @@ const report: ReportSales = {
   invoices: { buckets: [{ key: 'INVOICED', label: 'Faturalı', packages: 2, amount: 200 }, { key: 'NOT_INVOICED', label: 'Faturasız', packages: 1, amount: 50 }, { key: 'UNKNOWN', label: 'Bilinmiyor', packages: 0, amount: 0 }], platforms: [{ platformCode: 'TRENDYOL', invoiced: 2, notInvoiced: 1, unknown: 0 }] },
   stock: { periodDays: 22, bestSellers: [{ variantId: 'v1', title: 'Koltuk Kılıfı', sku: 'KLF-1', soldQuantity: 2, available: 1, dailyAverage: 0.09, daysLeft: 11.1 }], soldOut: [] },
   channels: [{ id: 'c1', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', isTest: false }, { id: 'c2', platformCode: 'SHOPIFY', displayName: 'Shopify', isTest: false }],
+  costs: { source: 'estimate', lastSyncedAt: null, coveredFrom: null, coveredThrough: null, financeOrders: 3, settledOrders: 0, coverage: null, realCostTotal: null, commission: null, cargo: null, lines: [], channels: [], products: [] },
   dataNotes: ['1 siparişte tutar yok (SHOPIFY 1).']
+}
+
+// The same period with Trendyol's account statement read: one settled order, one order's cargo billed, two not yet.
+const withFinance: ReportSales = {
+  ...report,
+  costs: {
+    source: 'trendyol-finance', lastSyncedAt: '2026-10-22T23:40:00Z', coveredFrom: '2026-07-24T23:39:00Z', coveredThrough: '2026-10-22T23:40:00Z', financeOrders: 3, settledOrders: 1, coverage: 0.3333, realCostTotal: 63.5,
+    commission: { real: 20, realOrders: 1, estimatedForSettled: 21.5, estimatedForUnsettled: 21.5, combined: 41.5 },
+    cargo: { real: 30, billedOrders: 1, unbilledOrders: 2, averagePerOrder: 98.34, sampleOrders: 40, estimated: 196.68, combined: 226.68 },
+    lines: [
+      { category: 'SALE', label: 'Satış', isCost: false, amount: -100, records: 1, orderLinked: -100, unlinked: 0 },
+      { category: 'COMMISSION', label: 'Komisyon', isCost: true, amount: 20, records: 1, orderLinked: 20, unlinked: 0 },
+      { category: 'CARGO', label: 'Kargo', isCost: true, amount: 30, records: 1, orderLinked: 30, unlinked: 0 },
+      { category: 'SERVICE_FEE', label: 'Platform hizmet bedeli', isCost: true, amount: 12.5, records: 1, orderLinked: 0, unlinked: 12.5 },
+      { category: 'STOPPAGE', label: 'Stopaj', isCost: true, amount: 1, records: 1, orderLinked: 0, unlinked: 1 }
+    ],
+    channels: [], products: []
+  }
 }
 
 const requests = vi.hoisted(() => [] as string[])
@@ -90,6 +109,31 @@ describe('ReportsPage', () => {
     expect(page.querySelectorAll('.reports-metric')).toHaveLength(6)
     expect(page.querySelector('.reports-heatmap.is-compact')).not.toBeNull()
     expect(drawer(page)).toBeNull()
+  })
+
+  it('takes commission, cargo and fees from Trendyol\'s statement, real plus estimated, and names what is not read', async () => {
+    const page = await open('', withFinance)
+    const flow = page.querySelector('.reports-flow')!.textContent!
+    expect(flow).toContain('Komisyon')
+    expect(flow).toContain('41,50')
+    expect(flow).toContain('Gerçek 1 sipariş')
+    expect(flow).toContain('Kargo')
+    expect(flow).toContain('226,68')
+    expect(flow).toContain('faturası gelmeyen 2 sipariş tahmini')
+    expect(flow).toContain('Kesintiler')
+    expect(flow).toContain('13,50')
+    // 250 net − 41.50 − 226.68 − 13.50
+    expect(flow).toContain('31,68')
+    expect(page.querySelector('.reports-flow li.is-negative')?.textContent).toContain('Masraflar Düşülmüş')
+    const legend = page.querySelector('.reports-legend')!.textContent!
+    expect(legend).toContain('Hizmet Bedeli')
+    expect(legend).toContain('Stopaj')
+    expect(legend).not.toContain('Henüz okunmuyor')
+    expect(legend).toContain('Shopify kargo ve hizmet bedeli')
+
+    await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Akışı: Tümünü Gör"]')!.click() })
+    expect(drawer(page)?.textContent).toContain('Trendyol Cari Hesap Kalemleri')
+    expect(drawer(page)?.textContent).toContain('Masraf Değil')
   })
 
   it('keeps the unknown city last and muted in the summary list', async () => {
