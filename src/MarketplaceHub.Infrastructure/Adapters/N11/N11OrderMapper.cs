@@ -149,15 +149,14 @@ public static class N11OrderMapper
     internal static string? DeliveryPointType(JsonElement package) =>
         Text(package, "deliveryAddressType") is { Length: > 0 } type && !string.Equals(type, "null", StringComparison.OrdinalIgnoreCase) ? type.Trim().ToUpperInvariant() : null;
 
-    // n11 has no invoice state, only invoiceLink: the link of the invoice attached to the package, empty until one is.
-    // A link means n11 holds an invoice, an empty one that it does not; a package without the field says nothing.
+    // n11 has no invoice state, only invoiceLink: the link of an invoice attached through the API. A link means n11
+    // holds an invoice. An empty one proves nothing: an invoice uploaded in n11's own seller panel leaves it empty
+    // (live, 23 Oct 2026: order 241612122428 has an invoice, its fresh read has no link), so it gives no observation.
     internal static RemotePackageInvoiceObservation? Invoice(JsonElement package)
     {
         if (!package.TryGetProperty("invoiceLink", out var link)) return null;
         var url = link.ValueKind == JsonValueKind.String ? link.GetString()?.Trim() : null;
-        return string.IsNullOrEmpty(url)
-            ? new("NOT_INVOICED", null, null, null)
-            : new("INVOICED", null, url, null);
+        return string.IsNullOrEmpty(url) ? null : new("INVOICED", null, url, null);
     }
 
     internal static string CustomerSnapshot(JsonElement package)

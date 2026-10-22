@@ -273,12 +273,12 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())
     await settle()
-    act(() => button('Shopify faturalarını güncelle').click())
+    act(() => button('Fatura durumunu güncelle').click())
     await settle()
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Fatura dosyası yüklenmez')
     const status = container.querySelector<HTMLSelectElement>('[aria-label="Yeni fatura durumu"]')!
     act(() => { status.value = 'UPLOADED'; status.dispatchEvent(new Event('change', { bubbles: true })) })
-    act(() => button('2 Shopify siparişini güncelle').click())
+    act(() => button('2 siparişi güncelle').click())
     await settle()
 
     expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1', 'shopify-package-2'] }])

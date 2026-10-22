@@ -527,6 +527,8 @@ public static class InvoicingEndpoints
         return Results.Ok(new { id = package.Id, status = status == "UPLOADED" ? "FATURA_KONTROLDE" : "FATURA_BEKLIYOR", version = package.Version });
     }
 
+    internal static readonly HashSet<string> ManualInvoiceStatusPlatforms = new(["SHOPIFY", "N11", "PTTAVM", "PAZARAMA"], StringComparer.OrdinalIgnoreCase);
+
     private static async Task<IResult> UpdateInvoiceWorkspaceManualStatusAsync(InvoiceWorkspaceManualStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -541,7 +543,9 @@ public static class InvoicingEndpoints
                                       where package.TenantId == tenant.TenantId && packageIds.Contains(package.Id)
                                       select new { package.Id, connection.PlatformCode }).ToListAsync(http.RequestAborted);
         if (packagePlatforms.Count != packageIds.Length) return Problem(http, new("RESOURCE_NOT_FOUND", "Seçilen fatura siparişlerinin bir kısmı bulunamadı.", 404));
-        if (packagePlatforms.Any(x => x.PlatformCode != "SHOPIFY")) return Problem(http, new("SHOPIFY_INVOICE_ONLY", "Manuel toplu fatura durumu yalnızca Shopify siparişlerinde kullanılabilir. Diğer platformlardaki siparişler güncellenmedi.", 422));
+        // Only where the marketplace cannot tell the panel about an invoice uploaded in its own seller panel: Shopify has
+        // no invoice of its own, n11, PTT AVM and Pazarama report only invoices sent through the API.
+        if (packagePlatforms.Any(x => !ManualInvoiceStatusPlatforms.Contains(x.PlatformCode))) return Problem(http, new("MANUAL_INVOICE_STATUS_PLATFORM_UNSUPPORTED", "Elle fatura durumu yalnızca Shopify, n11, PTT AVM ve Pazarama siparişlerinde kullanılabilir; Trendyol ve Hepsiburada faturayı kendileri bildirir. Hiçbir sipariş güncellenmedi.", 422));
         var packages = await db.ShipmentPackages.Where(x => x.TenantId == tenant.TenantId && packageIds.Contains(x.Id)).ToListAsync(http.RequestAborted);
         var now = timeProvider.GetUtcNow();
         foreach (var package in packages)

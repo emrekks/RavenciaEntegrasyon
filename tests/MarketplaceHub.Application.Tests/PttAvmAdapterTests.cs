@@ -1062,9 +1062,9 @@ public sealed class PttAvmAdapterTests
         Assert.False(PttAvmInvoiceMapper.Invoiced(WithLiveLineInvoiceFlag("false")));
         Assert.True(PttAvmInvoiceMapper.Invoiced(WithLiveLineInvoiceFlag("true")));
 
-        // The order sync carries the same answer on the package: invoiced, not invoiced, or nothing without the flag.
+        // The order sync carries only a yes: a false flag proves nothing (an invoice uploaded in PTT AVM's panel leaves it).
         Assert.Null(OrderFromList("PTT-A1712HP2E-071024").Packages.Single().Invoice);
-        Assert.Equal("NOT_INVOICED", WithLiveLineInvoiceFlag("false").Packages.Single().Invoice?.RawStatus);
+        Assert.Null(WithLiveLineInvoiceFlag("false").Packages.Single().Invoice);
         Assert.Equal("INVOICED", WithLiveLineInvoiceFlag("true").Packages.Single().Invoice?.RawStatus);
     }
 

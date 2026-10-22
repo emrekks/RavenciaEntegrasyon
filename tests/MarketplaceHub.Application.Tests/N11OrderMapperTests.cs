@@ -204,9 +204,10 @@ public sealed class N11OrderMapperTests
     {
         static RemotePackageInvoiceObservation? Read(string json) { using var document = JsonDocument.Parse(json); return N11OrderMapper.Invoice(document.RootElement); }
 
+        // An empty link proves nothing (an invoice uploaded in n11's panel leaves it empty): no observation.
         Assert.Null(Read("""{"id":"1"}"""));
-        Assert.Equal("NOT_INVOICED", Read("""{"invoiceLink":""}""")?.RawStatus);
-        Assert.Equal("NOT_INVOICED", Read("""{"invoiceLink":null}""")?.RawStatus);
+        Assert.Null(Read("""{"invoiceLink":""}"""));
+        Assert.Null(Read("""{"invoiceLink":null}"""));
         var invoiced = Read("""{"invoiceLink":"https://example.test/fatura.pdf"}""");
         Assert.Equal("INVOICED", invoiced?.RawStatus);
         Assert.Equal("https://example.test/fatura.pdf", invoiced?.InvoiceUrl);

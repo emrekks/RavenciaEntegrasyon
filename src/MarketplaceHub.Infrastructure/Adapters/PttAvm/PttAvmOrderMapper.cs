@@ -98,10 +98,10 @@ public static class PttAvmOrderMapper
             CustomerSnapshot(order), Address(order, "Siparis", Value(order, "MusteriAdi"), Value(order, "MusteriSoyadi")),
             Address(order, "Fatura", Value(order, "FaturaMusteriAdi") ?? Value(order, "MusteriAdi"), Value(order, "FaturaMusteriSoyadi") ?? Value(order, "MusteriSoyadi")),
             lines, [package], OrderSnapshot(order).ToJsonString());
-        // PTT AVM's own word on the invoice: every live line IsInvoice=true means it holds one, a false on any line
-        // means it does not. Without the flag the package keeps the state it has.
-        return PttAvmInvoiceMapper.Invoiced(remote) is { } invoiced
-            ? remote with { Packages = [package with { Invoice = new(invoiced ? "INVOICED" : "NOT_INVOICED", null, null, null) }] }
+        // PTT AVM's IsInvoice: every live line true means it holds an invoice. A false proves nothing: an invoice
+        // uploaded in PTT AVM's own seller panel leaves the lines false (live, 23 Oct 2026), so it gives no observation.
+        return PttAvmInvoiceMapper.Invoiced(remote) == true
+            ? remote with { Packages = [package with { Invoice = new("INVOICED", null, null, null) }] }
             : remote;
     }
 
