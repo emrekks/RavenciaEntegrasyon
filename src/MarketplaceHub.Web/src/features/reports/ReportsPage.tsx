@@ -10,9 +10,25 @@ import {
   change, downloadCsv, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, moneyOrMissing, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   type Change, type CsvColumn, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow, type ReportTimePoint
 } from './report-format'
+import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
 import './reports.css'
 
-type TabKey = 'overview' | 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
+// The weekly commission tariffs the reports read a missing commission from, uploaded here per store (live stores of a
+// platform whose tariff export the panel reads); a store is picked when there is more than one.
+function CommissionTariffs({ data }: { data: ReportSales }) {
+  const stores = data.channels.filter(channel => commissionTariffPlatforms.has(channel.platformCode) && !channel.isTest)
+  const [storeId, setStoreId] = useState(stores[0]?.id ?? '')
+  const store = stores.find(channel => channel.id === storeId) ?? stores[0]
+  if (!store) return <p className="reports-empty">Komisyon tarifesi yüklenebilecek bir mağaza yok (şimdilik yalnız Trendyol).</p>
+  return <div className="reports-tariffs">
+    {stores.length > 1 && <label className="reports-field"><span>Mağaza</span><select value={store.id} onChange={event => setStoreId(event.target.value)}>
+      {stores.map(channel => <option key={channel.id} value={channel.id}>{channel.displayName}</option>)}
+    </select></label>}
+    <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
+  </div>
+}
+
+type TabKey = 'overview' | 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices' | 'tariffs'
 const tabs: Array<{ value: TabKey; label: string; icon: ViewTabIconName }> = [
   { value: 'overview', label: 'Genel Bakış', icon: 'all' },
   { value: 'platforms', label: 'Platformlar', icon: 'connected' },
@@ -26,7 +42,8 @@ const tabs: Array<{ value: TabKey; label: string; icon: ViewTabIconName }> = [
   { value: 'customers', label: 'Müşteriler', icon: 'order' },
   { value: 'stock', label: 'Stok', icon: 'processing' },
   { value: 'cost', label: 'Maliyet ve Kâr', icon: 'price' },
-  { value: 'invoices', label: 'Fatura', icon: 'invoice' }
+  { value: 'invoices', label: 'Fatura', icon: 'invoice' },
+  { value: 'tariffs', label: 'Komisyon Tarifeleri', icon: 'price' }
 ]
 
 function dayKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
@@ -83,6 +100,7 @@ export function ReportsPage() {
         {tab === 'stock' && <Stock data={data} />}
         {tab === 'cost' && <CostAndProfit data={data} />}
         {tab === 'invoices' && <Invoices data={data} />}
+        {tab === 'tariffs' && <CommissionTariffs data={data} />}
       </div>
     </>}
   </section>
