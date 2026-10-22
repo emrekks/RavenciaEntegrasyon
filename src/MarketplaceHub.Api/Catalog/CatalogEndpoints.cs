@@ -76,6 +76,8 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapGet("/products/{id:guid}/marketplace-codes", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetProductMarketplaceCodesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapPut("/products/{id:guid}/marketplace-codes", async (Guid id, UpdateMarketplaceCodesCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpdateProductMarketplaceCodesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http));
         api.MapPost("/products/{id:guid}/duplicate", async (Guid id, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

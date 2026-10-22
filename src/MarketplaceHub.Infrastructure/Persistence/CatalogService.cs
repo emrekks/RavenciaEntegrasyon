@@ -998,6 +998,100 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             variants.Select(x => new VariantMarketplaceCodesView(x.Id, x.Sku, x.Barcode, codesByVariant.GetValueOrDefault(x.Id) ?? [])).ToList()));
     }
 
+    private const int MaxMarketplaceCodeChanges = 1000;
+    // Shopify's variant id as a number, from the id itself, its gid or an admin link ending in /variants/{id}.
+    private static readonly System.Text.RegularExpressions.Regex ShopifyVariantId = new(@"^(?:gid://shopify/ProductVariant/|.*/variants/)?(\d{1,20})(?:[/?#].*)?$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+
+    // Codes typed in the product editor. A code links the variant on that Hepsiburada (hbSku) or Shopify (variant id)
+    // connection, an empty one removes the link. The marketplace's barcode and stock code described the previous code,
+    // so a changed link starts without them and the next product import reads them; until then price and stock skip it.
+    public async Task<ServiceResult<ProductMarketplaceCodesView>> UpdateProductMarketplaceCodesAsync(Guid tenantId, Guid id, UpdateMarketplaceCodesCommand command, CancellationToken cancellationToken)
+    {
+        var current = await GetProductMarketplaceCodesAsync(tenantId, id, cancellationToken);
+        if (!current.Succeeded) return current;
+        var changes = command.Codes ?? [];
+        if (changes.Count == 0) return Invalid<ProductMarketplaceCodesView>("codes", "Kaydedilecek kod yok.");
+        if (changes.Count > MaxMarketplaceCodeChanges) return Invalid<ProductMarketplaceCodesView>("codes", $"Tek seferde en fazla {MaxMarketplaceCodeChanges} kod kaydedilebilir.");
+        var variants = current.Value!.Variants.ToDictionary(x => x.VariantId);
+        var connections = current.Value.Connections.ToDictionary(x => x.ConnectionId);
+        var wanted = new Dictionary<(Guid VariantId, Guid ConnectionId), string?>();
+        foreach (var change in changes)
+        {
+            var field = MarketplaceCodeField(change.VariantId, change.ConnectionId);
+            if (!variants.ContainsKey(change.VariantId) || !connections.TryGetValue(change.ConnectionId, out var connection))
+                return Invalid<ProductMarketplaceCodesView>(field, "Varyant veya bağlantı bu ürüne ait değil; pencereyi yenileyin.");
+            var code = MarketplaceCode(connection.PlatformCode, change.Code, out var error);
+            if (error is not null) return Invalid<ProductMarketplaceCodesView>(field, error);
+            if (!wanted.TryAdd((change.VariantId, change.ConnectionId), code)) return Invalid<ProductMarketplaceCodesView>(field, "Aynı varyantın kodu iki kez gönderildi.");
+        }
+        // One code links one variant on a connection.
+        if (wanted.Where(x => x.Value is not null).GroupBy(x => (x.Key.ConnectionId, x.Value)).FirstOrDefault(group => group.Count() > 1) is { } repeated)
+            return Invalid<ProductMarketplaceCodesView>(MarketplaceCodeField(repeated.Last().Key.VariantId, repeated.Key.ConnectionId), $"'{repeated.Key.Value}' kodu birden fazla varyanta yazıldı.");
+
+        var variantIds = wanted.Keys.Select(x => x.VariantId).Distinct().ToArray();
+        var connectionIds = wanted.Keys.Select(x => x.ConnectionId).Distinct().ToArray();
+        var codes = wanted.Values.OfType<string>().Distinct(StringComparer.Ordinal).ToArray();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        var links = await db.MarketplaceVariantLinks
+            .Where(x => x.TenantId == tenantId && connectionIds.Contains(x.ConnectionId) && (variantIds.Contains(x.VariantId) || codes.Contains(x.ExternalId)))
+            .ToListAsync(cancellationToken);
+        // A code another variant holds and keeps is refused; one that variant gives up in this same save may move.
+        foreach (var ((variantId, connectionId), code) in wanted)
+        {
+            if (code is null || links.FirstOrDefault(x => x.ConnectionId == connectionId && x.VariantId != variantId && string.Equals(x.ExternalId, code, StringComparison.Ordinal)) is not { } holder) continue;
+            if (wanted.TryGetValue((holder.VariantId, connectionId), out var holderCode) && !string.Equals(holderCode, code, StringComparison.Ordinal)) continue;
+            var holderSku = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == holder.VariantId).Select(x => x.Sku).FirstOrDefaultAsync(cancellationToken);
+            var message = $"'{code}' kodu {(holderSku is null ? "başka bir varyanta" : $"{holderSku} stok kodlu varyanta")} bağlı.";
+            return ServiceResult<ProductMarketplaceCodesView>.Fail("MARKETPLACE_CODE_IN_USE", message, 409, new Dictionary<string, string[]> { [MarketplaceCodeField(variantId, connectionId)] = [message] });
+        }
+        // Changed and removed links go first, so two variants swapping codes never meet the unique index half done.
+        var added = new List<MarketplaceVariantLink>();
+        foreach (var ((variantId, connectionId), code) in wanted)
+        {
+            var existing = links.FirstOrDefault(x => x.ConnectionId == connectionId && x.VariantId == variantId);
+            if (existing is not null && string.Equals(existing.ExternalId, code, StringComparison.Ordinal)) continue;
+            if (existing is not null) db.MarketplaceVariantLinks.Remove(existing);
+            if (code is not null) added.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = code, Version = 1 });
+        }
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            db.MarketplaceVariantLinks.AddRange(added);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            return Conflict<ProductMarketplaceCodesView>("MARKETPLACE_CODES_CHANGED", "Kodlar bu sırada başka bir işlemde (örneğin ürün aktarımı) değişti; pencereyi yenileyip yeniden kaydedin.");
+        }
+        return await GetProductMarketplaceCodesAsync(tenantId, id, cancellationToken);
+    }
+
+    internal static string MarketplaceCodeField(Guid variantId, Guid connectionId) => $"{variantId:D}:{connectionId:D}";
+
+    // Hepsiburada's hbSku as typed (no spaces); Shopify's variant id as a number. Empty means no link.
+    internal static string? MarketplaceCode(string platformCode, string? value, out string? error)
+    {
+        error = null;
+        var code = value?.Trim();
+        if (string.IsNullOrEmpty(code)) return null;
+        if (platformCode == "SHOPIFY")
+        {
+            if (ShopifyVariantId.Match(code) is { Success: true } match) return match.Groups[1].Value;
+            error = "Shopify Variant ID yalnız rakamlardan oluşur (örneğin 44026663600212).";
+            return null;
+        }
+        if (code.Length > 160 || code.Any(char.IsWhiteSpace))
+        {
+            error = "Kod boşluk içeremez ve en fazla 160 karakter olabilir.";
+            return null;
+        }
+        return code;
+    }
+
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();

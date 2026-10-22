@@ -139,6 +139,9 @@ public sealed record ProductMarketplaceCodesView(IReadOnlyList<MarketplaceCodeCo
 public sealed record MarketplaceCodeConnectionView(Guid ConnectionId, string PlatformCode, string DisplayName);
 public sealed record VariantMarketplaceCodesView(Guid VariantId, string Sku, string? Barcode, IReadOnlyList<VariantMarketplaceCodeView> Codes);
 public sealed record VariantMarketplaceCodeView(Guid ConnectionId, string ExternalId, string? ExternalBarcode, string? ExternalSku);
+// Codes typed in the product editor: a code links the variant on that connection, an empty one removes its link.
+public sealed record UpdateMarketplaceCodesCommand(IReadOnlyList<MarketplaceCodeChange>? Codes);
+public sealed record MarketplaceCodeChange(Guid VariantId, Guid ConnectionId, string? Code);
 
 public interface ICatalogService
 {
@@ -169,6 +172,7 @@ public interface ICatalogService
     Task<ServiceResult<ProductView>> DuplicateProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductMarketplaceCodesView>> GetProductMarketplaceCodesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductMarketplaceCodesView>> UpdateProductMarketplaceCodesAsync(Guid tenantId, Guid id, UpdateMarketplaceCodesCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);

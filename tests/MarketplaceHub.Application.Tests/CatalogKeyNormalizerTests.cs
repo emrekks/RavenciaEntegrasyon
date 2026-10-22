@@ -89,6 +89,29 @@ public sealed class CatalogKeyNormalizerTests
         Assert.Equal("36:38", VariantOptionSignature.Parse("Beden: 36:38").Single().Value);
     }
 
+    // A Shopify Variant ID is kept as its number whether it is typed, pasted as a gid or as an admin link; a Hepsiburada
+    // SKU is kept as typed; an empty code means no link.
+    [Theory]
+    [InlineData("SHOPIFY", "44791234567890", "44791234567890")]
+    [InlineData("SHOPIFY", " gid://shopify/ProductVariant/44791234567890 ", "44791234567890")]
+    [InlineData("SHOPIFY", "https://admin.shopify.com/store/ravencia/products/8301/variants/44791234567890?x=1", "44791234567890")]
+    [InlineData("HEPSIBURADA", " HBCV0000HANLRA ", "HBCV0000HANLRA")]
+    [InlineData("HEPSIBURADA", "", null)]
+    public void MarketplaceCode_ReadsWhatIsTyped(string platform, string typed, string? expected)
+    {
+        Assert.Equal(expected, CatalogService.MarketplaceCode(platform, typed, out var error));
+        Assert.Null(error);
+    }
+
+    [Theory]
+    [InlineData("SHOPIFY", "QUDE2410307")]
+    [InlineData("HEPSIBURADA", "HBCV 0000")]
+    public void MarketplaceCode_RefusesWhatCannotBeACode(string platform, string typed)
+    {
+        Assert.Null(CatalogService.MarketplaceCode(platform, typed, out var error));
+        Assert.NotNull(error);
+    }
+
     [Fact]
     public void SameColorAndSize_ReadsThePanelSignature()
     {

@@ -260,6 +260,67 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Empty(result.Value.Variants.Single(x => x.VariantId == medium.Id).Codes);
     }
 
+    // Codes typed in the product editor: a changed code starts without the marketplace's barcode and stock code (the
+    // next import reads them), two variants may hand a code over in one save, a code another product's variant holds is
+    // refused with that variant's stock code, and an empty code removes the link.
+    [PostgreSqlFact]
+    public async Task ProductMarketplaceCodes_SaveTypedCodes()
+    {
+        var tenant = NewTenant("product-marketplace-codes-save");
+        var hepsiburada = NewConnection(tenant, "HEPSIBURADA");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var (product, small) = NewVariant(tenant, "SAVE-S", "8690000000302");
+        var medium = NewVariant(tenant, "SAVE-M", "8690000000319", product.Id).Variant;
+        var (otherProduct, other) = NewVariant(tenant, "OTHER-S", "8690000000326");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(hepsiburada, shopify);
+            seed.Products.AddRange(product, otherProduct);
+            seed.ProductVariants.AddRange(small, medium, other);
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = small.Id, ExternalId = "HBCV00001ABCD", ExternalSku = "SAVE-S", ExternalBarcode = "8690000000302" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = other.Id, ExternalId = "HBCV0000OTHER", ExternalSku = "OTHER-S" });
+            await seed.SaveChangesAsync();
+        }
+        CatalogService Service(AppDbContext context) => new(context, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+
+        await using (var db = fixture.CreateContext())
+        {
+            var saved = await Service(db).UpdateProductMarketplaceCodesAsync(tenant.Id, product.Id, new([
+                new(small.Id, hepsiburada.Id, " HBCV00001NEW1 "),
+                new(medium.Id, hepsiburada.Id, "HBCV00001ABCD"),
+                new(small.Id, shopify.Id, "gid://shopify/ProductVariant/44791234567899"),
+                new(medium.Id, shopify.Id, "")]), CancellationToken.None);
+
+            Assert.True(saved.Succeeded, saved.Error?.Message);
+            var codes = saved.Value!.Variants.ToDictionary(x => x.VariantId, x => x.Codes.ToDictionary(code => code.ConnectionId));
+            Assert.Equal("HBCV00001NEW1", codes[small.Id][hepsiburada.Id].ExternalId);
+            Assert.Null(codes[small.Id][hepsiburada.Id].ExternalSku);
+            Assert.Equal("HBCV00001ABCD", codes[medium.Id][hepsiburada.Id].ExternalId);
+            Assert.Equal("44791234567899", codes[small.Id][shopify.Id].ExternalId);
+            Assert.False(codes[medium.Id].ContainsKey(shopify.Id));
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var refused = await Service(db).UpdateProductMarketplaceCodesAsync(tenant.Id, product.Id, new([new(medium.Id, hepsiburada.Id, "HBCV0000OTHER")]), CancellationToken.None);
+
+            Assert.Equal("MARKETPLACE_CODE_IN_USE", refused.Error?.Code);
+            Assert.Contains("OTHER-S", refused.Error!.Message, StringComparison.Ordinal);
+            Assert.True(refused.Error.FieldErrors!.ContainsKey(CatalogService.MarketplaceCodeField(medium.Id, hepsiburada.Id)));
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var cleared = await Service(db).UpdateProductMarketplaceCodesAsync(tenant.Id, product.Id, new([new(small.Id, hepsiburada.Id, "  ")]), CancellationToken.None);
+
+            Assert.True(cleared.Succeeded, cleared.Error?.Message);
+            Assert.DoesNotContain(cleared.Value!.Variants.Single(x => x.VariantId == small.Id).Codes, code => code.ConnectionId == hepsiburada.Id);
+            Assert.Equal("HBCV00001ABCD", cleared.Value.Variants.Single(x => x.VariantId == medium.Id).Codes.Single(code => code.ConnectionId == hepsiburada.Id).ExternalId);
+        }
+    }
+
     // A PTT AVM product with variants is kept by its model code and lists only its colour and size values: the
     // panel variants of the model are linked by their own stock codes (PTT AVM's variant stock codes), an earlier
     // option-id link is rewritten, and a variant whose size PTT AVM does not list stays unlinked and is reported.

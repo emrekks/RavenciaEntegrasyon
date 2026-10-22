@@ -223,6 +223,20 @@
   .marketplace-codes-table thead th { position: sticky; top: 0; background: var(--rv-color-surface); font-weight: 600; }
   .marketplace-codes-table td.is-empty { color: var(--rv-color-muted); }
   .marketplace-codes-note { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+  /* The platform's logo beside the name of its code (Hepsiburada SKU, Shopify Variant ID); each cell is a field. */
+  .marketplace-code-head { display: inline-flex; align-items: center; gap: 8px; }
+  .marketplace-code-head img { width: 20px; height: 20px; flex: none; border-radius: 5px; object-fit: contain; }
+  .marketplace-codes-table td { vertical-align: top; }
+  .marketplace-code-input { box-sizing: border-box; width: 100%; min-width: 180px; height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: var(--rv-font-size-sm); }
+  .marketplace-code-input::placeholder { color: var(--rv-color-subtle); }
+  .marketplace-code-input:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+  .marketplace-code-input.is-changed { border-color: var(--rv-color-primary); }
+  .marketplace-code-input[aria-invalid="true"] { border-color: var(--rv-color-danger); }
+  .marketplace-code-input:disabled { opacity: .55; cursor: not-allowed; }
+  .marketplace-code-error { display: block; max-width: 260px; margin-top: 4px; color: var(--rv-color-danger); font-size: 12px; white-space: normal; }
+  .marketplace-codes-status { margin: 0; font-size: var(--rv-font-size-sm); }
+  .marketplace-codes-status.is-success { color: var(--rv-color-accent); }
+  .marketplace-codes-status.is-error { color: var(--rv-color-danger); }
 }
 
 @layer features {
