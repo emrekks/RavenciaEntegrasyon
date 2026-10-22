@@ -157,9 +157,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         // A published variant goes by the codes the marketplace holds when its import read them (the seller may have
         // changed them there), else by the codes it was published with. Codes the marketplace confirmed (read back
         // by an import) need not equal the panel's.
-        // A link the marketplace no longer knows (a full scan missed it, or a push was refused for an unknown code) is
-        // left out of a bulk or product send: it would only be refused again. A send for that one variant still goes.
-        if (variantId is null) published.RemoveAll(row => row.Link is not null && MarketplaceVariantLinkHealth.IsBroken(row.Link.HealthStatus));
+        // A link the marketplace refused twice as an unknown code is left out of a bulk or product send: it would only
+        // be refused again. A send for that one variant still goes; a code a scan missed is still sent.
+        if (variantId is null) published.RemoveAll(row => row.Link is not null && MarketplaceVariantLinkHealth.SkipsBulkPush(row.Link.HealthStatus));
         var rows = published.Select(row => new GenericPriceInventoryRow(row.Offer, row.Variant, row.Inventory,
                 isHepsiburada ? row.ListingBarcode : row.Link?.ExternalBarcode ?? row.ListingBarcode,
                 row.Link?.ExternalSku ?? row.ListingSku, row.Link?.ExternalId, row.Link?.ExternalSku is not null,
@@ -186,7 +186,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         {
             // Hepsiburada needs the hbSku beside the merchant SKU; a link that holds the merchant SKU instead stays out.
             if (isHepsiburada && !HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.Link.ExternalId)) continue;
-            if (variantId is null && MarketplaceVariantLinkHealth.IsBroken(row.Link.HealthStatus)) continue;
+            if (variantId is null && MarketplaceVariantLinkHealth.SkipsBulkPush(row.Link.HealthStatus)) continue;
             rows.Add(new(row.Offer, row.Variant, row.Inventory, row.Link.ExternalBarcode ?? (isShopify ? row.Link.ExternalId : row.Link.ExternalSku!), row.Link.ExternalSku, row.Link.ExternalId, true,
                 isShopify ? row.Link.ExternalId : null));
         }

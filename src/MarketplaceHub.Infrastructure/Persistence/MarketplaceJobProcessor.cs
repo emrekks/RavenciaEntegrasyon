@@ -1073,7 +1073,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // A code saved by hand after the scan began is left alone until the next scan.
     private async Task MarkMissingVariantLinks(Guid tenantId, Guid connectionId, string platformCode, DateTimeOffset scanStartedAt, CancellationToken cancellationToken)
     {
-        var links = db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.HealthStatus == null);
+        var links = db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+            && (x.HealthStatus == null || x.HealthStatus == MarketplaceVariantLinkHealth.Suspect || x.HealthStatus == MarketplaceVariantLinkHealth.Unverified));
         var healthy = await links.CountAsync(cancellationToken);
         if (healthy == 0) return;
         var seen = await links.CountAsync(x => x.LastSeenAt >= scanStartedAt, cancellationToken);
@@ -1086,15 +1087,22 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return;
         }
         var now = timeProvider.GetUtcNow();
-        var missing = await links
-            .Where(x => (x.LastSeenAt == null || x.LastSeenAt < scanStartedAt) && (x.HealthChangedAt == null || x.HealthChangedAt < scanStartedAt))
+        var unseen = links.Where(x => (x.LastSeenAt == null || x.LastSeenAt < scanStartedAt) && (x.HealthChangedAt == null || x.HealthChangedAt < scanStartedAt));
+        // A link the previous full scan already missed breaks now; one missed for the first time only becomes
+        // suspect and keeps reading as linked. The order matters: a link made suspect here is not broken in the same scan.
+        var missing = await unseen.Where(x => x.HealthStatus == MarketplaceVariantLinkHealth.Suspect)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.HealthStatus, MarketplaceVariantLinkHealth.NotFound)
                 .SetProperty(x => x.HealthReason, MarketplaceVariantLinkHealth.NotFoundReason)
                 .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
+        await unseen.Where(x => x.HealthStatus == null || x.HealthStatus == MarketplaceVariantLinkHealth.Unverified)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.HealthStatus, MarketplaceVariantLinkHealth.Suspect)
+                .SetProperty(x => x.HealthReason, "Son tam ürün taramasında görülmedi.")
+                .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
         if (missing > 0)
             await RecordIssue(tenantId, $"variant-link-not-found:{connectionId}", "VARIANT_LINK_NOT_FOUND",
-                $"{platform}: {missing:N0} varyantın kodu son tam ürün taramasında pazaryerinde bulunamadı; bu varyantlara fiyat ve stok gönderilmez. Kodu ürünün Varyant Eşleştirme penceresinden düzeltin.", cancellationToken);
+                $"{platform}: {missing:N0} varyantın kodu art arda iki tam ürün taramasında pazaryerinde bulunamadı. Fiyat ve stok gönderimi sürüyor; kodu ürünün Varyant Eşleştirme penceresinden kontrol edin.", cancellationToken);
         if (missing > 0) await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -1104,28 +1112,37 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var now = timeProvider.GetUtcNow();
         var since = sentAt ?? now;
+        var broken = 0;
         foreach (var (variantId, reason) in rejected)
         {
             var safeReason = Short(reason, 200);
-            await db.MarketplaceVariantLinks
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && (x.HealthChangedAt == null || x.HealthChangedAt < since))
+            var target = db.MarketplaceVariantLinks
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && (x.HealthChangedAt == null || x.HealthChangedAt < since));
+            // A second refusal for an unknown code breaks the link; the first only makes it suspect (still linked).
+            broken += await target.Where(x => x.HealthStatus == MarketplaceVariantLinkHealth.Suspect)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.HealthStatus, MarketplaceVariantLinkHealth.Rejected)
+                    .SetProperty(x => x.HealthReason, safeReason)
+                    .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
+            await target.Where(x => x.HealthStatus == null || x.HealthStatus == MarketplaceVariantLinkHealth.Unverified)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.HealthStatus, MarketplaceVariantLinkHealth.Suspect)
                     .SetProperty(x => x.HealthReason, safeReason)
                     .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
         }
         if (accepted.Count > 0)
             await db.MarketplaceVariantLinks
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && accepted.Contains(x.VariantId) && x.HealthStatus == MarketplaceVariantLinkHealth.Rejected)
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && accepted.Contains(x.VariantId)
+                    && (x.HealthStatus == MarketplaceVariantLinkHealth.Rejected || x.HealthStatus == MarketplaceVariantLinkHealth.Suspect))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.HealthStatus, (string?)null)
                     .SetProperty(x => x.HealthReason, (string?)null)
                     .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
-        if (rejected.Count > 0)
+        if (broken > 0)
         {
             var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
             await RecordIssue(tenantId, $"variant-link-rejected:{connectionId}", "VARIANT_LINK_REJECTED",
-                $"{MarketplacePlatformName(platformCode)}: {rejected.Count:N0} varyantın kodu fiyat-stok gönderiminde pazaryerinde bulunamadı; bu varyantlara fiyat ve stok gönderilmez. Kodu ürünün Varyant Eşleştirme penceresinden düzeltin.", cancellationToken);
+                $"{MarketplacePlatformName(platformCode)}: {broken:N0} varyantın kodu fiyat-stok gönderiminde art arda iki kez pazaryerinde bulunamadı; bu varyantlara toplu fiyat ve stok gönderilmez. Kodu ürünün Varyant Eşleştirme penceresinden düzeltin.", cancellationToken);
         }
     }
 

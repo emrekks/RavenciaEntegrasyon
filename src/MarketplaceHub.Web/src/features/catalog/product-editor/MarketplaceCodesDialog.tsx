@@ -22,14 +22,15 @@ const platformNames: Record<string, string> = { HEPSIBURADA: 'Hepsiburada', SHOP
 const codePlaceholders: Record<string, string> = { HEPSIBURADA: 'HBCV…', SHOPIFY: 'Variant ID' }
 const codeStateLabels = { linked: 'Bağlı', unverified: 'Doğrulanmadı', broken: 'Koptu', empty: 'Bağlı değil', changed: 'Değişti', invalid: 'Hatalı' } as const
 
-// What a cell says about its link: a refused or typed-over code first, then the saved code's health. "Bağlı" only for
-// a code a product import read at the marketplace; one never read yet is "Doğrulanmadı", one it no longer knows "Koptu".
+// What a cell says about its link: a refused or typed-over code first, then the saved code's health. "Koptu" only when
+// the marketplace said twice that it does not know the code (NOT_FOUND / REJECTED); "Doğrulanmadı" only for a code
+// typed by hand that no import has read yet. Every other saved code, an import's link included, reads "Bağlı".
 export function marketplaceCodeState(input: { error?: string; typed: string; saved: string; link?: MarketplaceCodeLink | null }): MarketplaceCodeState {
   if (input.error) return 'invalid'
   if (input.typed.trim() !== input.saved) return 'changed'
   if (!input.saved) return 'empty'
   if (input.link?.healthStatus === 'NOT_FOUND' || input.link?.healthStatus === 'REJECTED') return 'broken'
-  return input.link?.lastSeenAt ? 'linked' : 'unverified'
+  return input.link?.healthStatus === 'UNVERIFIED' && !input.link.lastSeenAt ? 'unverified' : 'linked'
 }
 
 // The column a connection's codes fill: "SKU" / "Variant ID" under the platform's logo, with the connection name when
@@ -159,7 +160,7 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
                     </span>
                   </span>
                   <span className="marketplace-code-field">{codeField(single.variantId, connection, fieldLabel(single.label, connection))}</span>
-                  {state === 'broken' && <small className="marketplace-code-reason">{link?.healthReason ?? 'Pazaryeri bu kodu tanımıyor.'} Fiyat ve stok bu koda gönderilmez; kodu düzeltip kaydedin.</small>}
+                  {state === 'broken' && <small className="marketplace-code-reason">{link?.healthReason ?? 'Pazaryeri bu kodu tanımıyor.'} {link?.healthStatus === 'REJECTED' ? 'Toplu fiyat ve stok bu koda gönderilmez; kodu düzeltip kaydedin.' : 'Kodu pazaryerinde kontrol edip gerekirse düzeltin.'}</small>}
                   {state === 'unverified' && <small className="marketplace-code-reason is-info">Kod henüz pazaryerinden okunmadı; bir sonraki ürün aktarımında doğrulanır.</small>}
                 </li>
               })}</ul>

@@ -52,4 +52,15 @@ public sealed class MarketplaceVariantLinkHealthTests
         Assert.Equal(at.AddHours(1), link.HealthChangedAt);
         Assert.True(MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus));
     }
+
+    [Fact]
+    public void OnlyATwiceRefusedCodeIsLeftOutOfBulkSendsAndASuspectOrUnverifiedOneIsNotBroken()
+    {
+        Assert.True(MarketplaceVariantLinkHealth.SkipsBulkPush(MarketplaceVariantLinkHealth.Rejected));
+        Assert.False(MarketplaceVariantLinkHealth.SkipsBulkPush(MarketplaceVariantLinkHealth.NotFound));
+        Assert.False(MarketplaceVariantLinkHealth.SkipsBulkPush(MarketplaceVariantLinkHealth.Suspect));
+        Assert.False(MarketplaceVariantLinkHealth.SkipsBulkPush(null));
+        Assert.False(MarketplaceVariantLinkHealth.IsBroken(MarketplaceVariantLinkHealth.Suspect));
+        Assert.False(MarketplaceVariantLinkHealth.IsBroken(MarketplaceVariantLinkHealth.Unverified));
+    }
 }

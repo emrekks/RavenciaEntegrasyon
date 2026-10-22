@@ -1054,7 +1054,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             if (existing is not null) db.MarketplaceVariantLinks.Remove(existing);
             // A typed code is unverified until an import reads it; the change time keeps a scan or push that began
             // before it from judging the new code.
-            if (code is not null) added.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = code, HealthChangedAt = timeProvider.GetUtcNow(), Version = 1 });
+            if (code is not null) added.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = code, HealthStatus = MarketplaceVariantLinkHealth.Unverified, HealthChangedAt = timeProvider.GetUtcNow(), Version = 1 });
         }
         try
         {

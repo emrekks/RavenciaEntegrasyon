@@ -373,9 +373,18 @@ public static class MarketplaceVariantLinkHealth
 {
     public const string NotFound = "NOT_FOUND";
     public const string Rejected = "REJECTED";
-    public const string NotFoundReason = "Son tam ürün taramasında pazaryerinde bulunamadı.";
+    // One signal is never enough to call a link broken: the first full scan that misses it or the first refusal for
+    // an unknown code only makes it SUSPECT (still shown as linked); the same signal again breaks it.
+    public const string Suspect = "SUSPECT";
+    // A code typed by hand that no import has read yet. Links an import made are never unverified.
+    public const string Unverified = "UNVERIFIED";
+    public const string NotFoundReason = "Art arda iki tam ürün taramasında pazaryerinde bulunamadı.";
 
     public static bool IsBroken(string? healthStatus) => healthStatus is NotFound or Rejected;
+
+    // Only a code the marketplace refused twice as unknown is left out of bulk price/stock sends; a code a scan
+    // missed still gets them, so a listing the scan cannot see never stops receiving stock.
+    public static bool SkipsBulkPush(string? healthStatus) => healthStatus == Rejected;
 
     // A link the marketplace's product listing showed again is healthy, whatever it was before.
     public static void MarkSeen(MarketplaceVariantLink link, DateTimeOffset seenAt)

@@ -3,9 +3,12 @@ import { changedMarketplaceCodes, marketplaceCodeColumnLabel, marketplaceCodeFor
 
 describe('marketplace code state', () => {
   const link = { connectionId: 'hb-1', externalId: 'HBCV1', externalBarcode: null, externalSku: null }
-  it('calls a code linked only once an import read it, and never while the marketplace no longer knows it', () => {
+  it('calls a code broken only on the second signal, and unverified only when it was typed and never read', () => {
     expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, lastSeenAt: '2026-10-22T10:00:00Z' } })).toBe('linked')
-    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link })).toBe('unverified')
+    // A link an import made before health was tracked, and one a first signal made suspect, still read linked.
+    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link })).toBe('linked')
+    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, healthStatus: 'SUSPECT' } })).toBe('linked')
+    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, healthStatus: 'UNVERIFIED' } })).toBe('unverified')
     expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, lastSeenAt: '2026-10-22T10:00:00Z', healthStatus: 'NOT_FOUND' } })).toBe('broken')
     expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, healthStatus: 'REJECTED' } })).toBe('broken')
   })
