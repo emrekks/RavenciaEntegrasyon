@@ -185,6 +185,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                             $"{orderConnection.PlatformCode} siparişindeki mevcut fatura güvenle okunamadı ({platformRead.Error!.Code}); mali kesim başlatılmadı.", cancellationToken);
 
                     var observation = platformRead.Value!;
+                    if (MarketplaceInvoiceStatePolicy.IsUnverified(observation.RawStatus))
+                    {
+                        // n11 / PTT AVM: no API invoice says nothing about the seller panel, so the package keeps its state.
+                        if (MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(targetPackage.MarketplaceInvoiceStatus, targetPackage.ManualInvoiceStatus))
+                            await BlockFiscalSubmission(invoice, "PLATFORM_INVOICE_ALREADY_PRESENT",
+                                "Siparişte pazaryeri faturası var veya fatura yüklendi olarak işaretlenmiş. Yeni mali kesim yapılmadı.", cancellationToken);
+                        continue;
+                    }
                     var observedAt = timeProvider.GetUtcNow();
                     targetPackage.MarketplaceInvoiceRawStatus = observation.RawStatus;
                     targetPackage.MarketplaceInvoiceStatus = MarketplaceInvoiceStatePolicy.FromRemote(
@@ -1020,70 +1028,89 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
 
         var latestMarketplaceInvoice = beforeDelivery.Value!;
-        var explicitlyNotInvoiced = MarketplaceInvoiceStatePolicy.FromRemote(
-            latestMarketplaceInvoice.RawStatus,
-            invoiceNumber: latestMarketplaceInvoice.VerifiedInvoiceNumber,
-            invoiceUrl: latestMarketplaceInvoice.VerifiedInvoiceLink) == MarketplaceInvoiceStatus.NotInvoiced;
         var observedAt = timeProvider.GetUtcNow();
-        package.MarketplaceInvoiceRawStatus = latestMarketplaceInvoice.RawStatus;
-        package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatePolicy.FromRemote(
-            latestMarketplaceInvoice.RawStatus,
-            invoiceNumber: latestMarketplaceInvoice.VerifiedInvoiceNumber,
-            invoiceUrl: latestMarketplaceInvoice.VerifiedInvoiceLink);
-        var latestReferences = explicitlyNotInvoiced
-            ? (InvoiceNumber: (string?)null, InvoiceUrl: (string?)null)
-            : MarketplaceInvoiceStatePolicy.MergeReferences(
-                package.MarketplaceInvoiceNumber,
-                package.MarketplaceInvoiceUrl,
-                latestMarketplaceInvoice.VerifiedInvoiceNumber,
-                latestMarketplaceInvoice.VerifiedInvoiceLink,
-                latestMarketplaceInvoice.ReferencesAreAuthoritative);
-        MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(
-            db, package, latestReferences.InvoiceNumber, latestReferences.InvoiceUrl, observedAt, "DELIVERY_PRECHECK");
-        package.MarketplaceInvoiceNumber = latestReferences.InvoiceNumber;
-        package.MarketplaceInvoiceUrl = latestReferences.InvoiceUrl;
-        package.MarketplaceInvoiceObservedAt = observedAt;
-        package.UpdatedAt = observedAt;
-        package.Version++;
-
-        if (!explicitlyNotInvoiced)
+        var unverified = MarketplaceInvoiceStatePolicy.IsUnverified(latestMarketplaceInvoice.RawStatus);
+        if (unverified)
         {
-            if (HasExactDeliveryProof(latestMarketplaceInvoice, invoice.InvoiceNumber, permanentUrl))
+            // n11 / PTT AVM cannot show a seller-panel invoice: the package keeps its state, and a link is sent only
+            // while nothing local (an observed invoice or a hand-set "uploaded") says the order already holds one.
+            if (MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(package.MarketplaceInvoiceStatus, package.ManualInvoiceStatus))
             {
-                state ??= new MarketplaceDeliveryState
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    InvoiceId = invoice.Id,
-                    ConnectionId = package.ConnectionId,
-                    PackageId = package.Id,
-                    AttemptNumber = 0,
-                    ExternalIdempotencyKey = $"delivery:{invoice.Id:N}:{package.Id:N}",
-                    RequestHash = Hash($"remote-proof:{invoice.Id:N}:{package.Id:N}:{invoice.InvoiceNumber}:{permanentUrl}"),
-                    DeliveryType = "LINK",
-                    Status = "UNKNOWN",
-                    ExternalReference = package.ExternalPackageId,
-                    CreatedAt = observedAt,
-                    UpdatedAt = observedAt,
-                    Version = 1
-                };
-                if (db.Entry(state).State == EntityState.Detached) db.MarketplaceDeliveryStates.Add(state);
-                AppendDeliveryHistory(state, "CONFIRMED", latestMarketplaceInvoice.ExternalReference, null, observedAt);
-                await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken, observedAt);
+                invoice.Status = InvoiceStatus.ManualReview;
+                invoice.LastErrorCode = "PLATFORM_INVOICE_ALREADY_PRESENT";
+                invoice.UpdatedAt = observedAt;
+                invoice.Version++;
                 await db.SaveChangesAsync(cancellationToken);
-                return true;
+                throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode,
+                    "Siparişte pazaryeri faturası var veya fatura yüklendi olarak işaretlenmiş. Üzerine yazılmadı ve yeni belge gönderilmedi."));
             }
+        }
+        else
+        {
+            var explicitlyNotInvoiced = MarketplaceInvoiceStatePolicy.FromRemote(
+                latestMarketplaceInvoice.RawStatus,
+                invoiceNumber: latestMarketplaceInvoice.VerifiedInvoiceNumber,
+                invoiceUrl: latestMarketplaceInvoice.VerifiedInvoiceLink) == MarketplaceInvoiceStatus.NotInvoiced;
+            package.MarketplaceInvoiceRawStatus = latestMarketplaceInvoice.RawStatus;
+            package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatePolicy.FromRemote(
+                latestMarketplaceInvoice.RawStatus,
+                invoiceNumber: latestMarketplaceInvoice.VerifiedInvoiceNumber,
+                invoiceUrl: latestMarketplaceInvoice.VerifiedInvoiceLink);
+            var latestReferences = explicitlyNotInvoiced
+                ? (InvoiceNumber: (string?)null, InvoiceUrl: (string?)null)
+                : MarketplaceInvoiceStatePolicy.MergeReferences(
+                    package.MarketplaceInvoiceNumber,
+                    package.MarketplaceInvoiceUrl,
+                    latestMarketplaceInvoice.VerifiedInvoiceNumber,
+                    latestMarketplaceInvoice.VerifiedInvoiceLink,
+                    latestMarketplaceInvoice.ReferencesAreAuthoritative);
+            MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(
+                db, package, latestReferences.InvoiceNumber, latestReferences.InvoiceUrl, observedAt, "DELIVERY_PRECHECK");
+            package.MarketplaceInvoiceNumber = latestReferences.InvoiceNumber;
+            package.MarketplaceInvoiceUrl = latestReferences.InvoiceUrl;
+            package.MarketplaceInvoiceObservedAt = observedAt;
+            package.UpdatedAt = observedAt;
+            package.Version++;
 
-            var presentButDifferent = package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
-            invoice.Status = InvoiceStatus.ManualReview;
-            invoice.LastErrorCode = presentButDifferent ? "PLATFORM_INVOICE_ALREADY_PRESENT" : "PLATFORM_INVOICE_STATUS_NOT_CLEAR";
-            invoice.UpdatedAt = observedAt;
-            invoice.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-            throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode,
-                presentButDifferent
-                    ? "Pazaryerinde mevcut fatura veya farklı bir belge bulundu. Üzerine yazılmadı ve yeni belge gönderilmedi."
-                    : "Pazaryeri açık bir 'fatura yok' cevabı vermedi. Güvenli iletim için işlem durduruldu."));
+            if (!explicitlyNotInvoiced)
+            {
+                if (HasExactDeliveryProof(latestMarketplaceInvoice, invoice.InvoiceNumber, permanentUrl))
+                {
+                    state ??= new MarketplaceDeliveryState
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        InvoiceId = invoice.Id,
+                        ConnectionId = package.ConnectionId,
+                        PackageId = package.Id,
+                        AttemptNumber = 0,
+                        ExternalIdempotencyKey = $"delivery:{invoice.Id:N}:{package.Id:N}",
+                        RequestHash = Hash($"remote-proof:{invoice.Id:N}:{package.Id:N}:{invoice.InvoiceNumber}:{permanentUrl}"),
+                        DeliveryType = "LINK",
+                        Status = "UNKNOWN",
+                        ExternalReference = package.ExternalPackageId,
+                        CreatedAt = observedAt,
+                        UpdatedAt = observedAt,
+                        Version = 1
+                    };
+                    if (db.Entry(state).State == EntityState.Detached) db.MarketplaceDeliveryStates.Add(state);
+                    AppendDeliveryHistory(state, "CONFIRMED", latestMarketplaceInvoice.ExternalReference, null, observedAt);
+                    await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken, observedAt);
+                    await db.SaveChangesAsync(cancellationToken);
+                    return true;
+                }
+
+                var presentButDifferent = package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
+                invoice.Status = InvoiceStatus.ManualReview;
+                invoice.LastErrorCode = presentButDifferent ? "PLATFORM_INVOICE_ALREADY_PRESENT" : "PLATFORM_INVOICE_STATUS_NOT_CLEAR";
+                invoice.UpdatedAt = observedAt;
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode,
+                    presentButDifferent
+                        ? "Pazaryerinde mevcut fatura veya farklı bir belge bulundu. Üzerine yazılmadı ve yeni belge gönderilmedi."
+                        : "Pazaryeri açık bir 'fatura yok' cevabı vermedi. Güvenli iletim için işlem durduruldu."));
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -1454,6 +1481,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             && string.Equals(submittedResult.VerifiedInvoiceNumber, invoice.InvoiceNumber, StringComparison.Ordinal)
             && string.Equals(submittedResult.VerifiedInvoiceLink, permanentUrl, StringComparison.Ordinal))
         {
+            RecordConfirmedDelivery(package, invoice.InvoiceNumber, permanentUrl, timeProvider.GetUtcNow());
             AppendDeliveryHistory(state, "CONFIRMED", submittedResult.ExternalReference, null, timeProvider.GetUtcNow());
             await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
@@ -1498,7 +1526,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             await db.SaveChangesAsync(cancellationToken);
             throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode, "Pazaryerindeki fatura metafield'ları başka bir fatura gösteriyor; mevcut değerlerin üzerine yazılmadı."));
         }
-        if (!confirmation.Value.IsTerminal || deliveryStatus == "NOT_INVOICED")
+        if (!confirmation.Value.IsTerminal || deliveryStatus is "NOT_INVOICED" or MarketplaceInvoiceStatePolicy.Unverified)
         {
             AppendDeliveryHistory(state, "CONFIRMATION_RETRYABLE", state.ExternalReference, null, timeProvider.GetUtcNow());
             invoice.LastErrorCode = null;
@@ -1530,10 +1558,26 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode, "Pazaryeri yalnızca genel bir 'faturalı' durumu döndürdü; bu mali faturayla eşleşen numara veya bağlantı doğrulanamadı."));
         }
 
+        RecordConfirmedDelivery(package, invoice.InvoiceNumber, permanentUrl, timeProvider.GetUtcNow());
         AppendDeliveryHistory(state, "CONFIRMED", state.ExternalReference, null, timeProvider.GetUtcNow());
         await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    // A delivery proven for this exact invoice is itself the marketplace invoice state: the package shows it at once
+    // instead of waiting for the next order read (n11 and PTT AVM read back only invoices sent through the API).
+    private void RecordConfirmedDelivery(ShipmentPackage package, string? invoiceNumber, string? invoiceLink, DateTimeOffset at)
+    {
+        if (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced) return;
+        MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(db, package, invoiceNumber, invoiceLink, at, "DELIVERY_CONFIRMED");
+        package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+        package.MarketplaceInvoiceRawStatus = "INVOICED";
+        package.MarketplaceInvoiceNumber = invoiceNumber;
+        package.MarketplaceInvoiceUrl = invoiceLink;
+        package.MarketplaceInvoiceObservedAt = at;
+        package.UpdatedAt = at;
+        package.Version++;
     }
 
     private async Task SetInvoiceDeliveryOutcome(Guid tenantId, Invoice invoice, CancellationToken cancellationToken, DateTimeOffset? at = null)

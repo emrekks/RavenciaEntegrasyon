@@ -28,6 +28,18 @@ public enum MarketplaceInvoiceStatus
 
 public static class MarketplaceInvoiceStatePolicy
 {
+    // n11 and PTT AVM cannot show an invoice uploaded in their seller panel: their read answers only for invoices sent
+    // through the API. "No API invoice" is reported as UNVERIFIED, which maps to Unknown and so never lands as NotInvoiced.
+    public const string Unverified = "UNVERIFIED";
+
+    public static bool IsUnverified(string? rawStatus) =>
+        string.Equals(rawStatus?.Trim(), Unverified, StringComparison.OrdinalIgnoreCase);
+
+    // Clears an unverified read for a write only while nothing local says the order already holds an invoice.
+    public static bool UnverifiedReadShowsInvoice(MarketplaceInvoiceStatus current, string? manualInvoiceStatus) =>
+        current is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received
+        || string.Equals(manualInvoiceStatus, "UPLOADED", StringComparison.OrdinalIgnoreCase);
+
     public static MarketplaceInvoiceStatus FromRemote(string? rawStatus, string? packageRawStatus = null, string? invoiceNumber = null, string? invoiceUrl = null)
     {
         var normalized = rawStatus?.Trim().ToUpperInvariant().Replace('-', '_').Replace(' ', '_');

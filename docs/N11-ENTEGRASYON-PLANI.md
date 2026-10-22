@@ -454,7 +454,7 @@ Her aşama küçük commit'lerle ana dala gider. Her commit'in Validate ve Deplo
 5. Yeni (Created) sipariş API'den reddedilebilir mi?
 6. Tek kalemli pakette yalnız iptal mümkün mü? `ClaimCancelPartial` hâlâ geçerli mi?
 7. İade talebindeki `skuId` ile sipariş satırı (`orderLineId`) arasında bağ var mı?
-8. Fatura linkini geri okuyabileceğimiz bir servis var mı?
+8. Fatura linkini geri okuyabileceğimiz bir servis var mı? **Cevap (23 Ekim 2026): yok.** `SellerInvoiceService` yalnız `SaveLinkSellerInvoice` içeriyor; diğer WSDL'lerde de okuma işlemi yok. `shipmentPackages.invoiceLink`/`invoiceDate` yalnız e-ihracat (`micro=true`) siparişleri için (changelog 8 Haziran 2026). Satıcı panelinden yüklenen fatura API'de görünmüyor (canlıda 19 siparişin hiçbirinde dolu değil). Panelde bu siparişler "Doğrulanamadı" sekmesinde durur, satıcı elle işaretler; gönderimden önce yalnız yerel kanıta (gözlenen fatura veya elle "yüklendi") bakılır. Destek: sellerintegration@n11.com.
 9. Soru detay servisinin sınırı nedir?
 10. `product-query` için değişiklik tarihi filtresi var mı ya da planlanıyor mu?
 11. Test mağazası verilebilir mi?

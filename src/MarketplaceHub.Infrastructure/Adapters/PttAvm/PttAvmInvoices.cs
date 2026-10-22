@@ -34,7 +34,8 @@ public sealed partial class PttAvmHttpClient : IInvoiceMarketplacePort
         };
     }
 
-    // The order's live lines (not cancelled) all carry IsInvoice=true once PTT AVM holds an invoice for them.
+    // The order's live lines (not cancelled) all carry IsInvoice=true once PTT AVM holds an invoice sent through the API.
+    // An invoice uploaded in the seller panel leaves IsInvoice=false, so false is UNVERIFIED, never "no invoice".
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)
     {
         var orderNumber = reference.OrderNumber ?? reference.ExternalOrderId ?? reference.ExternalReference;
@@ -44,7 +45,7 @@ public sealed partial class PttAvmHttpClient : IInvoiceMarketplacePort
         var invoiced = PttAvmInvoiceMapper.Invoiced(order.Value!);
         return invoiced is null
             ? Failure<InvoiceDeliveryStatus>(AdapterErrorClass.ContractViolation, "PTTAVM_INVOICE_STATUS_UNCLEAR", "PTT AVM siparişinin satırları fatura durumunu (IsInvoice) taşımıyor.", HttpStatusCode.BadGateway)
-            : AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, invoiced.Value ? "INVOICED" : "NOT_INVOICED", IsTerminal: true), order.RateLimit);
+            : AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, invoiced.Value ? "INVOICED" : MarketplaceHub.Domain.MarketplaceInvoiceStatePolicy.Unverified, IsTerminal: true), order.RateLimit);
     }
 }
 

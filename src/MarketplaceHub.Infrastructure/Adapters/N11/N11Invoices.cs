@@ -35,11 +35,12 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
             verified ? request.StoredLink : null));
     }
 
-    // No read-back service exists. Before a delivery the platform is treated as holding no link;
-    // the next save replaces any earlier link. A confirmation read cannot be answered.
+    // No read-back service exists, and an invoice uploaded in the n11 seller panel is invisible to the API. Before a
+    // delivery the answer is UNVERIFIED (not "no invoice"); the invoice workflow decides from local state whether to
+    // send. A confirmation read cannot be answered.
     public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) =>
         Task.FromResult(string.IsNullOrWhiteSpace(reference.InvoiceNumber) && string.IsNullOrWhiteSpace(reference.InvoiceLink)
-            ? AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, "NOT_INVOICED", IsTerminal: true))
+            ? AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, MarketplaceHub.Domain.MarketplaceInvoiceStatePolicy.Unverified, IsTerminal: true))
             : Failure<InvoiceDeliveryStatus>(AdapterErrorClass.NotSupported, "N11_INVOICE_READBACK_UNSUPPORTED", "N11 gönderilen fatura linkini geri okuma servisi sunmuyor.", HttpStatusCode.NotImplemented));
 
     // C8: a success answer (SendSoapAsync already required result/status=success) that echoes this link proves the

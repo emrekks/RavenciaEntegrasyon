@@ -516,7 +516,8 @@ public sealed record InvoiceWorkspacePageView(
     bool HasPendingMarketplaceInvoices,
     IReadOnlyList<string> ShipmentStatuses,
     IReadOnlyList<string> CargoProviders,
-    IReadOnlyList<string> InvoiceStatuses);
+    IReadOnlyList<string> InvoiceStatuses,
+    int UnverifiedCount = 0);
 public sealed record InvoiceLineView(Guid Id, int LineSequence, string Description, string? Sku, string Unit, decimal Quantity, decimal UnitPrice, decimal DiscountAmount, decimal VatRate, decimal VatAmount, decimal LineTotal);
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);

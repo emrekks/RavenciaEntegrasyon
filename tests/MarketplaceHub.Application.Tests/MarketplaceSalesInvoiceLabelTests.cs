@@ -35,15 +35,26 @@ public sealed class MarketplaceSalesInvoiceLabelTests
         Assert.Equal(expected, label);
     }
 
+    [Fact]
+    public void PazaramaOrderWithoutAnyInvoiceEvidenceStaysUnknown() =>
+        Assert.Equal("FATURA_BILINMIYOR", MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], "PAZARAMA"));
+
+    // A seller-panel upload is invisible to the n11 and PTT AVM APIs: no evidence there is "cannot be verified", never "waiting".
     [Theory]
     [InlineData("N11")]
-    [InlineData("PAZARAMA")]
-    public void N11AndPazaramaOrdersWithoutAnyInvoiceEvidenceStayUnknown(string platformCode)
+    [InlineData("PTTAVM")]
+    public void N11AndPttAvmOrdersWithoutAnyInvoiceEvidenceCannotBeVerified(string platformCode)
     {
         var label = MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], platformCode);
 
-        Assert.Equal("FATURA_BILINMIYOR", label);
+        Assert.Equal("FATURA_DOGRULANAMADI", label);
     }
+
+    [Theory]
+    [InlineData(MarketplaceInvoiceStatus.Invoiced, "FATURA_KONTROLDE")]
+    [InlineData(MarketplaceInvoiceStatus.Received, "FATURA_KONTROLDE")]
+    public void PttAvmOrderWithAnObservedInvoiceIsNotUnverified(MarketplaceInvoiceStatus status, string expected) =>
+        Assert.Equal(expected, MarketplaceSalesService.InvoiceLabelForPlatform(null, status, "{}", ["Delivered"], "PTTAVM"));
 
     [Fact]
     public void N11OrderWithAnInvoiceLinkIsShownForReview()
@@ -54,8 +65,8 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     }
 
     [Fact]
-    public void N11OrderWithAnEmptyInvoiceLinkStaysUnknown() =>
-        Assert.Equal("FATURA_BILINMIYOR", MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, """{"invoiceLink":"","invoiceDate":""}""", ["Delivered"], "N11"));
+    public void N11OrderWithAnEmptyInvoiceLinkCannotBeVerified() =>
+        Assert.Equal("FATURA_DOGRULANAMADI", MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, """{"invoiceLink":"","invoiceDate":""}""", ["Delivered"], "N11"));
 
     [Fact]
     public void ReturnWithoutInvoiceEvidenceIsPresentedAsUnknown()

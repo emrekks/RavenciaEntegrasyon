@@ -284,7 +284,7 @@ public sealed partial class InvoicingBillingService(
 
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == order.ConnectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY"))
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PTTAVM"))
             return ServiceResult<Guid>.Fail("INVOICE_MARKETPLACE_UNSUPPORTED", "Bu sipariş için pazaryeri fatura kontrolü desteklenmiyor.", 422);
         if (connection.Status is not ("ACTIVE" or "VERIFIED") || !IntegrationRuntimePolicy.AllowsManualRead(connection))
             return ServiceResult<Guid>.Fail("INVOICE_MARKETPLACE_READ_UNAVAILABLE", "Pazaryeri bağlantısı şu anda salt okunur durum kontrolüne uygun değil.", 409);
@@ -345,7 +345,7 @@ public sealed partial class InvoicingBillingService(
     {
         var pageSize = request.PageSize is 20 or 50 or 100 or 200 ? request.PageSize : 20;
         var requestedPage = Math.Max(1, request.PageNumber);
-        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "ALL" or "INVOICED" or "DUE_SOON" or "HIDDEN"
+        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "ALL" or "INVOICED" or "UNVERIFIED" or "DUE_SOON" or "HIDDEN"
             ? request.Tab.Trim().ToUpperInvariant()
             : "UNINVOICED";
         var hiddenSetting = await db.TenantSettings.AsNoTracking()
@@ -370,6 +370,7 @@ public sealed partial class InvoicingBillingService(
         var selectedTotal = 0;
         var selectedUninvoiced = 0;
         var selectedInvoiced = 0;
+        var selectedUnverified = 0;
         var selectedDueSoon = 0;
         var hasPendingMarketplaceInvoices = false;
         var filteredCount = 0;
@@ -396,6 +397,7 @@ public sealed partial class InvoicingBillingService(
                 {
                     selectedTotal++;
                     if (IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) selectedUninvoiced++;
+                    else if (IsWorkspaceInvoiceUnverified(candidate)) selectedUnverified++;
                     else selectedInvoiced++;
                     if (candidate.IsDueSoon) selectedDueSoon++;
                     if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
@@ -434,7 +436,8 @@ public sealed partial class InvoicingBillingService(
         }
         var items = await MaterializeWorkspacePageAsync(tenantId, pageCandidates, cancellationToken);
         return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, hiddenPackageIds.Count, selectedTotal, hasPendingMarketplaceInvoices,
-            shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray());
+            shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray(),
+            selectedUnverified);
     }
 
     // Ties always fall back to the shipment date and package id so pages stay stable between requests.
@@ -640,7 +643,9 @@ public sealed partial class InvoicingBillingService(
         {
             "ALL" => !isHidden,
             "HIDDEN" => isHidden,
-            "INVOICED" => !isHidden && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate)),
+            "INVOICED" => !isHidden && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))
+                && !IsWorkspaceInvoiceUnverified(candidate),
+            "UNVERIFIED" => !isHidden && IsWorkspaceInvoiceUnverified(candidate),
             "DUE_SOON" => !isHidden && candidate.IsDueSoon,
             _ => !isHidden && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))
         };
@@ -666,6 +671,13 @@ public sealed partial class InvoicingBillingService(
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
             || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
+
+    // n11 / PTT AVM orders whose invoice state the marketplace cannot show (a seller-panel upload is invisible to its
+    // API) and that the seller has not marked: neither waiting nor invoiced, they get a tab of their own.
+    private static bool IsWorkspaceInvoiceUnverified(WorkspaceCandidate candidate) =>
+        !candidate.CanCreateInvoice
+        && candidate.InvoiceStatus == MarketplaceSalesService.UnverifiedInvoiceLabel
+        && !HasMarketplaceInvoiceObservation(candidate);
 
     // Evidence that the package holds an invoice outside a panel invoice record. A status the seller set by hand
     // (Shopify "Faturası yüklendi" / "Fatura bekliyor") decides; otherwise the marketplace's own observation does.
