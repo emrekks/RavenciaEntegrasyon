@@ -6683,6 +6683,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     product = variantMatchedProduct;
                 }
             }
+            // Hepsiburada links to the panel's products the way the import always matched: by barcode, then the seller's
+            // stock code, then the model code. A listing none of them finds opens no product (a Hepsiburada code is not
+            // a panel product: the SIT test listings carry nothing else); it is reported as unmatched.
+            if (isHepsiburada && product is null)
+            {
+                var stockCodes = CatalogKeyNormalizer.LookupKeys(snapshot.Variants.Select(variant => variant.Sku)).ToHashSet(StringComparer.Ordinal);
+                var modelCodes = snapshot.Variants.Select(variant => variant.ModelCode?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
+                var matchedProductIds = stockCodes.Count == 0 ? [] : await db.ProductVariants.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && stockCodes.Contains(x.SkuNormalized)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+                if (matchedProductIds.Count == 0 && modelCodes.Length > 0)
+                    matchedProductIds = await db.ProductVariants.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && x.ModelCode != null && modelCodes.Contains(x.ModelCode)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+                if (matchedProductIds.Count == 1
+                    && !await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == matchedProductIds[0] && x.ExternalId != externalProductId, cancellationToken))
+                    product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == matchedProductIds[0], cancellationToken);
+                if (product is null)
+                {
+                    var remote = snapshot.Variants.FirstOrDefault();
+                    await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{Short(externalProductId, 256)}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short($"Hepsiburada ürünü panelde eşleşmedi: barkod {remote?.Barcode ?? "yok"}, stok kodu {remote?.Sku ?? "yok"}, model kodu {remote?.ModelCode ?? "yok"} · {snapshot.Title}. {(matchedProductIds.Count > 1 ? "Birden fazla panel ürünü aday çıktı." : "Panelde aynı barkod, stok kodu veya model kodu yok; Hepsiburada ürünü panelde yeni ürün olarak açılmaz.")}", 1000), cancellationToken);
+                    return false;
+                }
+            }
         }
         if (product is null)
         {
