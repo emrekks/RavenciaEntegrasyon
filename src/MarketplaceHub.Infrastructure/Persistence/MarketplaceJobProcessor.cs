@@ -8,6 +8,7 @@ using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.N11;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using MarketplaceHub.Infrastructure.Imports;
@@ -3077,6 +3078,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
             var includeUnpackagedOnHoldOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "ON_HOLD");
             var unpackagedCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(timeProvider.GetUtcNow());
+            // Unpackaged as the order list counts it (O14): a package the panel unpacked (UNPACKED_BY_PANEL,
+            // cancelled) leaves the order to be read again.
             var lifecycleOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId
                 && (db.ShipmentPackages.Any(package => package.TenantId == tenantId
@@ -3088,8 +3091,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     || (order.OrderedAt >= unpackagedCutoff
                         && (includeUnpackagedNewOrders && order.DerivedStatus == "NEW"
                             || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD")
-                        // Unpackaged as the order list counts it (O14): a package the panel unpacked
-                        // (UNPACKED_BY_PANEL, cancelled) leaves the order to be read again.
                         && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
                             && package.ConnectionId == connectionId
                             && package.OrderId == order.Id
@@ -4745,6 +4746,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var fullCatalogForMapping = ProductImportScanPolicy.RequiresFullCatalogForMapping(mappingOnly, includeArchived, includeDrafts);
         var effectiveFullScan = fullScan || fullCatalogForMapping;
         var productLookup = ReadText(payloadJson, "productLookup");
+        // PTT AVM model variants are mapped by the codes PTT AVM confirms (PttAvmCodeLookup); after a failed lookup the
+        // rest of the run asks no more and leaves those variants unmatched.
+        var pttCodeCheckFailed = false;
+        var codeLookup = isPttAvm ? products as IProductVisualLookupPort : null;
+        async Task<RemoteProduct?> CheckPttAvmCode(string code)
+        {
+            if (pttCodeCheckFailed || codeLookup is null) return null;
+            var answer = await codeLookup.FindByBarcodeAsync(Context(tenantId, connectionId, correlationId, $"pttavm-code:{code}"), code, cancellationToken);
+            if (answer.IsSuccess) return answer.Value;
+            pttCodeCheckFailed = true;
+            await RecordIssue(tenantId, $"pttavm-code-check:{connectionId}", "PTTAVM_CODE_CHECK_FAILED", Short($"PTT AVM kod sorgusu yapılamadı ({answer.Error!.Code}); model varyantları bu çalıştırmada eşlenmedi.", 1000), cancellationToken);
+            return null;
+        }
+        Func<string, Task<RemoteProduct?>>? pttCodeCheck = codeLookup is null ? null : CheckPttAvmCode;
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
             ? "Tekil ürün çekimi"
@@ -5061,7 +5076,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     if (mappingOnly)
                     {
-                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11");
+                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11", confirmCode: pttCodeCheck);
                         if (!mapped) telemetryImportSkippedCount++;
                         else telemetryImportProcessedCount++;
                         continue;
@@ -6029,7 +6044,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // variant that found no local variant so it can be fixed by hand. seedOffers (n11)
     // opens the channel offer of a linked variant from the remote price when
     // the variant has none yet; existing offers are never changed.
-    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null, string seedSource = "N11")
+    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null, string seedSource = "N11", Func<string, Task<RemoteProduct?>>? confirmCode = null)
     {
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         if (string.IsNullOrWhiteSpace(externalProductId)) return false;
@@ -6114,6 +6129,62 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .ToHashSet();
         var matchedVariantCount = 0;
         var matchedProductIds = new HashSet<Guid>();
+
+        // PTT AVM lists a model's variants without their codes ("FK4530/7101", a size name): the panel variants of the
+        // model are linked by the code PTT AVM itself confirms for them (their barcode, else their stock code), never by
+        // the variant name or the title's colour. The link then carries that code, which price and stock go by.
+        var codelessVariants = confirmCode is null
+            ? []
+            : remoteVariants.Where(variant => string.IsNullOrWhiteSpace(variant.Barcode) && PttAvmVariantMapper.IsModelVariantId(Short(variant.ExternalVariantId, 256))).ToList();
+        if (codelessVariants.Count > 0)
+        {
+            remoteVariants = remoteVariants.Except(codelessVariants).ToList();
+            var modelKey = NormalizeCatalogKey(codelessVariants[0].ModelCode ?? snapshot.ProductMainId, 160);
+            var modelVariants = localVariants.Where(variant => modelKey.Length > 0 && string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), modelKey, StringComparison.Ordinal)).OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id).ToList();
+            foreach (var candidate in modelVariants)
+            {
+                var existing = existingVariantLinks.FirstOrDefault(item => item.VariantId == candidate.Id);
+                if (existing is not null && !PttAvmVariantMapper.IsModelVariantId(existing.ExternalId))
+                {
+                    // Confirmed by an earlier run: nothing to ask.
+                    matchedVariantCount++;
+                    matchedProductIds.Add(candidate.ProductId);
+                    continue;
+                }
+                string? confirmed = null;
+                foreach (var code in new[] { candidate.Barcode, candidate.Sku }.Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!.Trim()).Distinct(StringComparer.Ordinal))
+                    if (await confirmCode!(code) is { } answer && (answer.ExternalProductId == externalProductId || CatalogKeyNormalizer.SameKey(answer.Barcode, snapshot.ProductMainId)))
+                    {
+                        confirmed = code;
+                        break;
+                    }
+                if (confirmed is null || existingVariantLinks.Any(item => string.Equals(item.ExternalId, confirmed, StringComparison.OrdinalIgnoreCase) && item.VariantId != candidate.Id))
+                {
+                    if (reportUnmatched)
+                        await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{candidate.Id:N}", "PRODUCT_MAPPING_UNMATCHED",
+                            Short(confirmed is null
+                                ? $"PTT AVM panel varyantını tanımadı: barkod {candidate.Barcode ?? "yok"}, stok kodu {candidate.Sku} bu model ürününde ({snapshot.ProductMainId}) bulunamadı · {snapshot.Title}."
+                                : $"PTT AVM kodu {confirmed} başka bir panel varyantına bağlı; {candidate.Sku} bağlanmadı · {snapshot.Title}.", 1000), cancellationToken);
+                    continue;
+                }
+                if (existing is not null)
+                {
+                    existing.ExternalId = confirmed;
+                    existing.Version++;
+                }
+                else
+                {
+                    db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = confirmed, Version = 1 });
+                    existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = confirmed, Version = 1 });
+                    telemetryInsertedCount++;
+                }
+                claimedVariantIds.Add(candidate.Id);
+                matchedVariantCount++;
+                matchedProductIds.Add(candidate.ProductId);
+                if (seedOffers)
+                    await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, codelessVariants.FirstOrDefault(remote => HasOptionValues(candidate.OptionSignature, remote.Options)) ?? codelessVariants[0], inventoryPolicy, now, cancellationToken, seedSource);
+            }
+        }
 
         foreach (var remote in remoteVariants)
         {
@@ -7880,14 +7951,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The stream is package-shaped: one order can occur once per package.
         // Merge the page before materializing the order so split-package line
         // quantities are summed instead of the last package overwriting them.
+        // Shopify returns a complete order snapshot, including all fulfillments
+        // and refunds. The Trendyol package merger only sums active package
+        // quantities and would erase Shopify cancellation quantities, so the
+        // newest Shopify snapshot is retained.
         var mergedRemotes = remotes
             .Where(remote => !string.IsNullOrWhiteSpace(remote.ExternalOrderId))
             .GroupBy(remote => remote.ExternalOrderId, StringComparer.Ordinal)
             .Select(group => isShopify
-                // Shopify returns a complete order snapshot, including all
-                // fulfillments and refunds. The Trendyol package merger only
-                // sums active package quantities and would erase Shopify
-                // cancellation quantities, so retain the newest snapshot.
                 ? group.OrderByDescending(remote => remote.LastModifiedAt).First()
                 : isHepsiburada
                     ? MergeHepsiburadaOrderLines(group)
@@ -8181,10 +8252,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : null;
             var sku = isShopify ? ShopifyOrderCsvSnapshotPolicy.PreserveRemoteSku(remoteLine.Sku, line) ?? line.Sku : remoteLine.Sku;
             var title = isShopify ? ShopifyOrderCsvSnapshotPolicy.PreserveRemoteTitle(remoteLine.Title, line) : remoteLine.Title;
+            // Hepsiburada order details may omit the image field present in
+            // paid-order/package lists. Keep previously observed line data
+            // when a later read does not repeat it.
             var sourceSnapshot = isShopify || isHepsiburada
-                // Hepsiburada order details may omit the image field present in
-                // paid-order/package lists. Keep previously observed line data
-                // when a later read does not repeat it.
                 ? ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(remoteLine.SourceSnapshotJson, line.SourceSnapshotJson)
                 : remoteLine.SourceSnapshotJson;
             var previousExternalLineId = line.ExternalLineId;

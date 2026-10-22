@@ -242,6 +242,53 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Empty(result.Value.Variants.Single(x => x.VariantId == medium.Id).Codes);
     }
 
+    // PTT AVM model variants come without codes: the panel variants of the model are linked by the code PTT AVM
+    // confirms (barcode, else stock code); an earlier id link is replaced, and a variant PTT AVM knows by neither
+    // code stays unlinked and is reported.
+    [PostgreSqlFact]
+    public async Task PttAvmModelMapping_LinksThePanelVariantsByTheCodesPttAvmConfirms()
+    {
+        var tenant = NewTenant("pttavm-confirmed-codes");
+        var pttAvm = NewConnection(tenant, "PTTAVM");
+        var (product, small) = NewVariant(tenant, "M1-S", "8690000000203");
+        var medium = NewVariant(tenant, "M1-M", "8690000000210", product.Id).Variant;
+        var large = NewVariant(tenant, "M1-L", "8690000000227", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(pttAvm);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(small, medium, large);
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = medium.Id, ExternalId = "MODEL-1/7102" });
+            await seed.SaveChangesAsync();
+        }
+        RemoteCatalogVariant Codeless(string id, string size) => new($"MODEL-1/{id}", $"MODEL-1-{size}", null, "MODEL-1", new Dictionary<string, string> { ["Varyant"] = size }, false, 100m, null, 20m, 1m, "TRY", "{}");
+        var snapshot = new RemoteCatalogProduct("900001", "MODEL-1", "Mini Etek", "", null, null, null, null, [], [Codeless("7101", "S"), Codeless("7102", "M"), Codeless("7103", "L")], "{}");
+        var asked = new List<string>();
+        Func<string, Task<RemoteProduct?>> confirm = code =>
+        {
+            asked.Add(code);
+            return Task.FromResult<RemoteProduct?>(code is "8690000000203" or "M1-M" ? new RemoteProduct("900001", code, "MODEL-1", null, "{}") : null);
+        };
+
+        await using var db = fixture.CreateContext();
+        var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var mapped = await (Task<bool>)map.Invoke(processor, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", confirm])!;
+        await db.SaveChangesAsync();
+
+        Assert.True(mapped);
+        var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id).ToDictionaryAsync(x => x.VariantId, x => x.ExternalId);
+        Assert.Equal("8690000000203", links[small.Id]);
+        Assert.Equal("M1-M", links[medium.Id]);
+        Assert.False(links.ContainsKey(large.Id));
+        // Each variant is asked by its barcode first and by its stock code only when PTT AVM does not know the barcode.
+        Assert.Equal(["8690000000203", "8690000000210", "8690000000227", "M1-L", "M1-M"], asked.Order(StringComparer.Ordinal));
+        Assert.True(asked.IndexOf("8690000000210") < asked.IndexOf("M1-M"));
+        Assert.True(asked.IndexOf("8690000000227") < asked.IndexOf("M1-L"));
+        Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "PRODUCT_MAPPING_UNMATCHED"));
+    }
+
     // An import keeps the marketplace's barcode and stock code on the links it read, whatever code paired them.
     [PostgreSqlFact]
     public async Task ProductImport_RecordsTheMarketplaceCodesOnItsLinks()
