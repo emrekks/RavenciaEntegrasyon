@@ -147,8 +147,9 @@ public static partial class CommissionTariffFileParser
         if (day2 > DateTime.DaysInMonth(endYear, endMonth)) return false;
         var endInclusive = new DateTimeOffset(endYear, endMonth, day2, hour2, minute2, 0, TurkeyOffset);
         if (endInclusive <= best.Value) return false;
-        start = best.Value;
-        end = endInclusive.AddMinutes(1);
+        // Read in Istanbul time, kept as UTC instants: PostgreSQL's timestamptz takes only offset 0 from Npgsql.
+        start = best.Value.ToUniversalTime();
+        end = endInclusive.AddMinutes(1).ToUniversalTime();
         return true;
     }
 

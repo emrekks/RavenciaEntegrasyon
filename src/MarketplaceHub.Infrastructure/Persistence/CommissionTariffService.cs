@@ -185,6 +185,8 @@ public sealed class CommissionTariffLookup(AppDbContext db) : ICommissionTariffL
         var code = barcode?.Trim();
         var sku = sellerSku?.Trim();
         if (string.IsNullOrEmpty(code) && string.IsNullOrEmpty(sku)) return null;
+        // Npgsql writes timestamptz parameters only at offset 0.
+        at = at.ToUniversalTime();
         // The tariffs in force at `at`, the latest upload first: a re-issued tariff for the same week replaces the earlier one.
         var tariffs = await db.CommissionTariffs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.PeriodStart <= at && x.PeriodEnd > at)
