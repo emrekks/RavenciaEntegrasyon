@@ -208,8 +208,16 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   model kodlarıydı. PTT AVM bu ürünleri model olarak tutuyor, `StokKontrolListesi` varyantlarını vermiyor.
   - Varyantlar `GetProductsWithVariants(page, size)` ile okunur; sayfalar **1'den** başlar (canlı: "Page 0'dan büyük olmalıdır").
   - Bu servis varyantı barkodsuz verir: `VariantId`, `VariantName` ("S"), `Quantity`, `PriceDifference`, `Limit`.
-    Varyant `FK4530/7101` kimliğiyle, `FK4530-S` stok koduyla, `FK4530` model koduyla okunur; eşleme model kodu, beden ve
-    başlıktaki renkle yapılır.
+    Varyant `FK4530/7101` kimliğiyle, `FK4530-S` stok koduyla, `FK4530` model koduyla okunur.
+  - **Eşleme (22 Ekim, değişti):** beden adı ve başlıktaki renkle tahmin yapılmaz. "Ürün Eşleme" modelin panel
+    varyantlarının barkodunu, tanımazsa stok kodunu `BarkodKontrol` ile PTT AVM'ye sorar; PTT AVM kodu bu model ürünü
+    (aynı `UrunId` ya da model barkodu) altında gösterirse varyant o kodla bağlanır. Fiyat, stok ve siparişler bu kodla
+    yürür. Tanınmayan varyant bağlanmaz, "Ürün eşlenemedi" uyarısına düşer. Daha önce `FK4530/7101` ile bağlanmış
+    varyantın bağı doğrulanan kodla değiştirilir; doğrulanmış bağlar yeniden sorulmaz. Sorgu okuma kotasını (30/dk)
+    kullanır; ilk eşleme büyük katalogda uzun sürebilir. Bir sorgu hata verirse çalıştırmanın kalanında sorulmaz
+    (`PTTAVM_CODE_CHECK_FAILED`).
+  - `BarkodKontrol`'ün bir varyant barkodu için model ürününü döndürdüğü canlıda doğrulanacak; döndürmezse varyantlar
+    eşlenmez (yanlış bağ kurulmaz).
   - Sipariş satırında `UrunBarkod` modelin barkodu, `VariantBarkod` satılan varyantın barkodudur (canlı: `RYP001` / `RYP00105`);
     satır `VariantBarkod` ile panel varyantına bağlanır.
   - Fiyat/stok gönderimi `FK4530/7101` gibi kimlikle bağlı varyantta panel barkodunu, barkodu olmayan varyantta stok kodunu

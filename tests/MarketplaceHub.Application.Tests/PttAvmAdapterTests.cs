@@ -1338,6 +1338,26 @@ public sealed class PttAvmAdapterTests
         Assert.Contains(page.Issues!, issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE");
     }
 
+    // BarkodKontrol answers the product a code belongs to: its fields under the result, or under a StokKontrolDetay;
+    // nil, a missing product id or id 0 mean PTT AVM does not know the code.
+    [Fact]
+    public void TheCodeCheckReadsTheProductTheCodeBelongsTo()
+    {
+        XNamespace tem = PttAvmHttpClient.ServiceNamespace;
+        XNamespace a = "http://schemas.datacontract.org/2004/07/ePttAVMService";
+        XNamespace i = PttAvmHttpClient.InstanceNamespace;
+        var direct = new XElement(tem + "BarkodKontrolResult", new XElement(a + "Barkod", "FK4530"), new XElement(a + "UrunId", "900001"), new XElement(a + "UrunKodu", "FK4530"));
+        var nested = new XElement(tem + "BarkodKontrolResult", new XElement(a + "StokKontrolDetay", new XElement(a + "Barkod", "FK4530"), new XElement(a + "UrunId", "900001")));
+
+        var found = PttAvmHttpClient.CodeCheckProduct("8690000000012", direct)!;
+        Assert.Equal("900001", found.ExternalProductId);
+        Assert.Equal("8690000000012", found.ExternalVariantId);
+        Assert.Equal("FK4530", found.Barcode);
+        Assert.Equal("900001", PttAvmHttpClient.CodeCheckProduct("FK4530-S", nested)!.ExternalProductId);
+        Assert.Null(PttAvmHttpClient.CodeCheckProduct("X", new XElement(tem + "BarkodKontrolResult", new XAttribute(i + "nil", "true"))));
+        Assert.Null(PttAvmHttpClient.CodeCheckProduct("X", new XElement(tem + "BarkodKontrolResult", new XElement(a + "UrunId", "0"))));
+    }
+
     private static RemoteOrder OrderFromList(string orderNumber)
     {
         var (result, error) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, OrderListAnswer, PttAvmHttpClient.Orders);
