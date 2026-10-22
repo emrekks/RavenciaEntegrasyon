@@ -443,7 +443,11 @@
   .platform-multi-select-menu-header button:disabled { cursor: default; opacity: .55; }
   .platform-multi-select-option { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); padding: var(--rv-space-2); color: var(--rv-color-ink); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); cursor: pointer; }
   .platform-multi-select-option:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
-  .platform-multi-select-option input { flex: 0 0 auto; accent-color: var(--rv-color-primary); }
+  /* Round like the order, return and invoice selections: 17px, filled violet with a white tick when chosen. */
+  .platform-multi-select-option input { position: relative; flex: 0 0 17px; width: 17px; min-width: 17px; height: 17px; min-height: 17px; margin: 0; appearance: none; -webkit-appearance: none; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 50%; cursor: pointer; }
+  .platform-multi-select-option input:checked { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+  .platform-multi-select-option input:checked::after { content: ""; position: absolute; left: 5.5px; top: 2.5px; width: 3.5px; height: 7.5px; border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
+  .platform-multi-select-option input:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
   .platform-multi-select-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .platform-multi-select-field.is-compact { display: block; width: auto; gap: 0; }
   .platform-multi-select-field.is-compact > .platform-multi-select-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }

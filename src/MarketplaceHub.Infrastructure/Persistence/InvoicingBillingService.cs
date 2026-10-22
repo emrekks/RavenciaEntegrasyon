@@ -667,8 +667,15 @@ public sealed partial class InvoicingBillingService(
         !marketplaceInvoicePresent && (canCreateInvoice
             || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
 
+    // Evidence that the package holds an invoice outside a panel invoice record. A status the seller set by hand
+    // (Shopify "Faturası yüklendi" / "Fatura bekliyor") decides; otherwise the marketplace's own observation does.
     private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
-        candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
+        candidate.Package.ManualInvoiceStatus?.Trim().ToUpperInvariant() switch
+        {
+            "UPLOADED" => true,
+            "PENDING" => false,
+            _ => candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received
+        };
 
     internal static bool MatchesWorkspacePlatformFilter(IReadOnlyList<string>? platformCodes, string candidatePlatformCode) =>
         platformCodes is null || platformCodes.Count == 0 || platformCodes.Any(platform =>
