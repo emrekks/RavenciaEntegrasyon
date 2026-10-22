@@ -95,7 +95,7 @@ function Kpis({ data }: { data: ReportSales }) {
   return <div className="reports-kpis">
     <Kpi label="Net Ciro" value={noAmount ? 'Tutar yok' : formatTl(now.netRevenue)} delta={noAmount ? null : change(now.netRevenue, before.netRevenue)} hint="İadeler düşülmüş" />
     <Kpi label="Satış Tutarı" value={noAmount ? 'Tutar yok' : formatTl(now.grossSales)} delta={noAmount ? null : change(now.grossSales, before.grossSales)} hint="İade öncesi" />
-    <Kpi label="Sipariş" value={formatCount(now.orders)} delta={change(now.orders, before.orders)} hint="İptaller hariç" />
+    <Kpi label="Sipariş" value={formatCount(now.orders)} delta={change(now.orders, before.orders)} hint="İptaller hariç, iadeler dahil" />
     <Kpi label="Satılan Adet" value={formatNumber(now.soldQuantity)} delta={change(now.soldQuantity, before.soldQuantity)} hint={`${formatNumber(now.keptQuantity)} adet elde kaldı`} />
     <Kpi label="Ortalama Sipariş" value={formatTl(now.averageOrderValue)} delta={change(now.averageOrderValue, before.averageOrderValue)} hint="Tutarı olan siparişler" />
     <Kpi label="İade Oranı" value={formatPercent(now.returnRate)} delta={change(now.returnRate, before.returnRate, 'rate')} invert hint={`${formatNumber(now.returnedQuantity)} adet iade`} />
