@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { marketplaceCodeColumnLabel, marketplaceCodeFor, marketplaceLinkFor, type MarketplaceCodes } from './MarketplaceCodesDialog'
+import { marketplaceCodeColumnLabel, marketplaceCodeFor, type MarketplaceCodes } from './MarketplaceCodesDialog'
 
 const hepsiburada = { connectionId: 'hb-1', platformCode: 'HEPSIBURADA', displayName: 'Ravencia HB' }
 const shopify = { connectionId: 'sh-1', platformCode: 'SHOPIFY', displayName: 'Ravencia Shopify' }
@@ -23,8 +23,5 @@ describe('marketplace codes', () => {
     expect(marketplaceCodeFor(codes, 'v-1', 'hb-1')).toBe('HBCV00001ABCD')
     expect(marketplaceCodeFor(codes, 'v-1', 'sh-1')).toBe('44791234567890')
     expect(marketplaceCodeFor(codes, 'v-2', 'hb-1')).toBeNull()
-    // A variant's row shows the whole link: code, the marketplace's barcode and its stock code.
-    expect(marketplaceLinkFor(codes, 'v-1', 'hb-1')).toEqual({ connectionId: 'hb-1', externalId: 'HBCV00001ABCD', externalBarcode: '8690000000011', externalSku: 'KZK-S' })
-    expect(marketplaceLinkFor(codes, 'v-2', 'sh-1')).toBeNull()
   })
 })

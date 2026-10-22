@@ -23,13 +23,8 @@ export function marketplaceCodeFor(codes: MarketplaceCodes, variantId: string, c
   return codes.variants.find(variant => variant.variantId === variantId)?.codes.find(code => code.connectionId === connectionId)?.externalId ?? null
 }
 
-// The full link a connection holds for a variant: its code and the barcode and stock code the marketplace keeps.
-export function marketplaceLinkFor(codes: MarketplaceCodes, variantId: string, connectionId: string) {
-  return codes.variants.find(variant => variant.variantId === variantId)?.codes.find(code => code.connectionId === connectionId) ?? null
-}
-
 // Hepsiburada and Shopify codes of the variants the editor shows, as the last product import read them. Opened from
-// one variant's row, it shows that variant's code, barcode and stock code on each connection.
+// one variant's row, it shows that variant's code on each connection.
 export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId: string; rows: MarketplaceCodeRow[]; onClose: () => void }) {
   const codes = useQuery({ queryKey: ['product-marketplace-codes', productId], queryFn: () => hubApi<MarketplaceCodes>(`/products/${productId}/marketplace-codes`, { cache: 'no-store' }) })
   const connections = codes.data?.connections ?? []
@@ -42,10 +37,10 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
           : codes.isError ? <p className="marketplace-codes-note" role="alert">Pazaryeri kodları okunamadı.</p>
             : !connections.length ? <p className="marketplace-codes-note">Etkin Hepsiburada veya Shopify bağlantısı yok.</p>
               : single ? <div className="marketplace-codes-table-wrap"><table className="marketplace-codes-table">
-                <thead><tr><th scope="col">Bağlantı</th><th scope="col">Kod</th><th scope="col">Barkod</th><th scope="col">Stok kodu</th></tr></thead>
-                <tbody>{connections.map(connection => { const link = marketplaceLinkFor(codes.data!, single.variantId, connection.connectionId); return <tr key={connection.connectionId}>
+                <thead><tr><th scope="col">Bağlantı</th><th scope="col">Kod</th></tr></thead>
+                <tbody>{connections.map(connection => { const code = marketplaceCodeFor(codes.data!, single.variantId, connection.connectionId); return <tr key={connection.connectionId}>
                   <th scope="row">{marketplaceCodeColumnLabel(connection, connections)}</th>
-                  {[link?.externalId, link?.externalBarcode, link?.externalSku].map((value, index) => <td key={index} className={value ? 'technical-field' : 'is-empty'}>{value ?? '—'}</td>)}
+                  <td className={code ? 'technical-field' : 'is-empty'}>{code ?? '—'}</td>
                 </tr> })}</tbody>
               </table></div>
               : <div className="marketplace-codes-table-wrap"><table className="marketplace-codes-table">
