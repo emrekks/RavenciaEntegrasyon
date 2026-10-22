@@ -1099,7 +1099,31 @@ public sealed class PttAvmAdapterTests
     [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"quantity":10000}]}""")]
     [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"quantity":1},{"barcode":"A","priceWithVat":10,"quantity":1}]}""")]
     [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"quantity":1,"vatRate":18}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"quantity":1,"variants":[{"attributes":[{"definition":"Renk","value":"Mavi"}],"quantity":1,"price":0}]}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"variants":[]}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"variants":[{"attributes":[],"quantity":1,"price":0}]}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"variants":[{"attributes":[{"definition":"Renk","value":"Mavi"}],"quantity":1,"price":0},{"attributes":[{"definition":"Renk","value":"mavi"}],"quantity":1,"price":0}]}]}""")]
+    [InlineData("""{"items":[{"barcode":"a","priceWithVat":10,"variants":[{"attributes":[{"definition":"Renk","value":"Mavi"}],"quantity":1,"price":-9}]}]}""")]
     public void AnUnacceptablePriceStockPayloadIsRefused(string payload) => Assert.Null(PttAvmPriceInventoryRules.Items(payload));
+
+    // A product with variants goes by its barcode without stock of its own; each variant is named by its attributes and
+    // carries its stock and price difference, in the service schema's element order.
+    [Fact]
+    public void AProductWithVariantsIsSentByItsBarcodeWithEachVariantsAttributes()
+    {
+        var item = new PttAvmPriceInventoryRules.Item("MZDT002ECD", 699m, 10m, null,
+            [new([new("Renk", "Lacivert"), new("Beden", "2XL")], 2, 0m), new([new("Renk", "Siyah"), new("Beden", "XL")], 3, 50m)]);
+
+        var items = PttAvmPriceInventoryRules.Items(PttAvmPriceInventoryRules.Payload([item]))!;
+
+        Assert.Equal(item, Assert.Single(items));
+        var request = XElement.Parse($"<root>{PttAvmPriceInventoryRules.ItemsXml(items)}</root>").Elements().Single();
+        Assert.Equal(["Barcode", "PriceWithVAT", "VATRate", "Variants"], request.Elements().Select(x => x.Name.LocalName));
+        var variant = request.Descendants().First(x => x.Name.LocalName == "Variant");
+        Assert.Equal(["Attributes", "Price", "Quantity"], variant.Elements().Select(x => x.Name.LocalName));
+        Assert.Equal(["Renk", "Lacivert", "Beden", "2XL"], variant.Descendants().Where(x => x.Name.LocalName is "Definition" or "Value").Select(x => x.Value));
+        Assert.Equal("50.00", request.Descendants().Where(x => x.Name.LocalName == "Price").Last().Value);
+    }
 
     // GetProductsTrackingResult as published (three of its five barcodes).
     private const string TrackingAnswer = """

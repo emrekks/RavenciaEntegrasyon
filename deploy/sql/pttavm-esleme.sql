@@ -30,20 +30,33 @@ group by 1;
 
 \echo '== 4. Son 6 saatin PTT AVM eşleme uyarıları =='
 select i."Code" as kod,
-       case when i."Summary" like 'PTT AVM panel varyantını tanımadı%' then 'PTT tanımadı'
+       case when i."Summary" like 'PTT AVM''de bu renk/beden yok%' then 'PTT bu renk/bedeni listelemiyor'
+            when i."Summary" like 'PTT AVM ürün kodu%' then 'PTT ürün kodu panelde yok'
             when i."Summary" like 'PTT AVM kodu%' then 'kod başka varyantta'
+            when i."Code" = 'PTTAVM_PRODUCT_CODE_NOT_MODEL' then 'PTT üst kodu model kodu değil'
+            when i."Code" = 'PTTAVM_TRACKING_LINE_MISSING' then 'fiyat-stok sonucu ürünü içermiyor'
             else 'diğer' end as tur,
        count(*) as adet, max(i."LastSeenAt") at time zone 'Europe/Istanbul' as son
 from ops.operational_issues i
 join integration.platform_connections c on i."DedupeKey" like '%' || c."Id"::text || '%'
 where c."PlatformCode" = 'PTTAVM' and i."LastSeenAt" > now() - interval '6 hours'
-  and i."Code" in ('PRODUCT_MAPPING_UNMATCHED', 'PTTAVM_CODE_CHECK_FAILED')
+  and i."Code" in ('PRODUCT_MAPPING_UNMATCHED', 'PTTAVM_PRODUCT_CODE_NOT_MODEL', 'PTTAVM_TRACKING_LINE_MISSING')
 group by 1, 2
 order by 3 desc;
 
-\echo '== 5. Kod sorgusu hatası (varsa metni) =='
-select i."Summary" as ozet, i."LastSeenAt" at time zone 'Europe/Istanbul' as son
+\echo '== 5. PTT ürün bağları: PTT üst kodu kaydedilen / kaydedilmeyen =='
+select case when l."ExternalCode" is null then 'üst kod yok (eşleme yeniden çalışmalı)' else 'üst kod kayıtlı' end as durum, count(*) as urun
+from catalog.marketplace_product_links l
+join integration.platform_connections c on c."Id" = l."ConnectionId"
+where c."PlatformCode" = 'PTTAVM'
+group by 1;
+
+\echo '== 6. Kurala uymayan PTT ürünleri (varyantlı ama üst kodu model kodu değil) =='
+select left(i."Summary", 200) as ozet
 from ops.operational_issues i
-where i."Code" = 'PTTAVM_CODE_CHECK_FAILED' and i."LastSeenAt" > now() - interval '6 hours';
+join integration.platform_connections c on i."DedupeKey" like '%' || c."Id"::text || '%'
+where c."PlatformCode" = 'PTTAVM' and i."Code" = 'PTTAVM_PRODUCT_CODE_NOT_MODEL' and i."Status" = 'Open'
+order by i."LastSeenAt" desc
+limit 50;
 
 rollback;

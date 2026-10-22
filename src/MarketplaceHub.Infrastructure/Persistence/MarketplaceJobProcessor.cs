@@ -1422,7 +1422,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (!operation.Value.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_STATUS_UNKNOWN", "Fiyat-stok batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId);
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
-        var maximumLineCount = isHepsiburada ? 4000 : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? PazaramaPriceInventoryRules.MaxItemsPerRequest : 1000;
+        var isPttAvm = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
+        // PTT AVM lines are the variants sent: up to 1000 products of up to 100 variants each.
+        var maximumLineCount = isHepsiburada ? 4000 : isPttAvm ? PttAvmPriceInventoryRules.MaxItemsPerRequest * PttAvmPriceInventoryRules.MaxVariantsPerProduct : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? PazaramaPriceInventoryRules.MaxItemsPerRequest : 1000;
         var duplicateKeys = isHepsiburada
             ? payload.Lines.Select(x => x.MerchantSku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count()
             : payload.Lines.Select(x => x.Barcode).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -1457,9 +1459,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     : line.HepsiburadaSku is not null && lineByBarcode.TryGetValue(line.HepsiburadaSku, out var remoteLineByHbSku)
                         ? (Found: true, Remote: remoteLineByHbSku)
                         : (Found: false, Remote: (RemoteOperationLine?)null)
-                : lineByBarcode.TryGetValue(line.Barcode, out var remoteLineByBarcode)
+                : lineByBarcode.TryGetValue(isPttAvm ? line.ExternalVariantId ?? line.Barcode : line.Barcode, out var remoteLineByBarcode)
                     ? (Found: true, Remote: remoteLineByBarcode)
                     : (Found: false, Remote: (RemoteOperationLine?)null);
+            // PTT AVM answers per product barcode; a product it leaves out of the answer is reported and sent again
+            // with the next change, while the products it did answer are recorded.
+            if (!found.Found && isPttAvm)
+            {
+                failed++;
+                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.ExternalVariantId ?? line.Barcode}:PTTAVM_TRACKING_LINE_MISSING", "PTTAVM_TRACKING_LINE_MISSING", $"PTT AVM fiyat-stok sonucu {line.ExternalVariantId ?? line.Barcode} ürününü içermiyor; {line.Barcode} gönderilmiş sayılmadı.", cancellationToken);
+                continue;
+            }
             if (!found.Found && !isHepsiburada) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
             var lineSucceeded = !found.Found || found.Remote!.Succeeded;
             var offer = offers[line.OfferId];
@@ -6341,7 +6351,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             matched++;
             if (seedOffers)
-                await SeedChannelOfferAsync(tenantId, connectionId, variant.Id, remoteVariants.FirstOrDefault(remote => HasOptionValues(variant.OptionSignature, remote.Options)) ?? remoteVariants[0], inventoryPolicy, now, cancellationToken, "PTTAVM");
+            {
+                var seed = remoteVariants.FirstOrDefault(remote => HasOptionValues(variant.OptionSignature, remote.Options)) ?? remoteVariants[0];
+                // A colour or size row's stock is not the variant's, so it never marks the panel stock as already sent.
+                if (PttAvmVariantMapper.IsModelVariantId(seed.ExternalVariantId)) seed = seed with { StockQuantity = null };
+                await SeedChannelOfferAsync(tenantId, connectionId, variant.Id, seed, inventoryPolicy, now, cancellationToken, "PTTAVM");
+            }
         }
         if (matched == 0) return false;
 

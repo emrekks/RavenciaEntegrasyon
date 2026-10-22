@@ -1,4 +1,5 @@
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -100,31 +101,38 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
     }
 
-    // A PTT AVM model variant read without a barcode is linked by its id ("FK4530/7101"); its price and stock go by
-    // the panel barcode, while a variant linked by its barcode keeps that barcode.
+    // PTT AVM keeps a product with variants by its model code and names each variant by its colour and size: the send
+    // is one product with the changed variants, priced from the lowest variant with each variant's difference. A
+    // product without variants goes by its own code with its stock, and an old option-id link is not sent.
     [PostgreSqlFact]
-    public async Task PttAvmPriceStock_SendsThePanelBarcodeForAVariantLinkedByItsModelId()
+    public async Task PttAvmPriceStock_SendsAProductWithItsVariantsByColourAndSize()
     {
         var tenant = NewTenant("pttavm-model-variant");
         var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
-        var (product, modelVariant) = NewVariant(tenant, "FK4530-S", "8690000000097");
-        var plainVariant = NewVariant(tenant, "FK4530-M", "8690000000103", product.Id).Variant;
-        // A panel variant without a barcode is known to PTT AVM by its stock code.
-        var noBarcodeVariant = NewVariant(tenant, "FK4530-L", "unused", product.Id).Variant;
-        noBarcodeVariant.Barcode = null;
-        noBarcodeVariant.BarcodeNormalized = null;
+        var (product, small) = NewVariant(tenant, "FK4530-S", "8690000000097");
+        var medium = NewVariant(tenant, "FK4530-M", "8690000000103", product.Id).Variant;
+        small.OptionSignature = "Renk: Lacivert | Beden: S";
+        medium.OptionSignature = "Renk: Lacivert | Beden: M";
+        var (single, singleVariant) = NewVariant(tenant, "QU2410121", "QU2410121");
+        var (stale, staleVariant) = NewVariant(tenant, "OLD-1", "8690000000110");
+        var mediumOffer = NewOffer(tenant, pttAvm, medium);
+        mediumOffer.SalePrice = 130m;
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
             seed.PlatformConnections.Add(pttAvm);
-            seed.Products.Add(product);
-            seed.ProductVariants.AddRange(modelVariant, plainVariant, noBarcodeVariant);
-            seed.InventoryItems.AddRange(NewInventory(tenant, modelVariant, 4m), NewInventory(tenant, plainVariant, 2m), NewInventory(tenant, noBarcodeVariant, 1m));
-            seed.ChannelOffers.AddRange(NewOffer(tenant, pttAvm, modelVariant), NewOffer(tenant, pttAvm, plainVariant), NewOffer(tenant, pttAvm, noBarcodeVariant));
+            seed.Products.AddRange(product, single, stale);
+            seed.ProductVariants.AddRange(small, medium, singleVariant, staleVariant);
+            seed.InventoryItems.AddRange(NewInventory(tenant, small, 4m), NewInventory(tenant, medium, 2m), NewInventory(tenant, singleVariant, 3m), NewInventory(tenant, staleVariant, 1m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, pttAvm, small), mediumOffer, NewOffer(tenant, pttAvm, singleVariant), NewOffer(tenant, pttAvm, staleVariant));
             seed.MarketplaceVariantLinks.AddRange(
-                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = noBarcodeVariant.Id, ExternalId = "FK4530/7102" },
-                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = modelVariant.Id, ExternalId = "FK4530/7101" },
-                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = plainVariant.Id, ExternalId = "PTT-FK4530-M" });
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = small.Id, ExternalId = "FK4530-S" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = medium.Id, ExternalId = "FK4530-M" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = singleVariant.Id, ExternalId = "QU2410121" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = staleVariant.Id, ExternalId = "OLD/7101" });
+            seed.MarketplaceProductLinks.AddRange(
+                new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ProductId = product.Id, ExternalId = "1523598789", ExternalCode = "FK4530" },
+                new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ProductId = single.Id, ExternalId = "1523598790", ExternalCode = "QU2410121" });
             await seed.SaveChangesAsync();
         }
 
@@ -132,11 +140,20 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var draft = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, pttAvm.Id, CancellationToken.None);
 
         Assert.True(draft.Succeeded, draft.Error?.Message);
-        var barcodes = draft.Value!.Lines.ToDictionary(x => x.VariantId, x => x.Barcode);
-        Assert.Equal("8690000000097", barcodes[modelVariant.Id]);
-        Assert.Equal("PTT-FK4530-M", barcodes[plainVariant.Id]);
-        Assert.Equal("FK4530-L", barcodes[noBarcodeVariant.Id]);
-        Assert.DoesNotContain("FK4530/", draft.Value.PayloadJson, StringComparison.Ordinal);
+        var items = PttAvmPriceInventoryRules.Items(draft.Value!.PayloadJson)!;
+        Assert.Equal(2, items.Count);
+        var model = items.Single(x => x.Barcode == "FK4530");
+        Assert.Equal(120.00m, model.PriceWithVat);
+        Assert.Null(model.Quantity);
+        Assert.Equal(new PttAvmPriceInventoryRules.VariantItem([new("Renk", "Lacivert"), new("Beden", "S")], 4, 0m), model.Variants![0]);
+        Assert.Equal(new PttAvmPriceInventoryRules.VariantItem([new("Renk", "Lacivert"), new("Beden", "M")], 2, 10m), model.Variants[1]);
+        Assert.Equal(new PttAvmPriceInventoryRules.Item("QU2410121", 120.00m, 20m, 3), items.Single(x => x.Barcode == "QU2410121"));
+        // Each line is one variant (its own code) and answers under the product's PTT AVM barcode.
+        var lines = draft.Value.Lines.ToDictionary(x => x.VariantId);
+        Assert.Equal(("FK4530-S", "FK4530"), (lines[small.Id].Barcode, lines[small.Id].ExternalVariantId));
+        Assert.Equal(("QU2410121", "QU2410121"), (lines[singleVariant.Id].Barcode, lines[singleVariant.Id].ExternalVariantId));
+        Assert.False(lines.ContainsKey(staleVariant.Id));
+        Assert.DoesNotContain("/7101", draft.Value.PayloadJson, StringComparison.Ordinal);
     }
 
     // An imported Trendyol variant has no listing rows; its price and stock go by the barcode Trendyol holds,

@@ -13,7 +13,8 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // VAT-inclusive price, the VAT rate and the stock (0-9999) in one request, queues it and answers a tracking id;
 // GetProductsTrackingResult later answers each barcode's outcome. PTT AVM refuses the same request again within five
 // minutes. Every send passes the adapter's write gate, so nothing leaves while external writes are off. Variants of
-// a product are keyed by their attributes on PTT AVM's side; the panel sends each linked barcode on its own.
+// a product are keyed by their attributes on PTT AVM's side: a product with variants goes by its barcode (the model
+// code) with each variant's colour/size, stock and price difference in Variants.
 public sealed partial class PttAvmHttpClient : IInventoryPricePort
 {
     internal const string StockPriceUpdate = "UpdateProductsStockPrice";
@@ -62,7 +63,25 @@ public static class PttAvmPriceInventoryRules
     // PTT AVM takes these VAT rates only; another rate is left out so PTT AVM keeps the one it holds.
     private static readonly decimal[] VatRates = [0m, 1m, 10m, 20m];
 
-    public sealed record Item(string Barcode, decimal PriceWithVat, decimal? VatRate, int Quantity);
+    public const int MaxVariantsPerProduct = 100;
+
+    // A product with variants carries no stock of its own: PTT AVM sets it to the sum of the variants it holds. Each
+    // variant is named by its colour and size (Definition "Renk"/"Beden"), and its Price is the VAT-inclusive
+    // difference from the product's price.
+    public sealed record Item(string Barcode, decimal PriceWithVat, decimal? VatRate, int? Quantity, IReadOnlyList<VariantItem>? Variants = null)
+    {
+        public bool Equals(Item? other) => other is not null && Barcode == other.Barcode && PriceWithVat == other.PriceWithVat && VatRate == other.VatRate && Quantity == other.Quantity
+            && (Variants ?? []).SequenceEqual(other.Variants ?? []);
+        public override int GetHashCode() => HashCode.Combine(Barcode, PriceWithVat, VatRate, Quantity);
+    }
+
+    public sealed record VariantItem(IReadOnlyList<VariantAttribute> Attributes, int Quantity, decimal Price)
+    {
+        public bool Equals(VariantItem? other) => other is not null && Quantity == other.Quantity && Price == other.Price && Attributes.SequenceEqual(other.Attributes);
+        public override int GetHashCode() => HashCode.Combine(Quantity, Price, Attributes.Count);
+    }
+
+    public sealed record VariantAttribute(string Definition, string Value);
 
     public static decimal Price(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 
@@ -73,17 +92,33 @@ public static class PttAvmPriceInventoryRules
     public static string PriceHash(decimal salePrice, decimal? vatRate, long priceVersion) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{salePrice:0.00}|{vatRate?.ToString("0", CultureInfo.InvariantCulture) ?? "-"}|TRY|{priceVersion}"))));
 
-    // The composer writes {"items":[{barcode, priceWithVat, vatRate?, quantity}]}.
-    public static string Payload(IReadOnlyList<(PriceInventoryPushLine Line, decimal? VatRate)> lines)
+    // One product per linked barcode: {"items":[{barcode, priceWithVat, vatRate?, quantity}]}.
+    public static string Payload(IReadOnlyList<(PriceInventoryPushLine Line, decimal? VatRate)> lines) =>
+        Payload(lines.Select(x => new Item(x.Line.Barcode, Price(x.Line.SalePrice), VatRate(x.VatRate), Quantity(x.Line.Quantity))).ToList());
+
+    // {"items":[{barcode, priceWithVat, vatRate?, quantity?, variants?:[{attributes:[{definition, value}], quantity, price}]}]}.
+    public static string Payload(IReadOnlyList<Item> items)
     {
-        var items = new JsonArray();
-        foreach (var (line, vatRate) in lines)
+        var list = new JsonArray();
+        foreach (var item in items)
         {
-            var item = new JsonObject { ["barcode"] = line.Barcode, ["priceWithVat"] = Price(line.SalePrice), ["quantity"] = Quantity(line.Quantity) };
-            if (VatRate(vatRate) is { } rate) item["vatRate"] = rate;
-            items.Add(item);
+            var entry = new JsonObject { ["barcode"] = item.Barcode, ["priceWithVat"] = Price(item.PriceWithVat) };
+            if (VatRate(item.VatRate) is { } rate) entry["vatRate"] = rate;
+            if (item.Quantity is { } quantity) entry["quantity"] = quantity;
+            if (item.Variants is { Count: > 0 } variants)
+            {
+                var variantList = new JsonArray();
+                foreach (var variant in variants)
+                {
+                    var attributes = new JsonArray();
+                    foreach (var attribute in variant.Attributes) attributes.Add(new JsonObject { ["definition"] = attribute.Definition, ["value"] = attribute.Value });
+                    variantList.Add(new JsonObject { ["attributes"] = attributes, ["quantity"] = variant.Quantity, ["price"] = Price(variant.Price) });
+                }
+                entry["variants"] = variantList;
+            }
+            list.Add(entry);
         }
-        return new JsonObject { ["items"] = items }.ToJsonString();
+        return new JsonObject { ["items"] = list }.ToJsonString();
     }
 
     // Null when the shape, the count or a value is not acceptable.
@@ -100,16 +135,45 @@ public static class PttAvmPriceInventoryRules
                 var price = entry.TryGetProperty("priceWithVat", out var priceValue) && priceValue.TryGetDecimal(out var parsedPrice) ? parsedPrice : (decimal?)null;
                 var quantity = entry.TryGetProperty("quantity", out var quantityValue) && quantityValue.TryGetInt32(out var parsedQuantity) ? parsedQuantity : (int?)null;
                 decimal? vat = entry.TryGetProperty("vatRate", out var vatValue) && vatValue.TryGetDecimal(out var parsedVat) ? parsedVat : null;
-                // PTT AVM refuses a price of 1 or less.
-                if (string.IsNullOrEmpty(barcode) || barcode.Length > MaxBarcodeLength || price is not > 1 || quantity is not (>= 0 and <= MaxQuantity) || vat is not null && VatRate(vat) is null) return null;
-                items.Add(new(barcode, Price(price.Value), vat, quantity.Value));
+                var hasVariants = entry.TryGetProperty("variants", out var variantValue);
+                var variants = hasVariants && variantValue.ValueKind == JsonValueKind.Array ? Variants(variantValue) : null;
+                // PTT AVM refuses a price of 1 or less; a product without variants carries its stock, one with variants does not.
+                if (string.IsNullOrEmpty(barcode) || barcode.Length > MaxBarcodeLength || price is not > 1 || vat is not null && VatRate(vat) is null) return null;
+                if (hasVariants && variants is null) return null;
+                if (variants is null ? quantity is not (>= 0 and <= MaxQuantity) : quantity is not null) return null;
+                if (variants is not null && (variants.Sum(x => x.Quantity) > MaxQuantity || variants.Any(x => price.Value + x.Price <= 1))) return null;
+                items.Add(new(barcode, Price(price.Value), vat, quantity, variants));
             }
             return items.Count is > 0 and <= MaxItemsPerRequest && items.Select(x => x.Barcode).Distinct(StringComparer.OrdinalIgnoreCase).Count() == items.Count ? items : null;
         }
         catch (JsonException) { return null; }
     }
 
-    // ProductStockPriceRequest fields in the data-contract (alphabetical) order of the documented sample.
+    private static List<VariantItem>? Variants(JsonElement list)
+    {
+        var variants = new List<VariantItem>();
+        foreach (var entry in list.EnumerateArray())
+        {
+            if (!entry.TryGetProperty("attributes", out var attributeList) || attributeList.ValueKind != JsonValueKind.Array) return null;
+            var attributes = new List<VariantAttribute>();
+            foreach (var attribute in attributeList.EnumerateArray())
+            {
+                var definition = attribute.TryGetProperty("definition", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString()?.Trim() : null;
+                var value = attribute.TryGetProperty("value", out var text) && text.ValueKind == JsonValueKind.String ? text.GetString()?.Trim() : null;
+                if (string.IsNullOrEmpty(definition) || string.IsNullOrEmpty(value) || definition.Length > 100 || value.Length > 100) return null;
+                attributes.Add(new(definition, value));
+            }
+            var quantity = entry.TryGetProperty("quantity", out var quantityValue) && quantityValue.TryGetInt32(out var parsedQuantity) ? parsedQuantity : (int?)null;
+            var price = entry.TryGetProperty("price", out var priceValue) && priceValue.TryGetDecimal(out var parsedPrice) ? parsedPrice : (decimal?)null;
+            if (attributes.Count == 0 || quantity is not (>= 0 and <= MaxQuantity) || price is null) return null;
+            variants.Add(new(attributes, quantity.Value, Price(price.Value)));
+        }
+        var keys = variants.Select(x => string.Join("|", x.Attributes.Select(a => $"{a.Definition}={a.Value}".ToUpperInvariant()))).ToList();
+        return variants.Count is > 0 and <= MaxVariantsPerProduct && keys.Distinct(StringComparer.Ordinal).Count() == keys.Count ? variants : null;
+    }
+
+    // ProductStockPriceRequest fields in the data-contract (alphabetical) order of the service schema:
+    // Barcode, PriceWithVAT, Quantity, VATRate, Variants{Variant{Attributes{Attribute{Definition, Value}}, Price, Quantity}}.
     internal static string ItemsXml(IReadOnlyList<Item> items)
     {
         var xml = new StringBuilder();
@@ -118,8 +182,23 @@ public static class PttAvmPriceInventoryRules
             xml.Append($"""<ept:ProductStockPriceRequest xmlns:ept="{PttAvmHttpClient.RequestsNamespace}">""");
             xml.Append("<ept:Barcode>").Append(SecurityElement.Escape(item.Barcode)).Append("</ept:Barcode>");
             xml.Append("<ept:PriceWithVAT>").Append(item.PriceWithVat.ToString("0.00", CultureInfo.InvariantCulture)).Append("</ept:PriceWithVAT>");
-            xml.Append("<ept:Quantity>").Append(item.Quantity.ToString(CultureInfo.InvariantCulture)).Append("</ept:Quantity>");
+            if (item.Quantity is { } quantity) xml.Append("<ept:Quantity>").Append(quantity.ToString(CultureInfo.InvariantCulture)).Append("</ept:Quantity>");
             if (item.VatRate is { } rate) xml.Append("<ept:VATRate>").Append(rate.ToString("0", CultureInfo.InvariantCulture)).Append("</ept:VATRate>");
+            if (item.Variants is { Count: > 0 } variants)
+            {
+                xml.Append("<ept:Variants>");
+                foreach (var variant in variants)
+                {
+                    xml.Append("<ept:Variant><ept:Attributes>");
+                    foreach (var attribute in variant.Attributes)
+                        xml.Append("<ept:Attribute><ept:Definition>").Append(SecurityElement.Escape(attribute.Definition)).Append("</ept:Definition><ept:Value>").Append(SecurityElement.Escape(attribute.Value)).Append("</ept:Value></ept:Attribute>");
+                    xml.Append("</ept:Attributes>");
+                    xml.Append("<ept:Price>").Append(variant.Price.ToString("0.00", CultureInfo.InvariantCulture)).Append("</ept:Price>");
+                    xml.Append("<ept:Quantity>").Append(variant.Quantity.ToString(CultureInfo.InvariantCulture)).Append("</ept:Quantity>");
+                    xml.Append("</ept:Variant>");
+                }
+                xml.Append("</ept:Variants>");
+            }
             xml.Append("</ept:ProductStockPriceRequest>");
         }
         return xml.ToString();

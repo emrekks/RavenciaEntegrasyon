@@ -245,10 +245,12 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         {
             if (connection.PlatformCode is not ("N11" or "PAZARAMA" or "PTTAVM")) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11, Pazarama ve PTT AVM bağlantısında kullanılabilir.", 422);
             var code = stockCode.Trim();
-            variantId = await db.MarketplaceVariantLinks.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == code)
-                .Select(x => (Guid?)x.VariantId)
-                .SingleOrDefaultAsync(cancellationToken);
+            variantId = connection.PlatformCode == "PTTAVM"
+                ? await PttAvmSendVariantAsync(tenantId, connectionId, code, cancellationToken)
+                : await db.MarketplaceVariantLinks.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == code)
+                    .Select(x => (Guid?)x.VariantId)
+                    .SingleOrDefaultAsync(cancellationToken);
             if (variantId is null && connection.PlatformCode == "PTTAVM") return ServiceResult<Guid>.Fail("PTTAVM_BARCODE_NOT_LINKED", $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce PTT AVM ürün eşleştirmesini çalıştırın.", 422);
             if (variantId is null) return ServiceResult<Guid>.Fail(connection.PlatformCode == "PAZARAMA" ? "PAZARAMA_BARCODE_NOT_LINKED" : "N11_STOCK_CODE_NOT_LINKED", connection.PlatformCode == "PAZARAMA" ? $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce Pazarama ürün eşleştirmesini çalıştırın." : $"'{code}' stok kodu panelde bir varyanta bağlı değil. Önce N11 ürün eşleştirmesini çalıştırın.", 404);
             if (connection.PlatformCode is not ("PAZARAMA" or "PTTAVM") && !await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock && x.Enabled, cancellationToken))
@@ -274,6 +276,22 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(id);
     }
+
+    // A PTT AVM send names a variant by its code (stock code or barcode) or a product by its PTT AVM barcode (the model
+    // code); the composer sends the whole product either way, so any linked variant of the product will do.
+    private async Task<Guid?> PttAvmSendVariantAsync(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) =>
+        await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalId == code || x.ExternalBarcode == code || x.ExternalSku == code))
+            .OrderBy(x => x.Id)
+            .Select(x => (Guid?)x.VariantId)
+            .FirstOrDefaultAsync(cancellationToken)
+        ?? await (from productLink in db.MarketplaceProductLinks.AsNoTracking()
+                  join variant in db.ProductVariants.AsNoTracking() on new { productLink.TenantId, productLink.ProductId } equals new { variant.TenantId, variant.ProductId }
+                  join variantLink in db.MarketplaceVariantLinks.AsNoTracking() on new { variant.TenantId, VariantId = variant.Id, productLink.ConnectionId } equals new { variantLink.TenantId, variantLink.VariantId, variantLink.ConnectionId }
+                  where productLink.TenantId == tenantId && productLink.ConnectionId == connectionId && productLink.ExternalCode == code
+                  orderby variant.SortOrder, variant.Id
+                  select (Guid?)variant.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
     // Hepsiburada SIT certification: an upload of the imported SIT offers, started from the panel on a STAGE
     // connection. It is a manual Stage operation, so the global/connection write switches and the automatic
