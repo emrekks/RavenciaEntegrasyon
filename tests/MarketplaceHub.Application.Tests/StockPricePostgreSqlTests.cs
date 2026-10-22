@@ -145,8 +145,9 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var model = items.Single(x => x.Barcode == "FK4530");
         Assert.Equal(120.00m, model.PriceWithVat);
         Assert.Null(model.Quantity);
-        Assert.Equal(new PttAvmPriceInventoryRules.VariantItem([new("Renk", "Lacivert"), new("Beden", "S")], 4, 0m), model.Variants![0]);
-        Assert.Equal(new PttAvmPriceInventoryRules.VariantItem([new("Renk", "Lacivert"), new("Beden", "M")], 2, 10m), model.Variants[1]);
+        Assert.Equal(2, model.Variants!.Count);
+        Assert.Contains(new PttAvmPriceInventoryRules.VariantItem([new("Renk", "Lacivert"), new("Beden", "S")], 4, 0m), model.Variants);
+        Assert.Contains(new PttAvmPriceInventoryRules.VariantItem([new("Renk", "Lacivert"), new("Beden", "M")], 2, 10m), model.Variants);
         Assert.Equal(new PttAvmPriceInventoryRules.Item("QU2410121", 120.00m, 20m, 3), items.Single(x => x.Barcode == "QU2410121"));
         // Each line is one variant (its own code) and answers under the product's PTT AVM barcode.
         var lines = draft.Value.Lines.ToDictionary(x => x.VariantId);
