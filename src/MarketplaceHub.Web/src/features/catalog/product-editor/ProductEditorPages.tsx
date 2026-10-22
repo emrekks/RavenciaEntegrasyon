@@ -1920,7 +1920,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
     setVariantRows(rows => applyGeneratedVariantCodes(rows, request.target, request.codes))
     if (request.target === 'barcode') setForm(current => ({ ...current, barcode: request.codes[0] }))
-    // A generated code that some active marketplace refuses (a model-code barcode is never Hepsiburada's EAN-13) is named.
+    // A generated code that some active marketplace refuses is named.
     const ruleIssues = platformCodeIssues(codeRulePlatforms, request.target === 'barcode' ? request.codes[0] : '', request.target === 'sku' ? request.codes[0] : '')
     const ruleText = describePlatformCodeIssues(ruleIssues, request.target)
     const message = `${request.codes.length} varyantın ${request.target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu.${request.target === 'barcode' ? ' Üst barkod alanı ilk varyantla eşitlendi.' : ''} Kalıcı olması için Kaydet’e basın.${ruleText ? ` Uyarı: ${ruleText}.` : ''}`

@@ -417,6 +417,17 @@ public sealed class HepsiburadaAdapterTests
     public void Ean13_ValidatesLengthDigitsAndCheckDigit(string value, bool expected) =>
         Assert.Equal(expected, HepsiburadaProductPublicationComposer.IsValidEan13(value));
 
+    // Hepsiburada keeps the seller's own barcode, such as one built from the model code, as well as an EAN-13.
+    [Theory]
+    [InlineData("RYP004-01", true)]
+    [InlineData("4006381333931", true)]
+    [InlineData("MZDT002ECD06", true)]
+    [InlineData("KZK 001", false)]
+    [InlineData("", false)]
+    [InlineData("A12345678901234567890123456789012345678901", false)]
+    public void Barcode_TakesTheSellersOwnCode(string value, bool expected) =>
+        Assert.Equal(expected, HepsiburadaProductPublicationComposer.IsValidBarcode(value));
+
     [Theory]
     [InlineData("12345", "attribute-12345")]
     [InlineData("color-size", "attribute-color-size")]

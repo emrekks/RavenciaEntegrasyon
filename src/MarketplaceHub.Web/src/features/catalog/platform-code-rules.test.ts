@@ -16,12 +16,16 @@ describe('platform code rules', () => {
   it('names the platforms a barcode or stock code fails', () => {
     const issues = platformCodeIssues(['TRENDYOL', 'HEPSIBURADA', 'N11'], 'KZK 001', '')
     expect(issues.map(issue => `${issue.platformCode}:${issue.field}`)).toEqual(['TRENDYOL:barcode', 'TRENDYOL:sku', 'HEPSIBURADA:barcode', 'HEPSIBURADA:sku', 'N11:sku'])
-    expect(describePlatformCodeIssues(issues, 'barcode')).toBe('Trendyol: barkod en fazla 40 karakter; yalnız harf, rakam, nokta, tire, alt çizgi · Hepsiburada: barkod geçerli 13 haneli EAN-13 olmalı')
+    expect(describePlatformCodeIssues(issues, 'barcode')).toBe('Trendyol: barkod en fazla 40 karakter; yalnız harf, rakam, nokta, tire, alt çizgi · Hepsiburada: barkod en fazla 40 karakter; yalnız harf, rakam, nokta, tire, alt çizgi')
   })
 
   it('leaves the barcode optional where the platform does', () => {
     expect(platformCodeIssues(['N11', 'SHOPIFY'], '', 'KZK-001-S')).toEqual([])
     expect(platformCodeIssues(['PAZARAMA', 'PTTAVM'], '', 'KZK-001-S').map(issue => issue.platformCode)).toEqual(['PAZARAMA', 'PTTAVM'])
+  })
+
+  it('takes a model-code barcode for Hepsiburada as for Trendyol', () => {
+    expect(platformCodeIssues(['TRENDYOL', 'HEPSIBURADA'], 'RYP004-01', 'RYP004-13')).toEqual([])
   })
 
   it('checks nothing for a platform it has no rules for', () => {

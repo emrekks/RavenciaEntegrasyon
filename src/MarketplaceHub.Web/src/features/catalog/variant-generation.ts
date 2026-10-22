@@ -9,8 +9,8 @@ type VariantGenerationDefaultsInput = {
 
 // Generated codes use only A-Z, 0-9, '.', '-' and '_' (Turkish letters folded, spaces as '-'), which every
 // marketplace takes as a barcode and a stock code; barcodes stay within Trendyol's and Shopify's 40 characters and
-// stock codes within the 100 the panel and most marketplaces allow. A barcode built from the model code can never
-// be the EAN-13 Hepsiburada requires; the editor's platform rules show that.
+// stock codes within the 100 the panel and most marketplaces allow. Hepsiburada takes such a barcode too: it keeps
+// the seller's own code, not only an EAN-13.
 export const GeneratedBarcodeMaxLength = 40
 export const GeneratedStockCodeMaxLength = 100
 

@@ -77,8 +77,9 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek Hepsiburada yayın isteğinde en fazla 1000 varyant gönderilebilir.");
-        if (variants.Any(x => !IsValidEan13(x.Barcode))) return Fail("BARCODE_INVALID", "Hepsiburada ürün aktarımında tüm varyantların geçerli 13 haneli EAN-13 barkodu olmalıdır.");
-        if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.Ordinal).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Hepsiburada ürün aktarımındaki EAN-13 barkodları benzersiz olmalıdır.");
+        // Hepsiburada keeps the seller's own barcode ("RYP004-01") as well as an EAN-13.
+        if (variants.Any(x => !IsValidBarcode(x.Barcode))) return Fail("BARCODE_INVALID", "Hepsiburada ürün aktarımında tüm varyantların barkodu olmalı: en fazla 40 karakter; yalnız harf, rakam, nokta, tire, alt çizgi.");
+        if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.Ordinal).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Hepsiburada ürün aktarımındaki barkodlar benzersiz olmalıdır.");
         if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), variants.Select(x => x.Barcode!.Trim()).ToArray(), [], cancellationToken) is { } takenBarcode)
             return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenBarcode), status: 409);
         var sellerSkus = variants.Select(x => NormalizeMerchantSku(x.Sku)).ToArray();
@@ -325,6 +326,12 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
     {
         if (string.IsNullOrWhiteSpace(attributeId) || attributeId.Length > 64 || attributeId.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_'))) return null;
         return $"attribute-{attributeId}";
+    }
+
+    internal static bool IsValidBarcode(string? value)
+    {
+        var barcode = value?.Trim();
+        return !string.IsNullOrEmpty(barcode) && barcode.Length <= 40 && barcode.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
     }
 
     internal static bool IsValidEan13(string? value)
