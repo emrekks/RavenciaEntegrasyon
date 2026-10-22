@@ -5056,6 +5056,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(x => x.ModelKey)
             .Distinct()
             .CountAsync(cancellationToken);
+        // New products are listed newest first (CreatedAt descending). The marketplace's first product of this import is
+        // stamped newest and each later one a millisecond older, so the import keeps the marketplace's order on top of
+        // the catalog, and a later import lands above it.
+        var catalogOrderStamp = timeProvider.GetUtcNow();
+        var catalogOrderPosition = 0;
         foreach (var modelKey in modelKeys)
         {
             var stagingRows = await db.ProductImportStagingRecords.AsNoTracking()
@@ -5113,7 +5118,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++));
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -6553,7 +6558,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -6652,7 +6657,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 Title = ProductTitle(snapshot.Title, externalProductId),
                 Description = snapshot.Description ?? "",
                 Status = ProductStatus.Active,
-                CreatedAt = now,
+                CreatedAt = createdAt ?? now,
                 UpdatedAt = now,
                 Version = 1
             };
