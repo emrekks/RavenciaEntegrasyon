@@ -4745,7 +4745,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var fullCatalogForMapping = ProductImportScanPolicy.RequiresFullCatalogForMapping(mappingOnly, includeArchived, includeDrafts);
         var effectiveFullScan = fullScan || fullCatalogForMapping;
         var productLookup = ReadText(payloadJson, "productLookup");
-        var matchKey = ProductImportMatchKey.Normalize(ReadText(payloadJson, "matchKey"));
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
             ? "Tekil ürün çekimi"
@@ -5062,7 +5061,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     if (mappingOnly)
                     {
-                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11", matchKey: matchKey);
+                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11");
                         if (!mapped) telemetryImportSkippedCount++;
                         else telemetryImportProcessedCount++;
                         continue;
@@ -5101,7 +5100,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, matchKey: matchKey);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -6030,7 +6029,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // variant that found no local variant so it can be fixed by hand. seedOffers (n11)
     // opens the channel offer of a linked variant from the remote price when
     // the variant has none yet; existing offers are never changed.
-    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null, string seedSource = "N11", string? matchKey = null)
+    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null, string seedSource = "N11")
     {
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         if (string.IsNullOrWhiteSpace(externalProductId)) return false;
@@ -6048,14 +6047,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var barcodes = CatalogKeyNormalizer.LookupKeys(remoteVariants.Select(variant => variant.Barcode));
         var skus = CatalogKeyNormalizer.LookupKeys(remoteVariants.Select(variant => variant.Sku));
         var rawSkus = remoteVariants.Select(variant => variant.Sku?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        // A chosen match key leaves one code: barcode to barcode or stock code to panel SKU, with no cross or model match.
-        if (matchKey == ProductImportMatchKey.StockCode) barcodes = [];
-        if (matchKey == ProductImportMatchKey.Barcode) { skus = []; rawSkus = []; }
-        // Variants without any barcode (PTT AVM models: an id and a name such as "S") have only their model code,
-        // so they keep it whatever key is chosen.
-        if (matchKey is not null && remoteVariants.Any(variant => !string.IsNullOrWhiteSpace(variant.Barcode))) modelCodes = [];
-        var crossMatch = crossMatchCodes && matchKey is null;
-        var skuModelMatch = preferBarcode && matchKey is null;
         if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return false;
 
         // A Shopify product can contain several colour variants while the
@@ -6066,9 +6057,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(variant => variant.TenantId == tenantId
                 && ((variant.BarcodeNormalized != null && barcodes.Contains(variant.BarcodeNormalized))
                     || (variant.SkuNormalized != null && skus.Contains(variant.SkuNormalized))
-                    || (crossMatch && variant.BarcodeNormalized != null && skus.Contains(variant.BarcodeNormalized))
-                    || (crossMatch && variant.SkuNormalized != null && barcodes.Contains(variant.SkuNormalized))
-                    || (skuModelMatch && variant.ModelCode != null && rawSkus.Contains(variant.ModelCode))
+                    || (crossMatchCodes && variant.BarcodeNormalized != null && skus.Contains(variant.BarcodeNormalized))
+                    || (crossMatchCodes && variant.SkuNormalized != null && barcodes.Contains(variant.SkuNormalized))
+                    || (preferBarcode && variant.ModelCode != null && rawSkus.Contains(variant.ModelCode))
                     || (!preferBarcode && variant.ModelCode != null && modelCodes.Contains(variant.ModelCode))))
             .ToListAsync(cancellationToken);
         if (localVariants.Count == 0 && link is null)
@@ -6380,7 +6371,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, string? matchKey = null)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -6414,11 +6405,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var observedPlatform = observedPlatformName ?? (matchBySku ? "N11" : "Shopify");
             var identityCodes = CatalogKeyNormalizer.LookupKeys(snapshot.Variants.Select(variant => variant.Barcode))
                 .ToHashSet(StringComparer.Ordinal);
-            // A chosen match key keeps one code: the barcode, or the stock code against the panel SKU.
-            if (matchKey == ProductImportMatchKey.StockCode) identityCodes.Clear();
             // n11 keys every listing by the seller stock code, which is the
             // panel SKU; the barcode is only the fallback there.
-            var skuCodes = matchBySku && matchKey is null || matchKey == ProductImportMatchKey.StockCode
+            var skuCodes = matchBySku
                 ? CatalogKeyNormalizer.LookupKeys(snapshot.Variants.Select(variant => variant.Sku)).ToHashSet(StringComparer.Ordinal)
                 : [];
             if (identityCodes.Count > 0 || skuCodes.Count > 0)
@@ -6566,7 +6555,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // A previous import may have stored the remote observation while
             // leaving the untouched local projection at zero. Reconcile that
             // legacy state even when the payload itself has not changed.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updateExistingPricesAndStock, matchKey: matchKey);
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updateExistingPricesAndStock);
             if (saveChanges)
                 await db.SaveChangesAsync(cancellationToken);
             telemetrySkippedCount++;
@@ -6657,7 +6646,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // then apply the inventory part of the remote snapshot. Trendyol
             // media is a separate remote projection, so a manual product edit
             // must not leave an older Shopify gallery in place.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updateExistingPricesAndStock, syncMedia: !observeOnly && updateExistingProducts, matchKey: matchKey);
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updateExistingPricesAndStock, syncMedia: !observeOnly && updateExistingProducts);
             if (!observeOnly && updateExistingProducts && snapshot.ImageUrls.Count > 0)
             {
                 var productImageUrls = CatalogImageIdentity.DistinctUrls(snapshot.ImageUrls);
@@ -6779,8 +6768,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         bool observeOnly = false,
         bool preferBarcode = false,
         bool updateExistingPricesAndStock = false,
-        bool syncMedia = false,
-        string? matchKey = null)
+        bool syncMedia = false)
     {
         var variants = await db.ProductVariants
             .Where(x => x.TenantId == tenantId && x.ProductId == product.Id)
@@ -6809,15 +6797,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var variant = linkedVariantId is Guid variantId
                 ? variants.FirstOrDefault(x => x.Id == variantId)
                 : null;
-            if (matchKey == ProductImportMatchKey.Barcode || preferBarcode && matchKey is null)
+            if (preferBarcode)
             {
                 if (!string.IsNullOrWhiteSpace(barcodeNormalized))
                     variant ??= variants.FirstOrDefault(x => CatalogKeyNormalizer.SameKey(x.BarcodeNormalized, barcodeNormalized));
-            }
-            else if (matchKey == ProductImportMatchKey.StockCode)
-            {
-                if (!string.IsNullOrWhiteSpace(remote.Sku))
-                    variant ??= variants.FirstOrDefault(x => CatalogKeyNormalizer.SameKey(x.SkuNormalized, skuNormalized));
             }
             else
             {

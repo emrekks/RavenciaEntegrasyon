@@ -1338,14 +1338,6 @@ public sealed class PttAvmAdapterTests
         Assert.Contains(page.Issues!, issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE");
     }
 
-    [Theory]
-    [InlineData("BARCODE", "BARCODE")]
-    [InlineData(" stock_code ", "STOCK_CODE")]
-    [InlineData("MODEL", null)]
-    [InlineData(null, null)]
-    public void TheImportMatchKeyIsBarcodeStockCodeOrAutomatic(string? value, string? expected) =>
-        Assert.Equal(expected, ProductImportMatchKey.Normalize(value));
-
     private static RemoteOrder OrderFromList(string orderNumber)
     {
         var (result, error) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, OrderListAnswer, PttAvmHttpClient.Orders);
