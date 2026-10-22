@@ -611,8 +611,10 @@ public sealed record RemoteCargoCompany(string ShortName, string Name);
 public sealed record RemotePackageableLine(string LineItemId, int Quantity);
 public sealed record PackageCreateLineRequest(Guid OrderLineId, int Quantity);
 public sealed record RemotePackageCreateLineRequest(string LineItemId, int Quantity);
-public sealed record OrderPackageCreateRequest(string Barcode, string CargoCompany, string Carrier, string CreationReason, int Deci, int ParcelQuantity, string ShippingAddressLabel, string ShippingModel, IReadOnlyList<PackageCreateLineRequest> LineItems);
-public sealed record CreateOrderPackageCommand(string Barcode, string CargoCompany, string Carrier, string CreationReason, int Deci, int ParcelQuantity, string ShippingAddressLabel, string ShippingModel, IReadOnlyList<RemotePackageCreateLineRequest> LineItems);
+// Hepsiburada's package request: the lines, desi and parcel count; barcode, cargo company, carrier, reason and warehouse
+// are optional and left out of the request when empty.
+public sealed record OrderPackageCreateRequest(string? Barcode, string? CargoCompany, string? Carrier, string? CreationReason, int Deci, int ParcelQuantity, string? ShippingAddressLabel, string? ShippingModel, IReadOnlyList<PackageCreateLineRequest> LineItems);
+public sealed record CreateOrderPackageCommand(string? Barcode, string? CargoCompany, string? Carrier, string? CreationReason, int Deci, int ParcelQuantity, string? ShippingAddressLabel, string? ShippingModel, IReadOnlyList<RemotePackageCreateLineRequest> LineItems);
 public sealed record CreateOrderPackageResult(string PackageNumber);
 public sealed record CommonLabelRequest(string CargoTrackingNumber, int BoxQuantity, decimal VolumetricHeight);
 public sealed record CommonLabelDocument(string CargoTrackingNumber, string Format, byte[] Content);

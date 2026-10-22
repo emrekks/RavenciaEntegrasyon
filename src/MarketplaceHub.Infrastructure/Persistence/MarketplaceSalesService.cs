@@ -1149,8 +1149,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         var result = await orders.CreateOrderPackageAsync(
             new AdapterContext(tenantId, connection.Id, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
-            new(command.Barcode.Trim(), command.CargoCompany.Trim(), command.Carrier.Trim(), command.CreationReason.Trim(), command.Deci, command.ParcelQuantity,
-                command.ShippingAddressLabel.Trim(), command.ShippingModel.Trim(), remoteLines),
+            new(command.Barcode?.Trim(), command.CargoCompany?.Trim(), command.Carrier?.Trim(), command.CreationReason?.Trim(), command.Deci, command.ParcelQuantity,
+                command.ShippingAddressLabel?.Trim(), command.ShippingModel?.Trim(), remoteLines),
             cancellationToken);
         if (!result.IsSuccess)
         {
@@ -2567,8 +2567,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     private static bool PackageCreateFieldsValid(OrderPackageCreateRequest command)
     {
-        static bool Text(string? value, int maxLength) => !string.IsNullOrWhiteSpace(value) && value == value.Trim() && value.Length <= maxLength;
-        return Text(command.Barcode, 128) && !command.Barcode.Any(char.IsWhiteSpace)
+        // Only the lines, desi and parcel count are required; the other fields are checked when given.
+        static bool Text(string? value, int maxLength) => string.IsNullOrEmpty(value) || value == value.Trim() && value.Length <= maxLength;
+        return Text(command.Barcode, 128) && command.Barcode?.Any(char.IsWhiteSpace) != true
             && Text(command.CargoCompany, 100) && Text(command.Carrier, 100) && Text(command.CreationReason, 100)
             && Text(command.ShippingAddressLabel, 100) && Text(command.ShippingModel, 100)
             && command.Deci is >= 0 and <= 10000 && command.ParcelQuantity is >= 1 and <= 100

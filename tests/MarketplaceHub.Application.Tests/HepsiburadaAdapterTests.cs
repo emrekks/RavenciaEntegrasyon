@@ -56,6 +56,13 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("warehouse-address", payload.RootElement.GetProperty("warehouse").GetProperty("shippingAddressLabel").GetString());
         Assert.True(HepsiburadaHttpClient.ValidOrderPackageCommand(command));
         Assert.False(HepsiburadaHttpClient.ValidOrderPackageCommand(command with { LineItems = [new("line-1", 1), new("line-1", 2)] }));
+
+        // Only the lines, desi and parcel count are required; empty optional fields and the warehouse stay out of the body.
+        var bare = new CreateOrderPackageCommand(null, null, null, null, 1, 1, null, null, [new("line-1", 1)]);
+        using var barePayload = JsonDocument.Parse(HepsiburadaHttpClient.CreatePackagePayload(bare));
+        Assert.True(HepsiburadaHttpClient.ValidOrderPackageCommand(bare));
+        Assert.Equal(["deci", "lineItemRequests", "parcelQuantity"], barePayload.RootElement.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray());
+        Assert.False(HepsiburadaHttpClient.ValidOrderPackageCommand(bare with { Barcode = "BAR CODE" }));
     }
 
     [Fact]

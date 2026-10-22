@@ -222,25 +222,33 @@ public sealed partial class HepsiburadaHttpClient
     internal static string PackageLabel(string merchantId, string packageNumber, string format = "ZPL") =>
         $"packages/merchantid/{Uri.EscapeDataString(merchantId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}/labels?format={Uri.EscapeDataString(format.Trim().ToLowerInvariant())}";
 
-    internal static string CreatePackagePayload(CreateOrderPackageCommand command) => JsonSerializer.Serialize(new
+    // Every field but the lines is optional in Hepsiburada's package request; an empty one is left out, and so is the
+    // warehouse when neither of its fields is given.
+    internal static string CreatePackagePayload(CreateOrderPackageCommand command)
     {
-        barcode = command.Barcode.Trim(),
-        cargoCompany = command.CargoCompany.Trim(),
-        carrier = command.Carrier.Trim(),
-        creationReason = command.CreationReason.Trim(),
-        deci = command.Deci,
-        lineItemRequests = command.LineItems.Select(line => new { id = line.LineItemId, quantity = line.Quantity, serialNumbers = Array.Empty<string>() }).ToArray(),
-        parcelQuantity = command.ParcelQuantity,
-        warehouse = new { shippingAddressLabel = command.ShippingAddressLabel.Trim(), shippingModel = command.ShippingModel.Trim() }
-    });
+        var payload = new Dictionary<string, object>(StringComparer.Ordinal);
+        void Add(string name, string? value) { if (!string.IsNullOrWhiteSpace(value)) payload[name] = value.Trim(); }
+        Add("barcode", command.Barcode);
+        Add("cargoCompany", command.CargoCompany);
+        Add("carrier", command.Carrier);
+        Add("creationReason", command.CreationReason);
+        payload["deci"] = command.Deci;
+        payload["lineItemRequests"] = command.LineItems.Select(line => new { id = line.LineItemId, quantity = line.Quantity, serialNumbers = Array.Empty<string>() }).ToArray();
+        payload["parcelQuantity"] = command.ParcelQuantity;
+        var warehouse = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(command.ShippingAddressLabel)) warehouse["shippingAddressLabel"] = command.ShippingAddressLabel.Trim();
+        if (!string.IsNullOrWhiteSpace(command.ShippingModel)) warehouse["shippingModel"] = command.ShippingModel.Trim();
+        if (warehouse.Count > 0) payload["warehouse"] = warehouse;
+        return JsonSerializer.Serialize(payload);
+    }
 
     internal static bool ValidOrderPackageCommand(CreateOrderPackageCommand command)
     {
-        static bool RequiredText(string value, int max) => !string.IsNullOrWhiteSpace(value) && value == value.Trim() && value.Length <= max;
-        if (!RequiredText(command.Barcode, 128) || command.Barcode.Any(char.IsWhiteSpace)
-            || !RequiredText(command.CargoCompany, 100) || !RequiredText(command.Carrier, 100)
-            || !RequiredText(command.CreationReason, 100) || !RequiredText(command.ShippingAddressLabel, 100)
-            || !RequiredText(command.ShippingModel, 100) || command.Deci is < 0 or > 10000
+        static bool OptionalText(string? value, int max) => string.IsNullOrEmpty(value) || value == value.Trim() && value.Length <= max;
+        if (!OptionalText(command.Barcode, 128) || command.Barcode?.Any(char.IsWhiteSpace) == true
+            || !OptionalText(command.CargoCompany, 100) || !OptionalText(command.Carrier, 100)
+            || !OptionalText(command.CreationReason, 100) || !OptionalText(command.ShippingAddressLabel, 100)
+            || !OptionalText(command.ShippingModel, 100) || command.Deci is < 0 or > 10000
             || command.ParcelQuantity is < 1 or > 100 || command.LineItems is null || command.LineItems.Count is < 1 or > 100)
             return false;
         return command.LineItems.All(line => !string.IsNullOrWhiteSpace(line.LineItemId) && line.LineItemId == line.LineItemId.Trim() && !line.LineItemId.Any(char.IsWhiteSpace) && line.Quantity is > 0 and <= 10000)

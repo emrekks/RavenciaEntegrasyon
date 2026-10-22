@@ -75,6 +75,10 @@ function aggregateOrderStatus(statuses: string[]) {
   if (operational.length) return operational.sort((left, right) => (orderStatusRank[right] ?? 110) - (orderStatusRank[left] ?? 110))[0]
   return values.includes('RETURNED') ? 'RETURNED' : 'CANCELLED'
 }
+// An optional package field left empty is sent as null, so Hepsiburada's request leaves it out.
+function optionalText(value: FormDataEntryValue | null) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
 // A spreadsheet reads a cell starting with = + - @ (or a tab / carriage return) as a formula: such text gets a leading apostrophe.
 function csvSafeText(text: string) {
   return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
@@ -649,14 +653,14 @@ function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Ord
     setSaving(true)
     setError('')
     const body = JSON.stringify({
-      barcode: data.get('barcode'),
-      cargoCompany: data.get('cargoCompany'),
-      carrier: data.get('carrier'),
-      creationReason: data.get('creationReason'),
+      barcode: optionalText(data.get('barcode')),
+      cargoCompany: optionalText(data.get('cargoCompany')),
+      carrier: optionalText(data.get('carrier')),
+      creationReason: optionalText(data.get('creationReason')),
       deci: Number(data.get('deci')),
       parcelQuantity: Number(data.get('parcelQuantity')),
-      shippingAddressLabel: data.get('shippingAddressLabel'),
-      shippingModel: data.get('shippingModel'),
+      shippingAddressLabel: optionalText(data.get('shippingAddressLabel')),
+      shippingModel: optionalText(data.get('shippingModel')),
       lineItems,
     })
     try {
@@ -681,7 +685,7 @@ function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Ord
       <section className="rr-osum" aria-label="Sipariş bilgileri"><span><RrLogo code={item.platformCode} />{displayOrderNumber(item.orderNumber)}</span><dl>{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
       <div className="rr-h3">Sipariş Kalemleri</div>
       {lines.length ? <div className="rr-apr" role="table"><div className="rr-apr-h" role="row"><span role="columnheader">Bilgiler</span><span role="columnheader">Pakete Girecek Adet</span></div>{lines.map(line => { const available = availableQuantity(line); const on = (selected[line.id] ?? 0) > 0; return <div className="rr-apr-r" role="row" key={line.id}><label className="rr-apr-info"><input type="checkbox" className="rr-cb" checked={on} disabled={available <= 0 || saving} onChange={event => setSelected(current => { const next = { ...current }; if (event.target.checked) next[line.id] = available; else delete next[line.id]; return next })} /><RrThumb src={line.imageUrl ?? item.primaryImageUrl} quantity={productLineQuantity(line)} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku} · kalan {available} adet</small></span></label><div className="rr-apr-side">{on ? <input className="rr-in rr-num" aria-label={`${line.title} paket adedi`} type="number" min="1" max={available} step="1" value={selected[line.id]} disabled={saving} onChange={event => setSelected(current => ({ ...current, [line.id]: Math.min(available, Math.max(0, Number(event.target.value) || 0)) }))} /> : <span className="rr-qty-static">{available} Adet</span>}</div></div> })}</div> : <p className="rr-lead">Bu sipariş için paketlenebilir satır bulunamadı.</p>}
-      <div className="rr-dgrid">{[['barcode', 'Paket Barkodu', 'text', 128], ['cargoCompany', 'Kargo Firması Kodu', 'text', 100], ['carrier', 'Taşıyıcı', 'text', 100], ['creationReason', 'Oluşturma Nedeni', 'text', 100], ['deci', 'Desi', 'number', 0], ['parcelQuantity', 'Paket Adedi', 'number', 0], ['shippingAddressLabel', 'Gönderim Adresi Etiketi', 'text', 100], ['shippingModel', 'Gönderim Modeli', 'text', 100]].map(([name, label, type, max]) => <label key={name as string} className="rr-fld"><small>{label}</small><input className={`rr-in${type === 'number' ? ' rr-num' : ''}`} name={name as string} type={type as string} {...(type === 'number' ? { min: name === 'deci' ? 0 : 1, max: name === 'deci' ? 10000 : 100, step: 1, defaultValue: 1 } : { maxLength: max as number })} required /></label>)}</div>
+      <div className="rr-dgrid">{[['barcode', 'Paket Barkodu', 'text', 128], ['cargoCompany', 'Kargo Firması Kodu', 'text', 100], ['carrier', 'Taşıyıcı', 'text', 100], ['creationReason', 'Oluşturma Nedeni', 'text', 100], ['deci', 'Desi', 'number', 0], ['parcelQuantity', 'Paket Adedi', 'number', 0], ['shippingAddressLabel', 'Gönderim Adresi Etiketi', 'text', 100], ['shippingModel', 'Gönderim Modeli', 'text', 100]].map(([name, label, type, max]) => <label key={name as string} className="rr-fld"><small>{label}</small><input className={`rr-in${type === 'number' ? ' rr-num' : ''}`} name={name as string} type={type as string} {...(type === 'number' ? { min: name === 'deci' ? 0 : 1, max: name === 'deci' ? 10000 : 100, step: 1, defaultValue: 1 } : { maxLength: max as number })} required={type === 'number'} /></label>)}</div>
       <div className="rr-callout"><RrIcon name="info" /><span>Paket oluşturma Hepsiburada’ya dış yazma yapar. Önce aynı pakete uygun sipariş kalemleri doğrulanır; mağaza/ortam kanıtı ve bağlantı yazma kapıları kapalıysa işlem reddedilir.</span></div>
       {error && <div className="rr-callout rr-danger" role="alert"><RrIcon name="alert" /><span>{error}</span></div>}
     </form>
