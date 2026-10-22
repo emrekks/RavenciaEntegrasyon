@@ -209,6 +209,7 @@
 
 @layer features {
   .variant-code-rule-notice { display: flex; align-items: flex-start; gap: var(--rv-space-2); margin: 0 0 var(--rv-space-2); padding: var(--rv-space-2) var(--rv-space-3); border: 1px solid var(--rv-color-danger); border-radius: var(--rv-radius-md); color: var(--rv-color-danger); font-size: var(--rv-font-size-sm); }
+  .variant-code-generation-warning { display: block; margin-top: 2px; color: var(--rv-color-danger); }
   .variant-table-row input.has-platform-code-issue { border-color: var(--rv-color-danger); box-shadow: inset 0 0 0 1px var(--rv-color-danger); }
 }
 

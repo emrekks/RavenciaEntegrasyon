@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { applyGeneratedVariantCodes, buildSequentialVariantCode, buildSequentialVariantCodes, buildSequentialVariantIdentifiers, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 
 describe('variant generation defaults', () => {
+  it('builds stock codes every marketplace accepts: Turkish letters folded, other characters dropped, at most 100 characters', () => {
+    expect(buildVariantGenerationDefaults({ baseSku: 'Kadın Şık Elbise / Yazlık', modelCode: '', sequence: 2, automaticBarcodes: false, fallbackSalePrice: 1, fallbackListPrice: 1 }).sku).toBe('KADIN-SIK-ELBISE-YAZLIK-2')
+    const long = buildVariantGenerationDefaults({ baseSku: 'S'.repeat(150), modelCode: '', sequence: 12, automaticBarcodes: false, fallbackSalePrice: 1, fallbackListPrice: 1 }).sku
+    expect(long).toHaveLength(100)
+    expect(long.endsWith('-12')).toBe(true)
+  })
+
+  it('builds barcodes from the model code without Turkish letters or spaces', () => {
+    expect(buildSequentialVariantCode('Gül Çiçek 01', 3)).toBe('GUL-CICEK-01-03')
+  })
+
   it('uses the model code for sequential automatic barcodes and leaves SKU and prices empty', () => {
     const first = buildVariantGenerationDefaults({ baseSku: 'STOCK', modelCode: 'mz49bc', sequence: 1, automaticBarcodes: true, fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
     const second = buildVariantGenerationDefaults({ baseSku: 'STOCK', modelCode: 'mz49bc', sequence: 2, automaticBarcodes: true, fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
