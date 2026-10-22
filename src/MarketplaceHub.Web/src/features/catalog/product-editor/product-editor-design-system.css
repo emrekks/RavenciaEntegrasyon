@@ -250,6 +250,13 @@
   .marketplace-code-state.is-empty { color: var(--rv-color-muted); background: var(--rv-color-surface); }
   .marketplace-code-state.is-changed { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
   .marketplace-code-state.is-invalid { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+  /* A code never read at the marketplace yet is neither linked nor broken; one it no longer knows is broken. */
+  .marketplace-code-state.is-unverified { color: var(--rv-color-info); background: color-mix(in srgb, var(--rv-color-info) 14%, transparent); }
+  .marketplace-code-state.is-broken { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+  .marketplace-code-row.is-broken { border-color: color-mix(in srgb, var(--rv-color-danger) 55%, var(--rv-color-border)); }
+  .marketplace-code-reason { grid-column: 1 / -1; color: var(--rv-color-danger); font-size: 12px; line-height: 1.45; }
+  .marketplace-code-reason.is-info { color: var(--rv-color-muted); }
+  .marketplace-code-input.is-broken { border-color: var(--rv-color-danger); }
   .marketplace-code-field { display: grid; min-width: 0; }
   .marketplace-code-field .marketplace-code-input { min-width: 0; }
   .marketplace-code-field .marketplace-code-error { max-width: none; }

@@ -3422,6 +3422,20 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("ExternalSku")
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("HealthChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("HealthReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("HealthStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 

@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { changedMarketplaceCodes, marketplaceCodeColumnLabel, marketplaceCodeFor, marketplaceCodeKey, type MarketplaceCodes } from './MarketplaceCodesDialog'
+import { changedMarketplaceCodes, marketplaceCodeColumnLabel, marketplaceCodeFor, marketplaceCodeKey, marketplaceCodeState, type MarketplaceCodes } from './MarketplaceCodesDialog'
+
+describe('marketplace code state', () => {
+  const link = { connectionId: 'hb-1', externalId: 'HBCV1', externalBarcode: null, externalSku: null }
+  it('calls a code linked only once an import read it, and never while the marketplace no longer knows it', () => {
+    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, lastSeenAt: '2026-10-22T10:00:00Z' } })).toBe('linked')
+    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link })).toBe('unverified')
+    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, lastSeenAt: '2026-10-22T10:00:00Z', healthStatus: 'NOT_FOUND' } })).toBe('broken')
+    expect(marketplaceCodeState({ typed: 'HBCV1', saved: 'HBCV1', link: { ...link, healthStatus: 'REJECTED' } })).toBe('broken')
+  })
+
+  it('puts a typing, a refusal and an empty cell before the saved code’s health', () => {
+    expect(marketplaceCodeState({ typed: 'HBCV2', saved: 'HBCV1', link: { ...link, healthStatus: 'NOT_FOUND' } })).toBe('changed')
+    expect(marketplaceCodeState({ error: 'kullanımda', typed: 'HBCV1', saved: 'HBCV1', link })).toBe('invalid')
+    expect(marketplaceCodeState({ typed: '', saved: '' })).toBe('empty')
+  })
+})
 
 const hepsiburada = { connectionId: 'hb-1', platformCode: 'HEPSIBURADA', displayName: 'Ravencia HB' }
 const shopify = { connectionId: 'sh-1', platformCode: 'SHOPIFY', displayName: 'Ravencia Shopify' }

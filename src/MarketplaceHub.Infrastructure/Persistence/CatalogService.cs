@@ -991,7 +991,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var connectionIds = connections.Select(x => x.ConnectionId).ToArray();
         var links = await db.MarketplaceVariantLinks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && connectionIds.Contains(x.ConnectionId))
-            .Select(x => new { x.VariantId, Code = new VariantMarketplaceCodeView(x.ConnectionId, x.ExternalId, x.ExternalBarcode, x.ExternalSku) })
+            .Select(x => new { x.VariantId, Code = new VariantMarketplaceCodeView(x.ConnectionId, x.ExternalId, x.ExternalBarcode, x.ExternalSku, x.LastSeenAt, x.HealthStatus, x.HealthReason) })
             .ToListAsync(cancellationToken);
         var codesByVariant = links.GroupBy(x => x.VariantId).ToDictionary(group => group.Key, group => (IReadOnlyList<VariantMarketplaceCodeView>)group.Select(x => x.Code).ToList());
         return ServiceResult<ProductMarketplaceCodesView>.Ok(new(connections,
@@ -1052,7 +1052,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var existing = links.FirstOrDefault(x => x.ConnectionId == connectionId && x.VariantId == variantId);
             if (existing is not null && string.Equals(existing.ExternalId, code, StringComparison.Ordinal)) continue;
             if (existing is not null) db.MarketplaceVariantLinks.Remove(existing);
-            if (code is not null) added.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = code, Version = 1 });
+            // A typed code is unverified until an import reads it; the change time keeps a scan or push that began
+            // before it from judging the new code.
+            if (code is not null) added.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = code, HealthChangedAt = timeProvider.GetUtcNow(), Version = 1 });
         }
         try
         {

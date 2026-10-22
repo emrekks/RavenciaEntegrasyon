@@ -359,7 +359,74 @@ public sealed class MarketplaceVariantLink
     // differ from the panel's: writes address the marketplace by its own codes.
     public string? ExternalBarcode { get; set; }
     public string? ExternalSku { get; set; }
+    // Whether the code still holds at the marketplace, from signals the panel already gets: the last product import
+    // that saw it, a full scan that no longer did (NOT_FOUND) or a price/stock push refused for an unknown code
+    // (REJECTED). Null status is healthy; a link never seen is unverified (see MarketplaceVariantLinkHealth).
+    public DateTimeOffset? LastSeenAt { get; set; }
+    public string? HealthStatus { get; set; }
+    public string? HealthReason { get; set; }
+    public DateTimeOffset? HealthChangedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+public static class MarketplaceVariantLinkHealth
+{
+    public const string NotFound = "NOT_FOUND";
+    public const string Rejected = "REJECTED";
+    public const string NotFoundReason = "Son tam ürün taramasında pazaryerinde bulunamadı.";
+
+    public static bool IsBroken(string? healthStatus) => healthStatus is NotFound or Rejected;
+
+    // A link the marketplace's product listing showed again is healthy, whatever it was before.
+    public static void MarkSeen(MarketplaceVariantLink link, DateTimeOffset seenAt)
+    {
+        link.LastSeenAt = seenAt;
+        if (link.HealthStatus is null) return;
+        link.HealthStatus = null;
+        link.HealthReason = null;
+        link.HealthChangedAt = seenAt;
+    }
+
+    public static void MarkRejected(MarketplaceVariantLink link, string reason, DateTimeOffset at)
+    {
+        var safeReason = reason.Length > 200 ? reason[..200] : reason;
+        if (link.HealthStatus == Rejected && link.HealthReason == safeReason) return;
+        link.HealthStatus = Rejected;
+        link.HealthReason = safeReason;
+        link.HealthChangedAt = at;
+    }
+
+    // A full scan that saw too few of the connection's healthy links is more likely a short or failed listing than
+    // that many removed products: nothing is marked then.
+    public static bool FullScanCanMarkMissing(int seenInScan, int healthyLinks) =>
+        seenInScan > 0 && (healthyLinks == 0 || seenInScan * 2 >= healthyLinks);
+
+    // Whether a refused price/stock line says the marketplace does not know the code at all. Only an unambiguous
+    // "listing / SKU / barcode / product / variant not found" or "invalid SKU" counts: a refused price or stock value,
+    // a rate limit, an attribute, category, brand, cargo or order problem never breaks a link.
+    public static bool MeansUnknownCode(string? errorCode, string? message)
+    {
+        var text = Fold($"{errorCode} {message}");
+        if (text.Length == 0) return false;
+        if (UnrelatedSubjects.Any(subject => text.Contains(subject, StringComparison.Ordinal))) return false;
+        return UnknownCodeMarkers.Any(marker => text.Contains(marker, StringComparison.Ordinal));
+    }
+
+    private static readonly string[] UnrelatedSubjects = ["ATTRIBUTE", "OZELLIK", "KATEGORI", "CATEGORY", "MARKA", "BRAND", "KARGO", "CARGO", "SIPARIS", "ORDER", "PAKET", "PACKAGE", "FIYAT", "PRICE", "STOK ADEDI", "QUANTITY"];
+    private static readonly string[] UnknownCodeMarkers =
+    [
+        "LISTING NOT FOUND", "LISTING BULUNAMADI", "LISTING_NOT_FOUND", "LISTINGNOTFOUND",
+        "SKU NOT FOUND", "SKU BULUNAMADI", "SKU_NOT_FOUND", "INVALID SKU", "INVALID_SKU", "GECERSIZ SKU",
+        "MERCHANTSKU BULUNAMADI", "MERCHANT SKU BULUNAMADI", "MERCHANT SKU NOT FOUND", "HBSKU BULUNAMADI", "HEPSIBURADASKU BULUNAMADI",
+        "BARCODE NOT FOUND", "BARKOD BULUNAMADI", "BARCODE_NOT_FOUND", "BARKODLU URUN BULUNAMADI",
+        "PRODUCT NOT FOUND", "URUN BULUNAMADI", "PRODUCT_NOT_FOUND", "VARIANT NOT FOUND", "VARYANT BULUNAMADI", "VARIANT_NOT_FOUND",
+        "URUN SISTEMDE BULUNAMADI", "TANIMLI URUN BULUNAMADI"
+    ];
+
+    private static string Fold(string value) => string.Join(' ', value.Trim().ToUpperInvariant()
+        .Replace('İ', 'I').Replace('ı', 'I').Replace('Ş', 'S').Replace('ş', 'S').Replace('Ğ', 'G').Replace('ğ', 'G')
+        .Replace('Ü', 'U').Replace('ü', 'U').Replace('Ö', 'O').Replace('ö', 'O').Replace('Ç', 'C').Replace('ç', 'C')
+        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }
 
 public sealed class MarketplaceListingState

@@ -138,7 +138,9 @@ public sealed record UpsertListingProfileCommand(string? TitleOverride, string? 
 public sealed record ProductMarketplaceCodesView(IReadOnlyList<MarketplaceCodeConnectionView> Connections, IReadOnlyList<VariantMarketplaceCodesView> Variants);
 public sealed record MarketplaceCodeConnectionView(Guid ConnectionId, string PlatformCode, string DisplayName);
 public sealed record VariantMarketplaceCodesView(Guid VariantId, string Sku, string? Barcode, IReadOnlyList<VariantMarketplaceCodeView> Codes);
-public sealed record VariantMarketplaceCodeView(Guid ConnectionId, string ExternalId, string? ExternalBarcode, string? ExternalSku);
+// LastSeenAt: when a product import last read the code at the marketplace (null: never verified). HealthStatus:
+// null when healthy, NOT_FOUND or REJECTED when the marketplace no longer knows it (HealthReason says why).
+public sealed record VariantMarketplaceCodeView(Guid ConnectionId, string ExternalId, string? ExternalBarcode, string? ExternalSku, DateTimeOffset? LastSeenAt = null, string? HealthStatus = null, string? HealthReason = null);
 // Codes typed in the product editor: a code links the variant on that connection, an empty one removes its link.
 public sealed record UpdateMarketplaceCodesCommand(IReadOnlyList<MarketplaceCodeChange>? Codes);
 public sealed record MarketplaceCodeChange(Guid VariantId, Guid ConnectionId, string? Code);
