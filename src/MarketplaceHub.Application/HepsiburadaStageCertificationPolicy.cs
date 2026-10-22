@@ -48,7 +48,8 @@ public static class HepsiburadaStageCertificationPolicy
     public static bool IsManualStagePriceInventory(PlatformConnection connection, bool manualPayload) =>
         manualPayload && IsStageHepsiburada(connection);
 
-    // The trackingId (product import) or inventoryUploadId (listing upload) a job's payload carries,
+    // The batch or tracking id a job's payload carries (Trendyol batchRequestId, Hepsiburada trackingId or
+    // inventoryUploadId, PTT AVM trackingId, Pazarama batch id),
     // without the internal kind prefix, so it can be read back from the job detail. Null when absent.
     public static string? OperationIdForDisplay(string? payloadJson)
     {
@@ -64,6 +65,11 @@ public static class HepsiburadaStageCertificationPolicy
                 if (string.IsNullOrEmpty(value)) return null;
                 if (value.StartsWith(InventoryUploadPrefix, StringComparison.Ordinal)) value = value[InventoryUploadPrefix.Length..];
                 else if (value.StartsWith(ProductUpdatePrefix, StringComparison.Ordinal)) value = value[ProductUpdatePrefix.Length..];
+                // PTT AVM tracking ids ("t:{trackingId}"); Pazarama batches ("b:{batchId}:{count}:{lines}") show their batch
+                // id, and its "c:{lines}" marker (no remote batch) shows nothing. Trendyol's batchRequestId is plain.
+                else if (value.StartsWith("t:", StringComparison.Ordinal)) value = value[2..];
+                else if (value.StartsWith("b:", StringComparison.Ordinal)) value = value[2..].Split(':')[0];
+                else if (value.StartsWith("c:", StringComparison.Ordinal)) return null;
                 return value.Length == 0 ? null : value;
             }
             return null;

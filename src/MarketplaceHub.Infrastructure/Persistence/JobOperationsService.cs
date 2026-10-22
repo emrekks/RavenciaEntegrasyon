@@ -967,7 +967,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                     return value.GetString();
         }
         catch (System.Text.Json.JsonException) { }
-        return null;
+        // Product sends, updates and price/stock uploads carry the marketplace's batch or tracking id instead.
+        return HepsiburadaStageCertificationPolicy.OperationIdForDisplay(payloadJson);
     }
 
     private sealed record FailureTime(DateTimeOffset FirstFailedAt, DateTimeOffset LastFailedAt);

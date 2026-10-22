@@ -994,7 +994,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const client = useQueryClient();
   const location = useLocation()
   const navigate = useNavigate()
-  const routeState = location.state as { duplicateProductId?: unknown } | null
+  const routeState = location.state as { duplicateProductId?: unknown; wizardStep?: unknown } | null
   const duplicateProductId = typeof routeState?.duplicateProductId === 'string' ? routeState.duplicateProductId : undefined
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
@@ -1009,7 +1009,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const initializedEditProductKey = useRef<string | null>(null)
   const initializedEditOptionsKey = useRef<string | null>(null)
   const initializedEditWebColorKey = useRef<string | null>(null)
-  const [wizardStep, setWizardStep] = useState<1 | 2>(1)
+  const [wizardStep, setWizardStep] = useState<1 | 2>(() => routeState?.wizardStep === 2 ? 2 : 1)
   const [platformUpdateDialogOpen, setPlatformUpdateDialogOpen] = useState(false)
   const [platformUpdateConnectionIds, setPlatformUpdateConnectionIds] = useState<string[]>([])
   const [platformUpdateProductInformation, setPlatformUpdateProductInformation] = useState(true)
@@ -2253,6 +2253,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed = ['ürün']; const warnings: string[] = []
+      // The steps after the product (media, stock, channel prices, publication) can take a while; the progress toast names them.
+      if (!editProductId) showFeedback('Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true })
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
       const productMediaChanged = editProductId
         ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
@@ -2307,6 +2309,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
       if (rows.some(row => row.stock > 0)) completed.push('stok'); if (targetConnectionIds.length) completed.push('kanal fiyatları')
       const publicationConnectionIds = productPublicationTargets(saveAndStay, targetConnectionIds)
+      if (publicationConnectionIds.length && !platformUpdate) showFeedback(`Yayın işleri kuyruğa alınıyor (${publicationConnectionIds.length} kanal)…`, 'info', { persistent: true })
       for (const connectionId of publicationConnectionIds) {
         try {
           if (platformUpdate) {
@@ -2347,10 +2350,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         await productToEdit.refetch()
       }
       if (!createOnly) showFeedback(message, warnings.length ? 'info' : 'success')
-      if (createOnly && productCreated) {
-        appendNotification('Ürün oluşturuldu. Ürün sayfası açılıyor.', 'success')
+      // A new product or a copy opens on its own page once created, whichever button saved it: there it saves as an
+      // edit and its publication progress shows. A publish opens the publication step; the copy source is dropped.
+      if (productCreated && !editProductId) {
+        appendNotification(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : `${message} Ürün sayfası açılıyor; yayın ilerlemesi orada görünür.`, warnings.length ? 'info' : 'success')
         leavingAfterSave.current = true
-        navigate(`/products/${productCreated.id}`)
+        navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly ? null : { wizardStep: 2 } })
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'

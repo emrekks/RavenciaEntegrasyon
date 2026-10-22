@@ -104,6 +104,17 @@ public sealed class HepsiburadaStageCertificationPolicyTests
         Assert.Equal("tracking-42", HepsiburadaStageCertificationPolicy.OperationIdForDisplay(payload));
     }
 
+    // Every marketplace's batch or tracking id shows in İşlem Takibi, without its internal marker.
+    [Theory]
+    [InlineData("{\"ExternalOperationId\":\"5f1c2d3e-trendyol-batch\"}", "5f1c2d3e-trendyol-batch")]
+    [InlineData("{\"ExternalOperationId\":\"t:6ad9e17a2be2a800019acbc0\"}", "6ad9e17a2be2a800019acbc0")]
+    [InlineData("{\"ExternalOperationId\":\"b:BATCH-9:12:eyJ4IjoxfQ==\"}", "BATCH-9")]
+    [InlineData("{\"ExternalOperationId\":\"PRODUCT_UPDATE:tracking-7\"}", "tracking-7")]
+    public void ReadsEachMarketplacesBatchId(string payloadJson, string expected)
+    {
+        Assert.Equal(expected, HepsiburadaStageCertificationPolicy.OperationIdForDisplay(payloadJson));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -111,6 +122,7 @@ public sealed class HepsiburadaStageCertificationPolicyTests
     [InlineData("[]")]
     [InlineData("{\"ExternalOperationId\":null}")]
     [InlineData("{\"ExternalOperationId\":\"LISTING_INVENTORY:\"}")]
+    [InlineData("{\"ExternalOperationId\":\"c:eyJ4IjoxfQ==\"}")]
     public void ReadsNothingWhenThePayloadCarriesNoOperationId(string? payloadJson)
     {
         Assert.Null(HepsiburadaStageCertificationPolicy.OperationIdForDisplay(payloadJson));
