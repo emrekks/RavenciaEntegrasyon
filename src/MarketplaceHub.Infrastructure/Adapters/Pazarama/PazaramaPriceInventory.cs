@@ -40,7 +40,10 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
         var parts = new List<string>(2);
         RateLimitMetadata? rate = null;
         AdapterError? lastError = null;
+        // A held part (a value Pazarama already has) is neither sent nor failed: it does not stop a passing failure of the
+        // other part from retrying the whole send, which only meets the same "already held" answer again.
         var accepted = 0;
+        var held = 0;
         foreach (var (kind, path, body, count) in new[] { ("s", StockUpdate, bodies.Stock, bodies.StockCount), ("p", PriceUpdate, bodies.Price, bodies.PriceCount) })
         {
             if (count == 0) continue;
@@ -53,7 +56,7 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
                 if (count == 1 && PazaramaPriceInventoryRules.AlreadyHeld(result.Error!.SafeMessage))
                 {
                     parts.Add($"{kind}=:{PazaramaBatchMapper.AlreadyHeldMarker}:1");
-                    accepted++;
+                    held++;
                     continue;
                 }
                 lastError = result.Error!;
@@ -69,7 +72,7 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
             parts.Add($"{kind}:{dataId}:{count.ToString(CultureInfo.InvariantCulture)}");
             accepted++;
         }
-        if (accepted == 0 && lastError is not null) return AdapterResult<RemoteOperationRef>.Failure(lastError, rate);
+        if (accepted == 0 && held == 0 && lastError is not null) return AdapterResult<RemoteOperationRef>.Failure(lastError, rate);
         return AdapterResult<RemoteOperationRef>.Success(new(string.Join('|', parts), "PRICE_STOCK_UPDATE", timeProvider.GetUtcNow()), rate);
     }
 
