@@ -882,7 +882,9 @@ public sealed record InstantNotificationView(
     DateTimeOffset? LastReceivedAt,
     int ReceivedLast24Hours,
     string? Message,
-    WebhookSetupInstructions? Setup = null);
+    WebhookSetupInstructions? Setup = null,
+    DateTimeOffset? LastRejectedAt = null,
+    string? LastRejectedReason = null);
 
 // What the seller sends a marketplace that registers webhooks by hand (Hepsiburada): the base
 // address with its secret route, the Basic Auth user and password, and the paths it calls.

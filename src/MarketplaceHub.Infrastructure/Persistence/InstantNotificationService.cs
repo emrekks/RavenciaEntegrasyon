@@ -240,7 +240,15 @@ public sealed class InstantNotificationService(
             .CountAsync(job => job.TenantId == connection.TenantId && job.ConnectionId == connection.Id && job.JobType == ingestType && job.CreatedAt >= since, cancellationToken);
         // The route token is a secret; the page shows only where notifications arrive.
         var endpoint = PublicBaseUrl() is { } baseUrl ? $"{baseUrl}/api/v1/hooks/{connection.PublicId:D}/…" : null;
-        return new(state, endpoint, subscription?.VerifiedAt, subscription?.LastReceivedAt, received, message);
+        // The last delivery the receiver turned away (MarketplaceWebhookService): it tells a marketplace that calls
+        // and is refused from one that never calls.
+        var rejectedPrefix = $"webhook-rejected:{connection.Id:N}:";
+        var rejected = await db.OperationalIssues.AsNoTracking()
+            .Where(x => x.TenantId == connection.TenantId && x.DedupeKey.StartsWith(rejectedPrefix) && x.Status == IssueStatus.Open)
+            .OrderByDescending(x => x.LastSeenAt)
+            .Select(x => new { x.LastSeenAt, x.Summary })
+            .FirstOrDefaultAsync(cancellationToken);
+        return new(state, endpoint, subscription?.VerifiedAt, subscription?.LastReceivedAt, received, message, LastRejectedAt: rejected?.LastSeenAt, LastRejectedReason: rejected?.Summary);
     }
 
     private Task<PlatformConnection?> ConnectionAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>

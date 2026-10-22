@@ -340,6 +340,8 @@
 .instant-notifications-facts dt { color: var(--rv-color-muted); font-size: 12px; }
 .instant-notifications-facts dd { margin: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
 .instant-notifications-message { margin: 10px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
+/* A delivery the panel turned away (old address, wrong password): the marketplace calls but is refused. */
+.instant-notifications-message.is-danger { color: var(--rv-color-danger); }
 @media (max-width: 760px) {
   .instant-notifications-status { flex-wrap: wrap; }
   .instant-notifications-actions, .instant-notifications-actions > button { width: 100%; }
