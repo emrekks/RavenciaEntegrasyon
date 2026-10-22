@@ -1013,6 +1013,39 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (variantLink is null) db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = externalVariantId, Version = 1 });
     }
 
+    // Hepsiburada addresses a variant by its hbSku (HBCV…). Links an earlier import keyed by the merchant SKU (the
+    // listing's hepsiburadaSku was not read then) move to the hbSku, with the merchant SKU and barcode kept beside it
+    // for order lines. Saved at once: the import then finds each link by its hbSku instead of adding a second one.
+    private async Task RekeyHepsiburadaVariantLinks(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
+    {
+        var byMerchantSku = new Dictionary<string, RemoteCatalogVariant>(StringComparer.Ordinal);
+        foreach (var remote in snapshots.SelectMany(snapshot => snapshot.Variants))
+            if (HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(remote.ExternalVariantId) && remote.Sku?.Trim() is { Length: > 0 } merchantSku
+                && !string.Equals(merchantSku, remote.ExternalVariantId.Trim(), StringComparison.OrdinalIgnoreCase))
+                byMerchantSku.TryAdd(merchantSku, remote);
+        if (byMerchantSku.Count == 0) return;
+        var merchantSkus = byMerchantSku.Keys.ToArray();
+        var hbSkus = byMerchantSku.Values.Select(remote => Short(remote.ExternalVariantId.Trim(), 256)).ToArray();
+        var links = await db.MarketplaceVariantLinks
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (merchantSkus.Contains(x.ExternalId) || hbSkus.Contains(x.ExternalId)))
+            .ToListAsync(cancellationToken);
+        var taken = links.Select(link => link.ExternalId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var moved = 0;
+        foreach (var link in links)
+        {
+            if (!byMerchantSku.TryGetValue(link.ExternalId, out var remote)) continue;
+            var hbSku = Short(remote.ExternalVariantId.Trim(), 256);
+            // An hbSku already linked (to this or another variant) is left as it is.
+            if (!taken.Add(hbSku)) continue;
+            link.ExternalId = hbSku;
+            link.ExternalSku = Short(remote.Sku!.Trim(), 160);
+            link.ExternalBarcode = string.IsNullOrWhiteSpace(remote.Barcode) ? null : Short(remote.Barcode.Trim(), 160);
+            link.Version++;
+            moved++;
+        }
+        if (moved > 0) await db.SaveChangesAsync(cancellationToken);
+    }
+
     // Every link the import read keeps the marketplace's own barcode and stock code, whichever code paired it with
     // the panel variant: price, stock and order reads address the marketplace by them, not by the panel's codes.
     private async Task RecordVariantLinkCodes(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
@@ -5078,6 +5111,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .ToList();
             try
             {
+                if (isHepsiburada) await RekeyHepsiburadaVariantLinks(tenantId, connectionId, snapshotGroups, cancellationToken);
                 foreach (var snapshot in snapshotGroups)
                 {
                     if (mappingOnly)

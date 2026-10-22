@@ -154,10 +154,13 @@ internal static class HepsiburadaJsonMapper
     public static RemoteProduct Product(JsonElement item)
     {
         var hbSku = Text(item, "hbSku", "HBSku", "sku", "Sku");
+        // The listing service names the variant's own code (HBCV…) "hepsiburadaSku"; price and stock go by it, so it
+        // identifies the variant. The product keeps the identity it had before that name was read.
+        var hepsiburadaSku = Text(item, "hepsiburadaSku", "HepsiburadaSku") ?? hbSku;
         var merchantSku = Text(item, "merchantSku", "MerchantSku", "sellerSku", "SellerSku");
         var productId = Text(item, "productId", "ProductId", "id", "Id");
         var externalProductId = First(productId, hbSku, merchantSku);
-        var externalVariantId = First(hbSku, merchantSku, productId);
+        var externalVariantId = First(hepsiburadaSku, merchantSku, productId);
         if (externalProductId is null || externalVariantId is null) throw new JsonException("Hepsiburada listing kimlik alanları eksik.");
         return new(externalProductId, externalVariantId, Text(item, "barcode", "Barcode", "productBarcode"), merchantSku, item.GetRawText());
     }

@@ -258,6 +258,24 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(4m, product.Variants.Single().StockQuantity);
     }
 
+    [Fact]
+    public void ListingVariantIsIdentifiedByItsHepsiburadaSku()
+    {
+        // The live listing names the variant's own code "hepsiburadaSku" beside the seller's merchantSku.
+        using var json = JsonDocument.Parse("""
+        { "items": [{ "hepsiburadaSku": "HBCV0000HANLRA", "merchantSku": "QUDE2410307", "barcode": "8690000000307", "productName": "Bluz" }] }
+        """);
+
+        var product = HepsiburadaJsonMapper.CatalogProduct(HepsiburadaJsonMapper.ListingPage(json.RootElement).Items.Single());
+
+        var variant = product.Variants.Single();
+        Assert.Equal("HBCV0000HANLRA", variant.ExternalVariantId);
+        Assert.Equal("QUDE2410307", variant.Sku);
+        Assert.Equal("8690000000307", variant.Barcode);
+        // The product keeps the identity earlier imports linked it by.
+        Assert.Equal("QUDE2410307", product.ExternalProductId);
+    }
+
     [Theory]
     [InlineData("productImageUrlFormat", "https://cdn.example.test/product-image.jpg")]
     [InlineData("emaProductImageUrlFormat", "https://cdn.example.test/ema-image.jpg")]
