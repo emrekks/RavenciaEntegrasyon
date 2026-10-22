@@ -26,6 +26,7 @@ import { classifyPublicationAttributeIssues, fixableValueMappings, type Publicat
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
+import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
@@ -2369,6 +2370,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     connection,
     mode: productPublicationMode(connection)!
   }))
+  // Every active connection's barcode and stock code rules: a product goes to all of them with one pair of codes.
+  const codeRulePlatforms = useMemo(() => [...new Set((connections.data?.items ?? []).filter(connection => connection.status === 'ACTIVE' || connection.status === 'VERIFIED').map(connection => connection.platformCode))], [connections.data])
+  const variantCodeIssues = useMemo(() => new Map(variantRows.map(row => [row.key, platformCodeIssues(codeRulePlatforms, row.barcode, row.sku)])), [codeRulePlatforms, variantRows])
+  const variantCodeIssueSummary = useMemo(() => {
+    const rowsWithIssues = [...variantCodeIssues.values()].filter(issues => issues.length > 0)
+    const platforms = [...new Set(rowsWithIssues.flat().map(issue => platformCodeNames[issue.platformCode] ?? issue.platformCode))]
+    return rowsWithIssues.length ? { rows: rowsWithIssues.length, platforms } : null
+  }, [variantCodeIssues])
   const variantPricingPlatforms = useMemo<VariantPlatformStatus[]>(() => (connections.data?.items ?? []).filter(isProductPublicationConnection).map(connection => {
     const pricing = channelPricing[connection.id]
     return {
@@ -2776,6 +2785,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri kodları</button>}</div></div>
         </>}
             {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Fiyat'], ['cost', 'Maliyet'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
+            {variantCodeIssueSummary && <p className="variant-code-rule-notice" role="status"><UiIcon name="alert" size={14} /> {variantCodeIssueSummary.rows} varyantın barkodu veya stok kodu şu platformların kuralına uymuyor: {variantCodeIssueSummary.platforms.join(', ')}. Kırmızı alanların üzerine gelince ayrıntı görünür; bu ürün o platformlara bu kodlarla gönderilemez.</p>}
             <div className={`variant-table-editor is-mobile-${variantMobileGroup}`}>
               <div className="variant-table-head">
                 <span>#</span><span>Seçenek</span>
@@ -2787,11 +2797,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               {variantRows.length ? variantRows.map((row, index) => {
                 const matchesFilter = rowMatchesVariantFilters(row)
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
+                const codeIssues = variantCodeIssues.get(row.key) ?? []
+                const barcodeIssueText = describePlatformCodeIssues(codeIssues, 'barcode')
+                const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku')
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <input aria-label={`${index + 1}. varyant seçenekleri`} value={displayVariantOptionSignature(row.optionSignature, row.options)} readOnly />
-                  <input aria-label={`${row.optionSignature} barkod`} className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
-                  <input aria-label={`${row.optionSignature} stok kodu`} className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
+                  <input aria-label={`${row.optionSignature} barkod`} className={`technical-field barcode-value${barcodeIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={barcodeIssueText ? true : undefined} title={barcodeIssueText || undefined} value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
+                  <input aria-label={`${row.optionSignature} stok kodu`} className={`technical-field sku-value${skuIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={skuIssueText ? true : undefined} title={skuIssueText || undefined} value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
                   <input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" />
                   <input aria-label={`${row.optionSignature} satış fiyatı`} value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" />
                   <input aria-label={`${row.optionSignature} maliyeti`} value={row.costPrice} onChange={event => updateVariantRow(row.key, 'costPrice', event.target.value)} type="number" min="0" step="0.01" />

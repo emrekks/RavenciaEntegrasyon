@@ -208,6 +208,11 @@
 }
 
 @layer features {
+  .variant-code-rule-notice { display: flex; align-items: flex-start; gap: var(--rv-space-2); margin: 0 0 var(--rv-space-2); padding: var(--rv-space-2) var(--rv-space-3); border: 1px solid var(--rv-color-danger); border-radius: var(--rv-radius-md); color: var(--rv-color-danger); font-size: var(--rv-font-size-sm); }
+  .variant-table-row input.has-platform-code-issue { border-color: var(--rv-color-danger); box-shadow: inset 0 0 0 1px var(--rv-color-danger); }
+}
+
+@layer features {
   .variant-marketplace-codes-button { margin-left: auto; }
   .marketplace-codes-modal { width: min(760px, 100%); }
   .marketplace-codes-body { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4) var(--rv-space-5); min-width: 0; }
