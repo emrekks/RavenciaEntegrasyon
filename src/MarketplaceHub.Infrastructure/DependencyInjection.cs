@@ -65,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<OperationalIssueRetentionService>();
         services.AddScoped<IJobOperationsService, JobOperationsService>();
         services.AddScoped<IDashboardReadService, DashboardReadService>();
+        services.AddScoped<IReportsService, ReportsService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();
         services.AddSingleton<CursorCodec>();
         services.AddScoped<ICatalogService, CatalogService>();
