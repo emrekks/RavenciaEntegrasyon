@@ -263,6 +263,83 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     // Codes typed in the product editor: a changed code starts without the marketplace's barcode and stock code (the
     // next import reads them), two variants may hand a code over in one save, a code another product's variant holds is
     // refused with that variant's stock code, and an empty code removes the link.
+    // An uploaded tariff is stored once per file and period, its rows match panel variants by barcode, and the
+    // lookup answers the band rate only inside the period.
+    [PostgreSqlFact]
+    public async Task CommissionTariff_UploadListRowsLookupAndDelete()
+    {
+        var tenant = NewTenant("commission-tariff");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var (product, variant) = NewVariant(tenant, "RYP00101", "RYP00101");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(trendyol, shopify);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            await seed.SaveChangesAsync();
+        }
+        string[] headers = ["ÜRÜN İSMİ", "BARKOD", "SATICI STOK KODU", "1.Fiyat Alt Limit", "2.Fiyat Üst Limiti", "2.Fiyat Alt Limit", "3.Fiyat Üst Limiti", "3.Fiyat Alt Limit", "4.Fiyat Üst Limiti", "Tarih aralığı (7 Gün)", "1.KOMİSYON", "2.KOMİSYON", "3.KOMİSYON", "4.KOMİSYON", "KOMİSYONA ESAS FİYAT", "GÜNCEL KOMİSYON", "GÜNCEL TSF"];
+        var file = CommissionTariffTests.Xlsx(headers,
+        [
+            ["Bluz", "RYP00101", "RYP00101", "470.64", "470.63", "435.98", "435.97", "388.64", "388.63", "22 Ekim 08.00-29 Ekim 07.59", "21.5", "20.6", "19.4", "17.5", "519.75", "21.5", "525.0"],
+            ["Etek", "NOTINPANEL", "NOTINPANEL", "300", "299.99", "250", "249.99", "200", "199.99", "22 Ekim 08.00-29 Ekim 07.59", "20", "19", "18", "17", "260", "19", "270"]
+        ]);
+        var clock = new FixedClock(new DateTimeOffset(2026, 10, 23, 9, 0, 0, TimeSpan.Zero));
+
+        Guid tariffId;
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CommissionTariffService(db, clock);
+            var uploaded = await service.UploadAsync(tenant.Id, null, trendyol.Id, "tarife.xlsx", new MemoryStream(file), "test", CancellationToken.None);
+            Assert.True(uploaded.Succeeded, uploaded.Error?.Message);
+            var tariff = Assert.Single(uploaded.Value!.Tariffs);
+            Assert.Equal(2, uploaded.Value.ImportedRows);
+            Assert.False(uploaded.Value.AlreadyUploaded);
+            Assert.Equal(1, tariff.MatchedRowCount);
+            Assert.True(tariff.IsCurrent);
+            tariffId = tariff.Id;
+
+            var refused = await service.UploadAsync(tenant.Id, null, shopify.Id, "tarife.xlsx", new MemoryStream(file), "test", CancellationToken.None);
+            Assert.Equal("COMMISSION_TARIFF_PLATFORM_UNSUPPORTED", refused.Error?.Code);
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CommissionTariffService(db, clock);
+            var again = await service.UploadAsync(tenant.Id, null, trendyol.Id, "kopya.xlsx", new MemoryStream(file), "test", CancellationToken.None);
+            Assert.True(again.Value!.AlreadyUploaded);
+            Assert.Equal(tariffId, Assert.Single(again.Value.Tariffs).Id);
+
+            var rows = await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "ryp", 0, 50, CancellationToken.None);
+            var row = Assert.Single(rows.Value!.Items);
+            Assert.Equal(1, row.CurrentTier);
+            Assert.Equal(21.5m, row.CurrentBandRate);
+            Assert.Equal(470.63m, row.NextLowerBand?.Max);
+            Assert.True(row.MatchesPanel);
+            Assert.Equal(4, row.Bands.Count);
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var lookup = new CommissionTariffLookup(db);
+            var inPeriod = new DateTimeOffset(2026, 10, 25, 12, 0, 0, TimeSpan.FromHours(3));
+            Assert.Equal(20.6m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, inPeriod, 450m, CancellationToken.None))?.Rate);
+            Assert.Equal(17.5m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "UNKNOWN", "RYP00101", inPeriod, 300m, CancellationToken.None))?.Rate);
+            Assert.Null(await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 10, 29, 8, 0, 0, TimeSpan.FromHours(3)), 450m, CancellationToken.None));
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var deleted = await new CommissionTariffService(db, clock).DeleteAsync(tenant.Id, null, trendyol.Id, tariffId, "test", CancellationToken.None);
+            Assert.True(deleted.Succeeded);
+            Assert.False(await db.CommissionTariffRows.AnyAsync(x => x.TariffId == tariffId));
+        }
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
     [PostgreSqlFact]
     public async Task ProductMarketplaceCodes_SaveTypedCodes()
     {

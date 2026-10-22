@@ -1,0 +1,84 @@
+namespace MarketplaceHub.Domain;
+
+// A marketplace's commission tariff for one period, as the seller uploaded it (Trendyol's weekly "komisyon tarifesi"
+// export). Each row gives a product's price bands and the commission rate of each band for the period; a sale's
+// commission is the rate of the band its commission-basis price falls in. PeriodEnd is exclusive.
+public sealed class CommissionTariff
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string PlatformCode { get; set; }
+    public DateTimeOffset PeriodStart { get; set; }
+    public DateTimeOffset PeriodEnd { get; set; }
+    public required string PeriodText { get; set; }
+    public required string FileName { get; set; }
+    public required string FileHash { get; set; }
+    public DateTimeOffset UploadedAt { get; set; }
+    public Guid? UploadedBy { get; set; }
+    public int RowCount { get; set; }
+}
+
+public sealed class CommissionTariffRow
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid TariffId { get; set; }
+    public required string Barcode { get; set; }
+    public string? SellerSku { get; set; }
+    public string? ModelCode { get; set; }
+    public string? ProductName { get; set; }
+    public string? Size { get; set; }
+    // Band 1: price >= Tier1Min; band 2: Tier2Min..Tier2Max; band 3: Tier3Min..Tier3Max; band 4: price <= Tier4Max.
+    public decimal? Tier1Min { get; set; }
+    public decimal? Tier2Max { get; set; }
+    public decimal? Tier2Min { get; set; }
+    public decimal? Tier3Max { get; set; }
+    public decimal? Tier3Min { get; set; }
+    public decimal? Tier4Max { get; set; }
+    public decimal? Rate1 { get; set; }
+    public decimal? Rate2 { get; set; }
+    public decimal? Rate3 { get; set; }
+    public decimal? Rate4 { get; set; }
+    public decimal? BasisPrice { get; set; }
+    public decimal? CurrentRate { get; set; }
+    public decimal? CurrentSalePrice { get; set; }
+    public string? TariffGroup { get; set; }
+}
+
+public sealed record CommissionBand(int Tier, decimal? Min, decimal? Max, decimal Rate);
+
+public static class CommissionTariffBands
+{
+    // The row's bands with a rate, from the highest price band down. A band without a lower bound reaches down to
+    // zero and one without an upper bound has no ceiling; a middle band with neither bound is left out.
+    public static IReadOnlyList<CommissionBand> Bands(CommissionTariffRow row)
+    {
+        var bands = new List<CommissionBand>(4);
+        if (row.Rate1 is { } rate1 && row.Tier1Min is not null) bands.Add(new(1, row.Tier1Min, null, rate1));
+        if (row.Rate2 is { } rate2 && (row.Tier2Min is not null || row.Tier2Max is not null)) bands.Add(new(2, row.Tier2Min, row.Tier2Max, rate2));
+        if (row.Rate3 is { } rate3 && (row.Tier3Min is not null || row.Tier3Max is not null)) bands.Add(new(3, row.Tier3Min, row.Tier3Max, rate3));
+        if (row.Rate4 is { } rate4 && row.Tier4Max is not null) bands.Add(new(4, null, row.Tier4Max, rate4));
+        return bands;
+    }
+
+    // The band a commission-basis price falls in, the price rounded to kuruş as the marketplace's limits are. Null when
+    // the price falls in no band (a gap or no bands): the commission is then not known, never guessed.
+    public static CommissionBand? BandFor(CommissionTariffRow row, decimal basisPrice)
+    {
+        if (basisPrice < 0) return null;
+        var price = decimal.Round(basisPrice, 2, MidpointRounding.AwayFromZero);
+        return Bands(row).FirstOrDefault(band => (band.Min is null || price >= band.Min) && (band.Max is null || price <= band.Max));
+    }
+
+    // The nearest band with a lower rate than the one the price is in: the highest price that still earns it.
+    public static CommissionBand? NextLowerBand(CommissionTariffRow row, decimal basisPrice)
+    {
+        var current = BandFor(row, basisPrice);
+        if (current is null) return null;
+        return Bands(row)
+            .Where(band => band.Rate < current.Rate && band.Max is not null && band.Max < decimal.Round(basisPrice, 2, MidpointRounding.AwayFromZero))
+            .OrderByDescending(band => band.Max)
+            .FirstOrDefault();
+    }
+}

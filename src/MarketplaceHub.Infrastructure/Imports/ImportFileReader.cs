@@ -6,6 +6,8 @@ using System.Xml;
 namespace MarketplaceHub.Infrastructure.Imports;
 
 public sealed record ParsedImportRow(int RowNumber, IReadOnlyDictionary<string, string> Values, IReadOnlyList<string> Errors);
+public sealed record XlsxTableRow(int RowNumber, IReadOnlyList<string> Cells, IReadOnlyList<int> FormulaColumns);
+public sealed record XlsxTable(IReadOnlyList<string> Headers, IReadOnlyList<XlsxTableRow> Rows);
 
 public static class ImportFileReader
 {
@@ -51,6 +53,25 @@ public static class ImportFileReader
             }
             ValidateRequired(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
         }
+    }
+
+    // The first worksheet as a plain table: the header row's texts and, for every following non-empty row, its cell
+    // texts by column (shared and inline strings, numbers as written). A formula cell is reported, never evaluated.
+    // For files whose columns are matched by the caller (e.g. a marketplace's commission tariff export).
+    public static XlsxTable ReadXlsxTable(Stream stream, long maximumBytes)
+    {
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true); ValidateArchive(archive, maximumBytes);
+        var sharedStrings = ReadSharedStrings(archive); var sheet = archive.Entries.Where(entry => entry.FullName.StartsWith("xl/worksheets/sheet", StringComparison.OrdinalIgnoreCase) && entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).OrderBy(entry => entry.FullName, StringComparer.Ordinal).FirstOrDefault() ?? throw new InvalidDataException("XLSX worksheet bulunamadı.");
+        using var source = sheet.Open(); using var reader = XmlReader.Create(source, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, IgnoreComments = true });
+        List<string>? headers = null; var rows = new List<XlsxTableRow>(); var rowNumber = 0;
+        while (reader.Read())
+        {
+            if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "row") continue; rowNumber = int.TryParse(reader.GetAttribute("r"), NumberStyles.None, CultureInfo.InvariantCulture, out var parsedRow) ? parsedRow : rowNumber + 1; var cells = ReadXlsxRow(reader.ReadSubtree(), sharedStrings);
+            if (headers is null) { headers = Dense(cells); continue; }
+            if (cells.Values.All(cell => string.IsNullOrWhiteSpace(cell.Value))) continue;
+            rows.Add(new XlsxTableRow(rowNumber, Dense(cells), cells.Where(cell => cell.Value.IsFormula).Select(cell => cell.Key).ToArray()));
+        }
+        return new XlsxTable(headers ?? [], rows);
     }
 
     internal static string DecodeCsv(Stream stream)

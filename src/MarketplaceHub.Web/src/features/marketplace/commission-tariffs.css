@@ -1,0 +1,60 @@
+/* Commission tariffs on a connection: the upload area, the uploaded periods and one period's price bands. */
+@layer features {
+  .commission-tariffs { display: grid; gap: var(--rv-space-3); min-width: 0; }
+  .commission-dropzone { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; text-align: center; background: var(--rv-color-surface-soft); border: 1px dashed var(--rv-color-border-strong); border-radius: 12px; transition: border-color 120ms ease, background-color 120ms ease; }
+  .commission-dropzone strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+  .commission-dropzone span { color: var(--rv-color-muted); font-size: 12px; }
+  .commission-dropzone button { margin-top: 4px; min-height: 36px; border-radius: 7px; }
+  .commission-dropzone:hover, .commission-dropzone.is-dragging { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+
+  .commission-message { padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 13px; }
+  .commission-message p { margin: 0; }
+  .commission-message ul { margin: 6px 0 0; padding-left: 18px; color: var(--rv-color-muted); font-size: 12px; }
+  .commission-message.is-success { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-color: transparent; }
+  .commission-message.is-info { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+  .commission-message.is-error { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: transparent; }
+
+  .commission-periods { display: grid; gap: var(--rv-space-2); }
+  .commission-period { display: flex; align-items: stretch; gap: 8px; min-width: 0; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; transition: background-color 120ms ease, border-color 120ms ease; }
+  .commission-period:hover { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
+  .commission-period.is-on { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+  .commission-period-main { display: grid; flex: 1; gap: 2px; min-width: 0; padding: 10px 12px; color: inherit; text-align: left; background: none; border: 0; border-radius: 12px; cursor: pointer; }
+  .commission-period-main:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
+  .commission-period-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+  .commission-period-main small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .commission-period-delete { align-self: center; min-height: 36px; margin-right: 10px; border-radius: 7px; }
+
+  .commission-badge { display: inline-flex; align-items: center; padding: 1px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; line-height: 18px; white-space: nowrap; }
+  .commission-badge.is-current { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+  .commission-badge.is-unknown { color: var(--rv-color-muted); }
+  .commission-badge.tier-1 { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+  .commission-badge.tier-2 { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+  .commission-badge.tier-3 { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+  .commission-badge.tier-4 { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+
+  .commission-rows { display: grid; gap: var(--rv-space-2); min-width: 0; }
+  .commission-rows-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--rv-space-2); }
+  .commission-rows-head strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+  .commission-search { box-sizing: border-box; width: min(320px, 100%); height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 13px; }
+  .commission-search:focus-visible { border-color: var(--rv-color-primary); outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 35%, transparent); outline-offset: 1px; }
+  .commission-table-wrap { overflow: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .commission-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px; }
+  .commission-table :is(th, td) { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
+  .commission-table thead th { position: sticky; top: 0; z-index: 1; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+  .commission-table tbody tr { transition: background-color 120ms ease; }
+  .commission-table tbody tr:hover { background: var(--rv-color-surface-soft); }
+  .commission-table tbody tr:last-child :is(th, td) { border-bottom: 0; }
+  .commission-table tbody th { color: var(--rv-color-ink); font-weight: 600; letter-spacing: 0; text-transform: none; background: transparent; }
+  .commission-table small { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
+  .commission-product { display: block; max-width: 280px; }
+  .commission-table small.commission-unmatched { color: var(--rv-color-warning); }
+  .commission-table small.commission-warn { color: var(--rv-color-warning); }
+  .commission-bands { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; white-space: nowrap; }
+  .commission-bands li { display: flex; justify-content: space-between; gap: 12px; padding: 1px 6px; color: var(--rv-color-muted); border-radius: 7px; }
+  .commission-bands li.is-current { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
+  .commission-bands b { font-weight: 600; }
+  .commission-pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); color: var(--rv-color-muted); font-size: 13px; }
+  .commission-pager button { min-height: 36px; border-radius: 7px; }
+  @media (max-width: 560px) { .commission-period { flex-direction: column; } .commission-period-delete { align-self: flex-start; margin: 0 12px 10px; } }
+  @media (prefers-reduced-motion: reduce) { .commission-dropzone, .commission-period, .commission-table tbody tr { transition: none; } }
+}

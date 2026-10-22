@@ -71,6 +71,8 @@ public static class DependencyInjection
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IImportJobProcessor, ImportJobProcessor>();
         services.AddScoped<IShopifyOrderCsvImportService, ShopifyOrderCsvImportService>();
+        services.AddScoped<ICommissionTariffService, CommissionTariffService>();
+        services.AddScoped<ICommissionTariffLookup, CommissionTariffLookup>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.Configure<TrendyolOptions>(configuration.GetSection(TrendyolOptions.SectionName));
