@@ -60,7 +60,14 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var previousLines = await LineRowsAsync(tenantId, allowedIds, previous, cancellationToken);
         var previousClaims = await ClaimRowsAsync(tenantId, allowedIds, previous, cancellationToken);
 
-        var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest);
+        // Uploaded commission tariffs whose weeks touch the period: the fallback rate for a line that carries none.
+        var tariffRows = await (from tariff in db.CommissionTariffs.AsNoTracking()
+                                join row in db.CommissionTariffRows.AsNoTracking() on new { tariff.TenantId, TariffId = tariff.Id } equals new { row.TenantId, row.TariffId }
+                                where tariff.TenantId == tenantId && allowedIds.Contains(tariff.ConnectionId)
+                                    && tariff.PeriodEnd > current.Start && tariff.PeriodStart < current.End
+                                select new { tariff, row }).ToListAsync(cancellationToken);
+        var tariffs = tariffRows.Count == 0 ? null : new ReportCommissionTariffs(tariffRows.Select(x => (x.tariff, x.row)));
+        var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, tariffs);
         var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, new Dictionary<Guid, ReportOrderExtra>(), previousLines,
             new Dictionary<Guid, ReportLineExtra>(), previousClaims, [], names, query.IncludeTest);
         var stockVariants = ReportBuilder.StockCandidates(input);
@@ -165,6 +172,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           CategoryId = product == null ? null : product.CategoryId,
                           Title = line.TitleSnapshot,
                           Sku = line.Sku,
+                          Barcode = line.Barcode,
                           UnitPrice = line.UnitPrice,
                           OrderedQuantity = line.OrderedQuantity,
                           CancelledQuantity = line.CancelledQuantity,

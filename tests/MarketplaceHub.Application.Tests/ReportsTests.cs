@@ -7,6 +7,29 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class ReportsTests
 {
+    [Fact]
+    public void ALineWithoutCommissionTakesTheBandOfTheTariffWeekItWasSoldIn()
+    {
+        var connection = Guid.NewGuid();
+        var week = new DateTimeOffset(2026, 10, 22, 8, 0, 0, TimeSpan.FromHours(3));
+        CommissionTariff Tariff(DateTimeOffset start, DateTimeOffset uploaded) => new() { ConnectionId = connection, PlatformCode = "TRENDYOL", PeriodStart = start, PeriodEnd = start.AddDays(7), PeriodText = "", FileName = "t.xlsx", FileHash = Guid.NewGuid().ToString("N"), UploadedAt = uploaded };
+        CommissionTariffRow Row(decimal rate1) => new() { Barcode = "RYP00101", SellerSku = "SKU-1", Tier1Min = 470.64m, Tier2Max = 470.63m, Tier2Min = 435.98m, Tier3Max = 435.97m, Tier3Min = 388.64m, Tier4Max = 388.63m, Rate1 = rate1, Rate2 = 20.6m, Rate3 = 19.4m, Rate4 = 17.5m };
+        var first = Tariff(week, week.AddDays(-1));
+        var reupload = Tariff(week, week.AddDays(-1).AddHours(1));
+        var tariffs = new ReportCommissionTariffs([(first, Row(21.5m)), (reupload, Row(22m))]);
+        var sale = week.AddDays(2);
+
+        // The latest upload of the week wins; the band follows the paid unit price.
+        Assert.Equal(22m, tariffs.Rate(connection, "RYP00101", null, sale, 519.75m));
+        Assert.Equal(20.6m, tariffs.Rate(connection, "RYP00101", null, sale, 470.63m));
+        Assert.Equal(17.5m, tariffs.Rate(connection, "RYP00101", null, sale, 388.63m));
+        // The seller SKU stands in for a missing barcode; another store, an uncovered week or an unknown code give nothing.
+        Assert.Equal(20.6m, tariffs.Rate(connection, null, "SKU-1", sale, 450m));
+        Assert.Null(tariffs.Rate(Guid.NewGuid(), "RYP00101", null, sale, 519.75m));
+        Assert.Null(tariffs.Rate(connection, "RYP00101", null, week.AddDays(7), 519.75m));
+        Assert.Null(tariffs.Rate(connection, "OTHER", null, sale, 519.75m));
+    }
+
     [Theory]
     [InlineData("İSTANBUL", "İstanbul")]
     [InlineData("istanbul", "İstanbul")]

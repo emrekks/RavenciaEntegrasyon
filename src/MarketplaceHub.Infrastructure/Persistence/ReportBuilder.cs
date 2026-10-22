@@ -23,7 +23,39 @@ internal sealed record ReportInput(
     IReadOnlyList<ReportClaimRow> Claims,
     IReadOnlyList<ReportPackageRow> Packages,
     ReportCatalogNames Names,
-    bool IncludesTest);
+    bool IncludesTest,
+    ReportCommissionTariffs? Tariffs = null);
+
+// The commission tariffs uploaded for the report's stores (Komisyon Tarifeleri): a line the marketplace sent no
+// commission for takes the rate of the band its paid unit price falls in, in the tariff week the sale was made.
+// The latest upload wins where weeks overlap; no covering tariff or no band means no rate (never a guess).
+internal sealed class ReportCommissionTariffs
+{
+    private readonly Dictionary<(Guid ConnectionId, string Code), List<(CommissionTariff Tariff, CommissionTariffRow Row)>> byCode = [];
+
+    public ReportCommissionTariffs(IEnumerable<(CommissionTariff Tariff, CommissionTariffRow Row)> rows)
+    {
+        foreach (var entry in rows.OrderByDescending(x => x.Tariff.UploadedAt))
+            foreach (var code in new[] { entry.Row.Barcode, entry.Row.SellerSku }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).Distinct(StringComparer.Ordinal))
+            {
+                var key = (entry.Tariff.ConnectionId, code);
+                if (!byCode.TryGetValue(key, out var list)) byCode[key] = list = [];
+                list.Add(entry);
+            }
+    }
+
+    public decimal? Rate(Guid connectionId, string? barcode, string? sku, DateTimeOffset at, decimal basisPrice)
+    {
+        foreach (var code in new[] { barcode, sku }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()))
+        {
+            if (!byCode.TryGetValue((connectionId, code), out var list)) continue;
+            var covering = list.FirstOrDefault(x => x.Tariff.PeriodStart <= at && at < x.Tariff.PeriodEnd);
+            if (covering.Row is null) continue;
+            return CommissionTariffBands.BandFor(covering.Row, Math.Round(basisPrice, 2, MidpointRounding.AwayFromZero))?.Rate;
+        }
+        return null;
+    }
+}
 
 internal sealed class ReportOrderRow
 {
@@ -65,6 +97,7 @@ internal sealed class ReportLineRow
     public Guid? CategoryId { get; init; }
     public string Title { get; init; } = "";
     public string Sku { get; init; } = "";
+    public string? Barcode { get; init; }
     public decimal UnitPrice { get; init; }
     public decimal OrderedQuantity { get; init; }
     public decimal CancelledQuantity { get; init; }
@@ -296,7 +329,15 @@ internal static class ReportBuilder
                 var commission = isTry && extra is not null
                     ? ReportBuckets.EstimatedCommission(platform, extra.CommissionType, extra.Commission, extra.CommissionRate, extra.Komisyon, paidUnit * keptUnits, keptUnits, active)
                     : null;
-                lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason));
+                // Nothing usable on the line: the uploaded tariff's band for the price paid, in the week of the sale.
+                var fromTariff = false;
+                if (commission is null && isTry && keptUnits > 0 && paidUnit > 0
+                    && input.Tariffs?.Rate(order.ConnectionId, line.Barcode, line.Sku, order.RealAt, paidUnit) is { } tariffRate)
+                {
+                    commission = Math.Round(paidUnit * keptUnits * tariffRate / 100m, 2);
+                    fromTariff = true;
+                }
+                lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason, fromTariff));
             }
             var extras = input.OrderExtras.GetValueOrDefault(order.Id);
             var city = extras is null ? null : ReportBuckets.Province(extras.CityName, extras.City, extras.ShippingCity, extras.Province);
@@ -565,6 +606,9 @@ internal static class ReportBuilder
         notes.Add(commission.CoveredRevenue <= 0
             ? "Komisyon bilgisi olan satış yok; tahmini komisyon ve hakediş hesaplanamaz."
             : $"Komisyon ve hakediş tahminidir: siparişte gelen komisyon oranı ya da tutarı üzerinden, iade edilmeyen adetler için hesaplanır; kesinleşmiş hakediş değildir. Komisyon bilgisi net cironun {Percent(commission.Coverage)} kadarında var; Pazarama ve Shopify komisyon göndermez, n11 oranları tutarsız olabilir.");
+        var tariffLines = orders.Sum(x => x.Lines.Count(line => line.CommissionFromTariff));
+        if (tariffLines > 0)
+            notes.Add($"{Count(tariffLines)} satırda siparişte komisyon gelmediği için oran yüklenen komisyon tarifesinden alındı (satışın yapıldığı tarife haftasında, ödenen birim fiyatın düştüğü bant).");
         if (cost.KeptQuantity > 0)
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."
@@ -582,7 +626,7 @@ internal static class ReportBuilder
     private static decimal Back(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Back));
     private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? Math.Round(part / whole, 4) : null;
 
-    internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason)
+    internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason, bool CommissionFromTariff = false)
     {
         public decimal KeptUnits => Active - Back;
         public decimal KeptAmount => PaidUnitPrice * KeptUnits;
