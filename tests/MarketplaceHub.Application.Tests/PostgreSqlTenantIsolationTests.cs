@@ -706,6 +706,92 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenDeletedVariantIsNamedOnlyByABlockedJob_DeletesItButAPendingJobStillRefuses()
+    {
+        var tenant = NewTenant("variant-delete-blocked-job");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Blocked job delete {Guid.NewGuid():N}",
+            Description = "Blocked job delete test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(int order)
+        {
+            var code = $"BLK-{order}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = product.Id,
+                SortOrder = order,
+                Sku = code,
+                SkuNormalized = code,
+                OptionSignature = $"Beden={order}",
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        var kept = NewVariant(0);
+        var removed = NewVariant(1);
+        // A bulk price/stock sync names every variant of the connection in its payload.
+        var job = NewJob(tenant.Id);
+        job.JobType = MarketplaceJobTypes.PriceInventorySync;
+        job.PayloadJson = $$"""{"variantIds":["{{kept.Id:D}}","{{removed.Id:D}}"]}""";
+        job.Status = JobStatus.Pending;
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(kept, removed);
+        db.IntegrationJobs.Add(job);
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+
+        var whilePending = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [removed.Id]),
+            CancellationToken.None);
+        Assert.False(whilePending.Succeeded);
+        Assert.Equal("VARIANT_DELETE_BLOCKED", whilePending.Error!.Code);
+        Assert.Equal(409, whilePending.Error.Status);
+
+        // Blocked is terminal: the job will never run, so it no longer holds the variant.
+        db.ChangeTracker.Clear();
+        await db.IntegrationJobs.Where(x => x.Id == job.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, JobStatus.Blocked));
+        var whileBlocked = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [removed.Id]),
+            CancellationToken.None);
+        Assert.True(whileBlocked.Succeeded, whileBlocked.Error?.Message);
+        Assert.Equal(kept.Id, Assert.Single(whileBlocked.Value!.Variants).Id);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == removed.Id));
+        var storedJob = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == job.Id);
+        Assert.Equal(JobStatus.Blocked, storedJob.Status);
+        Assert.Equal(job.PayloadJson, storedJob.PayloadJson);
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenEditorSendsTheWholeFamily_TouchesOnlySiblingsWhoseDataChanged()
     {
         var tenant = NewTenant("family-save");

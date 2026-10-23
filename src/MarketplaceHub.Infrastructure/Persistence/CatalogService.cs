@@ -563,7 +563,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch
     ];
 
-    private static readonly JobStatus[] PendingJobStatuses = [JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled, JobStatus.Blocked];
+    // Only a job that will still run counts. Blocked is terminal (a refused publication or bulk price/stock
+    // sync stays there for good), so counting it refused the delete forever; such jobs are left as they are.
+    private static readonly JobStatus[] PendingJobStatuses = [JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled];
 
     // D3 (K19): a delete purges the variants' reservations and stock ledger. It is refused while a variant has
     // an active order reservation, has any order or return stock movement (the ledger is history, never purged),
