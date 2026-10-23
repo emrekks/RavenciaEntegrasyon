@@ -37,3 +37,7 @@ Ravencia_Entegrasyon_v*_Nihai_Uygulama_Surumu.pdf
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Claude Code: agent worktrees and per-machine settings stay local
+.claude/worktrees/
+.claude/settings.local.json
