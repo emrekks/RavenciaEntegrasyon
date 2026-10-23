@@ -16,7 +16,7 @@
 
 .app-shell.stitch-shell main .reports-page .reports-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-kpi { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 14px 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .reports-page .reports-kpi.is-warn { border-color: var(--rv-color-warning); box-shadow: inset 3px 0 0 var(--rv-color-warning); }
+.app-shell.stitch-shell main .reports-page .reports-kpi.is-warn > strong { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page .reports-kpi small { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-kpi strong { overflow: hidden; color: var(--rv-color-ink); font-size: 22px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-kpi.is-compact strong { font-size: 20px; }
