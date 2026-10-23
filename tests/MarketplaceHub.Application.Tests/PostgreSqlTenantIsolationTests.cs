@@ -544,6 +544,93 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenTheCostChangedSinceTheEditorLoadedIt_RefusesTheStaleCostAndAcceptsACurrentOne()
+    {
+        var tenant = NewTenant("product-cost-stale");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Stale cost {Guid.NewGuid():N}",
+            Description = "Stale cost test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(int order, decimal? cost)
+        {
+            var code = $"COST-{order}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = product.Id,
+                SortOrder = order,
+                Sku = code,
+                SkuNormalized = code,
+                OptionSignature = $"Beden={order}",
+                CostPrice = cost,
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        // The editor loaded 40; a Maliyet Excel import then set 55, bumping only the variant's version.
+        var imported = NewVariant(0, 55m);
+        imported.Version = 2;
+        var empty = NewVariant(1, null);
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(imported, empty);
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+        Task<ServiceResult<ProductView>> SaveAsync(decimal importedCost, decimal? importedLoadedCost) => service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(
+                product.Title,
+                product.Description,
+                null,
+                null,
+                VariantUpdates:
+                [
+                    new UpdateVariantCommand(imported.Id, imported.Sku, null, null, 0, CostPrice: importedCost, LoadedCostPrice: importedLoadedCost),
+                    new UpdateVariantCommand(empty.Id, empty.Sku, null, null, 1, CostPrice: 30m, LoadedCostPrice: null)
+                ]),
+            CancellationToken.None);
+
+        var stale = await SaveAsync(45m, 40m);
+        Assert.False(stale.Succeeded);
+        Assert.Equal("VARIANT_COST_CHANGED", stale.Error!.Code);
+        Assert.Equal(409, stale.Error.Status);
+        Assert.Contains("55 TL", stale.Error.Message);
+        db.ChangeTracker.Clear();
+        var afterRefusal = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
+        Assert.Equal([55m, null], afterRefusal.Select(x => x.CostPrice));
+        Assert.Equal([2L, 1L], afterRefusal.Select(x => x.Version));
+
+        // After a reload the editor carries the current cost (55; the empty one stays empty) and the save goes through.
+        var current = await SaveAsync(45m, 55m);
+        Assert.True(current.Succeeded, current.Error?.Message);
+        db.ChangeTracker.Clear();
+        var afterSave = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
+        Assert.Equal([45m, 30m], afterSave.Select(x => x.CostPrice));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenVariantIdsToDeleteAreSent_RemovesThemWithTheirStockAndKeepsTheRest()
     {
         var tenant = NewTenant("variant-delete");

@@ -1207,6 +1207,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         {
             var existing = existingVariants.SingleOrDefault(variant => variant.Id == update.Id);
             if (existing is null) continue;
+            // K2: a cost import (Maliyet Excel) bumps only the variant's version, so the product version above does
+            // not see it. A sent cost is written only over the cost the editor was loaded with; one set meanwhile
+            // is refused instead of silently overwritten. A cost already equal to the sent one is no conflict.
+            if (update.CostPrice is decimal sentCost && existing.CostPrice != NonNegativeOrNull(sentCost) && existing.CostPrice != update.LoadedCostPrice)
+                return Conflict<ProductView>("VARIANT_COST_CHANGED", $"{existing.Sku} varyantının maliyeti bu form açıkken başka bir işlemle (ör. Maliyet Excel) değişti; güncel maliyet {(existing.CostPrice is decimal storedCost ? storedCost.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")) + " TL" : "boş")}. Sayfayı yenileyip maliyeti tekrar girin.");
             var effectiveVariantListPrice = update.DefaultListPrice ?? existing.DefaultListPrice ?? product.DefaultListPrice;
             var effectiveVariantSalePrice = update.DefaultSalePrice ?? existing.DefaultSalePrice ?? product.DefaultSalePrice;
             if (effectiveVariantListPrice is decimal variantList && effectiveVariantSalePrice is decimal variantSale && variantList < variantSale)
