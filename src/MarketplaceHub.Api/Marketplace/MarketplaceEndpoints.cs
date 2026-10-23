@@ -187,8 +187,12 @@ public static class MarketplaceEndpoints
         api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
-            var result = await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret);
-            if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, "INSTANT_NOTIFICATIONS_ENABLED", id, view.State);
+            // Hepsiburada: the previous definition (the one Hepsiburada was given) is made the active one again.
+            var restore = command?.RestorePrevious == true;
+            var result = restore
+                ? await service.RestorePreviousAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted)
+                : await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret);
+            if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, restore ? "INSTANT_NOTIFICATIONS_RESTORED" : "INSTANT_NOTIFICATIONS_ENABLED", id, view.State);
             return Result(result, Results.Ok);
         }).WithServerBudget();
         api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http)).WithServerBudget();
@@ -428,7 +432,7 @@ public static class MarketplaceEndpoints
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
     public sealed record ActiveCommand(bool Active);
-    public sealed record InstantNotificationCommand(string? ClientSecret);
+    public sealed record InstantNotificationCommand(string? ClientSecret, bool RestorePrevious = false);
     public sealed record OrderSyncCommand(string? ExternalOrderId, bool Full = false, string? PackageNumber = null);
     public sealed record CommonLabelCommand(int BoxQuantity, decimal VolumetricHeight, string Format = "ZPL");
     public sealed record LabelCapabilityProbeCommand(string CapabilityCode, int BoxQuantity, decimal VolumetricHeight);
