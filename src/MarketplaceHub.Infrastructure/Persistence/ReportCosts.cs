@@ -77,6 +77,7 @@ internal static class ReportCosts
         [MarketplaceFinanceCategories.Penalty] = "Ceza",
         [MarketplaceFinanceCategories.EarlyPayment] = "Erken ödeme",
         [MarketplaceFinanceCategories.Advertising] = "Reklam",
+        [MarketplaceFinanceCategories.OtherDeduction] = "Diğer kesinti",
         [MarketplaceFinanceCategories.Other] = "Diğer"
     };
 
@@ -118,22 +119,24 @@ internal static class ReportCosts
             if (IsCommissionInvoice(row)) continue;
             var orderId = OrderOf(row.ConnectionId, row.OrderNumber);
             if (orderId is { } settledOrder && row.Source == TrendyolFinanceRequestContract.Settlements) settled.Add(settledOrder);
+            // A row stored as OTHER that is a charge (an unrecognised deduction invoice) counts as one.
+            var category = TrendyolFinanceCategorizer.Charged(row.Source, row.RequestedType, row.Category, row.Debt, row.Credit);
 
             // Settlement lines carry their commission; a commission invoice of the other financials is charged as a whole.
             var commission = row.Source == TrendyolFinanceRequestContract.Settlements
                 ? TrendyolFinanceCategorizer.CommissionCost(row.RequestedType, row.CommissionAmount, row.Debt, row.Credit)
-                : row.Category == MarketplaceFinanceCategories.Commission ? TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit) : 0m;
-            if (row.Category != MarketplaceFinanceCategories.Commission)
-                Line(row.Category).Add(TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit), orderId is not null);
-            if (commission != 0m || row.Category == MarketplaceFinanceCategories.Commission)
+                : category == MarketplaceFinanceCategories.Commission ? TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit) : 0m;
+            if (category != MarketplaceFinanceCategories.Commission)
+                Line(category).Add(TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit), orderId is not null);
+            if (commission != 0m || category == MarketplaceFinanceCategories.Commission)
             {
                 Line(MarketplaceFinanceCategories.Commission).Add(commission, orderId is not null);
                 if (orderId is { } commissionOrder) realCommission[commissionOrder] = realCommission.GetValueOrDefault(commissionOrder) + commission;
                 else unlinkedCommission[row.ConnectionId] = unlinkedCommission.GetValueOrDefault(row.ConnectionId) + commission;
             }
-            else if (TrendyolFinanceCategorizer.IsCost(row.Category))
+            else if (TrendyolFinanceCategorizer.IsCost(category))
             {
-                var key = (row.ConnectionId, row.Category);
+                var key = (row.ConnectionId, category);
                 channelCosts[key] = channelCosts.GetValueOrDefault(key) + TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit);
             }
 
@@ -145,8 +148,8 @@ internal static class ReportCosts
                 if (!products.TryGetValue(productKey, out var product)) products[productKey] = product = new(matched.Row, row.Barcode.Trim());
                 product.Records++;
                 product.Commission += commission;
-                if (row.Category == MarketplaceFinanceCategories.Discount) product.Discount += TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit);
-                if (row.Category == MarketplaceFinanceCategories.Coupon) product.Coupon += TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit);
+                if (category == MarketplaceFinanceCategories.Discount) product.Discount += TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit);
+                if (category == MarketplaceFinanceCategories.Coupon) product.Coupon += TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit);
             }
         }
         var billed = new HashSet<Guid>();

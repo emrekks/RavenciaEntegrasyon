@@ -103,7 +103,8 @@ internal static class TrendyolFinanceSyncPlan
             PaymentOrderId = Short(record.PaymentOrderId, 64),
             PaymentDate = record.PaymentDate?.ToUniversalTime()
         };
-        var category = TrendyolFinanceCategorizer.Categorize(value.Source, value.RequestedType, value.TransactionSubType, value.TransactionType, value.Description);
+        var category = TrendyolFinanceCategorizer.Charged(value.Source, value.RequestedType,
+            TrendyolFinanceCategorizer.Categorize(value.Source, value.RequestedType, value.TransactionSubType, value.TransactionType, value.Description), value.Debt, value.Credit);
         var changed = row.RequestedType != value.RequestedType || row.TransactionSubType != value.TransactionSubType || row.TransactionType != value.TransactionType
             || row.Category != category || row.TransactionDate != value.TransactionDate || row.Description != value.Description || row.OrderNumber != value.OrderNumber
             || row.ShipmentPackageId != value.ShipmentPackageId || row.Barcode != value.Barcode || row.Debt != value.Debt || row.Credit != value.Credit

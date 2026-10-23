@@ -6,12 +6,14 @@ namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 // Sorts Trendyol's accounting records into cost categories and gives each its cost to the seller. The type a record was
 // asked for decides where the documentation is clear; deduction invoices and corrections, whose kinds Trendyol does
-// not list, are read by keywords in their Turkish name and description. Nothing matched is OTHER.
+// not list, are read by keywords in their Turkish name and description. A deduction invoice nothing matches is
+// OTHER_DEDUCTION (still a charge); anything else nothing matches is OTHER.
 // https://developers.trendyol.com/v2.0/docs/current-account-statement-integration.md
 internal static class TrendyolFinanceCategorizer
 {
     public const string PlatformServiceFee = "PlatformServiceFee";
     public const string DeductionInvoices = "DeductionInvoices";
+    public const string FinancialItem = "FinancialItem";
 
     // The settlement types read, one request each (a type Trendyol refuses is skipped and reported, not guessed).
     public static readonly IReadOnlyList<string> SettlementTypes =
@@ -24,7 +26,7 @@ internal static class TrendyolFinanceCategorizer
 
     // The other financial types read. Payments and transfers (PaymentOrder, WireTransfer, IncomingTransfer) and early
     // payment advances (CashAdvance) move money and are not costs, so they are not read at all.
-    public static readonly IReadOnlyList<string> OtherFinancialTypes = [DeductionInvoices, "Stoppage", "CommissionAgreementInvoice", "FinancialItem", "ReturnInvoice"];
+    public static readonly IReadOnlyList<string> OtherFinancialTypes = [DeductionInvoices, "Stoppage", "CommissionAgreementInvoice", FinancialItem, "ReturnInvoice"];
 
     // The sign of commissionAmount for the seller, from the documentation's table: +1 the seller pays it, -1 it comes
     // back. Commission corrections are read from debt and credit instead (see CommissionCost).
@@ -66,8 +68,22 @@ internal static class TrendyolFinanceCategorizer
         if (CommissionCorrections.Contains(requestedType)) return MarketplaceFinanceCategories.Commission;
         // Provisions and progress payment corrections are neither a sale nor a cost by themselves.
         if (source == TrendyolFinanceRequestContract.Settlements) return MarketplaceFinanceCategories.Other;
-        return ByKeyword(transactionType, description);
+        var category = ByKeyword(transactionType, description);
+        return category == MarketplaceFinanceCategories.Other && string.Equals(requestedType, DeductionInvoices, StringComparison.OrdinalIgnoreCase)
+            ? MarketplaceFinanceCategories.OtherDeduction
+            : category;
     }
+
+    // The category a record counts under: a deduction invoice no keyword names is a charge (OTHER_DEDUCTION), and so is
+    // a financial item that takes more than it gives back. Applied when a record is stored and to every stored row the
+    // report reads, so rows stored as OTHER before this rule count as costs without rewriting them; OTHER stays for
+    // provisions, revenue corrections and items that give money back.
+    public static string Charged(string source, string requestedType, string category, decimal debt, decimal credit) =>
+        category == MarketplaceFinanceCategories.Other && source == TrendyolFinanceRequestContract.OtherFinancials
+        && (string.Equals(requestedType, DeductionInvoices, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(requestedType, FinancialItem, StringComparison.OrdinalIgnoreCase) && debt > credit)
+            ? MarketplaceFinanceCategories.OtherDeduction
+            : category;
 
     // The deduction invoice kinds are not documented; the order matters ("Erken Ödeme Hizmet Bedeli" is an early
     // payment fee, "Reklam Hizmet Bedeli" advertising, before the generic "hizmet").

@@ -197,6 +197,15 @@ describe('ReportsPage', () => {
     expect(body(page)).toContain('Shopify cari hesabı henüz okunmuyor')
   })
 
+  it('counts a deduction invoice of an unnamed kind among the Kesintiler', async () => {
+    const costs = withFinance.costs!
+    const page = await open('', { ...withFinance, costs: { ...costs, realCostTotal: 68, lines: [...costs.lines,
+      { category: 'OTHER_DEDUCTION', label: 'Diğer kesinti', isCost: true, amount: 4.5, records: 1, orderLinked: 0, unlinked: 4.5 }] } })
+    const fees = await openStep(page, 'Masraflar:')
+    expect(fees).toContain('18,00')
+    expect(fees).toContain('Hizmet Bedeli, Stopaj, Diğer Kesinti')
+  })
+
   it('paints the provinces, ranks them beside the map, opens one and switches to the export countries', async () => {
     const page = await open('?view=geo')
     const map = page.querySelector('.reports-map-panel')!
