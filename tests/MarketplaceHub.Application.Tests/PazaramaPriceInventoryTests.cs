@@ -276,6 +276,119 @@ public sealed class PazaramaPriceInventoryTests
         Assert.True(status.Lines.Single().Succeeded);
     }
 
+    // ---- a request refused over one value Pazarama already holds (audit C2) ----
+
+    private const string HeldMessage = "Pazarama isteği reddetti: İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz";
+
+    private static List<string> Codes(string body) => JsonNode.Parse(body)!["items"]!.AsArray().Select(x => (string)x!["code"]!).ToList();
+
+    // Pazarama refuses any request that carries one of the held barcodes and accepts the rest.
+    private static Func<string, string, CancellationToken, Task<AdapterResult<JsonDocument>>> Pazarama(List<(string Path, List<string> Codes)> calls, params string[] held) =>
+        (path, body, _) =>
+        {
+            var codes = Codes(body);
+            calls.Add((path, codes));
+            return Task.FromResult(codes.Any(held.Contains)
+                ? AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", HeldMessage, null, null, null))
+                : AdapterResult<JsonDocument>.Success(JsonDocument.Parse($$"""{"data":"id-{{string.Join('-', codes)}}","success":true}""")));
+        };
+
+    private static async Task<string> Push(string payload, List<(string Path, List<string> Codes)> calls, params string[] held)
+    {
+        var result = await PazaramaHttpClient.PushAsync(PazaramaPriceInventoryRules.Split(payload)!, Pazarama(calls, held), () => DateTimeOffset.UnixEpoch, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        return result.Value!.ExternalOperationId;
+    }
+
+    // Pazarama's later results: every barcode of every sent part succeeded.
+    private static Func<string, RemoteOperationLine?, PazaramaBatchMapper.LineOutcome> Outcomes(string operationId, string payload)
+    {
+        var parts = PazaramaBatchMapper.ParseOperation(operationId);
+        var (price, stock) = PazaramaBatchMapper.PayloadCodeLists(payload);
+        var status = PazaramaBatchMapper.Merge(operationId, parts.Select(part => (part, (IReadOnlyList<PazaramaBatchMapper.BatchItem>)(part.Sent
+            ? (part.Family == "p" ? price : stock).Skip(part.Offset ?? 0).Take(part.ExpectedCount).Select(code => new PazaramaBatchMapper.BatchItem(code, PazaramaBatchMapper.BatchState.Succeeded, null)).ToList()
+            : []))).ToList());
+        Assert.Equal("COMPLETED", status.Status);
+        var outcome = PazaramaBatchMapper.LineOutcomes(operationId, payload);
+        return (code, _) => outcome(code, status.Lines.SingleOrDefault(line => line.ExternalKey == code));
+    }
+
+    [Fact]
+    public async Task A_two_barcode_stock_request_refused_as_held_ends_with_the_unchanged_one_held_and_the_other_sent()
+    {
+        var payload = PazaramaPriceInventoryRules.Payload([(Line("HELD"), false, true), (Line("NEW"), false, true)]);
+        var calls = new List<(string Path, List<string> Codes)>();
+
+        var operationId = await Push(payload, calls, "HELD");
+
+        // The whole list, then each barcode alone, all through the same paced stock request.
+        Assert.Equal(["HELD,NEW", "HELD", "NEW"], calls.Select(call => string.Join(',', call.Codes)));
+        Assert.All(calls, call => Assert.Equal(PazaramaHttpClient.StockUpdate, call.Path));
+        Assert.Equal($"s=:{PazaramaBatchMapper.AlreadyHeldMarker}:1:0|s:id-NEW:1:1", operationId);
+        var outcome = Outcomes(operationId, payload);
+        Assert.Equal(new PazaramaBatchMapper.LineOutcome(true, true, null, false), outcome("HELD", null));
+        Assert.Equal(new PazaramaBatchMapper.LineOutcome(true, true, null, false), outcome("NEW", null));
+    }
+
+    [Fact]
+    public async Task A_split_finds_the_held_barcode_by_halves_and_a_line_refused_later_stays_unsent()
+    {
+        var lines = Enumerable.Range(0, 8).Select(i => (Line($"B{i}"), true, true)).ToList();
+        var payload = PazaramaPriceInventoryRules.Payload(lines);
+        var calls = new List<(string Path, List<string> Codes)>();
+
+        var operationId = await Push(payload, calls, "B5");
+
+        // Stock: 8 refused, 0-3 sent, 4-7 refused, 4-5 refused, B4 sent, B5 held, 6-7 sent; then the price list the same way.
+        Assert.Equal(14, calls.Count);
+        var parts = PazaramaBatchMapper.ParseOperation(operationId);
+        Assert.Equal([("s", 4, 0), ("s", 1, 4), ("s=", 1, 5), ("s", 2, 6)], parts.Where(part => part.Family == "s").Select(part => (part.Kind, part.ExpectedCount, part.Offset ?? -1)));
+        var outcome = Outcomes(operationId, payload);
+        Assert.All(lines, line => Assert.Equal(new PazaramaBatchMapper.LineOutcome(true, true, null, false), outcome(line.Item1.Barcode, null)));
+
+        // A barcode Pazarama later reports as refused is not marked sent; a sent barcode without a result is a contract error.
+        var judge = PazaramaBatchMapper.LineOutcomes(operationId, payload);
+        Assert.False(judge("B6", new RemoteOperationLine("B6", false, null, PazaramaBatchMapper.StockRejected, false, "FAIL")).StockOk);
+        Assert.True(judge("B6", null).MissingResult);
+        Assert.False(judge("B5", null).MissingResult);
+    }
+
+    [Fact]
+    public async Task When_the_split_budget_is_spent_the_rest_stays_not_sent_by_position()
+    {
+        var lines = Enumerable.Range(0, 64).Select(i => (Line($"B{i}"), false, true)).ToList();
+        var payload = PazaramaPriceInventoryRules.Payload(lines);
+        var calls = new List<(string Path, List<string> Codes)>();
+        // Every barcode is held: each request is refused.
+        var operationId = await Push(payload, calls, lines.Select(line => line.Item1.Barcode).ToArray());
+
+        Assert.Equal(1 + PazaramaHttpClient.MaxSplitRequests, calls.Count);
+        var parts = PazaramaBatchMapper.ParseOperation(operationId);
+        // Every barcode is covered exactly once, by a held part or a not-sent one.
+        Assert.Equal(64, parts.Sum(part => part.ExpectedCount));
+        Assert.All(parts, part => Assert.NotNull(part.Offset));
+        var judge = PazaramaBatchMapper.LineOutcomes(operationId, payload);
+        var outcomes = lines.Select(line => judge(line.Item1.Barcode, null)).ToList();
+        Assert.Contains(outcomes, outcome => outcome.StockOk);
+        Assert.Contains(outcomes, outcome => !outcome.StockOk && outcome.NotSentCode == "PAZARAMA_REQUEST_REJECTED");
+        Assert.Equal(parts.Where(part => part.Held).Sum(part => part.ExpectedCount), outcomes.Count(outcome => outcome.StockOk));
+    }
+
+    [Fact]
+    public void An_operation_id_without_positions_still_covers_each_whole_list()
+    {
+        var payload = Both([Line("B1"), Line("B2")]);
+        var judge = PazaramaBatchMapper.LineOutcomes($"s:bbb:2|p!:PAZARAMA_VALIDATION_FAILED:2", payload);
+
+        var outcome = judge("B2", new RemoteOperationLine("B2", true, null, null, false, null));
+        Assert.True(outcome.StockOk);
+        Assert.False(outcome.PriceOk);
+        Assert.Equal("PAZARAMA_VALIDATION_FAILED", outcome.NotSentCode);
+        Assert.True(judge("B1", null).MissingResult);
+        Assert.Equal([("s", 2, (int?)7)], PazaramaBatchMapper.ParseOperation("s:bbb:2:7").Select(part => (part.Kind, part.ExpectedCount, part.Offset)));
+        Assert.Empty(PazaramaBatchMapper.ParseOperation("s:bbb:2:x"));
+    }
+
     [Fact]
     public void A_barcode_refused_for_both_says_so()
     {

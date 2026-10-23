@@ -2285,6 +2285,93 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // Audit S4: PTT AVM sends no status time; its made-up event time (order time + status step) names the event only.
+    // The package stores the time the status was first seen, and a replay of the same read changes nothing.
+    [PostgreSqlFact]
+    public async Task OrderSync_WithoutAStatusTimeStoresTheTimeTheStatusWasFirstSeen()
+    {
+        var tenant = NewTenant("status-time-unknown");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        const string externalOrderId = "11697864001";
+        const string packageNumber = "4234396001";
+        var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
+        var createdEventAt = orderedAt.AddSeconds(2);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.DerivedStatus = "NEW";
+        order.OrderedAt = orderedAt;
+        order.LastRemoteModifiedAt = createdEventAt;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Created", Version = 1 });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.New, RawStatus = "Created", StatusOccurredAt = createdEventAt, CreatedAt = createdEventAt, UpdatedAt = createdEventAt, Version = 1 });
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId(packageNumber, createdEventAt) });
+            seedDb.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, PackageId = packageId, CanonicalStatus = "NEW", RawStatus = "Created", SourceEventId = PackageIngestionSafety.EventId(packageNumber, createdEventAt), OccurredAt = createdEventAt, RecordedAt = createdEventAt });
+            await seedDb.SaveChangesAsync();
+        }
+
+        async Task SyncAsync(string rawStatus, DateTimeOffset eventAt)
+        {
+            var delivered = rawStatus == "Delivered" ? 1m : 0m;
+            var remotePackage = new RemotePackage(packageNumber, null, rawStatus, eventAt, null, null,
+                [new RemotePackageAllocation("line-1", 1m, 0m, delivered, delivered, 0m)], GrossAmount: 100m, NetAmount: 100m, StatusTimeUnknown: true);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, orderedAt, eventAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, rawStatus)], [remotePackage], "{}");
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "status-time-unknown", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        try
+        {
+            var deliveredEventAt = orderedAt.AddSeconds(5);
+            var before = DateTimeOffset.UtcNow;
+            await SyncAsync("Delivered", deliveredEventAt);
+            var after = DateTimeOffset.UtcNow;
+            DateTimeOffset seenAt;
+            long version;
+            await using (var check = fixture.CreateContext())
+            {
+                var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
+                Assert.Equal(ShipmentPackageStatus.Delivered, package.Status);
+                // The delivery time is when the panel saw it, not the order time plus five seconds.
+                Assert.InRange(package.StatusOccurredAt, before.AddSeconds(-1), after.AddSeconds(1));
+                seenAt = package.StatusOccurredAt;
+                version = package.Version;
+                var history = await check.OrderStatusHistory.AsNoTracking().Where(x => x.PackageId == packageId).OrderBy(x => x.RecordedAt).ToListAsync();
+                Assert.Equal(2, history.Count);
+                // The event keeps its deterministic name, so a replay is still known.
+                Assert.Equal(PackageIngestionSafety.EventId(packageNumber, deliveredEventAt), history[1].SourceEventId);
+                Assert.Equal(seenAt, history[1].OccurredAt);
+            }
+
+            // The next read sees the same status: nothing changes and the time stays where it was first seen.
+            await SyncAsync("Delivered", deliveredEventAt);
+            await using (var check = fixture.CreateContext())
+            {
+                var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
+                Assert.Equal(seenAt, package.StatusOccurredAt);
+                Assert.Equal(version, package.Version);
+                Assert.Equal(2, await check.OrderStatusHistory.CountAsync(x => x.PackageId == packageId));
+                Assert.Equal(2, await check.PackageLineAllocations.CountAsync(x => x.PackageId == packageId));
+            }
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task JobsTrigger_NotifiesListenersWhenAJobBecomesRunnable()
     {

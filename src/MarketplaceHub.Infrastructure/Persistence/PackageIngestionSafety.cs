@@ -159,6 +159,14 @@ public static class PackageIngestionSafety
     public static string EventId(string externalPackageId, DateTimeOffset occurredAt) =>
         $"{externalPackageId}:{occurredAt.ToUnixTimeMilliseconds()}";
 
+    // The time a package status is ordered by and stored with (StatusOccurredAt, which the invoice page and e-Arşiv read
+    // as the delivery time). A marketplace without a status time (PTT AVM) sends a made-up OccurredAt that only names
+    // the event (EventId) so a replay is known; its status gets the time it was seen, never earlier than the one held.
+    public static DateTimeOffset StatusTime(RemotePackage remote, DateTimeOffset? currentStatusAt, DateTimeOffset now) =>
+        !remote.StatusTimeUnknown ? remote.OccurredAt
+        : currentStatusAt is { } held && held > now ? held
+        : now;
+
     public static bool AllEventsRecorded(IReadOnlyList<RemotePackage> packages, IReadOnlySet<string> recordedEventIds) =>
         packages.Count > 0 && packages.All(package => recordedEventIds.Contains(EventId(package.ExternalPackageId, package.OccurredAt)));
 
