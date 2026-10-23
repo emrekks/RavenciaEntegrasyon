@@ -1,11 +1,11 @@
-import { Fragment, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
-import { Busy, DialogSurface, ErrorBox, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, UiIcon, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
-import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
+import { ViewTabsWithMore } from '../../shared/view-tabs'
 import {
   change, downloadCsv, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, moneyOrMissing, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow, type ReportTimePoint
@@ -29,26 +29,25 @@ function CommissionTariffs({ data }: { data: ReportSales }) {
   </div>
 }
 
-// Two views: the one-screen summary and the commission tariffs. Every section's full table opens in a drawer over the
-// summary (?detail=…), so the detail is one click away without leaving the page.
-type ViewKey = 'summary' | 'tariffs'
-const views: Array<{ value: ViewKey; label: string }> = [{ value: 'summary', label: 'Özet' }, { value: 'tariffs', label: 'Komisyon Tarifeleri' }]
+// The report as tabs: an overview, then one tab per area with its own breakdown (Ürünler and Operasyon have sub-tabs),
+// and the commission tariffs. A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
+// lands on the same tab.
+type ViewKey = 'overview' | 'geo' | 'products' | 'profit' | 'ops' | 'customers' | 'tariffs'
+const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'profit', 'ops', 'customers', 'tariffs']
+type ProductSub = 'products' | 'brands'
+type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices' | 'stock'
 type DetailKey = 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
-const details: Record<DetailKey, { title: string; render: (data: ReportSales) => ReactNode }> = {
-  platforms: { title: 'Platformlar', render: data => <Platforms data={data} /> },
-  cities: { title: 'Şehirler', render: data => <Cities data={data} /> },
-  products: { title: 'Ürünler', render: data => <Products data={data} /> },
-  brands: { title: 'Marka ve Kategori', render: data => <BrandsAndCategories data={data} /> },
-  returns: { title: 'İadeler', render: data => <Returns data={data} /> },
-  cancellations: { title: 'İptaller', render: data => <Cancellations data={data} /> },
-  cargo: { title: 'Kargo', render: data => <Cargo data={data} /> },
-  time: { title: 'Gün ve Saat', render: data => <TimeOfDay data={data} /> },
-  customers: { title: 'Müşteriler', render: data => <Customers data={data} /> },
-  stock: { title: 'Stok', render: data => <Stock data={data} /> },
-  cost: { title: 'Maliyet ve Kâr', render: data => <CostAndProfit data={data} /> },
-  invoices: { title: 'Fatura', render: data => <Invoices data={data} /> }
+const detailHome: Record<DetailKey, { view: ViewKey; sub?: string }> = {
+  platforms: { view: 'profit' }, cost: { view: 'profit' }, cities: { view: 'geo' },
+  products: { view: 'products', sub: 'products' }, brands: { view: 'products', sub: 'brands' },
+  returns: { view: 'ops', sub: 'returns' }, cancellations: { view: 'ops', sub: 'cancellations' }, cargo: { view: 'ops', sub: 'cargo' }, invoices: { view: 'ops', sub: 'invoices' }, stock: { view: 'ops', sub: 'stock' },
+  time: { view: 'customers' }, customers: { view: 'customers' }
 }
-const isDetailKey = (value: string | null): value is DetailKey => value !== null && value in details
+const isDetailKey = (value: string | null): value is DetailKey => value !== null && value in detailHome
+const isViewKey = (value: string | null): value is ViewKey => value !== null && (viewKeys as string[]).includes(value)
+
+// A tab's label: its icon and the text, which keeps the width of its selected weight (as viewTabLabel does).
+const tabLabel = (icon: UiIconName, text: string) => <><UiIcon name={icon} size={15} className="rv-view-tab-icon" /><span className="rv-tab-text" data-text={text}>{text}</span></>
 
 function dayKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function lastDays(days: number) { const end = new Date(); const start = new Date(); start.setDate(start.getDate() - days + 1); return { from: dayKey(start), to: dayKey(end) } }
@@ -58,9 +57,12 @@ function lastDays(days: number) { const end = new Date(); const start = new Date
 // cannot support is shown as "—" or "Tutar yok" with the reason in the data notes, never as a guess.
 export function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const view: ViewKey = searchParams.get('view') === 'tariffs' ? 'tariffs' : 'summary'
   const detailParam = searchParams.get('detail')
-  const detail = isDetailKey(detailParam) ? detailParam : null
+  const legacy = isDetailKey(detailParam) ? detailHome[detailParam] : null
+  const viewParam = searchParams.get('view')
+  const view: ViewKey = legacy?.view ?? (isViewKey(viewParam) ? viewParam : 'overview')
+  const sub = legacy?.sub ?? searchParams.get('sub')
+  const body = useRef<HTMLDivElement>(null)
   const [range, setRange] = useState(() => lastDays(30))
   const [platforms, setPlatforms] = useState<string[] | null>(null)
   const [granularity, setGranularity] = useState('')
@@ -69,8 +71,15 @@ export function ReportsPage() {
   const report = useQuery({ queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].map(code => ({ value: code, label: platformName(code) })), [data?.channels])
-  const setParam = (key: string, value: string | null) => setSearchParams(current => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); return next }, { replace: true })
-  const openDetail = (key: DetailKey) => setParam('detail', key)
+  const go = (nextView: ViewKey, nextSub: string | null = null) => setSearchParams(current => {
+    const next = new URLSearchParams(current)
+    next.delete('detail')
+    if (nextView === 'overview') next.delete('view'); else next.set('view', nextView)
+    if (nextSub) next.set('sub', nextSub); else next.delete('sub')
+    return next
+  }, { replace: true })
+  // "Tümünü Gör": the area's tab, scrolled to the tabs so the breakdown starts at the top.
+  const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null); body.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) }
 
   return <section className="content reports-page">
     <div className="page-heading reports-heading">
@@ -88,50 +97,73 @@ export function ReportsPage() {
     </div>
     {report.isLoading && <Busy text="Rapor hazırlanıyor…" />}
     {report.isError && !data && <ErrorBox error={report.error} onRetry={() => void report.refetch()} />}
-    {data && <>
-      <ViewTabsWithMore className="reports-tabs" ariaLabel="Rapor görünümü" more={[]} value={view} onChange={value => setParam('view', value === 'summary' ? null : value)}
-        items={views.map(item => ({ value: item.value, label: viewTabLabel(item.value === 'summary' ? 'all' : 'price', item.label) }))} />
-      <div className="reports-body" role="tabpanel" aria-label={views.find(item => item.value === view)?.label}>
-        {view === 'summary' ? <Summary data={data} onMore={openDetail} /> : <CommissionTariffs data={data} />}
-      </div>
-      {detail && <DetailDrawer title={details[detail].title} period={`${formatDay(data.from)} – ${formatDay(data.to)}`} onClose={() => setParam('detail', null)}>{details[detail].render(data)}</DetailDrawer>}
-    </>}
+    {data && (() => {
+      const tabs = reportTabs(data)
+      return <>
+        <div ref={body} className="reports-tabs-anchor" />
+        <ViewTabsWithMore className="reports-tabs" ariaLabel="Rapor görünümü" more={[]} value={view} onChange={value => go(value as ViewKey)}
+          items={tabs.map(tab => ({ value: tab.value, label: tabLabel(tab.icon, tab.label), count: tab.count, countTone: tab.warn ? 'warn' : undefined }))} />
+        <div className="reports-body" role="tabpanel" aria-label={tabs.find(tab => tab.value === view)?.label}>
+          {view === 'overview' ? <Overview data={data} onMore={openDetail} />
+            : view === 'geo' ? <Geography data={data} />
+            : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={next => go('products', next)} />
+            : view === 'profit' ? <ProfitView data={data} />
+            : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
+            : view === 'customers' ? <CustomersView data={data} />
+            : <CommissionTariffs data={data} />}
+        </div>
+      </>
+    })()}
   </section>
 }
 
-// A section's full tables beside the summary: a side panel that keeps focus inside, closes on Escape or the backdrop.
-function DetailDrawer({ title, period, onClose, children }: { title: string; period: string; onClose: () => void; children: ReactNode }) {
-  const titleId = useId()
-  return <div className="reports-drawer-backdrop" role="presentation" onMouseDown={onClose}>
-    <DialogSurface as="section" onClose={onClose} className="reports-drawer" aria-labelledby={titleId} onMouseDown={event => event.stopPropagation()}>
-      <header className="reports-drawer-head">
-        <div><h2 id={titleId}>{title}</h2><p>{period}</p></div>
-        <button type="button" className="reports-drawer-close" onClick={onClose} aria-label="Ayrıntıyı kapat"><UiIcon name="close" size={18} /></button>
-      </header>
-      <div className="reports-drawer-body">{children}</div>
-    </DialogSurface>
-  </div>
+type ReportTab = { value: ViewKey; label: string; icon: UiIconName; count?: string; warn?: boolean }
+
+// The tabs; profit carries its margin and operations its cancel rate (warning colour over the line), so all seven still
+// fit one row on a laptop (the overview's figures are its KPIs, right under the tabs). A count is never left out once
+// shown: the tabs would keep showing the last one remembered.
+function reportTabs(data: ReportSales): ReportTab[] {
+  const now = data.summary
+  const margin = data.cost.profitQuantity > 0 ? data.cost.netMargin : data.cost.costedQuantity > 0 ? data.cost.grossMargin : null
+  return [
+    { value: 'overview', label: 'Genel Bakış', icon: 'dashboard' },
+    { value: 'geo', label: 'Coğrafya', icon: 'globe' },
+    { value: 'products', label: 'Ürünler', icon: 'products' },
+    { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
+    { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
+    { value: 'customers', label: 'Müşteriler', icon: 'users' },
+    { value: 'tariffs', label: 'Tarifeler', icon: 'invoice' }
+  ]
+}
+
+const isOpsSub = (value: string | null): value is OpsSub => value === 'returns' || value === 'cancellations' || value === 'cargo' || value === 'invoices' || value === 'stock'
+
+// A tab's own sub-tabs, in the panel's tab style.
+function SubTabs<T extends string>({ label, value, items, onChange }: { label: string; value: T; items: Array<{ value: T; label: string; icon: UiIconName; count?: string; warn?: boolean }>; onChange: (value: T) => void }) {
+  return <ViewTabsWithMore className="reports-subtabs" ariaLabel={label} more={[]} value={value} onChange={next => onChange(next as T)}
+    items={items.map(item => ({ value: item.value, label: tabLabel(item.icon, item.label), count: item.count, countTone: item.warn ? 'warn' : undefined }))} />
 }
 
 function Kpis({ data }: { data: ReportSales }) {
   const now = data.summary
   const before = data.previousSummary
   const noAmount = now.ordersWithAmount === 0
+  const series = (metric: Metric) => data.timeSeries.map(point => point[metric])
   return <div className="reports-kpis">
     <Kpi label="Net Ciro" value={noAmount ? 'Tutar yok' : formatTl(now.netRevenue)} delta={noAmount ? null : change(now.netRevenue, before.netRevenue)} hint="İadeler düşülmüş"
-      info="Satış tutarından iade edilen tutar düşülür; Genel Bakış ile aynı kural." />
+      info="Satış tutarından iade edilen tutar düşülür; Genel Bakış ile aynı kural." trend={noAmount ? undefined : series('netRevenue')} />
     <Kpi label="Satış Tutarı" value={noAmount ? 'Tutar yok' : formatTl(now.grossSales)} delta={noAmount ? null : change(now.grossSales, before.grossSales)} hint="İade öncesi"
       info="Müşterinin ödediği tutar; iptal edilen paketler hariç, iadeler düşülmeden." />
     <Kpi label="Sipariş" value={formatCount(now.orders)} delta={change(now.orders, before.orders)} hint="İptaller hariç, iadeler dahil"
-      info="İptal edilmeyen siparişler; tamamı iade edilenler dahil." />
+      info="İptal edilmeyen siparişler; tamamı iade edilenler dahil." trend={series('orders')} />
     <Kpi label="Satılan Adet" value={formatNumber(now.soldQuantity)} delta={change(now.soldQuantity, before.soldQuantity)} hint={`${formatNumber(now.keptQuantity)} adet elde kaldı`}
-      info="İptal edilmeyen siparişlerde sipariş edilen − iptal edilen adet; elde kalan, iade edilmeyen adettir." />
+      info="İptal edilmeyen siparişlerde sipariş edilen − iptal edilen adet; elde kalan, iade edilmeyen adettir." trend={series('soldQuantity')} />
     <Kpi label="Ortalama Sipariş" value={formatTl(now.averageOrderValue)} delta={change(now.averageOrderValue, before.averageOrderValue)} hint="Tutarı olan siparişler"
       info="Satış tutarı / tutarı olan sipariş sayısı; tutar göndermeyen siparişler paydaya girmez." />
     <Kpi label="İade Oranı" value={formatPercent(now.returnRate)} delta={change(now.returnRate, before.returnRate, 'rate')} invert hint={`${formatNumber(now.returnedQuantity)} adet iade`}
       info="İade adedi / satılan adet; reddedilen ve iptal edilen iade talepleri hariç." />
     <Kpi label="İptal Oranı" value={formatPercent(now.cancelRate)} delta={change(now.cancelRate, before.cancelRate, 'rate')} invert hint={`${formatCount(now.cancelledOrders)} sipariş`}
-      warn={(now.cancelRate ?? 0) > data.cancellations.warningRate}
+      warn={(now.cancelRate ?? 0) > data.cancellations.warningRate} trend={series('cancelledOrders')} trendTone="bad"
       info={`İptal edilen sipariş / (sipariş + iptal edilen sipariş); uyarı eşiği ${formatPercent(data.cancellations.warningRate)}.`} />
     <Kpi label="Tahmini Komisyon" value={data.commission.coveredRevenue > 0 ? formatTl(data.commission.estimatedCommission) : '—'} hint={`Kapsam ${formatPercent(data.commission.coverage)}`}
       info="Siparişte gelen komisyon, yoksa yüklenen tarifedeki bant; iade edilmeyen adetler için. Kesinleşmiş değildir; kapsam, komisyonu bilinen cironun payıdır." />
@@ -140,16 +172,30 @@ function Kpis({ data }: { data: ReportSales }) {
 
 // A change is good or bad by its direction; for returns and cancellations, up is bad. The "?" button explains the
 // formula on hover and on keyboard focus.
-function Kpi({ label, value, delta, hint, info, invert = false, warn = false }: { label: string; value: string; delta?: Change | null; hint?: string; info: string; invert?: boolean; warn?: boolean }) {
+function Kpi({ label, value, delta, hint, info, invert = false, warn = false, trend, trendTone }: { label: string; value: string; delta?: Change | null; hint?: string; info: string; invert?: boolean; warn?: boolean; trend?: number[]; trendTone?: 'bad' }) {
   const tone = !delta || delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
   return <article className={`reports-kpi${warn ? ' is-warn' : ''}`}>
     <span className="reports-kpi-head"><small>{label}</small><InfoTip label={label} text={info} /></span>
     <strong>{value}</strong>
+    {trend && trend.length > 1 && <Sparkline values={trend} tone={trendTone} label={`${label} dönem içinde`} />}
     <span className="reports-kpi-foot">
       {delta ? <em className={`reports-delta is-${tone}`} title="Önceki döneme göre">{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em> : <em className="reports-delta is-flat" title="Önceki dönemde veri yok">—</em>}
       {hint && <span>{hint}</span>}
     </span>
   </article>
+}
+
+// The period's buckets as a small line under a KPI, so its course shows beside its total.
+function Sparkline({ values, tone, label }: { values: number[]; tone?: 'bad'; label: string }) {
+  const width = 96, height = 28
+  const max = Math.max(...values), min = Math.min(0, ...values)
+  const x = (index: number) => index * width / (values.length - 1)
+  const y = (value: number) => max === min ? height / 2 : 2 + (height - 4) * (1 - (value - min) / (max - min))
+  const line = values.map((value, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ')
+  return <svg className={`reports-spark${tone ? ` is-${tone}` : ''}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={label}>
+    <path className="reports-spark-area" d={`${line} L${width},${height} L0,${height} Z`} />
+    <path className="reports-spark-line" d={line} />
+  </svg>
 }
 
 function InfoTip({ label, text }: { label: string; text: string }) {
@@ -254,20 +300,19 @@ function TrendChart({ points, previous, metric, showPrevious, granularity }: { p
 
 type OpenDetail = (key: DetailKey) => void
 
-// The one-screen summary: the KPIs, the money flow and its cost lines, the period chart, a compact card per area and
-// the top lists. Each card's "Tümünü Gör" opens that area's full tables (with their CSV export) in the drawer.
-function Summary({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
+// Genel Bakış: the KPIs with their trend, the period chart and platform shares, the money flow and its cost lines,
+// and a compact card per area whose "Tümünü Gör" moves to that area's tab.
+function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   return <div className="reports-summary">
     <Kpis data={data} />
     <DataNotes notes={data.dataNotes} />
     <div className="reports-summary-row">
-      <ProfitFlow data={data} onMore={onMore} />
-      <CostLines data={data} onMore={onMore} />
-    </div>
-    <SalesMap data={data} />
-    <div className="reports-summary-row">
       <TrendPanel data={data} />
       <PlatformShare data={data} onMore={onMore} />
+    </div>
+    <div className="reports-summary-row">
+      <ProfitFlow data={data} onMore={onMore} />
+      <CostLines data={data} onMore={onMore} />
     </div>
     <div className="reports-metrics">
       <ProductCard data={data} onMore={onMore} />
@@ -277,7 +322,108 @@ function Summary({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
       <InvoiceCard data={data} onMore={onMore} />
       <StockCard data={data} onMore={onMore} />
     </div>
-    <TopLists data={data} onMore={onMore} />
+  </div>
+}
+
+// Coğrafya: the sales map with its breakdown, the provinces ranked by sales and by returns, and the full city table.
+function Geography({ data }: { data: ReportSales }) {
+  return <div className="reports-summary">
+    <SalesMap data={data} />
+    <Cities data={data} />
+  </div>
+}
+
+// Ürünler: the best sellers, the most returned, brands and categories as bars, then their tables under two sub-tabs.
+function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub; onSub: (sub: ProductSub) => void }) {
+  return <div className="reports-summary">
+    <div className="reports-lists is-pairs">
+      <Panel title="En Çok Satanlar" description="Satılan adede göre; yanında satış tutarı." className="reports-list">
+        <Bars label="En çok satan ürünler" format={formatNumber} items={[...data.topProducts].sort((a, b) => b.soldQuantity - a.soldQuantity).slice(0, 8)
+          .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.soldQuantity, note: formatTl(product.salesAmount) }))} />
+      </Panel>
+      <Panel title="En Çok İade Edilenler" description="İade adedine göre; yanında iade oranı." className="reports-list">
+        <Bars label="En çok iade edilen ürünler" format={formatNumber} items={[...data.topReturned].sort((a, b) => b.returnedQuantity - a.returnedQuantity).slice(0, 8)
+          .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.returnedQuantity, note: formatPercent(product.returnRate) }))} />
+      </Panel>
+      <Panel title="Markalar" description="Satılan adede göre." className="reports-list">
+        <Bars label="Markalara göre satış" format={formatNumber} items={topGroups(data.brands, group => group.soldQuantity)} />
+      </Panel>
+      <Panel title="Kategoriler" description="Satılan adede göre." className="reports-list">
+        <Bars label="Kategorilere göre satış" format={formatNumber} items={topGroups(data.categories, group => group.soldQuantity)} />
+      </Panel>
+    </div>
+    <SubTabs label="Ürün kırılımı" value={sub} onChange={onSub} items={[
+      { value: 'products', label: 'Ürünler', icon: 'products', count: formatCount(data.topProducts.length) },
+      { value: 'brands', label: 'Marka ve Kategori', icon: 'layers', count: formatCount(data.brands.filter(group => group.known).length) }
+    ]} />
+    <div role="tabpanel">{sub === 'brands' ? <BrandsAndCategories data={data} /> : <Products data={data} />}</div>
+  </div>
+}
+
+// Kârlılık: coverage, profit and commission figures, Trendyol's real costs, and the platforms with their commission.
+function ProfitView({ data }: { data: ReportSales }) {
+  return <div className="reports-summary">
+    <CostAndProfit data={data} />
+    <Platforms data={data} />
+  </div>
+}
+
+// Operasyon: returns, cancellations, cargo, invoices and stock as sub-tabs, each opening with its breakdown as bars.
+function OperationsView({ data, sub, onSub }: { data: ReportSales; sub: OpsSub; onSub: (sub: OpsSub) => void }) {
+  const now = data.summary
+  const packages = data.cargo.reduce((sum, row) => sum + row.packages, 0)
+  const invoiced = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
+  const lowStock = data.stock.bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
+  const cancelWarn = (now.cancelRate ?? 0) > data.cancellations.warningRate
+  return <div className="reports-summary">
+    <SubTabs label="Operasyon kırılımı" value={sub} onChange={onSub} items={[
+      { value: 'returns', label: 'İadeler', icon: 'returns', count: formatCount(now.returnClaims) },
+      { value: 'cancellations', label: 'İptaller', icon: 'close', count: formatCount(now.cancelledOrders), warn: cancelWarn },
+      { value: 'cargo', label: 'Kargo', icon: 'truck', count: formatCount(packages) },
+      { value: 'invoices', label: 'Fatura', icon: 'invoice', count: formatCount(invoiced) },
+      { value: 'stock', label: 'Stok', icon: 'stock', count: formatCount(lowStock), warn: lowStock > 0 }
+    ]} />
+    <div role="tabpanel" className="reports-summary">
+      {sub === 'returns' && <>
+        <div className="reports-lists is-pairs">
+          <Panel title="İade Nedenleri" description="Pazaryerinin bildirdiği nedene göre." className="reports-list"><Bars label="İade nedenleri" format={formatCount} items={topReasons(data.returnReasons)} /></Panel>
+          <Panel title="İade Gelen İller" description="İade adedine göre; yanında iade oranı." className="reports-list"><Bars label="İllere göre iade" format={formatNumber} items={topGroups(data.cities, group => group.returnedQuantity, group => formatPercent(group.returnRate))} /></Panel>
+        </div>
+        <Returns data={data} />
+      </>}
+      {sub === 'cancellations' && <>
+        <div className="reports-lists is-pairs">
+          <Panel title="İptal Nedenleri" description="Siparişte gelen nedene göre." className="reports-list"><Bars label="İptal nedenleri" format={formatCount} items={topReasons(data.cancellations.reasons)} /></Panel>
+          <Panel title="Platformlara Göre İptal Oranı" description={`Uyarı eşiği ${formatPercent(data.cancellations.warningRate)}.`} className="reports-list">
+            <Bars label="Platformlara göre iptal oranı" format={value => formatPercent(value)} items={data.cancellations.platforms.filter(row => row.cancelRate !== null)
+              .map(row => ({ key: row.key, label: platformName(row.label), value: row.cancelRate ?? 0, note: `${formatCount(row.cancelledOrders)} iptal` }))} />
+          </Panel>
+        </div>
+        <Cancellations data={data} />
+      </>}
+      {sub === 'cargo' && <>
+        <Panel title="Kargo Firmalarının Payı" description="Paket sayısına göre." className="reports-list">
+          <Bars label="Kargo firmalarının payı" format={value => formatPercent(value)} items={[...data.cargo].sort((a, b) => b.packages - a.packages)
+            .map(row => ({ key: row.label, label: row.label, value: row.share ?? 0, note: `${formatCount(row.packages)} paket`, muted: !row.known }))} />
+        </Panel>
+        <Cargo data={data} />
+      </>}
+      {sub === 'invoices' && <>
+        <Panel title="Fatura Durumu" description="Paket sayısına göre." className="reports-list">
+          <Bars label="Fatura durumu" format={formatCount} items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, note: formatTl(bucket.amount), muted: bucket.key === 'UNKNOWN' }))} />
+        </Panel>
+        <Invoices data={data} />
+      </>}
+      {sub === 'stock' && <Stock data={data} />}
+    </div>
+  </div>
+}
+
+// Müşteriler: who buys (unique and repeat customers) and when (weekday and hour).
+function CustomersView({ data }: { data: ReportSales }) {
+  return <div className="reports-summary">
+    <Customers data={data} />
+    <TimeOfDay data={data} />
   </div>
 }
 
@@ -592,41 +738,6 @@ function NoAmountNote({ platforms }: { platforms: ReportGroup[] }) {
   const noAmount = platforms.filter(group => group.ordersWithAmount === 0)
   if (!noAmount.length) return null
   return <p className="reports-note">{noAmount.map(group => `${platformName(group.label)}: tutar yok · ${formatNumber(group.soldQuantity)} adet, ${formatCount(group.orders)} sipariş`).join(' — ')}</p>
-}
-
-function TopLists({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
-  const busiest = peaks(data.heatmap)
-  return <div className="reports-lists">
-    <ListCard title="Satış Alan İller" description="Satılan adede göre ilk 8 il; il okunamayanlar sonda." detail="cities" onMore={onMore}>
-      <Bars label="İllere göre satış" format={formatNumber} items={topGroups(data.cities, group => group.soldQuantity)} />
-    </ListCard>
-    <ListCard title="İade Gelen İller" description="İade adedine göre; yanında iade oranı." detail="cities" onMore={onMore}>
-      <Bars label="İllere göre iade" format={formatNumber} items={topGroups(data.cities, group => group.returnedQuantity, group => formatPercent(group.returnRate))} />
-    </ListCard>
-    <ListCard title="En Çok Satanlar" description="Satılan adede göre; yanında satış tutarı." detail="products" onMore={onMore}>
-      <Bars label="En çok satan ürünler" format={formatNumber} items={[...data.topProducts].sort((a, b) => b.soldQuantity - a.soldQuantity).slice(0, 8)
-        .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.soldQuantity, note: formatTl(product.salesAmount) }))} />
-    </ListCard>
-    <ListCard title="En Çok İade Edilenler" description="İade adedine göre; yanında iade oranı." detail="products" onMore={onMore}>
-      <Bars label="En çok iade edilen ürünler" format={formatNumber} items={[...data.topReturned].sort((a, b) => b.returnedQuantity - a.returnedQuantity).slice(0, 8)
-        .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.returnedQuantity, note: formatPercent(product.returnRate) }))} />
-    </ListCard>
-    <ListCard title="Markalar" description="Satılan adede göre." detail="brands" onMore={onMore}>
-      <Bars label="Markalara göre satış" format={formatNumber} items={topGroups(data.brands, group => group.soldQuantity)} />
-    </ListCard>
-    <ListCard title="Kategoriler" description="Satılan adede göre." detail="brands" onMore={onMore}>
-      <Bars label="Kategorilere göre satış" format={formatNumber} items={topGroups(data.categories, group => group.soldQuantity)} />
-    </ListCard>
-    <ListCard title="İade Nedenleri" description="Pazaryerinin bildirdiği nedene göre." detail="returns" onMore={onMore}>
-      <Bars label="İade nedenleri" format={formatCount} items={topReasons(data.returnReasons)} />
-    </ListCard>
-    <ListCard title="İptal Nedenleri" description="Siparişte gelen nedene göre." detail="cancellations" onMore={onMore}>
-      <Bars label="İptal nedenleri" format={formatCount} items={topReasons(data.cancellations.reasons)} />
-    </ListCard>
-    <ListCard title="Gün ve Saat" description={data.summary.orders > 0 ? `En yoğun: ${weekdays[busiest.day]}, ${hourRange(busiest.hour)} · İstanbul saati` : 'İstanbul saatiyle; iptaller hariç.'} detail="time" onMore={onMore}>
-      <Heatmap heatmap={data.heatmap} compact />
-    </ListCard>
-  </div>
 }
 
 function commissionCoverage(group: { netRevenue: number; commissionCoveredRevenue: number }) { return group.netRevenue > 0 ? Math.min(1, group.commissionCoveredRevenue / group.netRevenue) : null }

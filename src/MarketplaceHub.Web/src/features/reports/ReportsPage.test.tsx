@@ -94,7 +94,8 @@ async function open(search = '', data: ReportSales = report) {
   return container
 }
 
-const drawer = (page: HTMLElement) => page.querySelector<HTMLElement>('.reports-drawer')
+const selectedTab = (page: HTMLElement) => page.querySelector('.reports-tabs [role="tab"][aria-selected="true"]')?.textContent ?? ''
+const body = (page: HTMLElement) => page.querySelector('.reports-body')?.textContent ?? ''
 
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0 })
 
@@ -111,8 +112,12 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-flow')?.textContent).toContain('Tahmini Net Kâr')
     expect(page.querySelector('.reports-legend')?.textContent).toContain('Henüz okunmuyor')
     expect(page.querySelectorAll('.reports-metric')).toHaveLength(6)
-    expect(page.querySelector('.reports-heatmap.is-compact')).not.toBeNull()
-    expect(drawer(page)).toBeNull()
+    expect(page.querySelectorAll('.reports-kpis .reports-spark').length).toBeGreaterThan(0)
+    // One tab per area, each with its headline figure.
+    const tabs = [...page.querySelectorAll('.reports-tabs [role="tab"]')].map(tab => tab.textContent)
+    expect(tabs.some(tab => tab?.includes('Genel Bakış'))).toBe(true)
+    expect(tabs.some(tab => tab?.includes('Operasyon') && tab.includes('%'))).toBe(true)
+    expect(page.querySelector('.reports-map-panel')).toBeNull()
   })
 
   it('takes commission, cargo and fees from Trendyol\'s statement, real plus estimated, and names what is not read', async () => {
@@ -136,12 +141,13 @@ describe('ReportsPage', () => {
     expect(legend).toContain('Shopify kargo ve hizmet bedeli')
 
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Akışı: Tümünü Gör"]')!.click() })
-    expect(drawer(page)?.textContent).toContain('Trendyol Cari Hesap Kalemleri')
-    expect(drawer(page)?.textContent).toContain('Masraf Değil')
+    expect(selectedTab(page)).toContain('Kârlılık')
+    expect(body(page)).toContain('Trendyol Cari Hesap Kalemleri')
+    expect(body(page)).toContain('Masraf Değil')
   })
 
   it('paints the provinces, ranks them beside the map, opens one and switches to the export countries', async () => {
-    const page = await open()
+    const page = await open('?view=geo')
     const map = page.querySelector('.reports-map-panel')!
     // Each scope's outlines load on their own; the world's are large enough to take longer than any fixed wait on CI.
     // React applies the loaded map only when an act scope ends, so the wait is short act steps, not one long act.
@@ -184,39 +190,52 @@ describe('ReportsPage', () => {
     expect(map.querySelectorAll('.reports-map-regions path.is-active')).toHaveLength(1)
   })
 
-  it('keeps the unknown city last and muted in the summary list', async () => {
-    const page = await open()
-    const list = Array.from(page.querySelectorAll('.reports-list')).find(panel => panel.textContent?.includes('Satış Alan İller'))!
+  it('keeps the unknown bucket last and muted in the returns breakdown', async () => {
+    const page = await open('?view=ops&sub=returns')
+    const list = Array.from(page.querySelectorAll('.reports-list')).find(panel => panel.textContent?.includes('İade Nedenleri'))!
     const rows = Array.from(list.querySelectorAll('.reports-bars li'))
-    expect(rows.at(-1)?.textContent).toContain('Bilinmiyor')
-    expect(rows.at(-1)?.classList.contains('is-unknown')).toBe(true)
+    expect(rows.at(-1)?.classList.contains('is-unknown')).toBe(rows.some(row => row.textContent?.includes('Bilinmiyor')))
   })
 
-  it('opens a section\'s full table in the drawer, with its CSV export, and closes it', async () => {
+  it('moves to the area\'s tab from a card, with its tables and CSV export', async () => {
     const page = await open()
     const more = page.querySelector<HTMLButtonElement>('button[aria-label="Platform Payı: Tümünü Gör"]')!
     await act(async () => { more.click() })
-    const panel = drawer(page)!
-    expect(panel.getAttribute('role')).toBe('dialog')
-    expect(panel.textContent).toContain('Platformlar')
+    expect(selectedTab(page)).toContain('Kârlılık')
+    const panel = page.querySelector<HTMLElement>('.reports-body')!
+    expect(panel.textContent).toContain('Platform Özeti')
     const shopify = Array.from(panel.querySelectorAll('.reports-table tbody tr')).find(row => row.textContent?.includes('Shopify'))!
     expect(shopify.textContent).toContain('Tutar yok')
     expect(shopify.textContent).not.toContain('₺0,00')
     expect(Array.from(panel.querySelectorAll('button')).some(button => button.textContent?.includes('CSV'))).toBe(true)
-    await act(async () => { panel.querySelector<HTMLButtonElement>('.reports-drawer-close')!.click() })
-    expect(drawer(page)).toBeNull()
   })
 
-  it('opens the drawer from a shared link and keeps the unknown city row last', async () => {
+  it('opens an older shared link on its tab and keeps the unknown city row last', async () => {
     const page = await open('?detail=cities')
-    const rows = Array.from(drawer(page)!.querySelectorAll('.reports-table tbody tr'))
+    expect(selectedTab(page)).toContain('Coğrafya')
+    const table = Array.from(page.querySelectorAll('.reports-body .reports-panel')).find(panel => panel.textContent?.includes('İllere Göre Satış ve İade'))!
+    const rows = Array.from(table.querySelectorAll('.reports-table tbody tr'))
     expect(rows.at(-1)?.textContent).toContain('Bilinmiyor')
     expect(rows.at(-1)?.classList.contains('is-unknown')).toBe(true)
   })
 
-  it.each(['products', 'brands', 'returns', 'cancellations', 'cargo', 'time', 'customers', 'stock', 'cost', 'invoices'])('renders the %s detail', async key => {
+  it.each([
+    ['products', 'Ürünler', 'En Çok Satan 20 Ürün'], ['brands', 'Ürünler', 'Markalar'], ['returns', 'Operasyon', 'İade Nedenleri'], ['cancellations', 'Operasyon', 'Platformlara Göre İptaller'],
+    ['cargo', 'Operasyon', 'Kargo Firmaları'], ['time', 'Müşteriler', 'Gün ve Saate Göre Siparişler'], ['customers', 'Müşteriler', 'Tekil Müşteri'],
+    ['stock', 'Operasyon', 'En Çok Satanların Stoğu'], ['cost', 'Kârlılık', 'Kapsam'], ['invoices', 'Operasyon', 'Platformlara Göre Fatura Durumu']
+  ])('opens the %s breakdown on its tab', async (key, tab, heading) => {
     const page = await open(`?detail=${key}`)
-    expect(drawer(page)?.querySelector('.reports-drawer-body')?.textContent?.length).toBeGreaterThan(0)
+    expect(selectedTab(page)).toContain(tab)
+    expect(body(page)).toContain(heading)
+  })
+
+  it('switches the operations sub-tabs', async () => {
+    const page = await open('?view=ops')
+    const subtab = (label: string) => [...page.querySelectorAll<HTMLButtonElement>('.reports-subtabs [role="tab"]')].find(button => button.textContent?.includes(label))!
+    expect(subtab('İadeler').getAttribute('aria-selected')).toBe('true')
+    await act(async () => { subtab('Kargo').click() })
+    expect(subtab('Kargo').getAttribute('aria-selected')).toBe('true')
+    expect(body(page)).toContain('Kargo Firmalarının Payı')
   })
 
   it('says the cost is not entered instead of showing a profit when no cost is known', async () => {
