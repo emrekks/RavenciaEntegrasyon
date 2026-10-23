@@ -186,7 +186,8 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             if (deferredAttempt is not null) db.JobAttempts.Remove(deferredAttempt);
             job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
             job.Status = JobStatus.RetryScheduled;
-            job.AvailableAt = now.Add(result.RetryAfter is { } delay && delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(30));
+            var requested = result.RetryAfter is { } delay && delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(30);
+            job.AvailableAt = now.Add(result.Continues ? requested : DeferralDelay(requested, job.Id, job.Version));
             job.LastErrorCode = result.ErrorCode;
             job.LastErrorSummary = result.ErrorSummary;
             job.LeaseTokenHash = null;
@@ -236,6 +237,25 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    // Jobs deferred at the same instant (simultaneous webhooks of one package losing the same lock) used to wake at
+    // the same instant and collide again, one getting through per round (audit 2026-10-24 Q1). A deferral is spread
+    // over up to 30 % more than asked, at least 3 s and at most 5 minutes more, never less: a quota or Retry-After
+    // wait is a minimum. The spread comes from a hash of the job id and its version, which changes with every lease,
+    // so the same jobs do not keep landing in the same order. A slice of a long job keeps its own short pause.
+    internal static TimeSpan DeferralDelay(TimeSpan requested, Guid jobId, long version)
+    {
+        var spread = TimeSpan.FromTicks(requested.Ticks * 3 / 10);
+        if (spread < MinimumDeferralSpread) spread = MinimumDeferralSpread;
+        if (spread > MaximumDeferralSpread) spread = MaximumDeferralSpread;
+        var hash = 2166136261u;
+        foreach (var value in jobId.ToByteArray()) hash = (hash ^ value) * 16777619u;
+        foreach (var value in BitConverter.GetBytes(version)) hash = (hash ^ value) * 16777619u;
+        return requested + TimeSpan.FromTicks(spread.Ticks * (hash % 1001) / 1000);
+    }
+
+    private static readonly TimeSpan MinimumDeferralSpread = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan MaximumDeferralSpread = TimeSpan.FromMinutes(5);
 
     internal static bool RefundsAttempt(JobExecutionResult result, TimeSpan jobAge) =>
         result.Kind == JobCompletionKind.Retry && result.RefundAttempt && (result.Continues || jobAge < MaximumDeferralAge);

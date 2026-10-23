@@ -62,7 +62,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // no data sync or marketplace operation may execute while it is passive.
         if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
-        var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken, payloadJson);
+        var syncLock = await MarketplaceSyncExecutionLock.AcquireForJobAsync(db, connectionId.Value, jobType, payloadJson, timeProvider, cancellationToken);
         if (syncLock is null)
         {
             // Scheduled duplicates may coalesce, but another job cannot satisfy
