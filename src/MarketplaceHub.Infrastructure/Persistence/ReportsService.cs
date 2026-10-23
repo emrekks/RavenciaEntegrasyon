@@ -124,8 +124,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         };
         return report with
         {
-            TopProducts = report.TopProducts.Select(Detailed).ToList(), TopReturned = report.TopReturned.Select(Detailed).ToList(),
-            Rising = report.Rising?.Select(Detailed).ToList(), Falling = report.Falling?.Select(Detailed).ToList()
+            TopProducts = report.TopProducts.Select(Detailed).ToList(),
+            TopReturned = report.TopReturned.Select(Detailed).ToList(),
+            Rising = report.Rising?.Select(Detailed).ToList(),
+            Falling = report.Falling?.Select(Detailed).ToList()
         };
     }
 
