@@ -11,7 +11,8 @@ const group = (key: string, label: string, values: Partial<ReportGroup> = {}): R
 })
 const summary = (values: Partial<ReportSummary> = {}): ReportSummary => ({
   orders: 4, cancelledOrders: 1, cancelRate: 0.2, soldQuantity: 5, returnedQuantity: 1, keptQuantity: 4, returnClaims: 1, returnRate: 0.2, ordersWithAmount: 3,
-  grossSales: 350, returnedAmount: 100, netRevenue: 250, averageOrderValue: 116.67, ordersWithoutCity: 1, ordersWithoutAmount: 1, otherCurrencyOrders: 0, ...values
+  grossSales: 350, returnedAmount: 100, netRevenue: 250, averageOrderValue: 116.67, ordersWithoutCity: 1, ordersWithoutAmount: 1, otherCurrencyOrders: 0,
+  listAmount: 380, discountAmount: 30, ...values
 })
 const report: ReportSales = {
   from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z',
@@ -102,64 +103,66 @@ async function open(search = '', data: ReportSales = report) {
 
 const selectedTab = (page: HTMLElement) => page.querySelector('.reports-tabs [role="tab"][aria-selected="true"]')?.textContent ?? ''
 const body = (page: HTMLElement) => page.querySelector('.reports-body')?.textContent ?? ''
-// Opens a step of "Satıştan Kâra" and returns the text of the window its breakdown opens in.
-const openStep = async (page: HTMLElement, label: string) => {
-  await act(async () => { page.querySelector<HTMLButtonElement>(`.reports-journey button[aria-label^="${label}"]`)!.click() })
-  return page.querySelector('.reports-journey-modal')?.textContent ?? ''
-}
+const texts = (page: HTMLElement, selector: string) => [...page.querySelectorAll(selector)].map(item => item.textContent ?? '')
+// A metric card's rows as "name value", without the explanation shown under the pointer.
+const metricRows = (page: HTMLElement, card: string) => [...page.querySelectorAll(`.reports-card-metrics.is-${card} .reports-metric`)].map(row => row.textContent ?? '')
+// The bridge's rows as "name amount", without their explanations.
+const bridgeRows = (page: HTMLElement) => [...page.querySelectorAll('.reports-bridge > li')].map(row => `${row.querySelector('.reports-bridge-label')?.textContent ?? ''} ${row.querySelector('b')?.textContent ?? ''}`)
 
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0 })
 
 describe('ReportsPage', () => {
-  it('asks for the last 30 days and shows the summary on one screen', async () => {
+  it('asks for the last 30 days and shows the overview: the six figures, the costs, the bridge, the days and the metric cards', async () => {
     const page = await open()
     expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
-    // Net revenue with its columns (the best day marked); the period's other figures are in Dönem Özeti.
-    const revenue = page.querySelector('.reports-card-revenue')!
-    expect(revenue.textContent).toContain('Net Ciro')
-    expect(revenue.textContent).toContain('+%25')
-    expect(revenue.querySelectorAll('.reports-columns li')).toHaveLength(2)
-    expect(revenue.querySelector('.reports-columns li.is-peak')).not.toBeNull()
-    expect(page.querySelector('.reports-card-figures')).toBeNull()
-    // From the sales to the profit, each figure from the one before: 350 of sales, 143 of deductions (returns 100, the
-    // estimated commission 43), 207 left, the net margin, and 127 of profit once the product cost of 80 is taken off.
-    const steps = [...page.querySelectorAll('.reports-journey > li')]
-    expect(steps).toHaveLength(5)
-    expect(steps[0].textContent).toContain('350,00')
-    expect(steps[1].textContent).toContain('143,00')
-    expect(steps[1].textContent).toContain('%40,9')
-    expect(steps[2].textContent).toContain('207,00')
-    expect(steps[3].textContent).toContain('%36,3')
-    expect(steps[4].textContent).toContain('Tahmini Net Kâr')
-    expect(steps[4].textContent).toContain('127,00')
-    // Under the steps the sales as one bar: each deduction, the product cost and the profit with its amount and share.
-    expect([...page.querySelectorAll('.reports-flow-legend li')].map(item => item.textContent)).toEqual(['İade Edilen Tutar₺100%28,6', 'Tahmini Komisyon₺43%12,3', 'Ürün Maliyeti₺80%22,9', 'Net Kâr₺127%36,3'])
-    // Each step opens its breakdown in a window over the page, and a second click closes it; no separate cards repeat them.
+    // One account: 350 of sales, 100 back and an estimated commission of 43 taken off, the product cost of 80, 127 of
+    // estimated profit (green); its margin over the sales and over the cost; 4 orders against 2, 4 of 5 units kept.
+    const figures = texts(page, '.reports-kpis > div')
+    expect(figures).toHaveLength(6)
+    expect(figures[0]).toContain('Net Ciro')
+    expect(figures[0]).toContain('250,00')
+    expect(figures[0]).toContain('+%25')
+    expect(figures[1]).toContain('Net Kâr')
+    expect(figures[1]).toContain('127,00')
+    expect(page.querySelectorAll('.reports-kpis > div')[1].classList.contains('is-good')).toBe(true)
+    expect(figures[2]).toContain('%36,3')
+    expect(figures[3]).toContain('%158,8')
+    expect(figures[4]).toContain('+%100')
+    expect(figures[5]).toContain('5 satılan adetten 1 iade düşüldü')
+    // Masraf Kalemleri: the account's deductions and the product cost, largest first, 223 in all (63,7 % of the sales);
+    // what is not read without Trendyol's statement is "—", never ₺0.
+    const card = page.querySelector('.reports-card-costlines')!
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺223')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('%63,7')
+    const lines = [...card.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 4).map(cell => cell.textContent).join(' ').trim())
+    expect(lines.slice(0, 3)).toEqual(['İade Edilen Tutar ₺100,00 %44,8', 'Ürün Maliyeti ₺80,00 %35,9', 'Tahmini Komisyon ₺43,00 %19,3'])
+    expect(lines.slice(3)).toEqual(['Kargo —', 'Hizmet Bedeli —', 'Stopaj —', 'Reklam —', 'Ceza —', 'Erken Ödeme Kesintisi —', 'Net KDV —'])
+    expect(card.textContent).not.toContain('₺0,00')
+    // Kâr Köprüsü: each deduction taken from where the one before ended, down to the same 127.
+    expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Pazaryeri Masrafları − ₺43,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Net Kâr ₺127,00'])
+    // A row's explanation is there for the pointer, not printed under it.
+    expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('Net marj %36,3')
+    // The sales open their platforms in a window over the page.
     expect(page.querySelector('.reports-journey-modal')).toBeNull()
-    expect(await openStep(page, 'Satış tutarı')).toContain('Trendyol')
-    expect(await openStep(page, 'Masraflar:')).toContain('Tahmini Komisyon')
-    expect(await openStep(page, 'Masraflar sonrası')).toContain('kargo faturası')
-    expect(page.querySelector('.reports-journey > li.is-equals')?.classList.contains('is-open')).toBe(true)
-    expect(await openStep(page, 'Kâr oranları')).toContain('%36,3')
-    const account = await openStep(page, 'Tahmini net kâr')
-    expect(account).toContain('Kârlılık sekmesinde aç')
-    expect(account).toContain('207,00')
-    expect(account).toContain('127,00')
-    await openStep(page, 'Tahmini net kâr')
-    expect(page.querySelector('.reports-journey-modal')).toBeNull()
-    expect(page.querySelector('.reports-card-costs, .reports-card-margin, .reports-card-platforms, .reports-notes')).toBeNull()
-    // Dönem Özeti: 6 units ordered (one cancelled for 120, one returned for 100), 4 kept for 250; under them the orders,
-    // the average basket and the return rate with their change, then the averages.
-    expect(page.querySelector('.reports-period-card')).toBeNull()
-    expect(page.querySelector('.reports-card-summary h2')?.textContent).toBe('Dönem Özeti')
-    const sales = [...page.querySelectorAll('.reports-summary-rows > div')].map(row => row.textContent)
-    expect(sales).toEqual(['Brüt Satış6 adet₺470,00', 'İptaller−1 adet− ₺120,00', 'İadeler−1 adet− ₺100,00', 'Net Satış4 adet₺250,00'])
-    const figures = [...page.querySelectorAll('.reports-summary-metrics > div small')].map(label => label.textContent)
-    expect(figures).toEqual(['Sipariş', 'Ortalama Sepet', 'İade Oranı', 'Ort. Satış Fiyatı', 'Ort. Komisyon Oranı'])
-    expect(page.querySelectorAll('.reports-summary-metrics .reports-delta')).toHaveLength(3)
-    expect(page.querySelector('.reports-summary-metrics')?.textContent).toContain('Ort. Satış Fiyatı₺70,00Ort. Komisyon Oranı%21,5')
-    expect(page.querySelectorAll('.reports-operations button')).toHaveLength(6)
-    expect(page.querySelector('.reports-operations button.is-warn')?.textContent).toContain('İptal Oranı')
+    await act(async () => { page.querySelector<HTMLButtonElement>('.reports-bridge button[aria-label^="Satış tutarı"]')!.click() })
+    expect(page.querySelector('.reports-journey-modal')?.textContent).toContain('Trendyol')
+    // Günler: the day columns, the best one marked, and the best day, the average and the days that beat the previous.
+    const days = page.querySelector('.reports-card-period')!
+    expect(days.querySelector('h2')?.textContent).toBe('Günler')
+    expect(days.querySelectorAll('.reports-columns li')).toHaveLength(2)
+    expect(days.querySelector('.reports-columns li.is-peak')).not.toBeNull()
+    expect(days.querySelector('.reports-period-facts')?.textContent).toContain('01.10.2026')
+    expect(days.querySelector('.reports-period-facts')?.textContent).toContain('1 / 1')
+    // The metric cards: four rows on each of the first three, six on the two under them.
+    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Ortalama Komisyon Oranı%21,5', 'Ortalama İndirim Oranı%7,9'])
+    expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Adet1,25'])
+    expect(metricRows(page, 'ads')).toEqual(['Toplam Reklam Harcaması—', 'Reklam / Kâr—', 'Reklam / Ciro—', 'Reklam Cirosu ve ROAS—'])
+    expect(metricRows(page, 'returns')).toHaveLength(6)
+    expect(metricRows(page, 'returns')[4]).toContain('İptal Oranı%20,0')
+    expect(page.querySelector('.reports-card-metrics.is-returns li.is-warn')?.textContent).toContain('İptal Oranı')
+    expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo1', 'Kargo FirmasıAras Kargo', 'Faturasız Paket1', 'Stok Riski0 ürün', 'Tekrar Alan Müşteri%50,0'])
+    // The old cards are gone, and no card repeats another.
+    expect(page.querySelector('.reports-journey, .reports-card-summary, .reports-operations, .reports-card-revenue')).toBeNull()
     // One tab per area, each with its headline figure.
     const tabs = [...page.querySelectorAll('.reports-tabs [role="tab"]')].map(tab => tab.textContent)
     expect(tabs.some(tab => tab?.includes('Genel Bakış'))).toBe(true)
@@ -169,25 +172,27 @@ describe('ReportsPage', () => {
 
   it('takes commission, cargo and fees from Trendyol\'s statement, real plus estimated, and names what is not read', async () => {
     const page = await open('', withFinance)
-    const costs = await openStep(page, 'Masraflar:')
-    expect(costs).toContain('Komisyon')
-    expect(costs).toContain('41,50')
-    expect(costs).toContain('Gerçek 1 sipariş')
-    expect(costs).toContain('226,68')
-    expect(costs).toContain('faturası gelmeyen 2 sipariş tahmini')
-    expect(costs).toContain('Kesintiler')
-    expect(costs).toContain('13,50')
-    expect(costs).toContain('Hizmet Bedeli, Stopaj')
-    // 350 − 100 returns − 41.50 − 226.68 − 13.50 leaves −31.68; less the cost of 80, a loss of 111.68, both in red.
-    expect(page.querySelector('.reports-journey > li.is-equals.is-negative')?.textContent).toContain('31,68')
-    const loss = page.querySelector('.reports-journey > li.is-result.is-negative')!
+    // The statement's lines: commission 41,50, cargo 226,68, the service fee and the withholding tax; the categories it
+    // has no record of are at zero, the VAT is not worked out.
+    const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
+    expect(lines).toEqual(['Kargo ₺226,68', 'İade Edilen Tutar ₺100,00', 'Ürün Maliyeti ₺80,00', 'Komisyon ₺41,50', 'Hizmet Bedeli ₺12,50', 'Stopaj ₺1,00',
+      'Reklam ₺0,00', 'Ceza ₺0,00', 'Erken Ödeme Kesintisi ₺0,00', 'Net KDV —'])
+    expect(page.querySelector('.reports-costlines li:first-child .reports-hover-tip')?.textContent).toContain('faturası gelmeyen 2 sipariş tahmini')
+    // 350 − 100 − 226,68 − 54 (commission and service fee) − 1 − 80 = −111,68: a loss, in red, on the bridge and the strip.
+    expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Kargo − ₺226,68', '− Pazaryeri Masrafları − ₺54,00', '− Stopaj − ₺1,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Zarar − ₺111,68'])
+    expect(page.querySelector('.reports-bridge > li.is-end.is-negative')).not.toBeNull()
+    expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('Shopify kargo ve hizmet bedeli')
+    // What the estimate leaves out is written under the bridge as well, for a phone that has no pointer.
+    expect(page.querySelector('.reports-card-bridge .reports-note')?.textContent).toContain('düşülmeyenler: Shopify kargo ve hizmet bedeli')
+    expect(page.querySelector('.reports-card-bridge .reports-note')?.textContent).toContain('%50,0 kadarı için girili')
+    const loss = page.querySelectorAll('.reports-kpis > div')[1]
+    expect(loss.classList.contains('is-bad')).toBe(true)
     expect(loss.textContent).toContain('Tahmini Zarar')
-    expect(loss.textContent).toContain('111,68')
-    const left = await openStep(page, 'Masraflar sonrası')
-    expect(left).toContain('Shopify kargo ve hizmet bedeli')
-    expect(left).not.toContain('kargo faturası')
+    expect(loss.textContent).toContain('− ₺111,68')
+    expect(metricRows(page, 'ads')[0]).toBe('Toplam Reklam Harcaması₺0,00')
+    expect(metricRows(page, 'order')[2]).toBe('Sipariş Başına Kargo₺75,56')
 
-    await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Satıştan Kâra: Tümünü Gör"]')!.click() })
+    await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
     expect(selectedTab(page)).toContain('Kârlılık')
     expect(body(page)).toContain('Trendyol Cari Hesap Kalemleri')
     expect(body(page)).toContain('Masraf Değil')
@@ -265,7 +270,7 @@ describe('ReportsPage', () => {
 
   it('moves to the area\'s tab from a card, with its tables and CSV export', async () => {
     const page = await open()
-    const more = page.querySelector<HTMLButtonElement>('button[aria-label="Satıştan Kâra: Tümünü Gör"]')!
+    const more = page.querySelector<HTMLButtonElement>('button[aria-label="Kâr Köprüsü: Tümünü Gör"]')!
     await act(async () => { more.click() })
     expect(selectedTab(page)).toContain('Kârlılık')
     const panel = page.querySelector<HTMLElement>('.reports-body')!
@@ -306,13 +311,18 @@ describe('ReportsPage', () => {
 
   it('says the cost is not entered instead of showing a profit when no cost is known', async () => {
     const page = await open('', { ...report, cost: { ...report.cost, costedQuantity: 0, coverage: 0, costTotal: 0, grossProfit: 0, profitQuantity: 0, profitCoverage: 0, netProfit: 0 } })
-    const profit = page.querySelector('.reports-journey > li.is-result')!
-    expect(profit.textContent).toContain('Maliyet girilmemiş')
-    expect(page.querySelector('.reports-gauge-value')).toBeNull()
-    expect(await openStep(page, 'Masraflar:')).not.toContain('Ürün Maliyeti')
-    expect(await openStep(page, 'Tahmini net kâr')).toContain('Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.')
+    const figures = texts(page, '.reports-kpis > div')
+    expect(figures[1]).toContain('Maliyet girilmemiş')
+    expect(figures[2]).toContain('—')
+    // The product cost line says it is missing; the bridge ends at what the deductions leave, 207.
+    const cost = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.includes('Ürün Maliyeti'))!
+    expect(cost.textContent).toContain('—')
+    expect(cost.textContent).toContain('Ürün kartında varyant maliyeti girildiğinde görünür')
+    expect(bridgeRows(page).at(-1)).toBe('Masraflar Sonrası ₺207,00')
+    expect(bridgeRows(page).some(row => row.includes('Ürün Maliyeti'))).toBe(false)
+    expect(metricRows(page, 'product')[1]).toBe('Adet Başına Kâr—')
     // The profit tab's account says the same instead of a row of zeros.
-    await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Satıştan Kâra: Tümünü Gör"]')!.click() })
+    await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
     expect(body(page)).toContain('Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.')
   })
 
@@ -377,7 +387,7 @@ describe('ReportsPage', () => {
 
   it('opens an operation\'s tab', async () => {
     const page = await open()
-    await act(async () => { page.querySelector<HTMLButtonElement>('.reports-operations button[aria-label^="Stok Riski"]')!.click() })
+    await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-card-metrics.is-ops button')].find(button => button.textContent?.includes('Stok Riski'))!.click() })
     expect(selectedTab(page)).toContain('Operasyon')
     expect(body(page)).toContain('En Çok Satanların Stoğu')
   })

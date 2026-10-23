@@ -25,7 +25,7 @@ window.__reportsAudit = { done: false, findings: [] };
     const body = doc.querySelector('.reports-body')
     if (!body) { findings.push(`EMPTY ${where}`); frame.remove(); continue }
     if (doc.documentElement.scrollWidth > width + 1) findings.push(`SCROLL ${where}: ${doc.documentElement.scrollWidth}px wide`)
-    for (const grid of body.querySelectorAll('.reports-grid, .reports-lists, .reports-summary, .reports-board-main, .reports-board-side')) {
+    for (const grid of body.querySelectorAll('.reports-grid, .reports-lists, .reports-summary, .reports-overview, .reports-overview-row')) {
       const items = [...grid.children].filter(item => item.offsetHeight > 0)
       const rows = {}
       for (const item of items) (rows[Math.round(item.getBoundingClientRect().top)] ??= []).push(item)

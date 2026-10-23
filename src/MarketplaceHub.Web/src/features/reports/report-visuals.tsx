@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { UiIcon } from '../../shared/components'
 
 // The overview's charts. Each plays once, when its card first comes into view: bars and gauges grow from zero to their
@@ -100,6 +100,28 @@ export function StackedBar({ parts, total, shown, label }: { parts: Part[]; tota
   return <div className="reports-stacked" role="img" aria-label={label}>
     {drawn.map((part, index) => <span key={part.key} className={`is-${part.tone}`} title={part.label}
       style={{ width: shown ? `${part.value / sum * 100}%` : '0%', transitionDelay: `${index * 120}ms` }} />)}
+  </div>
+}
+
+// Parts of a whole round a ring, a hair's gap between them, each sweeping from nothing to its share when first seen;
+// the middle holds what the caller puts there (the total).
+export function Donut({ parts, shown, label, children }: { parts: Part[]; shown: boolean; label: string; children?: ReactNode }) {
+  const drawn = parts.filter(part => part.value > 0)
+  const sum = drawn.reduce((value, part) => value + part.value, 0)
+  let offset = 0
+  return <div className="reports-donut">
+    <svg viewBox="0 0 120 120" role="img" aria-label={label}>
+      <circle className="reports-donut-base" cx="60" cy="60" r="50" />
+      {sum > 0 && drawn.map((part, index) => {
+        const share = part.value / sum * 100
+        const length = Math.max(0.35, share - (drawn.length > 1 ? 0.7 : 0))
+        const ring = <circle key={part.key} className={`reports-donut-part is-${part.tone}`} cx="60" cy="60" r="50" pathLength={100} transform="rotate(-90 60 60)"
+          strokeDasharray={`${shown ? length : 0} 100`} strokeDashoffset={-offset} style={{ transitionDelay: `${index * 90}ms` }} />
+        offset += share
+        return ring
+      })}
+    </svg>
+    <div className="reports-donut-centre">{children}</div>
   </div>
 }
 

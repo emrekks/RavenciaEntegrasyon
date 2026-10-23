@@ -163,6 +163,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                           : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
+                      let listAmount = priced
+                          ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
+                              .Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount)
+                          : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
                       let packagesBack = priced
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
@@ -190,6 +194,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           Currency = order.Currency,
                           DerivedStatus = order.DerivedStatus,
                           Amount = amount,
+                          ListAmount = listAmount,
                           PackagesBack = packagesBack,
                           LineValue = lineValue,
                           LineBack = lineBack,

@@ -3,6 +3,8 @@ export type ReportSummary = {
   orders: number; cancelledOrders: number; cancelRate: number | null; soldQuantity: number; returnedQuantity: number; keptQuantity: number
   returnClaims: number; returnRate: number | null; ordersWithAmount: number; grossSales: number; returnedAmount: number; netRevenue: number
   averageOrderValue: number | null; ordersWithoutCity: number; ordersWithoutAmount: number; otherCurrencyOrders: number
+  // The same orders at their list price and the marketplace's discount on them (absent in an older server's answer).
+  listAmount?: number; discountAmount?: number
 }
 export type ReportGroup = {
   key: string; label: string; known: boolean; isTest: boolean; orders: number; soldQuantity: number; returnedQuantity: number; returnClaims: number

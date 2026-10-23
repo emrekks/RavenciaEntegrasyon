@@ -66,6 +66,8 @@ internal sealed class ReportOrderRow
     public string Currency { get; init; } = "TRY";
     public string DerivedStatus { get; init; } = "";
     public decimal Amount { get; init; }
+    // The same packages at their list price, before the marketplace's discounts (the order's own when none carries one).
+    public decimal ListAmount { get; init; }
     public decimal PackagesBack { get; init; }
     public decimal LineValue { get; init; }
     public decimal LineBack { get; init; }
@@ -465,9 +467,12 @@ internal static class ReportBuilder
         var back = Back(orders);
         var priced = orders.Count(x => x.Amount > 0);
         var gross = orders.Sum(x => x.Amount);
+        // The list price of the same orders (Amount is zero for another currency); never below what was paid.
+        var list = orders.Where(x => x.Amount > 0).Sum(x => Math.Max(x.Order.ListAmount, x.Amount));
         return new(orders.Count, cancelled.Count, Rate(cancelled.Count, orders.Count + cancelled.Count), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, sold),
             priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? Math.Round(gross / priced, 2) : null,
-            orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try));
+            orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try),
+            list, list - gross);
     }
 
     private static ReportCommissionView CommissionView(IReadOnlyList<OrderFact> orders, decimal netRevenue)

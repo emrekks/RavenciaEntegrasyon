@@ -67,7 +67,8 @@ public sealed record ReportGeographyView(
 // units of non-cancelled orders. ReturnedQuantity: units sent back (a returned order whole; otherwise the larger of the
 // line's returned quantity and its accepted return claims). ReturnClaims: claims that were not rejected or cancelled.
 // GrossSales: what the customers paid (cancelled packages left out); NetRevenue: GrossSales less what went back (the
-// overview's revenue). AverageOrderValue: GrossSales / orders with an amount.
+// overview's revenue). AverageOrderValue: GrossSales / orders with an amount. ListAmount: the same orders at their list
+// price, before the marketplace's discounts; DiscountAmount = ListAmount - GrossSales.
 public sealed record ReportSummaryView(
     int Orders,
     int CancelledOrders,
@@ -84,7 +85,9 @@ public sealed record ReportSummaryView(
     decimal? AverageOrderValue,
     int OrdersWithoutCity,
     int OrdersWithoutAmount,
-    int OtherCurrencyOrders);
+    int OtherCurrencyOrders,
+    decimal ListAmount,
+    decimal DiscountAmount);
 
 // Estimated from the commission the marketplace sent on each order line (Trendyol and n11 rate, Hepsiburada amount,
 // PTT AVM rate), over the kept units. CoveredRevenue: the net revenue of lines that carry one; Coverage: its share of
