@@ -38,7 +38,12 @@ public static class MarketplaceInvoiceStatePolicy
     // Clears an unverified read for a write only while nothing local says the order already holds an invoice.
     public static bool UnverifiedReadShowsInvoice(MarketplaceInvoiceStatus current, string? manualInvoiceStatus) =>
         current is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received
-        || string.Equals(manualInvoiceStatus, "UPLOADED", StringComparison.OrdinalIgnoreCase);
+        || IsManuallyUploaded(manualInvoiceStatus);
+
+    // The seller marked the package "Faturası yüklendi" (an invoice uploaded in the marketplace's own panel): no fiscal
+    // invoice is issued and no link is sent for it, whatever the marketplace read says.
+    public static bool IsManuallyUploaded(string? manualInvoiceStatus) =>
+        string.Equals(manualInvoiceStatus?.Trim(), "UPLOADED", StringComparison.OrdinalIgnoreCase);
 
     public static MarketplaceInvoiceStatus FromRemote(string? rawStatus, string? packageRawStatus = null, string? invoiceNumber = null, string? invoiceUrl = null)
     {

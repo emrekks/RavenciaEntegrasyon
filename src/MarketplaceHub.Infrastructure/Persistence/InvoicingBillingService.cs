@@ -1190,6 +1190,10 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı; yeni mali fatura kesilmedi.", 409);
         if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received))
             return ServiceResult<InvoiceDetailView>.Fail("MARKETPLACE_INVOICE_ALREADY_PRESENT", "Pazaryerinde fatura bulundu veya işleniyor. Yeni mali fatura kesimi kapatıldı.", 409);
+        // A hand-set "Faturası yüklendi" is the seller's word that the marketplace already holds an invoice (Pazarama,
+        // n11 and PTT AVM cannot show a seller-panel upload): no second fiscal invoice, whichever the platform.
+        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => MarketplaceInvoiceStatePolicy.IsManuallyUploaded(item.ManualInvoiceStatus)))
+            return ServiceResult<InvoiceDetailView>.Fail("MARKETPLACE_INVOICE_ALREADY_PRESENT", "Sipariş fatura yüklendi olarak işaretlenmiş. Yeni mali fatura kesimi kapatıldı; önce fatura durumunu değiştirin.", 409);
         if (ActiveIntegrationScope.IsMarketplace(orderPlatform) && !MarketplaceInvoiceCreationPolicy.IsEnabled(orderPlatform, orderConnection.SettingsJson))
             return ServiceResult<InvoiceDetailView>.Fail(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, MarketplaceInvoiceCreationPolicy.DisabledMessage, 422);
         var profile = await ProviderManagedProfile(tenantId, provider.Id, cancellationToken);

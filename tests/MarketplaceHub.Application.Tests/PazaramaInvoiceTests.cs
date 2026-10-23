@@ -81,4 +81,18 @@ public sealed class PazaramaInvoiceTests
 
     [Fact]
     public void The_endpoint_is_the_documented_service() => Assert.Equal("order/invoice-link", PazaramaHttpClient.InvoiceLink);
+
+    // Audit 2026-10-24 S3: a seller-panel upload is invisible to the API, so the read before a delivery is UNVERIFIED
+    // (never "no invoice"), and the workflow's local guard for a hand-set "uploaded" applies as on n11 and PTT AVM.
+    [Fact]
+    public async Task The_read_before_a_delivery_is_unverified_not_uninvoiced()
+    {
+        var client = new PazaramaHttpClient(null!, null!, null!, Microsoft.Extensions.Options.Options.Create(new PazaramaOptions()), TimeProvider.System, null!, null!);
+
+        var read = await client.QueryDeliveryAsync(new AdapterContext(Guid.NewGuid(), Guid.NewGuid(), "s3", "s3", DateTimeOffset.UtcNow.AddMinutes(2)), new ExternalInvoiceDeliveryReference("order:735071747", "735071747"), CancellationToken.None);
+
+        Assert.True(read.IsSuccess);
+        Assert.Equal(MarketplaceHub.Domain.MarketplaceInvoiceStatePolicy.Unverified, read.Value!.RawStatus);
+        Assert.NotEqual(MarketplaceHub.Domain.MarketplaceInvoiceStatus.NotInvoiced, MarketplaceHub.Domain.MarketplaceInvoiceStatePolicy.FromRemote(read.Value.RawStatus));
+    }
 }

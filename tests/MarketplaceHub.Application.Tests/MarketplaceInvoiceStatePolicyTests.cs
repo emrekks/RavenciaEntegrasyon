@@ -37,6 +37,15 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void UnverifiedReadDefersToLocalInvoiceEvidence(MarketplaceInvoiceStatus current, string? manual, bool expected) =>
         Assert.Equal(expected, MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(current, manual));
 
+    // Audit 2026-10-24 S3: only a hand-set "uploaded" stops a fiscal invoice and a link whatever the marketplace says.
+    [Theory]
+    [InlineData("UPLOADED", true)]
+    [InlineData(" uploaded ", true)]
+    [InlineData("PENDING", false)]
+    [InlineData(null, false)]
+    public void HandSetUploadedIsRecognised(string? manual, bool expected) =>
+        Assert.Equal(expected, MarketplaceInvoiceStatePolicy.IsManuallyUploaded(manual));
+
     // Audit 2026-10-24 S2: the hand-set status decides the package label before the marketplace's word or a panel
     // invoice, so the orders screens read like the invoice page.
     [Theory]

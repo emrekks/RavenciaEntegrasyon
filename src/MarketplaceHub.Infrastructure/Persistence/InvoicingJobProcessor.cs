@@ -173,6 +173,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     .OrderBy(item => item.Id).ToListAsync(cancellationToken);
                 if (packages.Count == 0)
                     await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED", "Sipariş için kontrol edilebilir etkin paket bulunamadı; mali kesim başlatılmadı.", cancellationToken);
+                // The seller marked the invoice as uploaded in the marketplace's own panel: whatever the marketplace read
+                // says (Pazarama cannot read anything back), a second fiscal invoice is never issued for it.
+                if (packages.Any(item => MarketplaceInvoiceStatePolicy.IsManuallyUploaded(item.ManualInvoiceStatus)))
+                    await BlockFiscalSubmission(invoice, "PLATFORM_INVOICE_ALREADY_PRESENT",
+                        "Sipariş fatura yüklendi olarak işaretlenmiş. Yeni mali kesim yapılmadı.", cancellationToken);
 
                 foreach (var targetPackage in packages)
                 {
@@ -1008,6 +1013,19 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 default:
                     throw new JobProcessingException(JobExecutionResult.Retry("DELIVERY_RESULT_UNKNOWN", "Belirsiz fatura gönderiminden sonra siparişin güncel fatura durumu bekleniyor; yeni dış istek yapılmadı.", TimeSpan.FromMinutes(2), state.ExternalIdempotencyKey));
             }
+        }
+
+        // A package the seller marked as holding an uploaded invoice gets no link: on Pazarama a new link replaces the
+        // seller's own upload, and no marketplace read can tell that the order already holds one.
+        if (MarketplaceInvoiceStatePolicy.IsManuallyUploaded(package.ManualInvoiceStatus))
+        {
+            invoice.Status = InvoiceStatus.ManualReview;
+            invoice.LastErrorCode = "PLATFORM_INVOICE_ALREADY_PRESENT";
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode,
+                "Sipariş fatura yüklendi olarak işaretlenmiş. Üzerine yazılmadı ve yeni belge gönderilmedi."));
         }
 
         // Each delivery is gated by a fresh read immediately before the write.

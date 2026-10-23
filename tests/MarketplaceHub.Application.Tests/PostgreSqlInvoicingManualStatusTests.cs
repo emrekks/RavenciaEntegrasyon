@@ -62,6 +62,109 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
         }
     }
 
+    // S3: the fiscal pre-check refuses a package marked uploaded before any marketplace read or provider call.
+    [PostgreSqlFact]
+    public async Task S3_FiscalPrecheckRefusesAPackageMarkedUploaded()
+    {
+        var seed = NewSeed("s3-fiscal", "PAZARAMA", "UPLOADED");
+        var invoice = NewInvoice(seed, InvoiceStatus.Submitting);
+        await SeedAsync(seed, db => db.Invoices.Add(invoice));
+        try
+        {
+            var marketplace = new UnverifiedMarketplace();
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, marketplace).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceSubmit,
+                    JsonSerializer.Serialize(new { invoiceId = invoice.Id }), "s3-fiscal", CancellationToken.None);
+                Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+                Assert.Equal("PLATFORM_INVOICE_ALREADY_PRESENT", result.ErrorCode);
+            }
+
+            Assert.Equal(0, marketplace.Calls);
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.Invoices.SingleAsync(item => item.Id == invoice.Id);
+            Assert.Equal(InvoiceStatus.ManualReview, stored.Status);
+            Assert.False(await verification.InvoiceSubmissionAttempts.AnyAsync(attempt => attempt.InvoiceId == invoice.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // S3: the delivery pre-check sends no link for a package marked uploaded, whatever the platform.
+    [PostgreSqlFact]
+    public async Task S3_DeliveryPrecheckSendsNoLinkForAPackageMarkedUploaded()
+    {
+        var seed = NewSeed("s3-deliver", "SHOPIFY", "UPLOADED");
+        var invoice = NewInvoice(seed, InvoiceStatus.MarketplacePending);
+        await SeedAsync(seed, db => db.Invoices.Add(invoice));
+        try
+        {
+            var marketplace = new UnverifiedMarketplace();
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, marketplace).ProcessAsync(seed.Tenant.Id, seed.Marketplace.Id, InvoicingJobTypes.MarketplaceDelivery,
+                    JsonSerializer.Serialize(new { invoiceId = invoice.Id, packageId = seed.Package.Id }), "s3-deliver", CancellationToken.None);
+                Assert.Equal("PLATFORM_INVOICE_ALREADY_PRESENT", result.ErrorCode);
+            }
+
+            Assert.Equal(0, marketplace.Calls);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(InvoiceStatus.ManualReview, (await verification.Invoices.SingleAsync(item => item.Id == invoice.Id)).Status);
+            Assert.False(await verification.MarketplaceDeliveryStates.AnyAsync(state => state.InvoiceId == invoice.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // S3: creating an invoice from the order is refused for a package marked uploaded.
+    [PostgreSqlFact]
+    public async Task S3_CreatingAnInvoiceIsRefusedForAPackageMarkedUploaded()
+    {
+        var seed = NewSeed("s3-create", "PAZARAMA", "UPLOADED");
+        await SeedAsync(seed);
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var created = await NewBillingService(db).CreateDraftAsync(seed.Tenant.Id, new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null), "s3-create-key", CancellationToken.None);
+
+            Assert.False(created.Succeeded);
+            Assert.Equal("MARKETPLACE_INVOICE_ALREADY_PRESENT", created.Error?.Code);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Invoices.AnyAsync(item => item.TenantId == seed.Tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // S3: the workspace preview offers no invoice for a package marked uploaded.
+    [PostgreSqlFact]
+    public async Task S3_WorkspacePreviewCannotCreateForAPackageMarkedUploaded()
+    {
+        var seed = NewSeed("s3-preview", "PAZARAMA", "UPLOADED");
+        await SeedAsync(seed);
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var preview = await NewBillingService(db).PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)]), CancellationToken.None);
+
+            Assert.True(preview.Succeeded, preview.Error?.Message);
+            var item = Assert.Single(preview.Value!);
+            Assert.False(item.CanConfirm);
+            Assert.Contains("fatura yüklendi", item.BlockedReason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private InvoicingBillingService NewBillingService(AppDbContext db)
     {
         var dataProtection = new EphemeralDataProtectionProvider();
