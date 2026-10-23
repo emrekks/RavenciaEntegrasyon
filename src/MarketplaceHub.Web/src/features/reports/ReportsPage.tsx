@@ -12,6 +12,7 @@ import {
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
 import { SalesMap } from './SalesMap'
+import { BarsBackdrop, CountUp, Ring, smoothPath } from './report-visuals'
 import './reports.css'
 
 // The weekly commission tariffs the reports read a missing commission from, uploaded here per store (live stores of a
@@ -144,57 +145,48 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
     items={items.map(item => ({ value: item.value, label: tabLabel(item.icon, item.label), count: item.count, countTone: item.warn ? 'warn' : undefined }))} />
 }
 
-// The period's headline: net revenue large, its parts beside it and its course over the period (the previous period
-// dashed behind it), with the measure the chart draws chosen in its corner.
-function RevenueHero({ data }: { data: ReportSales }) {
+// The period's course: the measure chosen in the corner as a smooth line, the previous period dashed behind it.
+function TrendPanel({ data }: { data: ReportSales }) {
   const [metric, setMetric] = useState<Metric>('netRevenue')
   const [showPrevious, setShowPrevious] = useState(true)
+  return <Panel title="Satış Trendi" className="reports-trend" info={`${data.granularity === 'day' ? 'Günlük' : data.granularity === 'week' ? 'Haftalık' : 'Aylık'} toplamlar; kesikli çizgi önceki dönemin aynı sıradaki dilimi.`}
+    actions={<>
+      <select aria-label="Grafik ölçüsü" value={metric} onChange={event => setMetric(event.target.value as Metric)}>{(Object.keys(metricLabels) as Metric[]).map(key => <option key={key} value={key}>{metricLabels[key]}</option>)}</select>
+      <label className="reports-toggle"><input type="checkbox" checked={showPrevious} onChange={event => setShowPrevious(event.target.checked)} /><span>Önceki Dönem</span></label>
+    </>}>
+    <TrendChart points={data.timeSeries} previous={data.previousTimeSeries} metric={metric} showPrevious={showPrevious} granularity={data.granularity} />
+  </Panel>
+}
+
+// Four headline tiles, each one large figure: net revenue and orders over their bars for the period, what the
+// marketplaces took (a ring of its share of net revenue) and the estimated profit (a ring of its margin).
+function Headline({ data, flow }: { data: ReportSales; flow: ProfitSteps }) {
   const now = data.summary
   const before = data.previousSummary
   const noAmount = now.ordersWithAmount === 0
-  return <section className="reports-panel reports-hero" aria-label="Net ciro ve dönem grafiği">
-    <header>
-      <div className="reports-hero-figure">
-        <span className="reports-kpi-head"><small>Net Ciro</small><InfoTip label="Net Ciro" text="Satış tutarından iade edilen tutar düşülür; Genel Bakış ile aynı kural." /></span>
-        <strong>{noAmount ? 'Tutar yok' : formatTl(now.netRevenue)}</strong>
-        <span className="reports-kpi-foot"><Delta delta={noAmount ? null : change(now.netRevenue, before.netRevenue)} /><span>Önceki dönem {before.ordersWithAmount > 0 ? formatTl(before.netRevenue) : '—'}</span></span>
-      </div>
-      <dl className="reports-hero-parts">
-        <div><dt>Satış Tutarı</dt><dd>{noAmount ? 'Tutar yok' : formatTl(now.grossSales)}</dd><Delta delta={noAmount ? null : change(now.grossSales, before.grossSales)} /></div>
-        <div><dt>İade Edilen</dt><dd className="is-minus">{noAmount ? 'Tutar yok' : `− ${formatTl(now.returnedAmount)}`}</dd><Delta delta={noAmount ? null : change(now.returnedAmount, before.returnedAmount)} invert /></div>
-      </dl>
-      <div className="reports-panel-actions">
-        <select aria-label="Grafik ölçüsü" value={metric} onChange={event => setMetric(event.target.value as Metric)}>{(Object.keys(metricLabels) as Metric[]).map(key => <option key={key} value={key}>{metricLabels[key]}</option>)}</select>
-        <label className="reports-toggle"><input type="checkbox" checked={showPrevious} onChange={event => setShowPrevious(event.target.checked)} /><span>Önceki Dönem</span></label>
-      </div>
-    </header>
-    <TrendChart points={data.timeSeries} previous={data.previousTimeSeries} metric={metric} showPrevious={showPrevious} granularity={data.granularity} />
-  </section>
-}
-
-// Six tiles of one height: the figure, its change, and one visual on the same line in each — the course over the
-// period for counts and amounts, a scale for rates (the cancel rate's with its warning line).
-function Kpis({ data }: { data: ReportSales }) {
-  const now = data.summary
-  const before = data.previousSummary
-  const series = (metric: Metric) => data.timeSeries.map(point => point[metric])
-  const basket = data.timeSeries.map(point => point.orders > 0 ? point.netRevenue / point.orders : 0)
-  const warning = data.cancellations.warningRate
+  const step = (key: string) => flow.steps?.find(item => item.key === key) ?? null
+  const payout = step('payout')?.value ?? null
+  const profit = step('profit')
+  const profitValue = profit?.value ?? null
+  const charged = payout !== null ? now.netRevenue - payout : null
+  const chargedShare = charged !== null && now.netRevenue > 0 ? charged / now.netRevenue : null
+  const margin = profitValue === null ? null : data.cost.profitQuantity > 0 ? data.cost.netMargin : data.cost.grossMargin
+  const finance = financeCosts(data) !== null
   return <div className="reports-kpis">
-    <Kpi label="Sipariş" value={formatCount(now.orders)} delta={change(now.orders, before.orders)} hint="İptaller hariç"
-      info="İptal edilmeyen siparişler; tamamı iade edilenler dahil." visual={<Sparkline values={series('orders')} label="Sipariş dönem içinde" />} />
-    <Kpi label="Satılan Adet" value={formatNumber(now.soldQuantity)} delta={change(now.soldQuantity, before.soldQuantity)} hint={`${formatNumber(now.keptQuantity)} elde kaldı`}
-      info="İptal edilmeyen siparişlerde sipariş edilen − iptal edilen adet; elde kalan, iade edilmeyen adettir." visual={<Sparkline values={series('soldQuantity')} label="Satılan adet dönem içinde" />} />
-    <Kpi label="Ortalama Sipariş" value={formatTl(now.averageOrderValue)} delta={change(now.averageOrderValue, before.averageOrderValue)} hint="Tutarı olanlar"
-      info="Satış tutarı / tutarı olan sipariş sayısı; tutar göndermeyen siparişler paydaya girmez. Çizgi, her dilimde net ciro / sipariştir." visual={<Sparkline values={basket} label="Sipariş başına net ciro dönem içinde" />} />
-    <Kpi label="İade Oranı" value={formatPercent(now.returnRate)} delta={change(now.returnRate, before.returnRate, 'rate')} invert hint={`${formatNumber(now.returnedQuantity)} adet`}
-      info="İade adedi / satılan adet; reddedilen ve iptal edilen iade talepleri hariç." visual={<Meter label="İade oranı" value={now.returnRate} scale={Math.max(0.2, (now.returnRate ?? 0) * 1.4)} tone="bad" />} />
-    <Kpi label="İptal Oranı" value={formatPercent(now.cancelRate)} delta={change(now.cancelRate, before.cancelRate, 'rate')} invert hint={`${formatCount(now.cancelledOrders)} sipariş`}
-      warn={(now.cancelRate ?? 0) > warning} info={`İptal edilen sipariş / (sipariş + iptal edilen sipariş); uyarı eşiği ${formatPercent(warning)}.`}
-      visual={<Meter label="İptal oranı" value={now.cancelRate} scale={Math.max(warning * 2.5, (now.cancelRate ?? 0) * 1.4)} marker={warning} markerLabel={`Eşik ${formatPercent(warning)}`} tone={(now.cancelRate ?? 0) > warning ? 'warn' : 'bad'} />} />
-    <Kpi label="Tahmini Komisyon" value={data.commission.coveredRevenue > 0 ? formatTl(data.commission.estimatedCommission) : '—'} hint={`Oran ${formatPercent(data.commission.effectiveRate)}`}
-      info="Siparişte gelen komisyon, yoksa yüklenen tarifedeki bant; iade edilmeyen adetler için. Kesinleşmiş değildir; çubuk, komisyonu bilinen cironun payıdır (kapsam)."
-      visual={<Meter label="Komisyon kapsamı" value={data.commission.coverage} scale={1} caption={`Kapsam ${formatPercent(data.commission.coverage)}`} />} />
+    <Kpi label="Net Ciro" value={noAmount ? null : now.netRevenue} missing="Tutar yok" format={formatTl} delta={noAmount ? null : change(now.netRevenue, before.netRevenue)}
+      hint={`Önceki ${before.ordersWithAmount > 0 ? formatTl(before.netRevenue) : '—'}`} info="Satış tutarından iade edilen tutar düşülür; Genel Bakış ile aynı kural."
+      visual={<BarsBackdrop values={data.timeSeries.map(point => point.netRevenue)} />} />
+    <Kpi label="Sipariş" value={now.orders} format={formatCount} delta={change(now.orders, before.orders)} hint={`${formatNumber(now.soldQuantity)} adet`}
+      info="İptal edilmeyen siparişler; tamamı iade edilenler dahil. Adet, sipariş edilen − iptal edilendir."
+      visual={<BarsBackdrop values={data.timeSeries.map(point => point.orders)} />} />
+    <Kpi label={finance ? 'Pazaryeri Kesintileri' : 'Tahmini Komisyon'} value={charged} missing="Bilinmiyor" format={formatTl}
+      hint={chargedShare === null ? 'Komisyon bilinmiyor' : `Net cironun ${formatPercent(chargedShare)}`}
+      info={finance ? 'Komisyon, kargo ve Trendyol kesintileri; gerçek ve henüz kesinleşmeyenler için tahmini. Ürün maliyeti hariç.' : 'Siparişte gelen komisyon, yoksa yüklenen tarifedeki bant. Kargo ve diğer kesintiler okunmuyor.'}
+      visual={<Ring value={chargedShare} tone="bad" label={`Net cironun ${formatPercent(chargedShare)} kadarı`} />} />
+    <Kpi label={profit?.label ?? 'Tahmini Kâr'} value={profitValue} missing={profit?.missing ?? '—'} format={formatTl} tone={profitValue !== null && profitValue < 0 ? 'bad' : undefined}
+      hint={margin === null ? 'Maliyet girilince görünür' : `${data.cost.profitQuantity > 0 ? 'Net' : 'Brüt'} marj ${formatPercent(margin)}`}
+      info={profit?.note ?? 'Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.'}
+      visual={<Ring value={margin} tone={margin !== null && margin < 0 ? 'bad' : 'good'} label={`Marj ${formatPercent(margin)}`} />} />
   </div>
 }
 
@@ -205,40 +197,16 @@ function Delta({ delta, invert = false }: { delta: Change | null | undefined; in
   return <em className={`reports-delta is-${tone}`} title="Önceki döneme göre">{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
 }
 
-// The "?" button explains the formula on hover and on keyboard focus.
-function Kpi({ label, value, delta, hint, info, invert = false, warn = false, visual }: { label: string; value: string; delta?: Change | null; hint?: string; info: string; invert?: boolean; warn?: boolean; visual?: ReactNode }) {
-  return <article className={`reports-kpi${warn ? ' is-warn' : ''}`}>
+// One headline tile: its figure counts up; the "?" button explains the formula on hover and on keyboard focus.
+function Kpi({ label, value, missing = '—', format, delta, hint, info, tone, visual }: {
+  label: string; value: number | null; missing?: string; format: (value: number) => string; delta?: Change | null; hint?: string; info: string; tone?: 'bad'; visual?: ReactNode
+}) {
+  return <article className={`reports-kpi${tone ? ` is-${tone}` : ''}${value === null ? ' is-missing' : ''}`}>
     <span className="reports-kpi-head"><small>{label}</small><InfoTip label={label} text={info} /></span>
-    <strong>{value}</strong>
-    <span className="reports-kpi-foot"><Delta delta={delta} invert={invert} />{hint && <span>{hint}</span>}</span>
-    <span className="reports-kpi-visual">{visual}</span>
+    <strong>{value === null ? missing : <CountUp value={value} format={format} />}</strong>
+    <span className="reports-kpi-foot">{delta !== undefined && <Delta delta={delta} />}{hint && <span>{hint}</span>}</span>
+    {visual && <span className="reports-kpi-visual">{visual}</span>}
   </article>
-}
-
-// A rate on a scale from zero; the marker (a warning line) and the scale's end written under it.
-function Meter({ label, value, scale, marker, markerLabel, caption, tone }: { label: string; value: number | null; scale: number; marker?: number; markerLabel?: string; caption?: string; tone?: 'bad' | 'warn' }) {
-  const at = (rate: number) => `${Math.max(0, Math.min(100, rate / scale * 100))}%`
-  return <span className="reports-meter-wrap">
-    <span className={`reports-meter${tone ? ` is-${tone}` : ''}`} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={Math.round(scale * 100)} aria-valuenow={Math.round((value ?? 0) * 100)}>
-      <span style={{ width: at(value ?? 0) }} />
-      {marker !== undefined && <i style={{ left: at(marker) }} aria-hidden="true" />}
-    </span>
-    <small><span>{caption ?? '%0'}</span>{markerLabel ? <span>{markerLabel}</span> : !caption && <span>{formatPercent(scale, 0)}</span>}</small>
-  </span>
-}
-
-// The period's buckets as a small line under a KPI, so its course shows beside its total.
-function Sparkline({ values, tone, label }: { values: number[]; tone?: 'bad'; label: string }) {
-  if (values.length < 2) return null
-  const width = 96, height = 28
-  const max = Math.max(...values), min = Math.min(0, ...values)
-  const x = (index: number) => index * width / (values.length - 1)
-  const y = (value: number) => max === min ? height / 2 : 2 + (height - 4) * (1 - (value - min) / (max - min))
-  const line = values.map((value, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ')
-  return <svg className={`reports-spark${tone ? ` is-${tone}` : ''}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={label}>
-    <path className="reports-spark-area" d={`${line} L${width},${height} L0,${height} Z`} />
-    <path className="reports-spark-line" d={line} />
-  </svg>
 }
 
 function InfoTip({ label, text }: { label: string; text: string }) {
@@ -257,9 +225,10 @@ function DataNotes({ notes }: { notes: string[] }) {
   </details>
 }
 
-function Panel({ title, description, actions, children, className }: { title: string; description?: string; actions?: ReactNode; children: ReactNode; className?: string }) {
+// A panel's explanation is either written under its title or, on the overview, kept behind a "?" beside it.
+function Panel({ title, description, info, actions, children, className }: { title: string; description?: string; info?: string; actions?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={`reports-panel${className ? ` ${className}` : ''}`}>
-    <header><div><h2>{title}</h2>{description && <p>{description}</p>}</div>{actions && <div className="reports-panel-actions">{actions}</div>}</header>
+    <header><div>{info ? <span className="reports-panel-title"><h2>{title}</h2><InfoTip label={title} text={info} /></span> : <h2>{title}</h2>}{description && <p>{description}</p>}</div>{actions && <div className="reports-panel-actions">{actions}</div>}</header>
     {children}
   </section>
 }
@@ -334,7 +303,8 @@ function TrendChart({ points, previous, metric, showPrevious, granularity }: { p
   const max = Math.max(1, ...values, ...(showPrevious ? previousValues : []))
   const x = (index: number) => pad.left + (points.length <= 1 ? (width - pad.left - pad.right) / 2 : index * (width - pad.left - pad.right) / (points.length - 1))
   const y = (value: number) => pad.top + (height - pad.top - pad.bottom) * (1 - value / max)
-  const path = (series: number[]) => series.map((value, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ')
+  const gradient = useId()
+  const path = (series: number[]) => smoothPath(series.map((value, index) => [x(index), y(value)]))
   const format = (value: number) => metric === 'netRevenue' ? formatTlShort(value) : formatNumber(value)
   const labelEvery = Math.max(1, Math.ceil(points.length / 8))
   const bucketLabel = (start: string) => { const [, month, day] = start.split('-'); return granularity === 'month' ? `${month}.${start.slice(0, 4)}` : `${day}.${month}` }
@@ -358,9 +328,13 @@ function TrendChart({ points, previous, metric, showPrevious, granularity }: { p
     <svg className="reports-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricLabels[metric]} zaman serisi`}>
       <title>{`${metricLabels[metric]}: ${points.map(item => `${bucketLabel(item.start)} ${format(item[metric])}`).join(', ')}`}</title>
       {ticks.map(tick => <g key={tick} className="reports-chart-grid"><line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} /><text x={pad.left - 8} y={y(tick) + 4} textAnchor="end">{format(tick)}</text></g>)}
+      <defs><linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" className="reports-chart-stop" stopOpacity={0.34} /><stop offset="100%" className="reports-chart-stop" stopOpacity={0} />
+      </linearGradient></defs>
       {showPrevious && previousValues.length > 0 && <path className="reports-chart-previous" d={path(previousValues)} />}
-      <path className="reports-chart-area" d={`${path(values)} L${x(values.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`} />
-      <path className="reports-chart-line" d={path(values)} />
+      {/* Keyed by the measure, so the line draws itself again when another measure is chosen. */}
+      <path key={`area-${metric}`} className="reports-chart-area" style={{ fill: `url(#${gradient})` }} d={`${path(values)} L${x(values.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`} />
+      <path key={`line-${metric}`} className="reports-chart-line" pathLength={1} d={path(values)} />
       {points.map((item, index) => <g key={item.start}>
         {points.length <= 40 && <circle className="reports-chart-dot" cx={x(index)} cy={y(item[metric])} r={1.8} />}
         {index % labelEvery === 0 && <text className="reports-chart-x" x={x(index)} y={height - 12} textAnchor="middle">{bucketLabel(item.start)}</text>}
@@ -381,21 +355,21 @@ function TrendChart({ points, previous, metric, showPrevious, granularity }: { p
 
 type OpenDetail = (key: DetailKey) => void
 
-// Genel Bakış as a dashboard on one grid: net revenue with its chart and the platforms' shares, six KPI tiles, the money
-// flow and its cost lines, and a card per area (a visual, then its figures) whose "Tümünü Gör" moves to its tab.
+// Genel Bakış, airy like a ledger: four headline tiles, the cost lines across the page, the period's course beside the
+// profit funnel, then the platforms' shares and a plain card per area whose "Tümünü Gör" moves to its tab. The
+// explanations sit behind the "?" buttons, so the page reads as figures first.
 function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
-  return <div className="reports-summary">
-    <div className="reports-dash-top">
-      <RevenueHero data={data} />
-      <PlatformShare data={data} onMore={onMore} />
-    </div>
-    <Kpis data={data} />
+  const flow = profitSteps(data)
+  return <div className="reports-summary reports-overview">
+    <Headline data={data} flow={flow} />
     <DataNotes notes={data.dataNotes} />
+    <CostLines data={data} onMore={onMore} />
     <div className="reports-summary-row">
-      <ProfitFlow data={data} onMore={onMore} />
-      <CostLines data={data} onMore={onMore} />
+      <TrendPanel data={data} />
+      <ProfitFunnel data={data} flow={flow} onMore={onMore} />
     </div>
-    <div className="reports-metrics">
+    <div className="reports-areas">
+      <PlatformShare data={data} onMore={onMore} />
       <ProductCard data={data} onMore={onMore} />
       <OrderCard data={data} onMore={onMore} />
       <ReturnCard data={data} onMore={onMore} />
@@ -508,8 +482,11 @@ function CustomersView({ data }: { data: ReportSales }) {
   </div>
 }
 
-function MoreButton({ title, onClick }: { title: string; onClick: () => void }) {
-  return <button type="button" className="secondary reports-more" onClick={onClick} aria-label={`${title}: Tümünü Gör`}>Tümünü Gör<UiIcon name="arrowRight" size={14} /></button>
+// A narrow card shows only the arrow; the button keeps its name for screen readers and the pointer's tooltip.
+function MoreButton({ title, onClick, compact = false }: { title: string; onClick: () => void; compact?: boolean }) {
+  return <button type="button" className={`secondary reports-more${compact ? ' is-compact' : ''}`} onClick={onClick} aria-label={`${title}: Tümünü Gör`} title={compact ? 'Tümünü Gör' : undefined}>
+    {!compact && 'Tümünü Gör'}<UiIcon name="arrowRight" size={14} />
+  </button>
 }
 
 type FlowStep = { key: string; label: string; value: number | null; kind: 'total' | 'minus' | 'subset'; missing?: string; note?: string }
@@ -555,19 +532,20 @@ function unreadFeePlatforms(data: ReportSales) {
 }
 
 // Satış Tutarı → Net Ciro → komisyon (and, with Trendyol's statement, cargo and fees) → kâr, from known amounts only.
-// Each step says what it leaves out; the profit step is drawn hatched because it covers only the sales whose cost
-// (and commission) is known.
-function ProfitFlow({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
+// Each step says what it leaves out; the profit covers only the sales whose cost (and commission) is known. No steps
+// when no order carried an amount.
+type ProfitSteps = { steps: FlowStep[] | null; description: string }
+
+function profitSteps(data: ReportSales): ProfitSteps {
   const now = data.summary
   const commission = data.commission
   const cost = data.cost
   const finance = financeCosts(data)
   const unread = unreadFeePlatforms(data)
-  const more = <MoreButton title="Kâr Akışı" onClick={() => onMore('cost')} />
   const description = finance
     ? `Komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; kesintiler Trendyol cari hesabından.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
     : 'Yalnız okunabilen kalemlerle; kargo, hizmet bedeli, stopaj, reklam ve ceza düşülmedi.'
-  if (now.ordersWithAmount === 0) return <Panel title="Kâr Akışı" description={description} actions={more}><p className="reports-empty">Bu dönemde tutarı olan sipariş yok; akış hesaplanamaz.</p></Panel>
+  if (now.ordersWithAmount === 0) return { steps: null, description }
   const hasCommission = commission.coveredRevenue > 0
   const partialCommission = (commission.coverage ?? 0) < 1
   const steps: FlowStep[] = [
@@ -599,48 +577,48 @@ function ProfitFlow({ data, onMore }: { data: ReportSales; onMore: OpenDetail })
     note: `Yalnız maliyeti ve komisyonu bilinen ${formatNumber(cost.profitQuantity)} adet (${formatPercent(cost.profitCoverage)}, ${formatTl(cost.profitRevenue)} satış) üzerinden · marj ${formatPercent(cost.netMargin)}` })
   else steps.push({ key: 'profit', label: 'Tahmini Brüt Kâr', value: cost.grossProfit, kind: 'subset',
     note: `Komisyon öncesi; yalnız maliyeti bilinen ${formatNumber(cost.costedQuantity)} adet (${formatPercent(cost.coverage)}) üzerinden · marj ${formatPercent(cost.grossMargin)}` })
-  const max = Math.max(1, now.grossSales)
-  const percent = (value: number) => `${Math.max(0, Math.min(100, value / max * 100))}%`
-  // The flow as three shares under it: what came back, what the deductions took of the net revenue, and the margin.
-  const payout = steps.find(step => step.key === 'payout')?.value ?? null
-  const profit = steps.find(step => step.key === 'profit')?.value ?? null
-  const ratios = [
-    { label: 'İade / Satış', value: now.grossSales > 0 ? now.returnedAmount / now.grossSales : null },
-    { label: 'Masraf / Net Ciro', value: payout !== null && now.netRevenue > 0 ? (now.netRevenue - payout) / now.netRevenue : null },
-    { label: cost.profitQuantity > 0 ? 'Net Marj' : 'Brüt Marj', value: profit === null ? null : cost.profitQuantity > 0 ? cost.netMargin : cost.grossMargin }
-  ]
-  let level = 0
-  return <Panel title="Kâr Akışı" description={description} actions={more} className="reports-flow-panel">
-    <ol className="reports-flow">{steps.map(step => {
-      const value = step.value
-      let bar: CSSProperties | null = null
-      if (value !== null) {
-        if (step.kind === 'minus') { bar = { left: percent(level - value), width: percent(value) }; level -= value }
-        else { bar = { left: '0%', width: percent(Math.abs(value)) }; if (step.kind === 'total') level = value }
-      }
-      return <li key={step.key} className={`is-${step.kind}${value === null ? ' is-missing' : ''}${value !== null && value < 0 ? ' is-negative' : ''}`}>
-        <span className="reports-flow-label">{step.label}</span>
-        <span className="reports-flow-track" aria-hidden="true">{bar && <span style={bar} />}</span>
-        <strong className="reports-flow-value">{value === null ? step.missing : `${step.kind === 'minus' ? '− ' : ''}${formatTl(value)}`}</strong>
-        {step.note && <small>{step.note}</small>}
-      </li>
-    })}</ol>
-    <dl className="reports-flow-ratios">{ratios.map(ratio => <div key={ratio.label}><dt>{ratio.label}</dt><dd>{formatPercent(ratio.value)}</dd></div>)}</dl>
+  return { steps, description }
+}
+
+// The flow as a funnel: each running total (sales, net revenue, after the deductions, the profit) a band as wide as
+// its share of the sales, narrowing into the next; beside it every step with its amount, the deductions indented. A
+// total the data cannot give is drawn as an outline, a negative one in the danger colour, the profit hatched because
+// it covers only part of the sales.
+function ProfitFunnel({ data, flow, onMore }: { data: ReportSales; flow: ProfitSteps; onMore: OpenDetail }) {
+  const more = <MoreButton title="Kâr Hunisi" onClick={() => onMore('cost')} />
+  if (!flow.steps) return <Panel title="Kâr Hunisi" info={flow.description} actions={more}><p className="reports-empty">Bu dönemde tutarı olan sipariş yok; huni hesaplanamaz.</p></Panel>
+  const stages = flow.steps.filter(step => step.kind !== 'minus')
+  const max = Math.max(1, data.summary.grossSales)
+  const width = (value: number | null) => value === null ? 100 : Math.max(10, Math.min(100, Math.abs(value) / max * 100))
+  const stateClass = (step: FlowStep) => `is-${step.kind}${step.value === null ? ' is-missing' : ''}${step.value !== null && step.value < 0 ? ' is-negative' : ''}`
+  return <Panel title="Kâr Hunisi" info={flow.description} actions={more} className="reports-funnel-panel">
+    <div className="reports-funnel">
+      <ol className="reports-funnel-shape" aria-hidden="true">{stages.map((stage, index) => {
+        const top = width(stage.value)
+        const bottom = index < stages.length - 1 ? width(stages[index + 1].value) : top * 0.72
+        return <li key={stage.key} className={`${stateClass(stage)} is-stage-${index}`} style={{ '--top': `${top}%`, '--bottom': `${bottom}%`, animationDelay: `${index * 110}ms` } as CSSProperties} />
+      })}</ol>
+      <ol className="reports-flow">{flow.steps.map(step => <li key={step.key} className={stateClass(step)}>
+        <span className="reports-flow-label">{step.label}{step.note && <InfoTip label={step.label} text={step.note} />}</span>
+        <strong className="reports-flow-value">{step.value === null ? step.missing : `${step.kind === 'minus' ? '− ' : ''}${formatTl(step.value)}`}</strong>
+      </li>)}</ol>
+    </div>
   </Panel>
 }
 
+
 const unreadCostLines = ['Kargo Faturası', 'Hizmet Bedeli', 'Stopaj', 'Reklam', 'Ceza']
 
-// The cost lines the report can read, as a donut of their shares, and the ones it cannot read, greyed. With Trendyol's
-// statement the commission and cargo are real plus estimated and the fees real; without it the commission is an
-// estimate and the rest is not read. The shares are among the listed lines only.
+// The cost lines the report can read across the page: a large donut of their shares beside the lines in a roomy grid,
+// each with its colour, amount and share; the lines it cannot read are named last, greyed. With Trendyol's statement
+// the commission and cargo are real plus estimated and the fees real; without it the commission is an estimate and the
+// rest is not read. The shares are among the listed lines only.
 function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const now = data.summary
   const commission = data.commission
   const cost = data.cost
   const noAmount = now.ordersWithAmount === 0
   const finance = financeCosts(data)
-  // The lines the report cannot read, in one row: the platforms whose cargo and fees are not read, or the lines.
   const unreadPlatforms = finance ? unreadFeePlatforms(data) : []
   const unread = finance ? (unreadPlatforms.length ? `${unreadPlatforms.join(', ')} kargo ve hizmet bedeli` : null) : unreadCostLines.join(', ')
   const lines = [
@@ -655,111 +633,81 @@ function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
     { key: 'returned', label: 'İade Edilen Tutar', value: noAmount ? null : now.returnedAmount, missing: 'Tutar yok', note: 'Satıştan düşülen' }
   ]
   const total = lines.reduce((sum, line) => sum + Math.max(0, line.value ?? 0), 0)
-  const radius = 52
-  const circumference = 2 * Math.PI * radius
   let offset = 0
-  return <Panel title="Masraf Kalemleri" description={finance ? 'Komisyon ve kargo gerçek ve tahmini toplamdır; kesintiler Trendyol cari hesabından.' : 'Paylar yalnız okunabilen kalemler arasındadır; toplam gider değildir.'}
+  return <Panel title="Masraf Kalemleri" info={finance ? 'Komisyon ve kargo gerçek ve tahmini toplamdır; kesintiler Trendyol cari hesabından.' : 'Paylar yalnız okunabilen kalemler arasındadır; toplam gider değildir.'}
     actions={<MoreButton title="Masraf Kalemleri" onClick={() => onMore('cost')} />} className="reports-cost-panel">
     <div className="reports-donut-wrap">
-      <svg className="reports-donut" viewBox="0 0 128 128" role="img" aria-label={`Bilinen kalemler toplamı ${formatTl(total)}`}>
-        <circle className="reports-donut-base" cx="64" cy="64" r={radius} />
+      <svg className="reports-donut is-large" viewBox="0 0 128 128" role="img" aria-label={`Bilinen kalemler toplamı ${formatTl(total)}`}>
+        <circle className="reports-donut-base" cx="64" cy="64" r="52" />
         {total > 0 && lines.map(line => {
-          const length = Math.max(0, line.value ?? 0) / total * circumference
-          const segment = <circle key={line.key} className={`reports-donut-segment is-${line.key}`} cx="64" cy="64" r={radius} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} />
-          offset += length
+          const share = Math.max(0, line.value ?? 0) / total * 100
+          const segment = <circle key={line.key} className={`reports-donut-segment is-${line.key}`} cx="64" cy="64" r="52" pathLength={100} strokeDasharray={`${share} ${100 - share}`} strokeDashoffset={-offset} />
+          offset += share
           return segment
         })}
-        <text x="64" y="61" textAnchor="middle" className="reports-donut-total">{total > 0 ? formatTlShort(total) : '—'}</text>
-        <text x="64" y="77" textAnchor="middle" className="reports-donut-caption">Bilinen toplam</text>
+        <text x="64" y="58" textAnchor="middle" className="reports-donut-caption">Bilinen toplam</text>
+        <text x="64" y="76" textAnchor="middle" className="reports-donut-total">{total > 0 ? formatTlShort(total) : '—'}</text>
       </svg>
       <ul className="reports-legend">
         {lines.map(line => <li key={line.key} className={line.value === null ? 'is-missing' : undefined}>
           <i className={`is-${line.key}`} aria-hidden="true" />
-          <span>{line.label}<small>{line.note}</small></span>
-          <strong>{line.value === null ? line.missing : formatTl(line.value)}<small>{line.value !== null && total > 0 ? formatPercent(Math.max(0, line.value) / total) : ''}</small></strong>
+          <span>{line.label}</span>
+          <strong>{line.value === null ? line.missing : formatTl(line.value)}{line.value !== null && total > 0 && <em>{formatPercent(Math.max(0, line.value) / total)}</em>}</strong>
+          <small>{line.note}</small>
         </li>)}
-        {unread && <li className="is-unread"><i aria-hidden="true" /><span>{finance ? 'Okunmuyor' : 'Henüz okunmuyor'}<small>{unread}</small></span><strong /></li>}
+        {unread && <li className="is-unread"><i aria-hidden="true" /><span>{finance ? 'Okunmuyor' : 'Henüz okunmuyor'}</span><strong>—</strong><small>{unread}</small></li>}
       </ul>
     </div>
   </Panel>
 }
 
 type MetricRow = { label: string; value: string; hint?: string; warn?: boolean; muted?: boolean }
-type Segment = { key: string; label: string; value: number; color: string }
 
-// One area's card: a visual of fixed height first, then its figures in one aligned column, so the six cards line up.
-function MetricCard({ title, visual, rows, onMore }: { title: string; visual: ReactNode; rows: MetricRow[]; onMore: () => void }) {
-  return <Panel title={title} actions={<MoreButton title={title} onClick={onMore} />} className="reports-metric">
-    <div className="reports-metric-visual">{visual}</div>
+// One area's card as a plain ledger: its icon and title, then label and value rows with room between them.
+function MetricCard({ title, icon, rows, onMore }: { title: string; icon: UiIconName; rows: MetricRow[]; onMore: () => void }) {
+  return <section className="reports-panel reports-metric">
+    <header>
+      <div className="reports-metric-title"><span aria-hidden="true"><UiIcon name={icon} size={16} /></span><h2>{title}</h2></div>
+      <div className="reports-panel-actions"><MoreButton title={title} onClick={onMore} compact /></div>
+    </header>
     <dl>{rows.map(row => <div key={row.label} className={row.warn ? 'is-warn' : row.muted ? 'is-unknown' : undefined}>
       <dt>{row.label}{row.hint && <small>{row.hint}</small>}</dt>
       <dd>{row.value}</dd>
     </div>)}</dl>
-  </Panel>
+  </section>
 }
-
-// Parts of a whole as one bar, each part in its colour, with the parts' names and shares under it.
-function StackBar({ label, segments, empty = 'Bu dönemde kayıt yok.' }: { label: string; segments: Segment[]; empty?: string }) {
-  const parts = segments.filter(segment => segment.value > 0)
-  const total = parts.reduce((sum, segment) => sum + segment.value, 0)
-  if (total <= 0) return <p className="reports-empty">{empty}</p>
-  return <div className="reports-stack" role="img" aria-label={`${label}: ${parts.map(part => `${part.label} ${formatPercent(part.value / total)}`).join(', ')}`}>
-    <span className="reports-stack-bar" aria-hidden="true">{parts.map(part => <i key={part.key} style={{ flexGrow: part.value, background: part.color }} />)}</span>
-    <ul aria-hidden="true">{parts.map(part => <li key={part.key}><i style={{ background: part.color }} />{part.label}<b>{formatPercent(part.value / total, 0)}</b></li>)}</ul>
-  </div>
-}
-
-// The first few of a ranking as short bars, for a card's visual.
-function MiniBars({ label, items, format }: { label: string; items: BarItem[]; format: (value: number) => string }) {
-  const top = items.slice(0, 3)
-  const max = Math.max(0, ...top.map(item => item.value))
-  if (max <= 0) return <p className="reports-empty">Bu dönemde kayıt yok.</p>
-  return <ul className="reports-minibars" aria-label={label}>{top.map(item => <li key={item.key} className={item.muted ? 'is-unknown' : undefined}>
-    <span title={item.label}>{item.label}</span>
-    <span className="reports-minibar" aria-hidden="true"><i style={{ width: `${Math.max(4, item.value / max * 100)}%` }} /></span>
-    <b>{format(item.value)}</b>
-  </li>)}</ul>
-}
-
-const tones = ['var(--rv-color-info)', 'var(--rv-color-primary)', 'var(--rv-color-accent)', 'var(--rv-color-warning)', 'var(--rv-color-danger)']
-const muted = 'var(--rv-color-border-strong)'
 
 function ProductCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const now = data.summary
   // Per unit only when every order carries its amount; otherwise units without amounts would pull it down.
   const perUnit = now.ordersWithoutAmount === 0 && now.soldQuantity > 0 ? formatTl(now.grossSales / now.soldQuantity) : '—'
-  return <MetricCard title="Ürün" onMore={() => onMore('products')}
-    visual={<MiniBars label="En çok satan 3 ürün" format={formatNumber} items={[...data.topProducts].sort((a, b) => b.soldQuantity - a.soldQuantity).map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.soldQuantity }))} />}
-    rows={[
-      { label: 'Elde Kalan Adet', value: formatNumber(now.keptQuantity), hint: 'İade edilmeyen' },
-      { label: 'Adet Başına Satış', value: perUnit },
-      { label: 'Maliyeti Girilmiş', value: formatPercent(data.cost.coverage), hint: `${formatCount(data.cost.costedVariants)} varyant` }
-    ]} />
+  return <MetricCard title="Ürün" icon="products" onMore={() => onMore('products')} rows={[
+    { label: 'Satılan Adet', value: formatNumber(now.soldQuantity) },
+    { label: 'Elde Kalan Adet', value: formatNumber(now.keptQuantity), hint: 'İade edilmeyen' },
+    { label: 'Adet Başına Satış', value: perUnit },
+    { label: 'Maliyeti Girilmiş', value: formatPercent(data.cost.coverage), hint: `${formatCount(data.cost.costedVariants)} varyant` }
+  ]} />
 }
 
 function OrderCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
+  const now = data.summary
   const customers = data.customers
-  return <MetricCard title="Müşteri" onMore={() => onMore('customers')}
-    visual={<StackBar label="Müşteriler" segments={[
-      { key: 'once', label: 'Bir kez alan', value: customers.uniqueCustomers - customers.repeatCustomers, color: tones[0] },
-      { key: 'repeat', label: 'Tekrar alan', value: customers.repeatCustomers, color: tones[2] }
-    ]} empty="Kimliği okunan müşteri yok." />}
-    rows={[
-      { label: 'Tekil Müşteri', value: formatCount(customers.uniqueCustomers), hint: `${formatCount(customers.identifiedOrders)} siparişten` },
-      { label: 'Tekrar Alım Oranı', value: formatPercent(customers.repeatRate) },
-      { label: 'Müşteri Başına Sipariş', value: formatNumber(customers.ordersPerCustomer) }
-    ]} />
+  return <MetricCard title="Sipariş ve Müşteri" icon="users" onMore={() => onMore('customers')} rows={[
+    { label: 'Ortalama Sipariş', value: formatTl(now.averageOrderValue), hint: 'Tutarı olan siparişler' },
+    { label: 'İptal Oranı', value: formatPercent(now.cancelRate), hint: `${formatCount(now.cancelledOrders)} sipariş · eşik ${formatPercent(data.cancellations.warningRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
+    { label: 'Tekil Müşteri', value: formatCount(customers.uniqueCustomers), hint: `${formatCount(customers.identifiedOrders)} siparişten` },
+    { label: 'Tekrar Alım Oranı', value: formatPercent(customers.repeatRate) }
+  ]} />
 }
 
 function ReturnCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const now = data.summary
-  return <MetricCard title="İade" onMore={() => onMore('returns')}
-    visual={<MiniBars label="İlk 3 iade nedeni" format={formatCount} items={topReasons(data.returnReasons)} />}
-    rows={[
-      { label: 'İade Talebi', value: formatCount(now.returnClaims), hint: 'Reddedilenler hariç' },
-      { label: 'İade Adedi', value: formatNumber(now.returnedQuantity), hint: formatPercent(now.returnRate) },
-      { label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? formatTl(now.returnedAmount) : 'Tutar yok' }
-    ]} />
+  return <MetricCard title="İade" icon="returns" onMore={() => onMore('returns')} rows={[
+    { label: 'İade Oranı', value: formatPercent(now.returnRate), hint: 'İade / satılan adet' },
+    { label: 'İade Talebi', value: formatCount(now.returnClaims), hint: 'Reddedilenler hariç' },
+    { label: 'İade Adedi', value: formatNumber(now.returnedQuantity) },
+    { label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? formatTl(now.returnedAmount) : 'Tutar yok' }
+  ]} />
 }
 
 // Averages over the packages whose times were measured, weighted by that count, so a carrier with one measured
@@ -782,41 +730,31 @@ function CargoCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
   const ship = weightedHours(data.cargo, row => row.averageHoursToShip, row => row.measuredShip)
   const deliver = weightedHours(data.cargo, row => row.averageHoursToDeliver, row => row.measuredDeliver)
   const measured = (count: number) => count > 0 ? `${formatCount(count)} pakette ölçüldü` : 'Ölçülemedi'
-  const carriers = [...data.cargo].sort((a, b) => Number(b.known) - Number(a.known) || b.packages - a.packages)
-  return <MetricCard title="Kargo" onMore={() => onMore('cargo')}
-    visual={<StackBar label="Kargo firmalarının payı" empty="Bu dönemde paket yok." segments={carriers.map((row, index) => ({ key: row.label, label: row.label, value: row.packages, color: row.known ? tones[index % tones.length] : muted }))} />}
-    rows={[
-      { label: 'Paket', value: formatCount(packages) },
-      { label: 'Kargo Teslim Alma', value: formatHours(ship.hours), hint: measured(ship.measured) },
-      { label: 'Teslimat', value: formatHours(deliver.hours), hint: measured(deliver.measured) }
-    ]} />
+  const top = [...data.cargo].filter(row => row.known).sort((a, b) => b.packages - a.packages)[0]
+  return <MetricCard title="Kargo" icon="truck" onMore={() => onMore('cargo')} rows={[
+    { label: 'Paket', value: formatCount(packages) },
+    { label: 'Kargo Teslim Alma', value: formatHours(ship.hours), hint: measured(ship.measured) },
+    { label: 'Teslimat', value: formatHours(deliver.hours), hint: measured(deliver.measured) },
+    { label: 'En Çok Kullanılan', value: top ? top.label : '—', hint: top ? formatPercent(top.share) : undefined }
+  ]} />
 }
 
 function InvoiceCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const total = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
-  const color = (key: string) => key === 'UNKNOWN' ? muted : key === 'INVOICED' ? tones[2] : tones[3]
-  return <MetricCard title="Fatura" onMore={() => onMore('invoices')}
-    visual={<StackBar label="Fatura durumu" empty="Bu dönemde paket yok." segments={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, color: color(bucket.key) }))} />}
-    rows={data.invoices.buckets.map(bucket => ({
-      label: bucket.label, value: formatCount(bucket.packages), hint: `${formatPercent(total > 0 ? bucket.packages / total : null)} · ${formatTl(bucket.amount)}`, muted: bucket.key === 'UNKNOWN'
-    }))} />
+  return <MetricCard title="Fatura" icon="invoice" onMore={() => onMore('invoices')} rows={data.invoices.buckets.map(bucket => ({
+    label: bucket.label, value: formatCount(bucket.packages), hint: `${formatPercent(total > 0 ? bucket.packages / total : null)} · ${formatTl(bucket.amount)}`, muted: bucket.key === 'UNKNOWN'
+  }))} />
 }
 
 function StockCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const bestSellers = data.stock.bestSellers
   const low = bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const unknownStock = bestSellers.filter(row => row.available === null).length
-  return <MetricCard title="Stok" onMore={() => onMore('stock')}
-    visual={<StackBar label="En çok satanların kalan günü" empty="En çok satan ürün yok." segments={[
-      { key: 'low', label: '7 günden az', value: low, color: tones[4] },
-      { key: 'ok', label: 'Yeterli', value: bestSellers.length - low - unknownStock, color: tones[2] },
-      { key: 'unknown', label: 'Bilinmiyor', value: unknownStock, color: muted }
-    ]} />}
-    rows={[
-      { label: 'Kalan Günü 7\'den Az', value: formatCount(low), hint: `En çok satan ${formatCount(bestSellers.length)} ürün içinde`, warn: low > 0 },
-      { label: 'Satıp Stoğu Biten', value: formatCount(data.stock.soldOut.length), hint: 'Mevcut stoğu sıfır' },
-      { label: 'Stoğu Bilinmeyen', value: formatCount(unknownStock), muted: unknownStock === 0 }
-    ]} />
+  return <MetricCard title="Stok" icon="stock" onMore={() => onMore('stock')} rows={[
+    { label: 'Kalan Günü 7\'den Az', value: formatCount(low), hint: `En çok satan ${formatCount(bestSellers.length)} ürün içinde`, warn: low > 0 },
+    { label: 'Satıp Stoğu Biten', value: formatCount(data.stock.soldOut.length), hint: 'Mevcut stoğu sıfır' },
+    { label: 'Stoğu Bilinmeyen', value: formatCount(unknownStock), muted: unknownStock === 0 }
+  ]} />
 }
 
 type BarItem = { key: string; label: string; value: number; muted?: boolean; note?: string }
@@ -841,17 +779,15 @@ function ListCard({ title, description, detail, onMore, children }: { title: str
 function PlatformShare({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const rows = data.platforms.filter(group => group.ordersWithAmount > 0 && group.netRevenue > 0).sort((a, b) => b.netRevenue - a.netRevenue)
   const total = rows.reduce((sum, group) => sum + group.netRevenue, 0)
-  const radius = 52
-  const circumference = 2 * Math.PI * radius
   let offset = 0
   return <ListCard title="Platform Payı" description="Net ciroya göre." detail="platforms" onMore={onMore}>
     {total <= 0 ? <p className="reports-empty">Bu dönemde tutarı olan satış yok.</p> : <div className="reports-share">
       <svg className="reports-donut" viewBox="0 0 128 128" role="img" aria-label={`Platform payı: ${rows.map(group => `${platformName(group.label)} ${formatPercent(group.netRevenue / total)}`).join(', ')}`}>
-        <circle className="reports-donut-base" cx="64" cy="64" r={radius} />
+        <circle className="reports-donut-base" cx="64" cy="64" r="52" />
         {rows.map(group => {
-          const length = group.netRevenue / total * circumference
-          const segment = <circle key={group.key} cx="64" cy="64" r={radius} style={{ stroke: platformColor(group.key) }} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} />
-          offset += length
+          const share = group.netRevenue / total * 100
+          const segment = <circle key={group.key} className="reports-donut-segment" cx="64" cy="64" r="52" style={{ stroke: platformColor(group.key) }} pathLength={100} strokeDasharray={`${share} ${100 - share}`} strokeDashoffset={-offset} />
+          offset += share
           return segment
         })}
         <text x="64" y="61" textAnchor="middle" className="reports-donut-total">{formatTlShort(total)}</text>

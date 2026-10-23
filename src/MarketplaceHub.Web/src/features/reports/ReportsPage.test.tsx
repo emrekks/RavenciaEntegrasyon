@@ -103,22 +103,22 @@ describe('ReportsPage', () => {
   it('asks for the last 30 days and shows the summary on one screen', async () => {
     const page = await open()
     expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
-    // Net revenue leads with its chart; six KPI tiles follow, each with its visual.
-    const hero = page.querySelector('.reports-hero')!
-    expect(hero.textContent).toContain('Net Ciro')
-    expect(hero.textContent).toContain('+%25')
-    expect(hero.querySelector('.reports-chart')).not.toBeNull()
+    // Four headline tiles lead, each with its visual (the period's bars or a ring) and its formula behind "?".
     const kpis = page.querySelector('.reports-kpis')!
-    expect(kpis.querySelectorAll('[role="tooltip"]')).toHaveLength(6)
-    expect(kpis.querySelectorAll('.reports-kpi-visual > *')).toHaveLength(6)
+    expect(kpis.textContent).toContain('Net Ciro')
+    expect(kpis.textContent).toContain('+%25')
+    expect(kpis.querySelectorAll('.reports-kpi')).toHaveLength(4)
+    expect(kpis.querySelectorAll('[role="tooltip"]')).toHaveLength(4)
+    expect(kpis.querySelectorAll('.reports-kpi-visual > *')).toHaveLength(4)
+    expect(kpis.querySelectorAll('.reports-backdrop').length).toBeGreaterThan(0)
+    expect(kpis.textContent).toContain('Tahmini Net Kâr')
+    expect(page.querySelector('.reports-trend .reports-chart')).not.toBeNull()
     expect(page.querySelector('.reports-share-list')?.textContent).toContain('Trendyol')
-    expect(page.querySelectorAll('.reports-metric-visual')).toHaveLength(6)
-    expect(page.querySelector('.reports-kpi.is-warn')?.textContent).toContain('İptal Oranı')
-    expect(page.querySelector('.reports-chart')).not.toBeNull()
+    expect(page.querySelector('.reports-metric .is-warn')?.textContent).toContain('İptal Oranı')
+    expect(page.querySelector('.reports-funnel-shape')).not.toBeNull()
     expect(page.querySelector('.reports-flow')?.textContent).toContain('Tahmini Net Kâr')
     expect(page.querySelector('.reports-legend')?.textContent).toContain('Henüz okunmuyor')
     expect(page.querySelectorAll('.reports-metric')).toHaveLength(6)
-    expect(page.querySelectorAll('.reports-kpis .reports-spark').length).toBeGreaterThan(0)
     // One tab per area, each with its headline figure.
     const tabs = [...page.querySelectorAll('.reports-tabs [role="tab"]')].map(tab => tab.textContent)
     expect(tabs.some(tab => tab?.includes('Genel Bakış'))).toBe(true)
@@ -146,7 +146,7 @@ describe('ReportsPage', () => {
     expect(legend).not.toContain('Henüz okunmuyor')
     expect(legend).toContain('Shopify kargo ve hizmet bedeli')
 
-    await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Akışı: Tümünü Gör"]')!.click() })
+    await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Hunisi: Tümünü Gör"]')!.click() })
     expect(selectedTab(page)).toContain('Kârlılık')
     expect(body(page)).toContain('Trendyol Cari Hesap Kalemleri')
     expect(body(page)).toContain('Masraf Değil')
