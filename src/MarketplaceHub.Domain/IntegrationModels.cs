@@ -47,6 +47,9 @@ public sealed class WebhookSubscription
     public required string Status { get; set; }
     public DateTimeOffset? VerifiedAt { get; set; }
     public DateTimeOffset? LastReceivedAt { get; set; }
+    // The connection public id in the address the marketplace calls, when it is not this connection's own: a
+    // Hepsiburada definition prepared on another (test) connection and moved here keeps the address it was given.
+    public Guid? RoutePublicId { get; set; }
     public long Version { get; set; } = 1;
 }
 

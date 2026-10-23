@@ -247,7 +247,7 @@ public sealed class InstantNotificationService(
         var received = subscription is null ? 0 : await db.IntegrationJobs.AsNoTracking()
             .CountAsync(job => job.TenantId == connection.TenantId && job.ConnectionId == connection.Id && job.JobType == ingestType && job.CreatedAt >= since, cancellationToken);
         // The route token is a secret; the page shows only where notifications arrive.
-        var endpoint = PublicBaseUrl() is { } baseUrl ? $"{baseUrl}/api/v1/hooks/{connection.PublicId:D}/…" : null;
+        var endpoint = PublicBaseUrl() is { } baseUrl ? $"{baseUrl}/api/v1/hooks/{subscription?.RoutePublicId ?? connection.PublicId:D}/…" : null;
         // The last delivery the receiver turned away (MarketplaceWebhookService): it tells a marketplace that calls
         // and is refused from one that never calls.
         var rejectedPrefix = $"webhook-rejected:{connection.Id:N}:";
@@ -262,8 +262,12 @@ public sealed class InstantNotificationService(
         var previous = connection.PlatformCode == "HEPSIBURADA" && subscription?.LastReceivedAt is null
             ? await PreviousDefinitionAsync(connection.TenantId, connection.Id, subscription?.Id, tracked: false, cancellationToken)
             : null;
+        var adoptable = connection.PlatformCode == "HEPSIBURADA" && subscription?.LastReceivedAt is null && connection.Status is "ACTIVE" or "VERIFIED"
+            ? await AdoptableDefinitionAsync(connection, tracked: false, cancellationToken)
+            : null;
         return new(state, endpoint, registeredAt, subscription?.LastReceivedAt, received, message, LastRejectedAt: rejected?.LastSeenAt, LastRejectedReason: rejected?.Summary,
-            PreviousPreparedAt: previous is null ? null : PreparedAt(previous.Id));
+            PreviousPreparedAt: previous is null ? null : PreparedAt(previous.Id),
+            AdoptableFrom: adoptable is null ? null : new(adoptable.Value.Source.DisplayName, adoptable.Value.Source.Environment == "PRODUCTION" ? "Canlı" : "Test (SIT)", PreparedAt(adoptable.Value.Subscription.Id)));
     }
 
     public async Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -291,6 +295,53 @@ public sealed class InstantNotificationService(
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Hepsiburada webhook definition {SubscriptionId} restored for connection {ConnectionId}", previous.Id, connectionId);
         return await StatusAsync(tenantId, connectionId, correlationId, cancellationToken);
+    }
+
+    public async Task<ServiceResult<InstantNotificationView>> AdoptFromInactiveAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+        if (connection.PlatformCode != "HEPSIBURADA")
+            return ServiceResult<InstantNotificationView>.Fail("INSTANT_NOTIFICATIONS_ADOPT_UNSUPPORTED", "Başka bağlantının tanımı yalnız Hepsiburada için taşınır.", 422);
+        if (connection.Status is not ("ACTIVE" or "VERIFIED"))
+            return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için webhook tanımı taşınamaz.", 422);
+        var current = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken, tracked: true);
+        if (current?.LastReceivedAt is not null)
+            return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_IN_USE", "Şu anki tanıma Hepsiburada'dan bildirim geliyor; başka tanım taşınmaz.", 409);
+        if (await AdoptableDefinitionAsync(connection, tracked: true, cancellationToken) is not { } adoptable)
+            return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_ADOPTABLE_MISSING", "Taşınacak bir Hepsiburada tanımı yok: pasif bir Hepsiburada bağlantısında açık tanım bulunamadı.", 404);
+        var (source, moved) = adoptable;
+        string verifier;
+        try { verifier = BoundSecret.UnprotectForConnection(protector, tenantId, source.Id, moved.ProtectedVerifierSecret); }
+        catch (CryptographicException) { return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_SECRET_UNREADABLE", "Tanımın şifresi okunamadı; taşınamaz.", 422); }
+        if (current is not null)
+        {
+            current.Status = "DELETED";
+            current.Version++;
+        }
+        // The address keeps the other connection's public id; the password is protected again for this connection, and
+        // what that connection received (test deliveries) is not counted here.
+        moved.RoutePublicId ??= source.PublicId;
+        moved.ConnectionId = connectionId;
+        moved.ProtectedVerifierSecret = BoundSecret.ProtectForConnection(protector, tenantId, connectionId, verifier);
+        moved.LastReceivedAt = null;
+        moved.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Hepsiburada webhook definition {SubscriptionId} moved from connection {SourceConnectionId} to {ConnectionId}", moved.Id, source.Id, connectionId);
+        return await StatusAsync(tenantId, connectionId, correlationId, cancellationToken);
+    }
+
+    // The newest active Hepsiburada definition of another Hepsiburada connection of the store that does not receive (not
+    // active): one a test connection was given, that Hepsiburada may have been asked to set up for the live store.
+    private async Task<(PlatformConnection Source, WebhookSubscription Subscription)?> AdoptableDefinitionAsync(PlatformConnection connection, bool tracked, CancellationToken cancellationToken)
+    {
+        var subscriptions = db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.ConnectionId != connection.Id && x.Status == "ACTIVE" && x.ExternalSubscriptionId == ManualRegistration);
+        var found = await (from subscription in tracked ? subscriptions : subscriptions.AsNoTracking()
+                           join source in db.PlatformConnections.AsNoTracking() on new { subscription.TenantId, subscription.ConnectionId } equals new { source.TenantId, ConnectionId = source.Id }
+                           where source.PlatformCode == "HEPSIBURADA" && source.Status != "ACTIVE" && source.Status != "VERIFIED" && source.Status != "DELETED"
+                           orderby subscription.Id descending
+                           select new { Source = source, Subscription = subscription }).FirstOrDefaultAsync(cancellationToken);
+        return found is null ? null : (found.Source, found.Subscription);
     }
 
     // The last closed Hepsiburada definition prepared before the current one (ids are version 7, so they order by

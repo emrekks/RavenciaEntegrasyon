@@ -13,13 +13,19 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
 {
     public async Task<ServiceResult<bool>> ReceiveAsync(Guid connectionPublicId, string routeToken, ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await ReceivingConnectionAsync(connectionPublicId, cancellationToken); if (connection is null) return NotFound();
-        var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE").ToListAsync(cancellationToken); var subscription = subscriptions.SingleOrDefault(x => SafeVerify(routeToken, x.RouteTokenHash));
-        if (subscription is null)
+        // The address names a connection: its own public id, or the one a definition moved from another connection keeps.
+        var candidates = await (from item in db.WebhookSubscriptions.AsNoTracking()
+                                join owner in db.PlatformConnections.AsNoTracking() on new { item.TenantId, item.ConnectionId } equals new { owner.TenantId, ConnectionId = owner.Id }
+                                where item.Status == "ACTIVE" && (item.RoutePublicId == connectionPublicId || (item.RoutePublicId == null && owner.PublicId == connectionPublicId))
+                                    && (owner.PlatformCode == "TRENDYOL" || owner.PlatformCode == "SHOPIFY" || owner.PlatformCode == "HEPSIBURADA") && (owner.Status == "ACTIVE" || owner.Status == "VERIFIED")
+                                select new { Subscription = item, Connection = owner }).ToListAsync(cancellationToken);
+        var match = candidates.SingleOrDefault(x => SafeVerify(routeToken, x.Subscription.RouteTokenHash));
+        if (match is null)
         {
-            await NoteRouteTokenMismatchAsync(connection, cancellationToken);
+            if (await ReceivingConnectionAsync(connectionPublicId, cancellationToken) is { } named) await NoteRouteTokenMismatchAsync(named, cancellationToken);
             return NotFound();
         }
+        var (connection, subscription) = (match.Connection, match.Subscription);
         var verified = await verifier.VerifyAsync(rawBody, headers, connection.Id, subscription.Id, cancellationToken);
         // A stale Shopify delivery is answered 200 and dropped: a refusal would only make Shopify retry the same old delivery.
         if (!verified.IsSuccess && verified.Error!.Code == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.StaleCode) return ServiceResult<bool>.Ok(false);
@@ -64,8 +70,14 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             await NoteRouteTokenMismatchAsync(connection, cancellationToken);
     }
 
-    private Task<PlatformConnection?> ReceivingConnectionAsync(Guid connectionPublicId, CancellationToken cancellationToken) =>
-        db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == connectionPublicId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
+    // The receiving connection an address names: by its own public id, else the one an active definition moved to it
+    // still answers on.
+    private async Task<PlatformConnection?> ReceivingConnectionAsync(Guid connectionPublicId, CancellationToken cancellationToken)
+    {
+        var receiving = db.PlatformConnections.AsNoTracking().Where(x => (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"));
+        return await receiving.SingleOrDefaultAsync(x => x.PublicId == connectionPublicId, cancellationToken)
+            ?? await receiving.Where(x => db.WebhookSubscriptions.Any(item => item.TenantId == x.TenantId && item.ConnectionId == x.Id && item.Status == "ACTIVE" && item.RoutePublicId == connectionPublicId)).FirstOrDefaultAsync(cancellationToken);
+    }
 
     private Task NoteRouteTokenMismatchAsync(PlatformConnection connection, CancellationToken cancellationToken) =>
         NoteRejectedAsync(connection, "WEBHOOK_ROUTE_TOKEN_MISMATCH", "adres eski ya da hatalı (abonelik yenilendiyse pazaryerindeki adresi güncelleyin)", cancellationToken);

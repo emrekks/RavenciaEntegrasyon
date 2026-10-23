@@ -29,7 +29,7 @@ public sealed class WebhookRouteGate(AppDbContext db, IMemoryCache cache, TokenH
         if (cache.TryGetValue(key, out _)) return true;
         var known = await (from connection in db.PlatformConnections.AsNoTracking()
                            join subscription in db.WebhookSubscriptions.AsNoTracking() on new { connection.TenantId, ConnectionId = connection.Id } equals new { subscription.TenantId, subscription.ConnectionId }
-                           where connection.PublicId == connectionPublicId
+                           where (subscription.RoutePublicId == connectionPublicId || (subscription.RoutePublicId == null && connection.PublicId == connectionPublicId))
                                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA")
                                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                                && subscription.Status == "ACTIVE" && subscription.RouteTokenHash == tokenHash

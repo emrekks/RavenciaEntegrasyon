@@ -878,7 +878,8 @@ public interface IWebhookRegistrationPort
 // State: UNSUPPORTED, OFF, ACTIVE, PASSIVE (the marketplace stopped delivering), MISSING (the
 // marketplace no longer has it), or UNKNOWN (the marketplace could not be asked).
 // PreviousPreparedAt: a closed Hepsiburada definition that can be made the active one again (when it was
-// prepared), shown while the current one has received nothing.
+// prepared), shown while the current one has received nothing. AdoptableFrom: an active Hepsiburada definition of an
+// inactive Hepsiburada connection (a test store) that can be moved here with its address and password, shown likewise.
 public sealed record InstantNotificationView(
     string State,
     string? Endpoint,
@@ -889,7 +890,10 @@ public sealed record InstantNotificationView(
     WebhookSetupInstructions? Setup = null,
     DateTimeOffset? LastRejectedAt = null,
     string? LastRejectedReason = null,
-    DateTimeOffset? PreviousPreparedAt = null);
+    DateTimeOffset? PreviousPreparedAt = null,
+    WebhookAdoptableDefinition? AdoptableFrom = null);
+
+public sealed record WebhookAdoptableDefinition(string ConnectionName, string Environment, DateTimeOffset PreparedAt);
 
 // What the seller sends a marketplace that registers webhooks by hand (Hepsiburada): the base
 // address with its secret route, the Basic Auth user and password, and the paths it calls.
@@ -905,6 +909,9 @@ public interface IInstantNotificationService
     // Hepsiburada: makes the last closed definition (the address and password Hepsiburada was given) the active one
     // again, closing a newer one that has received nothing.
     Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // Hepsiburada: moves the active definition of an inactive Hepsiburada connection here, keeping the address, user and
+    // password Hepsiburada was given; the current definition is closed and can be restored.
+    Task<ServiceResult<InstantNotificationView>> AdoptFromInactiveAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     // Reactivates registered webhooks the marketplace passivated (for example after the server was off).
     Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken);
 }
