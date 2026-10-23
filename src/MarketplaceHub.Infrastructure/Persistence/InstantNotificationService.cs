@@ -263,7 +263,7 @@ public sealed class InstantNotificationService(
             ? await PreviousDefinitionAsync(connection.TenantId, connection.Id, subscription?.Id, tracked: false, cancellationToken)
             : null;
         var adoptable = connection.PlatformCode == "HEPSIBURADA" && subscription?.LastReceivedAt is null && connection.Status is "ACTIVE" or "VERIFIED"
-            ? await AdoptableDefinitionAsync(connection, tracked: false, cancellationToken)
+            ? await AdoptableDefinitionAsync(connection, cancellationToken)
             : null;
         return new(state, endpoint, registeredAt, subscription?.LastReceivedAt, received, message, LastRejectedAt: rejected?.LastSeenAt, LastRejectedReason: rejected?.Summary,
             PreviousPreparedAt: previous is null ? null : PreparedAt(previous.Id),
@@ -308,9 +308,11 @@ public sealed class InstantNotificationService(
         var current = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken, tracked: true);
         if (current?.LastReceivedAt is not null)
             return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_IN_USE", "Şu anki tanıma Hepsiburada'dan bildirim geliyor; başka tanım taşınmaz.", 409);
-        if (await AdoptableDefinitionAsync(connection, tracked: true, cancellationToken) is not { } adoptable)
+        if (await AdoptableDefinitionAsync(connection, cancellationToken) is not { } adoptable)
             return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_ADOPTABLE_MISSING", "Taşınacak bir Hepsiburada tanımı yok: pasif bir Hepsiburada bağlantısında açık tanım bulunamadı.", 404);
-        var (source, moved) = adoptable;
+        // Read again on its own to be tracked: the query that found it is a no-tracking one.
+        var source = adoptable.Source;
+        var moved = await db.WebhookSubscriptions.SingleAsync(x => x.TenantId == tenantId && x.Id == adoptable.Subscription.Id, cancellationToken);
         string verifier;
         try { verifier = BoundSecret.UnprotectForConnection(protector, tenantId, source.Id, moved.ProtectedVerifierSecret); }
         catch (CryptographicException) { return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_SECRET_UNREADABLE", "Tanımın şifresi okunamadı; taşınamaz.", 422); }
@@ -333,10 +335,9 @@ public sealed class InstantNotificationService(
 
     // The newest active Hepsiburada definition of another Hepsiburada connection of the store that does not receive (not
     // active): one a test connection was given, that Hepsiburada may have been asked to set up for the live store.
-    private async Task<(PlatformConnection Source, WebhookSubscription Subscription)?> AdoptableDefinitionAsync(PlatformConnection connection, bool tracked, CancellationToken cancellationToken)
+    private async Task<(PlatformConnection Source, WebhookSubscription Subscription)?> AdoptableDefinitionAsync(PlatformConnection connection, CancellationToken cancellationToken)
     {
-        var subscriptions = db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.ConnectionId != connection.Id && x.Status == "ACTIVE" && x.ExternalSubscriptionId == ManualRegistration);
-        var found = await (from subscription in tracked ? subscriptions : subscriptions.AsNoTracking()
+        var found = await (from subscription in db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == connection.TenantId && x.ConnectionId != connection.Id && x.Status == "ACTIVE" && x.ExternalSubscriptionId == ManualRegistration)
                            join source in db.PlatformConnections.AsNoTracking() on new { subscription.TenantId, subscription.ConnectionId } equals new { source.TenantId, ConnectionId = source.Id }
                            where source.PlatformCode == "HEPSIBURADA" && source.Status != "ACTIVE" && source.Status != "VERIFIED" && source.Status != "DELETED"
                            orderby subscription.Id descending
