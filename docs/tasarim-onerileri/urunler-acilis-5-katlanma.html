@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ürünler Açılışı · Kart Katlanması</title>
+<!-- Opening-animation proposal for the Ürünler page: the live page box for box (side menu, top bar, four summary
+     cards, tabs, filters, product table); only how it comes in on first load differs between the five files. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; --bg: #101014; --side: #17171c; --card: #17171c; --inner: #22222a; --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #8a8a99; --accent: #8b5cf6; --accent-fill: #7c3aed; --good: #46b98f; --bad: #e4636f; --warn: #e2aa4b;
+    --font: Inter, "Segoe UI", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
+  .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+  .side { background: var(--side); border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font-weight: 700; font-size: 16px; }
+  .brand i { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line-strong); display: grid; place-items: center; font-style: italic; font-family: Georgia, serif; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-radius: 10px; color: var(--muted); font-weight: 500; }
+  .nav.on { background: var(--accent-fill); color: #fff; }
+  .nav b { font-size: 11px; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); }
+  .top { height: 60px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 22px; color: var(--muted); }
+  .top b { color: var(--ink); }
+  .top .tools { display: flex; gap: 10px; }
+  .top .tools span { border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; color: var(--ink); font-weight: 600; }
+  .page { padding: 26px 24px 60px; display: grid; gap: 16px; max-width: 1300px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+  .crumb { color: var(--muted); font-size: 12.5px; }
+  h1 { margin: 2px 0 0; font-size: 26px; letter-spacing: -.01em; }
+  .acts { display: flex; gap: 10px; }
+  .btn { border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); border-radius: 9px; padding: 9px 14px; font-weight: 600; font-size: 13px; }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .metric { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: grid; gap: 2px; }
+  .metric small { color: var(--muted); font-size: 13px; }
+  .metric strong { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .metric > span { color: var(--subtle); font-size: 12.5px; }
+  .metric.bad strong { color: var(--bad); } .metric.warn strong { color: var(--warn); } .metric.warn > span { color: var(--accent); }
+  .tabs { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0 16px; display: flex; gap: 22px; }
+  .tab { padding: 14px 2px 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; font-weight: 500; border-bottom: 2px solid transparent; }
+  .tab.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  .tab b { font-size: 11px; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 6px; }
+  .filters { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr auto auto; gap: 14px; align-items: end; }
+  .field small { display: block; color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
+  .field div { border: 1px solid var(--line-strong); border-radius: 9px; padding: 9px 12px; color: var(--muted); }
+  .field div.val { color: var(--ink); font-weight: 600; }
+  .table { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .table-title { padding: 18px 18px 14px; display: flex; justify-content: space-between; align-items: center; }
+  .table-title h2 { margin: 0; font-size: 16px; } .table-title small { color: var(--muted); }
+  .table-head, .row { display: grid; grid-template-columns: minmax(0, 2.6fr) 1fr 1fr 1fr 1.4fr 1fr 1fr; align-items: center; }
+  .table-head { background: var(--inner); color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 12px 18px; }
+  .row { padding: 14px 18px; border-top: 1px solid var(--line); }
+  .prod { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  .thumb { width: 42px; height: 54px; border-radius: 8px; flex: none; background: linear-gradient(160deg, #e9e3df 0 18%, var(--c) 18% 78%, #2b2b33 78%); border: 1px solid var(--line); }
+  .prod b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 600; font-size: 13px; }
+  .prod small { color: var(--muted); font-size: 12px; } .prod small em { font-style: normal; color: var(--ink); font-weight: 700; }
+  .cell { text-align: center; } .cell small { display: block; color: var(--subtle); font-size: 12px; }
+  .cell u { text-decoration: underline dotted; text-underline-offset: 4px; font-weight: 600; }
+  .stock-0 { color: var(--bad); font-weight: 700; }
+  .badges { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 130px; margin: 0 auto; }
+  .badge { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 8px; font-weight: 800; color: #fff; position: relative; }
+  .badge.live::after { content: ''; position: absolute; right: -2px; bottom: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--good); border: 1.5px solid var(--card); }
+  .status { display: flex; align-items: center; gap: 8px; justify-content: center; font-weight: 600; }
+  .status i { width: 14px; height: 14px; border: 2px solid var(--good); border-radius: 50%; }
+  .ops { display: grid; gap: 6px; justify-items: center; } .ops span { border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 12px; font-weight: 600; font-size: 12.5px; } .ops a { color: var(--accent); font-weight: 600; font-size: 12px; }
+  .demo { position: fixed; right: 18px; bottom: 18px; z-index: 50; width: 330px; background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(10px); border: 1px solid var(--line-strong); border-radius: 14px; padding: 14px 16px; display: grid; gap: 10px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .demo h3 { margin: 0; font-size: 14px; } .demo p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .demo nav { display: flex; flex-wrap: wrap; gap: 6px; } .demo nav a { color: var(--muted); text-decoration: none; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; padding: 3px 8px; } .demo nav a.on { color: #fff; background: var(--accent-fill); border-color: var(--accent-fill); }
+  .demo button { justify-self: start; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+  @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .side { display: none; } .metrics { grid-template-columns: repeat(2, 1fr); } .filters { grid-template-columns: 1fr 1fr; } .table-head { display: none; } .row { grid-template-columns: 1fr 1fr; gap: 10px; } .demo { left: 12px; right: 12px; width: auto; } }
+
+      .stage { perspective: 1200px; }
+      .anim { opacity: 0; transform: perspective(900px) rotateX(-62deg) translateY(-8px); transform-origin: 50% 0; animation: fold 760ms cubic-bezier(.2,.9,.25,1.15) forwards; animation-delay: calc(var(--i) * 80ms); backface-visibility: hidden; }
+      .row.anim { transform: perspective(900px) rotateX(-80deg); transform-origin: 50% 0; animation-duration: 620ms; animation-delay: calc(var(--i) * 70ms + 250ms); }
+      @keyframes fold { to { opacity: 1; transform: perspective(900px) rotateX(0) translateY(0); } }
+      .badge { scale: 0; animation: spring 520ms cubic-bezier(.3,1.7,.5,1) forwards; animation-delay: calc(var(--b) * 45ms + 700ms); }
+      @keyframes spring { to { scale: 1; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .anim, .anim *, .page, .row .thumb, .badge { opacity: 1 !important; transform: none !important; translate: none !important; scale: 1 !important; filter: none !important; clip-path: none !important; } .anim::after { display: none !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><i>R</i>Ravencia</div>
+    <div class="nav">Genel Bakış</div><div class="nav on">Ürünler</div><div class="nav">Siparişler <b>10</b></div><div class="nav">İadeler <b>4</b></div>
+    <div class="nav">Faturalar <b>0</b></div><div class="nav">Ürün Soruları <b>0</b></div><div class="nav">Raporlar</div><div class="nav">Entegrasyonlar</div><div class="nav">Eşleştirmeler</div>
+  </aside>
+  <div>
+    <header class="top"><span>Operasyon Merkezi › <b>Ürünler</b></span><span class="tools"><span>🔔</span><span>☀ Açık Tema</span><span>⌕</span></span></header>
+    <div class="stage">
+    <main class="page">
+      <div class="anim head" style="--i:6"><div><div class="crumb">Katalog</div><h1>Ürünler</h1></div><div class="acts"><span class="btn">Maliyet Excel</span><span class="btn">Platformdan Ürün Aktar</span><span class="btn pri">+ Yeni Ürün Ekle</span></div></div>
+      <div class="metrics">
+        <div class="anim metric" style="--i:7"><small>Toplam Ürün</small><strong data-count="964">964</strong><span>katalogdaki ürün kartı</span></div>
+        <div class="anim metric" style="--i:8"><small>Aktif Ürün</small><strong data-count="964">964</strong><span>satışa açık</span></div>
+        <div class="anim metric bad" style="--i:9"><small>Stoksuz Ürün</small><strong data-count="397">397</strong><span>tüm varyantları tükendi</span></div>
+        <div class="anim metric warn" style="--i:10"><small>Düşük Stoklu</small><strong data-count="244">244</strong><span>Ayrıntıları Gör →</span></div>
+      </div>
+      <div class="anim tabs" style="--i:11"><span class="tab on">Tüm Ürünler <b>964</b></span><span class="tab">Satışa Açık <b>964</b></span><span class="tab">Taslak <b>0</b></span><span class="tab">Satışa Kapalı <b>0</b></span></div>
+      <div class="anim filters" style="--i:12">
+        <div class="field"><small>Ürün Ara</small><div>Ürün adı, stok kodu veya barkod ara</div></div>
+        <div class="field"><small>Platform Durumu</small><div class="val">Tüm Platformlar</div></div>
+        <div class="field"><small>Stok Durumu</small><div class="val">Tüm Stoklar</div></div>
+        <div class="field"><small>Sıralama</small><div class="val">Varsayılan</div></div>
+        <span class="btn">Temizle</span><span class="btn pri">Filtrele</span>
+      </div>
+      <section class="anim table" style="--i:13">
+        <div class="table-title"><div><h2>Ürün Kataloğu</h2><small>Toplam 221 ürün</small></div><span class="btn">20 ⌄</span></div>
+        <div class="table-head"><span>Ürün Detayı</span><span class="cell">Varyant</span><span class="cell">Fiyat</span><span class="cell">Stok</span><span class="cell">Platform Durumu</span><span class="cell">Durum</span><span class="cell">İşlemler</span></div>
+        
+      <div class="anim row" style="--i:0">
+        <div class="prod"><span class="thumb" style="--c:#6b4a5e"></span><span><b>Kışlık Yonca Renkli Çiçek Desenli Taşlı Nakış İşlemeli Yırtmaçlı Likralı Kadın Anne Penye Bluz</b><small>Model Kodu: <em>MZ059YNC</em></small></span></div>
+        <div class="cell"><u>1 seçenek</u><small>24 varyant</small></div>
+        <div class="cell"><strong>₺1.099,00</strong></div>
+        <div class="cell stock-0">0<small style="color:var(--bad)">Stoksuz</small></div>
+        <div class="cell"><div class="badges"><span class="badge live" style="background:#f27a1a;--b:0">T</span><span class="badge " style="background:#3a3a44;--b:1">H</span><span class="badge " style="background:#3a3a44;--b:2">n11</span><span class="badge " style="background:#3a3a44;--b:3">P</span><span class="badge " style="background:#3a3a44;--b:4">PTT</span><span class="badge " style="background:#3a3a44;--b:5">S</span></div></div>
+        <div class="status"><i></i>Satışa Açık</div>
+        <div class="ops"><span>İşlemler ⌄</span><a>Düzenle ↗</a></div>
+      </div>
+      <div class="anim row" style="--i:1">
+        <div class="prod"><span class="thumb" style="--c:#5a2338"></span><span><b>Kışlık Yonca Desenli Taşlı Yırtmaçlı Likralı Kadın Anne Penye Bluz</b><small>Model Kodu: <em>MZ054YNC</em></small></span></div>
+        <div class="cell"><u>1 seçenek</u><small>24 varyant</small></div>
+        <div class="cell"><strong>₺1.099,00</strong></div>
+        <div class="cell stock-0">0<small style="color:var(--bad)">Stoksuz</small></div>
+        <div class="cell"><div class="badges"><span class="badge live" style="background:#f27a1a;--b:0">T</span><span class="badge " style="background:#3a3a44;--b:1">H</span><span class="badge " style="background:#3a3a44;--b:2">n11</span><span class="badge " style="background:#3a3a44;--b:3">P</span><span class="badge " style="background:#3a3a44;--b:4">PTT</span><span class="badge " style="background:#3a3a44;--b:5">S</span></div></div>
+        <div class="status"><i></i>Satışa Açık</div>
+        <div class="ops"><span>İşlemler ⌄</span><a>Düzenle ↗</a></div>
+      </div>
+      <div class="anim row" style="--i:2">
+        <div class="prod"><span class="thumb" style="--c:#3d2f4f"></span><span><b>Kışlık Yonca Yaprak Desenli Taşlı Yırtmaçlı Likralı Kadın Anne Penye Bluz</b><small>Model Kodu: <em>MZ052YNC</em></small></span></div>
+        <div class="cell"><u>1 seçenek</u><small>24 varyant</small></div>
+        <div class="cell"><strong>₺1.099,00</strong></div>
+        <div class="cell stock-0">0<small style="color:var(--bad)">Stoksuz</small></div>
+        <div class="cell"><div class="badges"><span class="badge live" style="background:#f27a1a;--b:0">T</span><span class="badge " style="background:#3a3a44;--b:1">H</span><span class="badge " style="background:#3a3a44;--b:2">n11</span><span class="badge " style="background:#3a3a44;--b:3">P</span><span class="badge " style="background:#3a3a44;--b:4">PTT</span><span class="badge " style="background:#3a3a44;--b:5">S</span></div></div>
+        <div class="status"><i></i>Satışa Açık</div>
+        <div class="ops"><span>İşlemler ⌄</span><a>Düzenle ↗</a></div>
+      </div>
+      <div class="anim row" style="--i:3">
+        <div class="prod"><span class="thumb" style="--c:#5d5a3c"></span><span><b>Kaşe Uzun Kemerli Kadın Palto</b><small>Model Kodu: <em>KM1833</em></small></span></div>
+        <div class="cell"><u>1 seçenek</u><small>12 varyant</small></div>
+        <div class="cell"><strong>₺1.599,00</strong></div>
+        <div class="cell ">18<small>adet</small></div>
+        <div class="cell"><div class="badges"><span class="badge live" style="background:#f27a1a;--b:0">T</span><span class="badge " style="background:#3a3a44;--b:1">H</span><span class="badge " style="background:#3a3a44;--b:2">n11</span><span class="badge " style="background:#3a3a44;--b:3">P</span><span class="badge " style="background:#3a3a44;--b:4">PTT</span><span class="badge " style="background:#3a3a44;--b:5">S</span></div></div>
+        <div class="status"><i></i>Satışa Açık</div>
+        <div class="ops"><span>İşlemler ⌄</span><a>Düzenle ↗</a></div>
+      </div>
+      <div class="anim row" style="--i:4">
+        <div class="prod"><span class="thumb" style="--c:#7a6a55"></span><span><b>Yün Karışımlı Düğmeli Kadın Kaban</b><small>Model Kodu: <em>MZ029YD</em></small></span></div>
+        <div class="cell"><u>1 seçenek</u><small>18 varyant</small></div>
+        <div class="cell"><strong>₺899,00</strong></div>
+        <div class="cell ">6<small>adet</small></div>
+        <div class="cell"><div class="badges"><span class="badge live" style="background:#f27a1a;--b:0">T</span><span class="badge " style="background:#3a3a44;--b:1">H</span><span class="badge " style="background:#3a3a44;--b:2">n11</span><span class="badge " style="background:#3a3a44;--b:3">P</span><span class="badge " style="background:#3a3a44;--b:4">PTT</span><span class="badge " style="background:#3a3a44;--b:5">S</span></div></div>
+        <div class="status"><i></i>Satışa Açık</div>
+        <div class="ops"><span>İşlemler ⌄</span><a>Düzenle ↗</a></div>
+      </div>
+      <div class="anim row" style="--i:5">
+        <div class="prod"><span class="thumb" style="--c:#26354d"></span><span><b>Kapüşonlu Su Geçirmez Kadın Yağmurluk</b><small>Model Kodu: <em>MZ025DY</em></small></span></div>
+        <div class="cell"><u>1 seçenek</u><small>20 varyant</small></div>
+        <div class="cell"><strong>₺799,00</strong></div>
+        <div class="cell ">41<small>adet</small></div>
+        <div class="cell"><div class="badges"><span class="badge live" style="background:#f27a1a;--b:0">T</span><span class="badge " style="background:#3a3a44;--b:1">H</span><span class="badge " style="background:#3a3a44;--b:2">n11</span><span class="badge " style="background:#3a3a44;--b:3">P</span><span class="badge " style="background:#3a3a44;--b:4">PTT</span><span class="badge " style="background:#3a3a44;--b:5">S</span></div></div>
+        <div class="status"><i></i>Satışa Açık</div>
+        <div class="ops"><span>İşlemler ⌄</span><a>Düzenle ↗</a></div>
+      </div>
+      </section>
+    </main>
+    </div>
+  </div>
+</div>
+<aside class="demo"><h3>5. Kart Katlanması</h3><p>Özet kartları üstten menteşeli gibi öne katlanarak oturur, tablo satırları defter sayfası gibi açılır, pazaryeri rozetleri yaylanarak belirir. Derinlikli ve oyunbaz.</p><nav><a href="urunler-acilis-1-kademeli.html" class="">1. Kademeli Yükseliş</a><a href="urunler-acilis-2-perde.html" class="">2. Perde Açılışı</a><a href="urunler-acilis-3-netlesme.html" class="">3. Odaktan Netleşme</a><a href="urunler-acilis-4-iskelet.html" class="">4. İskeletten İçeriğe</a><a href="urunler-acilis-5-katlanma.html" class="on">5. Kart Katlanması</a></nav><button type="button">Tekrar Oynat</button></aside>
+<script>
+  const metrics = [...document.querySelectorAll('[data-count]')]
+  function countUp(duration, delay) {
+    metrics.forEach(el => {
+      const target = Number(el.dataset.count); el.textContent = '0'
+      setTimeout(() => { const start = performance.now()
+        requestAnimationFrame(function step(now) { const t = Math.max(0, Math.min(1, (now - start) / duration)); el.textContent = Math.round(target * (1 - Math.pow(1 - t, 3))).toLocaleString('tr-TR'); if (t < 1) requestAnimationFrame(step) }) }, delay)
+    })
+  }
+  function odometer(delay) {
+    metrics.forEach(el => {
+      const digits = String(el.dataset.count).split('')
+      el.innerHTML = '<span class="odo">' + digits.map(() => '<span>' + Array.from({ length: 20 }, (_, i) => '<i>' + (i % 10) + '</i>').join('') + '</span>').join('') + '</span>'
+      const columns = [...el.querySelectorAll('.odo > span')]
+      columns.forEach(c => { c.style.transition = 'none'; c.style.translate = '0 0' })
+      setTimeout(() => columns.forEach((c, i) => { c.style.transition = ''; c.style.transitionDelay = (i * 90) + 'ms'; c.style.translate = '0 -' + (10 + Number(digits[i])) * 1.15 + 'em' }), delay)
+    })
+  }
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  function play() {
+    const root = document.querySelector('.stage'); const copy = root.cloneNode(true); root.replaceWith(copy)
+    metrics.length = 0; metrics.push(...copy.querySelectorAll('[data-count]'))
+    if (reduce) { metrics.forEach(el => el.textContent = Number(el.dataset.count).toLocaleString('tr-TR')); return }
+    countUp(1000, 350)
+  }
+  document.querySelector('.demo button').addEventListener('click', play)
+  if (reduce) metrics.forEach(el => el.textContent = Number(el.dataset.count).toLocaleString('tr-TR')); else { countUp(1000, 350) }</script>
+</body>
+</html>
