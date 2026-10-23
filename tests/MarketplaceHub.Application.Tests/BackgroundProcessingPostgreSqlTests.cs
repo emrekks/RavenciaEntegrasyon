@@ -97,6 +97,70 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
     }
 
     [PostgreSqlFact]
+    public async Task AWebhookWaitsAMomentForTheOrderLockWhileALongerJobTriesOnce()
+    {
+        // Audit 2026-10-24 Q1: a notice arriving in the same millisecond as its sibling waits for the sibling's lock
+        // instead of being deferred 30 s.
+        var connectionId = Guid.CreateVersion7();
+        await using var holderDb = fixture.CreateContext();
+        var holder = await MarketplaceSyncExecutionLock.TryAcquireAsync(holderDb, connectionId, MarketplaceJobTypes.WebhookIngest, CancellationToken.None, "{}");
+        Assert.NotNull(holder);
+        try
+        {
+            await using var waiterDb = fixture.CreateContext();
+            Assert.Null(await MarketplaceSyncExecutionLock.AcquireForJobAsync(waiterDb, connectionId, MarketplaceJobTypes.OrderSync, "{}", fixture.TimeProvider, CancellationToken.None));
+
+            var release = Task.Run(async () => { await Task.Delay(TimeSpan.FromMilliseconds(600)); await holder.DisposeAsync(); });
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            await using var waited = await MarketplaceSyncExecutionLock.AcquireForJobAsync(waiterDb, connectionId, MarketplaceJobTypes.WebhookIngest, "{}", fixture.TimeProvider, CancellationToken.None);
+            await release;
+            Assert.NotNull(waited);
+            Assert.True(started.Elapsed < MarketplaceSyncExecutionLock.ShortJobLockWait, started.Elapsed.ToString());
+        }
+        finally
+        {
+            await holder.DisposeAsync();
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ADeferredJobComesBackSpreadAndWithoutSpendingAnAttempt()
+    {
+        var tenant = NewTenant("bg-deferral");
+        var job = NewJob(tenant.Id, MarketplaceJobTypes.WebhookIngest);
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.Add(job);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+            await db.IntegrationJobs.Where(x => x.Id == job.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AvailableAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+            var lease = await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: job.Id);
+            Assert.NotNull(lease);
+            var before = DateTimeOffset.UtcNow;
+            var busy = MarketplaceSyncExecutionLock.ContentionResult(MarketplaceJobTypes.WebhookIngest, "{}", "webhook", sameTypeRunning: false);
+            Assert.True(await leases.CompleteAsync(job.Id, lease.LeaseToken, busy, CancellationToken.None));
+            var after = DateTimeOffset.UtcNow;
+
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == job.Id);
+            Assert.Equal(JobStatus.RetryScheduled, stored.Status);
+            Assert.Equal(0, stored.AttemptCount);
+            // One second asked, spread over 1-4 s: never the old 30 s, never sooner than asked.
+            Assert.InRange(stored.AvailableAt, before.AddSeconds(1), after.AddSeconds(4));
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task RetentionRemovesGuardsThatGuardNothingAndRetiredRows()
     {
         var now = DateTimeOffset.UtcNow;

@@ -62,7 +62,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // no data sync or marketplace operation may execute while it is passive.
         if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
-        var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken, payloadJson);
+        var syncLock = await MarketplaceSyncExecutionLock.AcquireForJobAsync(db, connectionId.Value, jobType, payloadJson, timeProvider, cancellationToken);
         if (syncLock is null)
         {
             // Scheduled duplicates may coalesce, but another job cannot satisfy
@@ -2779,7 +2779,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             storefrontCursor.Version++;
         }
         var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots),
-            activeStorefronts: TrendyolStorefrontPolicy.Active(readStorefronts, storefrontActivity, now),
+            activeStorefronts: TrendyolStorefrontPolicy.Hot(readStorefronts, storefrontActivity, now),
             readableStorefronts: TrendyolStorefrontPolicy.Readable(readStorefronts, storefrontActivity, now));
         var resetExpiredCursor = false;
         var completed = false;
@@ -2888,32 +2888,43 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);
         }
 
-        // A full scan already read every storefront; an incremental run probes at most one
-        // inactive storefront over the time since its last probe.
-        if (completed && state.Mode == OrderSyncMode.Incremental && !cancellationToken.IsCancellationRequested
-            && TrendyolStorefrontPolicy.NextProbe(readStorefronts, storefrontActivity, now) is { } probe)
+        // A full scan already read every storefront. An incremental run read only the hot storefronts above; it
+        // then reads at most one quiet active storefront (TrendyolStorefrontPolicy.DueQuiet) and probes at most one
+        // inactive storefront, each over the time since its last read, so the orders lock is not held waiting for
+        // stream tokens (audit 2026-10-24 Q2).
+        if (completed && state.Mode == OrderSyncMode.Incremental && !cancellationToken.IsCancellationRequested)
         {
-            var previous = storefrontActivity.GetValueOrDefault(probe);
-            var probeStart = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
+            var separateReads = TrendyolStorefrontPolicy.DueQuiet(readStorefronts, storefrontActivity, now).ToList();
+            if (TrendyolStorefrontPolicy.NextProbe(readStorefronts, storefrontActivity, now) is { } probe) separateReads.Add(probe);
+            foreach (var storefront in separateReads)
+            {
+                if (cancellationToken.IsCancellationRequested || !await ReadStorefrontSinceLastRead(storefront)) break;
+            }
+        }
+        return true;
+
+        // False when the read failed for another reason than a rejected storefront: it is retried on the next run
+        // (its last read stays where it was) and the completed read above stays saved.
+        async Task<bool> ReadStorefrontSinceLastRead(string storefront)
+        {
+            var previous = storefrontActivity.GetValueOrDefault(storefront);
+            var start = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
             var received = false;
             string? nextCursor = null;
             do
             {
                 TrackRequest();
-                var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync-probe:{probe}:{nextCursor ?? "0"}"), new(probeStart, now, probe), new(nextCursor, 200), cancellationToken);
+                var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync-probe:{storefront}:{nextCursor ?? "0"}"), new(start, now, storefront), new(nextCursor, 200), cancellationToken);
                 if (!page.IsSuccess)
                 {
                     if (nextCursor is null && page.Error?.HttpStatus is 400 or 404)
                     {
-                        NoteStorefront(probe, TrendyolStorefrontPolicy.Rejected(probe, previous, now));
+                        NoteStorefront(storefront, TrendyolStorefrontPolicy.Rejected(storefront, previous, now));
                         await db.SaveChangesAsync(cancellationToken);
+                        return true;
                     }
-                    else
-                    {
-                        // The probe is retried on the next run; the completed read above stays saved.
-                        TrackResultFailure(page.Error);
-                    }
-                    return true;
+                    TrackResultFailure(page.Error);
+                    return false;
                 }
                 foreach (var _ in page.Value!.Items) TrackReceived();
                 foreach (var issue in page.Value.Issues ?? [])
@@ -2922,10 +2933,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 received |= page.Value.Items.Count > 0;
                 nextCursor = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor) ? page.Value.NextCursor : null;
             } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
-            NoteStorefront(probe, TrendyolStorefrontPolicy.Read(previous, now, received));
+            if (cancellationToken.IsCancellationRequested) return false;
+            NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(previous, now, received));
             await db.SaveChangesAsync(cancellationToken);
+            return true;
         }
-        return true;
     }
 
     // What the panel knows about an order, so a targeted read asks its storefront and date window first.
