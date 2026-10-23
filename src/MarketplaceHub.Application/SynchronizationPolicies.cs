@@ -195,6 +195,24 @@ public static class HepsiburadaOrderHistoryPolicy
 
 public enum MarketplaceSyncHealth { Healthy, Delayed, Degraded, Offline }
 
+// The answer deadline of a return. A marketplace's own deadline is taken as sent. An estimated one (Trendyol sends
+// none: its claims are accepted automatically 48 hours after they start waiting for the seller, counted here from the
+// claim's last change) is not moved later while the claim keeps its status: Trendyol's last-change time also moves
+// for a note or a cargo update, which does not restart the 48 hours, so a later estimate would show more time than
+// is left. A new status takes the new estimate.
+public static class ReturnActionDuePolicy
+{
+    public static (DateTimeOffset? DueAt, bool Estimated) Next(
+        DateTimeOffset? currentDueAt, bool currentEstimated, string currentRawStatus,
+        DateTimeOffset? remoteDueAt, bool remoteEstimated, string remoteRawStatus)
+    {
+        if (remoteEstimated && currentEstimated && currentDueAt is { } kept && remoteDueAt is { } estimate && estimate > kept
+            && string.Equals(currentRawStatus, remoteRawStatus, StringComparison.Ordinal))
+            return (kept, true);
+        return (remoteDueAt, remoteEstimated);
+    }
+}
+
 public static class HepsiburadaReturnHistoryPolicy
 {
     public static readonly TimeSpan InitialLookback = TimeSpan.FromDays(30);

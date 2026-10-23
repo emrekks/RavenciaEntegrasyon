@@ -10668,6 +10668,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         else
         {
             var claimChanged = false;
+            var previousRawStatus = claim.RawStatus;
             var remoteIsFresh = remote.LastModifiedAt >= claim.LastRemoteModifiedAt;
             var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal) && !allLinesKnown;
             if (remoteIsFresh && !partialLineDecisionPending && (lineStatusOverrides || ReturnClaimStateMachine.CanTransition(claim.Status, target)))
@@ -10701,7 +10702,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (!string.Equals(claim.ReasonCode, remote.ReasonCode, StringComparison.Ordinal)) { claim.ReasonCode = remote.ReasonCode; claimChanged = true; }
                 if (!string.Equals(claim.ReasonText, remote.ReasonText, StringComparison.Ordinal)) { claim.ReasonText = remote.ReasonText; claimChanged = true; }
-                if (claim.ActionDueAt != remote.ActionDueAt || claim.ActionDueAtEstimated != remote.ActionDueAtEstimated) { claim.ActionDueAt = remote.ActionDueAt; claim.ActionDueAtEstimated = remote.ActionDueAtEstimated; claimChanged = true; }
+                var (dueAt, dueEstimated) = ReturnActionDuePolicy.Next(claim.ActionDueAt, claim.ActionDueAtEstimated, previousRawStatus, remote.ActionDueAt, remote.ActionDueAtEstimated, remote.RawStatus);
+                if (claim.ActionDueAt != dueAt || claim.ActionDueAtEstimated != dueEstimated) { claim.ActionDueAt = dueAt; claim.ActionDueAtEstimated = dueEstimated; claimChanged = true; }
             }
 
             // Cargo may be returned by a historical/status replay with an old
