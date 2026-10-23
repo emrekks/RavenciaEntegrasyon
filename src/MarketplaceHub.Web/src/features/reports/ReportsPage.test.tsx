@@ -103,10 +103,16 @@ describe('ReportsPage', () => {
   it('asks for the last 30 days and shows the summary on one screen', async () => {
     const page = await open()
     expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
+    // Net revenue leads with its chart; six KPI tiles follow, each with its visual.
+    const hero = page.querySelector('.reports-hero')!
+    expect(hero.textContent).toContain('Net Ciro')
+    expect(hero.textContent).toContain('+%25')
+    expect(hero.querySelector('.reports-chart')).not.toBeNull()
     const kpis = page.querySelector('.reports-kpis')!
-    expect(kpis.textContent).toContain('Net Ciro')
-    expect(kpis.textContent).toContain('+%25')
-    expect(kpis.querySelectorAll('[role="tooltip"]')).toHaveLength(8)
+    expect(kpis.querySelectorAll('[role="tooltip"]')).toHaveLength(6)
+    expect(kpis.querySelectorAll('.reports-kpi-visual > *')).toHaveLength(6)
+    expect(page.querySelector('.reports-share-list')?.textContent).toContain('Trendyol')
+    expect(page.querySelectorAll('.reports-metric-visual')).toHaveLength(6)
     expect(page.querySelector('.reports-kpi.is-warn')?.textContent).toContain('İptal Oranı')
     expect(page.querySelector('.reports-chart')).not.toBeNull()
     expect(page.querySelector('.reports-flow')?.textContent).toContain('Tahmini Net Kâr')

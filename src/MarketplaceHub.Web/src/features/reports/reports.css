@@ -122,7 +122,65 @@
 .app-shell.stitch-shell main .reports-page .reports-subtabs { margin-bottom: -4px; }
 /* A KPI's course over the period, beside its total. */
 /* The line runs under the KPI's foot across the card, so it never takes room from the total. */
-.app-shell.stitch-shell main .reports-page .reports-spark { order: 9; display: block; width: 100%; height: 26px; margin-top: 6px; overflow: visible; }
+.app-shell.stitch-shell main .reports-page .reports-spark { display: block; width: 100%; height: 30px; overflow: visible; }
+
+/* Genel Bakış dashboard: one 12-column grid. Net revenue with its chart takes eight columns, the platform donut four;
+   the six KPI tiles share a row and each keeps its visual on the same line (30 px) as its neighbours'. */
+.app-shell.stitch-shell main .reports-page .reports-dash-top { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.app-shell.stitch-shell main .reports-page .reports-hero > header { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; align-items: start; gap: 12px 24px; }
+.app-shell.stitch-shell main .reports-page .reports-hero-figure { display: grid; gap: 2px; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-hero-figure small { color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-hero-figure > strong { color: var(--rv-color-ink); font-size: 30px; font-weight: 650; line-height: 1.15; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-hero-parts { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0; padding-top: 4px; }
+.app-shell.stitch-shell main .reports-page .reports-hero-parts > div { display: grid; gap: 1px; min-width: 0; padding-left: 12px; border-left: 2px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-hero-parts dt { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-hero-parts dd { margin: 0; color: var(--rv-color-ink); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-hero-parts dd.is-minus { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-hero-parts .reports-delta { font-size: 11.5px; }
+.app-shell.stitch-shell main .reports-page .reports-hero .reports-panel-actions { justify-content: flex-end; }
+.app-shell.stitch-shell main .reports-page .reports-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.app-shell.stitch-shell main .reports-page .reports-kpi { grid-template-rows: auto auto auto 1fr; }
+.app-shell.stitch-shell main .reports-page .reports-kpi-visual { display: flex; align-items: flex-end; min-height: 30px; margin-top: 10px; }
+.app-shell.stitch-shell main .reports-page .reports-meter-wrap { display: grid; gap: 4px; width: 100%; }
+.app-shell.stitch-shell main .reports-page .reports-meter { position: relative; display: block; height: 8px; background: var(--rv-color-surface-soft); border-radius: 4px; }
+.app-shell.stitch-shell main .reports-page .reports-meter > span { position: absolute; inset: 0 auto 0 0; min-width: 3px; background: var(--rv-color-info); border-radius: 4px; }
+.app-shell.stitch-shell main .reports-page .reports-meter.is-bad > span { background: color-mix(in srgb, var(--rv-color-danger) 75%, transparent); }
+.app-shell.stitch-shell main .reports-page .reports-meter.is-warn > span { background: var(--rv-color-warning); }
+.app-shell.stitch-shell main .reports-page .reports-meter > i { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--rv-color-ink); border-radius: 1px; opacity: .7; }
+.app-shell.stitch-shell main .reports-page .reports-meter-wrap > small { display: flex; justify-content: space-between; gap: 8px; color: var(--rv-color-subtle); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+/* Platform donut beside its list; in a narrow panel the donut goes above the list, so names are not cut. */
+.app-shell.stitch-shell main .reports-page .reports-dash-top > .reports-list { container-type: inline-size; }
+.app-shell.stitch-shell main .reports-page .reports-share { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 16px; }
+@container (max-width: 360px) {
+  .app-shell.stitch-shell main .reports-page .reports-share { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .app-shell.stitch-shell main .reports-page .reports-share-list { width: 100%; }
+}
+.app-shell.stitch-shell main .reports-page .reports-share .reports-donut { width: 120px; height: 120px; }
+.app-shell.stitch-shell main .reports-page .reports-share-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-share-list li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; grid-template-areas: 'dot name share' 'dot name amount'; align-items: center; column-gap: 8px; font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-share-list i { grid-area: dot; width: 10px; height: 10px; border-radius: 3px; }
+.app-shell.stitch-shell main .reports-page .reports-share-list span { grid-area: name; overflow: hidden; color: var(--rv-color-ink); text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-share-list b { grid-area: share; color: var(--rv-color-ink); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.app-shell.stitch-shell main .reports-page .reports-share-list small { grid-area: amount; color: var(--rv-color-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: right; }
+/* Area cards: header, a 76 px visual, then the figures — the same rows in every card. */
+.app-shell.stitch-shell main .reports-page .reports-metric { grid-template-rows: auto 76px 1fr; }
+.app-shell.stitch-shell main .reports-page .reports-metric-visual { display: grid; align-content: center; min-width: 0; padding: 10px 12px; background: var(--rv-color-surface-soft); border-radius: 10px; }
+.app-shell.stitch-shell main .reports-page .reports-metric-visual .reports-empty { padding: 0; font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-stack { display: grid; gap: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-stack-bar { display: flex; gap: 2px; height: 12px; overflow: hidden; border-radius: 6px; }
+.app-shell.stitch-shell main .reports-page .reports-stack-bar i { min-width: 3px; }
+.app-shell.stitch-shell main .reports-page .reports-stack ul { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; color: var(--rv-color-muted); font-size: 11.5px; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-stack li { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-stack li i { width: 8px; height: 8px; border-radius: 2px; }
+.app-shell.stitch-shell main .reports-page .reports-stack li b { color: var(--rv-color-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-minibars { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-minibars li { display: grid; grid-template-columns: minmax(0, 1fr) 72px 34px; align-items: center; gap: 8px; font-size: 11.5px; }
+.app-shell.stitch-shell main .reports-page .reports-minibars li > span:first-child { overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-minibar { height: 6px; background: var(--rv-color-surface); border-radius: 3px; }
+.app-shell.stitch-shell main .reports-page .reports-minibar i { display: block; height: 100%; background: var(--rv-color-info); border-radius: 3px; }
+.app-shell.stitch-shell main .reports-page .reports-minibars b { color: var(--rv-color-ink); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.app-shell.stitch-shell main .reports-page .reports-minibars li.is-unknown :is(span, b) { color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .reports-page .reports-minibars li.is-unknown .reports-minibar i { background: var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .reports-page .reports-spark-line { fill: none; stroke: var(--rv-color-info); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .app-shell.stitch-shell main .reports-page .reports-spark-area { fill: color-mix(in srgb, var(--rv-color-info) 16%, transparent); stroke: none; }
 .app-shell.stitch-shell main .reports-page .reports-spark.is-bad .reports-spark-line { stroke: var(--rv-color-danger); }
@@ -371,9 +429,13 @@
 
 @media (max-width: 1280px) {
   .app-shell.stitch-shell main .reports-page :is(.reports-metrics, .reports-lists) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main .reports-page .reports-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main .reports-page .reports-hero > header { grid-template-columns: minmax(0, 1fr) auto; }
+  .app-shell.stitch-shell main .reports-page .reports-hero-parts { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (max-width: 1024px) {
   .app-shell.stitch-shell main .reports-page .reports-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main .reports-page .reports-dash-top { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .reports-page .reports-grid,
   .app-shell.stitch-shell main .reports-page .reports-split,
   .app-shell.stitch-shell main .reports-page .reports-summary-row { grid-template-columns: minmax(0, 1fr); }
@@ -382,6 +444,10 @@
 }
 @media (max-width: 640px) {
   .app-shell.stitch-shell main .reports-page .reports-map-head { padding: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-hero > header { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .reports-page .reports-hero .reports-panel-actions { justify-content: flex-start; }
+  .app-shell.stitch-shell main .reports-page .reports-hero-figure > strong { font-size: 24px; }
+  .app-shell.stitch-shell main .reports-page .reports-share .reports-donut { width: 96px; height: 96px; }
 }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reports-page :is(.reports-metrics, .reports-lists, .reports-lists.is-pairs) { grid-template-columns: minmax(0, 1fr); }

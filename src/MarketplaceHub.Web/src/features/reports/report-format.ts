@@ -63,6 +63,10 @@ export const unknownLabel = 'Bilinmiyor'
 const platformNames: Record<string, string> = { TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', N11: 'n11', SHOPIFY: 'Shopify', PAZARAMA: 'Pazarama', PTTAVM: 'PTT AVM' }
 export function platformName(code: string) { return platformNames[code.toUpperCase()] ?? code }
 
+// Each platform's own colour, on the sales map and the overview's charts alike.
+const platformColors: Record<string, string> = { TRENDYOL: '#f27a1a', HEPSIBURADA: '#f5b301', SHOPIFY: '#5e8e3e', N11: '#7c5cff', PAZARAMA: '#2f9bd8', PTTAVM: '#1f3a8a' }
+export function platformColor(code: string) { return platformColors[code.toUpperCase()] ?? '#8a8f98' }
+
 const number = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 })
 const whole = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 })
 const money = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 2, minimumFractionDigits: 2 })

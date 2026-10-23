@@ -7,7 +7,7 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import {
-  change, downloadCsv, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, moneyOrMissing, platformName, reportQuery, sortRows, toCsv, unknownLabel,
+  change, downloadCsv, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow, type ReportTimePoint
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
@@ -144,49 +144,92 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
     items={items.map(item => ({ value: item.value, label: tabLabel(item.icon, item.label), count: item.count, countTone: item.warn ? 'warn' : undefined }))} />
 }
 
-function Kpis({ data }: { data: ReportSales }) {
+// The period's headline: net revenue large, its parts beside it and its course over the period (the previous period
+// dashed behind it), with the measure the chart draws chosen in its corner.
+function RevenueHero({ data }: { data: ReportSales }) {
+  const [metric, setMetric] = useState<Metric>('netRevenue')
+  const [showPrevious, setShowPrevious] = useState(true)
   const now = data.summary
   const before = data.previousSummary
   const noAmount = now.ordersWithAmount === 0
+  return <section className="reports-panel reports-hero" aria-label="Net ciro ve dönem grafiği">
+    <header>
+      <div className="reports-hero-figure">
+        <span className="reports-kpi-head"><small>Net Ciro</small><InfoTip label="Net Ciro" text="Satış tutarından iade edilen tutar düşülür; Genel Bakış ile aynı kural." /></span>
+        <strong>{noAmount ? 'Tutar yok' : formatTl(now.netRevenue)}</strong>
+        <span className="reports-kpi-foot"><Delta delta={noAmount ? null : change(now.netRevenue, before.netRevenue)} /><span>Önceki dönem {before.ordersWithAmount > 0 ? formatTl(before.netRevenue) : '—'}</span></span>
+      </div>
+      <dl className="reports-hero-parts">
+        <div><dt>Satış Tutarı</dt><dd>{noAmount ? 'Tutar yok' : formatTl(now.grossSales)}</dd><Delta delta={noAmount ? null : change(now.grossSales, before.grossSales)} /></div>
+        <div><dt>İade Edilen</dt><dd className="is-minus">{noAmount ? 'Tutar yok' : `− ${formatTl(now.returnedAmount)}`}</dd><Delta delta={noAmount ? null : change(now.returnedAmount, before.returnedAmount)} invert /></div>
+      </dl>
+      <div className="reports-panel-actions">
+        <select aria-label="Grafik ölçüsü" value={metric} onChange={event => setMetric(event.target.value as Metric)}>{(Object.keys(metricLabels) as Metric[]).map(key => <option key={key} value={key}>{metricLabels[key]}</option>)}</select>
+        <label className="reports-toggle"><input type="checkbox" checked={showPrevious} onChange={event => setShowPrevious(event.target.checked)} /><span>Önceki Dönem</span></label>
+      </div>
+    </header>
+    <TrendChart points={data.timeSeries} previous={data.previousTimeSeries} metric={metric} showPrevious={showPrevious} granularity={data.granularity} />
+  </section>
+}
+
+// Six tiles of one height: the figure, its change, and one visual on the same line in each — the course over the
+// period for counts and amounts, a scale for rates (the cancel rate's with its warning line).
+function Kpis({ data }: { data: ReportSales }) {
+  const now = data.summary
+  const before = data.previousSummary
   const series = (metric: Metric) => data.timeSeries.map(point => point[metric])
+  const basket = data.timeSeries.map(point => point.orders > 0 ? point.netRevenue / point.orders : 0)
+  const warning = data.cancellations.warningRate
   return <div className="reports-kpis">
-    <Kpi label="Net Ciro" value={noAmount ? 'Tutar yok' : formatTl(now.netRevenue)} delta={noAmount ? null : change(now.netRevenue, before.netRevenue)} hint="İadeler düşülmüş"
-      info="Satış tutarından iade edilen tutar düşülür; Genel Bakış ile aynı kural." trend={noAmount ? undefined : series('netRevenue')} />
-    <Kpi label="Satış Tutarı" value={noAmount ? 'Tutar yok' : formatTl(now.grossSales)} delta={noAmount ? null : change(now.grossSales, before.grossSales)} hint="İade öncesi"
-      info="Müşterinin ödediği tutar; iptal edilen paketler hariç, iadeler düşülmeden." />
-    <Kpi label="Sipariş" value={formatCount(now.orders)} delta={change(now.orders, before.orders)} hint="İptaller hariç, iadeler dahil"
-      info="İptal edilmeyen siparişler; tamamı iade edilenler dahil." trend={series('orders')} />
-    <Kpi label="Satılan Adet" value={formatNumber(now.soldQuantity)} delta={change(now.soldQuantity, before.soldQuantity)} hint={`${formatNumber(now.keptQuantity)} adet elde kaldı`}
-      info="İptal edilmeyen siparişlerde sipariş edilen − iptal edilen adet; elde kalan, iade edilmeyen adettir." trend={series('soldQuantity')} />
-    <Kpi label="Ortalama Sipariş" value={formatTl(now.averageOrderValue)} delta={change(now.averageOrderValue, before.averageOrderValue)} hint="Tutarı olan siparişler"
-      info="Satış tutarı / tutarı olan sipariş sayısı; tutar göndermeyen siparişler paydaya girmez." />
-    <Kpi label="İade Oranı" value={formatPercent(now.returnRate)} delta={change(now.returnRate, before.returnRate, 'rate')} invert hint={`${formatNumber(now.returnedQuantity)} adet iade`}
-      info="İade adedi / satılan adet; reddedilen ve iptal edilen iade talepleri hariç." />
+    <Kpi label="Sipariş" value={formatCount(now.orders)} delta={change(now.orders, before.orders)} hint="İptaller hariç"
+      info="İptal edilmeyen siparişler; tamamı iade edilenler dahil." visual={<Sparkline values={series('orders')} label="Sipariş dönem içinde" />} />
+    <Kpi label="Satılan Adet" value={formatNumber(now.soldQuantity)} delta={change(now.soldQuantity, before.soldQuantity)} hint={`${formatNumber(now.keptQuantity)} elde kaldı`}
+      info="İptal edilmeyen siparişlerde sipariş edilen − iptal edilen adet; elde kalan, iade edilmeyen adettir." visual={<Sparkline values={series('soldQuantity')} label="Satılan adet dönem içinde" />} />
+    <Kpi label="Ortalama Sipariş" value={formatTl(now.averageOrderValue)} delta={change(now.averageOrderValue, before.averageOrderValue)} hint="Tutarı olanlar"
+      info="Satış tutarı / tutarı olan sipariş sayısı; tutar göndermeyen siparişler paydaya girmez. Çizgi, her dilimde net ciro / sipariştir." visual={<Sparkline values={basket} label="Sipariş başına net ciro dönem içinde" />} />
+    <Kpi label="İade Oranı" value={formatPercent(now.returnRate)} delta={change(now.returnRate, before.returnRate, 'rate')} invert hint={`${formatNumber(now.returnedQuantity)} adet`}
+      info="İade adedi / satılan adet; reddedilen ve iptal edilen iade talepleri hariç." visual={<Meter label="İade oranı" value={now.returnRate} scale={Math.max(0.2, (now.returnRate ?? 0) * 1.4)} tone="bad" />} />
     <Kpi label="İptal Oranı" value={formatPercent(now.cancelRate)} delta={change(now.cancelRate, before.cancelRate, 'rate')} invert hint={`${formatCount(now.cancelledOrders)} sipariş`}
-      warn={(now.cancelRate ?? 0) > data.cancellations.warningRate} trend={series('cancelledOrders')} trendTone="bad"
-      info={`İptal edilen sipariş / (sipariş + iptal edilen sipariş); uyarı eşiği ${formatPercent(data.cancellations.warningRate)}.`} />
-    <Kpi label="Tahmini Komisyon" value={data.commission.coveredRevenue > 0 ? formatTl(data.commission.estimatedCommission) : '—'} hint={`Kapsam ${formatPercent(data.commission.coverage)}`}
-      info="Siparişte gelen komisyon, yoksa yüklenen tarifedeki bant; iade edilmeyen adetler için. Kesinleşmiş değildir; kapsam, komisyonu bilinen cironun payıdır." />
+      warn={(now.cancelRate ?? 0) > warning} info={`İptal edilen sipariş / (sipariş + iptal edilen sipariş); uyarı eşiği ${formatPercent(warning)}.`}
+      visual={<Meter label="İptal oranı" value={now.cancelRate} scale={Math.max(warning * 2.5, (now.cancelRate ?? 0) * 1.4)} marker={warning} markerLabel={`Eşik ${formatPercent(warning)}`} tone={(now.cancelRate ?? 0) > warning ? 'warn' : 'bad'} />} />
+    <Kpi label="Tahmini Komisyon" value={data.commission.coveredRevenue > 0 ? formatTl(data.commission.estimatedCommission) : '—'} hint={`Oran ${formatPercent(data.commission.effectiveRate)}`}
+      info="Siparişte gelen komisyon, yoksa yüklenen tarifedeki bant; iade edilmeyen adetler için. Kesinleşmiş değildir; çubuk, komisyonu bilinen cironun payıdır (kapsam)."
+      visual={<Meter label="Komisyon kapsamı" value={data.commission.coverage} scale={1} caption={`Kapsam ${formatPercent(data.commission.coverage)}`} />} />
   </div>
 }
 
-// A change is good or bad by its direction; for returns and cancellations, up is bad. The "?" button explains the
-// formula on hover and on keyboard focus.
-function Kpi({ label, value, delta, hint, info, invert = false, warn = false, trend, trendTone }: { label: string; value: string; delta?: Change | null; hint?: string; info: string; invert?: boolean; warn?: boolean; trend?: number[]; trendTone?: 'bad' }) {
-  const tone = !delta || delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
+// A change is good or bad by its direction; for returns and cancellations, up is bad.
+function Delta({ delta, invert = false }: { delta: Change | null | undefined; invert?: boolean }) {
+  if (!delta) return <em className="reports-delta is-flat" title="Önceki dönemde veri yok">—</em>
+  const tone = delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
+  return <em className={`reports-delta is-${tone}`} title="Önceki döneme göre">{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
+}
+
+// The "?" button explains the formula on hover and on keyboard focus.
+function Kpi({ label, value, delta, hint, info, invert = false, warn = false, visual }: { label: string; value: string; delta?: Change | null; hint?: string; info: string; invert?: boolean; warn?: boolean; visual?: ReactNode }) {
   return <article className={`reports-kpi${warn ? ' is-warn' : ''}`}>
     <span className="reports-kpi-head"><small>{label}</small><InfoTip label={label} text={info} /></span>
     <strong>{value}</strong>
-    {trend && trend.length > 1 && <Sparkline values={trend} tone={trendTone} label={`${label} dönem içinde`} />}
-    <span className="reports-kpi-foot">
-      {delta ? <em className={`reports-delta is-${tone}`} title="Önceki döneme göre">{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em> : <em className="reports-delta is-flat" title="Önceki dönemde veri yok">—</em>}
-      {hint && <span>{hint}</span>}
-    </span>
+    <span className="reports-kpi-foot"><Delta delta={delta} invert={invert} />{hint && <span>{hint}</span>}</span>
+    <span className="reports-kpi-visual">{visual}</span>
   </article>
+}
+
+// A rate on a scale from zero; the marker (a warning line) and the scale's end written under it.
+function Meter({ label, value, scale, marker, markerLabel, caption, tone }: { label: string; value: number | null; scale: number; marker?: number; markerLabel?: string; caption?: string; tone?: 'bad' | 'warn' }) {
+  const at = (rate: number) => `${Math.max(0, Math.min(100, rate / scale * 100))}%`
+  return <span className="reports-meter-wrap">
+    <span className={`reports-meter${tone ? ` is-${tone}` : ''}`} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={Math.round(scale * 100)} aria-valuenow={Math.round((value ?? 0) * 100)}>
+      <span style={{ width: at(value ?? 0) }} />
+      {marker !== undefined && <i style={{ left: at(marker) }} aria-hidden="true" />}
+    </span>
+    <small><span>{caption ?? '%0'}</span>{markerLabel ? <span>{markerLabel}</span> : !caption && <span>{formatPercent(scale, 0)}</span>}</small>
+  </span>
 }
 
 // The period's buckets as a small line under a KPI, so its course shows beside its total.
 function Sparkline({ values, tone, label }: { values: number[]; tone?: 'bad'; label: string }) {
+  if (values.length < 2) return null
   const width = 96, height = 28
   const max = Math.max(...values), min = Math.min(0, ...values)
   const x = (index: number) => index * width / (values.length - 1)
@@ -300,16 +343,16 @@ function TrendChart({ points, previous, metric, showPrevious, granularity }: { p
 
 type OpenDetail = (key: DetailKey) => void
 
-// Genel Bakış: the KPIs with their trend, the period chart and platform shares, the money flow and its cost lines,
-// and a compact card per area whose "Tümünü Gör" moves to that area's tab.
+// Genel Bakış as a dashboard on one grid: net revenue with its chart and the platforms' shares, six KPI tiles, the money
+// flow and its cost lines, and a card per area (a visual, then its figures) whose "Tümünü Gör" moves to its tab.
 function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   return <div className="reports-summary">
-    <Kpis data={data} />
-    <DataNotes notes={data.dataNotes} />
-    <div className="reports-summary-row">
-      <TrendPanel data={data} />
+    <div className="reports-dash-top">
+      <RevenueHero data={data} />
       <PlatformShare data={data} onMore={onMore} />
     </div>
+    <Kpis data={data} />
+    <DataNotes notes={data.dataNotes} />
     <div className="reports-summary-row">
       <ProfitFlow data={data} onMore={onMore} />
       <CostLines data={data} onMore={onMore} />
@@ -603,21 +646,13 @@ function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
   </Panel>
 }
 
-function TrendPanel({ data }: { data: ReportSales }) {
-  const [metric, setMetric] = useState<Metric>('netRevenue')
-  const [showPrevious, setShowPrevious] = useState(true)
-  return <Panel className="reports-trend" title="Dönem Grafiği" description={`${data.granularity === 'day' ? 'Günlük' : data.granularity === 'week' ? 'Haftalık' : 'Aylık'} toplamlar; kesikli çizgi önceki dönemin aynı sıradaki dilimi.`}
-    actions={<><select aria-label="Grafik ölçüsü" value={metric} onChange={event => setMetric(event.target.value as Metric)}>{(Object.keys(metricLabels) as Metric[]).map(key => <option key={key} value={key}>{metricLabels[key]}</option>)}</select>
-      <label className="reports-toggle"><input type="checkbox" checked={showPrevious} onChange={event => setShowPrevious(event.target.checked)} /><span>Önceki Dönem</span></label></>}>
-    <TrendChart points={data.timeSeries} previous={data.previousTimeSeries} metric={metric} showPrevious={showPrevious} granularity={data.granularity} />
-  </Panel>
-}
-
 type MetricRow = { label: string; value: string; hint?: string; warn?: boolean; muted?: boolean }
+type Segment = { key: string; label: string; value: number; color: string }
 
-// A compact label/value card for one area; its full tables open in the drawer.
-function MetricCard({ title, rows, onMore }: { title: string; rows: MetricRow[]; onMore: () => void }) {
+// One area's card: a visual of fixed height first, then its figures in one aligned column, so the six cards line up.
+function MetricCard({ title, visual, rows, onMore }: { title: string; visual: ReactNode; rows: MetricRow[]; onMore: () => void }) {
   return <Panel title={title} actions={<MoreButton title={title} onClick={onMore} />} className="reports-metric">
+    <div className="reports-metric-visual">{visual}</div>
     <dl>{rows.map(row => <div key={row.label} className={row.warn ? 'is-warn' : row.muted ? 'is-unknown' : undefined}>
       <dt>{row.label}{row.hint && <small>{row.hint}</small>}</dt>
       <dd>{row.value}</dd>
@@ -625,38 +660,68 @@ function MetricCard({ title, rows, onMore }: { title: string; rows: MetricRow[];
   </Panel>
 }
 
+// Parts of a whole as one bar, each part in its colour, with the parts' names and shares under it.
+function StackBar({ label, segments, empty = 'Bu dönemde kayıt yok.' }: { label: string; segments: Segment[]; empty?: string }) {
+  const parts = segments.filter(segment => segment.value > 0)
+  const total = parts.reduce((sum, segment) => sum + segment.value, 0)
+  if (total <= 0) return <p className="reports-empty">{empty}</p>
+  return <div className="reports-stack" role="img" aria-label={`${label}: ${parts.map(part => `${part.label} ${formatPercent(part.value / total)}`).join(', ')}`}>
+    <span className="reports-stack-bar" aria-hidden="true">{parts.map(part => <i key={part.key} style={{ flexGrow: part.value, background: part.color }} />)}</span>
+    <ul aria-hidden="true">{parts.map(part => <li key={part.key}><i style={{ background: part.color }} />{part.label}<b>{formatPercent(part.value / total, 0)}</b></li>)}</ul>
+  </div>
+}
+
+// The first few of a ranking as short bars, for a card's visual.
+function MiniBars({ label, items, format }: { label: string; items: BarItem[]; format: (value: number) => string }) {
+  const top = items.slice(0, 3)
+  const max = Math.max(0, ...top.map(item => item.value))
+  if (max <= 0) return <p className="reports-empty">Bu dönemde kayıt yok.</p>
+  return <ul className="reports-minibars" aria-label={label}>{top.map(item => <li key={item.key} className={item.muted ? 'is-unknown' : undefined}>
+    <span title={item.label}>{item.label}</span>
+    <span className="reports-minibar" aria-hidden="true"><i style={{ width: `${Math.max(4, item.value / max * 100)}%` }} /></span>
+    <b>{format(item.value)}</b>
+  </li>)}</ul>
+}
+
+const tones = ['var(--rv-color-info)', 'var(--rv-color-primary)', 'var(--rv-color-accent)', 'var(--rv-color-warning)', 'var(--rv-color-danger)']
+const muted = 'var(--rv-color-border-strong)'
+
 function ProductCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const now = data.summary
   // Per unit only when every order carries its amount; otherwise units without amounts would pull it down.
   const perUnit = now.ordersWithoutAmount === 0 && now.soldQuantity > 0 ? formatTl(now.grossSales / now.soldQuantity) : '—'
-  return <MetricCard title="Ürün" onMore={() => onMore('products')} rows={[
-    { label: 'Satılan Adet', value: formatNumber(now.soldQuantity) },
-    { label: 'Elde Kalan Adet', value: formatNumber(now.keptQuantity), hint: 'İade edilmeyen' },
-    { label: 'Adet Başına Satış', value: perUnit, hint: now.ordersWithoutAmount > 0 ? 'Tutarı olmayan sipariş var' : 'Satış tutarı / satılan adet' },
-    { label: 'Maliyeti Girilmiş Satış', value: formatPercent(data.cost.coverage), hint: `${formatCount(data.cost.costedVariants)} varyant` }
-  ]} />
+  return <MetricCard title="Ürün" onMore={() => onMore('products')}
+    visual={<MiniBars label="En çok satan 3 ürün" format={formatNumber} items={[...data.topProducts].sort((a, b) => b.soldQuantity - a.soldQuantity).map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.soldQuantity }))} />}
+    rows={[
+      { label: 'Elde Kalan Adet', value: formatNumber(now.keptQuantity), hint: 'İade edilmeyen' },
+      { label: 'Adet Başına Satış', value: perUnit },
+      { label: 'Maliyeti Girilmiş', value: formatPercent(data.cost.coverage), hint: `${formatCount(data.cost.costedVariants)} varyant` }
+    ]} />
 }
 
 function OrderCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
-  const now = data.summary
   const customers = data.customers
-  return <MetricCard title="Sipariş ve Müşteri" onMore={() => onMore('customers')} rows={[
-    { label: 'Sipariş', value: formatCount(now.orders), hint: 'İptaller hariç' },
-    { label: 'İptal Edilen', value: formatCount(now.cancelledOrders), hint: formatPercent(now.cancelRate), warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
-    { label: 'Tutarı Olmayan', value: formatCount(now.ordersWithoutAmount), muted: now.ordersWithoutAmount === 0 },
-    { label: 'Tekil Müşteri', value: formatCount(customers.uniqueCustomers), hint: `${formatCount(customers.identifiedOrders)} siparişten` },
-    { label: 'Tekrar Alım Oranı', value: formatPercent(customers.repeatRate) }
-  ]} />
+  return <MetricCard title="Müşteri" onMore={() => onMore('customers')}
+    visual={<StackBar label="Müşteriler" segments={[
+      { key: 'once', label: 'Bir kez alan', value: customers.uniqueCustomers - customers.repeatCustomers, color: tones[0] },
+      { key: 'repeat', label: 'Tekrar alan', value: customers.repeatCustomers, color: tones[2] }
+    ]} empty="Kimliği okunan müşteri yok." />}
+    rows={[
+      { label: 'Tekil Müşteri', value: formatCount(customers.uniqueCustomers), hint: `${formatCount(customers.identifiedOrders)} siparişten` },
+      { label: 'Tekrar Alım Oranı', value: formatPercent(customers.repeatRate) },
+      { label: 'Müşteri Başına Sipariş', value: formatNumber(customers.ordersPerCustomer) }
+    ]} />
 }
 
 function ReturnCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const now = data.summary
-  return <MetricCard title="İade" onMore={() => onMore('returns')} rows={[
-    { label: 'İade Talebi', value: formatCount(now.returnClaims), hint: 'Reddedilenler hariç' },
-    { label: 'İade Adedi', value: formatNumber(now.returnedQuantity) },
-    { label: 'İade Oranı', value: formatPercent(now.returnRate), hint: 'İade / satılan adet' },
-    { label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? formatTl(now.returnedAmount) : 'Tutar yok' }
-  ]} />
+  return <MetricCard title="İade" onMore={() => onMore('returns')}
+    visual={<MiniBars label="İlk 3 iade nedeni" format={formatCount} items={topReasons(data.returnReasons)} />}
+    rows={[
+      { label: 'İade Talebi', value: formatCount(now.returnClaims), hint: 'Reddedilenler hariç' },
+      { label: 'İade Adedi', value: formatNumber(now.returnedQuantity), hint: formatPercent(now.returnRate) },
+      { label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? formatTl(now.returnedAmount) : 'Tutar yok' }
+    ]} />
 }
 
 // Averages over the packages whose times were measured, weighted by that count, so a carrier with one measured
@@ -678,32 +743,42 @@ function CargoCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
   const packages = data.cargo.reduce((sum, row) => sum + row.packages, 0)
   const ship = weightedHours(data.cargo, row => row.averageHoursToShip, row => row.measuredShip)
   const deliver = weightedHours(data.cargo, row => row.averageHoursToDeliver, row => row.measuredDeliver)
-  const top = [...data.cargo].filter(row => row.known).sort((a, b) => b.packages - a.packages)[0]
   const measured = (count: number) => count > 0 ? `${formatCount(count)} pakette ölçüldü` : 'Ölçülemedi'
-  return <MetricCard title="Kargo" onMore={() => onMore('cargo')} rows={[
-    { label: 'Paket', value: formatCount(packages) },
-    { label: 'Kargo Teslim Alma', value: formatHours(ship.hours), hint: measured(ship.measured) },
-    { label: 'Teslimat', value: formatHours(deliver.hours), hint: measured(deliver.measured) },
-    { label: 'En Çok Kullanılan', value: top ? top.label : '—', hint: top ? formatPercent(top.share) : undefined }
-  ]} />
+  const carriers = [...data.cargo].sort((a, b) => Number(b.known) - Number(a.known) || b.packages - a.packages)
+  return <MetricCard title="Kargo" onMore={() => onMore('cargo')}
+    visual={<StackBar label="Kargo firmalarının payı" empty="Bu dönemde paket yok." segments={carriers.map((row, index) => ({ key: row.label, label: row.label, value: row.packages, color: row.known ? tones[index % tones.length] : muted }))} />}
+    rows={[
+      { label: 'Paket', value: formatCount(packages) },
+      { label: 'Kargo Teslim Alma', value: formatHours(ship.hours), hint: measured(ship.measured) },
+      { label: 'Teslimat', value: formatHours(deliver.hours), hint: measured(deliver.measured) }
+    ]} />
 }
 
 function InvoiceCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const total = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
-  return <MetricCard title="Fatura" onMore={() => onMore('invoices')} rows={data.invoices.buckets.map(bucket => ({
-    label: bucket.label, value: formatCount(bucket.packages), hint: `${formatPercent(total > 0 ? bucket.packages / total : null)} · ${formatTl(bucket.amount)}`, muted: bucket.key === 'UNKNOWN'
-  }))} />
+  const color = (key: string) => key === 'UNKNOWN' ? muted : key === 'INVOICED' ? tones[2] : tones[3]
+  return <MetricCard title="Fatura" onMore={() => onMore('invoices')}
+    visual={<StackBar label="Fatura durumu" empty="Bu dönemde paket yok." segments={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, color: color(bucket.key) }))} />}
+    rows={data.invoices.buckets.map(bucket => ({
+      label: bucket.label, value: formatCount(bucket.packages), hint: `${formatPercent(total > 0 ? bucket.packages / total : null)} · ${formatTl(bucket.amount)}`, muted: bucket.key === 'UNKNOWN'
+    }))} />
 }
 
 function StockCard({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const bestSellers = data.stock.bestSellers
   const low = bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const unknownStock = bestSellers.filter(row => row.available === null).length
-  return <MetricCard title="Stok" onMore={() => onMore('stock')} rows={[
-    { label: 'Kalan Günü 7\'den Az', value: formatCount(low), hint: `En çok satan ${formatCount(bestSellers.length)} ürün içinde`, warn: low > 0 },
-    { label: 'Satıp Stoğu Biten', value: formatCount(data.stock.soldOut.length), hint: 'Mevcut stoğu sıfır' },
-    { label: 'Stoğu Bilinmeyen', value: formatCount(unknownStock), hint: 'En çok satanlar içinde', muted: unknownStock === 0 }
-  ]} />
+  return <MetricCard title="Stok" onMore={() => onMore('stock')}
+    visual={<StackBar label="En çok satanların kalan günü" empty="En çok satan ürün yok." segments={[
+      { key: 'low', label: '7 günden az', value: low, color: tones[4] },
+      { key: 'ok', label: 'Yeterli', value: bestSellers.length - low - unknownStock, color: tones[2] },
+      { key: 'unknown', label: 'Bilinmiyor', value: unknownStock, color: muted }
+    ]} />}
+    rows={[
+      { label: 'Kalan Günü 7\'den Az', value: formatCount(low), hint: `En çok satan ${formatCount(bestSellers.length)} ürün içinde`, warn: low > 0 },
+      { label: 'Satıp Stoğu Biten', value: formatCount(data.stock.soldOut.length), hint: 'Mevcut stoğu sıfır' },
+      { label: 'Stoğu Bilinmeyen', value: formatCount(unknownStock), muted: unknownStock === 0 }
+    ]} />
 }
 
 type BarItem = { key: string; label: string; value: number; muted?: boolean; note?: string }
@@ -724,11 +799,31 @@ function ListCard({ title, description, detail, onMore, children }: { title: str
   return <Panel title={title} description={description} actions={<MoreButton title={title} onClick={() => onMore(detail)} />} className="reports-list">{children}</Panel>
 }
 
+// The platforms' shares of net revenue as a donut in their own colours, each listed with its share and amount.
 function PlatformShare({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
-  const net = data.summary.netRevenue
-  return <ListCard title="Platform Payı" description="Net ciroya göre; tutar göndermeyen platformların payı hesaplanamaz." detail="platforms" onMore={onMore}>
-    <Bars label="Platform payı" format={value => formatPercent(value)} items={data.platforms.filter(group => group.ordersWithAmount > 0)
-      .map(group => ({ key: group.key, label: platformName(group.label), value: net > 0 ? group.netRevenue / net : 0, note: formatTl(group.netRevenue), muted: !group.known }))} />
+  const rows = data.platforms.filter(group => group.ordersWithAmount > 0 && group.netRevenue > 0).sort((a, b) => b.netRevenue - a.netRevenue)
+  const total = rows.reduce((sum, group) => sum + group.netRevenue, 0)
+  const radius = 52
+  const circumference = 2 * Math.PI * radius
+  let offset = 0
+  return <ListCard title="Platform Payı" description="Net ciroya göre." detail="platforms" onMore={onMore}>
+    {total <= 0 ? <p className="reports-empty">Bu dönemde tutarı olan satış yok.</p> : <div className="reports-share">
+      <svg className="reports-donut" viewBox="0 0 128 128" role="img" aria-label={`Platform payı: ${rows.map(group => `${platformName(group.label)} ${formatPercent(group.netRevenue / total)}`).join(', ')}`}>
+        <circle className="reports-donut-base" cx="64" cy="64" r={radius} />
+        {rows.map(group => {
+          const length = group.netRevenue / total * circumference
+          const segment = <circle key={group.key} cx="64" cy="64" r={radius} style={{ stroke: platformColor(group.key) }} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} />
+          offset += length
+          return segment
+        })}
+        <text x="64" y="61" textAnchor="middle" className="reports-donut-total">{formatTlShort(total)}</text>
+        <text x="64" y="77" textAnchor="middle" className="reports-donut-caption">{formatCount(rows.length)} platform</text>
+      </svg>
+      <ul className="reports-share-list">{rows.map(group => <li key={group.key}>
+        <i style={{ background: platformColor(group.key) }} aria-hidden="true" /><span>{platformName(group.label)}</span>
+        <b>{formatPercent(group.netRevenue / total)}</b><small>{formatTl(group.netRevenue)}</small>
+      </li>)}</ul>
+    </div>}
     <NoAmountNote platforms={data.platforms} />
   </ListCard>
 }

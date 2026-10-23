@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { UiIcon, type UiIconName } from '../../shared/components'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
-import { formatCount, formatNumber, formatPercent, platformName, unknownLabel, type ReportGroup, type ReportSales } from './report-format'
+import { formatCount, formatNumber, formatPercent, platformColor, platformName, unknownLabel, type ReportGroup, type ReportSales } from './report-format'
 import type { MapRegion } from './sales-map-types'
 import { otherZone, turkeyZones, worldZones, type MapZone } from './sales-map-regions'
 
@@ -19,9 +19,6 @@ const loaders: Record<Scope, () => Promise<MapData>> = {
   world: () => import('./world-map').then(module => ({ viewBox: module.worldViewBox, regions: module.worldRegions }))
 }
 
-// The overview's platform colours.
-const platformColors: Record<string, string> = { TRENDYOL: '#f27a1a', HEPSIBURADA: '#f5b301', SHOPIFY: '#5e8e3e', N11: '#7c5cff', PAZARAMA: '#2f9bd8', PTTAVM: '#1f3a8a' }
-const platformColor = (code: string) => platformColors[code.toUpperCase()] ?? '#8a8f98'
 
 const metricLabels: Record<Metric, string> = { revenue: 'Ciro', orders: 'Sipariş', basket: 'Sepet Ort.' }
 const metricOptions: Array<SwitchOption<Metric>> = [
