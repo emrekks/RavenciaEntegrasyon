@@ -4,7 +4,7 @@ export type VariantBulkEditRow = {
   key: string
   stock: number
   salePrice: number
-  costPrice: number
+  costPrice: number | null
   listPrice: number
 }
 

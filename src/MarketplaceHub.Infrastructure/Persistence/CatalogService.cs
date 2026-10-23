@@ -1252,7 +1252,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 if (CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku);
                 if (variant.BarcodeNormalized is not null && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode);
                 if (!dataChanged && variant.SortOrder == Math.Max(0, update.SortOrder)) continue;
-                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
+                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); if (update.CostPrice is decimal variantCost) variant.CostPrice = NonNegativeOrNull(variantCost); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
@@ -2103,7 +2103,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!string.Equals(variant.Sku, update.Sku.Trim(), StringComparison.Ordinal)) return true;
         if (!string.Equals(variant.Barcode, NullTrim(update.Barcode), StringComparison.Ordinal)) return true;
         if (!string.Equals(variant.ModelCode, NullTrim(update.ModelCode), StringComparison.Ordinal)) return true;
-        if (variant.CostPrice != NonNegativeOrNull(update.CostPrice)) return true;
+        // An unsent cost (null) leaves the stored one as it is; the editor sends only a cost the user changed.
+        if (update.CostPrice is decimal cost && variant.CostPrice != NonNegativeOrNull(cost)) return true;
         if (update.DefaultListPrice is decimal listPrice && variant.DefaultListPrice != listPrice) return true;
         if (update.DefaultSalePrice is decimal salePrice && variant.DefaultSalePrice != salePrice) return true;
         if (update.Options is not null)
