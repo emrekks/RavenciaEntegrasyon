@@ -118,6 +118,25 @@ public sealed class ReportsTests
     [InlineData(null, MarketplaceInvoiceStatus.Unknown, false, "UNKNOWN")]
     public void A_package_is_put_in_an_invoice_bucket_by_its_evidence(string? manual, MarketplaceInvoiceStatus marketplace, bool panel, string expected) =>
         Assert.Equal(expected, ReportBuilder.InvoiceBucket(new ReportPackageRow { ManualInvoiceStatus = manual, MarketplaceInvoiceStatus = marketplace, PanelInvoiced = panel }));
+
+    [Fact]
+    public void Products_rise_and_fall_against_the_previous_period_and_one_sold_only_before_falls_to_nothing()
+    {
+        static ReportProductView Product(Guid id, string title, decimal sold) => new(id, null, title, title, "", "", sold, 0m, null, sold * 100m, 0m, 0m, NetAmount: sold * 100m);
+        Guid up = Guid.NewGuid(), down = Guid.NewGuid(), gone = Guid.NewGuid(), fresh = Guid.NewGuid();
+        var (products, rising, falling) = ReportBuilder.Movers(
+            [Product(up, "Up", 9m), Product(down, "Down", 2m), Product(fresh, "Fresh", 3m)],
+            [Product(up, "Up", 4m), Product(down, "Down", 5m), Product(gone, "Gone", 6m)],
+            new Dictionary<Guid, decimal> { [up] = 12m });
+
+        Assert.Equal(["Up", "Fresh"], rising.Select(x => x.Title));
+        Assert.Equal(["Gone", "Down"], falling.Select(x => x.Title));
+        var lost = falling[0];
+        Assert.Equal((0m, 6m, 0m), (lost.SoldQuantity, lost.PreviousSoldQuantity!.Value, lost.SalesAmount));
+        Assert.Equal((4m, 12m), (products.Single(x => x.Title == "Up").PreviousSoldQuantity!.Value, products.Single(x => x.Title == "Up").Available!.Value));
+        Assert.Equal(0m, products.Single(x => x.Title == "Fresh").PreviousSoldQuantity);
+        Assert.Null(products.Single(x => x.Title == "Down").Available);
+    }
 }
 
 // The whole report over a seeded store: every breakdown adds up to the totals, unknowns go to "Bilinmiyor", and the

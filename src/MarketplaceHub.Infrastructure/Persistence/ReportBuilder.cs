@@ -342,7 +342,7 @@ internal static class ReportBuilder
         var summary = Summary(orders, cancelled);
         var previousSummary = Summary(previousOrders, previousCancelled);
         var lines = orders.SelectMany(order => order.Lines.Select(line => (order, line))).ToList();
-        var products = Products(orders, input.Names);
+        var (products, rising, falling) = Movers(Products(orders, input.Names), Products(previousOrders, previous.Names), stock);
 
         var commission = CommissionView(orders, summary.NetRevenue);
         var cost = CostView(orders);
@@ -378,7 +378,10 @@ internal static class ReportBuilder
             [],
             notes,
             costs,
-            geography);
+            geography,
+            orders.GroupBy(order => order.PlatformCode, StringComparer.Ordinal).OrderBy(group => group.Key, StringComparer.Ordinal)
+                .Select(group => new ReportPlatformHeatmapView(group.Key, Heatmap(group.ToList(), input.Timezone))).ToList(),
+            rising, falling);
         return view;
     }
 
@@ -411,7 +414,8 @@ internal static class ReportBuilder
             if (cancelledStatuses.Contains(order.DerivedStatus))
             {
                 var reason = rows.Select(line => input.LineExtras.GetValueOrDefault(line.Id)?.CancelReason).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-                cancelled.Add(new(order, platform, day, rows.Sum(x => x.OrderedQuantity), reason));
+                var cancelledTry = string.IsNullOrWhiteSpace(order.Currency) || order.Currency.Trim().ToUpperInvariant() == Try;
+                cancelled.Add(new(order, platform, day, rows.Sum(x => x.OrderedQuantity), reason, cancelledTry ? rows.Sum(x => x.UnitPrice * x.OrderedQuantity) : 0m));
                 continue;
             }
             var returnedOrder = returnedStatuses.Contains(order.DerivedStatus);
@@ -549,9 +553,32 @@ internal static class ReportBuilder
                     first.BrandId is { } brandId && names.Brands.TryGetValue(brandId, out var brand) ? brand : Unknown,
                     first.CategoryId is { } categoryId && names.Categories.TryGetValue(categoryId, out var category) ? category : Unknown,
                     sold, back, Rate(back, sold), Math.Round(group.Sum(x => x.PaidUnitPrice * x.Active), 2),
-                    Math.Round(group.Sum(x => x.Commission ?? 0m), 2), Math.Round(group.Where(x => x.Commission is not null).Sum(x => x.KeptAmount), 2));
+                    Math.Round(group.Sum(x => x.Commission ?? 0m), 2), Math.Round(group.Where(x => x.Commission is not null).Sum(x => x.KeptAmount), 2),
+                    NetAmount: Math.Round(group.Sum(x => x.KeptAmount), 2));
             })
             .ToList();
+
+    private static string ProductKey(ReportProductView product) => product.VariantId is { } variantId ? variantId.ToString("N") : $"sku:{product.Sku}";
+
+    // Each product with its units sold in the previous period and its stock (where read); then the products that rose
+    // most and those that fell most, a product sold only in the previous period falling to nothing.
+    internal static (List<ReportProductView> Products, List<ReportProductView> Rising, List<ReportProductView> Falling) Movers(
+        List<ReportProductView> products, List<ReportProductView> previousProducts, IReadOnlyDictionary<Guid, decimal> stock)
+    {
+        const int MoversCount = 10;
+        decimal? Available(ReportProductView product) => product.VariantId is { } variantId && stock.TryGetValue(variantId, out var available) ? available : null;
+        var before = previousProducts.ToDictionary(ProductKey, x => x.SoldQuantity, StringComparer.Ordinal);
+        var current = products.Select(x => x with { PreviousSoldQuantity = before.GetValueOrDefault(ProductKey(x)), Available = Available(x) }).ToList();
+        var byKey = current.ToDictionary(ProductKey, StringComparer.Ordinal);
+        var rising = current.Where(x => x.SoldQuantity > x.PreviousSoldQuantity)
+            .OrderByDescending(x => x.SoldQuantity - x.PreviousSoldQuantity).ThenBy(x => x.Title, StringComparer.Ordinal).Take(MoversCount).ToList();
+        var falling = previousProducts
+            .Select(x => byKey.TryGetValue(ProductKey(x), out var now) ? now
+                : x with { SoldQuantity = 0m, ReturnedQuantity = 0m, ReturnRate = null, SalesAmount = 0m, EstimatedCommission = 0m, CommissionCoveredAmount = 0m, NetAmount = 0m, PreviousSoldQuantity = x.SoldQuantity, Available = Available(x) })
+            .Where(x => x.PreviousSoldQuantity > x.SoldQuantity)
+            .OrderByDescending(x => x.PreviousSoldQuantity - x.SoldQuantity).ThenBy(x => x.Title, StringComparer.Ordinal).Take(MoversCount).ToList();
+        return (current, rising, falling);
+    }
 
     private static List<ReportTimePointView> Series(IReadOnlyList<OrderFact> orders, IReadOnlyList<CancelledFact> cancelled, ReportPeriod period, string granularity)
     {
@@ -578,7 +605,10 @@ internal static class ReportBuilder
             .ToList();
         var reasons = Reasons(cancelled.Select(x => Label(x.Reason, null))
             .Concat(orders.SelectMany(x => x.Lines).Where(x => x.Row.CancelledQuantity > 0).Select(x => Label(x.CancelReason, null))));
-        return new(cancelled.Count, cancelled.Sum(x => x.Quantity) + PartlyCancelled(orders), Rate(cancelled.Count, orders.Count + cancelled.Count), CancelWarningRate, platforms, reasons);
+        // A partly cancelled line of a TRY order at its list price.
+        var partlyAmount = orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines).Sum(x => x.Row.UnitPrice * Math.Max(0m, x.Row.CancelledQuantity));
+        return new(cancelled.Count, cancelled.Sum(x => x.Quantity) + PartlyCancelled(orders), Rate(cancelled.Count, orders.Count + cancelled.Count), CancelWarningRate, platforms, reasons,
+            Math.Round(cancelled.Sum(x => x.Amount) + partlyAmount, 2));
     }
 
     // Durations come from the stored status times; both ends of a duration are stored the same way for a marketplace,
@@ -745,5 +775,5 @@ internal static class ReportBuilder
     internal sealed record OrderFact(ReportOrderRow Order, string PlatformCode, string Currency, DateOnly Day, string? City, string? District, string? CustomerKey,
         decimal Amount, decimal Back, decimal Kept, List<LineFact> Lines, int Claims, string Country = ReportBuckets.Turkey);
 
-    internal sealed record CancelledFact(ReportOrderRow Order, string PlatformCode, DateOnly Day, decimal Quantity, string? Reason);
+    internal sealed record CancelledFact(ReportOrderRow Order, string PlatformCode, DateOnly Day, decimal Quantity, string? Reason, decimal Amount = 0m);
 }
