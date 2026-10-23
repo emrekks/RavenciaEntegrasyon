@@ -4,7 +4,7 @@ import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState,
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../../shared/api'
-import { cargoCarrier, cargoLabel } from '../../../shared/components'
+import { cargoCarrier, cargoLabel, CountUp } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
@@ -400,7 +400,7 @@ export function ReturnsPage() {
   const tabLabel = tabs.find(tab => tab[0] === status)?.[1] ?? 'Tüm İadeler'
   return <section className="content f3 rr rr-returns">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>İadeler</h1><p>İade taleplerini inceleyin, onaylayın veya reddedin; kargo ve fatura durumunu izleyin.</p></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={returnConnections.length === 0 || sync.isPending} onClick={() => sync.mutate()}><RrIcon name="refresh" />{sync.isPending ? 'Eşitleniyor…' : 'İade Senkronizasyonu'}</button></div></div>
-    <div className="rr-metrics"><article className="rr-warn"><small>Aksiyon Bekleyen</small><strong>{metric('ACTION_REQUIRED')}</strong></article><article><small>Kargoya Verilen</small><strong>{metric('SHIPPING')}</strong></article><article><small>Onaylanan</small><strong>{metric('APPROVED')}</strong></article><article><small>Tüm İadeler</small><strong>{metric('ALL')}</strong></article></div>
+    <div className="rr-metrics"><article className="rr-warn"><small>Aksiyon Bekleyen</small><strong><CountUp value={metric('ACTION_REQUIRED')} /></strong></article><article><small>Kargoya Verilen</small><strong><CountUp value={metric('SHIPPING')} /></strong></article><article><small>Onaylanan</small><strong><CountUp value={metric('APPROVED')} /></strong></article><article><small>Tüm İadeler</small><strong><CountUp value={metric('ALL')} /></strong></article></div>
     <div className="rr-fshell">
       <ViewTabsWithMore className="return-reference-tabs" more={[]} ariaLabel="İade durumları" value={status} onChange={selectStatus} items={tabs.map(([value, label]) => { const count = tabCount(value); return { value, label: viewTabLabel(({ ALL: 'all', REQUESTED: 'new', SHIPPING: 'shipping', ACTION_REQUIRED: 'waiting', APPROVED: 'done', REJECTED: 'cancelled', REVIEW: 'review', DISPUTED: 'disputed', SUSPENDED: 'paused' } as const)[value], label), count: typeof count === 'number' ? count.toLocaleString('tr-TR') : count, countTone: value === 'ACTION_REQUIRED' && typeof count === 'number' && count > 0 ? 'warn' as const : undefined } })} />
       <RrFilterCard active={[selectedPlatforms.length > 0, Boolean(from), cargoFilter !== 'ALL', invoiceStatusFilter !== 'ALL', reasonFilter !== 'ALL'].filter(Boolean).length}><div className={`rr-filters${status === 'APPROVED' ? ' rr-has-sort' : ''}`}>

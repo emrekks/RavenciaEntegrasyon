@@ -1,5 +1,6 @@
 /* Single stylesheet entrypoint. Route CSS is intentionally not imported here. */
 @import './styles/tokens.css' layer(tokens);
+@import './styles/motion.css' layer(base);
 @import './styles/design-system.css';
 @import './styles/notifications.css';
 

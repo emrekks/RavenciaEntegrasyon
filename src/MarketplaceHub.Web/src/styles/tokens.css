@@ -66,6 +66,14 @@
   --rv-shadow-lg: 0 24px 60px rgb(0 0 0 / 40%);
   --rv-duration-fast: 160ms;
   --rv-ease-standard: cubic-bezier(.2, .8, .2, 1);
+  /* Shared motion (styles/motion.css): measured, short and only on first appearance; all zero under reduced motion. */
+  --rv-motion-fast: 140ms;
+  --rv-motion-base: 200ms;
+  --rv-motion-enter: 240ms;
+  --rv-motion-stagger: 40ms;
+  --rv-motion-distance: 6px;
+  --rv-motion-press: .97;
+  --rv-ease-out: cubic-bezier(.22, 1, .36, 1);
   --rv-z-sticky: 20;
   --rv-z-sidebar: 40;
   --rv-z-dropdown: 80;

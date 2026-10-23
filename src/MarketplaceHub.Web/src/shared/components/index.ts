@@ -1,4 +1,5 @@
 export * from './AsyncState'
+export * from './CountUp'
 export * from './ErrorBoundary'
 export * from './ConfirmDialog'
 export * from './UiIcon'
