@@ -81,8 +81,10 @@ export function Columns({ points, format, axisFormat, shown, label }: { points: 
         <span className="reports-column" style={{ height: shown ? `${Math.max(item.value > 0 ? 1.5 : 0, item.value / top * 100)}%` : '0%', transitionDelay: `${index * 22}ms` }} />
         {index % every === 0 && <small>{item.short}</small>}
       </li>)}</ol>
+      {/* The card sits over its column, but near either end it opens inwards so it stays inside the chart. */}
       {point && hover !== null && <div className="reports-columns-tip" role="presentation"
-        style={{ left: `${(hover + 0.5) / points.length * 100}%`, bottom: `calc(24px + (100% - 24px) * ${Math.min(0.82, point.value / top)})` } as CSSProperties}>
+        style={{ left: `${(hover + 0.5) / points.length * 100}%`, bottom: `calc(24px + (100% - 24px) * ${Math.min(0.82, point.value / top)})`,
+          transform: (hover + 0.5) / points.length > 0.7 ? 'translateX(calc(-100% + 12px))' : (hover + 0.5) / points.length < 0.3 ? 'translateX(-12px)' : undefined } as CSSProperties}>
         <b>{point.title}</b>
         <span><i className="is-now" />Bu dönem<strong>{format(point.value)}</strong></span>
         {point.previous !== null && <span><i />Önceki<strong>{format(point.previous)}</strong></span>}
