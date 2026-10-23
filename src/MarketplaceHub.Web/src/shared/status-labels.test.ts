@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { invoiceStatusLabel, invoiceStatusTone, statusLabel } from './status-labels'
 
+describe('package status enum names', () => {
+  it('read the same as their underscored codes', () => {
+    expect(statusLabel('READYTOSHIP')).toBe('Kargoya hazır')
+    expect(statusLabel('ONHOLD')).toBe('Beklemede')
+    expect(statusLabel('RETURNINTRANSIT')).toBe('İade taşımada')
+    expect(statusLabel('PARTIALLYCANCELLED')).toBe('Kısmi iptal')
+  })
+})
+
 describe('invoice status labels', () => {
   it('groups invoice states into creating, delivering and failed labels', () => {
     expect(invoiceStatusLabel('FATURA_BEKLIYOR')).toBe('Fatura Bekliyor')

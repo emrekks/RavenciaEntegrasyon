@@ -31,8 +31,8 @@ const normalized = (value: string | null | undefined) => (value ?? '').trim().to
 export function badgeGlyphKind(value: string | null | undefined, tone: 'good' | 'warn' | 'neutral'): InvoiceGlyphKind {
   const code = normalized(value)
   if (['NEW', 'CREATED', 'WAITING_FOR_SHIPMENT', 'AWAITING', 'APPROVED'].includes(code)) return 'placed'
-  if (['PICKING', 'PREPARING', 'READY_TO_SHIP', 'INVOICED', 'PACKED'].includes(code)) return 'packing'
-  if (['SHIPPING', 'SHIPPED', 'IN_TRANSIT', 'AT_COLLECTION_POINT', 'RETURN_IN_TRANSIT'].includes(code)) return 'carrier'
+  if (['PICKING', 'PREPARING', 'READY_TO_SHIP', 'READYTOSHIP', 'INVOICED', 'PACKED'].includes(code)) return 'packing'
+  if (['SHIPPING', 'SHIPPED', 'IN_TRANSIT', 'AT_COLLECTION_POINT', 'RETURN_IN_TRANSIT', 'RETURNINTRANSIT'].includes(code)) return 'carrier'
   if (['DELIVERED', 'DELİVERED', 'COMPLETED', 'CONFIRMED', 'SUCCESS', 'INVOICED_ON_PLATFORM'].includes(code)) return 'done'
   if (['CANCELLED', 'RETURNED', 'CANCELLED_LOCAL'].includes(code)) return 'cancelled'
   if (['UNDELIVERED', 'FAILED', 'MARKETPLACE_FAILED', 'VALIDATION_FAILED', 'REJECTED'].includes(code)) return 'failed'

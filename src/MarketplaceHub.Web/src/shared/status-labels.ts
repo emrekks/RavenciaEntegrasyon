@@ -154,9 +154,14 @@ function readableFallback(value: string) {
     .replace(/(^|\s)\S/g, character => character.toLocaleUpperCase('tr-TR'))
 }
 
+// Some views send a server enum name as is (READYTOSHIP, ONHOLD); it reads the same as its underscored code.
+const compactStatusLabels: Record<string, string> = Object.fromEntries(Object.entries(statusLabels)
+  .filter(([code]) => code.includes('_')).map(([code, label]) => [code.replaceAll('_', ''), label]))
+
 export function statusLabel(value: string | null | undefined) {
   if (!value?.trim()) return '—'
-  return statusLabels[normalizedStatus(value)] ?? readableFallback(value)
+  const normalized = normalizedStatus(value)
+  return statusLabels[normalized] ?? compactStatusLabels[normalized] ?? readableFallback(value)
 }
 
 export function statusTone(value: string) {
