@@ -8,6 +8,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-csharp.mjs\"",
             "timeout": 90
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/web-check.mjs\"",
+            "timeout": 240
           }
         ]
       }
