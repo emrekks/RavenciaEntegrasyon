@@ -461,8 +461,6 @@
 @media (max-width: 640px) {
   .app-shell.stitch-shell main .reports-page .reports-map-head { padding: 12px; }
 }
-@media (max-width: 1024px) {
-}
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reports-page :is(.reports-lists, .reports-lists.is-pairs) { grid-template-columns: minmax(0, 1fr); }
 }
@@ -493,62 +491,14 @@
 /* Satıştan Kâra: five steps left to right, each its own figure; an operator sits on the line between two steps
    (−, =, →), and the last step, the profit, carries the accent. The steps come in one after another once. */
 .app-shell.stitch-shell main .reports-page .reports-board-main > .reports-card-journey { grid-column: 1 / -1; }
-.app-shell.stitch-shell main .reports-page .reports-journey { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; list-style: none; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li { position: relative; display: grid; align-content: start; gap: 8px; min-width: 0; padding: 4px 26px; border-left: 1px solid var(--rv-color-border); opacity: 0; translate: 0 10px; transition: opacity 500ms ease, translate 500ms cubic-bezier(.2, .7, .2, 1); transition-delay: calc(var(--step, 0) * 140ms); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li:first-child { padding-left: 0; border-left: 0; }
-.app-shell.stitch-shell main .reports-page .reports-card-journey.is-shown .reports-journey > li { opacity: 1; translate: 0 0; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li + li::before { position: absolute; top: 14px; left: -13px; display: grid; place-items: center; width: 26px; height: 26px; color: var(--rv-color-muted); font-size: 15px; font-weight: 700; line-height: 1; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 50%; content: '\2192'; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-minus::before { content: '\2212'; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-equals::before { content: '='; }
-.app-shell.stitch-shell main .reports-page .reports-journey small { display: inline-flex; align-items: center; gap: 2px; color: var(--rv-color-muted); font-size: 12.5px; font-weight: 500; }
-.app-shell.stitch-shell main .reports-page .reports-journey strong { color: var(--rv-color-ink); font-size: 22px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li > button > span:not(.reports-journey-ratios) { color: var(--rv-color-subtle); font-size: 11.5px; line-height: 1.4; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-minus strong { color: color-mix(in srgb, var(--rv-color-danger) 85%, var(--rv-color-ink)); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-negative strong { color: var(--rv-color-danger); }
-.app-shell.stitch-shell main .reports-page .reports-journey .reports-stacked { height: 8px; gap: 2px; }
-.app-shell.stitch-shell main .reports-page .reports-journey-ratios { display: grid; gap: 6px; }
-.app-shell.stitch-shell main .reports-page .reports-journey-ratios > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12.5px; }
-.app-shell.stitch-shell main .reports-page .reports-journey-ratios em { font-style: normal; color: var(--rv-color-muted); }
-.app-shell.stitch-shell main .reports-page .reports-journey-ratios b { margin: 0; color: var(--rv-color-ink); font-weight: 650; font-variant-numeric: tabular-nums; }
-.app-shell.stitch-shell main .reports-page .reports-journey-ratios > span:first-child b { color: var(--rv-color-accent); font-size: 18px; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result { margin: -8px -8px -8px 0; padding: 12px 18px 12px 26px; background: color-mix(in srgb, var(--rv-color-accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-accent) 35%, transparent); border-radius: 16px; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result::before { top: 22px; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result strong { color: var(--rv-color-accent); font-size: 24px; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-equals:not(.is-negative) strong { color: var(--rv-color-accent); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result.is-negative { background: color-mix(in srgb, var(--rv-color-danger) 12%, transparent); border-color: color-mix(in srgb, var(--rv-color-danger) 35%, transparent); }
-.app-shell.stitch-shell main .reports-page .reports-journey-ratios > span.is-bad b { color: var(--rv-color-danger); }
 .app-shell.stitch-shell main .reports-page .reports-grid.is-time { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result.is-negative strong { color: var(--rv-color-danger); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result.is-missing strong { color: var(--rv-color-warning); font-size: 16px; font-weight: 500; }
 .app-shell.stitch-shell main .reports-page .reports-journey .reports-info > [role='tooltip'] { top: 30px; right: auto; left: 0; width: 260px; }
-@media (max-width: 1100px) {
-  .app-shell.stitch-shell main .reports-page .reports-journey { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 0; }
-  .app-shell.stitch-shell main .reports-page .reports-journey > li:nth-child(odd) { padding-left: 0; border-left: 0; }
-  .app-shell.stitch-shell main .reports-page .reports-journey > li:nth-child(odd)::before { display: none; }
-  .app-shell.stitch-shell main .reports-page .reports-journey > li.is-result { grid-column: 1 / -1; margin: 0; padding: 14px 18px; }
-}
-@media (max-width: 700px) {
-  .app-shell.stitch-shell main .reports-page .reports-journey { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .app-shell.stitch-shell main .reports-page .reports-journey > li { padding: 14px 0; border-top: 1px solid var(--rv-color-border); border-left: 0; }
-  .app-shell.stitch-shell main .reports-page .reports-journey > li:first-child { padding-top: 0; border-top: 0; }
-  .app-shell.stitch-shell main .reports-page .reports-journey > li::before { display: none; }
-  .app-shell.stitch-shell main .reports-page .reports-journey > li.is-result { margin-top: 10px; padding: 14px 16px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .app-shell.stitch-shell main .reports-page .reports-journey > li { opacity: 1; translate: none; transition: none; }
-}
 
 
-.app-shell.stitch-shell main .reports-page .reports-journey > li > button { display: grid; align-content: start; gap: 8px; width: calc(100% + 24px); height: calc(100% + 20px); min-height: 0; margin: -10px -12px; padding: 10px 12px; color: inherit; font: inherit; text-align: left; text-transform: none; letter-spacing: normal; background: transparent; border: 0; border-radius: 14px; box-shadow: none; cursor: pointer; transition: background-color 160ms ease; }
-.app-shell.stitch-shell main .reports-page .reports-journey > li > button:hover { background: var(--rv-color-surface-soft); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-open > button { background: color-mix(in srgb, var(--rv-color-primary) 10%, transparent); box-shadow: inset 0 -2px 0 var(--rv-color-primary); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result > button:hover { background: color-mix(in srgb, var(--rv-color-accent) 8%, transparent); }
-.app-shell.stitch-shell main .reports-page .reports-journey > li > button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .reports-page .reports-journey-pane { display: grid; gap: 14px; padding-top: 18px; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-journey-pane.is-split { grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); align-items: center; gap: 28px; }
 .app-shell.stitch-shell main .reports-page .reports-journey-pane h3 { margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
 .app-shell.stitch-shell main .reports-page .reports-journey-text { max-width: 80ch; margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.55; }
-.app-shell.stitch-shell main .reports-page .reports-journey-hint { margin: -4px 0 0; color: var(--rv-color-subtle); font-size: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-journey-link { display: inline-flex; align-items: center; justify-self: start; gap: 6px; height: 34px; min-height: 34px; padding: 0 12px; border-radius: 9px; font-size: 12.5px; }
 .app-shell.stitch-shell main .reports-page .reports-platform-list.is-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 32px; }
 .app-shell.stitch-shell main .reports-page .reports-cost-list.is-detailed { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
@@ -560,8 +510,6 @@
 @media (max-width: 900px) {
   .app-shell.stitch-shell main .reports-page :is(.reports-platform-list.is-columns, .reports-cost-list.is-detailed, .reports-journey-pane.is-split) { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .reports-page .reports-cost-list.is-detailed li:nth-child(2) { border-top: 1px dashed var(--rv-color-border); }
-}
-@media (prefers-reduced-motion: reduce) {
 }
 
 /* Kârlılık accounts: rows one under another; a minus on deductions, a rule over subtotals, the result in the accent. */
@@ -641,32 +589,9 @@
 .app-shell.stitch-shell main .reports-page .reports-period-custom.is-active .date-range-picker-trigger { border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px var(--rv-color-primary); }
 
 /* The profit step has its own tinted box: its button covers the whole box, so the hover tint fills it. */
-.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result > button { width: calc(100% + 44px); height: calc(100% + 24px); margin: -12px -18px -12px -26px; padding: 12px 18px 12px 26px; border-radius: 15px; }
-@media (max-width: 1100px) {
-  .app-shell.stitch-shell main .reports-page .reports-journey > li.is-result > button { width: calc(100% + 36px); margin: -14px -18px; padding: 14px 18px; }
-}
-@media (max-width: 700px) {
-  .app-shell.stitch-shell main .reports-page .reports-journey > li.is-result > button { width: calc(100% + 32px); height: calc(100% + 28px); margin: -14px -16px; padding: 14px 16px; }
-}
 
 /* Masraflar and Masraflar Sonrası: the sales as one bar each, the costs filled in red from the left and what is left
    filled in green from where the red stops; the three largest cost lines with their share under the first. */
-.app-shell.stitch-shell main .reports-page .reports-sales-share { position: relative; display: block; height: 10px; overflow: hidden; background: color-mix(in srgb, var(--rv-color-ink) 10%, transparent); border-radius: 999px; }
-.app-shell.stitch-shell main .reports-page .reports-sales-share i { position: absolute; top: 0; bottom: 0; border-radius: 999px; transition: width 1100ms cubic-bezier(.2, .7, .2, 1); }
-.app-shell.stitch-shell main .reports-page .reports-sales-share.is-bad i { background: color-mix(in srgb, var(--rv-color-danger) 80%, transparent); }
-.app-shell.stitch-shell main .reports-page .reports-sales-share.is-good i { background: var(--rv-color-accent); transition-delay: 500ms; }
-.app-shell.stitch-shell main .reports-page .reports-journey-parts { display: grid; gap: 7px; margin: 2px 0 0; padding: 0; list-style: none; }
-.app-shell.stitch-shell main .reports-page .reports-journey-parts li { display: grid; grid-template-columns: 7px minmax(0, 1fr); align-items: center; column-gap: 7px; row-gap: 1px; min-width: 0; color: var(--rv-color-muted); font-size: 11.5px; }
-.app-shell.stitch-shell main .reports-page .reports-journey-parts li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell main .reports-page .reports-journey-parts em { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--rv-color-subtle); font-style: normal; font-variant-numeric: tabular-nums; }
-.app-shell.stitch-shell main .reports-page .reports-journey-parts i { flex: none; width: 7px; height: 7px; border-radius: 50%; }
-.app-shell.stitch-shell main .reports-page .reports-journey-parts b { grid-column: 2; color: var(--rv-color-ink); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.app-shell.stitch-shell main .reports-page :is(.reports-journey-parts i).is-left { background: var(--rv-color-primary); }
-.app-shell.stitch-shell main .reports-page :is(.reports-journey-parts i).is-cost { background: color-mix(in srgb, var(--rv-color-ink) 48%, transparent); }
-.app-shell.stitch-shell main .reports-page :is(.reports-journey-parts i).is-commission { background: color-mix(in srgb, var(--rv-color-ink) 32%, transparent); }
-.app-shell.stitch-shell main .reports-page :is(.reports-journey-parts i).is-cargo { background: color-mix(in srgb, var(--rv-color-ink) 21%, transparent); }
-.app-shell.stitch-shell main .reports-page :is(.reports-journey-parts i).is-fees { background: color-mix(in srgb, var(--rv-color-ink) 13%, transparent); }
-.app-shell.stitch-shell main .reports-page :is(.reports-journey-parts i).is-returned { background: color-mix(in srgb, var(--rv-color-danger) 60%, transparent); }
 
 /* Dönem Özeti: the gross units split into net, returned and cancelled, then the four lines; under them the orders
    (across the card), the average basket and the return rate with their change, and the two averages. */
@@ -726,9 +651,6 @@
   .app-shell.stitch-shell main .reports-page .reports-mover-bars { display: none; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .app-shell.stitch-shell main .reports-page :is(.reports-sales-share i, .reports-summary-bar i, .reports-mover-bars i) { transition: none; }
-}
 
 /* The filters on two lines: the period (presets and the custom range) across the top, then the platform, the grouping
    and the test toggle side by side; every label alike and every control the same height, so they line up. */
@@ -748,3 +670,75 @@
 .app-shell.stitch-shell main .reports-page .reports-panel > .reports-empty:last-child { align-self: center; }
 /* A table wrapped for its grid column fills the row like the panel beside it. */
 .app-shell.stitch-shell main .reports-page :is(.reports-grid, .reports-lists) > div:has(> .reports-panel:only-child) { display: grid; min-width: 0; }
+
+/* Satıştan Kâra. The five steps share one grid (subgrid), so every step's title, figure and note sit on the same lines;
+   the operators sit on the dividers between them. Under them the sales as one bar: red for what the returns and the
+   marketplaces took, grey for the product cost, green for the profit, each with its amount below. */
+.app-shell.stitch-shell main .reports-page .reports-journey { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: repeat(3, auto); row-gap: 8px; margin: 0 -16px; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li { position: relative; display: grid; grid-row: span 3; grid-template-rows: subgrid; min-width: 0; padding: 0 6px; border-left: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li:first-child { border-left: 0; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li + li::before { position: absolute; z-index: 1; top: 50%; left: -13px; display: grid; place-items: center; width: 26px; height: 26px; color: var(--rv-color-muted); font-size: 14px; font-weight: 700; line-height: 1; content: '\2192'; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 50%; translate: 0 -50%; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-minus::before { content: '\2212'; color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-equals::before { content: '='; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li > button { display: grid; grid-row: 1 / -1; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-content: stretch; align-items: start; justify-items: start; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 14px 16px; color: inherit; font: inherit; text-align: left; text-transform: none; letter-spacing: 0; background: transparent; border: 0; border-radius: 14px; box-shadow: none; cursor: pointer; transition: background-color 160ms ease; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li > button:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li > button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-open > button { background: color-mix(in srgb, var(--rv-color-primary) 10%, transparent); box-shadow: inset 0 -2px 0 var(--rv-color-primary); }
+.app-shell.stitch-shell main .reports-page .reports-journey small { color: var(--rv-color-muted); font-size: 12.5px; font-weight: 500; }
+.app-shell.stitch-shell main .reports-page .reports-journey strong { max-width: 100%; overflow: hidden; color: var(--rv-color-ink); font-size: 22px; font-weight: 700; letter-spacing: -.01em; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li > button > span { color: var(--rv-color-subtle); font-size: 12px; line-height: 1.45; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-minus strong { color: color-mix(in srgb, var(--rv-color-danger) 88%, var(--rv-color-ink)); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-ratios strong { color: var(--rv-color-accent); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-negative strong { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result { padding: 0; margin-left: 6px; border: 1px solid color-mix(in srgb, var(--rv-color-accent) 32%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--rv-color-accent) 9%, transparent); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result::before { left: -20px; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result > button { border-radius: 15px; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result > button:hover { background: color-mix(in srgb, var(--rv-color-accent) 8%, transparent); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result strong { color: var(--rv-color-accent); font-size: 24px; }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result.is-negative { background: color-mix(in srgb, var(--rv-color-danger) 9%, transparent); border-color: color-mix(in srgb, var(--rv-color-danger) 32%, transparent); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result.is-negative strong { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result.is-missing { background: color-mix(in srgb, var(--rv-color-warning) 8%, transparent); border-color: color-mix(in srgb, var(--rv-color-warning) 30%, transparent); }
+.app-shell.stitch-shell main .reports-page .reports-journey > li.is-result.is-missing strong { color: var(--rv-color-warning); font-size: 16px; font-weight: 600; }
+
+.app-shell.stitch-shell main .reports-page .reports-flow-split { display: grid; gap: 16px; padding-top: 20px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-flow-bar { display: flex; gap: 3px; height: 14px; overflow: hidden; background: color-mix(in srgb, var(--rv-color-ink) 6%, transparent); border-radius: 999px; }
+.app-shell.stitch-shell main .reports-page .reports-flow-bar i { flex: none; height: 100%; border-radius: 3px; transition: width 1000ms cubic-bezier(.2, .7, .2, 1); }
+.app-shell.stitch-shell main .reports-page .reports-flow-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px 20px; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-flow-legend li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; row-gap: 3px; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-flow-legend i { width: 8px; height: 8px; border-radius: 2px; }
+.app-shell.stitch-shell main .reports-page .reports-flow-legend span { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-flow-legend em { grid-column: 3; grid-row: 1; color: var(--rv-color-subtle); font-size: 11.5px; font-style: normal; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-flow-legend b { grid-column: 2 / -1; grid-row: 2; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-flow-legend li.is-kept b { color: var(--rv-color-accent); }
+.app-shell.stitch-shell main .reports-page :is(.reports-flow-bar i, .reports-flow-legend i, .reports-journey-modal .reports-cost-list i).is-returned { background: color-mix(in srgb, var(--rv-color-danger) 85%, transparent); }
+.app-shell.stitch-shell main .reports-page :is(.reports-flow-bar i, .reports-flow-legend i, .reports-journey-modal .reports-cost-list i).is-commission { background: color-mix(in srgb, var(--rv-color-danger) 62%, transparent); }
+.app-shell.stitch-shell main .reports-page :is(.reports-flow-bar i, .reports-flow-legend i, .reports-journey-modal .reports-cost-list i).is-cargo { background: color-mix(in srgb, var(--rv-color-danger) 44%, transparent); }
+.app-shell.stitch-shell main .reports-page :is(.reports-flow-bar i, .reports-flow-legend i, .reports-journey-modal .reports-cost-list i).is-fees { background: color-mix(in srgb, var(--rv-color-danger) 28%, transparent); }
+.app-shell.stitch-shell main .reports-page :is(.reports-flow-bar i, .reports-flow-legend i).is-cost { background: color-mix(in srgb, var(--rv-color-ink) 34%, transparent); }
+.app-shell.stitch-shell main .reports-page :is(.reports-flow-bar i, .reports-flow-legend i).is-kept { background: var(--rv-color-accent); }
+
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .reports-page .reports-journey { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; row-gap: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li { grid-row: auto; grid-template-rows: none; }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li > button { grid-row: auto; grid-template-rows: none; gap: 8px; }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li:nth-child(odd) { border-left: 0; }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li:nth-child(odd)::before { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li.is-result { grid-column: 1 / -1; margin: 0 6px; }
+}
+@media (max-width: 700px) {
+  .app-shell.stitch-shell main .reports-page .reports-journey { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li { border-left: 0; border-top: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li:first-child { border-top: 0; }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li::before { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-journey > li.is-result { margin: 6px 6px 0; border: 1px solid color-mix(in srgb, var(--rv-color-accent) 32%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .reports-page .reports-flow-bar i { transition: none; }
+}
+
+/* One spacing scale across the overview: 20 between cards, 16 between rows inside a card, 12 between tiles. */
+.app-shell.stitch-shell main .reports-page .reports-figures > div { padding: 16px 0; }
+.app-shell.stitch-shell main .reports-page .reports-summary-rows > div { padding: 12px 0; }
+.app-shell.stitch-shell main .reports-page .reports-summary-bar { margin: 0; }
+.app-shell.stitch-shell main .reports-page .reports-summary-metrics { gap: 12px; margin-top: 0; }
+.app-shell.stitch-shell main .reports-page .reports-card-operations .reports-operations { gap: 12px; }

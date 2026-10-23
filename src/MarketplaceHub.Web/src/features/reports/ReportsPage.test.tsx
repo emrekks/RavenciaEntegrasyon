@@ -121,29 +121,31 @@ describe('ReportsPage', () => {
     expect(revenue.querySelectorAll('.reports-columns li')).toHaveLength(2)
     expect(revenue.querySelector('.reports-columns li.is-peak')).not.toBeNull()
     expect(page.querySelector('.reports-card-figures')).toBeNull()
-    // From the sales to the profit: 350 of sales, 223 of costs (returns 100, the estimated commission 43, the cost 80),
-    // 127 left (its note names the lines that were not taken off), the ratios, then the estimated net profit.
+    // From the sales to the profit, each figure from the one before: 350 of sales, 143 of deductions (returns 100, the
+    // estimated commission 43), 207 left, the net margin, and 127 of profit once the product cost of 80 is taken off.
     const steps = [...page.querySelectorAll('.reports-journey > li')]
     expect(steps).toHaveLength(5)
     expect(steps[0].textContent).toContain('350,00')
-    expect(steps[1].textContent).toContain('223,00')
-    // The costs fill 223 / 350 of the sales bar in red; what is left fills the rest in green from there.
-    expect(steps[1].querySelector('.reports-sales-share.is-bad')?.getAttribute('aria-label')).toContain('%63,7')
-    expect([...steps[1].querySelectorAll('.reports-journey-parts li')].map(item => item.textContent)).toEqual(['İade Edilen Tutar₺100%28,6', 'Ürün Maliyeti₺80%22,9', 'Tahmini Komisyon₺43%12,3'])
-    expect(steps[2].querySelector('.reports-sales-share.is-good')?.getAttribute('aria-label')).toContain('%36,3')
-    expect(steps[2].textContent).toContain('127,00')
-    expect(steps[3].textContent).toContain('%38,5')
+    expect(steps[1].textContent).toContain('143,00')
+    expect(steps[1].textContent).toContain('%40,9')
+    expect(steps[2].textContent).toContain('207,00')
+    expect(steps[3].textContent).toContain('%36,3')
     expect(steps[4].textContent).toContain('Tahmini Net Kâr')
-    expect(steps[4].textContent).toContain('77,00')
+    expect(steps[4].textContent).toContain('127,00')
+    // Under the steps the sales as one bar: each deduction, the product cost and the profit with its amount and share.
+    expect([...page.querySelectorAll('.reports-flow-legend li')].map(item => item.textContent)).toEqual(['İade Edilen Tutar₺100%28,6', 'Tahmini Komisyon₺43%12,3', 'Ürün Maliyeti₺80%22,9', 'Net Kâr₺127%36,3'])
     // Each step opens its breakdown in a window over the page, and a second click closes it; no separate cards repeat them.
     expect(page.querySelector('.reports-journey-modal')).toBeNull()
     expect(await openStep(page, 'Satış tutarı')).toContain('Trendyol')
     expect(await openStep(page, 'Masraflar:')).toContain('Tahmini Komisyon')
     expect(await openStep(page, 'Masraflar sonrası')).toContain('kargo faturası')
     expect(page.querySelector('.reports-journey > li.is-equals')?.classList.contains('is-open')).toBe(true)
-    expect(await openStep(page, 'Kâr oranları')).toContain('%38,5')
-    expect(await openStep(page, 'Tahmini Net Kâr')).toContain('Kârlılık sekmesinde aç')
-    await openStep(page, 'Tahmini Net Kâr')
+    expect(await openStep(page, 'Kâr oranları')).toContain('%36,3')
+    const account = await openStep(page, 'Tahmini net kâr')
+    expect(account).toContain('Kârlılık sekmesinde aç')
+    expect(account).toContain('207,00')
+    expect(account).toContain('127,00')
+    await openStep(page, 'Tahmini net kâr')
     expect(page.querySelector('.reports-journey-modal')).toBeNull()
     expect(page.querySelector('.reports-card-costs, .reports-card-margin, .reports-card-platforms, .reports-notes')).toBeNull()
     // Dönem Özeti: 6 units ordered (one cancelled for 120, one returned for 100), 4 kept for 250; under them the orders,
@@ -176,10 +178,11 @@ describe('ReportsPage', () => {
     expect(costs).toContain('Kesintiler')
     expect(costs).toContain('13,50')
     expect(costs).toContain('Hizmet Bedeli, Stopaj')
-    // 250 net − 41.50 − 226.68 − 13.50 − 80 cost: the deductions go 111.68 over the sales, shown as a gap.
-    const gap = page.querySelector('.reports-journey > li.is-negative')!
-    expect(gap.textContent).toContain('Açık')
-    expect(gap.textContent).toContain('111,68')
+    // 350 − 100 returns − 41.50 − 226.68 − 13.50 leaves −31.68; less the cost of 80, a loss of 111.68, both in red.
+    expect(page.querySelector('.reports-journey > li.is-equals.is-negative')?.textContent).toContain('31,68')
+    const loss = page.querySelector('.reports-journey > li.is-result.is-negative')!
+    expect(loss.textContent).toContain('Tahmini Zarar')
+    expect(loss.textContent).toContain('111,68')
     const left = await openStep(page, 'Masraflar sonrası')
     expect(left).toContain('Shopify kargo ve hizmet bedeli')
     expect(left).not.toContain('kargo faturası')
@@ -305,10 +308,9 @@ describe('ReportsPage', () => {
     const page = await open('', { ...report, cost: { ...report.cost, costedQuantity: 0, coverage: 0, costTotal: 0, grossProfit: 0, profitQuantity: 0, profitCoverage: 0, netProfit: 0 } })
     const profit = page.querySelector('.reports-journey > li.is-result')!
     expect(profit.textContent).toContain('Maliyet girilmemiş')
-    expect(profit.textContent).not.toContain('Tahmini Net Kâr')
     expect(page.querySelector('.reports-gauge-value')).toBeNull()
     expect(await openStep(page, 'Masraflar:')).not.toContain('Ürün Maliyeti')
-    expect(await openStep(page, 'Masraflar sonrası')).toContain('ürün maliyeti girilmemiş')
+    expect(await openStep(page, 'Tahmini net kâr')).toContain('Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.')
     // The profit tab's account says the same instead of a row of zeros.
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Satıştan Kâra: Tümünü Gör"]')!.click() })
     expect(body(page)).toContain('Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.')
