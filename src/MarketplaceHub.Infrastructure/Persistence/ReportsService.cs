@@ -82,7 +82,51 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                 .ToDictionaryAsync(x => x.Key, x => x.Available, cancellationToken);
 
         var report = ReportBuilder.Build(input, previousInput, stock) with { GeneratedAt = timeProvider.GetUtcNow(), Channels = channels };
-        return ServiceResult<ReportSalesView>.Ok(report);
+        return ServiceResult<ReportSalesView>.Ok(await WithProductDetailsAsync(tenantId, report, cancellationToken));
+    }
+
+    // The listed products' catalogue details, as the product list shows them: the variant's model code and options
+    // (size, colour…) and a picture, the variant's own first, else the product's. Only the top lists are looked up.
+    private async Task<ReportSalesView> WithProductDetailsAsync(Guid tenantId, ReportSalesView report, CancellationToken cancellationToken)
+    {
+        var listed = report.TopProducts.Concat(report.TopReturned).Concat(report.Rising ?? []).Concat(report.Falling ?? []).ToList();
+        var variantIds = listed.Where(x => x.VariantId != null).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var productIds = listed.Where(x => x.ProductId != null).Select(x => x.ProductId!.Value).Distinct().ToArray();
+        if (variantIds.Length == 0 && productIds.Length == 0) return report;
+        var modelCodes = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && variantIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.ModelCode, cancellationToken);
+        var optionRows = await (from assignment in db.VariantOptionValues.AsNoTracking()
+                                join option in db.ProductOptions.AsNoTracking() on new { assignment.TenantId, assignment.OptionId } equals new { option.TenantId, OptionId = option.Id }
+                                join value in db.ProductOptionValues.AsNoTracking() on new { assignment.TenantId, assignment.OptionValueId } equals new { value.TenantId, OptionValueId = value.Id }
+                                where assignment.TenantId == tenantId && variantIds.Contains(assignment.VariantId)
+                                orderby option.SortOrder
+                                select new { assignment.VariantId, Name = option.Label, Value = value.Label }).ToListAsync(cancellationToken);
+        var options = optionRows.GroupBy(x => x.VariantId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<ReportProductOptionView>)group.Select(x => new ReportProductOptionView(x.Name, x.Value)).ToList());
+        var media = await (from item in db.ProductMedia.AsNoTracking()
+                           join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                           where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE"
+                               && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+                           orderby item.SortOrder, item.Id
+                           select new { item.ProductId, item.VariantId, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        string? Image(ReportProductView product)
+        {
+            var picked = (product.VariantId is { } variantId ? media.FirstOrDefault(x => x.VariantId == variantId) : null)
+                ?? (product.ProductId is { } productId ? media.FirstOrDefault(x => x.ProductId == productId && x.VariantId == null) ?? media.FirstOrDefault(x => x.ProductId == productId) : null);
+            return picked is null ? null : CatalogMediaDisplay.Url(picked.Id, picked.Classification, picked.Url);
+        }
+        ReportProductView Detailed(ReportProductView product) => product with
+        {
+            ModelCode = product.VariantId is { } variantId && modelCodes.TryGetValue(variantId, out var code) && !string.IsNullOrWhiteSpace(code) ? code : null,
+            ImageUrl = Image(product),
+            Options = product.VariantId is { } id && options.TryGetValue(id, out var list) ? list : []
+        };
+        return report with
+        {
+            TopProducts = report.TopProducts.Select(Detailed).ToList(), TopReturned = report.TopReturned.Select(Detailed).ToList(),
+            Rising = report.Rising?.Select(Detailed).ToList(), Falling = report.Falling?.Select(Detailed).ToList()
+        };
     }
 
     // The period's orders by their real order time (Trendyol's stored time minus its offset), any status.

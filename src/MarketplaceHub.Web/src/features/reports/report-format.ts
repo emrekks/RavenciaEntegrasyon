@@ -13,6 +13,8 @@ export type ReportTimePoint = { start: string; orders: number; soldQuantity: num
 export type ReportProduct = {
   variantId: string | null; productId: string | null; title: string; sku: string; brand: string; category: string; soldQuantity: number; returnedQuantity: number
   returnRate: number | null; salesAmount: number; estimatedCommission: number; commissionCoveredAmount: number
+  modelCode?: string | null; imageUrl?: string | null; options?: Array<{ name: string; value: string }> | null
+  netAmount?: number; previousSoldQuantity?: number | null; available?: number | null
 }
 export type ReportReason = { reason: string; known: boolean; count: number }
 export type ReportCancelGroup = { key: string; label: string; orders: number; cancelledOrders: number; cancelledQuantity: number; cancelRate: number | null }
@@ -31,8 +33,9 @@ export type ReportSales = {
   }
   platforms: ReportGroup[]; cities: ReportGroup[]; timeSeries: ReportTimePoint[]; previousTimeSeries: ReportTimePoint[]
   topProducts: ReportProduct[]; topReturned: ReportProduct[]; brands: ReportGroup[]; categories: ReportGroup[]; returnReasons: ReportReason[]
-  cancellations: { cancelledOrders: number; cancelledQuantity: number; cancelRate: number | null; warningRate: number; platforms: ReportCancelGroup[]; reasons: ReportReason[] }
-  cargo: ReportCargo[]; heatmap: number[][]
+  cancellations: { cancelledOrders: number; cancelledQuantity: number; cancelRate: number | null; warningRate: number; platforms: ReportCancelGroup[]; reasons: ReportReason[]; cancelledAmount?: number }
+  cargo: ReportCargo[]; heatmap: number[][]; platformHeatmaps?: Array<{ platformCode: string; heatmap: number[][] }> | null
+  rising?: ReportProduct[] | null; falling?: ReportProduct[] | null
   customers: { identifiedOrders: number; unidentifiedOrders: number; uniqueCustomers: number; repeatCustomers: number; repeatRate: number | null; ordersPerCustomer: number | null }
   invoices: { buckets: Array<{ key: string; label: string; packages: number; amount: number }>; platforms: Array<{ platformCode: string; invoiced: number; notInvoiced: number; unknown: number }> }
   stock: { periodDays: number; bestSellers: ReportStockRow[]; soldOut: ReportStockRow[] }
@@ -75,6 +78,8 @@ const moneyShort = new Intl.NumberFormat('tr-TR', { style: 'currency', currency:
 export function formatNumber(value: number | null | undefined) { return value === null || value === undefined || Number.isNaN(value) ? '—' : number.format(value) }
 export function formatCount(value: number | null | undefined) { return value === null || value === undefined || Number.isNaN(value) ? '—' : whole.format(value) }
 export function formatTl(value: number | null | undefined) { return value === null || value === undefined || Number.isNaN(value) ? '—' : money.format(value) }
+const moneyWhole = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })
+export function formatTlWhole(value: number) { return moneyWhole.format(value) }
 export function formatTlShort(value: number) { return Math.abs(value) >= 10_000 ? moneyShort.format(value) : money.format(value) }
 export function formatPercent(rate: number | null | undefined, digits = 1) {
   return rate === null || rate === undefined || Number.isNaN(rate) ? '—' : `%${(rate * 100).toLocaleString('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`

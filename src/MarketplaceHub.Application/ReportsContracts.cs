@@ -44,7 +44,14 @@ public sealed record ReportSalesView(
     IReadOnlyList<ReportChannelView> Channels,
     IReadOnlyList<string> DataNotes,
     ReportCostsView Costs,
-    ReportGeographyView Geography);
+    ReportGeographyView Geography,
+    IReadOnlyList<ReportPlatformHeatmapView>? PlatformHeatmaps = null,
+    IReadOnlyList<ReportProductView>? Rising = null,
+    IReadOnlyList<ReportProductView>? Falling = null);
+
+// One platform's orders by weekday (Monday first) and hour, as Heatmap; summed over platforms they make Heatmap.
+// Rising and Falling (on ReportSalesView): the products whose units sold rose or fell most against the previous period.
+public sealed record ReportPlatformHeatmapView(string PlatformCode, IReadOnlyList<IReadOnlyList<int>> Heatmap);
 
 // The sales map. Cities holds the orders delivered in Turkey only; Countries splits every order by the country it goes
 // to: an order of a Trendyol cross-border storefront (SA, AZ, BG…) by its storefront, since its address is Trendyol's
@@ -127,7 +134,13 @@ public sealed record ReportGroupView(
 // Start: the first day of the bucket (a day, a Monday-started week or a month), in the tenant's time zone.
 public sealed record ReportTimePointView(DateOnly Start, int Orders, decimal SoldQuantity, decimal ReturnedQuantity, decimal NetRevenue, int CancelledOrders);
 
-// SalesAmount: the line's share of what the customer paid for the order.
+// A variant's option as the catalogue names it, e.g. Beden: M, Renk: Siyah.
+public sealed record ReportProductOptionView(string Name, string Value);
+
+// NetAmount: SalesAmount less what went back. PreviousSoldQuantity: the units sold in the previous period (0 when none);
+// Available: the variant's stock now, for the variants whose stock was read (null otherwise).
+// SalesAmount: the line's share of what the customer paid for the order. ModelCode, ImageUrl and Options come from the
+// catalogue for a line matched to a variant (the picture: the variant's own, else the product's); null or empty otherwise.
 public sealed record ReportProductView(
     Guid? VariantId,
     Guid? ProductId,
@@ -140,21 +153,29 @@ public sealed record ReportProductView(
     decimal? ReturnRate,
     decimal SalesAmount,
     decimal EstimatedCommission,
-    decimal CommissionCoveredAmount);
+    decimal CommissionCoveredAmount,
+    string? ModelCode = null,
+    string? ImageUrl = null,
+    IReadOnlyList<ReportProductOptionView>? Options = null,
+    decimal NetAmount = 0m,
+    decimal? PreviousSoldQuantity = null,
+    decimal? Available = null);
 
 public sealed record ReportReasonView(string Reason, bool Known, int Count);
 
 public sealed record ReportCancelGroupView(string Key, string Label, int Orders, int CancelledOrders, decimal CancelledQuantity, decimal? CancelRate);
 
 // CancelledQuantity: units of cancelled orders plus units cancelled out of orders that went on. Reasons: one per
-// cancelled order and per partly cancelled line, by the reason the marketplace gave (or "Bilinmiyor").
+// cancelled order and per partly cancelled line, by the reason the marketplace gave (or "Bilinmiyor"). CancelledAmount: the
+// list price of those units (TRY orders only).
 public sealed record ReportCancellationView(
     int CancelledOrders,
     decimal CancelledQuantity,
     decimal? CancelRate,
     decimal WarningRate,
     IReadOnlyList<ReportCancelGroupView> Platforms,
-    IReadOnlyList<ReportReasonView> Reasons);
+    IReadOnlyList<ReportReasonView> Reasons,
+    decimal CancelledAmount = 0m);
 
 // Packages: current, not cancelled packages of the period's orders. The hours come from the status times the
 // marketplace reported (order -> first "shipped", "shipped" -> first "delivered"); Measured* say how many packages
