@@ -407,8 +407,8 @@ export function InvoicesPage() {
   const manualInvoiceDelivery = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.manualInvoiceDocumentId) throw new Error('Siparişte güncel manuel fatura belgesi bulunamadı.')
-      // One key per document and delivery state: a double click reaches the same request instead of queuing twice.
-      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item) } })
+      // A fresh key per attempt: a retry after a failed delivery must queue a new job, not replay the old answer.
+      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item.manualInvoiceDocumentId) } })
     },
     onSuccess: async (result, item) => {
       const documentId = item.manualInvoiceDocumentId

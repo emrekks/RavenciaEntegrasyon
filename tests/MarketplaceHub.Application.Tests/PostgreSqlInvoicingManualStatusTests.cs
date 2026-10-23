@@ -165,6 +165,85 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
         }
     }
 
+    // W2: the same key after a finished (failed) job queues a new job; while a job waits, it is answered with that job.
+    [PostgreSqlFact]
+    public async Task W2_ManualDeliveryRetriedAfterAFailedJobIsQueuedAgain()
+    {
+        var seed = NewSeed("w2-retry", "TRENDYOL", null);
+        var document = new ManualOrderInvoiceDocument
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            OrderId = seed.Order.Id,
+            ConnectionId = seed.Marketplace.Id,
+            InvoiceNumber = "W2A2026000000001",
+            IssuedAt = fixture.Now.AddDays(-1),
+            IdempotencyKey = $"w2:{Guid.NewGuid():N}",
+            DocumentType = "URL",
+            DocumentUrl = "https://example.com/w2/invoice.pdf",
+            Status = "ACTIVE",
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now
+        };
+        await SeedAsync(seed, db => db.ManualOrderInvoiceDocuments.Add(document));
+        try
+        {
+            const string key = "manual-invoice-delivery:w2:same-key";
+            var first = await QueueManualDeliveryAsync(seed, document.Id, key);
+            Assert.Equal(StatusCodes.Status202Accepted, first);
+            // A second click while the job waits reaches the same job.
+            Assert.Equal(StatusCodes.Status202Accepted, await QueueManualDeliveryAsync(seed, document.Id, key));
+            Assert.Equal(1, await CountDeliveryJobsAsync(seed.Tenant.Id));
+
+            // The job failed for good, twice in a row (FAILED -> FAILED).
+            for (var attempt = 2; attempt <= 3; attempt++)
+            {
+                await FailDeliveryAsync(seed.Tenant.Id, document.Id);
+                Assert.Equal(StatusCodes.Status202Accepted, await QueueManualDeliveryAsync(seed, document.Id, key));
+                Assert.Equal(attempt, await CountDeliveryJobsAsync(seed.Tenant.Id));
+                await using var db = fixture.CreateContext();
+                Assert.Equal(1, await db.IntegrationJobs.CountAsync(job => job.TenantId == seed.Tenant.Id
+                    && job.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery && job.Status == JobStatus.Pending));
+                Assert.Equal("QUEUED", (await db.ManualOrderInvoiceDeliveryStates.SingleAsync(state => state.DocumentId == document.Id)).Status);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private async Task<int> QueueManualDeliveryAsync(Seed seed, Guid documentId, string key)
+    {
+        await using var db = fixture.CreateContext();
+        var http = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection()
+                .AddSingleton<ITenantContextAccessor>(new TenantAccessor(new(Guid.NewGuid(), seed.Tenant.Id, "OWNER")))
+                .BuildServiceProvider()
+        };
+        http.Request.Headers["Idempotency-Key"] = key;
+        var result = await InvoicingEndpoints.QueueManualOrderInvoiceDeliveryAsync(documentId, http, db, fixture.TimeProvider);
+        var status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode ?? 0;
+        Assert.True(status == StatusCodes.Status202Accepted, $"{status}: {JsonSerializer.Serialize((result as IValueHttpResult)?.Value)}");
+        return status;
+    }
+
+    private async Task<int> CountDeliveryJobsAsync(Guid tenantId)
+    {
+        await using var db = fixture.CreateContext();
+        return await db.IntegrationJobs.CountAsync(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery);
+    }
+
+    private async Task FailDeliveryAsync(Guid tenantId, Guid documentId)
+    {
+        await using var db = fixture.CreateContext();
+        await db.IntegrationJobs.Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery && job.Status == JobStatus.Pending)
+            .ExecuteUpdateAsync(update => update.SetProperty(job => job.Status, JobStatus.Dead));
+        await db.ManualOrderInvoiceDeliveryStates.Where(state => state.TenantId == tenantId && state.DocumentId == documentId)
+            .ExecuteUpdateAsync(update => update.SetProperty(state => state.Status, "FAILED"));
+    }
+
     private InvoicingBillingService NewBillingService(AppDbContext db)
     {
         var dataProtection = new EphemeralDataProtectionProvider();
@@ -341,5 +420,10 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
             Calls++;
             return Task.FromResult(AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, MarketplaceInvoiceStatePolicy.Unverified, true)));
         }
+    }
+
+    private sealed class TenantAccessor(TenantContext context) : ITenantContextAccessor
+    {
+        public TenantContext? Current => context;
     }
 }
