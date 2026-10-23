@@ -28,8 +28,10 @@ const metricOptions: Array<SwitchOption<Metric>> = [
   { key: 'revenue', text: 'Ciro', icon: 'trend' }, { key: 'orders', text: 'Sipariş', icon: 'orders' }, { key: 'basket', text: 'Sepet Ort.', icon: 'bag' }
 ]
 const lira = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })
-// The map's labels: amounts kept short ("₺55,6 B") so they fit their area.
-const liraShort = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', notation: 'compact', maximumFractionDigits: 1 })
+// The map's labels: whole liras, thousands kept short ("₺913", "₺55 B") so they fit their area.
+const liraWhole = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })
+const liraShort = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', notation: 'compact', maximumFractionDigits: 0 })
+const labelAmount = (value: number) => Math.abs(value) < 1000 ? liraWhole.format(value) : liraShort.format(value)
 const provinceCount = 81
 
 // A province name as the map and the report both write it, without Turkish letters and marks ("Hakkâri" = "Hakkari").
@@ -94,24 +96,23 @@ const shortNames: Record<string, string> = { AE: 'BAE', US: 'ABD', GB: 'İngilte
 
 type LabelSpot = { key: string; x: number; y: number; name: string | null; count: string; dark: boolean; zone: string | null }
 
-// The labels that fit: biggest areas first, each with its name when asked and room allows, else its count alone, else
-// none, so no label is drawn over another (the tooltip and the list still carry every area).
+// One rule for every measure: each area that sold shows its value at its centre; the best sellers also get their name
+// above it, when the name clears every value and the names placed before it (biggest areas first).
 function placeLabels(items: Array<Omit<LabelSpot, 'name'> & { name: string; named: boolean }>, size: number): LabelSpot[] {
-  const boxes: Array<[number, number, number, number]> = []
-  const free = (box: [number, number, number, number]) => !boxes.some(other => box[0] < other[2] && box[2] > other[0] && box[1] < other[3] && box[3] > other[1])
-  const placed: LabelSpot[] = []
-  const gap = size * 0.25
-  for (const item of items) {
-    const countWidth = item.count.length * size * 0.62
-    if (item.named) {
-      const width = Math.max(item.name.length * size * 0.6, countWidth)
-      const box: [number, number, number, number] = [item.x - width / 2 - gap, item.y - size * 1.15 - gap, item.x + width / 2 + gap, item.y + size * 1.05 + gap]
-      if (free(box)) { boxes.push(box); placed.push({ ...item, name: item.name }); continue }
-    }
-    const box: [number, number, number, number] = [item.x - countWidth / 2 - gap, item.y - size * 0.45 - gap, item.x + countWidth / 2 + gap, item.y + size * 0.5 + gap]
-    if (free(box)) { boxes.push(box); placed.push({ ...item, name: null }) }
-  }
-  return placed
+  type Box = [number, number, number, number]
+  const hits = (box: Box, other: Box) => box[0] < other[2] && box[2] > other[0] && box[1] < other[3] && box[3] > other[1]
+  const gap = size * 0.2
+  const values = items.map(item => { const width = item.count.length * size * 0.6; return [item.x - width / 2 - gap, item.y - size * 0.45, item.x + width / 2 + gap, item.y + size * 0.45] as Box })
+  const names: Box[] = []
+  return items.map((item, index) => {
+    if (!item.named) return { ...item, name: null }
+    const width = item.name.length * size * 0.6
+    const box: Box = [item.x - width / 2 - gap, item.y - size * 1.75, item.x + width / 2 + gap, item.y - size * 0.6]
+    const free = !values.some((other, at) => at !== index && hits(box, other)) && !names.some(other => hits(box, other))
+    if (!free) return { ...item, name: null }
+    names.push(box)
+    return { ...item, name: item.name }
+  })
 }
 
 // view: the area's amounts on the map (one platform's part when a platform is picked); group: the whole area.
@@ -166,7 +167,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
     ? fitViewBox(map.viewBox, map.regions.filter(region => region.code === 'TR' || byRegion.has(region.code)).map(region => ({ x: region.x, y: region.y })))
     : map.viewBox
   const unit = Number(viewBox.split(' ')[2]) / 1000
-  const labelSize = (scope === 'turkey' ? 15 : 13) * unit
+  const labelSize = (scope === 'turkey' ? 11.5 : 10.5) * unit
   const choose = (next: Scope) => { setScope(next); setSelected(null); setHover(null); setPlatform(null); setZone(null); setHoverZone(null) }
   const pickPlatform = (code: string | null) => { setPlatform(current => current === code ? null : code); setSelected(null) }
   const showTab = (next: Tab) => { setTab(next); setSelected(null) }
@@ -193,7 +194,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
   const labels = placeLabels(areas.flatMap((area, index) => {
     const region = regionOfArea.get(area.key)
     if (!region || area.view.orders === 0 || area.value === null) return []
-    return [{ key: area.key, x: region.x, y: region.y, name: shortNames[area.key] ?? area.group.label, count: metric === 'orders' ? formatCount(area.value) : liraShort.format(area.value), dark: dark(area), zone: area.zone, named: index < namedAreas }]
+    return [{ key: area.key, x: region.x, y: region.y, name: shortNames[area.key] ?? area.group.label, count: metric === 'orders' ? formatCount(area.value) : labelAmount(area.value), dark: dark(area), zone: area.zone, named: index < namedAreas }]
   }), labelSize)
 
   return <section className="reports-panel reports-map-panel" aria-labelledby="reports-map-title">
@@ -238,9 +239,9 @@ export function SalesMap({ data }: { data: ReportSales }) {
               })}
             </g>}
             <g className="reports-map-labels" aria-hidden="true">
-              {labels.map(label => <text key={label.key} x={label.x} y={label.y} className={`${label.dark ? 'is-on-dark' : ''}${focusZone !== null && label.zone !== focusZone ? ' is-dim' : ''}` || undefined} style={{ fontSize: labelSize, strokeWidth: 2.5 * unit }}>
-                {label.name && <tspan x={label.x} dy={-labelSize * 0.35} className="is-name">{label.name}</tspan>}
-                <tspan x={label.x} dy={label.name ? labelSize * 1.15 : labelSize * 0.35}>{label.count}</tspan>
+              {labels.map(label => <text key={label.key} x={label.x} y={label.y} className={`${label.dark ? 'is-on-dark' : ''}${focusZone !== null && label.zone !== focusZone ? ' is-dim' : ''}` || undefined} style={{ fontSize: labelSize, strokeWidth: 1.8 * unit }}>
+                {label.name && <tspan x={label.x} y={label.y - labelSize * 0.9} className="is-name">{label.name}</tspan>}
+                <tspan x={label.x} y={label.y + labelSize * 0.35}>{label.count}</tspan>
               </text>)}
             </g>
           </svg>}
