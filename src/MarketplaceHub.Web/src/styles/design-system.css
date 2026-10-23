@@ -6565,14 +6565,15 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-reference-bulk-toolbar > span { flex: 0 0 auto; margin-right: auto; color: var(--rv-color-ink); font-size: 13px; font-weight: 750; white-space: nowrap; }
 .invoice-reference-bulk-toolbar button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); cursor: pointer; font: inherit; font-size: 12px; }
 .invoice-reference-bulk-toolbar button:first-of-type { border-color: var(--rv-color-primary); background: var(--rv-color-primary-fill); color: #fff; }
-.invoice-bulk-status-orders { display: grid; gap: 7px; max-height: min(44vh, 420px); overflow: auto; margin: 10px 0 0; padding: 2px; list-style: none; }
-.invoice-bulk-status-orders > li { display: grid; grid-template-columns: minmax(76px, .45fr) minmax(150px, 1fr) minmax(115px, .7fr); align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-raised); }
+.invoice-bulk-status-orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 7px; max-height: min(44vh, 420px); overflow: auto; margin: 10px 0 0; padding: 2px; list-style: none; }
+.invoice-bulk-status-orders > li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-raised); }
 .invoice-bulk-status-platform { color: var(--rv-color-primary); font-size: 11px; font-weight: 800; }
 .invoice-bulk-status-order { display: grid; gap: 3px; font-size: 13px; font-weight: 750; }
 .invoice-bulk-status-order small { color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
 .invoice-bulk-status-value { justify-self: end; color: var(--rv-color-muted); font-size: 11px; font-weight: 700; text-align: right; }
 
 @media (max-width: 600px) {
+  .invoice-bulk-status-orders { grid-template-columns: minmax(0, 1fr); }
   .invoice-bulk-status-orders > li { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; }
   .invoice-bulk-status-platform { grid-column: 1 / -1; }
   .invoice-bulk-status-value { grid-column: 2; grid-row: 2; }
