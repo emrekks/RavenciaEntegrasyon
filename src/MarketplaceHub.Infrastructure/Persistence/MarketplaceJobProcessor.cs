@@ -10272,14 +10272,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .SingleOrDefaultAsync(cancellationToken) ?? 900;
             var overlap = TimeSpan.FromSeconds(Math.Clamp(configuredOverlapSeconds, 60, 86_400));
             var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
-            var full = forceFull || cursor.LastSuccessAt is null || retryAfterFailure;
+            var full = forceFull || retryAfterFailure || HepsiburadaReturnHistoryPolicy.FullPassDue(cursor.LastSuccessAt, now);
             var lastSuccessfulChange = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? now.AddHours(-24);
             state = new(
                 HepsiburadaReturnSyncStateVersion,
                 0,
                 0,
                 full,
-                full ? null : lastSuccessfulChange.Subtract(overlap),
+                full ? null : HepsiburadaReturnHistoryPolicy.IncrementalStatusChangeStart(lastSuccessfulChange, overlap, now),
                 now);
             cursor.OpaqueCursor = JsonSerializer.Serialize(state);
             cursor.Version++;

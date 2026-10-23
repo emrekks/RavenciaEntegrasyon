@@ -203,6 +203,29 @@ public static class HepsiburadaReturnHistoryPolicy
 
     public static bool IsOrderWithinReturnHistory(DateTimeOffset? orderCreatedAt, DateTimeOffset anchor) =>
         orderCreatedAt is { } orderedAt && orderedAt >= InitialStatusChangeStart(anchor) && orderedAt <= anchor;
+
+    // Hepsiburada's status-change filter misses claims in a pass of minutes (23 Oct 2026: claim 318311246, opened on
+    // 19 Oct and waiting for an answer, was never listed by an incremental pass while full passes find claims), so an
+    // incremental pass looks back at least two days; a claim listed again is only updated.
+    public static readonly TimeSpan IncrementalLookback = TimeSpan.FromDays(2);
+
+    public static DateTimeOffset IncrementalStatusChangeStart(DateTimeOffset lastChange, TimeSpan overlap, DateTimeOffset now)
+    {
+        var sinceLast = lastChange - overlap;
+        var floor = now - IncrementalLookback;
+        return sinceLast < floor ? sinceLast : floor;
+    }
+
+    // The first pass of each clock hour is a full one (every status over the whole history), so a claim the
+    // incremental passes miss reaches the panel within the hour.
+    public static bool FullPassDue(DateTimeOffset? lastSuccessAt, DateTimeOffset now) =>
+        lastSuccessAt is not { } last || Hour(last) != Hour(now);
+
+    private static DateTimeOffset Hour(DateTimeOffset value)
+    {
+        var utc = value.ToUniversalTime();
+        return new DateTimeOffset(utc.Year, utc.Month, utc.Day, utc.Hour, 0, 0, TimeSpan.Zero);
+    }
 }
 
 public static class MarketplaceSyncHealthPolicy
