@@ -110,6 +110,8 @@ export function SalesMap({ data }: { data: ReportSales }) {
     const box = canvas.current?.getBoundingClientRect()
     if (box) setHover({ key, x: event.clientX - box.left, y: event.clientY - box.top })
   }
+  // The card closes as soon as the pointer leaves the area (a move into the next area opens that one's).
+  const leave = (key: string) => () => setHover(current => current?.key === key ? null : current)
 
   const fill = (area: Area | undefined) => {
     if (!area || (area.value ?? 0) <= 0) return undefined
@@ -145,6 +147,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
                   className={`${active ? 'is-active' : ''}${region.code === '00' ? ' is-decor' : ''}${area && area.key === selected ? ' is-selected' : ''}${area && hover?.key === area.key ? ' is-hover' : ''}`}
                   style={{ fill: fill(area) }}
                   onPointerMove={area ? track(area.key) : undefined}
+                  onPointerLeave={area ? leave(area.key) : undefined}
                   onClick={area ? () => setSelected(current => current === area.key ? null : area.key) : undefined} />
               })}
             </g>
@@ -153,7 +156,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
                 const area = areaOf(region)
                 if (!area || !area.value || max <= 0) return null
                 return <circle key={region.code} cx={region.x} cy={region.y} r={unit * (4 + Math.sqrt(area.value / max) * 30)}
-                  className={area.key === selected ? 'is-selected' : undefined} onPointerMove={track(area.key)} onClick={() => setSelected(current => current === area.key ? null : area.key)} />
+                  className={area.key === selected ? 'is-selected' : undefined} onPointerMove={track(area.key)} onPointerLeave={leave(area.key)} onClick={() => setSelected(current => current === area.key ? null : area.key)} />
               })}
             </g>}
             <g className="reports-map-labels" aria-hidden="true">
