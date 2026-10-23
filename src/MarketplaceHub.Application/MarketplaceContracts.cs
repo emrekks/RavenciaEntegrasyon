@@ -877,6 +877,8 @@ public interface IWebhookRegistrationPort
 
 // State: UNSUPPORTED, OFF, ACTIVE, PASSIVE (the marketplace stopped delivering), MISSING (the
 // marketplace no longer has it), or UNKNOWN (the marketplace could not be asked).
+// PreviousPreparedAt: a closed Hepsiburada definition that can be made the active one again (when it was
+// prepared), shown while the current one has received nothing.
 public sealed record InstantNotificationView(
     string State,
     string? Endpoint,
@@ -886,7 +888,8 @@ public sealed record InstantNotificationView(
     string? Message,
     WebhookSetupInstructions? Setup = null,
     DateTimeOffset? LastRejectedAt = null,
-    string? LastRejectedReason = null);
+    string? LastRejectedReason = null,
+    DateTimeOffset? PreviousPreparedAt = null);
 
 // What the seller sends a marketplace that registers webhooks by hand (Hepsiburada): the base
 // address with its secret route, the Basic Auth user and password, and the paths it calls.
@@ -899,6 +902,9 @@ public interface IInstantNotificationService
     // clientSecret: the Shopify app's client secret, with which Shopify signs its notifications.
     Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken, string? clientSecret = null);
     Task<ServiceResult<InstantNotificationView>> DisableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // Hepsiburada: makes the last closed definition (the address and password Hepsiburada was given) the active one
+    // again, closing a newer one that has received nothing.
+    Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     // Reactivates registered webhooks the marketplace passivated (for example after the server was off).
     Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken);
 }

@@ -2,21 +2,23 @@
  * Shared motion for every page, in the `base` layer: any component, feature or page rule (and every unlayered rule)
  * wins over it, so a screen with its own motion (Raporlar, Genel Bakış, the toasts, the login page) keeps it.
  *
- * Measured on purpose: these are work screens. Things move once, when they first appear, for 140-240 ms over a few
- * pixels; nothing loops and nothing replays when a filter or a page of a list changes (the blocks stay mounted).
- * The keyframes use the individual `translate` and `scale` properties, not `transform`, so an element positioned
- * with its own transform (a centred modal) keeps it, and `backwards` fill so nothing stays applied after the
- * animation: a finished animation never turns an element into a containing block for fixed descendants.
+ * A page opening cascades in: its blocks rise one after another, then the cards and panels inside them, then the
+ * first rows of a table. Things move when they first appear; nothing loops, and nothing replays while a block stays
+ * mounted (a filter or a refresh keeps it). The keyframes use the individual `translate` and `scale` properties, not
+ * `transform`, so an element positioned with its own transform (a centred modal) keeps it, and `backwards` fill so
+ * nothing stays applied after the animation: a finished animation never turns an element into a containing block for
+ * fixed descendants.
  */
 
-@keyframes rv-motion-enter { from { opacity: 0; translate: 0 var(--rv-motion-distance); } }
+@keyframes rv-motion-enter { from { opacity: 0; translate: 0 var(--rv-motion-distance); scale: .985; } }
+@keyframes rv-motion-row { from { opacity: 0; translate: 0 calc(var(--rv-motion-distance) / 2); } }
 @keyframes rv-motion-fade { from { opacity: 0; } }
-@keyframes rv-motion-pop { from { opacity: 0; translate: 0 -4px; scale: .98; } }
-@keyframes rv-motion-dialog { from { opacity: 0; translate: 0 8px; scale: .985; } }
-@keyframes rv-motion-drawer { from { opacity: 0; translate: 16px 0; } }
+@keyframes rv-motion-pop { from { opacity: 0; translate: 0 -6px; scale: .96; } }
+@keyframes rv-motion-dialog { from { opacity: 0; translate: 0 18px; scale: .96; } }
+@keyframes rv-motion-drawer { from { opacity: 0; translate: 32px 0; } }
 
-/* A page opening: its first blocks (heading, filters, summary cards, the table) rise in one after another. A modal or
-   backdrop the page mounts later as one of its blocks keeps its own motion below. */
+/* A page's blocks (heading, tabs, summary cards, filters, the table) rise in one after another. A modal or backdrop
+   the page mounts as one of its blocks keeps its own motion below. */
 .app-shell main > .content:not(.reports-page, .rr-dashboard) > :not([class*="backdrop"], [class*="overlay"], [role="dialog"]) {
   animation: rv-motion-enter var(--rv-motion-enter) var(--rv-ease-out) backwards;
 }
@@ -24,30 +26,60 @@
 .app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(3) { animation-delay: calc(var(--rv-motion-stagger) * 2); }
 .app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(4) { animation-delay: calc(var(--rv-motion-stagger) * 3); }
 .app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(5) { animation-delay: calc(var(--rv-motion-stagger) * 4); }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(n + 6) { animation-delay: calc(var(--rv-motion-stagger) * 5); }
+.app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(6) { animation-delay: calc(var(--rv-motion-stagger) * 5); }
+.app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(n + 7) { animation-delay: calc(var(--rv-motion-stagger) * 6); }
 
-/* Summary cards of a page (Ürünler, Siparişler, İadeler) come in one after another inside their row. */
-.app-shell main > .content:not(.reports-page, .rr-dashboard) .rr-metrics > * {
+/* Inside them, the cards of a row or grid and the panels of a pane follow one by one: summary cards (Ürünler,
+   Siparişler, İadeler, Faturalar), the integration cards, an integration's or the settings' panels, mapping cards. */
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics, .integration-grid, .cs-pane, .ss-pane, .qi-left) > :not([class*="backdrop"], [class*="overlay"], [role="dialog"]) {
   animation: rv-motion-enter var(--rv-motion-enter) var(--rv-ease-out) backwards;
+  animation-delay: calc(var(--rv-motion-stagger) * 2);
 }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) .rr-metrics > :nth-child(2) { animation-delay: calc(var(--rv-motion-stagger) * 2); }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) .rr-metrics > :nth-child(3) { animation-delay: calc(var(--rv-motion-stagger) * 3); }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) .rr-metrics > :nth-child(n + 4) { animation-delay: calc(var(--rv-motion-stagger) * 4); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics, .integration-grid, .cs-pane, .ss-pane, .qi-left) > :nth-child(2) { animation-delay: calc(var(--rv-motion-stagger) * 3); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics, .integration-grid, .cs-pane, .ss-pane, .qi-left) > :nth-child(3) { animation-delay: calc(var(--rv-motion-stagger) * 4); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics, .integration-grid, .cs-pane, .ss-pane, .qi-left) > :nth-child(4) { animation-delay: calc(var(--rv-motion-stagger) * 5); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics, .integration-grid, .cs-pane, .ss-pane, .qi-left) > :nth-child(5) { animation-delay: calc(var(--rv-motion-stagger) * 6); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics, .integration-grid, .cs-pane, .ss-pane, .qi-left) > :nth-child(n + 6) { animation-delay: calc(var(--rv-motion-stagger) * 7); }
 
-/* Modals, drawers and their backdrops; menus and lists that open over the page. */
-:where([role="dialog"][aria-modal="true"]) { animation: rv-motion-dialog var(--rv-motion-base) var(--rv-ease-out) backwards; }
-:where([role="dialog"][aria-modal="true"][class*="drawer"], [role="dialog"][aria-modal="true"][class*="sheet"]) { animation-name: rv-motion-drawer; }
-:where([class*="backdrop"], [class*="overlay"]) { animation: rv-motion-fade var(--rv-motion-fast) ease-out backwards; }
-:where([role="menu"], [role="listbox"]) { animation: rv-motion-pop var(--rv-motion-fast) var(--rv-ease-out) backwards; }
+/* The first rows of a table come in one after another (the rest, below the fold, with the last of them); a page of
+   the list that is mounted again comes in the same way. */
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr {
+  animation: rv-motion-row var(--rv-motion-enter) var(--rv-ease-out) backwards;
+  animation-delay: calc(var(--rv-motion-stagger) * 3);
+}
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(2) { animation-delay: calc(var(--rv-motion-stagger) * 3.4); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(3) { animation-delay: calc(var(--rv-motion-stagger) * 3.8); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(4) { animation-delay: calc(var(--rv-motion-stagger) * 4.2); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(5) { animation-delay: calc(var(--rv-motion-stagger) * 4.6); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(6) { animation-delay: calc(var(--rv-motion-stagger) * 5); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(7) { animation-delay: calc(var(--rv-motion-stagger) * 5.4); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(8) { animation-delay: calc(var(--rv-motion-stagger) * 5.8); }
+:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(n + 9) { animation-delay: calc(var(--rv-motion-stagger) * 6.2); }
+
+/* Cards under the pointer: a summary card lifts a little; an integration card only takes a shadow, because it holds
+   its detail window and menus (fixed to the screen), and a moved card would hold them inside itself instead. */
+@media (hover: hover) {
+  :where(.rr-metrics > article, .invoice-reference-metrics > article, .integration-grid > *) {
+    transition: translate var(--rv-motion-fast) var(--rv-ease-out), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard);
+  }
+  :where(.rr-metrics > article, .invoice-reference-metrics > article):hover { translate: 0 var(--rv-motion-lift); }
+  :where(.rr-metrics > article, .invoice-reference-metrics > article, .integration-grid > *):hover { box-shadow: 0 10px 24px -14px rgb(0 0 0 / 55%); }
+}
+
+/* Modals, drawers and their backdrops; menus and lists that open over the page spring open. */
+:where([role="dialog"][aria-modal="true"]) { animation: rv-motion-dialog var(--rv-motion-base) var(--rv-ease-spring) backwards; }
+:where([role="dialog"][aria-modal="true"][class*="drawer"], [role="dialog"][aria-modal="true"][class*="sheet"]) { animation: rv-motion-drawer var(--rv-motion-base) var(--rv-ease-out) backwards; }
+:where([class*="backdrop"], [class*="overlay"], [class*="scrim"]) { animation: rv-motion-fade var(--rv-motion-base) ease-out backwards; }
+:where([role="menu"], [role="listbox"], .rv-popover, .rr-menu, .rr-pop) { animation: rv-motion-pop var(--rv-motion-base) var(--rv-ease-spring) backwards; transform-origin: top; }
 
 /* A loading message fades in, so a quick load does not flash it. */
 :where(.rv-loading-state) { animation: rv-motion-fade var(--rv-motion-base) ease-out 120ms backwards; }
 
 /* Controls answer the pointer: colours ease, a pressed button gives a little. */
-:where(button, a, [role="button"], input, select, textarea, summary) {
+:where(button, a, [role="button"], [role="tab"], input, select, textarea, summary) {
   transition: color var(--rv-motion-fast) var(--rv-ease-standard), background-color var(--rv-motion-fast) var(--rv-ease-standard),
     border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard),
-    opacity var(--rv-motion-fast) var(--rv-ease-standard), scale var(--rv-motion-fast) var(--rv-ease-standard);
+    opacity var(--rv-motion-fast) var(--rv-ease-standard), scale var(--rv-motion-fast) var(--rv-ease-out);
 }
 :where(button, [role="button"]):not(:disabled, [aria-disabled="true"], [role="switch"]):active { scale: var(--rv-motion-press); }
 
@@ -62,6 +94,7 @@
     --rv-motion-stagger: 0ms;
     --rv-motion-distance: 0px;
     --rv-motion-press: 1;
+    --rv-motion-lift: 0px;
   }
   :where(.rv-loading-state) { animation: none; }
 }

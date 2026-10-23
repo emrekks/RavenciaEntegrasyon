@@ -114,13 +114,13 @@ describe('ReportsPage', () => {
   it('asks for the last 30 days and shows the summary on one screen', async () => {
     const page = await open()
     expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
-    // Net revenue with its columns (the best day marked) and the period's other figures beside it.
+    // Net revenue with its columns (the best day marked); the period's other figures are in Dönem Özeti.
     const revenue = page.querySelector('.reports-card-revenue')!
     expect(revenue.textContent).toContain('Net Ciro')
     expect(revenue.textContent).toContain('+%25')
     expect(revenue.querySelectorAll('.reports-columns li')).toHaveLength(2)
     expect(revenue.querySelector('.reports-columns li.is-peak')).not.toBeNull()
-    expect(page.querySelector('.reports-figures')?.textContent).toContain('Ortalama Sepet')
+    expect(page.querySelector('.reports-card-figures')).toBeNull()
     // From the sales to the profit, each figure from the one before: 350 of sales, 143 of deductions (returns 100, the
     // estimated commission 43), 207 left, the net margin, and 127 of profit once the product cost of 80 is taken off.
     const steps = [...page.querySelectorAll('.reports-journey > li')]
@@ -148,11 +148,16 @@ describe('ReportsPage', () => {
     await openStep(page, 'Tahmini net kâr')
     expect(page.querySelector('.reports-journey-modal')).toBeNull()
     expect(page.querySelector('.reports-card-costs, .reports-card-margin, .reports-card-platforms, .reports-notes')).toBeNull()
-    // Satış Özeti: 6 units ordered (one cancelled for 120, one returned for 100), 4 kept for 250; the averages under them.
+    // Dönem Özeti: 6 units ordered (one cancelled for 120, one returned for 100), 4 kept for 250; under them the orders,
+    // the average basket and the return rate with their change, then the averages.
     expect(page.querySelector('.reports-period-card')).toBeNull()
+    expect(page.querySelector('.reports-card-summary h2')?.textContent).toBe('Dönem Özeti')
     const sales = [...page.querySelectorAll('.reports-summary-rows > div')].map(row => row.textContent)
     expect(sales).toEqual(['Brüt Satış6 adet₺470,00', 'İptaller−1 adet− ₺120,00', 'İadeler−1 adet− ₺100,00', 'Net Satış4 adet₺250,00'])
-    expect(page.querySelector('.reports-summary-metrics')?.textContent).toBe('Ort. satış fiyatı₺70,00Ort. komisyon oranı%21,5')
+    const figures = [...page.querySelectorAll('.reports-summary-metrics > div small')].map(label => label.textContent)
+    expect(figures).toEqual(['Sipariş', 'Ortalama Sepet', 'İade Oranı', 'Ort. Satış Fiyatı', 'Ort. Komisyon Oranı'])
+    expect(page.querySelectorAll('.reports-summary-metrics .reports-delta')).toHaveLength(3)
+    expect(page.querySelector('.reports-summary-metrics')?.textContent).toContain('Ort. Satış Fiyatı₺70,00Ort. Komisyon Oranı%21,5')
     expect(page.querySelectorAll('.reports-operations button')).toHaveLength(6)
     expect(page.querySelector('.reports-operations button.is-warn')?.textContent).toContain('İptal Oranı')
     // One tab per area, each with its headline figure.

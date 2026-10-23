@@ -31,7 +31,8 @@ export function CountUp({ value, duration = 600 }: { value: string; duration?: n
     let frame = 0
     const began = performance.now()
     const step = (now: number) => {
-      const progress = Math.min(1, (now - began) / duration)
+      // A frame's time can be a little before the effect ran; the figure never starts below its origin.
+      const progress = Math.max(0, Math.min(1, (now - began) / duration))
       const eased = 1 - Math.pow(1 - progress, 3)
       if (progress < 1) {
         setShown(`${figure.prefix}${format(start + (figure.value - start) * eased, figure.decimals)}${figure.suffix}`)

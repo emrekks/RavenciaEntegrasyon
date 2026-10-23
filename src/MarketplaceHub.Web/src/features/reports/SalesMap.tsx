@@ -7,7 +7,7 @@ import { otherZone, turkeyZones, worldZones, type MapZone } from './sales-map-re
 
 type Scope = 'turkey' | 'world'
 type Metric = 'revenue' | 'orders' | 'basket'
-type Mode = 'fill' | 'bubble' | 'channel'
+type Mode = 'fill' | 'channel'
 type Tab = 'rank' | 'zones' | 'platforms'
 type MapData = { viewBox: string; regions: MapRegion[] }
 // The amounts a metric is read from: an area, one platform's part of it, or a region's areas added up.
@@ -178,7 +178,6 @@ export function SalesMap({ data }: { data: ReportSales }) {
 
   const fill = (area: Area | undefined) => {
     if (!area || (area.value ?? 0) <= 0) return undefined
-    if (mode === 'bubble') return 'color-mix(in srgb, var(--rv-color-info) 14%, var(--rv-color-surface-soft))'
     if (mode === 'channel') {
       const lead = platform ? { code: platform, share: Math.sqrt((area.value ?? 0) / max) } : dominant(area.view, metric)
       return lead ? `color-mix(in srgb, ${platformColor(lead.code)} ${Math.round(45 + lead.share * 55)}%, var(--rv-color-surface-soft))` : undefined
@@ -204,7 +203,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
       <div className="reports-map-switches">
         <MapSwitch label="Ölçü" value={metric} onChange={setMetric} options={metricOptions} />
         <MapSwitch label="Gösterim" value={mode} onChange={setMode} options={[
-          { key: 'fill', text: scope === 'turkey' ? 'İl İl Boyalı' : 'Ülke Ülke Boyalı', icon: 'layers' }, { key: 'bubble', text: 'Daire', icon: 'target' }, { key: 'channel', text: 'Baskın Kanal', icon: 'platforms' }
+          { key: 'fill', text: scope === 'turkey' ? 'İl İl Boyalı' : 'Ülke Ülke Boyalı', icon: 'layers' }, { key: 'channel', text: 'Baskın Kanal', icon: 'platforms' }
         ]} />
       </div>
     </header>
@@ -227,14 +226,6 @@ export function SalesMap({ data }: { data: ReportSales }) {
                   onClick={area ? toggle(area.key) : undefined} />
               })}
             </g>
-            {mode === 'bubble' && <g className="reports-map-bubbles">
-              {map.regions.map(region => {
-                const area = areaOf(region)
-                if (!area || !area.value || area.value <= 0 || max <= 0) return null
-                return <circle key={region.code} cx={region.x} cy={region.y} r={unit * (4 + Math.sqrt(area.value / max) * 30)}
-                  className={area.key === selected ? 'is-selected' : undefined} onPointerMove={track(area.key)} onPointerLeave={leave(area.key)} onClick={toggle(area.key)} />
-              })}
-            </g>}
             <g className="reports-map-labels" aria-hidden="true">
               {labels.map(label => <text key={label.key} x={label.x} y={label.y} className={`${label.dark ? 'is-on-dark' : ''}${focusZone !== null && label.zone !== focusZone ? ' is-dim' : ''}` || undefined} style={{ fontSize: labelSize, strokeWidth: 1.8 * unit }}>
                 {label.name && <tspan x={label.x} y={label.y - labelSize * 0.9} className="is-name">{label.name}</tspan>}
@@ -335,7 +326,7 @@ function Legend({ mode, metric, max, platforms }: { mode: Mode; metric: Metric; 
   if (max <= 0) return null
   return <div className="reports-map-legend" aria-label={`${metricLabels[metric]} ölçeği`}>
     <span>{metric === 'orders' ? '0' : lira.format(0)}</span>
-    <i className={mode === 'bubble' ? 'is-bubble' : undefined} aria-hidden="true" />
+    <i aria-hidden="true" />
     <span>{formatMetric(max, metric)}</span>
   </div>
 }

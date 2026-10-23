@@ -257,11 +257,10 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   return <div className="reports-board">
     <div className="reports-board-main">
       <RevenueCard data={data} />
-      <FiguresCard data={data} />
       <ProfitJourney data={data} money={money} onMore={onMore} />
     </div>
-    <aside className="reports-board-side" aria-label="Satış özeti ve operasyon">
-      <SalesSummaryCard data={data} />
+    <aside className="reports-board-side" aria-label="Dönem özeti ve operasyon">
+      <PeriodSummaryCard data={data} />
       <OperationsCard data={data} onMore={onMore} />
     </aside>
   </div>
@@ -308,24 +307,6 @@ function RevenueCard({ data }: { data: ReportSales }) {
       </div>
       <Columns points={points} format={format} axisFormat={money ? formatTlShort : formatNumber} shown={shown} label={`${measures[measure]} dönem içinde`} />
     </>}
-  </Card>
-}
-
-// Three more figures of the period, one under another, each with its change.
-function FiguresCard({ data }: { data: ReportSales }) {
-  const now = data.summary
-  const before = data.previousSummary
-  const noAmount = now.ordersWithAmount === 0
-  const rows = [
-    { label: 'Sipariş', value: now.orders as number | null, format: formatCount, delta: change(now.orders, before.orders), invert: false, hint: `${formatNumber(now.soldQuantity)} adet` },
-    { label: 'Ortalama Sepet', value: noAmount ? null : now.averageOrderValue, format: formatTl, delta: noAmount ? null : change(now.averageOrderValue, before.averageOrderValue), invert: false, hint: 'Tutarı olan siparişler' },
-    { label: 'İade Oranı', value: now.returnRate, format: (value: number) => formatPercent(value), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, hint: `${formatNumber(now.returnedQuantity)} adet iade` }
-  ]
-  return <Card title="Dönem Özeti" className="reports-card-figures" info="Sipariş iptaller hariçtir; ortalama sepet satış tutarı / tutarı olan sipariş; iade oranı iade adedi / satılan adettir.">
-    {shown => <dl className="reports-figures">{rows.map(row => <div key={row.label}>
-      <dt>{row.label}<small>{row.hint}</small></dt>
-      <dd><strong>{row.value === null ? 'Tutar yok' : <CountUp value={row.value} format={row.format} active={shown} />}</strong><Delta delta={row.delta} invert={row.invert} /></dd>
-    </div>)}</dl>}
   </Card>
 }
 
@@ -534,11 +515,12 @@ function ProfitLedger({ money }: { money: Money }) {
   </dl>
 }
 
-// Satış Özeti, as the marketplaces' own reports open: the gross sale, the cancellations and returns taken off in units
+// Dönem Özeti, as the marketplaces' own reports open: the gross sale, the cancellations and returns taken off in units
 // and money, and the net sale; the bar splits the gross units the same way and fills once when first seen. Under it the
-// average sale price and the commission rate.
-function SalesSummaryCard({ data }: { data: ReportSales }) {
+// orders, the average basket and the return rate with their change, then the average sale price and commission rate.
+function PeriodSummaryCard({ data }: { data: ReportSales }) {
   const now = data.summary
+  const before = data.previousSummary
   const noAmount = now.ordersWithAmount === 0
   const cancelledUnits = data.cancellations.cancelledQuantity
   const cancelledAmount = data.cancellations.cancelledAmount ?? null
@@ -551,7 +533,12 @@ function SalesSummaryCard({ data }: { data: ReportSales }) {
     { key: 'net', label: 'Net Satış', units: now.keptQuantity, amount: now.netRevenue, minus: false }
   ]
   const part = (units: number) => grossUnits > 0 ? units / grossUnits * 100 : 0
-  return <Card title="Satış Özeti" className="reports-card-summary" info="Brüt satış: iptaller dahil sipariş edilen adet ve tutar. İptal tutarı ürünlerin liste fiyatıyla, iade tutarı ödenen tutarla hesaplanır; net satış kalan adet ve tutardır.">
+  const figures = [
+    { key: 'orders', label: 'Sipariş', value: now.orders as number | null, format: formatCount, delta: change(now.orders, before.orders), invert: false },
+    { key: 'basket', label: 'Ortalama Sepet', value: noAmount ? null : now.averageOrderValue, format: formatTl, delta: noAmount ? null : change(now.averageOrderValue, before.averageOrderValue), invert: false },
+    { key: 'returns', label: 'İade Oranı', value: now.returnRate as number | null, format: (value: number) => formatPercent(value), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true }
+  ]
+  return <Card title="Dönem Özeti" className="reports-card-summary" info="Brüt satış: iptaller dahil sipariş edilen adet ve tutar. İptal tutarı ürünlerin liste fiyatıyla, iade tutarı ödenen tutarla hesaplanır; net satış kalan adet ve tutardır. Sipariş iptaller hariçtir; ortalama sepet satış tutarı / tutarı olan sipariş; iade oranı iade adedi / satılan adettir. Değişimler önceki döneme göredir.">
     {shown => <>
       <div className="reports-summary-bar" role="img" aria-label={`Brüt ${formatNumber(grossUnits)} adedin ${formatNumber(now.keptQuantity)} adedi net satış, ${formatNumber(now.returnedQuantity)} adedi iade, ${formatNumber(cancelledUnits)} adedi iptal`}>
         {[['net', now.keptQuantity], ['return', now.returnedQuantity], ['cancel', cancelledUnits]].map(([key, units]) => <i key={key} className={`is-${key}`} style={{ width: shown ? `${part(units as number)}%` : '0%' }} />)}
@@ -561,8 +548,12 @@ function SalesSummaryCard({ data }: { data: ReportSales }) {
         <dd><strong>{row.minus && row.units > 0 ? '−' : ''}{formatNumber(row.units)} adet</strong><span>{row.minus && row.amount ? '− ' : ''}{money(row.amount)}</span></dd>
       </div>)}</dl>
       <div className="reports-summary-metrics">
-        <div><small>Ort. satış fiyatı</small><strong>{noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity)}</strong></div>
-        <div><small>Ort. komisyon oranı</small><strong>{formatPercent(data.commission.effectiveRate)}</strong></div>
+        {figures.map(figure => <div key={figure.key} className={`is-${figure.key}`}>
+          <small>{figure.label}</small>
+          <span><strong>{figure.value === null ? 'Tutar yok' : <CountUp value={figure.value} format={figure.format} active={shown} />}</strong><Delta delta={figure.delta} invert={figure.invert} /></span>
+        </div>)}
+        <div><small>Ort. Satış Fiyatı</small><strong>{noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity)}</strong></div>
+        <div><small>Ort. Komisyon Oranı</small><strong>{formatPercent(data.commission.effectiveRate)}</strong></div>
       </div>
     </>}
   </Card>

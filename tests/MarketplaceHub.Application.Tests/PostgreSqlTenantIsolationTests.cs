@@ -3473,6 +3473,52 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    [PostgreSqlFact]
+    public async Task InstantNotifications_HepsiburadaRestoresTheDefinitionItWasGivenOverAnUnusedNewOne()
+    {
+        var tenant = NewTenant("hb-restore");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new InstantNotificationService(db, new RecordingWebhookPort(), hasher, new EphemeralDataProtectionProvider(), configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+            var given = await service.EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None);
+            Assert.Null((await service.StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.PreviousPreparedAt);
+
+            // Closed and prepared again before Hepsiburada was given the new details.
+            await service.DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None);
+            var prepared = await service.EnableAsync(tenant.Id, connection.Id, "enable-again", CancellationToken.None);
+            Assert.NotEqual(given.Value!.Setup!.BaseUrl, prepared.Value!.Setup!.BaseUrl);
+            Assert.NotNull((await service.StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.PreviousPreparedAt);
+
+            var restored = await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore", CancellationToken.None);
+
+            Assert.Null(restored.Error);
+            Assert.Equal("WAITING", restored.Value!.State);
+            Assert.Null(restored.Value.PreviousPreparedAt);
+            var active = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE");
+            Assert.Equal(hasher.Hash(given.Value.Setup.BaseUrl.Split('/').Last()), active.RouteTokenHash);
+            Assert.Equal("WEBHOOK_PREVIOUS_MISSING", (await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-again", CancellationToken.None)).Error?.Code);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     private sealed class RecordingWebhookPort : IWebhookRegistrationPort
     {
         public string? CreatedUrl { get; private set; }
