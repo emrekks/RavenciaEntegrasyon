@@ -13,7 +13,7 @@ export function editorSeedKey(mode: 'edit' | 'copy', productId: string, version:
 // form "unsaved".
 export function editorSnapshot(state: {
   form: Record<string, string>
-  variantRows: Array<{ key: string; optionSignature: string; options: Record<string, string>; attributeValueIds: Record<string, string>; sku: string; barcode: string; stock: number; salePrice: number; listPrice: number; costPrice: number; mediaRefs: string[] }>
+  variantRows: Array<{ key: string; optionSignature: string; options: Record<string, string>; attributeValueIds: Record<string, string>; sku: string; barcode: string; stock: number; salePrice: number; listPrice: number; costPrice: number | null; mediaRefs: string[] }>
   attributeSelections: Record<string, string[]>
   attributeTextValues: Record<string, string>
   familyMediaOrder: string[]

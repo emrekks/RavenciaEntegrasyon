@@ -5,7 +5,7 @@ import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, stockedUnits, type ApprovedReturn } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
-import { versionedIdempotencyKey } from '../../shared/idempotency'
+import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 
 export type ReturnApproveRow = {
   id: string
@@ -94,7 +94,8 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const approve = useMutation({
     mutationFn: () => {
       const body = JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLines: stockRequests })
-      return hubApi<ApprovedReturn>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('return-action', claimId, version, body), 'If-Match': `"v${version}"` }, body })
+      // A retry after an HTTP answer (a refusal, say external writes off) gets a fresh key instead of the stored answer.
+      return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', claimId, version, body), key => hubApi<ApprovedReturn>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': key, 'If-Match': `"v${version}"` }, body }))
     },
     onSuccess: async result => {
       // The units the server actually put back (the return's stock decisions after the approval),

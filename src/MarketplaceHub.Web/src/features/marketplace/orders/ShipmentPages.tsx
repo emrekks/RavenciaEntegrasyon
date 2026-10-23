@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { Busy, ErrorBox, Pagination, UiIcon, useConfirmDialog } from '../../../shared/components'
-import { versionedIdempotencyKey } from '../../../shared/idempotency'
+import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { appendNotification } from '../../../shared/notifications'
@@ -83,7 +83,7 @@ export function ShipmentDetailPage() {
   // Every package request goes through one mutation: the buttons wait while one is running, and the key is derived from
   // the package version and the request, so a double click or a resend reaches the marketplace once.
   const packageRequest = useMutation({
-    mutationFn: ({ path, body, version }: { path: string; body: string; version: number }) => hubApi(path, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey(`shipment${path.slice(path.lastIndexOf('/'))}`, id, version, body), 'If-Match': `"v${version}"` }, body }),
+    mutationFn: ({ path, body, version }: { path: string; body: string; version: number }) => sendWithVersionedIdempotencyKey(versionedIdempotencyKey(`shipment${path.slice(path.lastIndexOf('/'))}`, id, version, body), key => hubApi(path, { method: 'POST', headers: { 'Idempotency-Key': key, 'If-Match': `"v${version}"` }, body })),
   })
   const busy = packageRequest.isPending
   // Pending state reaches the buttons on the next render; this guard also stops a second send within the same moment.

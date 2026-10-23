@@ -249,8 +249,13 @@ public sealed class ProductCostPostgreSqlTests(PostgreSqlTenantIsolationFixture 
 
         // A preview read before another change is refused whole.
         await using var stale = fixture.CreateContext();
-        var staleResult = await new ProductCostService(stale, fixture.TimeProvider).ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductCostsCommand([new ProductCostChange(first.Id, first.Version, 99m)]), "cost-test-3", CancellationToken.None);
+        var current = await stale.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == second.Id);
+        // A change that is still current listed before a stale one: the refusal changes neither, not even in memory
+        // (the idempotency middleware saves the context after a 409).
+        var staleResult = await new ProductCostService(stale, fixture.TimeProvider).ApplyAsync(tenant.Id, Guid.CreateVersion7(),
+            new ApplyProductCostsCommand([new ProductCostChange(second.Id, current.Version, 7m), new ProductCostChange(first.Id, first.Version, 99m)]), "cost-test-3", CancellationToken.None);
         Assert.Equal(409, staleResult.Error?.Status);
+        Assert.False(stale.ChangeTracker.HasChanges());
     }
 
     private static ProductVariant Variant(Tenant tenant, Product product, string sku, string barcode, decimal? cost, DateTimeOffset now) => new()

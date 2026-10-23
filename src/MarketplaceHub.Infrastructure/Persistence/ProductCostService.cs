@@ -126,13 +126,15 @@ public sealed class ProductCostService(AppDbContext db, TimeProvider timeProvide
         var updated = 0;
         var cleared = 0;
         var products = new HashSet<Guid>();
+        // A cost that already holds the requested value is done (a repeated save, or the same edit made elsewhere);
+        // any other change since the preview was read means the preview is out of date and nothing is written. Every
+        // variant is checked before any is changed, so a refusal leaves nothing half applied.
+        if (changes.Any(change => byId[change.VariantId] is var variant && variant.CostPrice != change.Cost && variant.Version != change.Version))
+            return Stale("Bazı varyantların maliyeti önizlemeden sonra değişti; dosyayı yeniden yükleyin.");
         foreach (var change in changes)
         {
             var variant = byId[change.VariantId];
-            // A cost that already holds the requested value is done (a repeated save, or the same edit made elsewhere);
-            // any other change since the preview was read means the preview is out of date and nothing is written.
             if (variant.CostPrice == change.Cost) continue;
-            if (variant.Version != change.Version) return Stale("Bazı varyantların maliyeti önizlemeden sonra değişti; dosyayı yeniden yükleyin.");
             variant.CostPrice = change.Cost;
             variant.UpdatedAt = now;
             variant.Version++;

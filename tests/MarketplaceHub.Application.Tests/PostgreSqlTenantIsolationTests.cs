@@ -446,6 +446,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Sku = sku,
             SkuNormalized = sku,
             OptionSignature = "Renk=Test",
+            // A cost set elsewhere (Maliyet Excel): an update that sends none leaves it as it is.
+            CostPrice = 12.5m,
             CreatedAt = fixture.Now,
             UpdatedAt = fixture.Now,
             Version = 1
@@ -536,6 +538,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var reloadedVariant = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == variant.Id);
         Assert.Equal(899m, reloadedVariant.DefaultListPrice);
         Assert.Equal(799m, reloadedVariant.DefaultSalePrice);
+        Assert.Equal(12.5m, reloadedVariant.CostPrice);
 
         await transaction.RollbackAsync();
     }
@@ -2421,6 +2424,40 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task IdempotencyMiddleware_SavesOnlyTheKeyAfterARefusal()
+    {
+        var tenant = NewTenant("middleware-refusal");
+        const string path = "/api/v1/products/costs/apply";
+        const string key = "middleware-refusal-key";
+
+        await using var db = fixture.CreateContext();
+        try
+        {
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            // The endpoint changes a tracked entity, then refuses without saving it.
+            var context = NewIdempotencyHttpContext(path, key, "{}");
+            var middleware = new IdempotencyMiddleware(http =>
+            {
+                tenant.DisplayName = "half applied";
+                http.Response.StatusCode = StatusCodes.Status409Conflict;
+                return Task.CompletedTask;
+            });
+            await middleware.InvokeAsync(context, db, new FixedTenantContextAccessor(tenant.Id), fixture.TimeProvider, IdempotencyTestHasher);
+
+            await using var check = fixture.CreateContext();
+            Assert.NotEqual("half applied", (await check.Tenants.AsNoTracking().SingleAsync(x => x.Id == tenant.Id)).DisplayName);
+            var stored = await check.ApiIdempotencyRecords.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.RouteTemplate == path);
+            Assert.Equal(("COMPLETED", (int?)StatusCodes.Status409Conflict), (stored.State, stored.ResponseStatus));
+        }
+        finally
+        {
+            await DeleteIdempotencyRecordsAndTenantsAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task IdempotencyMiddleware_PersistsUnknownAfterEndpointFailure()
     {
         var tenant = NewTenant("middleware-unknown");
@@ -3533,11 +3570,20 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.True(await db.IntegrationJobs.AnyAsync(job => job.TenantId == tenant.Id && job.ConnectionId == live.Id));
                 // The live connection's own address does not take that route token.
                 Assert.Equal(404, (await receiver.ReceiveAsync(live.PublicId, given.BaseUrl.Split('/').Last(), Encoding.UTF8.GetBytes("{}"), headers, "webhook-own-address", CancellationToken.None)).Error?.Status);
+                // The test store's feed still reaching the moved address is acknowledged and dropped, and the panel told.
+                var jobs = await db.IntegrationJobs.CountAsync(job => job.TenantId == tenant.Id);
+                var orderHeaders = new Dictionary<string, string>(headers) { [WebhookEventPath.Header] = "orders" };
+                var foreign = await receiver.ReceiveAsync(test.PublicId, given.BaseUrl.Split('/').Last(), Encoding.UTF8.GetBytes($$"""{"items":[{"orderNumber":"9","merchantId":"{{test.ExternalStoreId}}"}]}"""), orderHeaders, "webhook-foreign", CancellationToken.None);
+                Assert.Null(foreign.Error);
+                Assert.False(foreign.Value);
+                Assert.Equal(jobs, await db.IntegrationJobs.CountAsync(job => job.TenantId == tenant.Id));
+                Assert.True(await db.OperationalIssues.AnyAsync(issue => issue.TenantId == tenant.Id && issue.DedupeKey.EndsWith("WEBHOOK_MERCHANT_MISMATCH")));
             }
         }
         finally
         {
             await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();

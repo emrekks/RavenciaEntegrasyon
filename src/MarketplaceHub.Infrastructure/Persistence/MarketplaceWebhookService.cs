@@ -34,9 +34,16 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             await NoteRejectedAsync(connection, verified.Error!.Code, verified.Error.SafeMessage, cancellationToken);
             return ServiceResult<bool>.Fail(verified.Error!.Code, verified.Error.SafeMessage, verified.Error.HttpStatus ?? 422);
         }
+        var envelope = verified.Value!;
+        // A Hepsiburada body names the merchant it belongs to. One of another merchant (a test store's feed still sent to
+        // an address that was moved to the live store) is answered 200 and dropped, and the panel is told.
+        if (connection.PlatformCode == "HEPSIBURADA" && ForeignMerchant(envelope.RawJson, connection.ExternalStoreId) is { } foreign)
+        {
+            await NoteRejectedAsync(connection, "WEBHOOK_MERCHANT_MISMATCH", $"başka bir mağazanın ({foreign}) bildirimi geldi ve işlenmedi; bu adresi o mağaza için tanımlıysa Hepsiburada'dan kaldırmasını isteyin", cancellationToken);
+            return ServiceResult<bool>.Ok(false);
+        }
         var source = $"{connection.PlatformCode}_WEBHOOK";
         var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.WebhookIngest);
-        var envelope = verified.Value!;
         var externalMessageId = connection.PlatformCode == "HEPSIBURADA"
             ? $"{connection.Id:N}:{envelope.ExternalMessageId}"
             : envelope.ExternalMessageId;
@@ -105,6 +112,38 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }
+    }
+
+    // The first merchant id in the body (at any depth up to a few levels: the root of a claim, each item of an order) that
+    // is not the connection's own, or null when every one matches or the body names none.
+    internal static string? ForeignMerchant(string rawJson, string merchantId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(rawJson);
+            return Foreign(document.RootElement, 0);
+        }
+        catch (JsonException) { return null; }
+
+        string? Foreign(JsonElement element, int depth)
+        {
+            if (depth > 4) return null;
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in element.EnumerateArray())
+                    if (Foreign(item, depth + 1) is { } found) return found;
+                return null;
+            }
+            if (element.ValueKind != JsonValueKind.Object) return null;
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "merchantId", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String
+                    && property.Value.GetString() is { Length: > 0 } value && !string.Equals(value.Trim(), merchantId.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return value;
+                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array && Foreign(property.Value, depth + 1) is { } found) return found;
+            }
+            return null;
+        }
     }
 
     private static bool IsDuplicateCandidate(DbUpdateException exception) => exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };

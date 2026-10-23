@@ -281,7 +281,11 @@ type VariantDraft = {
   stock: number
   salePrice: number
   listPrice: number
-  costPrice: number
+  // Empty (null) until a cost is entered: an empty cost is "not known", never 0.
+  costPrice: number | null
+  // The cost this row was loaded with (edit page only): the cost is saved only when the row differs from it, so an
+  // untouched row never writes over a cost set elsewhere meanwhile (Maliyet Excel).
+  loadedCostPrice?: number | null
   mediaRefs: string[]
   // The on-hand stock this row was loaded with (edit page only): stock is saved only when the row differs from it,
   // as an absolute value against it.
@@ -474,7 +478,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
     {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: sanitizeRichText(value) }} onInput={syncVisualValue} />}
   </div>
 }
-function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number, initialStock: number, automaticBarcodes = false, modelCode = '') {
+function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number | null, initialStock: number, automaticBarcodes = false, modelCode = '') {
   const axes = variantAttributeIds.map(attributeId => {
     const requirement = requirements.find(item => item.attributeId === attributeId)
     const selected = new Set(selectedValueIds[attributeId] ?? [])
@@ -1141,7 +1145,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const connections = useQuery({ queryKey: ['connections', 'new-product'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
   const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
-  const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const fallbackCostPrice = Number(form.costPrice || 0); const initialStock = Number(form.initialStock || 0)
+  const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
   const variantStockTotal = variantRows.reduce((total, row) => total + Number(row.stock || 0), 0)
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
@@ -1189,7 +1193,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const initialListPrice = product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     if (!editProductId && duplicateProductId) setChannelPricing(Object.fromEntries((primary?.platformStatuses ?? []).flatMap(platform => platform.connectionId ? [[platform.connectionId, { listPrice: String(platform.listPrice ?? initialListPrice), salePrice: String(platform.salePrice ?? initialSalePrice) }] as const] : [])))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
@@ -1204,7 +1208,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
       const persistedAttributes = variant.attributes ?? []
       const attributeValueIds = Object.fromEntries(persistedAttributes.flatMap(attribute => attribute.valueId ? [[attribute.attributeId, attribute.valueId] as const] : []))
-      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: mode === 'copy' ? '' : variant.sku, barcode: mode === 'copy' ? '' : variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand } : {}), salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
+      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: mode === 'copy' ? '' : variant.sku, barcode: mode === 'copy' ? '' : variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand } : {}), salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? null, ...(editProductId ? { loadedCostPrice: variant.costPrice ?? null } : {}), mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
@@ -1348,7 +1352,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       : 'Oluşan varyant satırları temizlendi.'
     setNotice(message); showFeedback(message, 'success')
   }
-  function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'stock' || field === 'salePrice' || field === 'listPrice' || field === 'costPrice' ? Number(value || 0) : value })) }
+  function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'costPrice' ? (value.trim() === '' ? null : Number(value)) : field === 'stock' || field === 'salePrice' || field === 'listPrice' ? Number(value || 0) : value })) }
   function updateVariantMedia(keyValue: string, values: string[]) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, mediaRefs: values })) }
   function reorderVariants(sourceKey: string, targetKey: string) {
     if (sourceKey === targetKey) return
@@ -2218,7 +2222,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             sku: row.sku,
             barcode: row.barcode || null,
             modelCode: modelCodeForRow(row.key),
-            costPrice: row.costPrice,
+            // Only a cost the user changed is sent; an unsent (null) cost is left as it is on the server.
+            costPrice: row.costPrice === row.loadedCostPrice ? null : row.costPrice,
             defaultListPrice: row.listPrice,
             defaultSalePrice: row.salePrice,
             sortOrder: rows.findIndex(candidate => candidate.key === row.key),
@@ -2611,7 +2616,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="product-step-grid">
             <label>Liste Fiyatı<input value={form.listPrice} disabled={variantRows.length > 1} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
             <label>Satış Fiyatı<input value={form.salePrice} disabled={variantRows.length > 1} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /><EditorFieldError message={fieldErrors.prices} /></label>
-            {variantRows.length <= 1 && <label>Maliyet<input value={form.costPrice} onChange={event => updateField('costPrice', event.target.value)} type="number" min="0" step="0.01" /></label>}
+            {variantRows.length <= 1 && <label>Maliyet<input value={form.costPrice} onChange={event => { updateField('costPrice', event.target.value); if (variantRows.length === 1) updateVariantRow(variantRows[0].key, 'costPrice', event.target.value) }} type="number" min="0" step="0.01" /></label>}
             <label>Para Birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label>
             <label>KDV Oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label>
             <label>KDV Dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label>
@@ -2817,7 +2822,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                   <input aria-label={`${row.optionSignature} stok kodu`} className={`technical-field sku-value${skuIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={skuIssueText ? true : undefined} title={skuIssueText || undefined} value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
                   <input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" />
                   <input aria-label={`${row.optionSignature} satış fiyatı`} value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" />
-                  <input aria-label={`${row.optionSignature} maliyeti`} value={row.costPrice} onChange={event => updateVariantRow(row.key, 'costPrice', event.target.value)} type="number" min="0" step="0.01" />
+                  <input aria-label={`${row.optionSignature} maliyeti`} value={row.costPrice ?? ''} onChange={event => updateVariantRow(row.key, 'costPrice', event.target.value)} type="number" min="0" step="0.01" />
                   <input aria-label={`${row.optionSignature} liste fiyatı`} value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" />
                   <div className="variant-row-actions" aria-label={`${row.optionSignature} varyant işlemleri`}>
                     {rowPlatforms.length ? (() => { const linkedCount = rowPlatforms.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < rowPlatforms.length; const summaryClass = linkedCount === rowPlatforms.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary variant-row-action ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, rowPlatforms[0])} title={`${rowPlatforms.length} platform fiyatını düzenle`} aria-label={`${row.optionSignature} platform fiyatlarını düzenle`}><UiIcon name="platforms" /></button> })() : <span className="variant-platform-empty">—</span>}
