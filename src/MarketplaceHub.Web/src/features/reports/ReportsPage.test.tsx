@@ -41,6 +41,10 @@ const report: ReportSales = {
   stock: { periodDays: 22, bestSellers: [{ variantId: 'v1', title: 'Koltuk Kılıfı', sku: 'KLF-1', soldQuantity: 2, available: 1, dailyAverage: 0.09, daysLeft: 11.1 }], soldOut: [] },
   channels: [{ id: 'c1', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', isTest: false }, { id: 'c2', platformCode: 'SHOPIFY', displayName: 'Shopify', isTest: false }],
   costs: { source: 'estimate', lastSyncedAt: null, coveredFrom: null, coveredThrough: null, financeOrders: 3, settledOrders: 0, coverage: null, realCostTotal: null, commission: null, cargo: null, lines: [], channels: [], products: [] },
+  geography: {
+    countries: [group('TR', 'Türkiye', { orders: 3 }), group('SA', 'Suudi Arabistan', { orders: 1, netRevenue: 300, grossSales: 300, split: [group('TRENDYOL', 'TRENDYOL', { netRevenue: 300 })] })],
+    previousCities: [group('İstanbul', 'İstanbul', { netRevenue: 50 })], previousCountries: [], abroadOrders: 1
+  },
   dataNotes: ['1 siparişte tutar yok (SHOPIFY 1).']
 }
 
@@ -134,6 +138,32 @@ describe('ReportsPage', () => {
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Akışı: Tümünü Gör"]')!.click() })
     expect(drawer(page)?.textContent).toContain('Trendyol Cari Hesap Kalemleri')
     expect(drawer(page)?.textContent).toContain('Masraf Değil')
+  })
+
+  it('paints the provinces, ranks them beside the map, opens one and switches to the export countries', async () => {
+    const page = await open()
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    const map = page.querySelector('.reports-map-panel')!
+    expect(map.querySelectorAll('.reports-map-regions path').length).toBe(82)
+    expect(map.querySelectorAll('.reports-map-regions path.is-active')).toHaveLength(1)
+    const list = map.querySelector('.reports-map-list')!
+    // Known provinces only; the unknown bucket is named under the map instead.
+    expect(list.querySelectorAll('li')).toHaveLength(1)
+    expect(list.textContent).toContain('İstanbul')
+    expect(list.textContent).toContain('+%100')
+    expect(map.querySelector('.reports-map-foot')?.textContent).toContain('1 siparişte il okunamadı')
+    expect(map.querySelector('.reports-map-foot')?.textContent).toContain('1 sipariş yurt dışına gitti')
+
+    await act(async () => { list.querySelector<HTMLButtonElement>('button')!.click() })
+    expect(map.querySelector('.reports-map-detail h3')?.textContent).toBe('İstanbul')
+    expect(map.querySelector('.reports-map-districts')?.textContent).toContain('Kadıköy')
+
+    await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-segmented button')].find(button => button.textContent === 'Dünya · İhracat')!.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(map.querySelector('.reports-map-detail')).toBeNull()
+    expect(map.querySelector('.reports-map-list')?.textContent).toContain('Suudi Arabistan')
+    expect(map.querySelector('.reports-map-list')?.textContent).not.toContain('Türkiye')
+    expect(map.querySelectorAll('.reports-map-regions path.is-active')).toHaveLength(1)
   })
 
   it('keeps the unknown city last and muted in the summary list', async () => {

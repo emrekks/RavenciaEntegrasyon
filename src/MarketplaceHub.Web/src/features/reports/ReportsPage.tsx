@@ -11,6 +11,7 @@ import {
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow, type ReportTimePoint
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
+import { SalesMap } from './SalesMap'
 import './reports.css'
 
 // The weekly commission tariffs the reports read a missing commission from, uploaded here per store (live stores of a
@@ -263,6 +264,7 @@ function Summary({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
       <ProfitFlow data={data} onMore={onMore} />
       <CostLines data={data} onMore={onMore} />
     </div>
+    <SalesMap data={data} />
     <div className="reports-summary-row">
       <TrendPanel data={data} />
       <PlatformShare data={data} onMore={onMore} />

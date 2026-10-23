@@ -72,6 +72,8 @@ internal sealed class ReportOrderRow
     public DateTimeOffset RealAt { get; init; }
     public DateTimeOffset OrderedAt { get; init; }
     public DateTimeOffset? ShipmentDueAt { get; init; }
+    // Trendyol's storefront ("TR", or a cross-border one such as "SA", "AZ"); null for other marketplaces.
+    public string? StoreFrontCode { get; init; }
 }
 
 internal sealed class ReportOrderExtra
@@ -87,6 +89,7 @@ internal sealed class ReportOrderExtra
     public string? Town { get; init; }
     public string? ShippingTown { get; init; }
     public string? CustomerKey { get; init; }
+    public string? CountryCode { get; init; }
 }
 
 internal sealed class ReportLineRow
@@ -172,6 +175,31 @@ public static class ReportBuckets
 
     // Only a production store is a real one; a stage, sandbox or test store holds test orders.
     public static bool IsTestEnvironment(string? environment) => !string.Equals(environment?.Trim(), "PRODUCTION", StringComparison.OrdinalIgnoreCase);
+
+    public const string Turkey = "TR";
+
+    // Where an order goes, as an ISO 3166-1 alpha-2 code. A Trendyol cross-border storefront's order (SA, AZ, BG…) goes
+    // to that country although its address is Trendyol's export depot in Istanbul; otherwise the address's country,
+    // Turkey when it gives none.
+    public static string Country(string? storeFrontCode, string? addressCountryCode)
+    {
+        static string? Code(string? value) => value?.Trim().ToUpperInvariant() is { Length: 2 } code && code.All(char.IsAsciiLetterUpper) ? code : null;
+        return Code(storeFrontCode) is { } storefront && storefront != Turkey ? storefront : Code(addressCountryCode) ?? Turkey;
+    }
+
+    private static readonly Dictionary<string, string> CountryNames = new(StringComparer.Ordinal)
+    {
+        ["TR"] = "Türkiye", ["SA"] = "Suudi Arabistan", ["AE"] = "Birleşik Arap Emirlikleri", ["AZ"] = "Azerbaycan", ["BG"] = "Bulgaristan",
+        ["RO"] = "Romanya", ["GR"] = "Yunanistan", ["QA"] = "Katar", ["KW"] = "Kuveyt", ["BH"] = "Bahreyn", ["OM"] = "Umman",
+        ["DE"] = "Almanya", ["NL"] = "Hollanda", ["BE"] = "Belçika", ["FR"] = "Fransa", ["AT"] = "Avusturya", ["CH"] = "İsviçre",
+        ["GB"] = "Birleşik Krallık", ["US"] = "Amerika Birleşik Devletleri", ["HU"] = "Macaristan", ["CZ"] = "Çekya", ["SK"] = "Slovakya",
+        ["PL"] = "Polonya", ["HR"] = "Hırvatistan", ["SI"] = "Slovenya", ["CY"] = "Kıbrıs", ["GE"] = "Gürcistan", ["IQ"] = "Irak",
+        ["KZ"] = "Kazakistan", ["UZ"] = "Özbekistan", ["UA"] = "Ukrayna", ["MD"] = "Moldova", ["RS"] = "Sırbistan", ["BA"] = "Bosna-Hersek",
+        ["MK"] = "Kuzey Makedonya", ["AL"] = "Arnavutluk", ["XK"] = "Kosova", ["IT"] = "İtalya", ["ES"] = "İspanya", ["SE"] = "İsveç",
+        ["DK"] = "Danimarka", ["NO"] = "Norveç", ["LY"] = "Libya", ["EG"] = "Mısır", ["JO"] = "Ürdün", ["LB"] = "Lübnan"
+    };
+
+    public static string CountryName(string code) => CountryNames.GetValueOrDefault(code, code);
 
     // The first of the address's city fields that names a province.
     public static string? Province(params string?[] candidates)
@@ -262,9 +290,9 @@ internal static class ReportBuilder
         var platforms = Groups(orders, order => order.PlatformCode, order => order.PlatformCode, _ => false,
             group => Groups(group, order => order.Order.ConnectionId.ToString("D"), order => input.Channels.TryGetValue(order.Order.ConnectionId, out var channel) ? channel.DisplayName : "?",
                 order => input.Channels.TryGetValue(order.Order.ConnectionId, out var channel) && channel.IsTest, null, null), null);
-        var cities = Groups(orders, order => order.City ?? Unknown, order => order.City ?? Unknown, _ => false,
-            group => Groups(group, order => Fold(order.District), order => order.District ?? Unknown, _ => false, null, null),
-            group => Groups(group, order => order.PlatformCode, order => order.PlatformCode, _ => false, null, null));
+        var cities = CityGroups(orders);
+        var geography = new ReportGeographyView(CountryGroups(orders), CityGroups(previousOrders), CountryGroups(previousOrders),
+            orders.Count(order => order.Country != ReportBuckets.Turkey));
         var brands = LineGroups(lines, line => line.Row.BrandId is { } id && input.Names.Brands.TryGetValue(id, out var name) ? name : null);
         var categories = LineGroups(lines, line => line.Row.CategoryId is { } id && input.Names.Categories.TryGetValue(id, out var name) ? name : null);
 
@@ -290,9 +318,21 @@ internal static class ReportBuilder
             stockView,
             [],
             notes,
-            costs);
+            costs,
+            geography);
         return view;
     }
+
+    // Turkey's provinces (orders going abroad left out), each with its districts and platforms.
+    private static List<ReportGroupView> CityGroups(IReadOnlyList<OrderFact> orders) =>
+        Groups(orders.Where(order => order.Country == ReportBuckets.Turkey).ToList(), order => order.City ?? Unknown, order => order.City ?? Unknown, _ => false,
+            group => Groups(group, order => Fold(order.District), order => order.District ?? Unknown, _ => false, null, null),
+            group => Groups(group, order => order.PlatformCode, order => order.PlatformCode, _ => false, null, null));
+
+    // Every order by the country it goes to, each with its platforms.
+    private static List<ReportGroupView> CountryGroups(IReadOnlyList<OrderFact> orders) =>
+        Groups(orders, order => order.Country, order => ReportBuckets.CountryName(order.Country), _ => false, null,
+            group => Groups(group, order => order.PlatformCode, order => order.PlatformCode, _ => false, null, null));
 
     // The period's non-cancelled orders with their units, money and buckets, and the cancelled ones apart.
     internal static (List<OrderFact> Orders, List<CancelledFact> Cancelled) Facts(ReportInput input)
@@ -346,10 +386,12 @@ internal static class ReportBuilder
                 lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason, fromTariff));
             }
             var extras = input.OrderExtras.GetValueOrDefault(order.Id);
-            var city = extras is null ? null : ReportBuckets.Province(extras.CityName, extras.City, extras.ShippingCity, extras.Province);
+            var country = ReportBuckets.Country(order.StoreFrontCode, extras?.CountryCode);
+            var domestic = country == ReportBuckets.Turkey;
+            var city = extras is null || !domestic ? null : ReportBuckets.Province(extras.CityName, extras.City, extras.ShippingCity, extras.Province);
             var district = extras is null || city is null ? null : ReportBuckets.District(extras.DistrictName, extras.District, extras.ShippingDistrict, extras.Town, extras.ShippingTown);
             orders.Add(new(order, platform, currency, day, city, district, extras?.CustomerKey, isTry ? order.Amount : 0m, isTry ? back : 0m, isTry ? kept : 0m, lines,
-                claimsByOrder.GetValueOrDefault(order.Id)));
+                claimsByOrder.GetValueOrDefault(order.Id), country));
         }
         return (orders, cancelled);
     }
@@ -362,7 +404,7 @@ internal static class ReportBuilder
         var gross = orders.Sum(x => x.Amount);
         return new(orders.Count, cancelled.Count, Rate(cancelled.Count, orders.Count + cancelled.Count), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, sold),
             priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? Math.Round(gross / priced, 2) : null,
-            orders.Count(x => x.City is null), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try));
+            orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try));
     }
 
     private static ReportCommissionView CommissionView(IReadOnlyList<OrderFact> orders, decimal netRevenue)
@@ -603,10 +645,12 @@ internal static class ReportBuilder
         }
         if (summary.OrdersWithoutCity > 0)
         {
-            var platforms = orders.Where(x => x.City is null).GroupBy(x => x.PlatformCode).OrderByDescending(x => x.Count())
+            var platforms = orders.Where(x => x.City is null && x.Country == ReportBuckets.Turkey).GroupBy(x => x.PlatformCode).OrderByDescending(x => x.Count())
                 .Select(x => $"{x.Key} {Count(x.Count())}");
             notes.Add($"{Count(summary.OrdersWithoutCity)} siparişin adresinde il okunamadı ({string.Join(", ", platforms)}); şehir tablosunda \"Bilinmiyor\" altında.");
         }
+        if (orders.Where(x => x.Country != ReportBuckets.Turkey).GroupBy(x => x.Country).OrderByDescending(x => x.Count()).Select(x => $"{ReportBuckets.CountryName(x.Key)} {Count(x.Count())}").ToList() is { Count: > 0 } abroad)
+            notes.Add($"{Count(orders.Count(x => x.Country != ReportBuckets.Turkey))} sipariş yurt dışına gitti ({string.Join(", ", abroad)}); Trendyol yurt dışı vitrin siparişlerinin adresi İstanbul'daki ihracat deposu olduğundan il dağılımına girmez, Dünya haritasında ülkesinde gösterilir.");
         if (summary.OtherCurrencyOrders > 0)
             notes.Add($"{Count(summary.OtherCurrencyOrders)} sipariş TRY dışında bir para biriminde; tutarlara girmez, yalnız adetlerde sayılır.");
         notes.Add(commission.CoveredRevenue <= 0
@@ -638,8 +682,9 @@ internal static class ReportBuilder
         public decimal KeptAmount => PaidUnitPrice * KeptUnits;
     }
 
+    // Country: where the order goes (ReportBuckets.Country); City and District are only set for an order to Turkey.
     internal sealed record OrderFact(ReportOrderRow Order, string PlatformCode, string Currency, DateOnly Day, string? City, string? District, string? CustomerKey,
-        decimal Amount, decimal Back, decimal Kept, List<LineFact> Lines, int Claims);
+        decimal Amount, decimal Back, decimal Kept, List<LineFact> Lines, int Claims, string Country = ReportBuckets.Turkey);
 
     internal sealed record CancelledFact(ReportOrderRow Order, string PlatformCode, DateOnly Day, decimal Quantity, string? Reason);
 }

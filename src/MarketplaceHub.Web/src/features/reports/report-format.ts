@@ -38,8 +38,13 @@ export type ReportSales = {
   stock: { periodDays: number; bestSellers: ReportStockRow[]; soldOut: ReportStockRow[] }
   channels: Array<{ id: string; platformCode: string; displayName: string; isTest: boolean }>
   costs: ReportCosts
+  geography: ReportGeography
   dataNotes: string[]
 }
+
+// The sales map: countries for every order (a Trendyol cross-border storefront's order in its country), the previous
+// period's cities and countries for the change, and how many orders went abroad (left out of `cities`).
+export type ReportGeography = { countries: ReportGroup[]; previousCities: ReportGroup[]; previousCountries: ReportGroup[]; abroadOrders: number }
 
 // The real costs read from Trendyol's account statement (source "trendyol-finance"), next to the estimates; with
 // "estimate" nothing was read for the period and every field below the counts is null or empty.

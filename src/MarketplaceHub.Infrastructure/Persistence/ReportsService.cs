@@ -149,7 +149,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           LineBack = lineBack,
                           RealAt = row.RealAt,
                           OrderedAt = order.OrderedAt,
-                          ShipmentDueAt = order.ShipmentDueAt
+                          ShipmentDueAt = order.ShipmentDueAt,
+                          StoreFrontCode = order.StoreFrontCode
                       }).ToListAsync(cancellationToken);
     }
 
@@ -245,6 +246,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                    a->>'cityName' AS "CityName", a->>'city' AS "City", a->>'shippingCity' AS "ShippingCity", a->>'province' AS "Province",
                    a->>'districtName' AS "DistrictName", a->>'district' AS "District", a->>'shippingDistrict' AS "ShippingDistrict",
                    a->>'town' AS "Town", a->>'shippingTown' AS "ShippingTown",
+                   coalesce(nullif(a->>'countryCode', ''), nullif(a->>'shippingCountryCode', '')) AS "CountryCode",
                    CASE WHEN customer_id IS NOT NULL AND customer_id <> '0' THEN 'i:' || md5("ConnectionId"::text || ':' || customer_id)
                         WHEN email LIKE '%_@_%' THEN 'e:' || md5(email)
                         WHEN length(phone) >= 10 THEN 'p:' || md5(right(phone, 10))
