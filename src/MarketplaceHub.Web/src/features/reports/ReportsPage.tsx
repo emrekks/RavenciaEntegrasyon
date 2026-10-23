@@ -768,7 +768,9 @@ const feeCategories = [
   { category: 'STOPPAGE', key: 'stoppage', label: 'Stopaj' },
   { category: 'ADVERTISING', key: 'ads', label: 'Reklam' },
   { category: 'PENALTY', key: 'penalty', label: 'Ceza' },
-  { category: 'EARLY_PAYMENT', key: 'early', label: 'Erken Ödeme' }
+  { category: 'EARLY_PAYMENT', key: 'early', label: 'Erken Ödeme' },
+  // A deduction invoice of a kind no rule names: still charged to the seller.
+  { category: 'OTHER_DEDUCTION', key: 'otherDeduction', label: 'Diğer Kesinti' }
 ]
 
 function feeLines(costs: ReportCosts) {

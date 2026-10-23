@@ -30,10 +30,77 @@ public sealed class TrendyolFinanceTests
     [InlineData(Others, "DeductionInvoices", null, "Erken Ödeme Hizmet Bedeli", null, MarketplaceFinanceCategories.EarlyPayment)]
     [InlineData(Others, "DeductionInvoices", null, "Reklam Hizmet Bedeli", null, MarketplaceFinanceCategories.Advertising)]
     [InlineData(Others, "DeductionInvoices", null, "Fatura", "Geç teslimat CEZASI", MarketplaceFinanceCategories.Penalty)]
+    // A deduction invoice no keyword names is still a charge to the seller (live: "Yurtdışı Operasyon Iade Bedeli").
+    [InlineData(Others, "DeductionInvoices", null, "Yurtdışı Operasyon Iade Bedeli", null, MarketplaceFinanceCategories.OtherDeduction)]
     [InlineData(Others, "FinancialItem", null, "Düzeltme", null, MarketplaceFinanceCategories.Other)]
     [InlineData(Others, "SomethingNew", null, null, null, MarketplaceFinanceCategories.Other)]
     public void A_record_is_sorted_by_its_type_or_its_words_and_an_unknown_one_is_other(string source, string type, string? subType, string? raw, string? description, string expected) =>
         Assert.Equal(expected, TrendyolFinanceCategorizer.Categorize(source, type, subType, raw, description));
+
+    [Theory]
+    [InlineData(Others, "DeductionInvoices", "OTHER", 379.32, 0, "OTHER_DEDUCTION")]
+    [InlineData(Others, "FinancialItem", "OTHER", 10, 0, "OTHER_DEDUCTION")]
+    [InlineData(Others, "FinancialItem", "OTHER", 0, 3, "OTHER")]
+    [InlineData(Others, "FinancialItem", "OTHER", 5, 5, "OTHER")]
+    [InlineData(Others, "ReturnInvoice", "OTHER", 0, 664.07, "OTHER")]
+    [InlineData(Settlements, "ProvisionPositive", "OTHER", 7, 0, "OTHER")]
+    [InlineData(Others, "DeductionInvoices", "CARGO", 34.24, 0, "CARGO")]
+    public void An_unrecognised_charge_counts_as_another_deduction_and_other_stays_for_the_rest(string source, string type, string stored, double debt, double credit, string expected) =>
+        Assert.Equal(expected, TrendyolFinanceCategorizer.Charged(source, type, stored, (decimal)debt, (decimal)credit));
+
+    [Fact]
+    public void Another_deduction_is_a_cost_and_a_row_stored_as_other_moves_to_it_when_read_again()
+    {
+        Assert.Contains(MarketplaceFinanceCategories.OtherDeduction, MarketplaceFinanceCategories.Costs);
+        Assert.Contains(MarketplaceFinanceCategories.OtherDeduction, MarketplaceFinanceCategories.All);
+        Assert.DoesNotContain(MarketplaceFinanceCategories.Other, MarketplaceFinanceCategories.Costs);
+
+        var invoice = Record("910", Others, "DeductionInvoices", type: "Yurtdışı Operasyon Iade Bedeli", debt: 379.32m);
+        var tenant = Guid.NewGuid();
+        var (added, _) = TrendyolFinanceSyncPlan.Merge(new Dictionary<(string, string), MarketplaceFinanceTransaction>(), [invoice], tenant, Guid.NewGuid(), DateTimeOffset.UtcNow);
+        Assert.Equal(MarketplaceFinanceCategories.OtherDeduction, Assert.Single(added).Category);
+
+        // A row stored as OTHER before the rule is put right by the next overlapping read.
+        var stored = added.ToDictionary(row => (row.Source, row.ExternalId));
+        stored[(Others, "910")].Category = MarketplaceFinanceCategories.Other;
+        var (_, updated) = TrendyolFinanceSyncPlan.Merge(stored, [invoice], tenant, Guid.NewGuid(), DateTimeOffset.UtcNow);
+        Assert.Equal(1, updated);
+        Assert.Equal(MarketplaceFinanceCategories.OtherDeduction, stored[(Others, "910")].Category);
+    }
+
+    [Fact]
+    public void The_report_counts_a_stored_other_deduction_invoice_as_a_cost_and_leaves_other_out()
+    {
+        var (input, _, _, store) = ReportFixture();
+        var finance = new ReportFinance(
+            [
+                Row(store, Others, "1", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.ServiceFee, null, null, debt: 9.99m),
+                // Stored as OTHER before the rule: an unrecognised deduction invoice and a financial item that takes money.
+                Row(store, Others, "2", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.Other, null, null, debt: 379.32m),
+                Row(store, Others, "3", TrendyolFinanceCategorizer.FinancialItem, MarketplaceFinanceCategories.Other, null, null, debt: 10m),
+                // Stored as it is now.
+                Row(store, Others, "4", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.OtherDeduction, null, null, debt: 0.68m),
+                // A financial item that gives money back and a provision stay OTHER, out of the total.
+                Row(store, Others, "5", TrendyolFinanceCategorizer.FinancialItem, MarketplaceFinanceCategories.Other, null, null, credit: 3m),
+                Row(store, Settlements, "6", "ProvisionPositive", MarketplaceFinanceCategories.Other, null, null, debt: 7m)
+            ],
+            [],
+            new HashSet<(Guid, string)>(),
+            new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, LastSyncedAt = input.Period.End } });
+        var costs = ReportBuilder.Build(input with { Finance = finance }, Empty(input), new Dictionary<Guid, decimal>()).Costs;
+
+        var deduction = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.OtherDeduction);
+        Assert.Equal("Diğer kesinti", deduction.Label);
+        Assert.True(deduction.IsCost);
+        Assert.Equal(390m, deduction.Amount);
+        Assert.Equal(3, deduction.Records);
+        var other = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.Other);
+        Assert.False(other.IsCost);
+        Assert.Equal(4m, other.Amount);
+        Assert.Equal(9.99m + 390m, costs.RealCostTotal);
+        var channel = Assert.Single(costs.Channels);
+        Assert.Equal(390m, channel.Amounts.Single(amount => amount.Category == MarketplaceFinanceCategories.OtherDeduction).Amount);
+    }
 
     [Theory]
     [InlineData("Sale", 12.5, 0, 0, 12.5)]
