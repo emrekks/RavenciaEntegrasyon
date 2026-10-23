@@ -54,9 +54,9 @@ function dominant(group: ReportGroup, metric: Metric) {
 function fitViewBox(full: string, points: Array<{ x: number; y: number }>) {
   if (points.length < 2) return full
   const xs = points.map(point => point.x), ys = points.map(point => point.y)
-  const pad = 40
+  const pad = 22
   let minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad, minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad
-  const width = Math.max(220, maxX - minX, (maxY - minY) * 2)
+  const width = Math.max(150, maxX - minX, (maxY - minY) * 2)
   const height = width / 2
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
   minX = cx - width / 2; maxX = cx + width / 2; minY = cy - height / 2; maxY = cy + height / 2
@@ -161,7 +161,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
                 const area = areaOf(region)
                 if (!area || area.group.orders === 0) return null
                 const named = labelled.has(area.key)
-                const size = 12 * unit
+                const size = (scope === 'turkey' ? 15 : 13) * unit
                 return <text key={region.code} x={region.x} y={region.y} className={dark(area) ? 'is-on-dark' : undefined} style={{ fontSize: size }}>
                   {named && <tspan x={region.x} dy={-size * 0.35} className="is-name">{area.group.label}</tspan>}
                   <tspan x={region.x} dy={named ? size * 1.15 : size * 0.35}>{formatCount(area.group.orders)}</tspan>
