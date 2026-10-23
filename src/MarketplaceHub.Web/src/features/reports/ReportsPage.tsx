@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
@@ -158,7 +158,7 @@ type ReportTab = { value: ViewKey; label: string; icon: UiIconName; count?: stri
 // shown: the tabs would keep showing the last one remembered.
 function reportTabs(data: ReportSales): ReportTab[] {
   const now = data.summary
-  const margin = data.cost.profitQuantity > 0 ? data.cost.netMargin : data.cost.costedQuantity > 0 ? data.cost.grossMargin : null
+  const margin = moneyBreakdown(data, profitSteps(data))?.margin ?? null
   return [
     { value: 'overview', label: 'Genel Bakış', icon: 'dashboard' },
     { value: 'geo', label: 'Coğrafya', icon: 'globe' },
@@ -253,15 +253,15 @@ type OpenDetail = (key: DetailKey) => void
 // from the sales to the profit, whose steps open their own breakdowns; the period and the operations run down the side.
 // Each card plays its animation once, when it first comes into view.
 function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
-  const flow = profitSteps(data)
-  const money = moneyBreakdown(data, flow)
+  const money = moneyBreakdown(data, profitSteps(data))
   return <div className="reports-board">
     <div className="reports-board-main">
       <RevenueCard data={data} />
-      <ProfitJourney data={data} flow={flow} money={money} onMore={onMore} />
+      <FiguresCard data={data} />
+      <ProfitJourney data={data} money={money} onMore={onMore} />
     </div>
-    <aside className="reports-board-side" aria-label="Dönem özeti ve operasyon">
-      <PeriodSummaryCard data={data} />
+    <aside className="reports-board-side" aria-label="Satış özeti ve operasyon">
+      <SalesSummaryCard data={data} />
       <OperationsCard data={data} onMore={onMore} />
     </aside>
   </div>
@@ -311,113 +311,141 @@ function RevenueCard({ data }: { data: ReportSales }) {
   </Card>
 }
 
-type MoneyPart = Part & { note?: string }
-type Money = { total: number; parts: MoneyPart[]; charged: number; left: number; leftNote: string; description: string }
+// Three more figures of the period, one under another, each with its change.
+function FiguresCard({ data }: { data: ReportSales }) {
+  const now = data.summary
+  const before = data.previousSummary
+  const noAmount = now.ordersWithAmount === 0
+  const rows = [
+    { label: 'Sipariş', value: now.orders as number | null, format: formatCount, delta: change(now.orders, before.orders), invert: false, hint: `${formatNumber(now.soldQuantity)} adet` },
+    { label: 'Ortalama Sepet', value: noAmount ? null : now.averageOrderValue, format: formatTl, delta: noAmount ? null : change(now.averageOrderValue, before.averageOrderValue), invert: false, hint: 'Tutarı olan siparişler' },
+    { label: 'İade Oranı', value: now.returnRate, format: (value: number) => formatPercent(value), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, hint: `${formatNumber(now.returnedQuantity)} adet iade` }
+  ]
+  return <Card title="Dönem Özeti" className="reports-card-figures" info="Sipariş iptaller hariçtir; ortalama sepet satış tutarı / tutarı olan sipariş; iade oranı iade adedi / satılan adettir.">
+    {shown => <dl className="reports-figures">{rows.map(row => <div key={row.label}>
+      <dt>{row.label}<small>{row.hint}</small></dt>
+      <dd><strong>{row.value === null ? 'Tutar yok' : <CountUp value={row.value} format={row.format} active={shown} />}</strong><Delta delta={row.delta} invert={row.invert} /></dd>
+    </div>)}</dl>}
+  </Card>
+}
 
-// Where the sales went, from the profit steps: returns, the marketplaces' deductions as read, the entered product cost
-// and what is left. What is left is an estimate; its note names every line that could not be taken off.
+type MoneyPart = Part & { note?: string }
+// One account from the sales to the profit, every figure taken from the one before it: the sales, the deductions
+// (returns and the marketplaces' commission, cargo and fees), what is left after them, the product cost entered and the
+// profit (null until a cost is entered) with its margin over the sales.
+type Money = {
+  total: number; deductions: MoneyPart[]; deducted: number; left: number; cost: number | null; costCoverage: number | null
+  profit: number | null; margin: number | null; leftNote: string; profitNote: string; description: string
+}
+
+const deductionTones: Record<string, string> = { returned: 'returned', commission: 'commission', cargo: 'cargo', fees: 'fees' }
+
 function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   if (!flow.steps) return null
   const now = data.summary
   const finance = financeCosts(data)
-  const tones: Record<string, string> = { returned: 'returned', commission: 'commission', cargo: 'cargo', fees: 'fees' }
-  const parts: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null && step.value > 0)
-    .map(step => ({ key: step.key, label: step.label, value: step.value ?? 0, tone: tones[step.key] ?? 'fees', note: step.note }))
+  const deductions: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null && step.value > 0)
+    .map(step => ({ key: step.key, label: step.label, value: step.value ?? 0, tone: deductionTones[step.key] ?? 'fees', note: step.note }))
+  const deducted = deductions.reduce((sum, part) => sum + part.value, 0)
+  const left = now.grossSales - deducted
   const cost = data.cost.costedQuantity > 0 ? data.cost.costTotal : null
-  if (cost !== null && cost > 0) parts.push({ key: 'cost', label: 'Ürün Maliyeti', value: cost, tone: 'cost', note: `Maliyeti girilmiş ${formatNumber(data.cost.costedQuantity)} adet için güncel maliyet; kapsam ${formatPercent(data.cost.coverage)}.` })
-  const payout = flow.steps.find(step => step.key === 'payout')?.value ?? null
-  const charged = parts.reduce((sum, part) => sum + part.value, 0)
-  const left = (payout ?? now.netRevenue) - (cost ?? 0)
+  const profit = cost === null ? null : left - cost
   const unread = finance ? unreadFeePlatforms(data) : []
+  const commissionKnown = flow.steps.some(step => step.key === 'commission' && step.value !== null)
   const gaps = [
-    payout === null ? 'komisyon bilinmiyor' : null,
-    finance ? (unread.length ? `${unread.join(', ')} kargo ve hizmet bedeli` : null) : unreadCostLines.join(', ').toLocaleLowerCase('tr-TR'),
-    cost === null ? 'ürün maliyeti girilmemiş' : (data.cost.coverage ?? 0) < 1 ? 'maliyeti girilmemiş ürünlerin maliyeti' : null
+    commissionKnown ? null : 'komisyon bilinmiyor',
+    finance ? (unread.length ? `${unread.join(', ')} kargo ve hizmet bedeli` : null) : unreadCostLines.join(', ').toLocaleLowerCase('tr-TR')
   ].filter(Boolean)
-  return { total: now.grossSales, parts, charged, left, description: flow.description,
-    leftNote: `Satıştan iade, pazaryeri kesintileri ve ürün maliyeti düşüldükten sonra kalan; tahminidir.${gaps.length ? ` Düşülmeyenler: ${gaps.join('; ')}.` : ''}` }
+  const coverage = data.cost.coverage
+  return {
+    total: now.grossSales, deductions, deducted, left, cost, costCoverage: cost === null ? null : coverage, profit,
+    margin: profit !== null && now.grossSales > 0 ? profit / now.grossSales : null, description: flow.description,
+    leftNote: `Satıştan iade ve pazaryeri kesintileri düşüldükten sonra kalan; ürün maliyeti hariç, tahminidir.${gaps.length ? ` Düşülmeyenler: ${gaps.join('; ')}.` : ''}`,
+    profitNote: cost === null ? 'Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.'
+      : `Masraflar sonrasından ürün maliyeti düşülerek bulunur; tahminidir.${(coverage ?? 0) < 1 ? ` Satılan adetlerin ${formatPercent(coverage)} kadarının maliyeti girili; kalanının maliyeti düşülmedi.` : ''}`
+  }
 }
 
 type JourneyStep = 'sales' | 'costs' | 'left' | 'ratios' | 'profit'
 const journeyTitles: Record<JourneyStep, string> = { sales: 'Satış Tutarı', costs: 'Masraflar', left: 'Masraflar Sonrası', ratios: 'Kâr Oranları', profit: 'Tahmini Net Kâr' }
 
-// From the sales to the profit in five steps, read left to right: the sales, what the costs took (their parts as one
-// bar), what is left after them, the ratios, and the estimated net profit at the end. Each step is a button that opens
-// its breakdown under the row (the platforms, the cost lines, what was not taken off, the margin, the profit's basis),
-// so the overview needs no separate cards for them. The steps come in one after another when first in view.
-function ProfitJourney({ data, flow, money, onMore }: { data: ReportSales; flow: ProfitSteps; money: Money | null; onMore: OpenDetail }) {
+// Satıştan Kâra: five steps read left to right on one grid (title, figure and note line up across them), and under them
+// the sales as one bar split the same way: each deduction, the product cost and the profit, with their amounts. Each
+// step opens its breakdown in a window, so nothing under the card moves. The bar fills once when first in view.
+function ProfitJourney({ data, money, onMore }: { data: ReportSales; money: Money | null; onMore: OpenDetail }) {
   const [open, setOpen] = useState<JourneyStep | null>(null)
   const detailId = useId()
   const more = <MoreButton title="Satıştan Kâra" onClick={() => onMore('cost')} compact />
   if (!money) return <Card title="Satıştan Kâra" className="reports-card-journey" actions={more}>{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
-  const profit = flow.steps?.find(step => step.key === 'profit') ?? null
-  const profitValue = profit?.value ?? null
-  const net = data.cost.profitQuantity > 0
-  const margin = profitValue === null ? null : net ? data.cost.netMargin : data.cost.grossMargin
   const share = (value: number) => money.total > 0 ? value / money.total : null
-  const toggle = (key: JourneyStep) => setOpen(current => current === key ? null : key)
-  const button = (key: JourneyStep, label: string) => ({ type: 'button' as const, onClick: () => toggle(key), 'aria-expanded': open === key, 'aria-controls': detailId, 'aria-label': `${label}: ayrıntıyı ${open === key ? 'kapat' : 'aç'}` })
-  const step = (index: number, key: JourneyStep, className: string) => ({ style: { '--step': index } as CSSProperties, className: `${className}${open === key ? ' is-open' : ''}`.trim() || undefined })
+  const button = (key: JourneyStep, label: string) => ({ type: 'button' as const, onClick: () => setOpen(current => current === key ? null : key), 'aria-expanded': open === key, 'aria-controls': detailId, 'aria-label': `${label}: ayrıntıyı ${open === key ? 'kapat' : 'aç'}` })
+  const step = (key: JourneyStep, className = '') => ({ className: `${className}${open === key ? ' is-open' : ''}`.trim() || undefined })
+  const signed = (value: number) => value < 0 ? `− ${formatTl(-value)}` : formatTl(value)
   return <Card title="Satıştan Kâra" className="reports-card-journey" info={`${money.description} Bir adıma tıklayınca ayrıntısı açılır.`} actions={more}>
     {shown => <>
       <ol className="reports-journey">
-        <li {...step(0, 'sales', '')}><button {...button('sales', 'Satış tutarı')}>
+        <li {...step('sales')}><button {...button('sales', 'Satış tutarı')}>
           <small>Satış Tutarı</small>
           <strong><CountUp value={money.total} format={formatTl} active={shown} /></strong>
           <span>İptaller hariç, iadeler düşülmeden</span>
         </button></li>
-        <li {...step(1, 'costs', 'is-minus')}><button {...button('costs', 'Masraflar')}>
+        <li {...step('costs', 'is-minus')}><button {...button('costs', 'Masraflar')}>
           <small>Masraflar</small>
-          <strong>− <CountUp value={money.charged} format={formatTl} active={shown} /></strong>
-          <SalesShare from={0} to={share(money.charged) ?? 0} tone="bad" shown={shown} label={`Satışın ${formatPercent(share(money.charged))} kadarı masraf`} />
-          <span>Satışın {formatPercent(share(money.charged))} kadarı</span>
-          <ul className="reports-journey-parts">{[...money.parts].sort((a, b) => b.value - a.value).slice(0, 3).map(part =>
-            <li key={part.key}><i className={`is-${part.tone}`} aria-hidden="true" /><span>{part.label}</span><b>{formatTlWhole(part.value)}<em>{formatPercent(share(part.value))}</em></b></li>)}</ul>
+          <strong>− <CountUp value={money.deducted} format={formatTl} active={shown} /></strong>
+          <span>Satışın {formatPercent(share(money.deducted))} kadarı · iade ve pazaryeri</span>
         </button></li>
-        <li {...step(2, 'left', `is-equals${money.left < 0 ? ' is-negative' : ''}`)}><button {...button('left', 'Masraflar sonrası')}>
-          <small>{money.left < 0 ? 'Açık' : 'Masraflar Sonrası'}</small>
-          <strong>{money.left < 0 ? `− ${formatTl(-money.left)}` : <CountUp value={money.left} format={formatTl} active={shown} />}</strong>
-          {money.left < 0
-            ? <SalesShare from={0} to={1} tone="bad" shown={shown} label="Masraflar satışın tamamını aştı" />
-            : <SalesShare from={share(money.charged) ?? 0} to={1} tone="good" shown={shown} label={`Satışın ${formatPercent(share(money.left))} kadarı kaldı`} />}
-          <span>{money.left < 0 ? 'Masraflar satışı aştı' : `Satışın ${formatPercent(share(money.left))} kadarı kaldı`}</span>
+        <li {...step('left', `is-equals${money.left < 0 ? ' is-negative' : ''}`)}><button {...button('left', 'Masraflar sonrası')}>
+          <small>Masraflar Sonrası</small>
+          <strong>{money.left < 0 ? signed(money.left) : <CountUp value={money.left} format={formatTl} active={shown} />}</strong>
+          <span>{money.left < 0 ? 'Masraflar satışı aştı' : `Satışın ${formatPercent(share(money.left))} kadarı kalır`}</span>
         </button></li>
-        <li {...step(3, 'ratios', 'is-ratios')}><button {...button('ratios', 'Kâr oranları')}>
+        <li {...step('ratios', `is-ratios${money.margin !== null && money.margin < 0 ? ' is-negative' : ''}`)}><button {...button('ratios', 'Kâr oranları')}>
           <small>Kâr Oranları</small>
-          <span className="reports-journey-ratios">
-            <span className={margin !== null && margin < 0 ? 'is-bad' : undefined}><em>{net ? 'Net marj' : 'Brüt marj'}</em><b>{formatPercent(margin)}</b></span>
-            <span><em>Masraf / satış</em><b>{formatPercent(share(money.charged))}</b></span>
-            <span><em>İade / satış</em><b>{formatPercent(share(data.summary.returnedAmount))}</b></span>
-          </span>
+          <strong>{money.margin === null ? '—' : formatPercent(money.margin)}</strong>
+          <span>Net marj · masraf {formatPercent(share(money.deducted))}{money.cost !== null ? ` · maliyet ${formatPercent(share(money.cost))}` : ''}</span>
         </button></li>
-        <li {...step(4, 'profit', `is-result${profitValue !== null && profitValue < 0 ? ' is-negative' : ''}${profitValue === null ? ' is-missing' : ''}`)}><button {...button('profit', profit?.label ?? 'Tahmini net kâr')}>
-          <small>{profit?.label ?? 'Tahmini Net Kâr'}</small>
-          <strong>{profitValue === null ? (profit?.missing ?? 'Maliyet girilmemiş') : <CountUp value={profitValue} format={formatTl} active={shown} />}</strong>
-          <span>{profitValue === null ? 'Ürün maliyeti girilince görünür' : `Maliyeti bilinen satış üzerinden · kapsam ${formatPercent(net ? data.cost.profitCoverage : data.cost.coverage)}`}</span>
+        <li {...step('profit', `is-result${money.profit !== null && money.profit < 0 ? ' is-negative' : ''}${money.profit === null ? ' is-missing' : ''}`)}><button {...button('profit', 'Tahmini net kâr')}>
+          <small>{money.profit !== null && money.profit < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr'}</small>
+          <strong>{money.profit === null ? 'Maliyet girilmemiş' : money.profit < 0 ? signed(money.profit) : <CountUp value={money.profit} format={formatTl} active={shown} />}</strong>
+          <span>{money.cost === null ? 'Ürün maliyeti girilince görünür' : `Ürün maliyeti − ${formatTlWhole(money.cost)} düşüldü`}</span>
         </button></li>
       </ol>
-      <p className="reports-journey-hint">Ayrıntısını görmek için bir adıma tıklayın.</p>
+      <SalesSplit money={money} shown={shown} />
       {/* The breakdown opens over the page, so nothing under the card moves. */}
       <Modal open={open !== null} onClose={() => setOpen(null)} className="reports-journey-modal" title={open ? journeyTitles[open] : ''}>
         <div id={detailId}>{open === null ? null
           : open === 'sales' ? <SalesDetail data={data} />
           : open === 'costs' ? <CostsDetail money={money} />
           : open === 'left' ? <LeftDetail money={money} />
-          : open === 'ratios' ? <RatiosDetail data={data} money={money} margin={margin} net={net} />
-          : <ProfitDetail data={data} profit={profit} net={net} onMore={onMore} />}</div>
+          : open === 'ratios' ? <RatiosDetail money={money} />
+          : <ProfitDetail money={money} onMore={onMore} />}</div>
       </Modal>
     </>}
   </Card>
 }
 
-// The sales as one bar, the part from `from` to `to` (shares of the sales) filled: the costs from the left in red, what
-// is left after them from there on in green, so the two steps read as one bar split in two. Fills once when first seen.
-function SalesShare({ from, to, tone, shown, label }: { from: number; to: number; tone: 'good' | 'bad'; shown: boolean; label: string }) {
-  const start = Math.max(0, Math.min(1, from)) * 100
-  const end = Math.max(start, Math.min(1, to) * 100)
-  return <span className={`reports-sales-share is-${tone}`} role="img" aria-label={label}>
-    <i style={{ left: `${start}%`, width: shown ? `${end - start}%` : '0%' }} />
-  </span>
+// Where each lira of the sales went, as one bar: the returns and the marketplaces' deductions, the product cost and
+// the profit (or, without a cost, what is left). Under it each part with its amount and share, in the bar's order.
+function SalesSplit({ money, shown }: { money: Money; shown: boolean }) {
+  const kept = money.profit ?? money.left
+  const parts: MoneyPart[] = [
+    ...money.deductions,
+    ...(money.cost !== null && money.cost > 0 ? [{ key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost' }] : []),
+    ...(kept > 0 ? [{ key: 'kept', label: money.profit === null ? 'Masraflar Sonrası' : 'Net Kâr', value: kept, tone: 'kept' }] : [])
+  ]
+  const whole = Math.max(money.total, parts.reduce((sum, part) => sum + part.value, 0))
+  if (whole <= 0) return null
+  return <div className="reports-flow-split">
+    <div className="reports-flow-bar" role="img" aria-label={`Satışın dağılımı: ${parts.map(part => `${part.label} ${formatPercent(part.value / whole)}`).join(', ')}`}>
+      {parts.map((part, index) => <i key={part.key} className={`is-${part.tone}`} style={{ width: shown ? `${part.value / whole * 100}%` : '0%', transitionDelay: `${index * 90}ms` }} />)}
+    </div>
+    <ul className="reports-flow-legend">{parts.map(part => <li key={part.key} className={part.key === 'kept' ? 'is-kept' : undefined}>
+      <i className={`is-${part.tone}`} aria-hidden="true" />
+      <span>{part.label}</span>
+      <b>{formatTlWhole(part.value)}</b>
+      <em>{formatPercent(part.value / whole)}</em>
+    </li>)}</ul>
+  </div>
 }
 
 // Satış Tutarı's breakdown: each platform's sales with its share, the total under them.
@@ -436,11 +464,11 @@ function SalesDetail({ data }: { data: ReportSales }) {
   </div>
 }
 
-// Masraflar's breakdown: every cost line with its amount, its share of the sales and how it was read.
+// Masraflar's breakdown: every deduction with its amount, its share of the sales and how it was read.
 function CostsDetail({ money }: { money: Money }) {
   return <div className="reports-journey-pane">
     <h3>Masraf kalemleri</h3>
-    <ul className="reports-cost-list is-detailed">{money.parts.map(part => <li key={part.key}>
+    <ul className="reports-cost-list is-detailed">{money.deductions.map(part => <li key={part.key}>
       <i className={`is-${part.tone}`} aria-hidden="true" />
       <span>{part.label}{part.note && <small>{part.note}</small>}</span>
       <strong>{formatTl(part.value)}</strong>
@@ -455,50 +483,62 @@ function LeftDetail({ money }: { money: Money }) {
     <h3>Nasıl hesaplandı</h3>
     <dl className="reports-ledger">
       <div><dt>Satış tutarı</dt><dd>{formatTl(money.total)}</dd></div>
-      <div className="is-minus"><dt>Masraflar</dt><dd>− {formatTl(money.charged)}</dd></div>
-      <div className="is-total"><dt>{money.left < 0 ? 'Açık' : 'Masraflar sonrası'}</dt><dd>{money.left < 0 ? `− ${formatTl(-money.left)}` : formatTl(money.left)}</dd></div>
+      <div className="is-minus"><dt>Masraflar</dt><dd>− {formatTl(money.deducted)}</dd></div>
+      <div className={`is-total is-${money.left < 0 ? 'bad' : 'good'}`}><dt>Masraflar sonrası</dt><dd>{money.left < 0 ? `− ${formatTl(-money.left)}` : formatTl(money.left)}</dd></div>
     </dl>
     <p className="reports-note"><UiIcon name="info" size={16} />{money.leftNote}</p>
   </div>
 }
 
 // Kâr Oranları's breakdown: the margin on a gauge, and each ratio with what it divides.
-function RatiosDetail({ data, money, margin, net }: { data: ReportSales; money: Money; margin: number | null; net: boolean }) {
-  const share = (value: number) => money.total > 0 ? value / money.total : null
+function RatiosDetail({ money }: { money: Money }) {
+  const share = (value: number | null) => value !== null && money.total > 0 ? value / money.total : null
   return <div className="reports-journey-pane is-split">
     <div className="reports-gauge-wrap">
-      <HalfGauge value={margin} shown tone={margin !== null && margin < 0 ? 'bad' : 'good'} label={`Marj ${formatPercent(margin)}`} />
-      <strong>{formatPercent(margin)}</strong>
-      <small>{net ? 'Net marj' : 'Brüt marj'}</small>
+      <HalfGauge value={money.margin} shown tone={money.margin !== null && money.margin < 0 ? 'bad' : 'good'} label={`Net marj ${formatPercent(money.margin)}`} />
+      <strong>{formatPercent(money.margin)}</strong>
+      <small>Net marj</small>
     </div>
     <dl className="reports-ledger">
-      <div><dt>{net ? 'Net marj' : 'Brüt marj'}<small>{net ? 'Tahmini net kâr / maliyeti ve komisyonu bilinen satış' : 'Tahmini brüt kâr / maliyeti bilinen satış; komisyon öncesi'}</small></dt><dd>{formatPercent(margin)}</dd></div>
-      <div><dt>Masraf / satış<small>İade, pazaryeri kesintileri ve ürün maliyeti / satış tutarı</small></dt><dd>{formatPercent(share(money.charged))}</dd></div>
-      <div><dt>İade / satış<small>İade edilen tutar / satış tutarı</small></dt><dd>{formatPercent(share(data.summary.returnedAmount))}</dd></div>
+      <div><dt>Net marj<small>Tahmini net kâr / satış tutarı</small></dt><dd>{formatPercent(money.margin)}</dd></div>
+      <div><dt>Masraf / satış<small>İade ve pazaryeri kesintileri / satış tutarı</small></dt><dd>{formatPercent(share(money.deducted))}</dd></div>
+      <div><dt>Ürün maliyeti / satış<small>Girilen maliyetler / satış tutarı</small></dt><dd>{formatPercent(share(money.cost))}</dd></div>
+      <div><dt>İade / satış<small>İade edilen tutar / satış tutarı</small></dt><dd>{formatPercent(share(money.deductions.find(part => part.key === 'returned')?.value ?? 0))}</dd></div>
     </dl>
   </div>
 }
 
-// Tahmini Net Kâr's breakdown: what it is computed over, how much of the sales that covers, and the way to the account.
-function ProfitDetail({ data, profit, net, onMore }: { data: ReportSales; profit: FlowStep | null; net: boolean; onMore: OpenDetail }) {
-  const coverage = net ? data.cost.profitCoverage : data.cost.coverage
+// Tahmini Net Kâr's breakdown: the whole account from the sales, how much of it has a cost, and the way to the profit tab.
+function ProfitDetail({ money, onMore }: { money: Money; onMore: OpenDetail }) {
   return <div className="reports-journey-pane">
-    <h3>Kârın dayanağı</h3>
-    <p className="reports-journey-text">{profit?.note ?? 'Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.'}</p>
-    <div className="reports-coverage-bar">
-      <span>Maliyeti bilinen satış<b>{formatPercent(coverage)}</b></span>
-      <Progress value={coverage} shown />
-    </div>
+    <h3>Kârın hesabı</h3>
+    <ProfitLedger money={money} />
+    <p className="reports-note"><UiIcon name="info" size={16} />{money.profitNote}</p>
+    {money.costCoverage !== null && <div className="reports-coverage-bar">
+      <span>Maliyeti girilmiş satış<b>{formatPercent(money.costCoverage)}</b></span>
+      <Progress value={money.costCoverage} shown />
+    </div>}
     <button type="button" className="secondary reports-journey-link" onClick={() => onMore('cost')}>Kârlılık sekmesinde aç<UiIcon name="arrowRight" size={14} /></button>
   </div>
 }
 
-// Dönem Özeti, as the marketplaces' own reports open: the gross sale, the cancellations and returns taken off in units
+// The account from the sales to the profit, line by line; the overview's window and the profit tab show the same.
+function ProfitLedger({ money }: { money: Money }) {
+  const amount = (value: number) => value < 0 ? `− ${formatTl(-value)}` : formatTl(value)
+  return <dl className="reports-ledger">
+    <div><dt>Satış tutarı</dt><dd>{formatTl(money.total)}</dd></div>
+    {money.deductions.map(part => <div key={part.key} className="is-minus"><dt>{part.label}</dt><dd>− {formatTl(part.value)}</dd></div>)}
+    <div className={`is-total is-${money.left < 0 ? 'bad' : 'good'}`}><dt>Masraflar sonrası</dt><dd>{amount(money.left)}</dd></div>
+    {money.cost !== null && <div className="is-minus"><dt>Ürün maliyeti</dt><dd>− {formatTl(money.cost)}</dd></div>}
+    {money.profit !== null && <div className={`is-result is-${money.profit < 0 ? 'bad' : 'good'}`}><dt>Tahmini net kâr<small>Net marj {formatPercent(money.margin)}</small></dt><dd>{amount(money.profit)}</dd></div>}
+  </dl>
+}
+
+// Satış Özeti, as the marketplaces' own reports open: the gross sale, the cancellations and returns taken off in units
 // and money, and the net sale; the bar splits the gross units the same way and fills once when first seen. Under it the
-// orders, the average basket and the return rate with their change, then the average sale price and commission rate.
-function PeriodSummaryCard({ data }: { data: ReportSales }) {
+// average sale price and the commission rate.
+function SalesSummaryCard({ data }: { data: ReportSales }) {
   const now = data.summary
-  const before = data.previousSummary
   const noAmount = now.ordersWithAmount === 0
   const cancelledUnits = data.cancellations.cancelledQuantity
   const cancelledAmount = data.cancellations.cancelledAmount ?? null
@@ -511,12 +551,7 @@ function PeriodSummaryCard({ data }: { data: ReportSales }) {
     { key: 'net', label: 'Net Satış', units: now.keptQuantity, amount: now.netRevenue, minus: false }
   ]
   const part = (units: number) => grossUnits > 0 ? units / grossUnits * 100 : 0
-  const figures = [
-    { key: 'orders', label: 'Sipariş', value: now.orders as number | null, format: formatCount, delta: change(now.orders, before.orders), invert: false },
-    { key: 'basket', label: 'Ortalama Sepet', value: noAmount ? null : now.averageOrderValue, format: formatTl, delta: noAmount ? null : change(now.averageOrderValue, before.averageOrderValue), invert: false },
-    { key: 'returns', label: 'İade Oranı', value: now.returnRate as number | null, format: (value: number) => formatPercent(value), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true }
-  ]
-  return <Card title="Dönem Özeti" className="reports-card-summary" info="Brüt satış: iptaller dahil sipariş edilen adet ve tutar. İptal tutarı ürünlerin liste fiyatıyla, iade tutarı ödenen tutarla hesaplanır; net satış kalan adet ve tutardır. Sipariş iptaller hariçtir; ortalama sepet satış tutarı / tutarı olan sipariş; iade oranı iade adedi / satılan adettir. Değişimler önceki döneme göredir.">
+  return <Card title="Satış Özeti" className="reports-card-summary" info="Brüt satış: iptaller dahil sipariş edilen adet ve tutar. İptal tutarı ürünlerin liste fiyatıyla, iade tutarı ödenen tutarla hesaplanır; net satış kalan adet ve tutardır.">
     {shown => <>
       <div className="reports-summary-bar" role="img" aria-label={`Brüt ${formatNumber(grossUnits)} adedin ${formatNumber(now.keptQuantity)} adedi net satış, ${formatNumber(now.returnedQuantity)} adedi iade, ${formatNumber(cancelledUnits)} adedi iptal`}>
         {[['net', now.keptQuantity], ['return', now.returnedQuantity], ['cancel', cancelledUnits]].map(([key, units]) => <i key={key} className={`is-${key}`} style={{ width: shown ? `${part(units as number)}%` : '0%' }} />)}
@@ -526,12 +561,8 @@ function PeriodSummaryCard({ data }: { data: ReportSales }) {
         <dd><strong>{row.minus && row.units > 0 ? '−' : ''}{formatNumber(row.units)} adet</strong><span>{row.minus && row.amount ? '− ' : ''}{money(row.amount)}</span></dd>
       </div>)}</dl>
       <div className="reports-summary-metrics">
-        {figures.map(figure => <div key={figure.key} className={`is-${figure.key}`}>
-          <small>{figure.label}</small>
-          <span><strong>{figure.value === null ? 'Tutar yok' : <CountUp value={figure.value} format={figure.format} active={shown} />}</strong><Delta delta={figure.delta} invert={figure.invert} /></span>
-        </div>)}
-        <div><small>Ort. Satış Fiyatı</small><strong>{noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity)}</strong></div>
-        <div><small>Ort. Komisyon Oranı</small><strong>{formatPercent(data.commission.effectiveRate)}</strong></div>
+        <div><small>Ort. satış fiyatı</small><strong>{noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity)}</strong></div>
+        <div><small>Ort. komisyon oranı</small><strong>{formatPercent(data.commission.effectiveRate)}</strong></div>
       </div>
     </>}
   </Card>
@@ -1128,6 +1159,7 @@ function Stock({ data }: { data: ReportSales }) {
 
 function CostAndProfit({ data }: { data: ReportSales }) {
   const cost = data.cost
+  const money = moneyBreakdown(data, profitSteps(data))
   const commission = data.commission
   return <div className="reports-grid">
     <Panel className="is-wide" title="Kapsam" description="Kâr yalnız maliyeti (ve net kâr için ayrıca komisyonu) bilinen satışlar üzerinden hesaplanır.">
@@ -1138,15 +1170,9 @@ function CostAndProfit({ data }: { data: ReportSales }) {
       </div>
       {(cost.coverage ?? 0) < 1 && <p className="reports-note"><UiIcon name="info" size={16} />Maliyeti eksik ürünlerin maliyetini ürün kartındaki Maliyet alanına (varyant tablosunda) girerek kapsamı artırabilirsiniz.</p>}
     </Panel>
-    <Ledger title="Kâr Hesabı" description="Maliyeti bilinen satışlardan, adım adım net kâra." rows={cost.costedQuantity === 0 ? [] : [
-      { label: 'Maliyetli satış tutarı', value: formatTl(cost.costedRevenue), hint: `${formatNumber(cost.costedQuantity)} adet` },
-      { label: 'Ürün maliyeti', value: formatTl(cost.costTotal), hint: 'Güncel maliyet', kind: 'minus' },
-      { label: 'Brüt kâr', value: formatTl(cost.grossProfit), hint: `Marj ${formatPercent(cost.grossMargin)} · komisyon öncesi`, kind: 'total', tone: signTone(cost.grossProfit) },
-      ...(cost.profitQuantity > 0 ? [
-        { label: 'Komisyon', value: formatTl(cost.profitCommission), hint: 'Kârı hesaplanan satışlarınki', kind: 'minus' as const },
-        { label: 'Tahmini net kâr', value: formatTl(cost.netProfit), hint: `Marj ${formatPercent(cost.netMargin)} · ${formatNumber(cost.profitQuantity)} adet üzerinden`, kind: 'result' as const, tone: signTone(cost.netProfit) }
-      ] : [])
-    ]} empty="Ürün kartında varyant maliyeti girildiğinde kâr burada görünür." />
+    <Panel title="Kâr Hesabı" description="Genel Bakış'taki hesabın satır satır hâli: satıştan iade ve pazaryeri kesintileri, sonra ürün maliyeti düşülür." className="reports-ledger-panel">
+      {money ? <><ProfitLedger money={money} /><p className="reports-note"><UiIcon name="info" size={16} />{money.profitNote}</p></> : <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}
+    </Panel>
     <Ledger title="Komisyon ve Hakediş" description="Tahminidir; kesinleşen tutar pazaryerinin hesap kesimindedir." rows={[
       { label: 'Tahmini komisyon', value: commission.coveredRevenue > 0 ? formatTl(commission.estimatedCommission) : '—', hint: `Etkin oran ${formatPercent(commission.effectiveRate)}` },
       { label: 'Tahmini hakediş', value: commission.coveredRevenue > 0 ? formatTl(commission.estimatedPayout) : '—', hint: 'Kesinleşmiş hakediş değildir', kind: 'total', tone: commission.coveredRevenue > 0 ? signTone(commission.estimatedPayout) : undefined },

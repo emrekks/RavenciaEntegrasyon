@@ -25,15 +25,6 @@ public sealed class InstantNotificationPolicyTests
     }
 
     [Fact]
-    public void HepsiburadaDefinitionIsPreparedWhenItsVersion7IdWasMade()
-    {
-        var made = DateTimeOffset.Parse("2026-10-22T18:12:16.824Z");
-
-        Assert.Equal(made, InstantNotificationService.PreparedAt(Guid.CreateVersion7(made)));
-        Assert.Equal(DateTimeOffset.Parse("2026-10-22T18:12:16.784Z"), InstantNotificationService.PreparedAt(Guid.Parse("01a164d0-5310-7b34-b7c6-ca8c607ba86c")));
-    }
-
-    [Fact]
     public void ShopifyRegistrationIsActiveOnlyWhileEveryTopicIsListed()
     {
         RemoteWebhook Listed(string id) => new(id, "https://panel.ravencia.com/api/v1/hooks/x/y", "ACTIVE", null);

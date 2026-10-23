@@ -35,7 +35,7 @@ export function CountUp({ value, format, active = true }: { value: number; forma
     const origin = current.current
     const start = performance.now()
     let frame = requestAnimationFrame(function step(now) {
-      const t = Math.min(1, (now - start) / 1100)
+      const t = Math.max(0, Math.min(1, (now - start) / 1100))
       current.current = origin + (value - origin) * (1 - Math.pow(1 - t, 3))
       setShown(current.current)
       if (t < 1) frame = requestAnimationFrame(step)

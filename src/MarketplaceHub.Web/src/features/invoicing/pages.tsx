@@ -7,7 +7,7 @@ import { hubApi, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { ValueBadge } from '../../shared/components/ValueBadge'
 import { setManualInvoiceStatus } from './manual-invoice-status'
-import { Busy, CargoProviderIcon, CountUp, ErrorBox, InvoiceStatusBadge, Modal, UiIcon, DialogSurface } from '../../shared/components'
+import { Busy, CargoProviderIcon, ErrorBox, InvoiceStatusBadge, Modal, UiIcon, DialogSurface } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification } from '../../shared/notifications'
 import { NoticeToast } from '../../shared/components/NoticeToast'
@@ -554,10 +554,10 @@ export function InvoicesPage() {
     </div>
     {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
     <div className="invoice-reference-metrics">
-      <article className="invoice-metric-pending"><small>Fatura Bekleyen</small><strong><CountUp value={pageData ? counts.unInvoiced.toLocaleString('tr-TR') : '—'} /></strong><span>paket bazlı işlem</span></article>
-      <article className="invoice-metric-due"><small>Süresi Yaklaşan</small><strong><CountUp value={pageData ? counts.dueSoon.toLocaleString('tr-TR') : '—'} /></strong><span>teslimden 5 gün geçen</span></article>
-      <article className="invoice-metric-complete"><small>Faturalandırılan</small><strong><CountUp value={pageData ? counts.invoiced.toLocaleString('tr-TR') : '—'} /></strong><span>ikinci fatura kapalı</span></article>
-      <article className="invoice-metric-total"><small>Toplam Paket</small><strong><CountUp value={pageData ? pageData.totalPackageCount.toLocaleString('tr-TR') : '—'} /></strong><span>fatura çalışma alanı</span></article>
+      <article className="invoice-metric-pending"><small>Fatura Bekleyen</small><strong>{pageData ? counts.unInvoiced.toLocaleString('tr-TR') : '—'}</strong><span>paket bazlı işlem</span></article>
+      <article className="invoice-metric-due"><small>Süresi Yaklaşan</small><strong>{pageData ? counts.dueSoon.toLocaleString('tr-TR') : '—'}</strong><span>teslimden 5 gün geçen</span></article>
+      <article className="invoice-metric-complete"><small>Faturalandırılan</small><strong>{pageData ? counts.invoiced.toLocaleString('tr-TR') : '—'}</strong><span>ikinci fatura kapalı</span></article>
+      <article className="invoice-metric-total"><small>Toplam Paket</small><strong>{pageData ? pageData.totalPackageCount.toLocaleString('tr-TR') : '—'}</strong><span>fatura çalışma alanı</span></article>
     </div>
     <div className="invoice-reference-filter-shell">
       <ViewTabsWithMore more={[]} className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label: viewTabLabel(({ ALL: 'all', UNINVOICED: 'invoiceMissing', INVOICED: 'invoiceDone', DUE_SOON: 'due', HIDDEN: 'hidden' } as const)[value], label), count: !pageData ? undefined : (value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden).toLocaleString('tr-TR') }))} />

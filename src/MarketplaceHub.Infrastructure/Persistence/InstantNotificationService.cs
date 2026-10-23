@@ -54,16 +54,13 @@ public sealed class InstantNotificationService(
             // Nothing to ask Hepsiburada: the first notification shows that it has set the address up. After that,
             // silence alone says nothing (a store without new orders sends nothing, 23 Oct 2026 on SIT): only an order
             // the regular read brought in with no notification since shows the notifications have stopped.
-            // Before the first notification, an order the regular read brought in after the definition was prepared
-            // tells a definition that is not working from one that has had nothing to send.
             var now = timeProvider.GetUtcNow();
-            var missed = await ScheduledJobProducer.UnnotifiedOrderAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? PreparedAt(subscription.Id), now, cancellationToken);
+            var missed = await ScheduledJobProducer.UnnotifiedOrderAsync(db, tenantId, connectionId, subscription.LastReceivedAt, now, cancellationToken);
             var silent = subscription.LastReceivedAt is { } last && now - last > WebhookPollingPolicy.SilenceLimit;
             var manualState = subscription.LastReceivedAt is null ? "WAITING" : missed ? "QUIET" : "ACTIVE";
             var manualMessage = manualState switch
             {
-                "WAITING" when missed => "Bilgiler hazırlandıktan sonra gelen sipariş için Hepsiburada'dan bildirim gelmedi; Hepsiburada'ya tanımın bu adres ve şifreyle yapıldığını sorun. Siparişler düzenli kontrolle gelmeye devam ediyor.",
-                "WAITING" => "Bilgiler hazırlandığından beri yeni sipariş gelmedi; Hepsiburada adresi tanımladıysa ilk siparişle bildirim gelir. O zamana kadar siparişler düzenli kontrolle gelir.",
+                "WAITING" => "Bilgiler hazır; Hepsiburada adresi tanımlayıp ilk bildirimi gönderene kadar siparişler düzenli kontrolle gelir.",
                 "QUIET" => "Son bildirimden sonra gelen sipariş için Hepsiburada'dan bildirim gelmedi; siparişler düzenli kontrolle gelmeye devam ediyor. Hepsiburada'dan webhook tanımını kontrol etmesini isteyin.",
                 _ when silent => "Bildirimler çalışıyor; son bildirimden bu yana yeni sipariş gelmedi. Sipariş kontrolü yedek olarak 8 dakikada bir yapılıyor.",
                 _ => "Bildirimler geliyor; sipariş kontrolü yedek olarak 8 dakikada bir yapılıyor."
@@ -256,54 +253,8 @@ public sealed class InstantNotificationService(
             .OrderByDescending(x => x.LastSeenAt)
             .Select(x => new { x.LastSeenAt, x.Summary })
             .FirstOrDefaultAsync(cancellationToken);
-        // A Hepsiburada definition is never verified by a call; it was opened when it was prepared.
-        var manual = subscription?.ExternalSubscriptionId == ManualRegistration;
-        var registeredAt = subscription?.VerifiedAt ?? (manual ? PreparedAt(subscription!.Id) : null);
-        var previous = connection.PlatformCode == "HEPSIBURADA" && subscription?.LastReceivedAt is null
-            ? await PreviousDefinitionAsync(connection.TenantId, connection.Id, subscription?.Id, tracked: false, cancellationToken)
-            : null;
-        return new(state, endpoint, registeredAt, subscription?.LastReceivedAt, received, message, LastRejectedAt: rejected?.LastSeenAt, LastRejectedReason: rejected?.Summary,
-            PreviousPreparedAt: previous is null ? null : PreparedAt(previous.Id));
+        return new(state, endpoint, subscription?.VerifiedAt, subscription?.LastReceivedAt, received, message, LastRejectedAt: rejected?.LastSeenAt, LastRejectedReason: rejected?.Summary);
     }
-
-    public async Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
-    {
-        var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
-        if (connection is null) return NotFound();
-        if (connection.PlatformCode != "HEPSIBURADA")
-            return ServiceResult<InstantNotificationView>.Fail("INSTANT_NOTIFICATIONS_RESTORE_UNSUPPORTED", "Önceki tanım yalnız Hepsiburada için geri yüklenir.", 422);
-        if (connection.Status is not ("ACTIVE" or "VERIFIED"))
-            return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için webhook tanımı geri yüklenemez.", 422);
-        var current = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken, tracked: true);
-        // A definition Hepsiburada already delivers to is the one it has; it is not swapped for an older one.
-        if (current?.LastReceivedAt is not null)
-            return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_IN_USE", "Şu anki tanıma Hepsiburada'dan bildirim geliyor; önceki tanım geri yüklenmez.", 409);
-        var previous = await PreviousDefinitionAsync(tenantId, connectionId, current?.Id, tracked: true, cancellationToken);
-        if (previous is null)
-            return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_PREVIOUS_MISSING", "Geri yüklenecek önceki bir Hepsiburada tanımı yok.", 404);
-        if (current is not null)
-        {
-            current.Status = "DELETED";
-            current.Version++;
-        }
-        previous.Status = "ACTIVE";
-        previous.Version++;
-        await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Hepsiburada webhook definition {SubscriptionId} restored for connection {ConnectionId}", previous.Id, connectionId);
-        return await StatusAsync(tenantId, connectionId, correlationId, cancellationToken);
-    }
-
-    // The last closed Hepsiburada definition prepared before the current one (ids are version 7, so they order by
-    // time). One closed after it was restored over is newer and is not offered back.
-    private async Task<WebhookSubscription?> PreviousDefinitionAsync(Guid tenantId, Guid connectionId, Guid? currentId, bool tracked, CancellationToken cancellationToken)
-    {
-        var query = db.WebhookSubscriptions.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "DELETED" && x.ExternalSubscriptionId == ManualRegistration);
-        var previous = await (tracked ? query : query.AsNoTracking()).OrderByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
-        return previous is not null && currentId is { } current && PreparedAt(previous.Id) >= PreparedAt(current) ? null : previous;
-    }
-
-    // A version 7 id begins with the Unix milliseconds of its creation: when a definition was prepared.
-    internal static DateTimeOffset PreparedAt(Guid id) => DateTimeOffset.FromUnixTimeMilliseconds(Convert.ToInt64(id.ToString("N")[..12], 16));
 
     private Task<PlatformConnection?> ConnectionAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
