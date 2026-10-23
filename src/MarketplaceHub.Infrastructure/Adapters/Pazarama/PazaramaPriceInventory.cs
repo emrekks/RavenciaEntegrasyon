@@ -32,11 +32,29 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
         if (account is null) return CredentialMissing<RemoteOperationRef>();
         if (WriteBlocked<RemoteOperationRef>(account, "fiyat-stok") is { } blocked) return blocked;
 
-        // Stock goes first (an unsent stock change risks overselling) and the two requests stand alone:
-        // Pazarama refuses a value it already holds, so a retry must not depend on resending the part that
-        // was accepted. A part that was refused, or not sent because the other was accepted and this one
-        // failed, is kept in the operation id as "{kind}!:{code}:{count}" so its lines are reported as not
-        // sent while the accepted part is recorded.
+        return await PushAsync(
+            bodies,
+            (path, body, token) => SendAsync(account, HttpMethod.Post, path, token, new StringContent(body, System.Text.Encoding.UTF8, "application/json"), SpacedRequestTimeout),
+            timeProvider.GetUtcNow,
+            cancellationToken);
+    }
+
+    // At most this many extra requests split refused "already held" requests in one send. Every request waits for the
+    // shared 10 s price/stock slot, so the budget keeps a send within a few minutes; what it does not reach stays not sent
+    // and comes back in the next send, without the lines this send recorded.
+    internal const int MaxSplitRequests = 24;
+
+    // Stock goes first (an unsent stock change risks overselling) and the two requests stand alone:
+    // Pazarama refuses a value it already holds, so a retry must not depend on resending the part that
+    // was accepted. A part that was refused, or not sent because the other was accepted and this one
+    // failed, is kept in the operation id as "{kind}!:{code}:{count}" so its lines are reported as not
+    // sent while the accepted part is recorded.
+    internal static async Task<AdapterResult<RemoteOperationRef>> PushAsync(
+        PazaramaPriceInventoryRules.SplitBodies bodies,
+        Func<string, string, CancellationToken, Task<AdapterResult<JsonDocument>>> send,
+        Func<DateTimeOffset> now,
+        CancellationToken cancellationToken)
+    {
         var parts = new List<string>(2);
         RateLimitMetadata? rate = null;
         AdapterError? lastError = null;
@@ -44,36 +62,62 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
         // other part from retrying the whole send, which only meets the same "already held" answer again.
         var accepted = 0;
         var held = 0;
-        foreach (var (kind, path, body, count) in new[] { ("s", StockUpdate, bodies.Stock, bodies.StockCount), ("p", PriceUpdate, bodies.Price, bodies.PriceCount) })
+        var splitsLeft = MaxSplitRequests;
+        foreach (var (kind, path, items) in new[] { ("s", StockUpdate, bodies.StockItems), ("p", PriceUpdate, bodies.PriceItems) })
         {
-            if (count == 0) continue;
-            var result = await SendAsync(account, HttpMethod.Post, path, cancellationToken, new StringContent(body, System.Text.Encoding.UTF8, "application/json"), SpacedRequestTimeout);
-            rate = result.RateLimit ?? rate;
-            if (!result.IsSuccess)
+            if (items.Count == 0) continue;
+            // Pazarama refuses a whole request over one barcode whose value it already holds ("… önceki değerleriyle aynı
+            // olamaz") and does not say which one. Such a request is split in halves and each half is sent again, in list
+            // order, until the held barcodes stand alone. A part of a split list carries its position in the list
+            // ("{kind}:{id}:{count}:{offset}") so the job finds its barcodes.
+            var split = false;
+            var ranges = new Stack<(int Offset, int Count)>();
+            ranges.Push((0, items.Count));
+            while (ranges.TryPop(out var range))
             {
-                // One barcode whose value Pazarama already holds is refused ("… önceki değerleriyle aynı olamaz"): that
-                // part is up to date, not failed. A larger request does not say which barcode it meant, so it stays a failure.
-                if (count == 1 && PazaramaPriceInventoryRules.AlreadyHeld(result.Error!.SafeMessage))
+                var position = split ? ":" + range.Offset.ToString(CultureInfo.InvariantCulture) : "";
+                var count = range.Count.ToString(CultureInfo.InvariantCulture);
+                var body = new JsonObject { ["items"] = new JsonArray(items.Skip(range.Offset).Take(range.Count).Select(item => item?.DeepClone()).ToArray()) }.ToJsonString();
+                var result = await send(path, body, cancellationToken);
+                rate = result.RateLimit ?? rate;
+                if (!result.IsSuccess)
                 {
-                    parts.Add($"{kind}=:{PazaramaBatchMapper.AlreadyHeldMarker}:1");
-                    held++;
+                    if (PazaramaPriceInventoryRules.AlreadyHeld(result.Error!.SafeMessage))
+                    {
+                        // One barcode whose value Pazarama already holds: that part is up to date, not failed.
+                        if (range.Count == 1)
+                        {
+                            parts.Add($"{kind}=:{PazaramaBatchMapper.AlreadyHeldMarker}:1{position}");
+                            held++;
+                            continue;
+                        }
+                        if (splitsLeft >= 2)
+                        {
+                            splitsLeft -= 2;
+                            split = true;
+                            var first = range.Count / 2;
+                            ranges.Push((range.Offset + first, range.Count - first));
+                            ranges.Push((range.Offset, first));
+                            continue;
+                        }
+                        // The split budget is spent: this range stays not sent (below) and comes back in the next send.
+                    }
+                    lastError = result.Error!;
+                    // Nothing accepted and the failure may be passing: the whole send is retried.
+                    if (accepted == 0 && result.Error!.Class is not AdapterErrorClass.Validation) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
+                    parts.Add($"{kind}!:{PazaramaBatchMapper.MarkerCode(result.Error!.Code)}:{count}{position}");
                     continue;
                 }
-                lastError = result.Error!;
-                // Nothing accepted and the failure may be passing: the whole send is retried.
-                if (accepted == 0 && result.Error!.Class is not AdapterErrorClass.Validation) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
-                parts.Add($"{kind}!:{PazaramaBatchMapper.MarkerCode(result.Error!.Code)}:{count.ToString(CultureInfo.InvariantCulture)}");
-                continue;
+                using var document = result.Value!;
+                var dataId = Data(document.RootElement, out var data) && data.ValueKind == JsonValueKind.String ? data.GetString()?.Trim() : null;
+                if (string.IsNullOrWhiteSpace(dataId))
+                    return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "PAZARAMA_BATCH_ID_MISSING", "Pazarama fiyat-stok yanıtında işlem numarası (dataId) yok.", HttpStatusCode.BadGateway);
+                parts.Add($"{kind}:{dataId}:{count}{position}");
+                accepted++;
             }
-            using var document = result.Value!;
-            var dataId = Data(document.RootElement, out var data) && data.ValueKind == JsonValueKind.String ? data.GetString()?.Trim() : null;
-            if (string.IsNullOrWhiteSpace(dataId))
-                return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "PAZARAMA_BATCH_ID_MISSING", "Pazarama fiyat-stok yanıtında işlem numarası (dataId) yok.", HttpStatusCode.BadGateway);
-            parts.Add($"{kind}:{dataId}:{count.ToString(CultureInfo.InvariantCulture)}");
-            accepted++;
         }
         if (accepted == 0 && held == 0 && lastError is not null) return AdapterResult<RemoteOperationRef>.Failure(lastError, rate);
-        return AdapterResult<RemoteOperationRef>.Success(new(string.Join('|', parts), "PRICE_STOCK_UPDATE", timeProvider.GetUtcNow()), rate);
+        return AdapterResult<RemoteOperationRef>.Success(new(string.Join('|', parts), "PRICE_STOCK_UPDATE", now()), rate);
     }
 
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
@@ -126,7 +170,8 @@ public static class PazaramaPriceInventoryRules
     public const int MaxItemsPerRequest = 3000;
     public const int MaxCodeLength = 100;
 
-    public sealed record SplitBodies(string Price, int PriceCount, string Stock, int StockCount);
+    // Each list as its request body and as its items in payload order (a refused request is split by position).
+    public sealed record SplitBodies(string Price, int PriceCount, string Stock, int StockCount, IReadOnlyList<JsonNode?> PriceItems, IReadOnlyList<JsonNode?> StockItems);
 
     public static decimal Price(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 
@@ -166,7 +211,7 @@ public static class PazaramaPriceInventoryRules
             var stock = root["stock"] as JsonArray ?? [];
             if (price.Count == 0 && stock.Count == 0 || price.Count > MaxItemsPerRequest || stock.Count > MaxItemsPerRequest) return null;
             if (!price.All(PriceItemValid) || !stock.All(StockItemValid)) return null;
-            return new(new JsonObject { ["items"] = price.DeepClone() }.ToJsonString(), price.Count, new JsonObject { ["items"] = stock.DeepClone() }.ToJsonString(), stock.Count);
+            return new(new JsonObject { ["items"] = price.DeepClone() }.ToJsonString(), price.Count, new JsonObject { ["items"] = stock.DeepClone() }.ToJsonString(), stock.Count, price.ToList(), stock.ToList());
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException) { return null; }
     }
@@ -190,7 +235,8 @@ public static class PazaramaBatchMapper
 
     // Kind "p" or "s" for a sent batch (DataId is Pazarama's id); "p!" or "s!" for a part that was not
     // accepted (DataId is the error code); "p=" or "s=" for a value Pazarama already held (nothing to read back).
-    public sealed record BatchPart(string Kind, string DataId, int ExpectedCount)
+    // Offset is the part's first position in its list when the list was split; without it the part is the whole list.
+    public sealed record BatchPart(string Kind, string DataId, int ExpectedCount, int? Offset = null)
     {
         public bool Sent => !Kind.EndsWith('!') && !Held;
         public bool Held => Kind.EndsWith('=');
@@ -216,17 +262,37 @@ public static class PazaramaBatchMapper
 
     public const string PendingApprovalStatus = "PENDING_APPROVAL";
 
-    // "p:{id}:{count}|s:{id}:{count}"; anything else is not an operation this adapter created.
+    // "p:{id}:{count}|s:{id}:{count}", a part of a split list with ":{offset}" after its count; anything else is not an
+    // operation this adapter created.
     public static IReadOnlyList<BatchPart> ParseOperation(string? operationId)
     {
         var parts = new List<BatchPart>();
         foreach (var raw in (operationId ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var fields = raw.Split(':');
-            if (fields.Length != 3 || fields[0] is not ("p" or "s" or "p!" or "s!" or "p=" or "s=") || fields[1].Length == 0 || !int.TryParse(fields[2], NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count <= 0) return [];
-            parts.Add(new(fields[0], fields[1], count));
+            if (fields.Length is not (3 or 4) || fields[0] is not ("p" or "s" or "p!" or "s!" or "p=" or "s=") || fields[1].Length == 0 || !int.TryParse(fields[2], NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count <= 0) return [];
+            int? offset = null;
+            if (fields.Length == 4)
+            {
+                if (!int.TryParse(fields[3], NumberStyles.None, CultureInfo.InvariantCulture, out var start)) return [];
+                offset = start;
+            }
+            parts.Add(new(fields[0], fields[1], count, offset));
         }
         return parts;
+    }
+
+    // The part of the operation that carried each barcode of one list ("p" or "s"), by the barcode's position in that list.
+    public static IReadOnlyDictionary<string, BatchPart> PartsByCode(IReadOnlyList<BatchPart> parts, string family, IReadOnlyList<string> codes)
+    {
+        var byCode = new Dictionary<string, BatchPart>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in parts.Where(part => part.Family == family))
+        {
+            var start = part.Offset ?? 0;
+            var end = part.Offset is null ? codes.Count : Math.Min(codes.Count, start + part.ExpectedCount);
+            for (var index = start; index < end; index++) byCode.TryAdd(codes[index], part);
+        }
+        return byCode;
     }
 
     // data.data is the list, data.totalCount the number of results Pazarama has for the batch so far.
@@ -312,19 +378,51 @@ public static class PazaramaBatchMapper
         return new(operationId, "COMPLETED", lines);
     }
 
+    // How one barcode's price and stock came out. Accepted or held counts as sent; a value Pazarama refused, or a part that
+    // was not sent, does not (NotSentCode is that part's error code). MissingResult: a part that was sent has no result line
+    // for the barcode.
+    public sealed record LineOutcome(bool PriceOk, bool StockOk, string? NotSentCode, bool MissingResult);
+
+    public static Func<string, RemoteOperationLine?, LineOutcome> LineOutcomes(string operationId, string payloadJson)
+    {
+        var parts = ParseOperation(operationId);
+        var (priceList, stockList) = PayloadCodeLists(payloadJson);
+        var priceParts = PartsByCode(parts, "p", priceList);
+        var stockParts = PartsByCode(parts, "s", stockList);
+        var priceCodes = priceList.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var stockCodes = stockList.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return (barcode, remote) =>
+        {
+            var pricePart = priceCodes.Contains(barcode) ? priceParts.GetValueOrDefault(barcode) ?? new BatchPart("p!", "PRICE_INVENTORY_LINE_REJECTED", 1) : null;
+            var stockPart = stockCodes.Contains(barcode) ? stockParts.GetValueOrDefault(barcode) ?? new BatchPart("s!", "PRICE_INVENTORY_LINE_REJECTED", 1) : null;
+            var code = remote?.ErrorCode;
+            var priceOk = pricePart is null || pricePart.Held || pricePart.Sent && code is not (PriceRejected or PriceAndStockRejected);
+            var stockOk = stockPart is null || stockPart.Held || stockPart.Sent && code is not (StockRejected or PriceAndStockRejected);
+            var notSent = !priceOk && pricePart is { Sent: false, Held: false } ? pricePart.DataId : !stockOk && stockPart is { Sent: false, Held: false } ? stockPart.DataId : null;
+            return new(priceOk, stockOk, notSent, remote is null && (pricePart?.Sent == true || stockPart?.Sent == true));
+        };
+    }
+
     // The barcodes in the price list and in the stock list of a composed payload.
     public static (HashSet<string> Price, HashSet<string> Stock) PayloadCodes(string payloadJson)
     {
-        var price = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var stock = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var (price, stock) = PayloadCodeLists(payloadJson);
+        return (price.Where(code => code.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase), stock.Where(code => code.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase));
+    }
+
+    // The same barcodes in list order, at the positions the requests (and a split request's offsets) used.
+    public static (IReadOnlyList<string> Price, IReadOnlyList<string> Stock) PayloadCodeLists(string payloadJson)
+    {
+        var price = new List<string>();
+        var stock = new List<string>();
         try
         {
             if (JsonNode.Parse(payloadJson) is JsonObject root)
             {
-                foreach (var (name, set) in new[] { ("price", price), ("stock", stock) })
+                foreach (var (name, list) in new[] { ("price", price), ("stock", stock) })
                     if (root[name] is JsonArray items)
                         foreach (var item in items)
-                            if (item?["code"] is JsonValue value && value.TryGetValue<string>(out var code) && !string.IsNullOrWhiteSpace(code)) set.Add(code.Trim());
+                            list.Add(item?["code"] is JsonValue value && value.TryGetValue<string>(out var code) && !string.IsNullOrWhiteSpace(code) ? code.Trim() : "");
             }
         }
         catch (JsonException) { }
