@@ -133,6 +133,29 @@ public sealed class PazaramaOrderMapperTests
     }
 
     [Fact]
+    public void APartlyCancelledOrderPassesThePackageCheckTheImportRuns()
+    {
+        // One item cancelled, one being prepared: the cancelled one is not also counted as allocated, so the order is
+        // taken in (it was refused whole with PACKAGE_QUANTITY_INVARIANT_REJECTED).
+        var package = Single(Item("a1", 6) + "," + Item("a2", 12, "bbb", "213")).Packages.Single();
+        var ordered = new Dictionary<string, decimal> { ["a1"] = 1m, ["a2"] = 1m };
+
+        Assert.True(PackageIngestionSafety.TryNormalizeAll(ordered, package.Allocations, ShipmentPackageStatus.Processing, out var safe));
+        Assert.Equal((0m, 1m), (safe["a1"].ActiveAllocatedQuantity, safe["a1"].CancelledQuantity));
+        Assert.Equal((1m, 0m), (safe["a2"].ActiveAllocatedQuantity, safe["a2"].CancelledQuantity));
+    }
+
+    [Fact]
+    public void AReturnedItemBesideAShippedOneIsCountedAsDeliveredFirst()
+    {
+        var package = Single(Item("a1", 8) + "," + Item("a2", 5, "bbb", "213")).Packages.Single();
+        var ordered = new Dictionary<string, decimal> { ["a1"] = 1m, ["a2"] = 1m };
+
+        Assert.True(PackageIngestionSafety.TryNormalizeAll(ordered, package.Allocations, ShipmentPackageStatus.Shipped, out var safe));
+        Assert.Equal((1m, 1m), (safe["a1"].DeliveredQuantity, safe["a1"].ReturnedQuantity));
+    }
+
+    [Fact]
     public void AllItemsCancelledCancelsThePackage() =>
         Assert.Equal("Cancelled", Single(Item("a1", 6) + "," + Item("a2", 13, "bbb", "213")).Packages.Single().RawStatus);
 
