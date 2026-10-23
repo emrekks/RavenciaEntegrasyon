@@ -337,11 +337,11 @@ function CourierChangeModal({ item, items, onClose, onConfirmed }: { item: Order
     try {
       for (const target of targets) {
         try {
-          const updatedShipment = await hubApi<Shipment>(`/shipments/${target.shipment.id}/instant-cargo-provider`, {
+          const updatedShipment = await sendWithVersionedIdempotencyKey(`instant-cargo:${target.shipment.id}:v${target.shipment.version}:${chosen.code}`, key => hubApi<Shipment>(`/shipments/${target.shipment.id}/instant-cargo-provider`, {
             method: 'POST',
-            headers: { 'Idempotency-Key': `instant-cargo:${target.shipment.id}:v${target.shipment.version}:${chosen.code}`, 'If-Match': `"v${target.shipment.version}"` },
+            headers: { 'Idempotency-Key': key, 'If-Match': `"v${target.shipment.version}"` },
             body: JSON.stringify({ action: 'CHANGE_CARGO_PROVIDER', payloadJson: JSON.stringify({ cargoProvider: chosen.code }) })
-          })
+          }))
           updatedShipments.push(updatedShipment)
         } catch (err) {
           if (isPendingAction(err)) pending.push(err.message)
@@ -973,11 +973,12 @@ export function OrdersPage() {
     setProcessingOrderId(item.id)
     showBulkNotice(`Sipariş ${displayOrderNumber(item.orderNumber)} API yanıtı bekleniyor…`, 'info')
     try {
-      const updatedShipment = await hubApi<Shipment>(`/orders/${item.id}/instant-process`, {
+      // One key per order version: a double click or a resend after a lost answer reaches the same request record; after
+      // an HTTP answer the next attempt gets a fresh key.
+      const updatedShipment = await sendWithVersionedIdempotencyKey(`instant-picking:${item.id}:v${item.version}`, key => hubApi<Shipment>(`/orders/${item.id}/instant-process`, {
         method: 'POST',
-        // One key per order version: a double click or a retry reaches the same request record.
-        headers: { 'Idempotency-Key': `instant-picking:${item.id}:v${item.version}` }
-      })
+        headers: { 'Idempotency-Key': key }
+      }))
       moveOrderAcrossStatusCaches(client, item, updatedShipment)
       setSelectedIds(current => current.filter(id => id !== item.id))
       await client.refetchQueries({ queryKey: ['orders', 'summary'], type: 'active' })

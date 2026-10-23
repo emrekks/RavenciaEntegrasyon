@@ -5,7 +5,7 @@ import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
-import { newIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Button, EmptyState, LoadingState, Tabs, UiIcon } from '../../shared/components'
@@ -228,7 +228,7 @@ export function QuestionsPage() {
   const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })
   const sendAnswer = useMutation({
     mutationFn: async ({ id, version, text }: { id: string; version: number; text: string }) => {
-      const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': versionedIdempotencyKey('question-answer', id, current, body) }, body }) }
+      const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-answer', id, current, body), key => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': key }, body })) }
       try { return await post(version) }
       catch (error) {
         // The question was refreshed in the background since it was opened: it is read again and, while it
