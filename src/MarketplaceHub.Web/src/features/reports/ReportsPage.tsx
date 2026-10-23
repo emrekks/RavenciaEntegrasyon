@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
@@ -312,8 +312,20 @@ function Bars({ items, format, label }: { items: Array<{ key: string; label: str
 type Metric = 'netRevenue' | 'orders' | 'soldQuantity' | 'returnedQuantity' | 'cancelledOrders'
 const metricLabels: Record<Metric, string> = { netRevenue: 'Net Ciro', orders: 'Sipariş', soldQuantity: 'Satılan Adet', returnedQuantity: 'İade Adedi', cancelledOrders: 'İptal' }
 
-// The period's buckets as a line, the previous period's (bucket by bucket) as a dashed line behind it.
+// The period's buckets as a line, the previous period's (bucket by bucket) as a dashed line behind it. As on the
+// overview, the bucket under the pointer is marked and its card follows the pointer, above it when there is room.
 function TrendChart({ points, previous, metric, showPrevious, granularity }: { points: ReportTimePoint[]; previous: ReportTimePoint[]; metric: Metric; showPrevious: boolean; granularity: string }) {
+  const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const tipRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const tip = tipRef.current, wrap = wrapRef.current
+    if (!tip || !wrap || !hover) return
+    const box = wrap.getBoundingClientRect(), tipWidth = tip.offsetWidth, tipHeight = tip.offsetHeight, gap = 14
+    tip.style.left = `${Math.max(0, Math.min(box.width - tipWidth, hover.x - box.left - tipWidth / 2))}px`
+    tip.style.top = `${hover.y - tipHeight - gap >= 8 ? hover.y - box.top - tipHeight - gap : hover.y - box.top + gap + 4}px`
+    tip.style.visibility = ''
+  }, [hover])
   const width = 760
   const height = 240
   const pad = { top: 16, right: 16, bottom: 34, left: 64 }
@@ -328,17 +340,43 @@ function TrendChart({ points, previous, metric, showPrevious, granularity }: { p
   const bucketLabel = (start: string) => { const [, month, day] = start.split('-'); return granularity === 'month' ? `${month}.${start.slice(0, 4)}` : `${day}.${month}` }
   const ticks = [0, 0.25, 0.5, 0.75, 1].map(step => max * step)
   if (!points.length) return <p className="reports-empty">Bu dönemde veri yok.</p>
-  return <svg className="reports-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricLabels[metric]} zaman serisi`}>
-    <title>{`${metricLabels[metric]}: ${points.map(point => `${bucketLabel(point.start)} ${format(point[metric])}`).join(', ')}`}</title>
-    {ticks.map(tick => <g key={tick} className="reports-chart-grid"><line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} /><text x={pad.left - 8} y={y(tick) + 4} textAnchor="end">{format(tick)}</text></g>)}
-    {showPrevious && previousValues.length > 0 && <path className="reports-chart-previous" d={path(previousValues)} />}
-    <path className="reports-chart-area" d={`${path(values)} L${x(values.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`} />
-    <path className="reports-chart-line" d={path(values)} />
-    {points.map((point, index) => <g key={point.start}>
-      <circle className="reports-chart-dot" cx={x(index)} cy={y(point[metric])} r={points.length > 40 ? 0 : 3}><title>{`${bucketLabel(point.start)}: ${format(point[metric])}${showPrevious && previousValues[index] !== undefined ? ` · önceki ${format(previousValues[index])}` : ''}`}</title></circle>
-      {index % labelEvery === 0 && <text className="reports-chart-x" x={x(index)} y={height - 12} textAnchor="middle">{bucketLabel(point.start)}</text>}
-    </g>)}
-  </svg>
+  const move = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('.reports-chart-tip')) return
+    const box = event.currentTarget.getBoundingClientRect()
+    const px = box.width > 0 ? (event.clientX - box.left) / box.width * width : pad.left
+    const index = points.length <= 1 ? 0 : Math.max(0, Math.min(points.length - 1, Math.round((px - pad.left) / (width - pad.left - pad.right) * (points.length - 1))))
+    setHover({ index, x: event.clientX, y: event.clientY })
+  }
+  const point = hover ? points[hover.index] : null
+  const before = hover ? previous[hover.index] ?? null : null
+  const bucketName = (start: string) => granularity === 'month' ? `${start.slice(5, 7)}.${start.slice(0, 4)}` : granularity === 'week' ? `${formatDay(start)} haftası` : formatDay(start)
+  const rows: Array<[string, (item: ReportTimePoint) => string]> = [
+    ['Net Ciro', item => formatTl(item.netRevenue)], ['Sipariş', item => formatCount(item.orders)], ['Satılan Adet', item => formatNumber(item.soldQuantity)],
+    ['İade Adedi', item => formatNumber(item.returnedQuantity)], ['İptal', item => formatCount(item.cancelledOrders)]
+  ]
+  return <div ref={wrapRef} className="reports-chart-wrap" onMouseMove={move} onMouseLeave={() => setHover(null)}>
+    <svg className="reports-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricLabels[metric]} zaman serisi`}>
+      <title>{`${metricLabels[metric]}: ${points.map(item => `${bucketLabel(item.start)} ${format(item[metric])}`).join(', ')}`}</title>
+      {ticks.map(tick => <g key={tick} className="reports-chart-grid"><line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} /><text x={pad.left - 8} y={y(tick) + 4} textAnchor="end">{format(tick)}</text></g>)}
+      {showPrevious && previousValues.length > 0 && <path className="reports-chart-previous" d={path(previousValues)} />}
+      <path className="reports-chart-area" d={`${path(values)} L${x(values.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`} />
+      <path className="reports-chart-line" d={path(values)} />
+      {points.map((item, index) => <g key={item.start}>
+        {points.length <= 40 && <circle className="reports-chart-dot" cx={x(index)} cy={y(item[metric])} r={1.8} />}
+        {index % labelEvery === 0 && <text className="reports-chart-x" x={x(index)} y={height - 12} textAnchor="middle">{bucketLabel(item.start)}</text>}
+      </g>)}
+      {hover && point && <>
+        <line className="reports-chart-hover-line" x1={x(hover.index)} x2={x(hover.index)} y1={pad.top} y2={height - pad.bottom} />
+        {showPrevious && previousValues[hover.index] !== undefined && <circle className="reports-chart-hover-dot is-previous" cx={x(hover.index)} cy={y(previousValues[hover.index])} r={3} />}
+        <circle className="reports-chart-hover-dot" cx={x(hover.index)} cy={y(point[metric])} r={4} />
+      </>}
+    </svg>
+    {hover && point && <div ref={tipRef} className="reports-chart-tip" style={{ visibility: 'hidden' }} role="presentation">
+      <b>{bucketName(point.start)}</b>
+      <table><thead><tr><th /><th>Bu Dönem</th><th>{before ? bucketName(before.start) : 'Önceki Dönem'}</th></tr></thead>
+        <tbody>{rows.map(([label, show]) => <tr key={label}><td>{label}</td><td>{show(point)}</td><td>{before ? show(before) : '—'}</td></tr>)}</tbody></table>
+    </div>}
+  </div>
 }
 
 type OpenDetail = (key: DetailKey) => void

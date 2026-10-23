@@ -98,7 +98,19 @@
 .app-shell.stitch-shell main .reports-page .reports-chart-line { fill: none; stroke: var(--rv-color-primary); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
 .app-shell.stitch-shell main .reports-page .reports-chart-area { fill: color-mix(in srgb, var(--rv-color-primary) 14%, transparent); stroke: none; }
 .app-shell.stitch-shell main .reports-page .reports-chart-previous { fill: none; stroke: var(--rv-color-subtle); stroke-width: 1.6; stroke-dasharray: 5 4; }
-.app-shell.stitch-shell main .reports-page .reports-chart-dot { fill: var(--rv-color-surface); stroke: var(--rv-color-primary); stroke-width: 2; }
+.app-shell.stitch-shell main .reports-page .reports-chart-dot { fill: var(--rv-color-primary); stroke: none; }
+/* The bucket under the pointer: a guide line, its points and the day card (as on the overview's revenue chart). */
+.app-shell.stitch-shell main .reports-page .reports-chart-wrap { position: relative; }
+.app-shell.stitch-shell main .reports-page .reports-chart-hover-line { stroke: var(--rv-color-border-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.app-shell.stitch-shell main .reports-page .reports-chart-hover-dot { fill: var(--rv-color-surface); stroke: var(--rv-color-primary); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.app-shell.stitch-shell main .reports-page .reports-chart-hover-dot.is-previous { stroke: var(--rv-color-muted); stroke-dasharray: 2 2; }
+.app-shell.stitch-shell main .reports-page .reports-chart-tip { position: absolute; z-index: 20; top: 0; left: 0; width: 290px; padding: 10px 12px; color: var(--rv-color-ink); font-size: 12.5px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 30%); pointer-events: none; }
+.app-shell.stitch-shell main .reports-page .reports-chart-tip > b { display: block; margin-bottom: 6px; font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-chart-tip table { width: 100%; border-collapse: collapse; }
+.app-shell.stitch-shell main .reports-page .reports-chart-tip th { color: var(--rv-color-subtle); font-size: 11.5px; font-weight: 500; text-align: right; }
+.app-shell.stitch-shell main .reports-page .reports-chart-tip td { padding: 3px 0; color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .reports-page .reports-chart-tip td + td { color: var(--rv-color-ink); font-variant-numeric: tabular-nums; text-align: right; }
+.app-shell.stitch-shell main .reports-page .reports-chart-tip td:last-child { color: var(--rv-color-muted); }
 
 .app-shell.stitch-shell main .reports-page .reports-heatmap-wrap { overflow-x: auto; }
 .app-shell.stitch-shell main .reports-page .reports-heatmap { width: 100%; min-width: 620px; border-collapse: separate; border-spacing: 3px; font-size: 11px; }

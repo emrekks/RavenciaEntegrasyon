@@ -196,6 +196,20 @@ describe('ReportsPage', () => {
     expect(map.querySelectorAll('.reports-map-regions path.is-active')).toHaveLength(1)
   })
 
+  it('shows the day under the pointer with the previous period beside it and hides it when the pointer leaves', async () => {
+    const page = await open()
+    const chart = page.querySelector<HTMLElement>('.reports-chart-wrap')!
+    await act(async () => { chart.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 0, clientY: 100 })) })
+    const tip = page.querySelector('.reports-chart-tip')!
+    expect(tip.textContent).toContain('01.10.2026')
+    expect(tip.textContent).toContain('Bu Dönem')
+    expect(tip.textContent).toContain('09.09.2026')
+    expect(tip.textContent).toContain('Net Ciro')
+    expect(page.querySelectorAll('.reports-chart-hover-dot').length).toBeGreaterThan(0)
+    await act(async () => { chart.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })) })
+    expect(page.querySelector('.reports-chart-tip')).toBeNull()
+  })
+
   it('keeps the unknown bucket last and muted in the returns breakdown', async () => {
     const page = await open('?view=ops&sub=returns')
     const list = Array.from(page.querySelectorAll('.reports-list')).find(panel => panel.textContent?.includes('İade Nedenleri'))!
