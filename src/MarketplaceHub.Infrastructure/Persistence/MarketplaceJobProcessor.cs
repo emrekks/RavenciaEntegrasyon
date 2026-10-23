@@ -8585,6 +8585,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var target = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : isShopify ? ShopifyShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
+            // The time a status is ordered by and stored with. Without a status time from the marketplace (PTT AVM),
+            // OccurredAt only names the event; the package keeps the time the status was first seen (audit S4).
+            var statusAt = PackageIngestionSafety.StatusTime(remotePackage, package?.StatusOccurredAt, now);
             // A package the panel unpacked is history; a late read of it does not bring it back.
             if (package is not null && ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus)) continue;
             var legacyTrendyolHoldCorrection = isTrendyol
@@ -8640,9 +8643,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                             package.Status,
                             package.StatusOccurredAt,
                             target,
-                            remotePackage.OccurredAt,
+                            statusAt,
                             remotePackage.IsStatusObservation)
-                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt, remotePackage.RawStatus)))
+                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, statusAt, remotePackage.RawStatus)))
                     && package.Status != target;
                 var packageMetadataChanged = package is not null
                     && ((!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId)
@@ -8651,7 +8654,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     package.Status = target;
                     package.RawStatus = remotePackage.RawStatus;
-                    package.StatusOccurredAt = remotePackage.OccurredAt;
+                    package.StatusOccurredAt = statusAt;
                     package.GrossAmount = remotePackage.GrossAmount;
                     package.DiscountAmount = remotePackage.DiscountAmount;
                     package.NetAmount = remotePackage.NetAmount;
@@ -8698,7 +8701,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     package.Status = target;
                     package.RawStatus = remotePackage.RawStatus;
-                    package.StatusOccurredAt = remotePackage.OccurredAt;
+                    package.StatusOccurredAt = statusAt;
                     package.UpdatedAt = now;
                     package.Version++;
                 }
@@ -8735,18 +8738,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     package.Status,
                     package.StatusOccurredAt,
                     target,
-                    remotePackage.OccurredAt,
+                    statusAt,
                     remotePackage.IsStatusObservation)
-                : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt, remotePackage.RawStatus));
+                : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, statusAt, remotePackage.RawStatus));
             // A newer modification date with the same status is not a status change: no history row for it.
             var statusUnchanged = package is not null && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
-            else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
-            else if (remotePackage.IsStatusObservation && remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target)
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = statusAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
+            else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = statusAt; package.Version++; }
+            else if (remotePackage.IsStatusObservation && statusAt >= package.StatusOccurredAt && package.Status != target)
                 // Status observations carry the read time, not an event time:
                 // recording each refusal would add a history row per read.
                 await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
-            else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target)
+            else if (statusAt >= package.StatusOccurredAt && package.Status != target)
             {
                 // The refused status is not applied, but the cargo details of
                 // the event still are, and the event is recorded once so it is
@@ -8762,7 +8765,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 }
                 package.UpdatedAt = now;
                 package.Version++;
-                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "TRANSITION_REJECTED", RawStatus = Short(remotePackage.RawStatus, 96), SourceEventId = rejectedEventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now });
+                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "TRANSITION_REJECTED", RawStatus = Short(remotePackage.RawStatus, 96), SourceEventId = rejectedEventId, OccurredAt = statusAt, RecordedAt = now });
                 knownEventIds.Add(rejectedEventId);
                 await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}",
                     terminalConflict ? "PACKAGE_TERMINAL_STATUS_CONFLICT" : "PACKAGE_TRANSITION_REJECTED",
@@ -8773,7 +8776,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
-                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
+                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = statusAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
             // A Hepsiburada package first seen through a status observation (a webhook, a shipping list) was stored
