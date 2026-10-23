@@ -321,6 +321,9 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-trigger.is-compact { position: absolute; top: 50%; right: 8px; width: 24px; min-width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; transform: translateY(-50%); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-field.is-compact { position: static; margin: 0; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-field.is-compact .platform-multi-select { position: static; }
+/* The column's platform funnel borrows the returns page's rr-layer (z-index 1000); closed, it must not sit over the
+   filter bar's platform menu above it, so it rises only while its own popover is open. */
+.app-shell.stitch-shell main .reference-invoices-page .rr-layer.invoice-platform-pop:not(:has([aria-expanded="true"])) { z-index: auto; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .invoice-reference-platform-heading { padding-right: 36px; }
 
 /* One hairline between rows: the row top border doubled the previous row's bottom border */
