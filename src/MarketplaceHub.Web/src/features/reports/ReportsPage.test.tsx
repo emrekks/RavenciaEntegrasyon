@@ -144,7 +144,12 @@ describe('ReportsPage', () => {
     const page = await open()
     const map = page.querySelector('.reports-map-panel')!
     // Each scope's outlines load on their own; the world's are large enough to take longer than any fixed wait on CI.
-    const loaded = (regions: number) => act(() => vi.waitFor(() => expect(map.querySelectorAll('.reports-map-regions path').length).toBe(regions), { timeout: 5000 }))
+    // React applies the loaded map only when an act scope ends, so the wait is short act steps, not one long act.
+    const loaded = async (regions: number) => {
+      for (let tries = 0; tries < 150 && map.querySelectorAll('.reports-map-regions path').length !== regions; tries++)
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(map.querySelectorAll('.reports-map-regions path').length).toBe(regions)
+    }
     await loaded(82)
     expect(map.querySelectorAll('.reports-map-regions path.is-active')).toHaveLength(1)
     const list = map.querySelector('.reports-map-list')!
