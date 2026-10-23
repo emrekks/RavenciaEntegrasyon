@@ -222,7 +222,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
-                OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
+                OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), PackageInvoiceLabel(package, invoice, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), MaskIdentityNumber(customer.TaxOrIdentityNumber),
@@ -320,7 +320,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     fullyDeliveredInvoiceOrderIds.Contains(x.Id)
                     || completedInvoiceOrderIdsMissingDelivery.Contains(x.Id)
                     || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
-                        && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced))),
+                        && (package.ManualInvoiceStatus == "UPLOADED"
+                            || package.ManualInvoiceStatus == null
+                                && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced)))),
                 "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.MarketplaceFailed || ((i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending) && i.LastErrorCode != null)))),
@@ -328,7 +330,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                         && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed || i.Status == InvoiceStatus.ManualReview))
-                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
+                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == null && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
                 // The provider may hold the invoice: neither rejected nor issued until it is checked.
                 "FATURA_BELIRSIZ" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -339,9 +341,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 "FATURA_PLATFORMA_BEKLIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && i.SequencePurpose == "SALE"
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))),
+                // A status set by hand decides here as on the label: "Faturası yüklendi" never waits, "Fatura bekliyor" does.
                 "FATURA_BEKLIYOR" => query.Where(x =>
-                    currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
-                    || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")),
+                    currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == "PENDING")
+                    || !currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == "UPLOADED")
+                        && (currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
+                            || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED"))),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.Submitted
@@ -786,7 +791,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             lines, visiblePackages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
-            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabelForPlatform(invoice, displayPackage?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), PackageInvoiceLabel(displayPackage, invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson)));
     }
 
@@ -3061,6 +3066,21 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // not report a false pending state when Trendyol has not exposed it.
         return InvoiceLabel(invoice, marketplaceStatus, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed);
     }
+
+    // A status the seller set by hand on the invoice page ("Faturası yüklendi" / "Fatura bekliyor", for marketplaces
+    // whose API cannot show an invoice uploaded in their own seller panel) decides before any other evidence.
+    internal static string? ManualInvoiceLabel(string? manualInvoiceStatus) =>
+        manualInvoiceStatus?.Trim().ToUpperInvariant() switch
+        {
+            "UPLOADED" => "FATURA_KONTROLDE",
+            "PENDING" => "FATURA_BEKLIYOR",
+            _ => null
+        };
+
+    // The one invoice label of a package: the orders list, the order detail and the invoice page read it the same way.
+    internal static string PackageInvoiceLabel(ShipmentPackage? package, Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode, bool marketplaceDeliveryConfirmed = false) =>
+        ManualInvoiceLabel(package?.ManualInvoiceStatus)
+            ?? InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, customerJson, packageRawStatuses, platformCode, marketplaceDeliveryConfirmed);
 
     // The fiscal states the invoice workspace labels (pre-provider refusal, lost answer, adjustment) read the same here.
     internal static string InvoiceLabelForPlatform(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode, bool marketplaceDeliveryConfirmed = false)

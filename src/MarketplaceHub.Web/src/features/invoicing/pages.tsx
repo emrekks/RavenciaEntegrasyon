@@ -691,7 +691,8 @@ function InvoiceManualConfirmationModal({ kind, item, onCancel, onConfirm }: { k
 
 function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: InvoiceWorkspace; onClose: () => void; onFeedback: (message: string, kind: InvoiceNoticeKind) => void }) {
   const client = useQueryClient()
-  const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>(item.invoiceStatus === 'FATURA_YUKLENDI' ? 'UPLOADED' : 'PENDING')
+  // A hand-set "uploaded" reads as FATURA_KONTROLDE ("Faturası Mevcut") on every screen.
+  const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>(['FATURA_YUKLENDI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus) ? 'UPLOADED' : 'PENDING')
   const invoice = useQuery({ queryKey: ['invoice', item.invoiceId], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`), enabled: Boolean(item.invoiceId) })
   const hasUploadedDocument = item.invoiceDocumentAvailable || Boolean(invoice.data?.documents.length)
   const update = useMutation({
