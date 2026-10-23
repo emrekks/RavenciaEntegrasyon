@@ -351,7 +351,11 @@ public static class MarketplaceEndpoints
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         // The address (connection and route token) is checked before anything is read: an unknown one costs no body buffering.
         if (!await gate.IsKnownAsync(connectionPublicId, routeToken, http.RequestAborted))
+        {
+            // A known connection called with an old or wrong address is shown on its webhook panel; the body stays unread.
+            await service.NoteRouteRefusedAsync(connectionPublicId, http.RequestAborted);
             return Problem(http, new("WEBHOOK_ROUTE_NOT_FOUND", "Webhook route bulunamadı.", 404));
+        }
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = WebhookBodyReader.MaximumBytes;
         var bodyRead = await WebhookBodyReader.ReadAsync(http.Request.Body, http.Request.ContentLength, http.RequestAborted);

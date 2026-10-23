@@ -1268,6 +1268,8 @@ public interface IMarketplaceSalesService
 public interface IMarketplaceWebhookService
 {
     Task<ServiceResult<bool>> ReceiveAsync(Guid connectionPublicId, string routeToken, ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, string correlationId, CancellationToken cancellationToken);
+    // A delivery the route gate turned away: kept on the connection when the connection is known (an old or wrong route token).
+    Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken);
 }
 
 public interface IMarketplaceJobProcessor

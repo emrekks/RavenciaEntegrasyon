@@ -99,6 +99,7 @@ public sealed class MarketplaceWebhookEndpointTests
 
         Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
         Assert.False(service.Called);
+        Assert.True(service.RouteRefusalNoted);
     }
 
     [Fact]
@@ -177,6 +178,14 @@ public sealed class MarketplaceWebhookEndpointTests
             Headers = headers;
             CorrelationId = correlationId;
             return Task.FromResult(ServiceResult<bool>.Ok(true));
+        }
+
+        public bool RouteRefusalNoted { get; private set; }
+
+        public Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken)
+        {
+            RouteRefusalNoted = true;
+            return Task.CompletedTask;
         }
     }
 }

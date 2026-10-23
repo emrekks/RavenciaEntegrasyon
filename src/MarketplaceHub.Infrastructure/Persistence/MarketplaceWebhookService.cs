@@ -13,11 +13,11 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
 {
     public async Task<ServiceResult<bool>> ReceiveAsync(Guid connectionPublicId, string routeToken, ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == connectionPublicId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken); if (connection is null) return NotFound();
+        var connection = await ReceivingConnectionAsync(connectionPublicId, cancellationToken); if (connection is null) return NotFound();
         var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE").ToListAsync(cancellationToken); var subscription = subscriptions.SingleOrDefault(x => SafeVerify(routeToken, x.RouteTokenHash));
         if (subscription is null)
         {
-            await NoteRejectedAsync(connection, "WEBHOOK_ROUTE_TOKEN_MISMATCH", "adres eski ya da hatalı (abonelik yenilendiyse pazaryerindeki adresi güncelleyin)", cancellationToken);
+            await NoteRouteTokenMismatchAsync(connection, cancellationToken);
             return NotFound();
         }
         var verified = await verifier.VerifyAsync(rawBody, headers, connection.Id, subscription.Id, cancellationToken);
@@ -56,6 +56,20 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         await db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.Id == subscription.Id && x.Status == "ACTIVE").ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastReceivedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
+    // The route gate refuses an old or wrong route token before the body is read, so ReceiveAsync never sees it;
+    // the refusal is still kept when the connection is one that receives deliveries.
+    public async Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken)
+    {
+        if (await ReceivingConnectionAsync(connectionPublicId, cancellationToken) is { } connection)
+            await NoteRouteTokenMismatchAsync(connection, cancellationToken);
+    }
+
+    private Task<PlatformConnection?> ReceivingConnectionAsync(Guid connectionPublicId, CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == connectionPublicId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
+
+    private Task NoteRouteTokenMismatchAsync(PlatformConnection connection, CancellationToken cancellationToken) =>
+        NoteRejectedAsync(connection, "WEBHOOK_ROUTE_TOKEN_MISMATCH", "adres eski ya da hatalı (abonelik yenilendiyse pazaryerindeki adresi güncelleyin)", cancellationToken);
+
     // A refused delivery for a known connection (old address, wrong password, a body that does not verify) leaves an
     // operational issue, so a marketplace that calls and is turned away is told apart from one that never calls; the
     // log alone is lost with every restart. One row per connection and code, touched at most once a minute.
