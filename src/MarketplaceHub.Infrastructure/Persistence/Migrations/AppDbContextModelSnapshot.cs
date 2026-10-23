@@ -6086,6 +6086,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(8192)
                         .HasColumnType("character varying(8192)");
 
+                    b.Property<Guid?>("RoutePublicId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("RouteTokenHash")
                         .IsRequired()
                         .HasMaxLength(128)

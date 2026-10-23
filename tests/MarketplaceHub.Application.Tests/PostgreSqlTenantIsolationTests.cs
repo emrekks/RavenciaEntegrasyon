@@ -3474,6 +3474,77 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task InstantNotifications_HepsiburadaMovesTheTestStoresDefinitionToTheLiveConnectionWithItsAddress()
+    {
+        var tenant = NewTenant("hb-adopt");
+        var live = NewQuestionConnection(tenant);
+        live.PlatformCode = "HEPSIBURADA";
+        live.Environment = "PRODUCTION";
+        var test = NewQuestionConnection(tenant);
+        test.PlatformCode = "HEPSIBURADA";
+        test.Environment = "STAGE";
+        test.ExternalStoreId = $"{live.ExternalStoreId}-sit";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(live, test);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            InstantNotificationService Service(AppDbContext db) => new(db, new RecordingWebhookPort(), hasher, dataProtection, configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+            WebhookSetupInstructions given;
+            await using (var db = fixture.CreateContext())
+            {
+                // The test store's details went to Hepsiburada; the live connection has an unused one of its own.
+                given = (await Service(db).EnableAsync(tenant.Id, test.Id, "enable-test", CancellationToken.None)).Value!.Setup!;
+                Assert.Null((await Service(db).EnableAsync(tenant.Id, live.Id, "enable-live", CancellationToken.None)).Error);
+                await db.WebhookSubscriptions.Where(row => row.ConnectionId == test.Id).ExecuteUpdateAsync(row => row.SetProperty(x => x.LastReceivedAt, fixture.TimeProvider.GetUtcNow()));
+                await db.PlatformConnections.Where(row => row.Id == test.Id).ExecuteUpdateAsync(row => row.SetProperty(x => x.Status, "DISABLED"));
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                var offered = (await Service(db).StatusAsync(tenant.Id, live.Id, "status", CancellationToken.None)).Value!.AdoptableFrom;
+                Assert.Equal("Test (SIT)", offered?.Environment);
+                var moved = await Service(db).AdoptFromInactiveAsync(tenant.Id, live.Id, "adopt", CancellationToken.None);
+                Assert.Null(moved.Error);
+                // Waiting for the live store's first notification; the test deliveries do not count, and the live
+                // connection's own definition is kept to restore.
+                Assert.Equal("WAITING", moved.Value!.State);
+                Assert.StartsWith($"https://panel.ravencia.com/api/v1/hooks/{test.PublicId:D}/", moved.Value.Endpoint);
+                Assert.NotNull(moved.Value.PreviousPreparedAt);
+                Assert.Null(moved.Value.AdoptableFrom);
+                Assert.Equal("WEBHOOK_ADOPTABLE_MISSING", (await Service(db).AdoptFromInactiveAsync(tenant.Id, live.Id, "adopt-again", CancellationToken.None)).Error?.Code);
+            }
+
+            // Hepsiburada calls the address and password it was given; the live connection takes the notification.
+            await using (var db = fixture.CreateContext())
+            {
+                var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                var headers = new Dictionary<string, string> { ["Authorization"] = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{given.Username}:{given.Password}")), [WebhookEventPath.Header] = "lineitems/b17553de/cancel" };
+                var received = await receiver.ReceiveAsync(test.PublicId, given.BaseUrl.Split('/').Last(), Encoding.UTF8.GetBytes("""{"orderNumber":"0123456789","id":"b17553de","cancelledBy":"Customer"}"""), headers, "webhook-adopted", CancellationToken.None);
+                Assert.Null(received.Error);
+                Assert.True(await db.IntegrationJobs.AnyAsync(job => job.TenantId == tenant.Id && job.ConnectionId == live.Id));
+                // The live connection's own address does not take that route token.
+                Assert.Equal(404, (await receiver.ReceiveAsync(live.PublicId, given.BaseUrl.Split('/').Last(), Encoding.UTF8.GetBytes("{}"), headers, "webhook-own-address", CancellationToken.None)).Error?.Status);
+            }
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task InstantNotifications_HepsiburadaRestoresTheDefinitionItWasGivenOverAnUnusedNewOne()
     {
         var tenant = NewTenant("hb-restore");

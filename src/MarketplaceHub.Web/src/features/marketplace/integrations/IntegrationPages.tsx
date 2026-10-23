@@ -307,7 +307,7 @@ function SyncPolicyEditorModal({ policy, label, intervals, overlaps, healthHelp,
   return <div className="workspace-modal-backdrop sync-policy-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><DialogSurface as="section" onClose={() => { onClose() }} className="workspace-modal sync-policy-modal sp-sade" aria-label={`${label} ayarları`} onMouseDown={event => event.stopPropagation()}><header><div><h2>{label}</h2><p>{purpose}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Akış ayarlarını kapat"><UiIcon name="close" /></button></header><form className="sync-policy-modal-form" onSubmit={event => { event.preventDefault(); onSave({ intervalSeconds, overlapSeconds, enabled }) }}><div className="sync-policy-modal-body"><label className="sync-policy-modal-state cs-switch-row"><span><strong>Otomatik Çalışma</strong><small>{externalWriteBlocked ? 'Dış yazma kapalı olduğu için bu akış çalıştırılmaz.' : healthHelp}</small></span><em className="cs-switch-state">{effectiveEnabled ? 'Açık' : 'Kapalı'}</em><input type="checkbox" role="switch" className="cs-switch" checked={effectiveEnabled} onChange={event => setEnabled(event.target.checked)} disabled={externalWriteBlocked} /></label><div className="sync-policy-modal-fields"><label><span>Kontrol Sıklığı</span><select value={intervalSeconds} onChange={event => setIntervalSeconds(Number(event.target.value))} disabled={externalWriteBlocked}>{!availableIntervals.some(([value]) => value === intervalSeconds) && <option value={intervalSeconds}>{syncIntervalText(intervalSeconds)}</option>}{availableIntervals.map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}</select></label><label><span>Tekrar Payı</span><select value={overlapSeconds} onChange={event => setOverlapSeconds(Number(event.target.value))} disabled={externalWriteBlocked}>{!overlaps.some(([value]) => value === overlapSeconds) && <option value={overlapSeconds}>{Math.round(overlapSeconds / 60)} dakika</option>}{overlaps.map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}</select></label></div>{cursorStalled && <SyncPolicyStalledAlert cursorStagnantSince={policy.cursorStagnantSince} lastCursorAdvancedAt={policy.lastCursorAdvancedAt} />}<section className="sync-policy-modal-telemetry" aria-label="Senkronizasyon ölçümleri"><h3>Son Senkronizasyon Ölçümü</h3><dl><div><dt>Son Deneme</dt><dd>{timeLabel(policy.lastAttemptAt)}</dd></div><div><dt>Son Başarılı</dt><dd>{timeLabel(policy.lastSuccessAt)}</dd></div><div><dt>Son İmleç İlerlemesi</dt><dd>{timeLabel(policy.lastCursorAdvancedAt)}</dd></div><div><dt>Durgunluk Takibi Başlangıcı</dt><dd>{timeLabel(policy.cursorStagnantSince)}</dd></div><div><dt>İmleç Durumu</dt><dd>{cursorProgressLabel}</dd></div><div><dt>Süre</dt><dd>{policy.lastDurationMs == null ? '—' : `${number(policy.lastDurationMs)} ms`}</dd></div><div><dt>Ardışık Hata</dt><dd>{number(policy.consecutiveFailureCount)}</dd></div><div><dt>API İsteği</dt><dd>{number(policy.lastRequestCount)}</dd></div><div><dt>Alınan / Değişen</dt><dd>{number(policy.lastReceivedCount)} / {number(policy.lastChangedCount)}</dd></div><div><dt>Eklenen / Güncellenen</dt><dd>{number(policy.lastInsertedCount)} / {number(policy.lastUpdatedCount)}</dd></div><div><dt>Atlanan / Hatalı</dt><dd>{number(policy.lastSkippedCount)} / {number(policy.lastFailedCount)}</dd></div><div><dt>Tekrar / HTTP 429</dt><dd>{number(policy.lastRetryCount)} / {number(policy.lastRateLimitCount)}</dd></div><div><dt>Kurtarma Aralığı</dt><dd>{recoveryGapLabel}{policy.recoveryGapDays == null ? '' : ` · ${number(Math.round(policy.recoveryGapDays * 10) / 10)} gün`}</dd></div></dl></section><section className="sync-policy-modal-telemetry sync-policy-modal-backlog" aria-label="Bağlantı kuyruğu"><h3>Bağlantı Kuyruğu · Tüm Akışlar</h3><dl><div><dt>Açık Kuyruk İşi</dt><dd>{number(policy.connectionBacklogCount)}</dd></div><div><dt>En Eski Açık İş</dt><dd>{timeLabel(policy.connectionOldestBacklogAt)}</dd></div><div><dt>Manuel İnceleme</dt><dd>{number(policy.connectionManualReviewCount)}</dd></div><div><dt>Son 24 Saatte Ölen İş</dt><dd>{number(policy.connectionDeadJobCount24h)}</dd></div></dl></section></div><footer><button type="button" className="secondary sync-policy-run-now" disabled={running || externalWriteBlocked} title={externalWriteBlocked ? 'Pazaryerine yazma kapalı.' : 'Akışı beklemeden şimdi çalıştırır.'} onClick={onRunNow}>{running ? 'Başlatılıyor…' : 'Şimdi Çalıştır'}</button><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="submit" disabled={saving || externalWriteBlocked}>{saving ? 'Kaydediliyor…' : 'Ayarı Kaydet'}</button></footer></form></DialogSurface></div>
 }
 // Pazarama: close mapped products for sale (or reopen them) by barcode. A closed product takes no orders and no price/stock updates.
-type InstantNotificationStatus = { state: 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN' | 'WAITING' | 'QUIET' | 'CONNECTION_INACTIVE'; endpoint: string | null; registeredAt: string | null; lastReceivedAt: string | null; receivedLast24Hours: number; message: string | null; setup?: WebhookSetup | null; lastRejectedAt?: string | null; lastRejectedReason?: string | null; previousPreparedAt?: string | null }
+type InstantNotificationStatus = { state: 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN' | 'WAITING' | 'QUIET' | 'CONNECTION_INACTIVE'; endpoint: string | null; registeredAt: string | null; lastReceivedAt: string | null; receivedLast24Hours: number; message: string | null; setup?: WebhookSetup | null; lastRejectedAt?: string | null; lastRejectedReason?: string | null; previousPreparedAt?: string | null; adoptableFrom?: { connectionName: string; environment: string; preparedAt: string } | null }
 const instantNotificationStateLabels: Record<InstantNotificationStatus['state'], string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Trendyol durdurdu', MISSING: 'Trendyol’da kayıt yok', UNKNOWN: 'Durum okunamadı', WAITING: 'İlk bildirim bekleniyor', QUIET: 'Son saatlerde bildirim yok', CONNECTION_INACTIVE: 'Bağlantı pasif' }
 // Order notifications (webhook). Trendyol: turning them on registers the panel's address at
 // Trendyol, so it is done only here, after the user confirms what will be registered.
@@ -321,7 +321,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
   const [clientSecret, setClientSecret] = useState('')
   const client = useQueryClient()
   const status = useQuery({ queryKey: ['instant-notifications', connectionId], queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`), staleTime: 30_000 })
-  const [confirm, setConfirm] = useState<'on' | 'off' | 'restore' | null>(null)
+  const [confirm, setConfirm] = useState<'on' | 'off' | 'restore' | 'adopt' | null>(null)
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
   const change = useMutation({
     mutationFn: (on: boolean) => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, on
@@ -350,7 +350,19 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
     },
     onError: reason => { setConfirm(null); setFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Önceki tanım geri yüklenemedi.' }) }
   })
-  const busy = change.isPending || restore.isPending
+  // The definition a test (SIT) store was given, when Hepsiburada was asked to set that one up for the live store: it
+  // moves here with its address, user and password; this connection's own unused definition is kept to restore.
+  const adopt = useMutation({
+    mutationFn: () => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ adoptFromInactive: true }) }),
+    onSuccess: next => {
+      client.setQueryData(['instant-notifications', connectionId], { ...next, setup: null })
+      setConfirm(null)
+      setSetup(null)
+      setFeedback({ kind: 'success', message: 'Test mağazasının tanımı bu bağlantıya taşındı. Hepsiburada’ya ilettiğiniz adres ve şifre artık bu bağlantıya bildirim getirir.' })
+    },
+    onError: reason => { setConfirm(null); setFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Tanım taşınamadı.' }) }
+  })
+  const busy = change.isPending || restore.isPending || adopt.isPending
   const data = status.data
   const registered = data != null && data.state !== 'OFF' && data.state !== 'UNSUPPORTED'
   const time = (value: string | null) => value ? formatIstanbul(value, { dateStyle: 'medium', timeStyle: 'short' }) : '—'
@@ -364,6 +376,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
       <div className="instant-notifications-status" data-state={data.state}>
         <div><small>Durum</small><strong><i aria-hidden="true" />{instantNotificationStateLabels[data.state]}</strong></div>
         {data.state !== 'UNSUPPORTED' && <div className="instant-notifications-actions">
+        {hepsiburada && data.adoptableFrom && <button type="button" className="secondary" disabled={!connectionActive || busy} onClick={() => setConfirm('adopt')}>Test Mağazasının Tanımını Kullan</button>}
         {hepsiburada && data.previousPreparedAt && <button type="button" className="secondary" disabled={!connectionActive || busy} onClick={() => setConfirm('restore')}>Önceki Tanımı Geri Yükle</button>}
         {registered
           ? <button type="button" className="secondary" disabled={busy} onClick={() => setConfirm('off')}>Webhook’u Kapat</button>
@@ -421,6 +434,14 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
       <ul className="instant-notifications-terms">
         <li>Hepsiburada’ya ilettiğiniz bilgiler o tarihte hazırlananlarsa, Hepsiburada’nın yeniden tanımlama yapması gerekmez.</li>
         {registered && <li>Şu anki tanım {time(data.registeredAt)} tarihinde hazırlandı ve hiç bildirim almadı; kapanır.</li>}
+        <li>İlk bildirim gelene kadar siparişler düzenli kontrolle gelmeye devam eder.</li>
+      </ul>
+    </RrModal>}
+    {confirm === 'adopt' && data?.adoptableFrom && <RrModal title="Test Mağazasının Tanımını Kullan" desc={`${data.adoptableFrom.connectionName} (${data.adoptableFrom.environment}) bağlantısında ${time(data.adoptableFrom.preparedAt)} tarihinde hazırlanan adres, kullanıcı adı ve şifre bu bağlantıya taşınır.`} size="sm" locked={adopt.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={adopt.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn pri" disabled={adopt.isPending} onClick={() => adopt.mutate()}>{adopt.isPending ? 'Taşınıyor…' : 'Taşı'}</button></>}>
+      <ul className="instant-notifications-terms">
+        <li>Hepsiburada’ya bu bilgileri ilettiyseniz, Hepsiburada’dan gelen bildirimler artık bu bağlantıya işlenir; yeniden tanımlama gerekmez.</li>
+        {registered && <li>Şu anki tanım {time(data.registeredAt)} tarihinde hazırlandı ve hiç bildirim almadı; kapanır, “Önceki Tanımı Geri Yükle” ile geri alınabilir.</li>}
+        <li>Test bağlantısındaki tanım oradan kalkar; test bağlantısı pasif kalır.</li>
         <li>İlk bildirim gelene kadar siparişler düzenli kontrolle gelmeye devam eder.</li>
       </ul>
     </RrModal>}
