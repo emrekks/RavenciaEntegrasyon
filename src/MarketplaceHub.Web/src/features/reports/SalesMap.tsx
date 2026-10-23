@@ -38,8 +38,8 @@ const formatMetric = (value: number | null, metric: Metric) => value === null ? 
 function change(now: number | null, before: number | null) {
   if (now === null) return null
   if (before === null || before === 0) return now > 0 ? { text: 'Yeni', tone: 'up' as const } : null
-  const rate = (now - before) / before
-  return { text: `${rate >= 0 ? '+' : '−'}%${Math.abs(Math.round(rate * 100))}`, tone: rate > 0.005 ? 'up' as const : rate < -0.005 ? 'down' as const : 'flat' as const }
+  const percent = Math.round((now - before) / before * 100)
+  return { text: `${percent > 0 ? '+' : percent < 0 ? '−' : ''}%${Math.abs(percent)}`, tone: percent > 0 ? 'up' as const : percent < 0 ? 'down' as const : 'flat' as const }
 }
 
 // The platform with the largest share of the area's metric (orders when amounts are missing).
@@ -169,7 +169,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
               })}
             </g>
           </svg>}
-        {hovered && hover && <MapTooltip area={hovered} x={hover.x} y={hover.y} width={canvas.current?.clientWidth ?? 0} />}
+        {hovered && hover && <MapTooltip area={hovered} x={hover.x} y={hover.y} width={canvas.current?.clientWidth ?? 0} height={canvas.current?.clientHeight ?? 0} />}
         {map && <Legend mode={mode} metric={metric} max={max} platforms={platforms} />}
       </div>
       <aside className="reports-map-side" aria-label={scope === 'turkey' ? 'En çok satan iller' : 'En çok satan ülkeler'}>
@@ -204,10 +204,17 @@ function Legend({ mode, metric, max, platforms }: { mode: Mode; metric: Metric; 
   </div>
 }
 
-function MapTooltip({ area, x, y, width }: { area: Area; x: number; y: number; width: number }) {
+// Beside the pointer, turned to the other side near the map's right or bottom edge and kept inside the map, which
+// clips what runs out of it.
+const tooltipWidth = 200
+const tooltipHeight = 132
+function MapTooltip({ area, x, y, width, height }: { area: Area; x: number; y: number; width: number; height: number }) {
   const delta = change(area.value, area.previous)
-  const left = width > 0 && x > width - 220 ? x - 212 : x + 14
-  return <div className="reports-map-tooltip" style={{ left, top: y + 14 }} role="presentation">
+  const gap = 14
+  const clamp = (value: number, size: number, room: number) => room > size + 16 ? Math.min(Math.max(8, value), room - size - 8) : value
+  const left = clamp(width > 0 && x + gap + tooltipWidth > width - 8 ? x - gap - tooltipWidth : x + gap, tooltipWidth, width)
+  const top = clamp(height > 0 && y + gap + tooltipHeight > height - 8 ? y - gap - tooltipHeight : y + gap, tooltipHeight, height)
+  return <div className="reports-map-tooltip" style={{ left, top }} role="presentation">
     <strong>{area.group.label}</strong>
     <dl>
       <div><dt>Ciro</dt><dd>{formatMetric(metricValue(area.group, 'revenue'), 'revenue')}</dd></div>
