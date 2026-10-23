@@ -29,9 +29,12 @@
 
 
 /* A collapsed sidebar expands above the page on hover; its layout column and
-   topbar remain at the compact width so the content never shifts. */
+   topbar remain at the compact width so the content never shifts. Expanded, it
+   sits over the page's raised blocks (a filter bar and its menus are at dropdown
+   level) and stays under the page's dialogs. */
 @media (min-width: 701px) {
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
+    z-index: calc(var(--rv-z-dropdown) + 10);
     width: var(--rv-sidebar-width);
     padding-inline: var(--rv-space-4);
     box-shadow: var(--rv-shadow-md);
