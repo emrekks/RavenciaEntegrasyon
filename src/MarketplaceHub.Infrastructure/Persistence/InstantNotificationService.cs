@@ -260,7 +260,7 @@ public sealed class InstantNotificationService(
         var manual = subscription?.ExternalSubscriptionId == ManualRegistration;
         var registeredAt = subscription?.VerifiedAt ?? (manual ? PreparedAt(subscription!.Id) : null);
         var previous = connection.PlatformCode == "HEPSIBURADA" && subscription?.LastReceivedAt is null
-            ? await PreviousDefinitionAsync(connection.TenantId, connection.Id, subscription?.Id, tracked: false, cancellationToken)
+            ? await PreviousDefinitionAsync(connection.TenantId, connection.Id, subscription, tracked: false, cancellationToken)
             : null;
         var adoptable = connection.PlatformCode == "HEPSIBURADA" && subscription?.LastReceivedAt is null && connection.Status is "ACTIVE" or "VERIFIED"
             ? await AdoptableDefinitionAsync(connection, cancellationToken)
@@ -282,7 +282,7 @@ public sealed class InstantNotificationService(
         // A definition Hepsiburada already delivers to is the one it has; it is not swapped for an older one.
         if (current?.LastReceivedAt is not null)
             return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_IN_USE", "Şu anki tanıma Hepsiburada'dan bildirim geliyor; önceki tanım geri yüklenmez.", 409);
-        var previous = await PreviousDefinitionAsync(tenantId, connectionId, current?.Id, tracked: true, cancellationToken);
+        var previous = await PreviousDefinitionAsync(tenantId, connectionId, current, tracked: true, cancellationToken);
         if (previous is null)
             return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_PREVIOUS_MISSING", "Geri yüklenecek önceki bir Hepsiburada tanımı yok.", 404);
         if (current is not null)
@@ -346,12 +346,13 @@ public sealed class InstantNotificationService(
     }
 
     // The last closed Hepsiburada definition prepared before the current one (ids are version 7, so they order by
-    // time). One closed after it was restored over is newer and is not offered back.
-    private async Task<WebhookSubscription?> PreviousDefinitionAsync(Guid tenantId, Guid connectionId, Guid? currentId, bool tracked, CancellationToken cancellationToken)
+    // time). One closed after it was restored over is newer and is not offered back; over a definition moved here from
+    // another connection, which may be older than this connection's own, the last closed one is offered whatever its age.
+    private async Task<WebhookSubscription?> PreviousDefinitionAsync(Guid tenantId, Guid connectionId, WebhookSubscription? current, bool tracked, CancellationToken cancellationToken)
     {
         var query = db.WebhookSubscriptions.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "DELETED" && x.ExternalSubscriptionId == ManualRegistration);
         var previous = await (tracked ? query : query.AsNoTracking()).OrderByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
-        return previous is not null && currentId is { } current && PreparedAt(previous.Id) >= PreparedAt(current) ? null : previous;
+        return previous is not null && current is { RoutePublicId: null } && PreparedAt(previous.Id) >= PreparedAt(current.Id) ? null : previous;
     }
 
     // A version 7 id begins with the Unix milliseconds of its creation: when a definition was prepared.
