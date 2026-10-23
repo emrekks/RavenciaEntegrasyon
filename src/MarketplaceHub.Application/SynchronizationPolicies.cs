@@ -610,13 +610,46 @@ public static class TrendyolStorefrontPolicy
 
     public static bool IsListed(string code) => Listed.Contains(code, StringComparer.OrdinalIgnoreCase);
 
-    // Storefronts read on every run: Türkiye and those with an order in the last 90 days.
+    // Storefronts read regularly (new-order runs: Hot every run, the rest by DueQuiet): Türkiye and those with an
+    // order in the last 90 days.
     public static IReadOnlyList<string> Active(IReadOnlyList<string> codes, IReadOnlyDictionary<string, TrendyolStorefrontActivity> activity, DateTimeOffset now) =>
         codes.Where(code => string.Equals(code, Home, StringComparison.OrdinalIgnoreCase)
             || activity.TryGetValue(code, out var seen)
                 && seen.LastOrderAt is { } lastOrder && now - lastOrder <= ActiveFor
                 && !(seen.PausedUntil > now))
             .ToArray();
+
+    // Every stream request waits for a token of the foreground order quota (one per 6 s after the first two), and
+    // a new-order read holds the connection's orders lock throughout: reading all seven live storefronts on every
+    // run kept the lock ~30 s for nothing but token waits, and the webhooks waited behind it (audit 2026-10-24 Q2).
+    // A run therefore reads Türkiye and the storefronts that sold in the last day; an active storefront quiet for a
+    // day is read on its own, over the time since its last read, at most QuietReadsPerRun per run and each at most
+    // every QuietReadInterval. With six quiet storefronts and a run every few minutes that is about hourly; webhooks
+    // still deliver their orders at once and the 1-day reconciliation reads every active storefront.
+    public static readonly TimeSpan HotFor = TimeSpan.FromDays(1);
+    public static readonly TimeSpan QuietReadInterval = TimeSpan.FromMinutes(30);
+    public const int QuietReadsPerRun = 1;
+
+    // Storefronts read on every new-order run: Türkiye and the active ones with an order in the last day.
+    public static IReadOnlyList<string> Hot(IReadOnlyList<string> codes, IReadOnlyDictionary<string, TrendyolStorefrontActivity> activity, DateTimeOffset now) =>
+        Active(codes, activity, now)
+            .Where(code => string.Equals(code, Home, StringComparison.OrdinalIgnoreCase)
+                || activity.TryGetValue(code, out var seen) && seen.LastOrderAt is { } lastOrder && now - lastOrder <= HotFor)
+            .ToArray();
+
+    // The active storefronts outside Hot whose last read is due, longest overdue first, at most QuietReadsPerRun.
+    public static IReadOnlyList<string> DueQuiet(IReadOnlyList<string> codes, IReadOnlyDictionary<string, TrendyolStorefrontActivity> activity, DateTimeOffset now)
+    {
+        var hot = Hot(codes, activity, now);
+        return Active(codes, activity, now)
+            .Where(code => !hot.Contains(code, StringComparer.OrdinalIgnoreCase))
+            .Select(code => (Code: code, Seen: activity.GetValueOrDefault(code)))
+            .Where(item => item.Seen?.LastProbedAt is not { } read || now - read >= QuietReadInterval)
+            .OrderBy(item => item.Seen?.LastProbedAt ?? DateTimeOffset.MinValue)
+            .Select(item => item.Code)
+            .Take(QuietReadsPerRun)
+            .ToArray();
+    }
 
     // Storefronts read by a full scan: every storefront except those paused after a rejection.
     public static IReadOnlyList<string> Readable(IReadOnlyList<string> codes, IReadOnlyDictionary<string, TrendyolStorefrontActivity> activity, DateTimeOffset now) =>

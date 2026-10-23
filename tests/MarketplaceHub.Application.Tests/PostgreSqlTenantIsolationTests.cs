@@ -2885,7 +2885,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task TrendyolOrderSync_ReadsActiveStorefrontsAndProbesOneInactiveStorefrontPerRun()
+    public async Task TrendyolOrderSync_ReadsHotStorefrontsEveryRunAQuietOneWhenDueAndProbesOneInactiveStorefront()
     {
         var tenant = NewTenant("trendyol-active-storefronts");
         var connection = NewQuestionConnection(tenant);
@@ -2906,7 +2906,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 LastSuccessAt = now.AddMinutes(-1),
                 Version = 1
             });
-            // DE sold two days ago; every other international storefront has never been probed.
+            // GR sold an hour ago (hot), DE two days ago (quiet, last read an hour ago); every other international
+            // storefront has never been probed.
             seedDb.SyncCursors.Add(new SyncCursor
             {
                 Id = Guid.CreateVersion7(),
@@ -2915,6 +2916,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 ResourceType = TrendyolStorefrontPolicy.CursorResource,
                 OpaqueCursor = JsonSerializer.Serialize(new Dictionary<string, TrendyolStorefrontActivity>
                 {
+                    ["GR"] = new(now.AddHours(-1), now.AddMinutes(-3)),
                     ["DE"] = new(now.AddDays(-2), now.AddHours(-1))
                 }),
                 Version = 1
@@ -2941,12 +2943,15 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.True(result.Succeeded, result.ErrorSummary);
             }
 
+            // Audit 2026-10-24 Q2: a quiet storefront is no longer read on every run (each stream request waits for a
+            // quota token while the orders lock is held). It is read when due, from its last read on.
             await RunAsync();
-            Assert.Equal(["TR", "DE", "AE"], orderPort.PolledStorefronts);
+            Assert.Equal(["TR", "GR", "DE", "AE"], orderPort.PolledStorefronts);
+            Assert.Equal(now.AddHours(-1) - TimeSpan.FromSeconds(120), orderPort.PolledWindows.Single(window => window.StoreFrontCode == "DE").ModifiedAfter);
 
             orderPort.PolledStorefronts.Clear();
             await RunAsync();
-            Assert.Equal(["TR", "DE", "SA"], orderPort.PolledStorefronts);
+            Assert.Equal(["TR", "GR", "SA"], orderPort.PolledStorefronts);
         }
         finally
         {
