@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raporlar · Yeni Tasarım · 3 Öneri</title>
+<!-- Three full-page directions for Raporlar (filters, tabs and Genel Bakış), all on the live report of Trendyol for
+     Geçen Hafta (12–18.10.2026, previous 05–11.10), read from GET /reports/sales. One flow everywhere: sales − returns −
+     commission − cargo − deductions − product cost = what is left (₺24.169,62). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101014; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #8a8a99;
+    --primary: #8b5cf6; --primary-strong: #7c3aed; --primary-soft: #272139;
+    --ok: #46b98f; --ok-soft: #1e2e2c; --warn: #e2aa4b; --warn-soft: #332c23; --bad: #e4636f; --bad-soft: #342228; --info: #83b4ff;
+    --c-return: #e4636f; --c-commission: #83b4ff; --c-cargo: #e2aa4b; --c-fees: #8a8a99; --c-cost: #8b5cf6; --c-left: #46b98f;
+    --side: 232px;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+  button, select { font: inherit; color: inherit; }
+  h1, h2, h3, p { margin: 0; }
+  img { display: block; }
+  [hidden] { display: none !important; }
+
+  /* Proposal picker */
+  .picker { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-height: 53px; padding: 10px 20px; background: #0b0b0e; border-bottom: 1px solid var(--line); }
+  .picker strong { font-size: 13px; }
+  .picker span { color: var(--subtle); font-size: 12px; }
+  .picker nav { display: flex; flex-wrap: wrap; gap: 6px; }
+  .picker nav button { height: 32px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; color: var(--muted); cursor: pointer; transition: color .16s, background-color .16s, border-color .16s; }
+  .picker nav button:hover { color: var(--ink); border-color: var(--line-strong); }
+  .picker nav button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+
+  /* The panel's shell, so each proposal is seen where it will live */
+  .shell { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: calc(100vh - 53px); }
+  .side { position: sticky; top: 53px; align-self: start; height: calc(100vh - 53px); display: flex; flex-direction: column; gap: 4px; padding: 20px 14px; border-right: 1px solid var(--line); background: var(--surface); }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; font-weight: 700; font-size: 16px; }
+  .brand i { width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff 0 18%, #2a2a32 19%); border: 1px solid var(--line-strong); }
+  .side a { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; color: var(--muted); border-radius: 7px; text-decoration: none; font-size: 14px; }
+  .side a b { margin-left: auto; padding: 0 7px; border-radius: 6px; background: var(--soft); color: var(--ink); font-size: 11px; line-height: 20px; }
+  .side a.on { color: #fff; background: var(--primary-strong); }
+  .page { min-width: 0; padding: 28px 28px 64px; }
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 18px; }
+  .eyebrow { color: var(--primary); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  .head h1 { font-size: 26px; font-weight: 700; letter-spacing: -.015em; }
+  .head p { margin-top: 2px; color: var(--muted); }
+
+  /* Shared parts */
+  .card { min-width: 0; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 14px; }
+  .card-head h2 { font-size: 15px; font-weight: 600; }
+  .card-head small { color: var(--subtle); font-size: 12px; }
+  .label { color: var(--muted); font-size: 12px; }
+  .note { color: var(--subtle); font-size: 12px; }
+  .delta { display: inline-flex; align-items: center; gap: 3px; width: fit-content; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .delta.good { color: var(--ok); background: var(--ok-soft); }
+  .delta.bad { color: var(--bad); background: var(--bad-soft); }
+  .delta.flat { color: var(--muted); background: var(--soft); }
+  .neg { color: var(--bad); }
+  .pos { color: var(--ok); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; color: var(--ink); cursor: pointer; white-space: nowrap; transition: border-color .16s, background-color .16s; }
+  .btn:hover { border-color: var(--line-strong); background: var(--raised); }
+  .btn svg { width: 16px; height: 16px; color: var(--muted); }
+  .btn.on { border-color: color-mix(in srgb, var(--primary) 60%, transparent); background: var(--primary-soft); }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; }
+  .seg button { height: 28px; padding: 0 11px; background: none; border: 0; border-radius: 7px; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color .16s, background-color .16s; }
+  .seg button:hover { color: var(--ink); }
+  .seg button.on { color: var(--ink); background: var(--soft); box-shadow: inset 0 0 0 1px var(--line-strong); }
+  .check { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; white-space: nowrap; cursor: pointer; }
+  .check i { width: 16px; height: 16px; border: 1.5px solid var(--line-strong); border-radius: 4px; }
+  .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  .tabs button { position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; background: none; border: 0; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color .16s, background-color .16s; }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button.on { color: var(--ink); font-weight: 600; }
+  .tabs button.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+  .tabs button svg { width: 16px; height: 16px; }
+  .tabs .badge { padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 20px; background: var(--soft); color: var(--ink); }
+  .tabs .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .prod { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+  .prod:first-of-type { border-top: 0; padding-top: 0; }
+  .prod img { width: 40px; height: 52px; object-fit: cover; border-radius: 7px; background: var(--soft); }
+  .prod .t { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 13px; line-height: 1.35; }
+  .prod .r { display: grid; justify-items: end; gap: 2px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .op { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .op:first-of-type { border-top: 0; padding-top: 0; }
+  .op > i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--soft); color: var(--muted); font-style: normal; font-size: 15px; }
+  .op > i.warn { background: var(--warn-soft); color: var(--warn); }
+  .op > i.ok { background: var(--ok-soft); color: var(--ok); }
+  .op > i.bad { background: var(--bad-soft); color: var(--bad); }
+  .op strong { font-size: 15px; white-space: nowrap; }
+  .op .sub { display: block; color: var(--subtle); font-size: 12px; }
+  .tip { position: fixed; z-index: 40; padding: 8px 10px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 7px; box-shadow: 0 12px 28px -12px #000; font-size: 12px; pointer-events: none; }
+  .tip b { display: block; font-size: 13px; }
+  .grow { animation: grow .8s cubic-bezier(.22, 1, .36, 1) backwards; transform-box: fill-box; transform-origin: bottom; }
+  @keyframes grow { from { transform: scaleY(0); } }
+  .growx { animation: growx .8s cubic-bezier(.22, 1, .36, 1) backwards; transform-origin: left; }
+  @keyframes growx { from { transform: scaleX(0); } }
+  .rise > * { animation: rise .46s cubic-bezier(.22, 1, .36, 1) backwards; }
+  .rise > :nth-child(2) { animation-delay: 70ms; } .rise > :nth-child(3) { animation-delay: 140ms; } .rise > :nth-child(4) { animation-delay: 210ms; } .rise > :nth-child(n + 5) { animation-delay: 280ms; }
+  @keyframes rise { from { opacity: 0; translate: 0 14px; } }
+  @media (prefers-reduced-motion: reduce) { .grow, .growx, .rise > * { animation: none !important; } }
+
+  /* A · Kompakt Pano */
+  #a .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px; }
+  #a .filters .sep { width: 1px; height: 24px; background: var(--line); }
+  #a .tabsbar { margin: 16px 0 20px; padding: 0 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  #a .row1 { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 20px; }
+  #a .big { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 14px; }
+  #a .big strong { font-size: 34px; font-weight: 700; letter-spacing: -.02em; }
+  #a .left-card { display: grid; align-content: start; gap: 14px; background: linear-gradient(160deg, color-mix(in srgb, var(--ok) 14%, var(--surface)), var(--surface) 60%); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); }
+  #a .left-card strong.v { font-size: 34px; font-weight: 700; color: var(--ok); letter-spacing: -.02em; line-height: 1.1; }
+  #a .ratios { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  #a .ratios div { padding: 10px 12px; background: color-mix(in srgb, var(--bg) 55%, transparent); border-radius: 12px; }
+  #a .ratios b { display: block; font-size: 16px; }
+  #a .flow { margin-top: 20px; }
+  #a .strip { display: flex; height: 16px; gap: 3px; border-radius: 999px; overflow: hidden; margin: 6px 0 16px; }
+  #a .left-card .strip { height: 12px; margin: 0; }
+  #a .flow-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+  #a .flow-list div { display: grid; align-content: start; gap: 4px; padding: 12px 14px; background: var(--soft); border-radius: 12px; border-top: 3px solid var(--c); }
+  #a .flow-list b { font-size: 16px; }
+  #a .row3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; margin-top: 20px; }
+  #a .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  #a .kpis div { display: grid; gap: 2px; padding: 12px 14px; background: var(--soft); border-radius: 12px; }
+  #a .kpis b { font-size: 18px; }
+  #a .legend { display: flex; gap: 16px; margin-top: 4px; color: var(--subtle); font-size: 12px; }
+  #a .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; vertical-align: -1px; }
+
+  /* B · Şelale */
+  #b .toolbar { position: sticky; top: 53px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 -28px 18px; padding: 12px 28px; background: color-mix(in srgb, var(--bg) 90%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+  #b .toolbar .group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  #b .chip { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); cursor: pointer; transition: color .16s, border-color .16s, background-color .16s; }
+  #b .chip i { width: 8px; height: 8px; border-radius: 50%; }
+  #b .chip:hover { color: var(--ink); border-color: var(--line-strong); }
+  #b .chip.on { color: var(--ink); background: color-mix(in srgb, #f27a1a 14%, var(--surface)); border-color: color-mix(in srgb, #f27a1a 55%, transparent); }
+  #b .tabs { margin-bottom: 20px; padding: 4px; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  #b .tabs button { height: 36px; border-radius: 9px; }
+  #b .tabs button:hover { background: var(--raised); }
+  #b .tabs button.on { background: var(--soft); }
+  #b .tabs button.on::after { display: none; }
+  #b .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  #b .kpi { display: grid; gap: 6px; padding: 18px; }
+  #b .kpi strong { font-size: 26px; font-weight: 700; letter-spacing: -.015em; }
+  #b .kpi svg { width: 100%; height: 36px; }
+  #b .fall-card { margin-top: 20px; }
+  #b .fall { width: 100%; height: auto; }
+  #b .fall-notes { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; color: var(--subtle); font-size: 12px; }
+  #b .row3 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; margin-top: 20px; }
+  #b .bars { width: 100%; height: auto; }
+  #b .keys { display: flex; gap: 16px; color: var(--muted); font-size: 12px; }
+  #b .keys i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; vertical-align: -1px; }
+  #b .row4 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
+  #b .city { display: grid; grid-template-columns: 100px minmax(0, 1fr) 70px; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; }
+  #b .city span.bar { height: 8px; border-radius: 4px; background: var(--info); }
+
+  /* C · Defter + Filtre Paneli */
+  #c .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
+  #c .rail { position: sticky; top: 73px; display: grid; gap: 18px; padding: 16px; }
+  #c .rail h3 { margin: 0 0 6px 10px; color: var(--subtle); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  #c .opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; padding: 0 10px; border-radius: 7px; color: var(--muted); cursor: pointer; transition: background-color .16s, color .16s; }
+  #c .opt:hover { background: var(--raised); color: var(--ink); }
+  #c .opt.on { background: var(--primary-soft); color: var(--ink); font-weight: 600; }
+  #c .opt i { width: 8px; height: 8px; border-radius: 50%; }
+  #c .opt small { color: var(--subtle); font-size: 11px; font-weight: 400; }
+  #c .opt svg { width: 15px; height: 15px; }
+  #c .tabs { margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+  #c .main { display: grid; gap: 20px; min-width: 0; }
+  #c .summary { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
+  #c table { width: 100%; border-collapse: collapse; }
+  #c th { padding: 0 0 10px 12px; color: var(--subtle); font-size: 12px; font-weight: 500; text-align: right; white-space: nowrap; }
+  #c th:first-child { padding-left: 0; text-align: left; }
+  #c td { padding: 11px 0 11px 12px; border-top: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  #c td:first-child { min-width: 200px; padding-left: 0; text-align: left; white-space: normal; }
+  #c td .bar { display: block; width: 100%; height: 4px; margin-top: 7px; border-radius: 2px; background: var(--soft); overflow: hidden; }
+  #c td .bar i { display: block; height: 100%; border-radius: 2px; }
+  #c tr.minus td:first-child { padding-left: 18px; color: var(--muted); }
+  #c tr.sum td { font-weight: 700; border-top-color: var(--line-strong); }
+  #c tr.result td { padding-top: 14px; border-top: 2px solid var(--ink); font-size: 18px; font-weight: 700; }
+  #c tr.result td:nth-child(2) { color: var(--ok); }
+  #c .scroll { overflow-x: auto; }
+  #c .glance { display: grid; gap: 12px; }
+  #c .glance > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  #c .glance > div:last-child { border-bottom: 0; padding-bottom: 0; }
+  #c .glance b { font-size: 18px; }
+  #c .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  #c .days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+  #c .days > div { display: grid; justify-items: center; gap: 6px; }
+  #c .days .col { width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 4px; height: 150px; }
+  #c .days .col i { width: 36%; border-radius: 5px 5px 2px 2px; }
+  #c .days .col i.prev { background: color-mix(in srgb, var(--ink) 16%, transparent); }
+  #c .days .col i.now { background: var(--primary); }
+  #c .days small { color: var(--subtle); font-size: 11px; text-align: center; }
+
+  #c .rail .seg { display: flex; width: 100%; }
+  #c .rail .seg button { flex: 1; padding: 0 4px; }
+  @media (max-width: 1500px) {
+    #c .summary { grid-template-columns: minmax(0, 1fr); }
+    #c .glance { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    #c .glance > div, #c .glance > div:last-child { padding: 12px 14px; border-bottom: 0; background: var(--soft); border-radius: 12px; }
+  }
+  @media (max-width: 1240px) {
+    #a .row1, #c .summary { grid-template-columns: minmax(0, 1fr); }
+    #a .flow-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #a .row3, #b .row4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #a .row3 > :last-child, #b .row4 > :last-child { grid-column: 1 / -1; }
+    #b .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #b .row3, #c .pair { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 1100px) {
+    #c .layout { grid-template-columns: minmax(0, 1fr); }
+    #c .rail { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 900px) { .shell { grid-template-columns: minmax(0, 1fr); } .side { display: none; } }
+  @media (max-width: 760px) {
+    .page { padding: 20px 16px 48px; }
+    #b .toolbar { margin: 0 -16px 16px; padding: 10px 16px; }
+    #a .row3, #b .row4, #b .kpis, #a .ratios, #c .rail { grid-template-columns: minmax(0, 1fr); }
+    #a .flow-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #a .filters .sep { display: none; }
+    .seg { max-width: 100%; overflow-x: auto; }
+    #a .big strong, #a .left-card strong.v { font-size: 28px; }
+    #c .glance { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #c .glance > div { flex-direction: column; align-items: flex-start; }
+    #c .glance > div > span:last-child { justify-items: start !important; }
+  }
+</style>
+</head>
+<body>
+<div class="picker"><div><strong>Raporlar · Yeni tasarım için 3 öneri</strong> <span>· Trendyol, Geçen Hafta (12–18.10.2026), canlı rapordan</span></div><nav aria-label="Öneriler"></nav></div>
+<div class="shell">
+  <aside class="side" aria-hidden="true">
+    <div class="brand"><i></i>Ravencia</div>
+    <a>Genel Bakış</a><a>Ürünler</a><a>Siparişler<b>7</b></a><a>İadeler<b>4</b></a><a>Faturalar<b>0</b></a><a>Ürün Soruları<b>0</b></a><a class="on">Raporlar</a><a>Entegrasyonlar</a><a>Eşleştirmeler</a><a>İşlem Takibi</a>
+  </aside>
+  <main class="page" id="stage"></main>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+// ---------- The live report: Trendyol, 12–18.10.2026 (previous 05–11.10) ----------
+const R = {
+  period: '12.10.2026 – 18.10.2026', prevPeriod: '05.10 – 11.10',
+  sales: 102317.60, prevSales: 88769.69, returned: 3139.53, prevReturned: 5875.78, net: 99178.07, prevNet: 82893.91,
+  orders: 121, prevOrders: 96, sold: 146, prevSold: 123, basket: 845.60, prevBasket: 924.68,
+  returnRate: 2.74, prevReturnRate: 6.5, returnClaims: 11, cancelRate: 3.2, prevCancelRate: 2.04, cancelled: 4, cancelWarning: 2.0,
+  commissionRate: 21.38,
+  costs: [
+    { key: 'return', label: 'İade Edilen', value: 3139.53, color: 'var(--c-return)', note: '4 adet iade' },
+    { key: 'commission', label: 'Komisyon', value: 21209.27, color: 'var(--c-commission)', note: '₺18.654 kesinleşti, ₺2.555 tahmini' },
+    { key: 'cargo', label: 'Kargo', value: 11722.80, color: 'var(--c-cargo)', note: 'tahmini; fatura gelmedi' },
+    { key: 'fees', label: 'Kesintiler', value: 3131.38, color: 'var(--c-fees)', note: 'hizmet bedeli, stopaj, reklam' },
+    { key: 'cost', label: 'Ürün Maliyeti', value: 38945, color: 'var(--c-cost)', note: '142 adet, kapsam %100' }
+  ],
+  fees: [['Platform hizmet bedeli', 1850.92], ['Stopaj', 780.46], ['Reklam', 500]],
+  days: [['12.10', 9647.08, 12, 9341.11], ['13.10', 11154.31, 11, 11093.72], ['14.10', 15853.63, 20, 22380.51], ['15.10', 15510.78, 22, 11622.26], ['16.10', 15607.76, 17, 10153.72], ['17.10', 17854.75, 21, 9766.40], ['18.10', 13549.76, 18, 8536.19]],
+  weekday: ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'],
+  cargo: { carrier: 'Trendyol Express', share: 95, shipHours: 19.1 },
+  customers: { unique: 119, repeat: 2 },
+  invoices: { done: 119, open: 2 },
+  cancelReasons: [['Yanlış ürün seçtim', 3], ['Vazgeçtim', 1]],
+  cities: [['İstanbul', 21, 17847.16], ['Ankara', 8, 7528.39], ['Gaziantep', 5, 3707.79], ['Aydın', 3, 3531.27], ['Mersin', 4, 2978.51], ['Muğla', 5, 2720.52]],
+  abroad: 14,
+  products: [
+    { t: 'Kadın Siyah Baskılı Simli Yırtmaçlı Likralı Anne Penye Bluz RYP001, XL', q: 14, pq: 3, a: 7232, stock: 20, img: 'https://cdn.dsmcdn.com/ty1727/prod/QC_PREP/20250814/20/48883b70-6b83-3aa8-abc2-a575aef21a1c/1_org_zoom.jpg' },
+    { t: 'Baskı Desenli Simli Likralı Mavi Anne Penye Bluz RYP001, L', q: 5, pq: 1, a: 2581, stock: 20, img: 'https://cdn.dsmcdn.com/ty1725/prod/QC_PREP/20250814/19/9752a240-f5a6-39a4-bf5d-b7ddd30fd204/1_org_zoom.jpg' },
+    { t: 'Baskı Desenli Simli Likralı Yırtmaçlı Zümrüt Anne Penye Bluz RYP001, XL', q: 5, pq: 5, a: 2561, stock: 0, img: 'https://cdn.dsmcdn.com/ty1777/prod/QC_PREP/20251021/13/ad571c30-03ac-3c5c-862e-7d698355f935/1_org_zoom.jpg' },
+    { t: 'Kadın Siyah Baskılı Simli Yırtmaçlı Likralı Anne Penye Bluz RYP001, L', q: 5, pq: 3, a: 2540, stock: 65, img: 'https://cdn.dsmcdn.com/ty1727/prod/QC_PREP/20250814/20/48883b70-6b83-3aa8-abc2-a575aef21a1c/1_org_zoom.jpg' },
+    { t: 'Bej Yaprak Desenli Taşlı Nakış İşlemeli Viskon Anne Penye Bluz MZ029YD, 2XL', q: 2, pq: 0, a: 1535, stock: 0, img: 'https://cdn.dsmcdn.com/ty1828/prod/QC_ENRICHMENT/20260219/17/b85857ba-89c8-381a-ad7d-f48c61d2ea86/1_org_zoom.jpg' }
+  ]
+}
+R.costTotal = R.costs.reduce((s, c) => s + c.value, 0)
+R.left = R.sales - R.costTotal
+
+// ---------- Formatting ----------
+const n = (v, d = 0) => v.toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d })
+const tl = (v, d = 2) => '₺' + n(v, d)
+const tl0 = v => tl(v, 0)
+const tlk = v => v >= 1000 ? '₺' + n(v / 1000, 1) + ' B' : tl0(v)
+const pct = (v, d = 1) => '%' + n(v, d)
+const ch = (now, before) => (now - before) / before * 100
+const share = v => v / R.sales * 100
+const delta = (v, invert = false, unit = '%') => { if (Math.abs(v) < .05) return '<span class="delta flat">■ 0</span>'; const good = (v > 0) !== invert; const text = unit === '%' ? `%${n(Math.abs(v), 1)}` : `${n(Math.abs(v), 1)} puan`; return `<span class="delta ${good ? 'good' : 'bad'}">${v > 0 ? '▲ +' : '▼ −'}${text}</span>` }
+const icon = name => ({
+  grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  bag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8h12l-1 12H7L6 8Z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>',
+  trend: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 16 6-6 4 4 6-7"/></svg>',
+  truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M3 19a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M21 19a6 6 0 0 0-4-5.6"/></svg>',
+  doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>',
+  cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 9h16"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>',
+  dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>'
+})[name]
+const reportTabs = () => `<div class="tabs" role="tablist">${[['grid', 'Genel Bakış'], ['globe', 'Coğrafya'], ['bag', 'Ürünler'], ['trend', 'Kârlılık', pct(R.left / R.net * 100)], ['truck', 'Operasyon', 'İptal ' + pct(R.cancelRate), 'warn'], ['users', 'Müşteriler'], ['doc', 'Tarifeler']].map(([i, t, b, tone], k) => `<button type="button" role="tab" aria-selected="${!k}" class="${k ? '' : 'on'}">${icon(i)}${t}${b ? `<span class="badge ${tone ?? ''}">${b}</span>` : ''}</button>`).join('')}</div>`
+const segs = (list, on) => `<div class="seg" role="group">${list.map(x => `<button type="button" class="${x === on ? 'on' : ''}">${x}</button>`).join('')}</div>`
+const periods = ['Bugün', 'Dün', 'Bu Hafta', 'Geçen Hafta', 'Bu Ay', 'Geçen Ay', 'Son 30 Gün', 'Bu Yıl']
+const parts = () => [...R.costs, { label: 'Kalan', value: R.left, color: 'var(--c-left)', note: 'satışın ' + pct(share(R.left)) }]
+const strip = () => `<div class="strip">${parts().map((p, i) => `<i class="growx" style="flex:${p.value} 0 0;background:${p.color};animation-delay:${i * 70}ms" data-tip="${p.label}|${tl(p.value)} · satışın ${pct(share(p.value))}"></i>`).join('')}</div>`
+function spark(values, color = 'var(--primary)', w = 200, h = 36) {
+  const max = Math.max(...values), min = Math.min(...values)
+  const d = values.map((v, i) => `${i ? 'L' : 'M'}${(i / (values.length - 1) * w).toFixed(1)},${(h - 3 - (v - min) / (max - min || 1) * (h - 6)).toFixed(1)}`).join('')
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}L${w},${h}L0,${h}Z" fill="${color}" opacity=".12"/><path d="${d}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`
+}
+function dayBars(w = 640, h = 190) {
+  const max = Math.max(...R.days.flatMap(d => [d[1], d[3]])) * 1.12, bw = w / 7, best = R.days.reduce((b, d, i) => d[1] > R.days[b][1] ? i : b, 0)
+  return `<svg class="bars" viewBox="0 0 ${w} ${h + 40}" style="width:100%;height:auto" role="img" aria-label="Günlük net ciro, bu hafta ve önceki hafta">
+    ${[.5, 1].map(f => `<line x1="0" x2="${w}" y1="${h - h * f / 1.12}" y2="${h - h * f / 1.12}" stroke="var(--line)" stroke-dasharray="3 4"/><text x="0" y="${h - h * f / 1.12 - 5}" fill="var(--subtle)" font-size="11">${tlk(max * f / 1.12)}</text>`).join('')}
+    ${R.days.map((d, i) => { const x = i * bw, nh = d[1] / max * h, ph = d[3] / max * h; return `<rect class="grow" style="animation-delay:${i * 50}ms" x="${x + bw * .2}" y="${h - ph}" width="${bw * .26}" height="${ph}" rx="3" fill="color-mix(in srgb, var(--ink) 16%, transparent)" data-tip="Önceki hafta, ${R.weekday[i]}|${tl(d[3])}"/><rect class="grow" style="animation-delay:${i * 50 + 30}ms" x="${x + bw * .5}" y="${h - nh}" width="${bw * .3}" height="${nh}" rx="3" fill="${i === best ? 'var(--primary)' : 'color-mix(in srgb, var(--primary) 55%, var(--soft))'}" data-tip="${d[0]} ${R.weekday[i]}|${tl(d[1])} · ${d[2]} sipariş"/><text x="${x + bw / 2}" y="${h + 18}" text-anchor="middle" fill="var(--muted)" font-size="12">${d[0]}</text><text x="${x + bw / 2}" y="${h + 33}" text-anchor="middle" fill="var(--subtle)" font-size="11">${R.weekday[i]}</text>` }).join('')}
+  </svg>`
+}
+const products = () => R.products.map(p => `<div class="prod"><img src="${p.img}" alt="" loading="lazy"><div><div class="t" title="${p.t}">${p.t}</div><span class="note">${p.stock === 0 ? '<span class="neg">Stok tükendi</span>' : `Stok ${p.stock}`} · önceki hafta ${p.pq} adet</span></div><div class="r">${p.q} adet<span class="note">${tl0(p.a)}</span></div></div>`).join('')
+const operations = () => [
+  ['bad', '✕', 'İptal Oranı', `${R.cancelled} sipariş · uyarı eşiği ${pct(R.cancelWarning)}`, pct(R.cancelRate)],
+  ['', '↺', 'İade Talebi', `iade oranı ${pct(R.returnRate)}`, n(R.returnClaims)],
+  ['ok', '⏱', 'Kargoya Verme', `${R.cargo.carrier} %${R.cargo.share} · gecikme yok`, n(R.cargo.shipHours, 1) + ' sa'],
+  ['warn', '▤', 'Faturasız Paket', `${R.invoices.done} paket faturalı`, n(R.invoices.open)],
+  ['warn', '◇', 'Stoğu Biten', 'çok satanlardan', '2'],
+  ['', '♥', 'Tekrar Alan', `${R.customers.unique} müşteriden ${R.customers.repeat}`, pct(R.customers.repeat / R.customers.unique * 100)]
+].map(([tone, sym, l, s, v]) => `<div class="op"><i class="${tone}">${sym}</i><div><span style="font-weight:600">${l}</span><span class="sub">${s}</span></div><strong>${v}</strong></div>`).join('')
+
+// ---------- A · Kompakt Pano ----------
+const A = () => `<div id="a" class="rise">
+  <div class="head"><div><span class="eyebrow">Analiz</span><h1>Raporlar</h1><p>Satış, masraf ve kâr; platform ve ürün kırılımıyla, önceki dönemle karşılaştırmalı.</p></div><button class="btn" type="button">${icon('dl')}Dışa Aktar</button></div>
+  <div class="card filters">${segs(periods, 'Geçen Hafta')}<button class="btn" type="button">${icon('cal')}${R.period}</button><span class="sep"></span><button class="btn on" type="button"><i style="width:8px;height:8px;border-radius:50%;background:#f27a1a"></i>Trendyol${icon('down')}</button><button class="btn" type="button">Gruplama: Otomatik${icon('down')}</button><label class="check"><i></i>Test Mağazaları</label></div>
+  <div class="tabsbar">${reportTabs()}</div>
+  <div class="row1">
+    <div class="card"><div class="card-head"><h2>Net Ciro</h2>${segs(['Net Ciro', 'Sipariş', 'Adet'], 'Net Ciro')}</div>
+      <div class="big"><strong>${tl(R.net)}</strong>${delta(ch(R.net, R.prevNet))}<span class="note">Önceki hafta ${tl(R.prevNet)}</span></div>
+      ${dayBars()}<div class="legend"><span><i style="background:var(--primary)"></i>Bu hafta</span><span><i style="background:color-mix(in srgb, var(--ink) 25%, transparent)"></i>Önceki hafta</span></div></div>
+    <div class="card left-card"><span class="label">Elde Kalan (Tahmini Kâr)</span><strong class="v">${tl(R.left)}</strong><span class="note">${tl(R.sales)} satıştan tüm masraflar düşüldükten sonra</span>
+      <div class="ratios"><div><span class="note">Net marj</span><b class="pos">${pct(R.left / R.net * 100)}</b></div><div><span class="note">Masraf / satış</span><b>${pct(share(R.costTotal))}</b></div><div><span class="note">İade / satış</span><b>${pct(share(R.returned))}</b></div></div>
+      ${strip()}<span class="note">Komisyonun ₺2.555'i ve kargonun tamamı tahmini; fatura ve hakediş geldikçe kesinleşir.</span></div>
+  </div>
+  <div class="card flow"><div class="card-head"><h2>Satıştan Kâra</h2><small>bir parçanın üstüne gelin</small></div>${strip()}
+    <div class="flow-list">${parts().map(c => `<div style="--c:${c.color}"><span class="label">${c.label}</span><b class="${c.label === 'Kalan' ? 'pos' : ''}">${c.label === 'Kalan' ? '' : '− '}${tl0(c.value)}</b><span class="note">${pct(share(c.value))} · ${c.note}</span></div>`).join('')}</div></div>
+  <div class="row3">
+    <div class="card"><div class="card-head"><h2>Dönem Özeti</h2></div><div class="kpis">${[['Sipariş', n(R.orders), delta(ch(R.orders, R.prevOrders))], ['Ortalama Sepet', tl(R.basket), delta(ch(R.basket, R.prevBasket))], ['İade Oranı', pct(R.returnRate), delta(R.returnRate - R.prevReturnRate, true, 'puan')], ['İptal Oranı', pct(R.cancelRate), delta(R.cancelRate - R.prevCancelRate, true, 'puan')], ['Satılan Adet', n(R.sold), delta(ch(R.sold, R.prevSold))], ['Komisyon Oranı', pct(R.commissionRate), '<span class="note">efektif</span>']].map(([l, v, d]) => `<div><span class="label">${l}</span><b>${v}</b>${d}</div>`).join('')}</div></div>
+    <div class="card"><div class="card-head"><h2>Operasyon</h2><small>tıklayınca sekmesi açılır</small></div>${operations()}</div>
+    <div class="card"><div class="card-head"><h2>En Çok Satanlar</h2><small>adet</small></div>${products()}</div>
+  </div></div>`
+
+// ---------- B · Şelale ----------
+const B = () => {
+  const steps = [{ label: 'Satış', value: R.sales, total: true, color: 'color-mix(in srgb, var(--ink) 30%, transparent)' }, ...R.costs.map(c => ({ ...c })), { label: 'Kalan', value: R.left, total: true, color: 'var(--c-left)' }]
+  const w = 1000, h = 280, bw = w / steps.length, sc = (h - 30) / R.sales
+  let level = R.sales
+  const fall = steps.map((s, i) => { let y, bh; if (s.total) { bh = s.value * sc; y = h - bh } else { y = h - level * sc; bh = s.value * sc; level -= s.value } const next = s.total ? y : y + bh; return `<rect class="grow" style="animation-delay:${i * 80}ms" x="${i * bw + bw * .17}" y="${y}" width="${bw * .66}" height="${Math.max(bh, 3)}" rx="6" fill="${s.color}" data-tip="${s.label}|${tl(s.value)} · satışın ${pct(share(s.value))}${s.note ? ' · ' + s.note : ''}"/>${i < steps.length - 1 ? `<line x1="${i * bw + bw * .83}" x2="${(i + 1) * bw + bw * .17}" y1="${next}" y2="${next}" stroke="var(--line-strong)" stroke-dasharray="3 3"/>` : ''}<text x="${i * bw + bw / 2}" y="${y - 9}" text-anchor="middle" fill="var(--ink)" font-size="14" font-weight="600">${s.total ? '' : '−'}${tlk(s.value)}</text><text x="${i * bw + bw / 2}" y="${h + 22}" text-anchor="middle" fill="var(--muted)" font-size="13">${s.label}</text><text x="${i * bw + bw / 2}" y="${h + 39}" text-anchor="middle" fill="var(--subtle)" font-size="12">${pct(share(s.value))}</text>` }).join('')
+  const nets = R.days.map(d => d[1]), ords = R.days.map(d => d[2])
+  const kpi = (l, v, d, s, c) => `<div class="card kpi"><span class="label">${l}</span><strong>${v}</strong>${d}${spark(s, c)}</div>`
+  return `<div id="b">
+  <div class="head"><div><span class="eyebrow">Analiz</span><h1>Raporlar</h1><p>Geçen hafta Trendyol'da ne sattınız ve elinizde ne kaldı.</p></div></div>
+  <div class="toolbar"><div class="group"><button class="btn" type="button">${icon('cal')}Geçen Hafta · 12–18 Eki${icon('down')}</button><span class="note">önceki: ${R.prevPeriod}</span></div>
+    <div class="group">${[['Tümü', ''], ['Trendyol', '#f27a1a'], ['Hepsiburada', '#ff6000'], ['n11', '#a855f7'], ['PTT AVM', '#f5c400'], ['Pazarama', '#3b82f6']].map(([t, c]) => `<button type="button" class="chip${t === 'Trendyol' ? ' on' : ''}">${c ? `<i style="background:${c}"></i>` : ''}${t}</button>`).join('')}<button class="btn" type="button">Günlük${icon('down')}</button></div></div>
+  ${reportTabs()}
+  <div class="kpis rise">${kpi('Net Ciro', tl0(R.net), delta(ch(R.net, R.prevNet)), nets, 'var(--primary)')}${kpi('Sipariş', n(R.orders), delta(ch(R.orders, R.prevOrders)), ords, 'var(--info)')}${kpi('Ortalama Sepet', tl(R.basket), delta(ch(R.basket, R.prevBasket)), nets.map((v, i) => v / ords[i]), 'var(--warn)')}${kpi('Elde Kalan', tl0(R.left), `<span class="note">net cironun ${pct(R.left / R.net * 100)}'ü</span>`, nets.map(v => v * R.left / R.net), 'var(--ok)')}</div>
+  <div class="card fall-card"><div class="card-head"><h2>Satıştan Kâra</h2><small>bir basamağın üstüne gelin</small></div><svg class="fall" viewBox="0 -14 ${w} ${h + 60}" role="img" aria-label="Satıştan kâra şelale grafiği">${fall}</svg>
+    <div class="fall-notes"><span>Komisyon: ₺18.654 kesinleşti, ₺2.555 tahmini</span><span>Kargo tahmini: faturası gelmedi, sipariş başı ₺96,88</span><span>Kesintiler: ${R.fees.map(f => `${f[0]} ${tl0(f[1])}`).join(', ')}</span></div></div>
+  <div class="row3"><div class="card"><div class="card-head"><h2>Günlük Net Ciro</h2><div class="keys"><span><i style="background:var(--primary)"></i>Bu hafta</span><span><i style="background:color-mix(in srgb, var(--ink) 25%, transparent)"></i>Önceki hafta</span></div></div>${dayBars()}</div>
+    <div class="card"><div class="card-head"><h2>En Çok Satanlar</h2><small>adet</small></div>${products()}</div></div>
+  <div class="row4"><div class="card"><div class="card-head"><h2>Operasyon</h2></div>${operations()}</div>
+    <div class="card"><div class="card-head"><h2>İller</h2><small>+${R.abroad} sipariş yurt dışı</small></div>${R.cities.map(c => `<div class="city"><span>${c[0]}</span><span class="bar growx" style="width:${c[2] / R.cities[0][2] * 100}%"></span><span style="text-align:right">${tlk(c[2])}</span></div>`).join('')}</div>
+    <div class="card"><div class="card-head"><h2>İptal Nedenleri</h2><small>${R.cancelled} sipariş</small></div>${R.cancelReasons.map(r => `<div class="city" style="grid-template-columns:minmax(0,1fr) 40px"><span>${r[0]}</span><span style="text-align:right">${r[1]}</span></div>`).join('')}<p class="note" style="margin-top:12px">İptal oranı ${pct(R.cancelRate)}, uyarı eşiği ${pct(R.cancelWarning)}.</p></div></div>
+  </div>`
+}
+
+// ---------- C · Defter + Filtre Paneli ----------
+const C = () => {
+  const prevCosts = { return: R.prevReturned }
+  const rows = [
+    { label: 'Satış Tutarı', note: 'İptaller hariç, iade öncesi', value: R.sales, prev: R.prevSales, cls: 'sum' },
+    ...R.costs.map(c => ({ label: c.label, note: c.note, value: -c.value, prev: prevCosts[c.key] !== undefined ? -prevCosts[c.key] : null, cls: 'minus', color: c.color })),
+    { label: 'Masraflar Toplamı', value: -R.costTotal, prev: null, cls: 'sum' },
+    { label: 'Elde Kalan (Tahmini Kâr)', value: R.left, prev: null, cls: 'result' }
+  ]
+  const biggest = Math.max(...R.costs.map(c => c.value))
+  const opt = (t, on, extra = '') => `<div class="opt${on ? ' on' : ''}">${t}${extra}</div>`
+  const max = Math.max(...R.days.flatMap(d => [d[1], d[3]]))
+  return `<div id="c">
+  <div class="head"><div><span class="eyebrow">Analiz</span><h1>Raporlar</h1><p>Dönemin hesabı tek tabloda; filtreler solda, hep görünür.</p></div><button class="btn" type="button">${icon('dl')}Excel'e Aktar</button></div>
+  <div class="layout"><aside class="card rail">
+    <div><h3>Dönem</h3>${periods.map(p => opt(p, p === 'Geçen Hafta', p === 'Geçen Hafta' ? '<small>12–18 Eki</small>' : '')).join('')}${opt('Özel Dönem', false, icon('cal'))}</div>
+    <div><h3>Platform</h3>${[['Tüm Platformlar', ''], ['Trendyol', '#f27a1a'], ['Hepsiburada', '#ff6000'], ['n11', '#a855f7'], ['PTT AVM', '#f5c400'], ['Pazarama', '#3b82f6']].map(([t, c]) => opt(`<span style="display:inline-flex;align-items:center;gap:8px">${c ? `<i style="background:${c}"></i>` : ''}${t}</span>`, t === 'Trendyol')).join('')}</div>
+    <div><h3>Gruplama</h3>${segs(['Otomatik', 'Gün', 'Hafta', 'Ay'], 'Otomatik')}<label class="check" style="margin-top:12px"><i></i>Test Mağazalarını Dahil Et</label></div>
+  </aside>
+  <div class="main">${reportTabs()}
+    <div class="summary rise"><div class="card"><div class="card-head"><h2>Dönemin Hesabı</h2><small>Trendyol · ${R.period}</small></div><div class="scroll"><table>
+      <thead><tr><th>Kalem</th><th>Bu Hafta</th><th>Satışa Oranı</th><th>Önceki Hafta</th><th>Fark</th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="${r.cls}"><td>${r.label}${r.note ? `<div class="note">${r.note}</div>` : ''}${r.color ? `<span class="bar"><i class="growx" style="width:${-r.value / biggest * 100}%;background:${r.color}"></i></span>` : ''}</td><td class="${r.value < 0 ? 'neg' : ''}">${r.value < 0 ? '− ' : ''}${tl(Math.abs(r.value))}</td><td>${pct(share(Math.abs(r.value)))}</td><td class="note">${r.prev === null ? '—' : tl(Math.abs(r.prev))}</td><td>${r.prev === null ? '<span class="note">—</span>' : delta(ch(Math.abs(r.value), Math.abs(r.prev)), r.value < 0)}</td></tr>`).join('')}
+      </tbody></table></div><p class="note" style="margin-top:12px">Önceki haftanın masraf kırılımı bu örnekte yalnız iade için var; olmayan yerde "—" yazılır, tahmin uydurulmaz.</p></div>
+      <div class="card"><div class="card-head"><h2>Hızlı Bakış</h2></div><div class="glance">${[['Net Ciro', tl0(R.net), delta(ch(R.net, R.prevNet))], ['Sipariş', n(R.orders), delta(ch(R.orders, R.prevOrders))], ['Ortalama Sepet', tl(R.basket), delta(ch(R.basket, R.prevBasket))], ['İade Oranı', pct(R.returnRate), delta(R.returnRate - R.prevReturnRate, true, 'puan')], ['İptal Oranı', pct(R.cancelRate), delta(R.cancelRate - R.prevCancelRate, true, 'puan')], ['Net Marj', pct(R.left / R.net * 100), '<span class="note">kalan / net ciro</span>']].map(([l, v, d]) => `<div><span class="label">${l}</span><span style="display:grid;justify-items:end;gap:2px"><b>${v}</b>${d}</span></div>`).join('')}</div></div></div>
+    <div class="pair"><div class="card"><div class="card-head"><h2>Günler</h2><small>açık: önceki hafta</small></div><div class="days">${R.days.map((d, i) => `<div><span class="note">${tlk(d[1])}</span><div class="col"><i class="prev grow" style="height:${d[3] / max * 100}%;animation-delay:${i * 50}ms" data-tip="Önceki ${R.weekday[i]}|${tl(d[3])}"></i><i class="now grow" style="height:${d[1] / max * 100}%;animation-delay:${i * 50 + 30}ms" data-tip="${d[0]} ${R.weekday[i]}|${tl(d[1])} · ${d[2]} sipariş"></i></div><small>${R.weekday[i]}<br>${d[0]}</small></div>`).join('')}</div></div>
+      <div class="card"><div class="card-head"><h2>En Çok Satanlar</h2><small>adet</small></div>${products()}</div></div>
+    <div class="pair"><div class="card"><div class="card-head"><h2>Operasyon</h2></div>${operations()}</div>
+      <div class="card"><div class="card-head"><h2>Kesintilerin Ayrıntısı</h2><small>Trendyol cari hesabı</small></div>${[['Komisyon (kesinleşen)', 18654.29], ['Komisyon (tahmini)', 2554.98], ['Kargo (tahmini)', R.costs[2].value], ...R.fees].map(([l, v]) => `<div class="op" style="grid-template-columns:minmax(0,1fr) auto"><span>${l}</span><strong>${tl(v)}</strong></div>`).join('')}</div></div>
+  </div></div></div>`
+}
+
+// ---------- Picker and tooltips ----------
+const proposals = [['A · Kompakt Pano', A], ['B · Şelale', B], ['C · Defter + Filtre Paneli', C]]
+const nav = document.querySelector('.picker nav'), stage = document.getElementById('stage'), tip = document.getElementById('tip')
+nav.innerHTML = proposals.map(([name], i) => `<button type="button" data-i="${i}" aria-pressed="false">${name}</button>`).join('')
+function show(i) { stage.innerHTML = proposals[i][1](); nav.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === i))); history.replaceState(null, '', '#' + 'abc'[i]); tip.hidden = true; scrollTo({ top: 0 }) }
+nav.addEventListener('click', e => { const b = e.target.closest('button'); if (b) show(+b.dataset.i) })
+document.addEventListener('pointermove', e => {
+  const t = e.target.closest?.('[data-tip]')
+  if (!t) { tip.hidden = true; return }
+  const [head, body] = t.dataset.tip.split('|')
+  tip.innerHTML = `<b>${head}</b>${body ?? ''}`
+  tip.hidden = false
+  const r = tip.getBoundingClientRect()
+  tip.style.left = Math.max(8, Math.min(e.clientX + 14, innerWidth - r.width - 8)) + 'px'
+  tip.style.top = (e.clientY + 16 + r.height > innerHeight ? e.clientY - r.height - 10 : e.clientY + 16) + 'px'
+})
+show(Math.max(0, 'abc'.indexOf(location.hash.slice(1))))
+</script>
+</body>
+</html>
