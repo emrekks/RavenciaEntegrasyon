@@ -142,9 +142,10 @@ describe('ReportsPage', () => {
 
   it('paints the provinces, ranks them beside the map, opens one and switches to the export countries', async () => {
     const page = await open()
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
     const map = page.querySelector('.reports-map-panel')!
-    expect(map.querySelectorAll('.reports-map-regions path').length).toBe(82)
+    // Each scope's outlines load on their own; the world's are large enough to take longer than any fixed wait on CI.
+    const loaded = (regions: number) => act(() => vi.waitFor(() => expect(map.querySelectorAll('.reports-map-regions path').length).toBe(regions), { timeout: 5000 }))
+    await loaded(82)
     expect(map.querySelectorAll('.reports-map-regions path.is-active')).toHaveLength(1)
     const list = map.querySelector('.reports-map-list')!
     // Known provinces only; the unknown bucket is named under the map instead.
@@ -159,7 +160,7 @@ describe('ReportsPage', () => {
     expect(map.querySelector('.reports-map-districts')?.textContent).toContain('Kadıköy')
 
     await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-segmented button')].find(button => button.textContent === 'Dünya · İhracat')!.click() })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    await loaded(236)
     expect(map.querySelector('.reports-map-detail')).toBeNull()
     expect(map.querySelector('.reports-map-list')?.textContent).toContain('Suudi Arabistan')
     expect(map.querySelector('.reports-map-list')?.textContent).not.toContain('Türkiye')
