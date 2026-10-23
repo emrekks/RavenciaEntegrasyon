@@ -2250,4 +2250,13 @@ public sealed class HepsiburadaAdapterTests
             });
         }
     }
+
+    [Theory]
+    [InlineData("""{"items":[{"merchantId":"62201BF1-2E64"},{"merchantId":"62201bf1-2e64"}]}""", null)]
+    [InlineData("""{"items":[{"merchantId":"62201bf1-2e64"},{"merchantId":"dc6cb4f6-931c"}]}""", "dc6cb4f6-931c")]
+    [InlineData("""{"claimNumber":"1","MerchantId":"dc6cb4f6-931c"}""", "dc6cb4f6-931c")]
+    [InlineData("""{"orderNumber":"1"}""", null)]
+    [InlineData("not json", null)]
+    public void AWebhookOfAnotherMerchantIsToldApart(string body, string? expected) =>
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceWebhookService.ForeignMerchant(body, "62201bf1-2e64"));
 }

@@ -179,6 +179,9 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
                     body = await reader.ReadToEndAsync(context.RequestAborted);
                 }
                 IdempotentResponse.Capture(record, context.Response, body);
+                // A refused request (4xx) may have changed tracked entities before it refused; only the idempotency
+                // record is saved, so a "nothing was saved" answer stays true.
+                if (context.Response.StatusCode >= 400) DetachAllBut(db, record);
                 await db.SaveChangesAsync(CancellationToken.None);
             }
             else
@@ -205,10 +208,15 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         }
     }
 
-    private static async Task ForgetAsync(AppDbContext db, ApiIdempotencyRecord record)
+    private static void DetachAllBut(AppDbContext db, ApiIdempotencyRecord record)
     {
         foreach (var entry in db.ChangeTracker.Entries().Where(entry => !ReferenceEquals(entry.Entity, record)).ToList())
             entry.State = EntityState.Detached;
+    }
+
+    private static async Task ForgetAsync(AppDbContext db, ApiIdempotencyRecord record)
+    {
+        DetachAllBut(db, record);
         db.Entry(record).State = EntityState.Deleted;
         try
         {
@@ -225,8 +233,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         // The endpoint may have left unsaved tracked changes behind while
         // throwing. Persist only the idempotency state so this recovery marker
         // cannot accidentally commit unrelated work from the failed request.
-        foreach (var entry in db.ChangeTracker.Entries().Where(entry => !ReferenceEquals(entry.Entity, record)).ToList())
-            entry.State = EntityState.Detached;
+        DetachAllBut(db, record);
 
         record.State = "UNKNOWN";
         record.ResponseStatus = null;
