@@ -165,7 +165,17 @@ describe('ReportsPage', () => {
     expect(map.querySelector('.reports-map-detail h3')?.textContent).toBe('İstanbul')
     expect(map.querySelector('.reports-map-districts')?.textContent).toContain('Kadıköy')
 
-    await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-segmented button')].find(button => button.textContent === 'Dünya · İhracat')!.click() })
+    // The breakdown tabs: Istanbul's region, then its platforms; a platform repaints the map with its orders only.
+    await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-tabs button')].find(button => button.textContent === 'Bölgeler')!.click() })
+    expect(map.querySelector('.reports-map-list.is-zones li')?.textContent).toContain('Marmara')
+    await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-tabs button')].find(button => button.textContent === 'Sıralama')!.click() })
+    const metricSwitch = map.querySelector<HTMLButtonElement>('.reports-map-switch')!
+    expect(metricSwitch.textContent).toContain('Ciro')
+    await act(async () => { metricSwitch.click() })
+    expect(metricSwitch.textContent).toContain('Sipariş')
+    expect(map.querySelector('.reports-map-strip')?.textContent).toContain('İstanbul')
+
+    await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-scope button')].find(button => button.textContent?.includes('Dünya'))!.click() })
     // The world's countries (more outlines than Turkey's 82 provinces).
     await loaded(count => count > 82)
     expect(map.querySelector('.reports-map-detail')).toBeNull()
