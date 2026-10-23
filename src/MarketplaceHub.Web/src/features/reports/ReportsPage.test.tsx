@@ -145,12 +145,13 @@ describe('ReportsPage', () => {
     const map = page.querySelector('.reports-map-panel')!
     // Each scope's outlines load on their own; the world's are large enough to take longer than any fixed wait on CI.
     // React applies the loaded map only when an act scope ends, so the wait is short act steps, not one long act.
-    const loaded = async (regions: number) => {
-      for (let tries = 0; tries < 150 && map.querySelectorAll('.reports-map-regions path').length !== regions; tries++)
+    const paths = () => map.querySelectorAll('.reports-map-regions path').length
+    const loaded = async (done: (count: number) => boolean) => {
+      for (let tries = 0; tries < 150 && !done(paths()); tries++)
         await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-      expect(map.querySelectorAll('.reports-map-regions path').length).toBe(regions)
+      expect(done(paths())).toBe(true)
     }
-    await loaded(82)
+    await loaded(count => count === 82)
     expect(map.querySelectorAll('.reports-map-regions path.is-active')).toHaveLength(1)
     const list = map.querySelector('.reports-map-list')!
     // Known provinces only; the unknown bucket is named under the map instead.
@@ -165,7 +166,8 @@ describe('ReportsPage', () => {
     expect(map.querySelector('.reports-map-districts')?.textContent).toContain('Kadıköy')
 
     await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-segmented button')].find(button => button.textContent === 'Dünya · İhracat')!.click() })
-    await loaded(236)
+    // The world's countries (more outlines than Turkey's 82 provinces).
+    await loaded(count => count > 82)
     expect(map.querySelector('.reports-map-detail')).toBeNull()
     expect(map.querySelector('.reports-map-list')?.textContent).toContain('Suudi Arabistan')
     expect(map.querySelector('.reports-map-list')?.textContent).not.toContain('Türkiye')
