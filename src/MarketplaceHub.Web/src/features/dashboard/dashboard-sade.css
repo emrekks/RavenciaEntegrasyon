@@ -11,7 +11,11 @@
    the whole page past the screen's right edge (narrow desktop windows, 20 Oct 2026). */
 main .rr.rr-dashboard { grid-template-columns: minmax(0, 1fr); }
 main .rr.rr-dashboard > * { min-width: 0; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+/* The operation cards take the width of the products page's summary cards: four to a row, two below 1024 px. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1024px) {
+  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; color: var(--rr-ink); text-decoration: none; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
