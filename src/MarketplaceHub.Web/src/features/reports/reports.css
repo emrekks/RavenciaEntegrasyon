@@ -156,6 +156,20 @@
 .app-shell.stitch-shell main .reports-page .reports-flow li.is-subset.is-missing .reports-flow-value { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page .reports-flow li > small { grid-column: 1 / -1; color: var(--rv-color-subtle); font-size: 11px; line-height: 1.4; }
 .app-shell.stitch-shell main .reports-page .reports-flow li.is-minus > small { padding-left: 12px; }
+/* Beside a taller cost panel the steps spread over the height instead of leaving it empty under them. */
+.app-shell.stitch-shell main .reports-page .reports-flow-panel { grid-template-rows: auto 1fr auto; }
+.app-shell.stitch-shell main .reports-page .reports-flow-panel .reports-flow { align-content: space-between; }
+.app-shell.stitch-shell main .reports-page .reports-flow-ratios { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding-top: 12px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-flow-ratios div { display: grid; gap: 2px; min-width: 0; padding: 8px 10px; background: var(--rv-color-surface-soft); border-radius: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-flow-ratios dt { overflow: hidden; color: var(--rv-color-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-flow-ratios dd { margin: 0; color: var(--rv-color-ink); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* A narrow cost panel puts the donut over its lines, so the notes get the panel's width instead of wrapping beside it. */
+.app-shell.stitch-shell main .reports-page .reports-cost-panel { container-type: inline-size; }
+@container (max-width: 480px) {
+  .app-shell.stitch-shell main .reports-page .reports-donut-wrap { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-donut { width: 112px; height: 112px; }
+  .app-shell.stitch-shell main .reports-page .reports-legend { width: 100%; }
+}
 
 /* Masraf Kalemleri: donut and legend; lines not read yet are greyed. */
 .app-shell.stitch-shell main .reports-page .reports-donut-wrap { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: start; gap: 16px; }

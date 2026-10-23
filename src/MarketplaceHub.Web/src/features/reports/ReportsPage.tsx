@@ -374,6 +374,14 @@ function ProfitFlow({ data, onMore }: { data: ReportSales; onMore: OpenDetail })
     note: `Komisyon öncesi; yalnız maliyeti bilinen ${formatNumber(cost.costedQuantity)} adet (${formatPercent(cost.coverage)}) üzerinden · marj ${formatPercent(cost.grossMargin)}` })
   const max = Math.max(1, now.grossSales)
   const percent = (value: number) => `${Math.max(0, Math.min(100, value / max * 100))}%`
+  // The flow as three shares under it: what came back, what the deductions took of the net revenue, and the margin.
+  const payout = steps.find(step => step.key === 'payout')?.value ?? null
+  const profit = steps.find(step => step.key === 'profit')?.value ?? null
+  const ratios = [
+    { label: 'İade / Satış', value: now.grossSales > 0 ? now.returnedAmount / now.grossSales : null },
+    { label: 'Masraf / Net Ciro', value: payout !== null && now.netRevenue > 0 ? (now.netRevenue - payout) / now.netRevenue : null },
+    { label: cost.profitQuantity > 0 ? 'Net Marj' : 'Brüt Marj', value: profit === null ? null : cost.profitQuantity > 0 ? cost.netMargin : cost.grossMargin }
+  ]
   let level = 0
   return <Panel title="Kâr Akışı" description={description} actions={more} className="reports-flow-panel">
     <ol className="reports-flow">{steps.map(step => {
@@ -390,6 +398,7 @@ function ProfitFlow({ data, onMore }: { data: ReportSales; onMore: OpenDetail })
         {step.note && <small>{step.note}</small>}
       </li>
     })}</ol>
+    <dl className="reports-flow-ratios">{ratios.map(ratio => <div key={ratio.label}><dt>{ratio.label}</dt><dd>{formatPercent(ratio.value)}</dd></div>)}</dl>
   </Panel>
 }
 
@@ -404,7 +413,9 @@ function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
   const cost = data.cost
   const noAmount = now.ordersWithAmount === 0
   const finance = financeCosts(data)
-  const unread = finance ? unreadFeePlatforms(data).map(label => `${label} kargo ve hizmet bedeli`) : unreadCostLines
+  // The lines the report cannot read, in one row: the platforms whose cargo and fees are not read, or the lines.
+  const unreadPlatforms = finance ? unreadFeePlatforms(data) : []
+  const unread = finance ? (unreadPlatforms.length ? `${unreadPlatforms.join(', ')} kargo ve hizmet bedeli` : null) : unreadCostLines.join(', ')
   const lines = [
     ...(finance?.commission && finance.cargo ? [
       { key: 'commission', label: 'Komisyon', value: finance.commission.combined as number | null, missing: 'Bilinmiyor', note: commissionNote(finance) },
@@ -440,7 +451,7 @@ function CostLines({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) 
           <span>{line.label}<small>{line.note}</small></span>
           <strong>{line.value === null ? line.missing : formatTl(line.value)}<small>{line.value !== null && total > 0 ? formatPercent(Math.max(0, line.value) / total) : ''}</small></strong>
         </li>)}
-        {unread.map(label => <li key={label} className="is-unread"><i aria-hidden="true" /><span>{label}</span><strong>{finance ? 'Okunmuyor' : 'Henüz okunmuyor'}</strong></li>)}
+        {unread && <li className="is-unread"><i aria-hidden="true" /><span>{finance ? 'Okunmuyor' : 'Henüz okunmuyor'}<small>{unread}</small></span><strong /></li>}
       </ul>
     </div>
   </Panel>
