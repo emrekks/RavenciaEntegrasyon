@@ -16,6 +16,27 @@ public sealed class ReportGeographyTests
     public void An_order_goes_to_its_storefront_country_else_its_address_country_else_turkey(string? storeFront, string? address, string expected) =>
         Assert.Equal(expected, ReportBuckets.Country(storeFront, address));
 
+    // The names seen in the live store (23 Oct 2026), one company each.
+    [Theory]
+    [InlineData("PTT Kargo Marketplace", "PTT Kargo")]
+    [InlineData("PTT Kargo", "PTT Kargo")]
+    [InlineData("ptt", "PTT Kargo")]
+    [InlineData("PTT Posta", "PTT Kargo")]
+    [InlineData("Aras Kargo Marketplace", "Aras Kargo")]
+    [InlineData("Aras Kargo", "Aras Kargo")]
+    [InlineData("Trendyol Express Marketplace", "Trendyol Express")]
+    [InlineData("hepsiJET", "hepsiJET")]
+    [InlineData("Yurtiçi Kargo", "Yurtiçi Kargo")]
+    [InlineData("YURTICI KARGO", "Yurtiçi Kargo")]
+    [InlineData("FANEX", "FANEX")]
+    [InlineData("Other", "Diğer")]
+    [InlineData("Bilinmeyen Firma Marketplace", "Bilinmeyen Firma")]
+    [InlineData("***", null)]
+    [InlineData("  ", null)]
+    [InlineData(null, null)]
+    public void A_cargo_company_has_one_name_whatever_marketplace_wrote_it(string? raw, string? expected) =>
+        Assert.Equal(expected, ReportBuckets.CargoCompany(raw));
+
     [Fact]
     public void A_cross_border_storefront_order_counts_in_its_country_and_not_in_istanbul()
     {

@@ -239,6 +239,27 @@ public static class ReportBuckets
 
     public static string CountryName(string code) => CountryNames.GetValueOrDefault(code, code);
 
+    // The cargo company as one name whatever marketplace wrote it: Trendyol adds " Marketplace" ("PTT Kargo
+    // Marketplace"), Shopify writes "ptt" or "PTT Posta", n11 and Hepsiburada "PTT Kargo". Null for no company ("", a
+    // masked "***"); "Other" is Diğer. An unlisted company keeps its own name without the suffix.
+    public static string? CargoCompany(string? raw)
+    {
+        var name = raw?.Trim();
+        if (string.IsNullOrEmpty(name) || name.All(character => character == '*')) return null;
+        if (name.EndsWith(" Marketplace", StringComparison.OrdinalIgnoreCase)) name = name[..^" Marketplace".Length].TrimEnd();
+        var folded = name.ToLower(CultureInfo.GetCultureInfo("tr-TR")).Replace('ı', 'i').Replace('ç', 'c').Replace('ş', 's').Replace('ğ', 'g').Replace('ü', 'u').Replace('ö', 'o');
+        foreach (var (word, company) in CargoCompanies)
+            if (folded.Contains(word, StringComparison.Ordinal)) return company;
+        return folded is "other" or "diger" ? "Diğer" : name;
+    }
+
+    private static readonly (string Word, string Company)[] CargoCompanies =
+    [
+        ("trendyol express", "Trendyol Express"), ("hepsijet", "hepsiJET"), ("ptt", "PTT Kargo"), ("aras", "Aras Kargo"),
+        ("yurtici", "Yurtiçi Kargo"), ("mng", "MNG Kargo"), ("surat", "Sürat Kargo"), ("kolay gelsin", "Kolay Gelsin"),
+        ("sendeo", "Sendeo"), ("ups", "UPS"), ("dhl", "DHL"), ("fedex", "FedEx"), ("fanex", "FANEX"), ("logistiq", "LOGISTIQ")
+    ];
+
     // The first of the address's city fields that names a province.
     public static string? Province(params string?[] candidates)
     {
@@ -569,7 +590,7 @@ internal static class ReportBuilder
         var total = rows.Count;
         static double? Hours(DateTimeOffset? from, DateTimeOffset? to) =>
             from is { } start && to is { } end && end >= start && end - start <= TimeSpan.FromDays(60) ? (end - start).TotalHours : null;
-        return rows.GroupBy(x => string.IsNullOrWhiteSpace(x.CargoProvider) ? Unknown : x.CargoProvider.Trim(), StringComparer.OrdinalIgnoreCase)
+        return rows.GroupBy(x => ReportBuckets.CargoCompany(x.CargoProvider) ?? Unknown, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var ship = group.Select(x => Hours(byOrder[x.OrderId].Order.OrderedAt, x.ShippedAt)).Where(x => x is not null).Select(x => x!.Value).ToList();
