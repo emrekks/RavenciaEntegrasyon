@@ -28,6 +28,8 @@ const metricOptions: Array<SwitchOption<Metric>> = [
   { key: 'revenue', text: 'Ciro', icon: 'trend' }, { key: 'orders', text: 'Sipariş', icon: 'orders' }, { key: 'basket', text: 'Sepet Ort.', icon: 'bag' }
 ]
 const lira = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })
+// The map's labels: amounts kept short ("₺55,6 B") so they fit their area.
+const liraShort = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', notation: 'compact', maximumFractionDigits: 1 })
 const provinceCount = 81
 
 // A province name as the map and the report both write it, without Turkish letters and marks ("Hakkâri" = "Hakkari").
@@ -190,8 +192,8 @@ export function SalesMap({ data }: { data: ReportSales }) {
   const regionOfArea = new Map(map ? map.regions.flatMap(region => { const area = areaOf(region); return area ? [[area.key, region] as const] : [] }) : [])
   const labels = placeLabels(areas.flatMap((area, index) => {
     const region = regionOfArea.get(area.key)
-    if (!region || area.view.orders === 0) return []
-    return [{ key: area.key, x: region.x, y: region.y, name: shortNames[area.key] ?? area.group.label, count: formatCount(area.view.orders), dark: dark(area), zone: area.zone, named: index < namedAreas }]
+    if (!region || area.view.orders === 0 || area.value === null) return []
+    return [{ key: area.key, x: region.x, y: region.y, name: shortNames[area.key] ?? area.group.label, count: metric === 'orders' ? formatCount(area.value) : liraShort.format(area.value), dark: dark(area), zone: area.zone, named: index < namedAreas }]
   }), labelSize)
 
   return <section className="reports-panel reports-map-panel" aria-labelledby="reports-map-title">
@@ -236,7 +238,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
               })}
             </g>}
             <g className="reports-map-labels" aria-hidden="true">
-              {labels.map(label => <text key={label.key} x={label.x} y={label.y} className={`${label.dark ? 'is-on-dark' : ''}${focusZone !== null && label.zone !== focusZone ? ' is-dim' : ''}` || undefined} style={{ fontSize: labelSize }}>
+              {labels.map(label => <text key={label.key} x={label.x} y={label.y} className={`${label.dark ? 'is-on-dark' : ''}${focusZone !== null && label.zone !== focusZone ? ' is-dim' : ''}` || undefined} style={{ fontSize: labelSize, strokeWidth: 2.5 * unit }}>
                 {label.name && <tspan x={label.x} dy={-labelSize * 0.35} className="is-name">{label.name}</tspan>}
                 <tspan x={label.x} dy={label.name ? labelSize * 1.15 : labelSize * 0.35}>{label.count}</tspan>
               </text>)}
