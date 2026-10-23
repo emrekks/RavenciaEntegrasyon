@@ -3336,8 +3336,30 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             }
 
             await using (var db = fixture.CreateContext())
-            {
                 Assert.Equal("ACTIVE", (await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.State);
+
+            // Hours of silence with no new order is a quiet store, not a broken webhook.
+            var now = fixture.TimeProvider.GetUtcNow();
+            await using (var db = fixture.CreateContext())
+                await db.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteUpdateAsync(row => row.SetProperty(x => x.LastReceivedAt, now.AddHours(-7)));
+            await using (var db = fixture.CreateContext())
+            {
+                var silent = (await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!;
+                Assert.Equal("ACTIVE", silent.State);
+                Assert.Contains("yeni sipariş gelmedi", silent.Message, StringComparison.Ordinal);
+            }
+
+            // An order the regular read brought in after the last notification, with none since: notifications stopped.
+            var unnotified = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "hb-unnotified-1", false, now);
+            await using (var db = fixture.CreateContext())
+            {
+                db.Orders.Add(unnotified);
+                await db.SaveChangesAsync();
+                await db.Orders.Where(row => row.Id == unnotified.Id).ExecuteUpdateAsync(row => row.SetProperty(x => x.CreatedAt, now.AddHours(-5)));
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal("QUIET", (await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.State);
                 Assert.Equal("OFF", (await Service(db).DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None)).Value!.State);
             }
             Assert.Null(port.DeletedId);

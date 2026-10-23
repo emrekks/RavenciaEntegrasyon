@@ -51,13 +51,18 @@ public sealed class InstantNotificationService(
             // instead of waiting for Hepsiburada.
             if (connection.Status is not ("ACTIVE" or "VERIFIED"))
                 return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "CONNECTION_INACTIVE", "Bağlantı aktif değil; Hepsiburada'dan gelen bildirimler bağlantı etkinleşene kadar reddediliyor. Bağlantıyı kontrol edip etkinleştirin.", cancellationToken));
-            // Nothing to ask Hepsiburada: the first notification shows that it has set the address up.
-            var quiet = subscription.LastReceivedAt is not { } last || timeProvider.GetUtcNow() - last > WebhookPollingPolicy.SilenceLimit;
-            var manualState = subscription.LastReceivedAt is null ? "WAITING" : quiet ? "QUIET" : "ACTIVE";
+            // Nothing to ask Hepsiburada: the first notification shows that it has set the address up. After that,
+            // silence alone says nothing (a store without new orders sends nothing, 23 Oct 2026 on SIT): only an order
+            // the regular read brought in with no notification since shows the notifications have stopped.
+            var now = timeProvider.GetUtcNow();
+            var missed = await ScheduledJobProducer.UnnotifiedOrderAsync(db, tenantId, connectionId, subscription.LastReceivedAt, now, cancellationToken);
+            var silent = subscription.LastReceivedAt is { } last && now - last > WebhookPollingPolicy.SilenceLimit;
+            var manualState = subscription.LastReceivedAt is null ? "WAITING" : missed ? "QUIET" : "ACTIVE";
             var manualMessage = manualState switch
             {
                 "WAITING" => "Bilgiler hazır; Hepsiburada adresi tanımlayıp ilk bildirimi gönderene kadar siparişler düzenli kontrolle gelir.",
-                "QUIET" => "Son saatlerde Hepsiburada'dan bildirim gelmedi; siparişler düzenli kontrolle gelmeye devam ediyor.",
+                "QUIET" => "Son bildirimden sonra gelen sipariş için Hepsiburada'dan bildirim gelmedi; siparişler düzenli kontrolle gelmeye devam ediyor. Hepsiburada'dan webhook tanımını kontrol etmesini isteyin.",
+                _ when silent => "Bildirimler çalışıyor; son bildirimden bu yana yeni sipariş gelmedi. Sipariş kontrolü yedek olarak 8 dakikada bir yapılıyor.",
                 _ => "Bildirimler geliyor; sipariş kontrolü yedek olarak 8 dakikada bir yapılıyor."
             };
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, manualState, manualMessage, cancellationToken));
