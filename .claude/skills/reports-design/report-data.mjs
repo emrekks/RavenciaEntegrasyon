@@ -40,6 +40,9 @@ const report = {
 
 
 const shares = { TRENDYOL: [0.6, 0], HEPSIBURADA: [0.25, 3], N11: [0.1, 7], SHOPIFY: [0.05, 11] }
+// The previous period's account, as the server reads it: its commission and cost on the previous sales, the same statement shape.
+const pc = Math.round(p.netRevenue * 0.2)
+report.previousAccount = { commission: { coveredRevenue: p.netRevenue, coverage: 0.95, estimatedCommission: pc, estimatedPayout: p.netRevenue - pc, effectiveRate: 0.2 }, cost: { ...report.cost, keptQuantity: p.keptQuantity, coverage: 0.86, costTotal: Math.round(p.netRevenue * 0.4), profitCoverage: 0.85 }, costs: { ...report.costs, commission: { ...report.costs.commission, combined: pc }, cargo: { ...report.costs.cargo, combined: Math.round(p.orders * 70) } } }
 report.platformHeatmaps = Object.entries(shares).map(([code, [share, shift]]) => ({ platformCode: code, heatmap: report.heatmap.map(row => row.map((value, hour) => Math.round(value * share * 2 * (0.5 + ((hour + shift) % 24) / 24)))) }))
 report.heatmap = Array.from({ length: 7 }, (_, d) => Array.from({ length: 24 }, (_, h) => report.platformHeatmaps.reduce((s, p) => s + p.heatmap[d][h], 0)))
 export { report }

@@ -47,7 +47,12 @@ public sealed record ReportSalesView(
     ReportGeographyView Geography,
     IReadOnlyList<ReportPlatformHeatmapView>? PlatformHeatmaps = null,
     IReadOnlyList<ReportProductView>? Rising = null,
-    IReadOnlyList<ReportProductView>? Falling = null);
+    IReadOnlyList<ReportProductView>? Falling = null,
+    ReportPreviousAccountView? PreviousAccount = null);
+
+// The previous period's commission, product cost and Trendyol statement, read the same way as the period's, so the
+// overview can compare its profit, margin and profit over cost with the period before.
+public sealed record ReportPreviousAccountView(ReportCommissionView Commission, ReportCostView Cost, ReportCostsView Costs);
 
 // One platform's orders by weekday (Monday first) and hour, as Heatmap; summed over platforms they make Heatmap.
 // Rising and Falling (on ReportSalesView): the products whose units sold rose or fell most against the previous period.

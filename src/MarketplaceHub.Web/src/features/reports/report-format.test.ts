@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { change, formatPercent, moneyOrMissing, reportQuery, sortRows, toCsv } from './report-format'
 
 describe('report formatting', () => {
-  it('compares counts as a percentage, rates in points, and not at all from an empty previous period', () => {
+  it('compares counts as a percentage, rates by their difference written in per cent, and not at all from an empty previous period', () => {
     expect(change(120, 100)).toEqual({ text: '+%20', direction: 'up' })
     expect(change(80, 100)).toEqual({ text: '−%20', direction: 'down' })
     expect(change(5, 0)).toBeNull()
     expect(change(0, 0)).toEqual({ text: '%0', direction: 'flat' })
-    expect(change(0.05, 0.03, 'rate')).toEqual({ text: '+2,0 puan', direction: 'up' })
+    expect(change(0.05, 0.03, 'rate')).toEqual({ text: '+%2,0', direction: 'up' })
     expect(change(null, 3)).toBeNull()
   })
 

@@ -52,7 +52,13 @@ const report: ReportSales = {
     countries: [group('TR', 'Türkiye', { orders: 3 }), group('SA', 'Suudi Arabistan', { orders: 1, netRevenue: 300, grossSales: 300, split: [group('TRENDYOL', 'TRENDYOL', { netRevenue: 300 })] })],
     previousCities: [group('İstanbul', 'İstanbul', { netRevenue: 50 })], previousCountries: [], abroadOrders: 1
   },
-  dataNotes: ['1 siparişte tutar yok (SHOPIFY 1).']
+  dataNotes: ['1 siparişte tutar yok (SHOPIFY 1).'],
+  // The previous period: 350 of sales, 100 back, 30 of commission and 60 of cost leave 160 of profit.
+  previousAccount: {
+    commission: { coveredRevenue: 150, coverage: 0.75, estimatedCommission: 30, estimatedPayout: 120, effectiveRate: 0.2 },
+    cost: { keptQuantity: 4, costedQuantity: 2, coverage: 0.5, costTotal: 60, costedRevenue: 150, grossProfit: 90, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 150, profitCost: 60, profitCommission: 30, netProfit: 60, netMargin: 0.4, costedVariants: 1 },
+    costs: { source: 'estimate', lastSyncedAt: null, coveredFrom: null, coveredThrough: null, financeOrders: 2, settledOrders: 0, coverage: null, realCostTotal: null, commission: null, cargo: null, lines: [], channels: [], products: [] }
+  }
 }
 
 // The same period with Trendyol's account statement read: one settled order, one order's cargo billed, two not yet.
@@ -129,6 +135,14 @@ describe('ReportsPage', () => {
     expect(figures[3]).toContain('%158,8')
     expect(figures[4]).toContain('+%100')
     expect(figures[5]).toContain('5 satılan adetten 1 iade düşüldü')
+    // Every figure against the previous period: the profit against its 160, the margin against 45,7 % (a rate's change
+    // written in per cent, not points); every change on its own line, so the notes under them start level.
+    expect(figures[1]).toContain('−%20,6')
+    expect(figures[1]).toContain('Önceki dönem ₺160,00')
+    expect(figures[2]).toContain('−%9,4')
+    expect(figures[2]).toContain('Önceki dönem %45,7')
+    expect(page.querySelectorAll('.reports-kpis > div > .reports-kpi-change')).toHaveLength(6)
+    expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('puan')
     // Masraf Kalemleri: the account's deductions and the product cost, largest first, 223 in all (63,7 % of the sales);
     // what is not read without Trendyol's statement is "—", never ₺0.
     const card = page.querySelector('.reports-card-costlines')!
@@ -182,18 +196,27 @@ describe('ReportsPage', () => {
     expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Kargo − ₺226,68', '− Pazaryeri Masrafları − ₺54,00', '− Stopaj − ₺1,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Zarar − ₺111,68'])
     expect(page.querySelector('.reports-bridge > li.is-end.is-negative')).not.toBeNull()
     expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('Shopify kargo ve hizmet bedeli')
-    // What the estimate leaves out is written under the bridge as well, for a phone that has no pointer.
-    expect(page.querySelector('.reports-card-bridge .reports-note')?.textContent).toContain('düşülmeyenler: Shopify kargo ve hizmet bedeli')
-    expect(page.querySelector('.reports-card-bridge .reports-note')?.textContent).toContain('%50,0 kadarı için girili')
+    // What the estimate leaves out is written under the bridge as well, for a phone that has no pointer: the cost
+    // entered for half the units, and Shopify's cargo and fees not taken off.
+    const gaps = texts(page, '.reports-card-bridge .reports-bridge-gaps > div')
+    expect(gaps).toEqual(['Maliyeti GiriliSatılan adetlerin payı%50,0', 'Kargo ve Hizmet BedeliDüşülmediShopify'])
     const loss = page.querySelectorAll('.reports-kpis > div')[1]
     expect(loss.classList.contains('is-bad')).toBe(true)
     expect(loss.textContent).toContain('Tahmini Zarar')
     expect(loss.textContent).toContain('− ₺111,68')
+    // The previous period read no statement, so its profit is not set against this one.
+    expect(loss.textContent).toContain('Önceki dönemde veri yok')
     expect(metricRows(page, 'ads')[0]).toBe('Toplam Reklam Harcaması₺0,00')
     expect(metricRows(page, 'order')[2]).toBe('Sipariş Başına Kargo₺75,56')
 
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
     expect(selectedTab(page)).toContain('Kârlılık')
+    // The strip's commission is the account's (Trendyol's 41,50), the one the profit account under it takes off; no
+    // second "what is left" figure on another basis.
+    const commission = page.querySelector('.reports-kpis > div')!
+    expect(commission.querySelector('.reports-kpi-label')?.textContent).toBe('Komisyon')
+    expect(commission.textContent).toContain('₺41,50')
+    expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('Hakediş')
     expect(body(page)).toContain('Trendyol Cari Hesap Kalemleri')
     expect(body(page)).toContain('Masraf Değil')
     // Another marketplace is picked above the statement; its statement is not read yet, so the card says so.
@@ -293,7 +316,7 @@ describe('ReportsPage', () => {
   it.each([
     ['products', 'Ürünler', 'En Çok Satan 20 Ürün'], ['brands', 'Ürünler', 'Markalar'], ['returns', 'Operasyon', 'İade Nedenleri'], ['cancellations', 'Operasyon', 'Platformlara Göre İptaller'],
     ['cargo', 'Operasyon', 'Kargo Firmaları'], ['time', 'Müşteriler', 'Gün ve Saate Göre Siparişler'], ['customers', 'Müşteriler', 'Tekil Müşteri'],
-    ['stock', 'Operasyon', 'En Çok Satanların Stoğu'], ['cost', 'Kârlılık', 'Kapsam'], ['invoices', 'Operasyon', 'Platformlara Göre Fatura Durumu']
+    ['stock', 'Operasyon', 'En Çok Satanların Stoğu'], ['cost', 'Kârlılık', 'Maliyeti Girili Satış'], ['invoices', 'Operasyon', 'Platformlara Göre Fatura Durumu']
   ])('opens the %s breakdown on its tab', async (key, tab, heading) => {
     const page = await open(`?detail=${key}`)
     expect(selectedTab(page)).toContain(tab)

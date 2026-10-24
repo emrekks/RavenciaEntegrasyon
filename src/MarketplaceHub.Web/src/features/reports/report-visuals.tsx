@@ -1,5 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { UiIcon } from '../../shared/components'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 // The overview's charts. Each plays once, when its card first comes into view: bars and gauges grow from zero to their
 // value and figures count up, then everything stays still. Without IntersectionObserver (tests, old browsers) or with
@@ -45,14 +44,6 @@ export function CountUp({ value, format, active = true }: { value: number; forma
   return <><span aria-hidden="true">{format(animate ? shown : value)}</span><span className="reports-sr">{format(value)}</span></>
 }
 
-// The "?" button: the explanation shows on hover and on keyboard focus.
-export function InfoTip({ label, text }: { label: string; text: string }) {
-  const id = useId()
-  return <span className="reports-info">
-    <button type="button" aria-label={`${label} nasıl hesaplanır`} aria-describedby={id}><UiIcon name="help" size={14} /></button>
-    <span role="tooltip" id={id}>{text}</span>
-  </span>
-}
 
 // A round top for an axis: 1, 2, 2.5 or 5 times a power of ten, at least the largest value.
 function niceMax(value: number) {

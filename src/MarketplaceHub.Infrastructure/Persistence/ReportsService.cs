@@ -60,18 +60,25 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var previousOrders = await OrderRowsAsync(tenantId, allowedIds, previous, cancellationToken);
         var previousLines = await LineRowsAsync(tenantId, allowedIds, previous, cancellationToken);
         var previousClaims = await ClaimRowsAsync(tenantId, allowedIds, previous, cancellationToken);
+        // The previous period's addresses, commission and statement too, so its provinces, countries and profit are worked
+        // out the way the period's are (the map's and the strips' change against the previous period).
+        var previousOrderIds = previousOrders.Select(x => x.Id).ToArray();
+        var previousOrderExtras = await OrderExtrasAsync(tenantId, previousOrderIds, cancellationToken);
+        var previousLineExtras = await LineExtrasAsync(tenantId, previousOrderIds, cancellationToken);
 
-        // Uploaded commission tariffs whose weeks touch the period: the fallback rate for a line that carries none.
+        // Uploaded commission tariffs whose weeks touch the period or the previous one: the fallback rate for a line that
+        // carries none.
         var tariffRows = await (from tariff in db.CommissionTariffs.AsNoTracking()
                                 join row in db.CommissionTariffRows.AsNoTracking() on new { tariff.TenantId, TariffId = tariff.Id } equals new { row.TenantId, row.TariffId }
                                 where tariff.TenantId == tenantId && allowedIds.Contains(tariff.ConnectionId)
-                                    && tariff.PeriodEnd > current.Start && tariff.PeriodStart < current.End
+                                    && tariff.PeriodEnd > previous.Start && tariff.PeriodStart < current.End
                                 select new { tariff, row }).ToListAsync(cancellationToken);
         var tariffs = tariffRows.Count == 0 ? null : new ReportCommissionTariffs(tariffRows.Select(x => (x.tariff, x.row)));
         var finance = await FinanceAsync(tenantId, allowed, orders, current, cancellationToken);
         var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, tariffs, finance);
-        var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, new Dictionary<Guid, ReportOrderExtra>(), previousLines,
-            new Dictionary<Guid, ReportLineExtra>(), previousClaims, [], names, query.IncludeTest);
+        var previousFinance = await FinanceAsync(tenantId, allowed, previousOrders, previous, cancellationToken);
+        var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, previousOrderExtras, previousLines,
+            previousLineExtras, previousClaims, [], names, query.IncludeTest, tariffs, previousFinance);
         var stockVariants = ReportBuilder.StockCandidates(input);
         var stock = stockVariants.Length == 0
             ? new Dictionary<Guid, decimal>()
