@@ -2687,7 +2687,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     public async Task IdempotencyMiddleware_SavesOnlyTheKeyAfterARefusal()
     {
         var tenant = NewTenant("middleware-refusal");
-        const string path = "/api/v1/products/costs/apply";
+        const string path = "/api/v1/products/transfer/apply";
         const string key = "middleware-refusal-key";
 
         await using var db = fixture.CreateContext();

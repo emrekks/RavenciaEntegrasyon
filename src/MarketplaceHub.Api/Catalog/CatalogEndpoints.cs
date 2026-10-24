@@ -25,7 +25,7 @@ public static class CatalogEndpoints
 
         api.MapHepsiburadaProductMatchEndpoints();
         api.MapCommissionTariffEndpoints();
-        api.MapProductCostEndpoints();
+        api.MapProductTransferEndpoints();
 
         api.MapGet("/catalog/categories", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListCategoriesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));

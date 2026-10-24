@@ -284,7 +284,7 @@ type VariantDraft = {
   // Empty (null) until a cost is entered: an empty cost is "not known", never 0.
   costPrice: number | null
   // The cost this row was loaded with (edit page only): the cost is saved only when the row differs from it, so an
-  // untouched row never writes over a cost set elsewhere meanwhile (Maliyet Excel).
+  // untouched row never writes over a cost set elsewhere meanwhile (ürün içe aktarma).
   loadedCostPrice?: number | null
   mediaRefs: string[]
   // The on-hand stock this row was loaded with (edit page only): stock is saved only when the row differs from it,

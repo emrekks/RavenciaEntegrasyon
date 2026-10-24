@@ -1,4 +1,4 @@
-/* Maliyet Excel dialog on the products page: template step, upload step, preview and result. */
+/* Ürün içe / dışa aktarma dialog on the products page: export step, upload step, preview and result. */
 @layer features {
   .pci-modal .rr-m-body { display: grid; gap: var(--rv-space-3); min-width: 0; }
 
@@ -6,7 +6,6 @@
   .pci-hint > .rr-ico { flex: none; color: var(--rv-color-warning); }
   .pci-hint > span { flex: 1 1 260px; min-width: 0; }
   .pci-hint b { font-weight: 600; }
-  .pci-hint .rr-btn { min-height: 36px; }
 
   .pci-steps { display: grid; gap: var(--rv-space-3); margin: 0; padding: 0; list-style: none; }
   .pci-step { display: flex; gap: 12px; min-width: 0; padding: 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 14px; }
@@ -17,8 +16,9 @@
   .pci-step-b > p b { color: var(--rv-color-ink); font-weight: 600; }
   .pci-step-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
   .pci-step-acts .rr-btn { min-height: 36px; }
-  .pci-check { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 13px; cursor: pointer; }
-  .pci-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); }
+  .pci-field { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 13px; }
+  .pci-select { min-width: 220px; height: 36px; min-height: 0; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; }
+  .pci-select:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 
   .pci-drop { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; color: var(--rv-color-muted); text-align: center; background: var(--rv-color-surface); border: 1px dashed var(--rv-color-border-strong); border-radius: 12px; transition: border-color 120ms ease, background-color 120ms ease; }
   .pci-drop > b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
@@ -51,6 +51,10 @@
   .pci-num, .pci-money { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .pci-num { color: var(--rv-color-muted); }
   .pci-money { color: var(--rv-color-ink); }
+  .pci-old { color: var(--rv-color-muted); text-decoration: line-through; }
+  .pci-arrow { margin: 0 6px; color: var(--rv-color-muted); }
+  .pci-same { color: var(--rv-color-muted); }
+  .pci-clear { color: var(--rv-color-warning); }
 
   .pci-badge { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; white-space: nowrap; }
   .pci-badge.is-ok { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
@@ -68,5 +72,7 @@
     .pci-step { padding: 12px; }
     .pci-step-acts { align-items: stretch; flex-direction: column; }
     .pci-step-acts .rr-btn { justify-content: center; }
+    .pci-field { align-items: stretch; flex-direction: column; gap: 4px; }
+    .pci-select { width: 100%; min-width: 0; }
   }
 }

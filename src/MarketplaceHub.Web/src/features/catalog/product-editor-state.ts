@@ -50,7 +50,7 @@ export function editorStockUpdates(
 
 // The cost fields of an existing variant's update. Only a cost the user changed is sent (null: leave the stored cost
 // as it is), together with the cost the row was loaded with (null: it was empty). The server refuses the save when
-// the stored cost is no longer that one, so a cost set meanwhile elsewhere (Maliyet Excel) is never overwritten unseen.
+// the stored cost is no longer that one, so a cost set meanwhile elsewhere (ürün içe aktarma) is never overwritten unseen.
 export function editorVariantCostUpdate(row: { costPrice: number | null; loadedCostPrice?: number | null }): { costPrice: number | null; loadedCostPrice?: number | null } {
   if (row.costPrice == null || row.costPrice === row.loadedCostPrice) return { costPrice: null }
   return { costPrice: row.costPrice, loadedCostPrice: row.loadedCostPrice ?? null }
