@@ -1,6 +1,13 @@
 # Pazaryeri Kargo Tarifeleri ve Hizmet Bedelleri 2026
 
-Bölüm 1–5 kargo tarifeleri ve baremler, bölüm 6 hizmet ve platform bedelleri.
+Belgenin bölümleri:
+- 1–5: pazaryerlerinin kargo tarifeleri ve baremleri.
+- 6: hizmet ve platform bedelleri.
+- 7: Shopify.
+- 8: komisyonun kaynağı.
+- 9: kargoyu kim öder.
+- 10: iade, iptal ve indirim.
+- 11: kesintilerin KDV'si.
 
 24 Ekim 2026'da derlendi. Kaynaklar:
 - herkese açık resmî sayfalar ve PDF'ler;
@@ -359,6 +366,98 @@ Bu bölüm, komisyon ve kargo tarifesi dışında sipariş ya da satış başın
 - **Matrah:** KDV hariç satış bedeli. Komisyon ve kargo matrahtan düşülmez.
 - **Kesinti:** Pazaryeri hakedişten keser; faturada görünmez. Satıcı geçici ve yıllık beyanda mahsup eder.
 - Mikro ihracat satışlarında stopaj olup olmadığına dair açık bir kaynak yok. Panel stopajı yalnızca yurt içi satışa uyguluyor.
+
+## 7. Shopify (kendi mağazamız)
+
+**Mağazamızın ayarları (24 Ekim 2026, mağaza sahibinden):**
+- Plan: en düşük ücretli paket (Basic).
+- Kargoyu satıcı öder, ortalama 120 TL.
+- İade kargosunu müşteri öder.
+
+| Kalem | Tutar | Vergi | Kaynak / güven |
+|---|---|---|---|
+| Basic plan | Aylık ödemede $27, yıllık ödemede ayda $19 | USD faturalanır. Türkiye KDV'sinin faturada nasıl gösterildiği Shopify'ın Billing sayfasından bakılmalı. | R (shopify.com/tr/pricing, 24 Ekim 2026) |
+| Shopify işlem ücreti (Basic) | Harici ödeme altyapısıyla alınan her ödemenin **%2'si** | — | R. Shopify Payments Türkiye'de yok, bu yüzden her kartlı ödemede alınır. |
+| Havale/EFT, kapıda ödeme | Shopify işlem ücreti **alınmaz** | — | R (manuel ödeme) |
+| Ödeme kuruluşu komisyonu | iyzico liste fiyatı %4,29 + işlem başına 0,25 TL; PayTR %2,19'dan başlayan teklif; Param %2,49; taksitte banka vade farkı | KDV değil **%5 BSMV**; iyzico liste fiyatı BSMV dahil | iyzico için R; diğerleri D. Gerçek oran sözleşmeye göre değişir. |
+| Kargo | Ortalama **120 TL** sipariş başına (satıcı öder) | Faturaya göre KDV dahil kabul edildi | Mağaza sahibi |
+| İade kargosu | Müşteri öder (mağaza ayarı) | — | Mağaza sahibi. **Yasal not:** cayma hakkıyla yapılan iadede kargo masrafı satıcıya aittir. "Tüketici öder" değişikliği 24 Mayıs 2025'te geri alındı (B). Müşteriden kargo bedeli alınan iadeler hukuken itiraza açıktır. |
+| E-ticaret stopajı | **Uygulanmaz.** Stopajı aracı hizmet sağlayıcılar (pazaryerleri) keser. Kendi sitesinden kendi ödeme altyapısıyla satan satıcıda kesen yoktur. | — | B/D (Paraşüt, 30 Haziran 2026). Mevzuatta açık bir istisna cümlesi yok; sonuç kesintiyi yapacak kişinin tanımından çıkıyor. |
+| Uygulamalar | E-fatura uygulaması ayda yaklaşık $5–9 (ör. Hızlı BT $8,99) + entegratör kontörü; PayTR uygulaması ücretsiz | USD | R/D |
+
+**Örnek:** Basic planda iyzico liste fiyatıyla kartlı tek çekimde satışın yaklaşık **%6,29'u + 0,25 TL** kesilir (iyzico %4,29 + Shopify %2). Buna sipariş başına 120 TL kargo eklenir.
+
+**Panelde:** Shopify siparişlerinde komisyon alanı yok. Ödeme yöntemi (kart mı havale mi) panel tarafından henüz okunmuyor. Kâr hesabı için yüzde ve kargo tutarının panele ayar olarak girilmesi gerekir.
+
+## 8. Komisyonun kaynağı
+
+Komisyon tarifesi bu belgede tablo olarak yok. Oranlar kategoriye ve kampanyaya göre değişiyor, panel komisyonu siparişten okuyor.
+
+Canlı veride son 60 günün sipariş satırlarında hangi alanların dolu olduğu:
+
+| Pazaryeri | Sipariş satırında | Satır sayısı | Panele girilen tarife | KDV | Tipik aralık | Oranların yayımlandığı yer |
+|---|---|---|---|---|---|---|
+| Trendyol | `commission`: **oran** (ör. 13) | 2.494 / 2.538 satır | 1 tarife, 633 satır (haftalık .xlsx) | **KDV dahil**, üstüne KDV yok (R) | %5–27 | Herkese açık değil; partner panelinde "Ürün Komisyon Tarifeleri" |
+| Hepsiburada | `commission.amount`: birim başına **tutar**, ayrıca `commissionRate` (ör. 18) | 226 / 226 satır | yok | Tutar KDV dahil birim fiyatın oranı (2 × 273 TL'de %18 = 49,14). Üstüne KDV eklenip eklenmediği komisyon faturasıyla doğrulanmalı. | %5–25 | Yalnızca satıcı panelinde |
+| N11 | `commissionRate`: **oran**; kampanyada `sellerCampaignCommissionRate` düşülür | 27 / 27 satır | yok | **KDV dahil** (R) | %5,5–21 | magazadestek.n11.com/s/komisyon-oranlari |
+| PTT AVM | `Komisyon`: **oran** (ör. 20) | 4 / 4 satır | yok | 2022 PDF'ine göre KDV dahil (D) | %5–15 | pttavm.com/lp/magaza-komisyonu |
+| Pazarama | **Yok.** Komisyon sipariş servisinde değil, finans servisinde (`order/paymentAgreement` → `commissionAmount`) | 0 / 6 satır | yok | **KDV hariç, %20 KDV eklenir** (R) | %0–19 | isortagim.pazarama.com/static-pages/pazarama-comission-rate-list |
+| Shopify | Komisyon yok; ödeme kuruluşu ve Shopify işlem ücreti var (bölüm 7) | — | — | BSMV | — | — |
+
+Doğrulama: Trendyol'da 69 siparişin gerçek komisyonu (12.832,12 TL), satırdaki oranla hesaplanan tutarla (12.831,93 TL) neredeyse aynı.
+
+## 9. Kargoyu kim öder
+
+| Pazaryeri | Kural | Güven |
+|---|---|---|
+| Trendyol | Satıcı, anlaşmalı modelde barem ya da desi tarifesini öder. Alıcıdan alınan kargo ücreti (Plus/Pass vb.) Trendyol'da kalır, satıcıya geçmez. Kendi kargo anlaşmasında faturayı taşıyıcı keser ve barem uygulanmaz. | R; alıcı payı için D |
+| Hepsiburada | Barem 400 TL altında, yalnızca hepsiJET ve Sürat ile. "Satıcı Öder" ve "Mağaza Hesabı" modelleri baremde değil. Alıcıdan alınan kargo payının nereye gittiğine dair 2026 kaynağı yok. | Barem için B, alıcı payı için D |
+| N11 | Ücretsiz kargo eşiğini **N11 belirler** (300 TL), satıcı değiştiremez. Şartlı Ödeme'de eşiğin altında kargoyu alıcı, üstünde mağaza öder. N11'e göre bu kalemler satıcı için "nötr" faturalanır (POP/SPP). | R |
+| Pazarama | Satıcı barem ya da desi tarifesini öder. Plus üyelerine kargo bedava kampanyası (50 TL üstü) Pazarama'nın. | R |
+| PTT AVM | Siparişte `KargoKimden` alanı geliyor. Canlıdaki 4 satırın hepsinde `tedarikci_indirimi`: kargoyu satıcı (tedarikçi) karşılıyor. Eşik kaynakları çelişiyor. | Alan için kendi verimiz, eşik için D |
+| Shopify | Satıcı öder, ortalama 120 TL (bölüm 7). | Mağaza sahibi |
+
+## 10. İade, iptal ve indirim
+
+**Genel yasal kural:**
+- Cayma hakkıyla yapılan iadede kargo masrafı satıcıya aittir. 1 Ocak 2026'da yürürlüğe girmesi planlanan "tüketici öder" değişikliği 24 Mayıs 2025'te geri alındı (B).
+- Ayıplı ürünün iade masrafı da satıcıya aittir.
+
+**İade ve iptal:**
+
+| Pazaryeri | Komisyon geri döner mi | İade kargosu | Gidiş kargosu | Hizmet bedeli | Stopaj | Güven |
+|---|---|---|---|---|---|---|
+| Trendyol | **Evet.** Sonraki komisyon faturasından düşülür; ekstrede Return satırında "+" görünür. Teslimattan önce iptal edilen siparişte finans kaydı hiç oluşmaz. | Satıcı öder; gidişle aynı faturada ayrı satır | Geri verilmez | Platform bedeli geri verilmez, iade paketinden de alınmaz. Uluslararası bedel iptal ve iadede alınmaz. | İptal edilen stopaj ekstrede ayrı satır olarak geri gelir | R |
+| Hepsiburada | Bloglara göre evet; tam mı kısmi mi olduğu belirsiz | Cayma ve ayıplı üründe satıcı öder | Satıcıya faturalanır | Bulunamadı | Bulunamadı | B/D |
+| N11 | **Evet.** Sonraki komisyon faturasında "İade" olarak eksi tutar görünür. | Cayma iadesinde mağaza öder. Kapıda iade ya da teslim edilemeyen gönderide kargonun %50'si alınır. | Bulunamadı | Bulunamadı | Bulunamadı | R |
+| Pazarama | Onaylanan iadede evet | Satıcı öder (alıcı ücretsiz gönderir). İkinci dağıtım ve iade sevkinde %50. | Bulunamadı | Bulunamadı | Bulunamadı | R/D |
+| PTT AVM | Bulunamadı | Bulunamadı | Bulunamadı | Bulunamadı | Bulunamadı | — |
+| Shopify | Komisyon yok. Ödeme kuruluşunun iade işleminde komisyonu geri verip vermediği sözleşmeye bağlı. | Müşteri öder (mağaza ayarı; yasal not bölüm 7'de) | Satıcıda kalır | — | — | Mağaza sahibi |
+
+Stopaj iadesi, genel kural (D): aynı ay içinde dönen iadede stopaj oluşmaz. Sonraki aya kalan iadede kesinti geçerli kalır ve satıcı bunu beyanda mahsup eder.
+
+**İndirim ve kupon:**
+
+| Pazaryeri | Satıcının indirimi | Pazaryerinin indirimi | Komisyon matrahı | Güven |
+|---|---|---|---|---|
+| Trendyol | Satıcı indirimi (`lineItemSellerDiscount`) ve satıcı kuponu hakedişten düşülür. | Trendyol kuponu ve platform kampanyaları (`lineItemTyDiscount`) satıcının gelirini etkilemez. Trendyol'un karşıladığı kuponda satıcı Trendyol'a fatura keser ve tutarı tahsil eder. | Komisyona esas fiyattan **yalnızca satıcının indirimi** düşülür. Uluslararası bedel de Trendyol indirimleri hariç tutularak hesaplanır. | R |
+| Hepsiburada | `merchantDiscount` alanında geliyor | 2026 için resmî bir kural yok | Bulunamadı | D |
+| N11 | `sellerDiscount`, `sellerCouponDiscount` | N11'in indirimi, puanı ve kuponu (`mallDiscount`) satıcının fiyatını etkilemez; maliyeti N11'e yazılır. | Kampanyada komisyon oranı `commissionRate − sellerCampaignCommissionRate` | R |
+| Pazarama | Tek `discountAmount` alanı var; kimin karşıladığı ayrılmıyor | Plus kargo bedava Pazarama'nın | Bulunamadı | D |
+| PTT AVM | `IndirimTedarikci` (satıcı) | `IndirimPttavm` (PTT AVM) ayrı alanda geliyor | Bulunamadı | Alanlar kendi verimiz |
+
+## 11. Kesintilerin KDV'si ve faturalar
+
+| Pazaryeri | Komisyon | Kargo | Hizmet / platform bedeli | Diğer | Fatura |
+|---|---|---|---|---|---|
+| Trendyol | KDV dahil oran | Tarife + %20 KDV | Platform bedeli 10,99 + KDV; uluslararası bedel %6 KDV dahil; Azerbaycan vitrinindeki platform bedelinde KDV yok | Reklam kesinti faturası (%20 varsayılıyor, D). Cezalar hizmet karşılığı değilse KDV'siz olabilir (D). Stopajda KDV yok. | Komisyon faturası ayın 7, 14, 21, 28'i ve son günü; e-belge olarak Finans > Fatura Listeleme'de |
+| Hepsiburada | Oran KDV dahil fiyata uygulanıyor; üstüne KDV eklenip eklenmediği doğrulanmalı | Tarife KDV hariç + %20 | 10,99 + KDV (D) | — | Komisyon faturası ay sonunda, "Fatura Yönetimi"nde |
+| N11 | KDV dahil oran | Tarife + %2,35 PHB + KDV | %1 ve %0,67 + KDV; komisyon faturasında gösterilir | Stopaj ödeme öncesi kesilir | Komisyon faturası aylık, ayın 15'ine kadar |
+| Pazarama | **KDV hariç oran + %20 KDV** | Tarife + PHB + KDV | 8,99 + KDV (D) | — | Finans servisi sipariş başına komisyon faturası numarası ve KDV dahil tutar veriyor |
+| PTT AVM | KDV dahil (2022, D) | Sözleşme tablosu KDV dahil | Altyapı %1,5 KDV dahil (D) | — | Bulunamadı |
+| Shopify | — | Kargo firmasının faturası | Abonelik USD; ödeme kuruluşu komisyonu BSMV'li (KDV indirimi yok) | — | Shopify faturası Billing sayfasında |
+
+Kesintilerdeki KDV genel kurala göre indirilecek KDV'dir: kâr hesabında maliyet KDV hariç sayılır, KDV net KDV'den düşülür. Muhasebeciyle teyit edilmesi önerilir. Ödeme kuruluşlarının BSMV'si indirilemez, doğrudan maliyettir.
 
 ## Panel için notlar
 
