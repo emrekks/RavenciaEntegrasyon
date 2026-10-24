@@ -238,7 +238,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                           ? acceptedClaims.Contains(claim.Status)
                                           : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
                               .Sum(returned => (decimal?)returned.Quantity) ?? 0m,
-                          CostPrice = variant == null ? null : variant.CostPrice
+                          CostPrice = variant == null ? null : variant.CostPrice,
+                          VatRate = line.VatRate
                       }).ToListAsync(cancellationToken);
     }
 
@@ -373,6 +374,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                     Source = x.Source,
                     ExternalId = x.ExternalId,
                     RequestedType = x.RequestedType,
+                    TransactionType = x.TransactionType,
                     Category = x.Category,
                     TransactionDate = x.TransactionDate,
                     OrderNumber = x.OrderNumber,

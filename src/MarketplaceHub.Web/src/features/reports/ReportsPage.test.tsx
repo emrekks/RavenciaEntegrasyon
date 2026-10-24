@@ -212,6 +212,13 @@ describe('ReportsPage', () => {
     expect(bridgeRows(page).some(row => row.includes('Pazaryeri Masrafları') && row.includes('58,50'))).toBe(true)
   })
 
+  it('takes the net VAT off the profit after the deductions, and adds a carried-forward one back', async () => {
+    const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 22.73, productCostVat: 7.27, expenseVat: 68.63, net: -53.17 } } })
+    // −111,68 before the VAT; a VAT carried forward of 53,17 brings it to −58,51.
+    expect(bridgeRows(page)).toContain('+ Net KDV + ₺53,17')
+    expect(bridgeRows(page).at(-1)).toContain('58,51')
+  })
+
   it('paints the provinces, ranks them beside the map, opens one and switches to the export countries', async () => {
     const page = await open('?view=geo')
     const map = page.querySelector('.reports-map-panel')!

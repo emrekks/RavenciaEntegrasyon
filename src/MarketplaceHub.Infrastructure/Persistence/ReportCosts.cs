@@ -37,6 +37,8 @@ internal sealed class ReportFinanceRow
     public string Source { get; init; } = "";
     public string ExternalId { get; init; } = "";
     public string RequestedType { get; init; } = "";
+    // Trendyol's name of the record ("Platform Hizmet Bedeli", "Uluslararası Hizmet Bedeli"…).
+    public string? TransactionType { get; init; }
     public string Category { get; init; } = MarketplaceFinanceCategories.Other;
     public DateTimeOffset TransactionDate { get; init; }
     public string? OrderNumber { get; init; }
@@ -63,6 +65,15 @@ internal static class ReportCosts
     public const string FinanceSource = "trendyol-finance";
     public const string EstimateSource = "estimate";
     private const int ProductCount = 50;
+    // Trendyol charges these per order but writes them to the statement only when it settles the order, so for an order
+    // without a settlement record they are estimated: the platform service fee (10.99 TL + 20 % VAT), the international
+    // service fee of a micro-export order (6 % of its sale; 24 Oct 2026: 34.22 TL on a 570.34 TL Greek order) and the
+    // e-commerce withholding tax (Law 7524: 1 % of the VAT-free domestic sale).
+    internal const decimal PlatformServiceFeePerOrder = 13.19m;
+    internal const decimal InternationalServiceFeeRate = 0.06m;
+    internal const decimal StoppageRate = 0.01m;
+    // The VAT inside Trendyol's invoices (commission, cargo, service fee, advertising).
+    private const decimal ExpenseVatRate = 20m;
 
     private static readonly Dictionary<string, string> Labels = new(StringComparer.Ordinal)
     {
@@ -89,7 +100,9 @@ internal static class ReportCosts
         var lastSynced = states.Count == 0 || states.Values.Any(state => state?.LastSyncedAt is null) ? null : states.Values.Min(state => state!.LastSyncedAt);
         var coveredFrom = states.Count == 0 || states.Values.Any(state => state?.CoveredFrom is null) ? null : states.Values.Max(state => state!.CoveredFrom);
         var coveredThrough = states.Count == 0 || states.Values.Any(state => state?.CoveredThrough is null) ? null : states.Values.Min(state => state!.CoveredThrough);
-        if (finance is null || finance.Rows.Count == 0 && finance.CargoItems.Count == 0)
+        // A store whose statement has been read is costed even before Trendyol wrote a record of the period (yesterday's
+        // orders): everything is then estimated from its own history.
+        if (finance is null || finance.Rows.Count == 0 && finance.CargoItems.Count == 0 && finance.States.Values.All(state => state?.CoveredThrough is null))
             return new(EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, 0, null, null, null, null, [], [], []);
 
         // The period's orders (any status) by store and order number; a record of another period's order is not here.
@@ -107,6 +120,14 @@ internal static class ReportCosts
         var financeStores = new HashSet<Guid>();
         var products = new Dictionary<string, ProductTotal>(StringComparer.Ordinal);
         var linesByOrder = orders.ToDictionary(order => order.Order.Id, order => order.Lines);
+        // A Trendyol line without a commission (none on the line, no tariff) is estimated at its store's rate over the
+        // period's lines that have one, so the commission is not left short.
+        var commissionRates = orders.Where(order => IsFinanceStore(input, order.Order.ConnectionId))
+            .SelectMany(order => order.Lines.Where(line => line.Commission is not null && line.KeptAmount > 0).Select(line => (order.Order.ConnectionId, line)))
+            .GroupBy(item => item.ConnectionId)
+            .ToDictionary(group => group.Key, group => group.Sum(item => item.line.Commission!.Value) / group.Sum(item => item.line.KeptAmount));
+        decimal Estimated(ReportBuilder.OrderFact order) => order.Lines.Sum(line => line.Commission
+            ?? (commissionRates.TryGetValue(order.Order.ConnectionId, out var rate) ? line.KeptAmount * rate : 0m));
 
         foreach (var row in finance.Rows)
         {
@@ -177,6 +198,18 @@ internal static class ReportCosts
         var cargoView = new ReportCargoCostView(realCargo, financeOrders.Count(order => billed.Contains(order.Order.Id)), unbilledCount,
             sampleOrders > 0 ? Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders, cargoEstimate, realCargo + (cargoEstimate ?? 0m));
 
+        // The service fees and the withholding tax of the Trendyol orders Trendyol has not settled yet.
+        foreach (var store in financeOrders.Where(order => !settled.Contains(order.Order.Id)).GroupBy(order => order.Order.ConnectionId))
+        {
+            var serviceFee = Round(store.Count() * PlatformServiceFeePerOrder + store.Where(order => order.Country != ReportBuckets.Turkey).Sum(order => order.Kept) * InternationalServiceFeeRate);
+            var stoppage = Round(store.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(VatFree) * StoppageRate);
+            Line(MarketplaceFinanceCategories.ServiceFee).Estimate(serviceFee);
+            Line(MarketplaceFinanceCategories.Stoppage).Estimate(stoppage);
+            channelCosts[(store.Key, MarketplaceFinanceCategories.ServiceFee)] = channelCosts.GetValueOrDefault((store.Key, MarketplaceFinanceCategories.ServiceFee)) + serviceFee;
+            channelCosts[(store.Key, MarketplaceFinanceCategories.Stoppage)] = channelCosts.GetValueOrDefault((store.Key, MarketplaceFinanceCategories.Stoppage)) + stoppage;
+            financeStores.Add(store.Key);
+        }
+
         var settledFacts = orders.Where(order => settled.Contains(order.Order.Id)).ToList();
         var real = Round(settledFacts.Sum(order => realCommission.GetValueOrDefault(order.Order.Id)));
         var estimatedSettled = Round(settledFacts.Sum(Estimated));
@@ -186,7 +219,7 @@ internal static class ReportCosts
 
         var lineViews = MarketplaceFinanceCategories.All.Where(lines.ContainsKey)
             .Select(category => new ReportCostLineView(category, Labels[category], TrendyolFinanceCategorizer.IsCost(category), Round(lines[category].Amount), lines[category].Records,
-                Round(lines[category].Linked), Round(lines[category].Unlinked)))
+                Round(lines[category].Linked), Round(lines[category].Unlinked), Round(lines[category].Estimated)))
             .ToList();
         var channels = input.Channels.Values
             .Where(channel => orders.Any(order => order.Order.ConnectionId == channel.Id) || financeStores.Contains(channel.Id))
@@ -212,9 +245,20 @@ internal static class ReportCosts
                 Round(product.Discount), Round(product.Coupon), product.Records))
             .ToList();
         var total = Round(lineViews.Where(line => line.IsCost).Sum(line => line.Amount));
+
+        // The net VAT of the Trendyol orders: the VAT in the domestic sales, less the VAT in their product cost and in
+        // Trendyol's VAT-inclusive charges (the international service fee and the withholding tax carry none).
+        var trendyolCommission = real + Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
+        var platformFees = finance.Rows.Where(row => row.Category == MarketplaceFinanceCategories.ServiceFee && !IsInternationalFee(row))
+            .Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit)) + financeOrders.Count(order => !settled.Contains(order.Order.Id)) * PlatformServiceFeePerOrder;
+        var advertising = lines.TryGetValue(MarketplaceFinanceCategories.Advertising, out var adLine) ? adLine.Amount : 0m;
+        var salesVat = financeOrders.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(line => Vat(line.KeptAmount, line.Row.VatRate));
+        var costVat = financeOrders.SelectMany(order => order.Lines).Where(line => line.Row.CostPrice is > 0).Sum(line => Vat(line.Row.CostPrice!.Value * line.KeptUnits, line.Row.VatRate));
+        var expenseVat = Vat(trendyolCommission + cargoView.Combined + platformFees + advertising, ExpenseVatRate);
+        var netVat = new ReportNetVatView(Round(salesVat), Round(costVat), Round(expenseVat), Round(salesVat - costVat - expenseVat));
         return new(FinanceSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, settledFinanceOrders,
             financeOrders.Count > 0 ? Math.Round((decimal)settledFinanceOrders / financeOrders.Count, 4) : null,
-            total, commissionView, cargoView, lineViews, channels, productViews);
+            total, commissionView, cargoView, lineViews, channels, productViews, netVat);
     }
 
     private static bool IsCommissionInvoice(ReportFinanceRow row) =>
@@ -268,7 +312,12 @@ internal static class ReportCosts
     private static bool IsFinanceStore(ReportInput input, Guid connectionId) =>
         input.Channels.TryGetValue(connectionId, out var channel) && channel.PlatformCode == "TRENDYOL" && !channel.IsTest;
 
-    private static decimal Estimated(ReportBuilder.OrderFact order) => order.Lines.Where(line => line.Commission is not null).Sum(line => line.Commission!.Value);
+    // The VAT inside a VAT-inclusive amount at a rate in percent, and a line's kept sale without its VAT.
+    private static decimal Vat(decimal amount, decimal rate) => rate > 0 ? amount * rate / (100m + rate) : 0m;
+    private static decimal VatFree(ReportBuilder.LineFact line) => line.KeptAmount - Vat(line.KeptAmount, line.Row.VatRate);
+
+    private static bool IsInternationalFee(ReportFinanceRow row) =>
+        TrendyolFinanceCategorizer.Fold(row.TransactionType).Contains("uluslararasi", StringComparison.Ordinal);
 
     private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
@@ -277,7 +326,14 @@ internal static class ReportCosts
         public decimal Amount;
         public decimal Linked;
         public decimal Unlinked;
+        public decimal Estimated;
         public int Records;
+
+        public void Estimate(decimal amount)
+        {
+            Amount += amount;
+            Estimated += amount;
+        }
 
         public void Add(decimal amount, bool linked)
         {

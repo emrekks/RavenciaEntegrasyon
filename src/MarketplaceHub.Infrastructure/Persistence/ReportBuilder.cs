@@ -111,6 +111,8 @@ internal sealed class ReportLineRow
     public decimal ReturnedQuantity { get; init; }
     public decimal AcceptedReturnQuantity { get; init; }
     public decimal? CostPrice { get; init; }
+    // The line's VAT rate in percent (10 for 10 %); its price includes it.
+    public decimal VatRate { get; init; }
 }
 
 internal sealed class ReportLineExtra
