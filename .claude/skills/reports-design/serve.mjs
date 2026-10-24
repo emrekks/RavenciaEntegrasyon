@@ -26,7 +26,7 @@ const tariffRow = (id, name, size, basis, cost) => {
     bands, nextLowerBand: bands[current.tier] ?? null, matchesPanel: true, costPrice: cost, choices, recommendedTier: best }
 }
 const tariffRows = [
-  tariffRow('L', 'Kadın Bej Büyük Beden Şerit Desenli Taşlı Yırtmaçlı Likralı Viskon Anne Penye Bluz', 'L', 791.01, 320),
+  { ...tariffRow('L', 'Kadın Bej Büyük Beden Şerit Desenli Taşlı Yırtmaçlı Likralı Viskon Anne Penye Bluz', 'L', 791.01, 320), imageUrl: '/pack/brand/ravencia-symbol-256.webp' },
   tariffRow('3XL', 'Kadın Bej Büyük Beden Şerit Desenli Taşlı Yırtmaçlı Likralı Viskon Anne Penye Bluz', '3XL', 899, 320),
   tariffRow('M', 'Kadın Bej Büyük Beden Şerit Desenli Taşlı Yırtmaçlı Likralı Viskon Anne Penye Bluz', 'M', 720, null)
 ]

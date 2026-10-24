@@ -44,16 +44,22 @@ public sealed record CommissionTariffRowView(
     bool MatchesPanel,
     decimal? CostPrice = null,
     IReadOnlyList<CommissionChoiceView>? Choices = null,
-    int? RecommendedTier = null);
+    int? RecommendedTier = null,
+    string? ImageUrl = null);
 
 // One band as a price the seller can pick (CommissionTariffBands.TargetPrice), its commission and what is left of the
 // price after the commission and the product's cost (null without a cost; cargo, service fee and withholding tax are not
 // per product and are not taken off). RecommendedTier: the band that leaves the most.
 public sealed record CommissionChoiceView(int Tier, decimal Price, decimal Rate, decimal Commission, decimal? Remaining);
 
-// The seller's picks for a tariff's Excel: a pick for every row (the recommended band, or one band number), and row by
-// row picks over it, a band, a price of their own, or neither (that row left out).
-public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IReadOnlyList<CommissionTariffChoice>? Choices);
+// The seller's picks for a tariff's Excel: a pick for every row, and row by row picks over it (a band, a price of their
+// own, or neither: that row left out). The pick for every row is one band ("tier" with Tier), or the band leaving the
+// most ("amount") or the largest share of the price ("rate"); with MinRate (per cent of the price) or MinAmount (lira)
+// a row whose pick leaves less is left out.
+public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IReadOnlyList<CommissionTariffChoice>? Choices, decimal? MinRate = null, decimal? MinAmount = null);
+
+// Which rows a page lists: by the band their price is in now (1-4) and whether the panel has their cost.
+public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost);
 public sealed record CommissionTariffChoice(Guid RowId, int? Tier, decimal? Price);
 public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows);
 
@@ -66,7 +72,7 @@ public interface ICommissionTariffService
 {
     Task<ServiceResult<CommissionTariffUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> ListAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
-    Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CancellationToken cancellationToken);
+    Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CommissionTariffRowFilter filter, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffExportFile>> ExportAsync(Guid tenantId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken);
 }
