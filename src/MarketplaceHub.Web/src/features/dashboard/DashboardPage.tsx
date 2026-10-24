@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { backgroundPollHeaders, hubApi } from '../../shared/api'
+import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
+import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { dashboardOperationalLinks } from '../../shared/dashboard-operational-links'
@@ -157,6 +158,9 @@ function dailyStats(values: number[], format: (value: number) => string, average
 
 const sumOf = (points: DayPoint[], pick: (point: DayPoint) => number) => points.reduce((total, point) => total + pick(point), 0)
 
+// The products page's low stock window, loaded only when the card is opened.
+const LowStockDetailsModal = lazy(() => import('../catalog/products/ProductsPage').then(module => ({ default: module.LowStockDetailsModal })))
+
 export function DashboardPage() {
   // Periods are Istanbul calendar days, whatever the browser's clock says.
   const today = istanbulDateKey()
@@ -164,6 +168,8 @@ export function DashboardPage() {
   const [custom, setCustom] = useState({ from: today, to: today })
   // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
   const [channel, setChannel] = useState('ALL')
+  const [lowStockOpen, setLowStockOpen] = useState(false)
+  const lowStock = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000 })
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -249,7 +255,14 @@ export function DashboardPage() {
       <button type="button" className="rr-btn" onClick={downloadReport} disabled={!reportReady} title={reportReady ? undefined : 'Rapor verisi hazırlanıyor'}><RrIcon name="export" />Raporu İndir</button>
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
-    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection]) => <Link key={kind} className={`rr-opcard${tone && value ? ` rr-${tone}` : ''}`} to={to}><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdown(byConnection)} /></Link>)}</div></section>
+    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection]) => {
+      const body = <><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdown(byConnection)} /></>
+      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}`
+      // Low stock opens its window here instead of taking the user to the products page.
+      return kind === 'lowst'
+        ? <button key={kind} type="button" className={className} aria-haspopup="dialog" onClick={() => setLowStockOpen(true)}>{body}</button>
+        : <Link key={kind} className={className} to={to}>{body}</Link>
+    })}</div></section>
     <section className="rr-panel rr-pf" style={selected ? { ['--pf-accent' as string]: platformColor(selected.platformCode, 0) } : undefined}>
       <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {channel === 'ALL' ? 'Tüm Platformlar' : selectedName}</p></div><div className="rr-pf-tools">
         {range === 'custom' && <DateRangePicker className="rr-date" from={custom.from} to={custom.to} onChange={value => setCustom({ from: value.from, to: value.to })} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
@@ -289,5 +302,7 @@ export function DashboardPage() {
       <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{count(metrics?.recentJobCount ?? 0)}</b> istek · <b className="rr-num">{count(metrics?.deadJobCount ?? 0)}</b> tamamlanamayan iş · <b className="rr-num">{count(metrics?.manualReviewJobCount ?? 0)}</b> karar bekleyen iş</span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Hata Var</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
     </section>
     {toast && <NoticeToast kind="success" title="Rapor İndirildi" message={toast} onClose={() => setToast(null)} durationMs={6000} />}
+    {lowStockOpen && <Suspense fallback={null}><LowStockDetailsModal products={lowStock.data?.items ?? []} loading={lowStock.isLoading} error={lowStock.error}
+      onClose={() => setLowStockOpen(false)} onImageClick={url => window.open(url, '_blank', 'noopener')} /></Suspense>}
   </section>
 }

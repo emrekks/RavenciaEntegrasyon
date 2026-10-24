@@ -17,6 +17,8 @@ main .rr.rr-dashboard > * { min-width: 0; }
   :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; color: var(--rr-ink); text-decoration: none; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
+/* The low stock card is a button (it opens its window here): it keeps the cards' look, not the global button's. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) button.rr-opcard { width: 100%; min-height: 0; height: auto; justify-content: normal; justify-items: stretch; font: inherit; text-align: left; text-transform: none; letter-spacing: inherit; box-shadow: none; cursor: pointer; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico:last-child { color: var(--rr-subtle); }
