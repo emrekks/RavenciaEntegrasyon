@@ -744,7 +744,7 @@ public sealed record RemoteMarketplaceQuestion(
     string Id, string Kind, string Status, string Text, string? ProductName, string? ProductImageUrl,
     string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName,
     string? OrderNumber, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt,
-    DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteQuestionConversation> Conversations, string? ProductUrl = null);
+    DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteQuestionConversation> Conversations, string? ProductUrl = null, string? CustomerKey = null);
 public sealed record MarketplaceQuestionPage(IReadOnlyList<RemoteMarketplaceQuestion> Items, int Page, int TotalPages, long TotalElements);
 public sealed record RemoteQuestionAnswerResult(bool Accepted, bool IsVerified, string? AnswerId);
 
@@ -785,6 +785,7 @@ public interface IMarketplaceQuestionService
 {
     Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken);
     Task<MarketplaceQuestionView?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MarketplaceQuestionView>?> CustomerHistoryAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken);
     Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken);
     Task<IReadOnlyList<MarketplaceQuestionSyncStateView>> SyncStatesAsync(Guid tenantId, CancellationToken cancellationToken);

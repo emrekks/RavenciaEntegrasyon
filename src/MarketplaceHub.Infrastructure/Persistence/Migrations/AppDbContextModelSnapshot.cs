@@ -3577,6 +3577,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CustomerKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<string>("CustomerName")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -3665,6 +3669,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "ConnectionId", "ExternalQuestionId")
                         .IsUnique()
                         .HasDatabaseName("IX_questions_tenant_connection_external");
+
+                    b.HasIndex("TenantId", "CustomerKey", "CreatedAt")
+                        .HasDatabaseName("IX_questions_tenant_customer_created")
+                        .HasFilter("\"CustomerKey\" IS NOT NULL");
 
                     b.HasIndex("TenantId", "Kind", "Status", "CreatedAt")
                         .HasDatabaseName("IX_questions_tenant_kind_status_created");

@@ -26,6 +26,13 @@ public static class QuestionEndpoints
             var question = await service.GetAsync(tenant.TenantId, id, http.RequestAborted);
             return question is null ? MarketplaceHub.Api.Security.ApiProblems.NotFound(http, "Soru bulunamadı.") : Results.Ok(question);
         });
+        api.MapGet("/questions/{id:guid}/customer-history", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
+        {
+            var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            var history = await service.CustomerHistoryAsync(tenant.TenantId, id, http.RequestAborted);
+            return history is null ? MarketplaceHub.Api.Security.ApiProblems.NotFound(http, "Soru bulunamadı.") : Results.Ok(history);
+        });
         api.MapPost("/questions/sync", async (QuestionSyncRequest request, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

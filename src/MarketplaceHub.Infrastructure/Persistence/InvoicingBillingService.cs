@@ -1814,6 +1814,10 @@ public sealed partial class InvoicingBillingService(
         if (connection is null) return "Pazaryeri bağlantısı bulunamadı.";
         if (!configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")) return "Sunucuda pazaryerine fatura iletme anahtarı kapalı.";
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return "Sunucudaki genel dış yazma anahtarı kapalı.";
+        // A connection whose settings changed is tested again and comes back VERIFIED: it reads, but writes wait for it
+        // to be activated, which the panel shows as connected; say what to do.
+        if (string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase))
+            return $"{connection.DisplayName} bağlantısı test edildi ama etkinleştirilmedi. Entegrasyonlar sayfasında bağlantının menüsünden “Bağlantıyı Aktifleştir”i seçin.";
         if (!IntegrationRuntimePolicy.IsActive(connection)) return $"{connection.DisplayName} bağlantısı aktif değil.";
         if (!ConnectionWritesEnabled(connection.SettingsJson)) return $"{connection.DisplayName} bağlantısında dış yazma kapalı. Entegrasyonlar sayfasından dış yazma anahtarını açın.";
         return "Bu pazaryeri için fatura iletme izni doğrulanamadı.";
