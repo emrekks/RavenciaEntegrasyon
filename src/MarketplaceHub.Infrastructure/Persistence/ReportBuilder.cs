@@ -27,7 +27,9 @@ internal sealed record ReportInput(
     ReportCommissionTariffs? Tariffs = null,
     ReportFinance? Finance = null,
     // By order: the commission Pazarama's money movements of the order net out to (PazaramaFinanceSyncJobHandler).
-    IReadOnlyDictionary<Guid, decimal>? OrderCommissions = null);
+    IReadOnlyDictionary<Guid, decimal>? OrderCommissions = null,
+    // The parcels' desi for the platforms costed from their cargo tariffs (ReportParcelDesi).
+    ReportDesiInput? Desi = null);
 
 // The commission tariffs uploaded for the report's stores (Komisyon Tarifeleri): a line the marketplace sent no
 // commission for takes the rate of the band its paid unit price falls in, in the tariff week the sale was made.

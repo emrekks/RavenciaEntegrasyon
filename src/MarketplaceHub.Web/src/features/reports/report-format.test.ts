@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { change, formatPercent, moneyOrMissing, reportQuery, sortRows, toCsv } from './report-format'
+import { change, desiSourcesNote, formatPercent, moneyOrMissing, reportQuery, sortRows, toCsv } from './report-format'
 
 describe('report formatting', () => {
+  it('says where the parcels\' desi came from, leaving out the empty sources', () => {
+    expect(desiSourcesNote({ marketplace: 5, manual: 0, measured: 30, default: 2, measuredParcels: 1320 }))
+      .toBe(' Desi: 5 siparişte pazaryerinin siparişte bildirdiği, 30 siparişte Trendyol kargo faturalarından ölçülen (1.320 koli), 2 siparişte mağaza ortalaması.')
+    expect(desiSourcesNote({ marketplace: 0, manual: 0, measured: 0, default: 4, measuredParcels: 0 })).toBe(' Desi: 4 siparişte varsayılan 1 desi.')
+    expect(desiSourcesNote(null)).toBe('')
+  })
+
   it('compares counts as a percentage, rates by their difference written in per cent, and not at all from an empty previous period', () => {
     expect(change(120, 100)).toEqual({ text: '+%20', direction: 'up' })
     expect(change(80, 100)).toEqual({ text: '−%20', direction: 'down' })

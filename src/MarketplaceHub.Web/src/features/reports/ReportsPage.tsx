@@ -8,7 +8,7 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import {
-  bySalesChannel, change, downloadCsv, isMarketplace, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
+  bySalesChannel, change, desiSourcesNote, downloadCsv, isMarketplace, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
@@ -1051,7 +1051,7 @@ function commissionNote(costs: ReportCosts) {
 }
 
 function cargoNote(cargo: NonNullable<ReportCosts['cargo']>) {
-  const platforms = cargo.platformOrders ? ` Diğer platformların ${formatCount(cargo.platformOrders)} siparişi kargo firması ve desiye göre 2026 tarifelerinden: ${formatTl(cargo.platformEstimated ?? 0)}.` : ''
+  const platforms = cargo.platformOrders ? ` Diğer platformların ${formatCount(cargo.platformOrders)} siparişi kargo firması ve desiye göre 2026 tarifelerinden: ${formatTl(cargo.platformEstimated ?? 0)}.${desiSourcesNote(cargo.desiSources)}` : ''
   if (cargo.billedOrders === 0 && cargo.unbilledOrders === 0) return platforms.trim()
   const billed = `Trendyol'da ${formatCount(cargo.billedOrders)} siparişin kargo faturası geldi: ${formatTl(cargo.real)}.`
   if (cargo.unbilledOrders === 0) return billed + platforms
