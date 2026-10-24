@@ -324,7 +324,7 @@ function PeriodCard({ data }: { data: ReportSales }) {
       <dl className="reports-period-facts">
         <div><dt>En İyi {names.unit}</dt><dd><strong>{!noAmount && best && best.value > 0 ? best.title : '—'}</strong><small>{!noAmount && best && best.value > 0 ? format(best.value) : 'Bu dönemde veri yok'}</small></dd></div>
         <div><dt>{names.every} Ortalama</dt><dd><strong>{noAmount || average === null ? '—' : format(average)}</strong><small>{previousAverage === null ? 'Önceki dönemde veri yok' : `Önceki dönem ${format(previousAverage)}`}</small></dd></div>
-        <div><dt>Önceki Dönemi Geçen {names.unit}</dt><dd><strong>{noAmount || !compared.length ? '—' : `${ahead} / ${compared.length}`}</strong><small>{noAmount || !compared.length ? 'Önceki dönemde veri yok' : `${compared.length - ahead} ${unit} geride kaldı`}</small></dd></div>
+        <div><dt>Önceki Döneme Göre</dt><dd><strong>{noAmount || !compared.length ? '—' : `${ahead} / ${compared.length} ${unit} önde`}</strong><small>{noAmount || !compared.length ? 'Önceki dönemde veri yok' : `${compared.length - ahead} ${unit} geride kaldı`}</small></dd></div>
       </dl>
     </>}
   </Card>

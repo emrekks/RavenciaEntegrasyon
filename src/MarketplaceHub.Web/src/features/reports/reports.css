@@ -628,7 +628,7 @@
 .app-shell.stitch-shell main .reports-page .reports-card-period .reports-columns { height: auto; min-height: 230px; }
 .app-shell.stitch-shell main .reports-page .reports-period-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto; gap: 4px 16px; margin: 0; padding-top: 16px; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-period-facts > div { display: grid; grid-row: span 2; grid-template-rows: subgrid; align-content: start; min-width: 0; }
-.app-shell.stitch-shell main .reports-page .reports-period-facts dt { color: var(--rv-color-muted); font-size: 12.5px; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts dt { overflow: hidden; color: var(--rv-color-ink); font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-period-facts dd { display: grid; gap: 2px; margin: 0; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-period-facts strong { overflow: hidden; color: var(--rv-color-ink); font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .reports-page .reports-period-facts small { color: var(--rv-color-subtle); font-size: 12px; }
