@@ -85,6 +85,23 @@ public sealed class CommissionTariffTests
     }
 
     [Fact]
+    public void APickForEveryRowTakesABandOrTheBestByAmountOrByShareAndLeavesOutWhatFallsShortOfItsCondition()
+    {
+        // With no cost the most money is left at the highest price (band 1), the largest share at the lowest rate (band 4).
+        var row = SampleRow();
+        row.BasisPrice = 519.75m;
+        var choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, 0m);
+        Assert.Equal(1, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "amount", null, null, null)?.Tier);
+        Assert.Equal(4, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "rate", null, null, null)?.Tier);
+        // Band 2 leaves %79,4 of 470,63 (373,68): kept over 300 lira, left out over %80.
+        Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "tier", 2, null, 300m)?.Tier);
+        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "tier", 2, 80m, null));
+        // A condition needs the cost: without it the row is left out rather than picked blind.
+        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Pick(Infrastructure.Persistence.CommissionTariffChoices.Of(row, null), "tier", 2, 10m, null));
+        Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Pick(Infrastructure.Persistence.CommissionTariffChoices.Of(row, null), "tier", 2, null, null)?.Tier);
+    }
+
+    [Fact]
     public void ThePeriodTextIsReadInTurkeyTimeWithTheNearestYearAndAnExclusiveEnd()
     {
         var now = new DateTimeOffset(2026, 10, 21, 18, 7, 55, TimeSpan.Zero);

@@ -29,7 +29,7 @@ const report: ReportSales = {
   ],
   timeSeries: [{ start: '2026-10-01', orders: 2, soldQuantity: 3, returnedQuantity: 1, netRevenue: 150, cancelledOrders: 1 }, { start: '2026-10-02', orders: 2, soldQuantity: 2, returnedQuantity: 0, netRevenue: 100, cancelledOrders: 0 }],
   previousTimeSeries: [{ start: '2026-09-09', orders: 1, soldQuantity: 1, returnedQuantity: 0, netRevenue: 100, cancelledOrders: 0 }],
-  topProducts: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', imageUrl: '/api/v1/files/product-media/a1/content', options: [{ name: 'Beden', value: 'M' }, { name: 'Renk', value: 'Siyah' }], netAmount: 200, previousSoldQuantity: 1, available: 7 }],
+  topProducts: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', imageUrl: '/api/v1/files/product-media/a1/content', options: [{ name: 'Kumaş Tipi', value: 'Viskon' }, { name: 'Beden', value: 'M' }, { name: 'Renk', value: 'Siyah' }], netAmount: 200, previousSoldQuantity: 1, available: 7 }],
   topReturned: [],
   rising: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', netAmount: 200, previousSoldQuantity: 1 }],
   falling: [{ variantId: 'v2', productId: 'p2', title: 'Masa Örtüsü', sku: 'MSA-1', brand: 'Ravencia', category: 'Örtü', soldQuantity: 0, returnedQuantity: 0, returnRate: null, salesAmount: 0, estimatedCommission: 0, commissionCoveredAmount: 0, netAmount: 0, previousSoldQuantity: 3 }],
@@ -379,7 +379,12 @@ describe('ReportsPage', () => {
     expect(row.querySelector('img.reports-product-image')?.getAttribute('src')).toBe('/api/v1/files/product-media/a1/content')
     expect(row.textContent).toContain('KLF')
     expect(row.textContent).toContain('KLF-1')
-    expect(row.textContent).toContain('Beden: M · Renk: Siyah')
+    // Only the colour and the size, each in its own column; the other catalogue attributes stay out.
+    const cells = [...page.querySelectorAll('.reports-table')][0].querySelectorAll('thead th')
+    const column = (name: string) => [...cells].findIndex(cell => cell.textContent?.startsWith(name))
+    expect(row.children[column('Renk')]?.textContent).toBe('Siyah')
+    expect(row.children[column('Beden')]?.textContent).toBe('M')
+    expect(row.textContent).not.toContain('Viskon')
     // As on the marketplace's own product report: net units and revenue, the average price, the commission rate, the
     // change against the previous period and the stock now.
     expect(row.textContent).toContain('₺100,00')

@@ -311,7 +311,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.True(again.Value!.AlreadyUploaded);
             Assert.Equal(tariffId, Assert.Single(again.Value.Tariffs).Id);
 
-            var rows = await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "ryp", 0, 50, CancellationToken.None);
+            var rows = await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "ryp", 0, 50, new CommissionTariffRowFilter(null, null), CancellationToken.None);
             var row = Assert.Single(rows.Value!.Items);
             Assert.Equal(1, row.CurrentTier);
             Assert.Equal(21.5m, row.CurrentBandRate);

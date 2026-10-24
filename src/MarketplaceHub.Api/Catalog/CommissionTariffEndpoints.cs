@@ -54,12 +54,15 @@ internal static class CommissionTariffEndpoints
         return Result(await service.UploadAsync(tenant.TenantId, tenant.UserId, connectionId, file.FileName, input, http.TraceIdentifier, http.RequestAborted));
     }
 
-    private static async Task<IResult> RowsAsync(Guid connectionId, Guid tariffId, string? search, int? page, int? limit, HttpContext http, ICommissionTariffService service)
+    private static async Task<IResult> RowsAsync(Guid connectionId, Guid tariffId, string? search, int? page, int? limit, int? tier, string? cost, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (page is < 0 or > 100_000) return Problem(http, new("PAGE_INVALID", "page 0 ile 100000 arasında olmalıdır.", 400));
         if (limit is not null and (< 1 or > 200)) return Problem(http, new("LIMIT_INVALID", "limit 1 ile 200 arasında olmalıdır.", 400));
-        return Result(await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, page ?? 0, limit ?? 50, http.RequestAborted));
+        if (tier is not null and (< 1 or > 4)) return Problem(http, new("TIER_INVALID", "tier 1 ile 4 arasında olmalıdır.", 400));
+        if (cost is not (null or "" or "with" or "without")) return Problem(http, new("COST_FILTER_INVALID", "cost with ya da without olmalıdır.", 400));
+        var filter = new CommissionTariffRowFilter(tier, cost switch { "with" => true, "without" => false, _ => null });
+        return Result(await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, page ?? 0, limit ?? 50, filter, http.RequestAborted));
     }
 
     private static async Task<IResult> DeleteAsync(Guid connectionId, Guid tariffId, HttpContext http, ICommissionTariffService service)

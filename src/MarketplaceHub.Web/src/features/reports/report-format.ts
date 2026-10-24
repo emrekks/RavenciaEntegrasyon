@@ -73,6 +73,21 @@ export const unknownLabel = 'Bilinmiyor'
 const platformNames: Record<string, string> = { TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', N11: 'n11', SHOPIFY: 'Shopify', PAZARAMA: 'Pazarama', PTTAVM: 'PTT AVM' }
 export function platformName(code: string) { return platformNames[code.toUpperCase()] ?? code }
 
+// The channels that sell, in the order the panel lists them; an invoicing connection (Trendyol e-Faturam) is none.
+const salesChannelOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PTTAVM', 'PAZARAMA', 'SHOPIFY']
+export const isSalesChannel = (code: string) => salesChannelOrder.includes(code.toUpperCase())
+export const bySalesChannel = (a: string, b: string) => salesChannelOrder.indexOf(a.toUpperCase()) - salesChannelOrder.indexOf(b.toUpperCase())
+// The marketplaces among them (a store's own shop such as Shopify charges no marketplace commission).
+export const isMarketplace = (code: string) => isSalesChannel(code) && code.toUpperCase() !== 'SHOPIFY'
+
+// A variant's colour and size out of all its catalogue attributes (fabric, collar, maker's address… stay out).
+const colourNames = /^(renk|color|colour)$/i
+const sizeNames = /^(beden|size|ebat|numara)$/i
+export function variantColourAndSize(options: Array<{ name: string; value: string }> | null | undefined) {
+  const find = (pattern: RegExp) => options?.find(option => pattern.test(option.name.trim()))?.value?.trim() || null
+  return { colour: find(colourNames), size: find(sizeNames) }
+}
+
 // Each platform's own colour, on the sales map and the overview's charts alike.
 const platformColors: Record<string, string> = { TRENDYOL: '#f27a1a', HEPSIBURADA: '#f5b301', SHOPIFY: '#5e8e3e', N11: '#7c5cff', PAZARAMA: '#2f9bd8', PTTAVM: '#1f3a8a' }
 export function platformColor(code: string) { return platformColors[code.toUpperCase()] ?? '#8a8f98' }

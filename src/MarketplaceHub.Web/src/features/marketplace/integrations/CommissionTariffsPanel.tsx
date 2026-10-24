@@ -4,6 +4,7 @@ import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { formatIstanbul } from '../../../shared/format-date'
+import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import '../commission-tariffs.css'
 
 // The marketplaces whose commission tariff export the panel reads (CommissionTariffPlatforms on the server).
@@ -15,9 +16,9 @@ export type CommissionTariffRow = {
   id: string; barcode: string; sellerSku: string | null; modelCode: string | null; productName: string | null; size: string | null
   basisPrice: number | null; currentSalePrice: number | null; currentRate: number | null; currentTier: number | null; currentBandRate: number | null
   bands: CommissionBand[]; nextLowerBand: CommissionBand | null; matchesPanel: boolean
-  // The product cost entered on the panel, each band as a price to pick and the band that leaves the most (absent in
-  // an older server's answer).
-  costPrice?: number | null; choices?: CommissionChoice[] | null; recommendedTier?: number | null
+  // The product cost entered on the panel, each band as a price to pick, the band that leaves the most and the
+  // panel product's picture (absent in an older server's answer).
+  costPrice?: number | null; choices?: CommissionChoice[] | null; recommendedTier?: number | null; imageUrl?: string | null
 }
 // A band as a price the seller can pick: its commission and what the price leaves after it and the product cost.
 export type CommissionChoice = { tier: number; price: number; rate: number; commission: number; remaining: number | null }
@@ -25,15 +26,30 @@ type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number;
 
 // A row's own pick: a band, a price of the seller's own, or neither (the row left out of the Excel).
 export type TariffPick = { tier: number | null; price: number | null }
-// The pick for every row: none, the recommended band, or one band number.
-export type TariffBulk = '' | 'recommended' | '1' | '2' | '3' | '4'
+// The pick for every row: one band ('tier'), or the band leaving the most money ('amount') or the largest share of its
+// price ('rate'); with a least share (per cent) or amount (lira) a row whose pick leaves less is left out.
+export type TariffBulk = { kind: '' | 'tier' | 'amount' | 'rate'; tier: number; minRate: number | null; minAmount: number | null }
+export const noBulk: TariffBulk = { kind: '', tier: 1, minRate: null, minAmount: null }
+
+const share = (choice: CommissionChoice) => choice.remaining === null || choice.price <= 0 ? null : choice.remaining / choice.price
+
+// The pick for every row in one row, worked out as the server's CommissionTariffChoices.Pick does.
+export function bulkChoice(choices: CommissionChoice[], bulk: TariffBulk): CommissionChoice | null {
+  const known = choices.filter(choice => choice.remaining !== null)
+  const choice = bulk.kind === 'tier' ? choices.find(item => item.tier === bulk.tier) ?? null
+    : bulk.kind === 'amount' ? [...known].sort((a, b) => (b.remaining ?? 0) - (a.remaining ?? 0) || a.rate - b.rate)[0] ?? null
+    : bulk.kind === 'rate' ? [...known].filter(item => item.price > 0).sort((a, b) => (share(b) ?? 0) - (share(a) ?? 0) || a.rate - b.rate)[0] ?? null
+    : null
+  if (!choice) return null
+  if (bulk.minRate !== null && (share(choice) === null || (share(choice) ?? 0) * 100 < bulk.minRate)) return null
+  if (bulk.minAmount !== null && (choice.remaining === null || choice.remaining < bulk.minAmount)) return null
+  return choice
+}
 
 // The band a row counts as picked: its own pick, else the pick for every row; 'own' for a price of the seller's own.
-export function pickedTier(row: Pick<CommissionTariffRow, 'choices' | 'recommendedTier'>, pick: TariffPick | undefined, bulk: TariffBulk): number | 'own' | null {
+export function pickedTier(row: Pick<CommissionTariffRow, 'choices'>, pick: TariffPick | undefined, bulk: TariffBulk): number | 'own' | null {
   if (pick) return pick.price !== null ? 'own' : pick.tier
-  if (bulk === 'recommended') return row.recommendedTier ?? null
-  if (bulk) return row.choices?.some(choice => choice.tier === Number(bulk)) ? Number(bulk) : null
-  return null
+  return bulkChoice(row.choices ?? [], bulk)?.tier ?? null
 }
 
 // A price of the seller's own, worked out as the server does: the band it falls in, its commission and what it leaves.
@@ -89,14 +105,16 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const [dragging, setDragging] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<TariffFilter>({ tier: '', cost: '' })
   const [page, setPage] = useState(0)
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] } | null>(null)
   const [confirm, confirmDialog] = useConfirmDialog()
   const tariffs = useQuery({ queryKey: ['commission-tariffs', connectionId], queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`) })
   const active = tariffs.data?.find(tariff => tariff.id === selected) ?? tariffs.data?.find(tariff => tariff.isCurrent) ?? tariffs.data?.[0] ?? null
   const rows = useQuery({
-    queryKey: ['commission-tariff-rows', connectionId, active?.id, search.trim(), page],
-    queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${active!.id}/rows?${new URLSearchParams({ page: String(page), limit: '50', ...(search.trim() ? { search: search.trim() } : {}) })}`),
+    queryKey: ['commission-tariff-rows', connectionId, active?.id, search.trim(), filter.tier, filter.cost, page],
+    queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${active!.id}/rows?${new URLSearchParams({ page: String(page), limit: '50',
+      ...(search.trim() ? { search: search.trim() } : {}), ...(filter.tier ? { tier: filter.tier } : {}), ...(filter.cost ? { cost: filter.cost } : {}) })}`),
     enabled: active !== null
   })
   const upload = useMutation({
@@ -161,37 +179,47 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     </div>}
 
     {active && <TariffPlan key={active.id} connectionId={connectionId} tariff={active} rows={rows.data} loading={rows.isLoading} error={rows.isError ? rows.error : null} onRetry={() => void rows.refetch()}
-      search={search} onSearch={value => { setSearch(value); setPage(0) }} page={page} pageCount={pageCount} onPage={setPage} onMessage={setMessage} />}
+      search={search} onSearch={value => { setSearch(value); setPage(0) }} filter={filter} onFilter={value => { setFilter(value); setPage(0) }} page={page} pageCount={pageCount} onPage={setPage} onMessage={setMessage} />}
     {confirmDialog}
   </section>
 }
 
 type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
 const tiers = [1, 2, 3, 4]
-const bulkLabels: Record<Exclude<TariffBulk, ''>, string> = { recommended: 'Önerilen bant', 1: '1. bant', 2: '2. bant', 3: '3. bant', 4: '4. bant' }
+// Which rows the list shows: by the band their price is in now, and whether their cost is entered.
+type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without' }
+type BulkCondition = '' | 'rate' | 'amount'
+const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. bant` : bulk.kind === 'amount' ? 'En yüksek kâr tutarı' : 'En yüksek kâr oranı'
 
 // One period's products with each band as a price to pick: the band's price, its commission and what the price leaves
 // after the commission and the product cost, the one that leaves the most marked "Önerilen". A pick is made row by row
 // (a band, or a price of the seller's own) or for every row at once; the picks go out as an Excel sheet the server
 // writes. Picks are kept across pages and searches until the period changes.
-function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, search, onSearch, page, pageCount, onPage, onMessage }: {
+function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, search, onSearch, filter, onFilter, page, pageCount, onPage, onMessage }: {
   connectionId: string; tariff: CommissionTariff; rows: RowPage | undefined; loading: boolean; error: unknown; onRetry: () => void
-  search: string; onSearch: (value: string) => void; page: number; pageCount: number; onPage: (page: number) => void; onMessage: (message: PanelMessage | null) => void
+  search: string; onSearch: (value: string) => void; filter: TariffFilter; onFilter: (filter: TariffFilter) => void
+  page: number; pageCount: number; onPage: (page: number) => void; onMessage: (message: PanelMessage | null) => void
 }) {
   const [picks, setPicks] = useState<Map<string, TariffPick>>(() => new Map())
-  const [bulk, setBulk] = useState<TariffBulk>('')
+  const [bulk, setBulk] = useState<TariffBulk>(noBulk)
+  // The condition on the pick for every row: none, a least share of the price or a least amount left.
+  const [condition, setCondition] = useState<BulkCondition>('')
+  const [threshold, setThreshold] = useState('')
+  const limit = Number(threshold.replace(',', '.'))
+  const applied: TariffBulk = { ...bulk, minRate: condition === 'rate' && threshold.trim() && Number.isFinite(limit) ? limit : null, minAmount: condition === 'amount' && threshold.trim() && Number.isFinite(limit) ? limit : null }
+  const bulkOn = applied.kind !== ''
   const setPick = (rowId: string, pick: TariffPick | null) => setPicks(current => {
     const next = new Map(current)
     if (pick) next.set(rowId, pick); else next.delete(rowId)
     return next
   })
   // A click on the picked band takes it back (under a pick for every row, the row is then left out on purpose).
-  const toggle = (row: CommissionTariffRow, tier: number, picked: boolean) => setPick(row.id, picked ? (bulk ? { tier: null, price: null } : null) : { tier, price: null })
+  const toggle = (row: CommissionTariffRow, tier: number, picked: boolean) => setPick(row.id, picked ? (bulkOn ? { tier: null, price: null } : null) : { tier, price: null })
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   const download = useMutation({
     mutationFn: () => hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
       method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-export') },
-      body: JSON.stringify({ bulk: bulk === 'recommended' ? 'recommended' : bulk ? 'tier' : null, tier: bulk && bulk !== 'recommended' ? Number(bulk) : null,
+      body: JSON.stringify({ bulk: applied.kind || null, tier: applied.kind === 'tier' ? applied.tier : null, minRate: applied.minRate, minAmount: applied.minAmount,
         choices: [...picks].map(([rowId, pick]) => ({ rowId, tier: pick.tier, price: pick.price })) })
     }),
     onSuccess: ({ blob, fileName }) => {
@@ -205,23 +233,46 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
     },
     onError: reason => onMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Excel hazırlanamadı.' })
   })
-  const summary = bulk ? `${bulkLabels[bulk]} tüm ürünlerde${picks.size ? `; ${picks.size.toLocaleString('tr-TR')} ürün elle değişti` : ''}` : `${ownPicks.toLocaleString('tr-TR')} ürün seçildi`
+  const conditionText = applied.minRate !== null ? `, kâr oranı en az %${applied.minRate.toLocaleString('tr-TR')}` : applied.minAmount !== null ? `, kâr en az ${money(applied.minAmount)}` : ''
+  const summary = bulkOn ? `${bulkLabel(applied)} tüm ürünlerde${conditionText}${picks.size ? `; ${picks.size.toLocaleString('tr-TR')} ürün elle değişti` : ''}` : `${ownPicks.toLocaleString('tr-TR')} ürün seçildi`
 
   return <div className="commission-rows">
     <div className="commission-rows-head">
       <strong>{tariff.periodText} Bantları</strong>
-      <input type="search" className="commission-search" placeholder="Barkod, stok kodu ya da ürün ara" value={search} onChange={event => onSearch(event.target.value)} aria-label="Tarife satırlarında ara" />
     </div>
+    {/* Which products the list shows. */}
     <div className="commission-plan-bar">
-      <label className="commission-plan-bulk"><span>Toplu Seçim</span>
-        <select value={bulk} onChange={event => setBulk(event.target.value as TariffBulk)}>
-          <option value="">Yok</option><option value="recommended">Önerilen bantlar</option>
-          {tiers.map(tier => <option key={tier} value={String(tier)}>Tüm ürünlerde {tier}. bant</option>)}
+      <input type="search" className="commission-search" placeholder="Barkod, stok kodu ya da ürün ara" value={search} onChange={event => onSearch(event.target.value)} aria-label="Tarife satırlarında ara" />
+      <label className="commission-plan-field"><span>Güncel Bant</span>
+        <select value={filter.tier} onChange={event => onFilter({ ...filter, tier: event.target.value as TariffFilter['tier'] })}>
+          <option value="">Tümü</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. bant</option>)}
         </select>
       </label>
+      <label className="commission-plan-field"><span>Maliyet</span>
+        <select value={filter.cost} onChange={event => onFilter({ ...filter, cost: event.target.value as TariffFilter['cost'] })}>
+          <option value="">Tümü</option><option value="with">Girili</option><option value="without">Girilmemiş</option>
+        </select>
+      </label>
+    </div>
+    {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
+    <div className="commission-plan-bar">
+      <label className="commission-plan-field"><span>Toplu Seçim</span>
+        <select value={bulk.kind} onChange={event => setBulk({ ...bulk, kind: event.target.value as TariffBulk['kind'] })}>
+          <option value="">Yok</option><option value="tier">Bant (sütun)</option><option value="amount">En yüksek kâr tutarı</option><option value="rate">En yüksek kâr oranı</option>
+        </select>
+      </label>
+      {bulk.kind === 'tier' && <label className="commission-plan-field"><span>Bant</span>
+        <select value={String(bulk.tier)} onChange={event => setBulk({ ...bulk, tier: Number(event.target.value) })}>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. bant</option>)}</select>
+      </label>}
+      {bulkOn && <label className="commission-plan-field"><span>Koşul</span>
+        <select value={condition} onChange={event => setCondition(event.target.value as BulkCondition)}>
+          <option value="">Koşul yok</option><option value="rate">Kâr oranı en az (%)</option><option value="amount">Kâr tutarı en az (₺)</option>
+        </select>
+        {condition && <input type="text" inputMode="decimal" className="commission-plan-threshold" value={threshold} onChange={event => setThreshold(event.target.value)} placeholder={condition === 'rate' ? '30' : '100'} aria-label={condition === 'rate' ? 'En az kâr oranı' : 'En az kâr tutarı'} />}
+      </label>}
       <span className="commission-plan-count" role="status">{summary}</span>
-      <button type="button" className="secondary" disabled={!bulk && picks.size === 0} onClick={() => { setBulk(''); setPicks(new Map()) }}>Seçimleri Temizle</button>
-      <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulk && ownPicks === 0) || download.isPending} onClick={() => download.mutate()}>
+      <button type="button" className="secondary" disabled={!bulkOn && picks.size === 0} onClick={() => { setBulk(noBulk); setCondition(''); setThreshold(''); setPicks(new Map()) }}>Seçimleri Temizle</button>
+      <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0) || download.isPending} onClick={() => download.mutate()}>
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
       </button>
     </div>
@@ -233,14 +284,17 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
       <thead><tr><th scope="col">Ürün</th><th scope="col">Güncel Fiyat</th>{tiers.map(tier => <th key={tier} scope="col">{tier}. Bant</th>)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{rows.items.map(row => {
         const pick = picks.get(row.id)
-        const chosen = pickedTier(row, pick, bulk)
+        const chosen = pickedTier(row, pick, applied)
         return <tr key={row.id} className={chosen !== null ? 'is-picked' : undefined}>
-          <th scope="row">
-            <span className="commission-product">{row.productName ?? row.barcode}{row.size ? ` · ${row.size}` : ''}</span>
-            <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
-            <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
-            {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
-          </th>
+          <th scope="row"><span className="commission-product-cell">
+            {row.imageUrl ? <img src={thumbnailUrl(row.imageUrl)} alt="" loading="lazy" className="commission-product-image" /> : <i className="commission-product-image" aria-hidden="true">{(row.productName ?? row.barcode).slice(0, 1)}</i>}
+            <span>
+              <span className="commission-product">{row.productName ?? row.barcode}{row.size ? ` · ${row.size}` : ''}</span>
+              <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
+              <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
+              {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
+            </span>
+          </span></th>
           <td>
             <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
             {row.currentSalePrice !== null && row.currentSalePrice !== row.basisPrice && <small>Satış fiyatı {money(row.currentSalePrice)}</small>}
@@ -254,13 +308,12 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
             const picked = chosen === tier
             return <td key={tier}>
               <button type="button" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}
-                className={`commission-choice${picked ? ' is-picked' : ''}${row.recommendedTier === tier ? ' is-recommended' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
-                {row.recommendedTier === tier && <em className="commission-choice-flag">Önerilen</em>}
+                className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
                 <strong>{money(choice.price)}</strong>
                 <small>{band?.max === null ? 've üzeri' : 've altı'}{row.currentTier === tier ? ' · şu an' : ''}</small>
                 <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
                 <b>{remainingText(choice)}</b>
-                <i aria-hidden="true">{picked ? 'Seçildi' : 'Seç'}</i>
+                <i className="commission-switch" aria-hidden="true"><span />{picked ? 'Seçili' : 'Seç'}</i>
               </button>
             </td>
           })}

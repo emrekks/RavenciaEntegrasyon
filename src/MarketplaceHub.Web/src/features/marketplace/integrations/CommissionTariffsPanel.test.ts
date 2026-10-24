@@ -1,19 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { bandRange, commissionTariffPlatforms, nextBandHint, ownChoice, pickedTier, rateDisagrees, rateText, remainingText } from './CommissionTariffsPanel'
+import { bandRange, commissionTariffPlatforms, nextBandHint, noBulk, ownChoice, pickedTier, rateDisagrees, rateText, remainingText, type TariffBulk } from './CommissionTariffsPanel'
 
 const bands = [{ tier: 1, min: 470.64, max: null, rate: 21.5 }, { tier: 2, min: 435.98, max: 470.63, rate: 20.6 }, { tier: 3, min: 388.64, max: 435.97, rate: 19.4 }, { tier: 4, min: null, max: 388.63, rate: 17.5 }]
+const bulk = (values: Partial<TariffBulk>): TariffBulk => ({ ...noBulk, ...values })
 
 describe('commission tariff picks', () => {
-  const row = { choices: [{ tier: 1, price: 519.75, rate: 21.5, commission: 111.75, remaining: 248 }, { tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68 }], recommendedTier: 1 }
+  // Band 1 leaves the most money (248, %47,7 of its price), band 4 the largest share (200, %51,5).
+  const row = { choices: [{ tier: 1, price: 519.75, rate: 21.5, commission: 111.75, remaining: 248 }, { tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68 },
+    { tier: 4, price: 388.63, rate: 17.5, commission: 68.01, remaining: 200 }] }
 
   it('takes a row its own pick, else the pick for every row, and leaves it out when neither applies', () => {
-    expect(pickedTier(row, { tier: 2, price: null }, 'recommended')).toBe(2)
-    expect(pickedTier(row, { tier: null, price: 480 }, '')).toBe('own')
-    expect(pickedTier(row, { tier: null, price: null }, 'recommended')).toBeNull()
-    expect(pickedTier(row, undefined, 'recommended')).toBe(1)
-    expect(pickedTier(row, undefined, '2')).toBe(2)
-    expect(pickedTier(row, undefined, '4')).toBeNull()
-    expect(pickedTier(row, undefined, '')).toBeNull()
+    expect(pickedTier(row, { tier: 2, price: null }, bulk({ kind: 'amount' }))).toBe(2)
+    expect(pickedTier(row, { tier: null, price: 480 }, noBulk)).toBe('own')
+    expect(pickedTier(row, { tier: null, price: null }, bulk({ kind: 'amount' }))).toBeNull()
+    expect(pickedTier(row, undefined, noBulk)).toBeNull()
+  })
+
+  it('picks for every row by band, by the most money left or by the largest share, as far as the condition allows', () => {
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2 }))).toBe(2)
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 3 }))).toBeNull()
+    expect(pickedTier(row, undefined, bulk({ kind: 'amount' }))).toBe(1)
+    expect(pickedTier(row, undefined, bulk({ kind: 'rate' }))).toBe(4)
+    // Band 2 leaves %45,4 and 213,68: kept for at least %45 or 200 lira, left out for %46 or 250 lira.
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minRate: 45 }))).toBe(2)
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minRate: 46 }))).toBeNull()
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minAmount: 200 }))).toBe(2)
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minAmount: 250 }))).toBeNull()
+    // Without a cost the condition cannot be met; the band alone still can.
+    const unknown = { choices: row.choices.map(choice => ({ ...choice, remaining: null })) }
+    expect(pickedTier(unknown, undefined, bulk({ kind: 'tier', tier: 2, minRate: 10 }))).toBeNull()
+    expect(pickedTier(unknown, undefined, bulk({ kind: 'tier', tier: 2 }))).toBe(2)
+    expect(pickedTier(unknown, undefined, bulk({ kind: 'amount' }))).toBeNull()
   })
 
   it('works out a price of the seller\'s own as the server does', () => {
