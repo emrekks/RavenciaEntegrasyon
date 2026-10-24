@@ -47,7 +47,7 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     {
         var label = MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], platformCode);
 
-        Assert.Equal("FATURA_DOGRULANAMADI", label);
+        Assert.Equal("FATURA_BEKLIYOR", label);
     }
 
     [Theory]
@@ -66,7 +66,7 @@ public sealed class MarketplaceSalesInvoiceLabelTests
 
     [Fact]
     public void N11OrderWithAnEmptyInvoiceLinkCannotBeVerified() =>
-        Assert.Equal("FATURA_DOGRULANAMADI", MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, """{"invoiceLink":"","invoiceDate":""}""", ["Delivered"], "N11"));
+        Assert.Equal("FATURA_BEKLIYOR", MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, """{"invoiceLink":"","invoiceDate":""}""", ["Delivered"], "N11"));
 
     [Fact]
     public void ReturnWithoutInvoiceEvidenceIsPresentedAsUnknown()

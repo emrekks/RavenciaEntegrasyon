@@ -116,7 +116,8 @@ export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'da
 
 export function invoiceStatusLabel(value: string | null | undefined) {
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
-  if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
+  // An n11 / PTT AVM state the marketplace cannot verify waits for an invoice like any not-invoiced one.
+  if (['FATURA_BEKLIYOR', 'FATURA_DOGRULANAMADI', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
   if (['FATURA_KONTROLDE', 'FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED'].includes(normalized)) return 'Faturası Mevcut'
   if (['FATURA_ISLENIYOR', 'FATURA_PLATFORMA_BEKLIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY', 'ACCEPTED'].includes(normalized)) return 'Fatura İletiliyor'
   if (['FATURA_PLATFORMA_AKTARILMADI', 'MARKETPLACE_FAILED'].includes(normalized)) return 'Fatura İletilemedi'
@@ -125,8 +126,6 @@ export function invoiceStatusLabel(value: string | null | undefined) {
   if (['ADJUSTMENT_REQUIRED', 'FATURA_DUZELTME_GEREKLI'].includes(normalized)) return 'Fatura Düzeltme Gerekli'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW'].includes(normalized)) return 'Fatura Oluşturulamadı'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'Fatura İptal'
-  // n11 / PTT AVM do not show an invoice uploaded in their seller panel; the seller marks it by hand.
-  if (normalized === 'FATURA_DOGRULANAMADI') return 'Fatura Doğrulanamadı'
   return 'Fatura durumu bilinmiyor'
 }
 

@@ -3103,13 +3103,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         else if (label == "FATURA_BILINMIYOR" && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(JsonText(customerJson, "invoiceLink")))
             return "FATURA_KONTROLDE";
         // n11 and PTT AVM never show an invoice uploaded in their seller panel, so an unknown state there cannot be
-        // checked from the marketplace: it waits for the seller to mark it, apart from orders that wait for an invoice.
+        // checked from the marketplace: it is shown as waiting for an invoice (owner, 24 Oct 2026: no separate
+        // "Fatura Doğrulanamadı"), with the not-invoiced ones, until the seller marks it uploaded.
         else if (label == "FATURA_BILINMIYOR" && IsUnverifiableInvoicePlatform(platformCode))
             return UnverifiedInvoiceLabel;
         return label;
     }
 
-    internal const string UnverifiedInvoiceLabel = "FATURA_DOGRULANAMADI";
+    internal const string UnverifiedInvoiceLabel = "FATURA_BEKLIYOR";
 
     internal static bool IsUnverifiableInvoicePlatform(string? platformCode) =>
         platformCode?.Trim().ToUpperInvariant() is "N11" or "PTTAVM";
