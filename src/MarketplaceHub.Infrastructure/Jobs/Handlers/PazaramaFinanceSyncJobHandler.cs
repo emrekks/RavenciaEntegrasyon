@@ -92,7 +92,7 @@ public sealed class PazaramaFinanceSyncJobHandler(AppDbContext db, IOrderFinance
     }
 
     // A sale credits the seller and a refund debits it; the commission is kept as the cost to the seller (Pazarama
-    // sends it negative on a sale, positive when a refund gives it back), without VAT.
+    // sends it negative on a sale, positive when a refund gives it back), as the payout takes it off.
     internal static void Fill(MarketplaceFinanceTransaction row, RemoteFinanceTransaction movement, string orderNumber, DateTimeOffset now)
     {
         row.TransactionType = Short(movement.Status, 200);
