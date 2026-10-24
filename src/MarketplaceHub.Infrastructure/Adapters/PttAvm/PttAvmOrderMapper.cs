@@ -95,7 +95,7 @@ public static class PttAvmOrderMapper
         var packageStatus = PackageStatus(lineStatuses);
         var trackingNumber = Value(order, "KargoBarkod") ?? CargoBarcodes(order).FirstOrDefault();
         var occurredAt = StatusObservedAt(ordered.Value, packageStatus);
-        var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, occurredAt, trackingNumber is null ? null : "PTT Kargo", trackingNumber, allocations, gross, discount, net);
+        var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, occurredAt, trackingNumber is null ? null : "PTT Kargo", trackingNumber, allocations, gross, discount, net, StatusTimeUnknown: true);
         var remote = new RemoteOrder(orderNumber, orderNumber, ordered.Value, occurredAt, "TRY", gross, discount, net,
             CustomerSnapshot(order), Address(order, "Siparis", Value(order, "MusteriAdi"), Value(order, "MusteriSoyadi")),
             Address(order, "Fatura", Value(order, "FaturaMusteriAdi") ?? Value(order, "MusteriAdi"), Value(order, "FaturaMusteriSoyadi") ?? Value(order, "MusteriSoyadi")),
@@ -138,6 +138,8 @@ public static class PttAvmOrderMapper
     // PTT AVM gives no time for a status change, only the order's IslemTarihi. The package event time is that time
     // plus one second per status step, so each status the package goes through is its own ordered event (the
     // panel records an event once per package and time) and a later status never looks older than an earlier one.
+    // It is no real time: the package is marked StatusTimeUnknown and stores the time the status was first seen
+    // (audit S4: it was read as the delivery date, the invoice due date and the e-Arşiv sending date).
     internal static DateTimeOffset StatusObservedAt(DateTimeOffset orderedAt, string packageStatus) => orderedAt.AddSeconds(packageStatus switch
     {
         "Awaiting" => 1,

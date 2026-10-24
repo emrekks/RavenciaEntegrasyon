@@ -15,13 +15,16 @@ public static class MarketplaceFinanceCategories
     public const string Penalty = "PENALTY";
     public const string EarlyPayment = "EARLY_PAYMENT";
     public const string Advertising = "ADVERTISING";
+    // A charge to the seller whose kind no rule names (Trendyol "Yurtdışı Operasyon Iade Bedeli"): a deduction invoice
+    // is always a charge, so an unrecognised one is a cost, not OTHER.
+    public const string OtherDeduction = "OTHER_DEDUCTION";
     public const string Other = "OTHER";
 
-    public static readonly IReadOnlyList<string> All = [Sale, Return, Discount, Coupon, Commission, Cargo, ServiceFee, Stoppage, Penalty, EarlyPayment, Advertising, Other];
+    public static readonly IReadOnlyList<string> All = [Sale, Return, Discount, Coupon, Commission, Cargo, ServiceFee, Stoppage, Penalty, EarlyPayment, Advertising, OtherDeduction, Other];
 
     // The categories that are a cost to the seller; they add up to the report's real cost total. OTHER is shown apart:
     // an unrecognised record may be a correction in either direction.
-    public static readonly IReadOnlyList<string> Costs = [Commission, Cargo, ServiceFee, Stoppage, Penalty, EarlyPayment, Advertising];
+    public static readonly IReadOnlyList<string> Costs = [Commission, Cargo, ServiceFee, Stoppage, Penalty, EarlyPayment, Advertising, OtherDeduction];
 }
 
 // One record of a marketplace's current account statement (Trendyol "Cari Hesap Ekstresi"), as the marketplace sent

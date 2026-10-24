@@ -110,6 +110,49 @@ public sealed class MarketplaceSyncContentionTests
     }
 
     [Theory]
+    [InlineData(MarketplaceJobTypes.WebhookIngest, null)]
+    [InlineData(MarketplaceJobTypes.ShopifyWebhookIngest, null)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaWebhookIngest, null)]
+    [InlineData(MarketplaceJobTypes.ExternalEffectReconcile, null)]
+    [InlineData(MarketplaceJobTypes.ExternalEffectReconcile, "user")]
+    public void ShortJobsWaitForTheLockAndComeBackWithinSeconds(string jobType, string? triggerType)
+    {
+        // Audit 2026-10-24 Q1: simultaneous webhooks used to be deferred 30 s each and collide again.
+        Assert.True(MarketplaceSyncExecutionLock.WaitsForLock(jobType));
+        var result = MarketplaceSyncExecutionLock.ContentionResult(jobType, "{}", triggerType, sameTypeRunning: false);
+
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.True(result.RefundAttempt);
+        Assert.Equal("CONNECTION_OPERATION_BUSY", result.ErrorCode);
+        Assert.Equal(MarketplaceSyncExecutionLock.ShortJobRetryDelay, result.RetryAfter);
+    }
+
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderSync)]
+    [InlineData(MarketplaceJobTypes.ShipmentAction)]
+    [InlineData(MarketplaceJobTypes.ProductSync)]
+    public void LongerJobsTryTheLockOnce(string jobType) =>
+        Assert.False(MarketplaceSyncExecutionLock.WaitsForLock(jobType));
+
+    [Fact]
+    public void ADeferralIsSpreadUpwardsAndBounded()
+    {
+        var ids = Enumerable.Range(0, 50).Select(index => new Guid($"0199a5a1-1c00-7000-8000-{index:D12}")).ToArray();
+        var shortDelays = ids.Select(id => JobLeaseService.DeferralDelay(TimeSpan.FromSeconds(1), id, 3)).ToArray();
+        // One second asked: 1-4 s (at least a 3 s spread), never sooner than asked.
+        Assert.All(shortDelays, delay => Assert.InRange(delay, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4)));
+        Assert.True(shortDelays.Distinct().Count() > 40);
+        Assert.True(shortDelays.Max() - shortDelays.Min() > TimeSpan.FromSeconds(2));
+        // 30 s asked: up to 30 % more.
+        Assert.All(ids, id => Assert.InRange(JobLeaseService.DeferralDelay(TimeSpan.FromSeconds(30), id, 3), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(39)));
+        // An hour asked: at most five minutes more.
+        Assert.All(ids, id => Assert.InRange(JobLeaseService.DeferralDelay(TimeSpan.FromHours(1), id, 3), TimeSpan.FromHours(1), TimeSpan.FromMinutes(65)));
+        // Deterministic for one job and version; a later deferral of the same job lands elsewhere.
+        Assert.Equal(JobLeaseService.DeferralDelay(TimeSpan.FromSeconds(1), ids[0], 3), JobLeaseService.DeferralDelay(TimeSpan.FromSeconds(1), ids[0], 3));
+        Assert.True(Enumerable.Range(1, 10).Select(version => JobLeaseService.DeferralDelay(TimeSpan.FromSeconds(1), ids[0], version)).Distinct().Count() > 5);
+    }
+
+    [Theory]
     [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
     [InlineData(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation)]
     [InlineData(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)]

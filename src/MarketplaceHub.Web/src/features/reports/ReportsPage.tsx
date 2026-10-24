@@ -343,6 +343,8 @@ type MoneyPart = Part & { note?: string }
 // (returns and the marketplaces' commission, cargo and fees), what is left after them, the product cost entered and the
 // profit (null until a cost is entered) with its margin over the sales.
 type Money = {
+  // The net VAT of the Trendyol orders, off the profit after the deductions (null when the statement is not read).
+  tax: number | null
   total: number; deductions: MoneyPart[]; deducted: number; left: number; cost: number | null; costCoverage: number | null
   profit: number | null; margin: number | null; leftNote: string; profitNote: string; description: string
   // What the account could not take off: the commission when none is known, and the platforms whose cargo and fees are
@@ -361,7 +363,8 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   const deducted = deductions.reduce((sum, part) => sum + part.value, 0)
   const left = now.grossSales - deducted
   const cost = data.cost.costedQuantity > 0 ? data.cost.costTotal : null
-  const profit = cost === null ? null : left - cost
+  const tax = finance?.netVat?.net ?? null
+  const profit = cost === null ? null : left - (tax ?? 0) - cost
   const unread = finance ? unreadFeeCodes(data) : []
   const commissionKnown = flow.steps.some(step => step.key === 'commission' && step.value !== null)
   const gaps = [
@@ -371,7 +374,7 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   const coverage = data.cost.coverage
   return {
     gaps: { commission: !commissionKnown, platforms: unread, lines: finance ? [] : unreadCostLines },
-    total: now.grossSales, deductions, deducted, left, cost, costCoverage: cost === null ? null : coverage, profit,
+    total: now.grossSales, deductions, deducted, left, tax, cost, costCoverage: cost === null ? null : coverage, profit,
     margin: profit !== null && now.grossSales > 0 ? profit / now.grossSales : null, description: flow.description,
     leftNote: `Satıştan iade ve pazaryeri kesintileri düşüldükten sonra kalan; ürün maliyeti hariç, tahminidir.${gaps.length ? ` Düşülmeyenler: ${gaps.join('; ')}.` : ''}`,
     profitNote: cost === null ? 'Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.'
@@ -475,12 +478,15 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
     { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission', note: commission?.note || 'Komisyon bilinmiyor' },
     { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo', note: finance ? cargo?.note || 'Bu dönemde kargo yok' : notRead },
     { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: `${formatNumber(data.summary.returnedQuantity)} adet iade` },
-    ...feeCategories.map(fee => {
+    // "Diğer Kesinti" gathers deduction invoices no rule names, so it is listed only when there is one.
+    ...feeCategories.filter(fee => fee.category !== 'OTHER_DEDUCTION' || finance?.lines.some(item => item.category === fee.category && item.amount !== 0)).map(fee => {
       const line = finance?.lines.find(item => item.category === fee.category)
       return { key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.label, value: finance ? line?.amount ?? 0 : null, tone: fee.key,
-        note: !finance ? notRead : line ? `${formatCount(line.records)} kayıt · Trendyol cari hesabı, işlem tarihine göre` : 'Cari hesapta bu dönemde kayıt yok' }
+        note: !finance ? notRead : line ? feeNote(line) : 'Cari hesapta bu dönemde kayıt yok' }
     }),
-    { key: 'vat', label: 'Net KDV', value: null, tone: 'vat', note: 'Satış KDV\'si ile masraflarda ödenen KDV farkı; panel henüz hesaplamıyor' }
+    { key: 'vat', label: 'Net KDV', value: finance?.netVat?.net ?? null, tone: 'vat', note: finance?.netVat
+      ? `Satışların KDV'si ${formatTl(finance.netVat.salesVat)} − ürün maliyetindeki KDV ${formatTl(finance.netVat.productCostVat)} − Trendyol masraflarındaki KDV ${formatTl(finance.netVat.expenseVat)}; tahminidir${finance.netVat.net < 0 ? ', eksi değer devreden KDV\'dir' : ''}`
+      : notRead }
   ]
   const known = lines.filter(line => line.value !== null && line.value > 0).sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
   return [...known, ...lines.filter(line => line.value !== null && line.value <= 0), ...lines.filter(line => line.value === null)]
@@ -536,7 +542,8 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     { key: 'cargo', label: 'Kargo', value: cargo?.value ?? 0, note: cargo?.note ?? '' },
     { key: 'marketplace', label: 'Pazaryeri Masrafları', value: (commission?.value ?? 0) + otherFees.reduce((sum, fee) => sum + fee.value, 0),
       note: [commission ? `${commission.label} ${formatTl(commission.value)}` : null, ...otherFees.map(fee => `${fee.label} ${formatTl(fee.value)}`)].filter(Boolean).join(' · ') },
-    { key: 'stoppage', label: 'Stopaj', value: stoppage?.value ?? 0, note: 'E-ticaret stopajı; Trendyol cari hesabı, işlem tarihine göre' },
+    { key: 'stoppage', label: 'Stopaj', value: stoppage?.value ?? 0, note: 'E-ticaret stopajı (KDV hariç yurt içi satışın %1\'i); Trendyol cari hesabı, hesap kesimi olmayan siparişlerde tahmini' },
+    { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla: devreden KDV, kârı artırır' : 'Satışların KDV\'si eksi ürün maliyeti ve Trendyol masraflarındaki KDV; tahminidir' },
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost ?? 0, note: `Satılan adetlerin ${formatPercent(money.costCoverage)} kadarının maliyeti girili` }
   ].filter(item => item.value !== 0)
   const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: 'İptaller hariç, iadeler düşülmeden; platformlara göre açmak için tıklayın' }]
@@ -562,9 +569,9 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
         return <li key={row.key} className={`reports-tip-host is-${row.kind}${row.kind === 'end' && row.to < 0 ? ' is-negative' : ''}`}>
           <span className="reports-bridge-label">{row.key === 'sales'
             ? <button type="button" onClick={() => setOpen(true)} aria-label="Satış tutarı: platformlara göre aç" aria-describedby={`${tip}-${row.key}`}>{row.label}<UiIcon name="chevronRight" size={14} /></button>
-            : <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${row.key}`}>{`${row.kind === 'minus' ? '− ' : ''}${row.label}`}</button>}</span>
+            : <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${row.key}`}>{`${row.kind === 'minus' ? (row.to < row.from ? '+ ' : '− ') : ''}${row.label}`}</button>}</span>
           <span className="reports-bridge-track" aria-hidden="true"><i style={{ left: `${(start - low) / span * 100}%`, width: shown ? `${Math.max(0.5, width)}%` : '0%', transitionDelay: `${index * 80}ms` }} /></span>
-          <b>{row.kind === 'minus' ? `− ${formatTl(row.to - row.from)}` : signedTl(row.to)}</b>
+          <b>{row.kind === 'minus' ? `${row.to < row.from ? '+' : '−'} ${formatTl(Math.abs(row.to - row.from))}` : signedTl(row.to)}</b>
           <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip">{row.note}</span>
         </li>
       })}</ol>
@@ -610,6 +617,7 @@ function ProfitLedger({ money }: { money: Money }) {
     <div><dt>Satış Tutarı</dt><dd>{formatTl(money.total)}</dd></div>
     {money.deductions.map(part => <div key={part.key} className="is-minus"><dt>{part.label}</dt><dd>− {formatTl(part.value)}</dd></div>)}
     <div className={`is-total is-${money.left < 0 ? 'bad' : 'good'}`}><dt>Masraflar Sonrası</dt><dd>{amount(money.left)}</dd></div>
+    {money.tax !== null && <div className={money.tax < 0 ? undefined : 'is-minus'}><dt>Net KDV</dt><dd>{money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`}</dd></div>}
     {money.cost !== null && <div className="is-minus"><dt>Ürün Maliyeti</dt><dd>− {formatTl(money.cost)}</dd></div>}
     {money.profit !== null && <div className={`is-result is-${money.profit < 0 ? 'bad' : 'good'}`}><dt>Tahmini Net Kâr<small>Net marj {formatPercent(money.margin)}</small></dt><dd>{amount(money.profit)}</dd></div>}
   </dl>
@@ -868,7 +876,9 @@ const feeCategories = [
   { category: 'STOPPAGE', key: 'stoppage', label: 'Stopaj' },
   { category: 'ADVERTISING', key: 'ads', label: 'Reklam' },
   { category: 'PENALTY', key: 'penalty', label: 'Ceza' },
-  { category: 'EARLY_PAYMENT', key: 'early', label: 'Erken Ödeme' }
+  { category: 'EARLY_PAYMENT', key: 'early', label: 'Erken Ödeme' },
+  // A deduction invoice of a kind no rule names: still charged to the seller.
+  { category: 'OTHER_DEDUCTION', key: 'otherDeduction', label: 'Diğer Kesinti' }
 ]
 
 function feeLines(costs: ReportCosts) {
@@ -876,6 +886,13 @@ function feeLines(costs: ReportCosts) {
     const line = costs.lines.find(item => item.category === fee.category)
     return line && line.amount !== 0 ? [{ ...fee, value: line.amount }] : []
   })
+}
+
+// A fee line's note: how many records were read and how much was estimated for the orders not settled yet.
+function feeNote(line: ReportCosts['lines'][number]) {
+  const read = line.records > 0 ? `${formatCount(line.records)} kayıt · Trendyol cari hesabı, işlem tarihine göre` : null
+  const estimated = line.estimated ? `${formatTl(line.estimated)} hesap kesimi olmayan siparişler için tahmini` : null
+  return [read, estimated].filter(Boolean).join(' · ') || 'Cari hesapta bu dönemde kayıt yok'
 }
 
 function commissionNote(costs: ReportCosts) {

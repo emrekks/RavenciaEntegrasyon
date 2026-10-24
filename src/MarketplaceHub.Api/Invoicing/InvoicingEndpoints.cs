@@ -289,7 +289,7 @@ public static class InvoicingEndpoints
         return Results.Ok(new { document.Id, document.DocumentType, document.DocumentUrl, document.InvoiceNumber, document.Status, duplicate = false });
     }
 
-    private static async Task<IResult> QueueManualOrderInvoiceDeliveryAsync(Guid id, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    internal static async Task<IResult> QueueManualOrderInvoiceDeliveryAsync(Guid id, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
@@ -319,8 +319,10 @@ public static class InvoicingEndpoints
             var idempotencyDigest = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(http.Request.Headers["Idempotency-Key"].ToString())));
             var packageKey = $"manual-invoice-delivery:{document.Id:N}:{package.Id:N}";
             var dedup = $"{InvoicingJobTypes.ManualOrderInvoiceDelivery}:{id:N}:{package.Id:N}:{idempotencyDigest}";
+            // The same key reaches its own job only while that job is still waiting or running. A finished (failed) job
+            // is never answered as "queued": the retry gets a new job, its dedup key told apart by the state version.
             var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery && x.JobDedupKey == dedup, http.RequestAborted);
-            if (existing is not null) { jobs.Add(existing.Id); continue; }
+            if (existing is { Status: JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled }) { jobs.Add(existing.Id); continue; }
             if (state is not null)
             {
                 var activeJob = await db.IntegrationJobs.AsNoTracking()
@@ -350,7 +352,7 @@ public static class InvoicingEndpoints
                 state.Version++;
             }
             var payload = JsonSerializer.Serialize(new { manualOrderInvoiceDocumentId = document.Id, packageId = package.Id, inspectionOnly });
-            var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ConnectionId = package.ConnectionId, JobType = InvoicingJobTypes.ManualOrderInvoiceDelivery, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = packageKey, Priority = JobPriorityPolicy.ForUser(InvoicingJobTypes.ManualOrderInvoiceDelivery), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 4, CorrelationId = http.TraceIdentifier, CreatedAt = now, Version = 1 };
+            var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ConnectionId = package.ConnectionId, JobType = InvoicingJobTypes.ManualOrderInvoiceDelivery, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))), JobDedupKey = existing is null ? dedup : $"{dedup}:r{state.Version}", EffectIdempotencyKey = packageKey, Priority = JobPriorityPolicy.ForUser(InvoicingJobTypes.ManualOrderInvoiceDelivery), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 4, CorrelationId = http.TraceIdentifier, CreatedAt = now, Version = 1 };
             db.IntegrationJobs.Add(job);
             jobs.Add(job.Id);
         }

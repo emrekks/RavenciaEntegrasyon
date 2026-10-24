@@ -32,7 +32,7 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, type EditorFieldErrors } from '../product-editor-state'
+import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
@@ -1308,7 +1308,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         if (current.length === 1 && current[0].optionSignature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' && generated.length === 1) {
           const existing = current[0]
           const [next] = generated
-          return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, costPrice: existing.costPrice, mediaRefs: existing.mediaRefs }]
+          return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, costPrice: existing.costPrice, loadedCostPrice: existing.loadedCostPrice, mediaRefs: existing.mediaRefs }]
         }
         const existingMap = new Map(current.map(row => [variantSignatureKey(row.optionSignature), row]))
         const knownBarcodes = new Set(current.map(row => row.barcode.trim()).filter(Boolean))
@@ -2222,8 +2222,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             sku: row.sku,
             barcode: row.barcode || null,
             modelCode: modelCodeForRow(row.key),
-            // Only a cost the user changed is sent; an unsent (null) cost is left as it is on the server.
-            costPrice: row.costPrice === row.loadedCostPrice ? null : row.costPrice,
+            // Only a cost the user changed is sent, with the cost it was loaded with; an unsent (null) cost is left as
+            // it is on the server, and a cost changed there meanwhile refuses the save (409).
+            ...editorVariantCostUpdate(row),
             defaultListPrice: row.listPrice,
             defaultSalePrice: row.salePrice,
             sortOrder: rows.findIndex(candidate => candidate.key === row.key),

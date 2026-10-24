@@ -225,6 +225,23 @@ describe('ReportsPage', () => {
     expect(body(page)).toContain('Shopify cari hesabı henüz okunmuyor')
   })
 
+  it('counts a deduction invoice of an unnamed kind among the Kesintiler', async () => {
+    const costs = withFinance.costs!
+    const page = await open('', { ...withFinance, costs: { ...costs, realCostTotal: 68, lines: [...costs.lines,
+      { category: 'OTHER_DEDUCTION', label: 'Diğer kesinti', isCost: true, amount: 4.5, records: 1, orderLinked: 0, unlinked: 4.5 }] } })
+    // It has its own line among the costs, and only when there is one (the other tests list none).
+    const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
+    expect(lines).toContain('Diğer Kesinti ₺4,50')
+    expect(bridgeRows(page).some(row => row.includes('Pazaryeri Masrafları') && row.includes('58,50'))).toBe(true)
+  })
+
+  it('takes the net VAT off the profit after the deductions, and adds a carried-forward one back', async () => {
+    const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 22.73, productCostVat: 7.27, expenseVat: 68.63, net: -53.17 } } })
+    // −111,68 before the VAT; a VAT carried forward of 53,17 brings it to −58,51.
+    expect(bridgeRows(page)).toContain('+ Net KDV + ₺53,17')
+    expect(bridgeRows(page).at(-1)).toContain('58,51')
+  })
+
   it('paints the provinces, ranks them beside the map, opens one and switches to the export countries', async () => {
     const page = await open('?view=geo')
     const map = page.querySelector('.reports-map-panel')!

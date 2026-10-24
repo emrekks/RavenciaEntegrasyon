@@ -30,10 +30,78 @@ public sealed class TrendyolFinanceTests
     [InlineData(Others, "DeductionInvoices", null, "Erken Ödeme Hizmet Bedeli", null, MarketplaceFinanceCategories.EarlyPayment)]
     [InlineData(Others, "DeductionInvoices", null, "Reklam Hizmet Bedeli", null, MarketplaceFinanceCategories.Advertising)]
     [InlineData(Others, "DeductionInvoices", null, "Fatura", "Geç teslimat CEZASI", MarketplaceFinanceCategories.Penalty)]
+    // A deduction invoice no keyword names is still a charge to the seller (live: "Yurtdışı Operasyon Iade Bedeli").
+    [InlineData(Others, "DeductionInvoices", null, "Yurtdışı Operasyon Iade Bedeli", null, MarketplaceFinanceCategories.OtherDeduction)]
     [InlineData(Others, "FinancialItem", null, "Düzeltme", null, MarketplaceFinanceCategories.Other)]
     [InlineData(Others, "SomethingNew", null, null, null, MarketplaceFinanceCategories.Other)]
     public void A_record_is_sorted_by_its_type_or_its_words_and_an_unknown_one_is_other(string source, string type, string? subType, string? raw, string? description, string expected) =>
         Assert.Equal(expected, TrendyolFinanceCategorizer.Categorize(source, type, subType, raw, description));
+
+    [Theory]
+    [InlineData(Others, "DeductionInvoices", "OTHER", 379.32, 0, "OTHER_DEDUCTION")]
+    [InlineData(Others, "FinancialItem", "OTHER", 10, 0, "OTHER_DEDUCTION")]
+    [InlineData(Others, "FinancialItem", "OTHER", 0, 3, "OTHER")]
+    [InlineData(Others, "FinancialItem", "OTHER", 5, 5, "OTHER")]
+    [InlineData(Others, "ReturnInvoice", "OTHER", 0, 664.07, "OTHER")]
+    [InlineData(Settlements, "ProvisionPositive", "OTHER", 7, 0, "OTHER")]
+    [InlineData(Others, "DeductionInvoices", "CARGO", 34.24, 0, "CARGO")]
+    public void An_unrecognised_charge_counts_as_another_deduction_and_other_stays_for_the_rest(string source, string type, string stored, double debt, double credit, string expected) =>
+        Assert.Equal(expected, TrendyolFinanceCategorizer.Charged(source, type, stored, (decimal)debt, (decimal)credit));
+
+    [Fact]
+    public void Another_deduction_is_a_cost_and_a_row_stored_as_other_moves_to_it_when_read_again()
+    {
+        Assert.Contains(MarketplaceFinanceCategories.OtherDeduction, MarketplaceFinanceCategories.Costs);
+        Assert.Contains(MarketplaceFinanceCategories.OtherDeduction, MarketplaceFinanceCategories.All);
+        Assert.DoesNotContain(MarketplaceFinanceCategories.Other, MarketplaceFinanceCategories.Costs);
+
+        var invoice = Record("910", Others, "DeductionInvoices", type: "Yurtdışı Operasyon Iade Bedeli", debt: 379.32m);
+        var tenant = Guid.NewGuid();
+        var (added, _) = TrendyolFinanceSyncPlan.Merge(new Dictionary<(string, string), MarketplaceFinanceTransaction>(), [invoice], tenant, Guid.NewGuid(), DateTimeOffset.UtcNow);
+        Assert.Equal(MarketplaceFinanceCategories.OtherDeduction, Assert.Single(added).Category);
+
+        // A row stored as OTHER before the rule is put right by the next overlapping read.
+        var stored = added.ToDictionary(row => (row.Source, row.ExternalId));
+        stored[(Others, "910")].Category = MarketplaceFinanceCategories.Other;
+        var (_, updated) = TrendyolFinanceSyncPlan.Merge(stored, [invoice], tenant, Guid.NewGuid(), DateTimeOffset.UtcNow);
+        Assert.Equal(1, updated);
+        Assert.Equal(MarketplaceFinanceCategories.OtherDeduction, stored[(Others, "910")].Category);
+    }
+
+    [Fact]
+    public void The_report_counts_a_stored_other_deduction_invoice_as_a_cost_and_leaves_other_out()
+    {
+        var (input, _, _, store) = ReportFixture();
+        var finance = new ReportFinance(
+            [
+                Row(store, Others, "1", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.ServiceFee, null, null, debt: 9.99m),
+                // Stored as OTHER before the rule: an unrecognised deduction invoice and a financial item that takes money.
+                Row(store, Others, "2", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.Other, null, null, debt: 379.32m),
+                Row(store, Others, "3", TrendyolFinanceCategorizer.FinancialItem, MarketplaceFinanceCategories.Other, null, null, debt: 10m),
+                // Stored as it is now.
+                Row(store, Others, "4", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.OtherDeduction, null, null, debt: 0.68m),
+                // A financial item that gives money back and a provision stay OTHER, out of the total.
+                Row(store, Others, "5", TrendyolFinanceCategorizer.FinancialItem, MarketplaceFinanceCategories.Other, null, null, credit: 3m),
+                Row(store, Settlements, "6", "ProvisionPositive", MarketplaceFinanceCategories.Other, null, null, debt: 7m)
+            ],
+            [],
+            new HashSet<(Guid, string)>(),
+            new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, LastSyncedAt = input.Period.End } });
+        var costs = ReportBuilder.Build(input with { Finance = finance }, Empty(input), new Dictionary<Guid, decimal>()).Costs;
+
+        var deduction = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.OtherDeduction);
+        Assert.Equal("Diğer kesinti", deduction.Label);
+        Assert.True(deduction.IsCost);
+        Assert.Equal(390m, deduction.Amount);
+        Assert.Equal(3, deduction.Records);
+        var other = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.Other);
+        Assert.False(other.IsCost);
+        Assert.Equal(4m, other.Amount);
+        // Neither order is settled yet: each adds the estimated platform fee and 1 % withholding tax on its sale.
+        Assert.Equal(9.99m + 390m + 2 * 13.19m + 1.5m, costs.RealCostTotal);
+        var channel = Assert.Single(costs.Channels);
+        Assert.Equal(390m, channel.Amounts.Single(amount => amount.Category == MarketplaceFinanceCategories.OtherDeduction).Amount);
+    }
 
     [Theory]
     [InlineData("Sale", 12.5, 0, 0, 12.5)]
@@ -241,13 +309,14 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(0.5m, costs.Coverage);
         Amount(costs, MarketplaceFinanceCategories.Commission, 17m);
         Amount(costs, MarketplaceFinanceCategories.Cargo, 84.24m);
-        Amount(costs, MarketplaceFinanceCategories.ServiceFee, 9.99m);
-        Amount(costs, MarketplaceFinanceCategories.Stoppage, 1m);
+        // Order B is not settled yet: its platform fee and withholding tax are estimated on top of the dated records.
+        Amount(costs, MarketplaceFinanceCategories.ServiceFee, 9.99m + 13.19m);
+        Amount(costs, MarketplaceFinanceCategories.Stoppage, 1m + 0.5m);
         Amount(costs, MarketplaceFinanceCategories.Sale, -100m);
         Amount(costs, MarketplaceFinanceCategories.Discount, 5m);
         Amount(costs, MarketplaceFinanceCategories.Other, -3m);
         // Commission, cargo, service fee and withholding tax; OTHER is shown but not added.
-        Assert.Equal(17m + 84.24m + 9.99m + 1m, costs.RealCostTotal);
+        Assert.Equal(17m + 84.24m + 9.99m + 13.19m + 1m + 0.5m, costs.RealCostTotal);
         var cargo = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.Cargo);
         Assert.Equal(44.24m, cargo.OrderLinked);
         Assert.Equal(40m, cargo.Unlinked);
@@ -276,7 +345,7 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(17m, channel.RealCommission);
         Assert.Equal(10.75m, channel.EstimatedCommission);
         Assert.Equal(98.34m, channel.EstimatedCargo);
-        Assert.Equal(17m + 10.75m + 84.24m + 9.99m + 1m + 98.34m, channel.Total);
+        Assert.Equal(17m + 10.75m + 84.24m + 9.99m + 13.19m + 1m + 0.5m + 98.34m, channel.Total);
 
         var product = Assert.Single(costs.Products);
         Assert.Equal("BAR-1", product.Barcode);
@@ -329,6 +398,57 @@ public sealed class TrendyolFinanceTests
         var noStore = ReportBuilder.Build(input, Empty(input), new Dictionary<Guid, decimal>());
         Assert.Equal(ReportCosts.EstimateSource, noStore.Costs.Source);
         Assert.Contains(noStore.DataNotes, note => note.Contains("canlı Trendyol mağazası yok", StringComparison.Ordinal));
+    }
+
+    // Yesterday's orders, before Trendyol wrote any record of them (24 Oct 2026: the owner's reference for 23 Oct had
+    // 15 orders, 3,040.19 commission, 1,475.10 cargo at 98.34 an order, 197.85 service fee at 13.19 an order, 34.22
+    // international fee on a 570.34 Greek order, 123.85 withholding tax and -53.17 net VAT): everything is estimated
+    // from the store's own history instead of being left out.
+    [Fact]
+    public void A_read_store_without_records_of_the_period_yet_has_its_trendyol_costs_estimated()
+    {
+        var store = Guid.NewGuid();
+        var day = new DateOnly(2026, 10, 23);
+        var start = new DateTimeOffset(2026, 10, 22, 21, 0, 0, TimeSpan.Zero);
+        var at = start.AddHours(12);
+        var (a, b, c) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var (lineA, lineB, lineC) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
+            new Dictionary<Guid, ReportChannelView> { [store] = new(store, "TRENDYOL", "Trendyol Ravencia", false) },
+            [
+                new() { Id = a, ConnectionId = store, OrderNumber = "A", DerivedStatus = "SHIPPED", Amount = 1000m, LineValue = 1000m, RealAt = at, OrderedAt = at },
+                new() { Id = b, ConnectionId = store, OrderNumber = "B", DerivedStatus = "SHIPPED", Amount = 500m, LineValue = 500m, RealAt = at, OrderedAt = at },
+                new() { Id = c, ConnectionId = store, OrderNumber = "C", DerivedStatus = "SHIPPED", Amount = 570.34m, LineValue = 570.34m, RealAt = at, OrderedAt = at, StoreFrontCode = "GR" }
+            ],
+            new Dictionary<Guid, ReportOrderExtra>(),
+            [
+                new() { Id = lineA, OrderId = a, Title = "Ceket", Sku = "A", UnitPrice = 1000m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = 400m },
+                new() { Id = lineB, OrderId = b, Title = "Bluz", Sku = "B", UnitPrice = 500m, OrderedQuantity = 1m, VatRate = 10m },
+                new() { Id = lineC, OrderId = c, Title = "Kaban", Sku = "C", UnitPrice = 570.34m, OrderedQuantity = 1m, VatRate = 10m }
+            ],
+            new Dictionary<Guid, ReportLineExtra>
+            {
+                [lineA] = new() { Id = lineA, CommissionType = "number", Commission = "21.5" },
+                [lineC] = new() { Id = lineC, CommissionType = "number", Commission = "21.5" }
+            }, [], [], new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false);
+        var finance = new ReportFinance([], [], new HashSet<(Guid, string)>(),
+            new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, LastSyncedAt = start, CoveredFrom = start.AddDays(-90), CoveredThrough = start } },
+            new Dictionary<Guid, ReportCargoSample> { [store] = new(983.4m, 10) });
+
+        var costs = ReportBuilder.Build(input with { Finance = finance }, Empty(input), new Dictionary<Guid, decimal>()).Costs;
+
+        Assert.Equal(ReportCosts.FinanceSource, costs.Source);
+        // B has no commission: it is taken at the store's rate over A and C (21.5 %).
+        Assert.Equal(215m + 122.62m + 107.5m, costs.Commission!.Combined);
+        Assert.Equal(295.02m, costs.Cargo!.Combined);
+        // 3 × 13.19 + 6 % of the Greek sale; 1 % of the VAT-free domestic sales.
+        Amount(costs, MarketplaceFinanceCategories.ServiceFee, 73.79m);
+        Amount(costs, MarketplaceFinanceCategories.Stoppage, 13.64m);
+        Assert.Equal(73.79m, costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee).Estimated);
+        // VAT in the domestic sales (1,500 at 10 %), less the VAT in A's cost (400) and in commission, cargo and the
+        // platform fee (20 %; the international fee carries none).
+        var vat = Assert.IsType<ReportNetVatView>(costs.NetVat);
+        Assert.Equal((136.36m, 36.36m, 129.95m, -29.95m), (vat.SalesVat, vat.ProductCostVat, vat.ExpenseVat, vat.Net));
     }
 
     private static void Amount(ReportCostsView costs, string category, decimal expected) =>

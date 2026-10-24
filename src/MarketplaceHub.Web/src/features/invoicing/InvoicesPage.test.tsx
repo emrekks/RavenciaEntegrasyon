@@ -341,7 +341,7 @@ describe('InvoicesPage on a phone (375 px)', () => {
 })
 
 describe('InvoicesPage detail window', () => {
-  it('turns "Platforma İlet" off once the delivery is queued and sends one versioned key', async () => {
+  it('turns "Platforma İlet" off once the delivery is queued and sends one fresh key per attempt', async () => {
     act(() => row('SH-1002').querySelector<HTMLButtonElement>('.invoice-reference-details-trigger')!.click())
     await settle()
     const deliver = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.invoice-detail-document-actions button')).find(item => /Platforma İle/.test(item.textContent ?? ''))!
@@ -350,7 +350,9 @@ describe('InvoicesPage detail window', () => {
     act(() => deliver().click())
     await settle()
 
-    expect(apiState.deliveryKeys).toEqual(['manual-invoice-delivery:manual-doc-2:vNEW'])
+    // One request, keyed for this attempt alone: a retry after a failed delivery gets a new key, never the same one.
+    expect(apiState.deliveryKeys).toHaveLength(1)
+    expect(apiState.deliveryKeys[0]).toMatch(/^manual-invoice-delivery:manual-doc-2:[0-9a-f-]{36}$/)
     expect(deliver().textContent).toBe('Platforma İletim Sırada')
     expect(deliver().disabled).toBe(true)
   })

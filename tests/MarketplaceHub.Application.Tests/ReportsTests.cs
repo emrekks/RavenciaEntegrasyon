@@ -84,13 +84,21 @@ public sealed class ReportsTests
 
     [Theory]
     [InlineData("TRENDYOL", "number", "21.5", null, null, 43)]
-    [InlineData("HEPSIBURADA", "object", "60", "15", null, 30)]
+    [InlineData("HEPSIBURADA", "object", "15", "15", null, 30)]
     [InlineData("HEPSIBURADA", null, null, "15", null, 30)]
     [InlineData("N11", null, null, "20,5", null, 41)]
     [InlineData("PTTAVM", null, null, null, "20", 40)]
     public void The_commission_of_kept_units_is_estimated_from_what_the_line_carries(string platform, string? type, string? commission, string? rate, string? komisyon, double expected) =>
-        // 2 units kept out of 4 sold, paid 200 for the kept ones.
-        Assert.Equal((decimal)expected, ReportBuckets.EstimatedCommission(platform, type, commission, rate, komisyon, 200m, 2m, 4m));
+        // 2 units kept out of 4 sold, paid 200 for the kept ones (Hepsiburada's amount is per unit: 15% of 100).
+        Assert.Equal((decimal)expected, ReportBuckets.EstimatedCommission(platform, type, commission, rate, komisyon, 200m, 2m));
+
+    [Theory]
+    [InlineData(2, 546, 98.28)]
+    [InlineData(1, 273, 49.14)]
+    [InlineData(0, 0, 0)]
+    public void A_hepsiburada_commission_amount_counts_once_per_kept_unit(int keptUnits, double keptAmount, double expected) =>
+        // The live line: 2 x 273 TL at rate 18 carries {"amount": 49.14}, 18% of one unit; with one unit back one stays charged.
+        Assert.Equal((decimal)expected, ReportBuckets.EstimatedCommission("HEPSIBURADA", "object", "49.14", "18", null, (decimal)keptAmount, keptUnits));
 
     [Theory]
     [InlineData("PAZARAMA", "number", "10")]
@@ -99,7 +107,7 @@ public sealed class ReportsTests
     [InlineData("TRENDYOL", "number", "250")]
     [InlineData("TRENDYOL", "string", "abc")]
     public void A_line_without_a_usable_commission_has_none(string platform, string? type, string? commission) =>
-        Assert.Null(ReportBuckets.EstimatedCommission(platform, type, commission, null, null, 200m, 2m, 2m));
+        Assert.Null(ReportBuckets.EstimatedCommission(platform, type, commission, null, null, 200m, 2m));
 
     [Fact]
     public void A_district_is_shown_in_turkish_title_case_and_a_code_is_no_district()

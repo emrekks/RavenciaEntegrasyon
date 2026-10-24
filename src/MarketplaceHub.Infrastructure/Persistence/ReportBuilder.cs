@@ -111,6 +111,8 @@ internal sealed class ReportLineRow
     public decimal ReturnedQuantity { get; init; }
     public decimal AcceptedReturnQuantity { get; init; }
     public decimal? CostPrice { get; init; }
+    // The line's VAT rate in percent (10 for 10 %); its price includes it.
+    public decimal VatRate { get; init; }
 }
 
 internal sealed class ReportLineExtra
@@ -286,9 +288,10 @@ public static class ReportBuckets
 
     // The commission of a line's kept units, estimated from what the marketplace sent on the line, or null when it
     // sent nothing usable. A rate (Trendyol "commission", n11 "commissionRate", PTT AVM "Komisyon") is taken of the
-    // kept units' paid amount; Hepsiburada's "commission" is the amount for the whole line, shared out to kept units.
+    // kept units' paid amount; Hepsiburada's "commission" amount is per unit (live: a 2 x 273 TL line at rate 18 carries
+    // 49.14, 18% of one unit), so it counts once for every kept unit.
     public static decimal? EstimatedCommission(string platformCode, string? commissionType, string? commission, string? commissionRate, string? komisyon,
-        decimal keptAmount, decimal keptUnits, decimal activeUnits)
+        decimal keptAmount, decimal keptUnits)
     {
         if (keptUnits <= 0) return 0m;
         switch (platformCode)
@@ -296,8 +299,8 @@ public static class ReportBuckets
             case "TRENDYOL":
                 return Rate(commission) is { } trendyolRate ? Math.Round(keptAmount * trendyolRate / 100m, 2) : null;
             case "HEPSIBURADA":
-                if (commissionType == "object" && Number(commission) is { } amount && amount >= 0 && activeUnits > 0)
-                    return Math.Round(amount * keptUnits / activeUnits, 2);
+                if (commissionType == "object" && Number(commission) is { } amount && amount >= 0)
+                    return Math.Round(amount * keptUnits, 2);
                 return Rate(commissionRate) is { } hepsiburadaRate ? Math.Round(keptAmount * hepsiburadaRate / 100m, 2) : null;
             case "N11":
                 return Rate(commissionRate) is { } n11Rate ? Math.Round(keptAmount * n11Rate / 100m, 2) : null;
@@ -439,7 +442,7 @@ internal static class ReportBuilder
                 var keptUnits = active - lineBack;
                 var extra = input.LineExtras.GetValueOrDefault(line.Id);
                 var commission = isTry && extra is not null
-                    ? ReportBuckets.EstimatedCommission(platform, extra.CommissionType, extra.Commission, extra.CommissionRate, extra.Komisyon, paidUnit * keptUnits, keptUnits, active)
+                    ? ReportBuckets.EstimatedCommission(platform, extra.CommissionType, extra.Commission, extra.CommissionRate, extra.Komisyon, paidUnit * keptUnits, keptUnits)
                     : null;
                 // Nothing usable on the line: the uploaded tariff's band for the price paid, in the week of the sale.
                 var fromTariff = false;

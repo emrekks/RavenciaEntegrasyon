@@ -544,6 +544,93 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenTheCostChangedSinceTheEditorLoadedIt_RefusesTheStaleCostAndAcceptsACurrentOne()
+    {
+        var tenant = NewTenant("product-cost-stale");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Stale cost {Guid.NewGuid():N}",
+            Description = "Stale cost test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(int order, decimal? cost)
+        {
+            var code = $"COST-{order}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = product.Id,
+                SortOrder = order,
+                Sku = code,
+                SkuNormalized = code,
+                OptionSignature = $"Beden={order}",
+                CostPrice = cost,
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        // The editor loaded 40; a Maliyet Excel import then set 55, bumping only the variant's version.
+        var imported = NewVariant(0, 55m);
+        imported.Version = 2;
+        var empty = NewVariant(1, null);
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(imported, empty);
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+        Task<ServiceResult<ProductView>> SaveAsync(decimal importedCost, decimal? importedLoadedCost) => service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(
+                product.Title,
+                product.Description,
+                null,
+                null,
+                VariantUpdates:
+                [
+                    new UpdateVariantCommand(imported.Id, imported.Sku, null, null, 0, CostPrice: importedCost, LoadedCostPrice: importedLoadedCost),
+                    new UpdateVariantCommand(empty.Id, empty.Sku, null, null, 1, CostPrice: 30m, LoadedCostPrice: null)
+                ]),
+            CancellationToken.None);
+
+        var stale = await SaveAsync(45m, 40m);
+        Assert.False(stale.Succeeded);
+        Assert.Equal("VARIANT_COST_CHANGED", stale.Error!.Code);
+        Assert.Equal(409, stale.Error.Status);
+        Assert.Contains("55 TL", stale.Error.Message);
+        db.ChangeTracker.Clear();
+        var afterRefusal = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
+        Assert.Equal([55m, null], afterRefusal.Select(x => x.CostPrice));
+        Assert.Equal([2L, 1L], afterRefusal.Select(x => x.Version));
+
+        // After a reload the editor carries the current cost (55; the empty one stays empty) and the save goes through.
+        var current = await SaveAsync(45m, 55m);
+        Assert.True(current.Succeeded, current.Error?.Message);
+        db.ChangeTracker.Clear();
+        var afterSave = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
+        Assert.Equal([45m, 30m], afterSave.Select(x => x.CostPrice));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenVariantIdsToDeleteAreSent_RemovesThemWithTheirStockAndKeepsTheRest()
     {
         var tenant = NewTenant("variant-delete");
@@ -701,6 +788,92 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         db.ChangeTracker.Clear();
         Assert.True(await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == sold.Id));
         Assert.True(await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == soldItem.Id));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenDeletedVariantIsNamedOnlyByABlockedJob_DeletesItButAPendingJobStillRefuses()
+    {
+        var tenant = NewTenant("variant-delete-blocked-job");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Blocked job delete {Guid.NewGuid():N}",
+            Description = "Blocked job delete test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(int order)
+        {
+            var code = $"BLK-{order}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = product.Id,
+                SortOrder = order,
+                Sku = code,
+                SkuNormalized = code,
+                OptionSignature = $"Beden={order}",
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        var kept = NewVariant(0);
+        var removed = NewVariant(1);
+        // A bulk price/stock sync names every variant of the connection in its payload.
+        var job = NewJob(tenant.Id);
+        job.JobType = MarketplaceJobTypes.PriceInventorySync;
+        job.PayloadJson = $$"""{"variantIds":["{{kept.Id:D}}","{{removed.Id:D}}"]}""";
+        job.Status = JobStatus.Pending;
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(kept, removed);
+        db.IntegrationJobs.Add(job);
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+
+        var whilePending = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [removed.Id]),
+            CancellationToken.None);
+        Assert.False(whilePending.Succeeded);
+        Assert.Equal("VARIANT_DELETE_BLOCKED", whilePending.Error!.Code);
+        Assert.Equal(409, whilePending.Error.Status);
+
+        // Blocked is terminal: the job will never run, so it no longer holds the variant.
+        db.ChangeTracker.Clear();
+        await db.IntegrationJobs.Where(x => x.Id == job.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, JobStatus.Blocked));
+        var whileBlocked = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [removed.Id]),
+            CancellationToken.None);
+        Assert.True(whileBlocked.Succeeded, whileBlocked.Error?.Message);
+        Assert.Equal(kept.Id, Assert.Single(whileBlocked.Value!.Variants).Id);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == removed.Id));
+        var storedJob = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == job.Id);
+        Assert.Equal(JobStatus.Blocked, storedJob.Status);
+        Assert.Equal(job.PayloadJson, storedJob.PayloadJson);
 
         await transaction.RollbackAsync();
     }
@@ -2112,6 +2285,93 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // Audit S4: PTT AVM sends no status time; its made-up event time (order time + status step) names the event only.
+    // The package stores the time the status was first seen, and a replay of the same read changes nothing.
+    [PostgreSqlFact]
+    public async Task OrderSync_WithoutAStatusTimeStoresTheTimeTheStatusWasFirstSeen()
+    {
+        var tenant = NewTenant("status-time-unknown");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        const string externalOrderId = "11697864001";
+        const string packageNumber = "4234396001";
+        var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
+        var createdEventAt = orderedAt.AddSeconds(2);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.DerivedStatus = "NEW";
+        order.OrderedAt = orderedAt;
+        order.LastRemoteModifiedAt = createdEventAt;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Created", Version = 1 });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.New, RawStatus = "Created", StatusOccurredAt = createdEventAt, CreatedAt = createdEventAt, UpdatedAt = createdEventAt, Version = 1 });
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId(packageNumber, createdEventAt) });
+            seedDb.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, PackageId = packageId, CanonicalStatus = "NEW", RawStatus = "Created", SourceEventId = PackageIngestionSafety.EventId(packageNumber, createdEventAt), OccurredAt = createdEventAt, RecordedAt = createdEventAt });
+            await seedDb.SaveChangesAsync();
+        }
+
+        async Task SyncAsync(string rawStatus, DateTimeOffset eventAt)
+        {
+            var delivered = rawStatus == "Delivered" ? 1m : 0m;
+            var remotePackage = new RemotePackage(packageNumber, null, rawStatus, eventAt, null, null,
+                [new RemotePackageAllocation("line-1", 1m, 0m, delivered, delivered, 0m)], GrossAmount: 100m, NetAmount: 100m, StatusTimeUnknown: true);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, orderedAt, eventAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, rawStatus)], [remotePackage], "{}");
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "status-time-unknown", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        try
+        {
+            var deliveredEventAt = orderedAt.AddSeconds(5);
+            var before = DateTimeOffset.UtcNow;
+            await SyncAsync("Delivered", deliveredEventAt);
+            var after = DateTimeOffset.UtcNow;
+            DateTimeOffset seenAt;
+            long version;
+            await using (var check = fixture.CreateContext())
+            {
+                var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
+                Assert.Equal(ShipmentPackageStatus.Delivered, package.Status);
+                // The delivery time is when the panel saw it, not the order time plus five seconds.
+                Assert.InRange(package.StatusOccurredAt, before.AddSeconds(-1), after.AddSeconds(1));
+                seenAt = package.StatusOccurredAt;
+                version = package.Version;
+                var history = await check.OrderStatusHistory.AsNoTracking().Where(x => x.PackageId == packageId).OrderBy(x => x.RecordedAt).ToListAsync();
+                Assert.Equal(2, history.Count);
+                // The event keeps its deterministic name, so a replay is still known.
+                Assert.Equal(PackageIngestionSafety.EventId(packageNumber, deliveredEventAt), history[1].SourceEventId);
+                Assert.Equal(seenAt, history[1].OccurredAt);
+            }
+
+            // The next read sees the same status: nothing changes and the time stays where it was first seen.
+            await SyncAsync("Delivered", deliveredEventAt);
+            await using (var check = fixture.CreateContext())
+            {
+                var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
+                Assert.Equal(seenAt, package.StatusOccurredAt);
+                Assert.Equal(version, package.Version);
+                Assert.Equal(2, await check.OrderStatusHistory.CountAsync(x => x.PackageId == packageId));
+                Assert.Equal(2, await check.PackageLineAllocations.CountAsync(x => x.PackageId == packageId));
+            }
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task JobsTrigger_NotifiesListenersWhenAJobBecomesRunnable()
     {
@@ -2885,7 +3145,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task TrendyolOrderSync_ReadsActiveStorefrontsAndProbesOneInactiveStorefrontPerRun()
+    public async Task TrendyolOrderSync_ReadsHotStorefrontsEveryRunAQuietOneWhenDueAndProbesOneInactiveStorefront()
     {
         var tenant = NewTenant("trendyol-active-storefronts");
         var connection = NewQuestionConnection(tenant);
@@ -2906,7 +3166,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 LastSuccessAt = now.AddMinutes(-1),
                 Version = 1
             });
-            // DE sold two days ago; every other international storefront has never been probed.
+            // GR sold an hour ago (hot), DE two days ago (quiet, last read an hour ago); every other international
+            // storefront has never been probed.
             seedDb.SyncCursors.Add(new SyncCursor
             {
                 Id = Guid.CreateVersion7(),
@@ -2915,6 +3176,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 ResourceType = TrendyolStorefrontPolicy.CursorResource,
                 OpaqueCursor = JsonSerializer.Serialize(new Dictionary<string, TrendyolStorefrontActivity>
                 {
+                    ["GR"] = new(now.AddHours(-1), now.AddMinutes(-3)),
                     ["DE"] = new(now.AddDays(-2), now.AddHours(-1))
                 }),
                 Version = 1
@@ -2941,12 +3203,15 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.True(result.Succeeded, result.ErrorSummary);
             }
 
+            // Audit 2026-10-24 Q2: a quiet storefront is no longer read on every run (each stream request waits for a
+            // quota token while the orders lock is held). It is read when due, from its last read on.
             await RunAsync();
-            Assert.Equal(["TR", "DE", "AE"], orderPort.PolledStorefronts);
+            Assert.Equal(["TR", "GR", "DE", "AE"], orderPort.PolledStorefronts);
+            Assert.Equal(now.AddHours(-1) - TimeSpan.FromSeconds(120), orderPort.PolledWindows.Single(window => window.StoreFrontCode == "DE").ModifiedAfter);
 
             orderPort.PolledStorefronts.Clear();
             await RunAsync();
-            Assert.Equal(["TR", "DE", "SA"], orderPort.PolledStorefronts);
+            Assert.Equal(["TR", "GR", "SA"], orderPort.PolledStorefronts);
         }
         finally
         {

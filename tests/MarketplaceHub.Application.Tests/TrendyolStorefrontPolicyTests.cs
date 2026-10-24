@@ -21,6 +21,46 @@ public sealed class TrendyolStorefrontPolicyTests
     }
 
     [Fact]
+    public void ANewOrderRunReadsTurkeyAndTheStorefrontsThatSoldInTheLastDay()
+    {
+        // Audit 2026-10-24 Q2: reading all seven live storefronts on every run held the orders lock ~30 s.
+        var activity = new Dictionary<string, TrendyolStorefrontActivity>
+        {
+            ["AE"] = new(Now.AddHours(-23), Now.AddMinutes(-3)),
+            ["SA"] = new(Now.AddDays(-2), Now.AddMinutes(-3)),
+            ["DE"] = new(null, Now.AddHours(-1))
+        };
+
+        Assert.Equal(["TR", "AE"], TrendyolStorefrontPolicy.Hot(Codes, activity, Now));
+        activity["AE"] = new(Now.AddHours(-25), Now.AddMinutes(-3));
+        Assert.Equal(["TR"], TrendyolStorefrontPolicy.Hot(Codes, activity, Now));
+    }
+
+    [Fact]
+    public void AQuietActiveStorefrontIsReadOnePerRunWhenItsLastReadIsHalfAnHourOld()
+    {
+        var activity = new Dictionary<string, TrendyolStorefrontActivity>
+        {
+            ["AE"] = new(Now.AddDays(-5), Now.AddMinutes(-31)),
+            ["SA"] = new(Now.AddDays(-5), Now.AddMinutes(-50)),
+            ["DE"] = new(Now.AddHours(-2), Now.AddHours(-2)),
+            ["QA"] = new(null, null)
+        };
+
+        // SA is the longest overdue and AE waits for the next run. DE sold two hours ago: it is hot and read by
+        // every run, never here. QA is inactive and left to the probe.
+        Assert.Equal(["SA"], TrendyolStorefrontPolicy.DueQuiet(Codes, activity, Now));
+        activity["SA"] = TrendyolStorefrontPolicy.Read(activity["SA"], Now, receivedOrders: false);
+        Assert.Equal(["AE"], TrendyolStorefrontPolicy.DueQuiet(Codes, activity, Now));
+        activity["AE"] = TrendyolStorefrontPolicy.Read(activity["AE"], Now, receivedOrders: true);
+        // AE sold: it is hot and read on every run; SA was just read.
+        Assert.Empty(TrendyolStorefrontPolicy.DueQuiet(Codes, activity, Now));
+        Assert.Equal(["TR", "AE", "DE"], TrendyolStorefrontPolicy.Hot(Codes, activity, Now));
+        // Half an hour later SA is due again.
+        Assert.Equal(["SA"], TrendyolStorefrontPolicy.DueQuiet(Codes, activity, Now + TrendyolStorefrontPolicy.QuietReadInterval));
+    }
+
+    [Fact]
     public void NextProbeIsTheLongestOverdueInactiveStorefront()
     {
         var activity = new Dictionary<string, TrendyolStorefrontActivity>

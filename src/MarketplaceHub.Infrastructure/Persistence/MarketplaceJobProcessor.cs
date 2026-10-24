@@ -62,7 +62,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // no data sync or marketplace operation may execute while it is passive.
         if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
-        var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken, payloadJson);
+        var syncLock = await MarketplaceSyncExecutionLock.AcquireForJobAsync(db, connectionId.Value, jobType, payloadJson, timeProvider, cancellationToken);
         if (syncLock is null)
         {
             // Scheduled duplicates may coalesce, but another job cannot satisfy
@@ -1841,33 +1841,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // is still due (Pazarama refuses a value it already holds).
     private async Task<JobExecutionResult> RecordPazaramaPriceInventory(Guid tenantId, Guid connectionId, PriceInventoryJobPayload payload, IReadOnlyDictionary<Guid, ChannelOffer> offers, IReadOnlyDictionary<string, RemoteOperationLine> lineByBarcode, CancellationToken cancellationToken)
     {
-        var parts = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.ParseOperation(payload.ExternalOperationId);
-        var (priceCodes, stockCodes) = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PayloadCodes(payload.PayloadJson);
-        var priceSent = parts.Any(part => part.Kind == "p");
-        var stockSent = parts.Any(part => part.Kind == "s");
-        var priceNotSent = parts.FirstOrDefault(part => part.Kind == "p!")?.DataId;
-        var stockNotSent = parts.FirstOrDefault(part => part.Kind == "s!")?.DataId;
-        // A value Pazarama refused because it already holds it is recorded as sent.
-        var priceHeld = parts.Any(part => part.Kind == "p=");
-        var stockHeld = parts.Any(part => part.Kind == "s=");
+        // A value Pazarama refused because it already holds it is recorded as sent. A list split after such a refusal
+        // carries one part per piece, so each barcode is judged by the part that carried it.
+        var outcomeOf = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.LineOutcomes(payload.ExternalOperationId!, payload.PayloadJson);
         var success = 0; var failed = 0;
         foreach (var line in payload.Lines)
         {
-            var inPrice = priceCodes.Contains(line.Barcode);
-            var inStock = stockCodes.Contains(line.Barcode);
             lineByBarcode.TryGetValue(line.Barcode, out var remote);
-            if (remote is null && (inPrice && priceSent || inStock && stockSent))
+            var (priceOk, stockOk, notSentCode, missingResult) = outcomeOf(line.Barcode, remote);
+            if (missingResult)
                 return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
             var code = remote?.ErrorCode;
-            var priceOk = !inPrice || priceHeld || priceSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
-            var stockOk = !inStock || stockHeld || stockSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.StockRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
             var offer = offers[line.OfferId];
             if (priceOk) offer.LastPriceHash = line.PriceHash;
             if (stockOk) offer.LastStockProjectionVersion = line.ProjectionVersion;
             if (priceOk || stockOk) offer.Version++;
             if (priceOk && stockOk) { success++; continue; }
             failed++;
-            var issueCode = SafeCode(code ?? (!priceOk ? priceNotSent : stockNotSent)) ?? "PRICE_INVENTORY_LINE_REJECTED";
+            var issueCode = SafeCode(code ?? notSentCode) ?? "PRICE_INVENTORY_LINE_REJECTED";
             var what = !priceOk && !stockOk ? "fiyat ve stok" : !priceOk ? "fiyat" : "stok";
             await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{issueCode}", issueCode, $"Pazarama {what} güncellemesini almadı: {line.Barcode}{(remote?.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.", cancellationToken);
         }
@@ -2788,7 +2779,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             storefrontCursor.Version++;
         }
         var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots),
-            activeStorefronts: TrendyolStorefrontPolicy.Active(readStorefronts, storefrontActivity, now),
+            activeStorefronts: TrendyolStorefrontPolicy.Hot(readStorefronts, storefrontActivity, now),
             readableStorefronts: TrendyolStorefrontPolicy.Readable(readStorefronts, storefrontActivity, now));
         var resetExpiredCursor = false;
         var completed = false;
@@ -2897,32 +2888,43 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);
         }
 
-        // A full scan already read every storefront; an incremental run probes at most one
-        // inactive storefront over the time since its last probe.
-        if (completed && state.Mode == OrderSyncMode.Incremental && !cancellationToken.IsCancellationRequested
-            && TrendyolStorefrontPolicy.NextProbe(readStorefronts, storefrontActivity, now) is { } probe)
+        // A full scan already read every storefront. An incremental run read only the hot storefronts above; it
+        // then reads at most one quiet active storefront (TrendyolStorefrontPolicy.DueQuiet) and probes at most one
+        // inactive storefront, each over the time since its last read, so the orders lock is not held waiting for
+        // stream tokens (audit 2026-10-24 Q2).
+        if (completed && state.Mode == OrderSyncMode.Incremental && !cancellationToken.IsCancellationRequested)
         {
-            var previous = storefrontActivity.GetValueOrDefault(probe);
-            var probeStart = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
+            var separateReads = TrendyolStorefrontPolicy.DueQuiet(readStorefronts, storefrontActivity, now).ToList();
+            if (TrendyolStorefrontPolicy.NextProbe(readStorefronts, storefrontActivity, now) is { } probe) separateReads.Add(probe);
+            foreach (var storefront in separateReads)
+            {
+                if (cancellationToken.IsCancellationRequested || !await ReadStorefrontSinceLastRead(storefront)) break;
+            }
+        }
+        return true;
+
+        // False when the read failed for another reason than a rejected storefront: it is retried on the next run
+        // (its last read stays where it was) and the completed read above stays saved.
+        async Task<bool> ReadStorefrontSinceLastRead(string storefront)
+        {
+            var previous = storefrontActivity.GetValueOrDefault(storefront);
+            var start = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
             var received = false;
             string? nextCursor = null;
             do
             {
                 TrackRequest();
-                var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync-probe:{probe}:{nextCursor ?? "0"}"), new(probeStart, now, probe), new(nextCursor, 200), cancellationToken);
+                var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync-probe:{storefront}:{nextCursor ?? "0"}"), new(start, now, storefront), new(nextCursor, 200), cancellationToken);
                 if (!page.IsSuccess)
                 {
                     if (nextCursor is null && page.Error?.HttpStatus is 400 or 404)
                     {
-                        NoteStorefront(probe, TrendyolStorefrontPolicy.Rejected(probe, previous, now));
+                        NoteStorefront(storefront, TrendyolStorefrontPolicy.Rejected(storefront, previous, now));
                         await db.SaveChangesAsync(cancellationToken);
+                        return true;
                     }
-                    else
-                    {
-                        // The probe is retried on the next run; the completed read above stays saved.
-                        TrackResultFailure(page.Error);
-                    }
-                    return true;
+                    TrackResultFailure(page.Error);
+                    return false;
                 }
                 foreach (var _ in page.Value!.Items) TrackReceived();
                 foreach (var issue in page.Value.Issues ?? [])
@@ -2931,10 +2933,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 received |= page.Value.Items.Count > 0;
                 nextCursor = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor) ? page.Value.NextCursor : null;
             } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
-            NoteStorefront(probe, TrendyolStorefrontPolicy.Read(previous, now, received));
+            if (cancellationToken.IsCancellationRequested) return false;
+            NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(previous, now, received));
             await db.SaveChangesAsync(cancellationToken);
+            return true;
         }
-        return true;
     }
 
     // What the panel knows about an order, so a targeted read asks its storefront and date window first.
@@ -8594,6 +8597,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var target = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : isShopify ? ShopifyShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
+            // The time a status is ordered by and stored with. Without a status time from the marketplace (PTT AVM),
+            // OccurredAt only names the event; the package keeps the time the status was first seen (audit S4).
+            var statusAt = PackageIngestionSafety.StatusTime(remotePackage, package?.StatusOccurredAt, now);
             // A package the panel unpacked is history; a late read of it does not bring it back.
             if (package is not null && ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus)) continue;
             var legacyTrendyolHoldCorrection = isTrendyol
@@ -8649,9 +8655,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                             package.Status,
                             package.StatusOccurredAt,
                             target,
-                            remotePackage.OccurredAt,
+                            statusAt,
                             remotePackage.IsStatusObservation)
-                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt, remotePackage.RawStatus)))
+                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, statusAt, remotePackage.RawStatus)))
                     && package.Status != target;
                 var packageMetadataChanged = package is not null
                     && ((!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId)
@@ -8660,7 +8666,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     package.Status = target;
                     package.RawStatus = remotePackage.RawStatus;
-                    package.StatusOccurredAt = remotePackage.OccurredAt;
+                    package.StatusOccurredAt = statusAt;
                     package.GrossAmount = remotePackage.GrossAmount;
                     package.DiscountAmount = remotePackage.DiscountAmount;
                     package.NetAmount = remotePackage.NetAmount;
@@ -8707,7 +8713,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     package.Status = target;
                     package.RawStatus = remotePackage.RawStatus;
-                    package.StatusOccurredAt = remotePackage.OccurredAt;
+                    package.StatusOccurredAt = statusAt;
                     package.UpdatedAt = now;
                     package.Version++;
                 }
@@ -8744,18 +8750,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     package.Status,
                     package.StatusOccurredAt,
                     target,
-                    remotePackage.OccurredAt,
+                    statusAt,
                     remotePackage.IsStatusObservation)
-                : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt, remotePackage.RawStatus));
+                : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, statusAt, remotePackage.RawStatus));
             // A newer modification date with the same status is not a status change: no history row for it.
             var statusUnchanged = package is not null && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
-            else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
-            else if (remotePackage.IsStatusObservation && remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target)
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = statusAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
+            else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = statusAt; package.Version++; }
+            else if (remotePackage.IsStatusObservation && statusAt >= package.StatusOccurredAt && package.Status != target)
                 // Status observations carry the read time, not an event time:
                 // recording each refusal would add a history row per read.
                 await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
-            else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target)
+            else if (statusAt >= package.StatusOccurredAt && package.Status != target)
             {
                 // The refused status is not applied, but the cargo details of
                 // the event still are, and the event is recorded once so it is
@@ -8771,7 +8777,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 }
                 package.UpdatedAt = now;
                 package.Version++;
-                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "TRANSITION_REJECTED", RawStatus = Short(remotePackage.RawStatus, 96), SourceEventId = rejectedEventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now });
+                db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = "TRANSITION_REJECTED", RawStatus = Short(remotePackage.RawStatus, 96), SourceEventId = rejectedEventId, OccurredAt = statusAt, RecordedAt = now });
                 knownEventIds.Add(rejectedEventId);
                 await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}",
                     terminalConflict ? "PACKAGE_TERMINAL_STATUS_CONFLICT" : "PACKAGE_TRANSITION_REJECTED",
@@ -8782,7 +8788,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
-                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
+                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = statusAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
             // A Hepsiburada package first seen through a status observation (a webhook, a shipping list) was stored

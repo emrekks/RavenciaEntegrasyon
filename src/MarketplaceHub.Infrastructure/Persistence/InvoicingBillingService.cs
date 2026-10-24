@@ -209,12 +209,7 @@ public sealed partial class InvoicingBillingService(
             var hasConfirmedHistoricalAttempt = invoice is not null
                 && deliveryAttempts.Any(attempt => attempt.InvoiceId == invoice.Id && attempt.PackageId == package.Id && attempt.Status == "CONFIRMED");
             var deliveryConfirmed = MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(currentDeliveryState?.Status, hasConfirmedHistoricalAttempt);
-            var invoiceStatus = package.ManualInvoiceStatus?.Trim().ToUpperInvariant() switch
-            {
-                "UPLOADED" => "FATURA_YUKLENDI",
-                "PENDING" => "FATURA_BEKLIYOR",
-                _ => MarketplaceSalesService.InvoiceLabelForPlatform(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus], connection?.PlatformCode, deliveryConfirmed)
-            };
+            var invoiceStatus = MarketplaceSalesService.PackageInvoiceLabel(package, invoice, order.CustomerSnapshotJson, [package.RawStatus], connection?.PlatformCode, deliveryConfirmed);
             if (!DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status)
                 || !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
@@ -672,12 +667,9 @@ public sealed partial class InvoicingBillingService(
     // Evidence that the package holds an invoice outside a panel invoice record. A status the seller set by hand
     // (Shopify "Faturası yüklendi" / "Fatura bekliyor") decides; otherwise the marketplace's own observation does.
     private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
-        candidate.Package.ManualInvoiceStatus?.Trim().ToUpperInvariant() switch
-        {
-            "UPLOADED" => true,
-            "PENDING" => false,
-            _ => candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received
-        };
+        MarketplaceSalesService.ManualInvoiceLabel(candidate.Package.ManualInvoiceStatus) is { } manual
+            ? manual == "FATURA_KONTROLDE"
+            : candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
 
     internal static bool MatchesWorkspacePlatformFilter(IReadOnlyList<string>? platformCodes, string candidatePlatformCode) =>
         platformCodes is null || platformCodes.Count == 0 || platformCodes.Any(platform =>
@@ -944,11 +936,7 @@ public sealed partial class InvoicingBillingService(
         WorkspaceInvoiceProjection? invoice,
         WorkspaceConnectionProjection connection)
     {
-        switch (package.ManualInvoiceStatus?.Trim().ToUpperInvariant())
-        {
-            case "UPLOADED": return "FATURA_KONTROLDE";
-            case "PENDING": return "FATURA_BEKLIYOR";
-        }
+        if (MarketplaceSalesService.ManualInvoiceLabel(package.ManualInvoiceStatus) is { } manual) return manual;
 
         if (invoice is null)
         {
@@ -1202,6 +1190,10 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı; yeni mali fatura kesilmedi.", 409);
         if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received))
             return ServiceResult<InvoiceDetailView>.Fail("MARKETPLACE_INVOICE_ALREADY_PRESENT", "Pazaryerinde fatura bulundu veya işleniyor. Yeni mali fatura kesimi kapatıldı.", 409);
+        // A hand-set "Faturası yüklendi" is the seller's word that the marketplace already holds an invoice (Pazarama,
+        // n11 and PTT AVM cannot show a seller-panel upload): no second fiscal invoice, whichever the platform.
+        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => MarketplaceInvoiceStatePolicy.IsManuallyUploaded(item.ManualInvoiceStatus)))
+            return ServiceResult<InvoiceDetailView>.Fail("MARKETPLACE_INVOICE_ALREADY_PRESENT", "Sipariş fatura yüklendi olarak işaretlenmiş. Yeni mali fatura kesimi kapatıldı; önce fatura durumunu değiştirin.", 409);
         if (ActiveIntegrationScope.IsMarketplace(orderPlatform) && !MarketplaceInvoiceCreationPolicy.IsEnabled(orderPlatform, orderConnection.SettingsJson))
             return ServiceResult<InvoiceDetailView>.Fail(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, MarketplaceInvoiceCreationPolicy.DisabledMessage, 422);
         var profile = await ProviderManagedProfile(tenantId, provider.Id, cancellationToken);

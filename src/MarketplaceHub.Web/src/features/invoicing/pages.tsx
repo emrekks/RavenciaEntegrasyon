@@ -407,8 +407,8 @@ export function InvoicesPage() {
   const manualInvoiceDelivery = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.manualInvoiceDocumentId) throw new Error('Siparişte güncel manuel fatura belgesi bulunamadı.')
-      // One key per document and delivery state: a double click reaches the same request instead of queuing twice.
-      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item) } })
+      // A fresh key per attempt: a retry after a failed delivery must queue a new job, not replay the old answer.
+      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item.manualInvoiceDocumentId) } })
     },
     onSuccess: async (result, item) => {
       const documentId = item.manualInvoiceDocumentId
@@ -691,7 +691,8 @@ function InvoiceManualConfirmationModal({ kind, item, onCancel, onConfirm }: { k
 
 function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: InvoiceWorkspace; onClose: () => void; onFeedback: (message: string, kind: InvoiceNoticeKind) => void }) {
   const client = useQueryClient()
-  const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>(item.invoiceStatus === 'FATURA_YUKLENDI' ? 'UPLOADED' : 'PENDING')
+  // A hand-set "uploaded" reads as FATURA_KONTROLDE ("Faturası Mevcut") on every screen.
+  const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>(['FATURA_YUKLENDI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus) ? 'UPLOADED' : 'PENDING')
   const invoice = useQuery({ queryKey: ['invoice', item.invoiceId], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`), enabled: Boolean(item.invoiceId) })
   const hasUploadedDocument = item.invoiceDocumentAvailable || Boolean(invoice.data?.documents.length)
   const update = useMutation({

@@ -32,8 +32,10 @@ describe('invoice copy', () => {
     expect(invoiceStatusTone('FATURA_DUZELTME_GEREKLI')).toBe('warning')
   })
 
-  it('keys a manual delivery by its document and delivery state', () => {
-    expect(manualDeliveryIdempotencyKey({ manualInvoiceDocumentId: 'doc-1', manualInvoiceDeliveryStatus: null })).toBe('manual-invoice-delivery:doc-1:vNEW')
-    expect(manualDeliveryIdempotencyKey({ manualInvoiceDocumentId: 'doc-1', manualInvoiceDeliveryStatus: 'FAILED' })).toBe('manual-invoice-delivery:doc-1:vFAILED')
+  it('gives every manual delivery attempt its own key, so a retry after a second failure is queued again', () => {
+    const first = manualDeliveryIdempotencyKey('doc-1')
+    const second = manualDeliveryIdempotencyKey('doc-1')
+    expect(first).toMatch(/^manual-invoice-delivery:doc-1:[0-9a-f-]{36}$/)
+    expect(second).not.toBe(first)
   })
 })

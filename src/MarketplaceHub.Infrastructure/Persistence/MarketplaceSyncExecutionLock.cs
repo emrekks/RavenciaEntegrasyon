@@ -29,15 +29,40 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         this.closeConnectionOnDispose = closeConnectionOnDispose;
     }
 
-    public static async Task<MarketplaceSyncExecutionLock?> TryAcquireAsync(AppDbContext db, Guid connectionId, string jobType, CancellationToken cancellationToken, string? payloadJson = null)
+    public static async Task<MarketplaceSyncExecutionLock?> TryAcquireAsync(AppDbContext db, Guid connectionId, string jobType, CancellationToken cancellationToken, string? payloadJson = null) =>
+        await TryAcquireKeyAsync(db, LockKey(connectionId, await JobGroupAsync(db, jobType, payloadJson, cancellationToken)), cancellationToken);
+
+    // The processor's lock for a job. A short job (WaitsForLock) polls up to ShortJobLockWait for it: Trendyol sends
+    // two or three notices of one package in the same millisecond, the hot lane leases them together, and the one
+    // holding the lock is usually done in a fraction of a second. Deferring the others used to cost them 30 s or
+    // more each (audit 2026-10-24 Q1). Other jobs try once. The wait counts polls rather than reading the clock, so
+    // a clock that stands still cannot make it endless.
+    public static async Task<MarketplaceSyncExecutionLock?> AcquireForJobAsync(AppDbContext db, Guid connectionId, string jobType, string? payloadJson, TimeProvider clock, CancellationToken cancellationToken)
     {
-        var group = jobType == MarketplaceJobTypes.ExternalEffectReconcile && payloadJson is not null
+        var key = LockKey(connectionId, await JobGroupAsync(db, jobType, payloadJson, cancellationToken));
+        var polls = WaitsForLock(jobType) ? (int)(ShortJobLockWait.Ticks / GroupPollInterval.Ticks) : 0;
+        for (var poll = 0; ; poll++)
+        {
+            if (await TryAcquireKeyAsync(db, key, cancellationToken) is { } acquired) return acquired;
+            if (poll >= polls) return null;
+            await Task.Delay(GroupPollInterval, clock, cancellationToken);
+        }
+    }
+
+    internal static readonly TimeSpan ShortJobLockWait = TimeSpan.FromSeconds(5);
+    internal static readonly TimeSpan ShortJobRetryDelay = TimeSpan.FromSeconds(1);
+
+    // Webhook deliveries and the read-back of uncertain marketplace writes: a single notice or a single check that
+    // takes well under a second (live p95 0.8 s), so waiting a few seconds for the lock beats a deferral.
+    internal static bool WaitsForLock(string jobType) =>
+        jobType.EndsWith("_WEBHOOK_INGEST", StringComparison.OrdinalIgnoreCase) || jobType == MarketplaceJobTypes.ExternalEffectReconcile;
+
+    private static async Task<string> JobGroupAsync(AppDbContext db, string jobType, string? payloadJson, CancellationToken cancellationToken) =>
+        jobType == MarketplaceJobTypes.ExternalEffectReconcile && payloadJson is not null
             ? EffectReconcileGroup(await EffectActionAsync(db, payloadJson, cancellationToken))
             : jobType.EndsWith("_WEBHOOK_INGEST", StringComparison.OrdinalIgnoreCase) && WebhookIngestGroup(WebhookResourceType(payloadJson)) is { } webhookGroup
                 ? webhookGroup
                 : GroupFor(jobType);
-        return await TryAcquireKeyAsync(db, LockKey(connectionId, group), cancellationToken);
-    }
 
     internal const string OrdersGroup = "orders";
     internal const string OrderInvoicesGroup = "order-invoices";
@@ -174,6 +199,12 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     // of being reported as done without running.
     internal static JobExecutionResult ContentionResult(string jobType, string payloadJson, string? triggerType = null, bool sameTypeRunning = true)
     {
+        // A short job already waited ShortJobLockWait for the lock, so a longer read holds it: it comes back in a
+        // second or so (CompleteAsync spreads it to 1-4 s) rather than 30 s. The lease query skips it while that
+        // read stays leased, so the short wait does not turn into a lease-and-defer loop.
+        if (WaitsForLock(jobType))
+            return JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY",
+                "Bu bağlantıda süren işlem bitince bildirim birkaç saniye içinde işlenecek.", ShortJobRetryDelay);
         // Work a user asked for is never folded into a run that happens to hold the lock.
         if (triggerType == "user")
             return JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY",

@@ -587,6 +587,9 @@ public sealed class PttAvmAdapterTests
         Assert.Equal("Returned", package.RawStatus);
         Assert.Equal("PTT Kargo", package.CargoProviderExternalId);
         Assert.Equal("2710243114843", package.CargoTrackingNumber);
+        // PTT AVM sends no status time: the event time is made up from the order time and only names the event (audit S4).
+        Assert.True(package.StatusTimeUnknown);
+        Assert.Equal(PttAvmOrderMapper.StatusObservedAt(order.OrderedAt, "Returned"), package.OccurredAt);
         var customer = System.Text.Json.Nodes.JsonNode.Parse(order.CustomerSnapshotJson)!;
         Assert.Equal("Ayşe Yılmaz", (string?)customer["customerName"]);
         Assert.Equal("67351072674", (string?)customer["tcIdentityNumber"]);

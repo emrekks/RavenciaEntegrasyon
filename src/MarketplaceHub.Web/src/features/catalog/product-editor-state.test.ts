@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates } from './product-editor-state'
+import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate } from './product-editor-state'
 
 describe('product editor state', () => {
   it('builds one seed key for the seed and for a version bump made by the editor itself', () => {
@@ -19,6 +19,15 @@ describe('product editor state', () => {
       { variantId: 'v2', sku: 'A-2', onHand: 9, expectedOnHand: 4 },
       { variantId: 'v3', sku: 'A-3', onHand: 3, expectedOnHand: 0 }
     ])
+  })
+
+  it('sends a changed cost with the cost it was loaded with, and no cost for an untouched or cleared row', () => {
+    // The server compares loadedCostPrice with the stored cost and refuses a save over a cost set meanwhile.
+    expect(editorVariantCostUpdate({ costPrice: 45, loadedCostPrice: 40 })).toEqual({ costPrice: 45, loadedCostPrice: 40 })
+    expect(editorVariantCostUpdate({ costPrice: 30, loadedCostPrice: null })).toEqual({ costPrice: 30, loadedCostPrice: null })
+    expect(editorVariantCostUpdate({ costPrice: 40, loadedCostPrice: 40 })).toEqual({ costPrice: null })
+    expect(editorVariantCostUpdate({ costPrice: null, loadedCostPrice: 40 })).toEqual({ costPrice: null })
+    expect(JSON.parse(JSON.stringify(editorVariantCostUpdate({ costPrice: 12.5, loadedCostPrice: null })))).toEqual({ costPrice: 12.5, loadedCostPrice: null })
   })
 
   it('ignores platform prices when deciding whether the form has unsaved edits', () => {

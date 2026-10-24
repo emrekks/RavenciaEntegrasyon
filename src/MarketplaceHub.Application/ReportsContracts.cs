@@ -243,14 +243,22 @@ public sealed record ReportCostsView(
     ReportCargoCostView? Cargo,
     IReadOnlyList<ReportCostLineView> Lines,
     IReadOnlyList<ReportCostChannelView> Channels,
-    IReadOnlyList<ReportCostProductView> Products);
+    IReadOnlyList<ReportCostProductView> Products,
+    ReportNetVatView? NetVat = null);
+
+// The VAT the seller pays over the period's Trendyol orders, estimated: the VAT inside the domestic sales (a micro-export
+// sale carries none) less the VAT inside the product cost (the entered cost taken as VAT-inclusive at the line's rate)
+// and inside Trendyol's commission, cargo, platform service fee and advertising (20 %; the international service fee is
+// VAT-free). Net is what is left to pay; below zero it is VAT carried forward.
+public sealed record ReportNetVatView(decimal SalesVat, decimal ProductCostVat, decimal ExpenseVat, decimal Net);
 
 // One category (SALE, RETURN, DISCOUNT, COUPON, COMMISSION, CARGO, SERVICE_FEE, STOPPAGE, PENALTY, EARLY_PAYMENT,
 // ADVERTISING, OTHER). IsCost: added to RealCostTotal (OTHER is not: an unrecognised record may go either way).
 // COMMISSION is the commission of the settlement lines plus the commission corrections (Trendyol's commission invoice
 // bills that same commission and is not added again); CARGO the lines of the cargo invoices. OrderLinked: the part
 // tied to an order of the period; Unlinked: the part counted by date.
-public sealed record ReportCostLineView(string Category, string Label, bool IsCost, decimal Amount, int Records, decimal OrderLinked, decimal Unlinked);
+// Estimated: the part of Amount estimated for orders Trendyol has not settled yet (service fees and withholding tax).
+public sealed record ReportCostLineView(string Category, string Label, bool IsCost, decimal Amount, int Records, decimal OrderLinked, decimal Unlinked, decimal Estimated = 0m);
 
 // The commission of the period's orders, real where Trendyol settled it: Real over the orders with settlement records
 // (RealOrders), what the estimate said for those same orders, the estimate for every other order (all platforms), and

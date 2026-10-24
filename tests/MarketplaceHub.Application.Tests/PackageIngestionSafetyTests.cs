@@ -7,6 +7,22 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class PackageIngestionSafetyTests
 {
+    // Audit S4: a status without a marketplace time is stored at the time it was seen, never earlier than the one held.
+    [Fact]
+    public void AStatusWithoutAMarketplaceTimeIsStoredAtTheTimeItWasSeen()
+    {
+        var now = new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero);
+        var madeUp = now.AddDays(-3).AddSeconds(5);
+        var ptt = new MarketplaceHub.Application.RemotePackage("order:PTT-1", null, "Delivered", madeUp, null, null, [], StatusTimeUnknown: true);
+        var real = ptt with { StatusTimeUnknown = false };
+
+        Assert.Equal(madeUp, PackageIngestionSafety.StatusTime(real, now.AddDays(-1), now));
+        Assert.Equal(now, PackageIngestionSafety.StatusTime(ptt, null, now));
+        Assert.Equal(now, PackageIngestionSafety.StatusTime(ptt, madeUp.AddSeconds(-3), now));
+        // A clock that steps back does not move the stored time backwards.
+        Assert.Equal(now.AddMinutes(1), PackageIngestionSafety.StatusTime(ptt, now.AddMinutes(1), now));
+    }
+
     [Fact]
     public void MissingAllocationsAreRejectedWhenOrderHasLines()
     {
