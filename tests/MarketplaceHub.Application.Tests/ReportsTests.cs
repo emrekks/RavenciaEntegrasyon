@@ -336,6 +336,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             // No refund on the statement yet: only the domestic unit is back.
             var before = await ReportAsync(tenant.Id, includeTest: false);
             Assert.Equal(1m, before.Summary.ReturnedQuantity);
+            Assert.Equal(100m, before.Summary.ReturnedAmount);
             Assert.Equal(1, before.Summary.ReturnClaims);
 
             await using (var refund = fixture.CreateContext())
@@ -363,6 +364,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
 
             var after = await ReportAsync(tenant.Id, includeTest: false);
             Assert.Equal(4m, after.Summary.ReturnedQuantity);
+            Assert.Equal(400m, after.Summary.ReturnedAmount);
             Assert.Equal(2, after.Summary.ReturnClaims);
         }
         finally

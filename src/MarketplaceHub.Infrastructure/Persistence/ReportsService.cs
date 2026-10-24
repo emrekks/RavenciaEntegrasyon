@@ -180,13 +180,17 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                           : 0m
                       let lineValue = orderLines.Where(line => line.OrderId == order.Id).Sum(line => line.UnitPrice * (line.OrderedQuantity - line.CancelledQuantity))
+                      // A micro-export order's accepted return counts once Trendyol's statement records it (LineRowsAsync).
+                      let returnBooked = order.StoreFrontCode == null || order.StoreFrontCode == "" || order.StoreFrontCode == "TR"
+                          || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == order.ConnectionId
+                              && entry.OrderNumber == order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
                       let lineBack = orderLines.Where(line => line.OrderId == order.Id)
                           .Select(line => new
                           {
                               line.UnitPrice,
                               Active = line.OrderedQuantity - line.CancelledQuantity,
                               line.ReturnedQuantity,
-                              Accepted = db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
+                              Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
                                       && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
                                           && (returned.RawStatus == null || returned.RawStatus == ""
                                               ? acceptedClaims.Contains(claim.Status)
