@@ -144,7 +144,8 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
                 .GroupBy(line => line.OrderId)
                 .ToDictionary(group => group.Key, group => group.ToList());
             // An order already invoiced keeps the amounts its invoice was cut with; the file only
-            // brings its buyer and address details.
+            // brings its buyer and address details. One whose amounts were never read (all 0, as the orders
+            // Shopify gave without prices) has none to keep: it takes the file's amounts and prices.
             var invoicedOrderIds = (await db.Invoices.AsNoTracking()
                     .Where(invoice => invoice.TenantId == tenantId && orderIds.Contains(invoice.OrderId) && invoice.OriginalInvoiceId == null
                         && invoice.Status != InvoiceStatus.Cancelled && invoice.Status != InvoiceStatus.CancelledLocal)
@@ -156,13 +157,16 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
                     .ToListAsync(cancellationToken))
                 .ToHashSet();
             var keptInvoicedAmounts = 0;
+            var filledInvoicedAmounts = 0;
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
             foreach (var (imported, order) in orderMatches)
             {
-                var invoiced = invoicedOrderIds.Contains(order.Id);
+                var missingAmounts = order.GrossAmount == 0m && order.NetAmount == 0m;
+                var invoiced = invoicedOrderIds.Contains(order.Id) && !missingAmounts;
                 var changed = ApplyOrder(order, imported, now, applyAmounts: !invoiced);
                 if (invoiced) keptInvoicedAmounts++;
+                else if (missingAmounts && invoicedOrderIds.Contains(order.Id) && changed) filledInvoicedAmounts++;
                 if (!linesByOrder.TryGetValue(order.Id, out var existingLines)) existingLines = [];
                 var unusedLines = existingLines.ToHashSet();
                 foreach (var importedLine in imported.Lines)
@@ -192,6 +196,8 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
             }
             if (keptInvoicedAmounts > 0 && issues.Count + attemptIssues.Count < MaximumReportedItems)
                 attemptIssues.Add($"{keptInvoicedAmounts} faturalanmış siparişin tutarları ve birim fiyatları korundu; yalnız alıcı ve adres bilgileri aktarıldı.");
+            if (filledInvoicedAmounts > 0 && issues.Count + attemptIssues.Count < MaximumReportedItems)
+                attemptIssues.Add($"{filledInvoicedAmounts} faturalanmış siparişin panelde 0 TL görünen tutarları ve birim fiyatları dosyadan dolduruldu.");
 
             if (updatedCount > 0 || updatedLineCount > 0)
             {

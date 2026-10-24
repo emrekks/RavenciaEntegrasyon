@@ -174,12 +174,17 @@ describe('ReportsPage', () => {
     expect(days.querySelector('.reports-period-facts')?.textContent).toContain('01.10.2026, Perşembe')
     expect(days.querySelector('.reports-period-facts')?.textContent).toContain('1 gün önde0 gün geride; toplam 1 gün')
     // The metric cards: four rows on each of the first three, six on the two under them.
-    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Ortalama Komisyon Oranı%21,5', 'Ortalama İndirim Oranı%7,9'])
+    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Ortalama Komisyon Oranı%21,5', 'İndirim Toplamı₺30,00', 'Ortalama İndirim Oranı%7,9'])
     expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Adet1,25'])
     expect(metricRows(page, 'ads')).toEqual(['Toplam Reklam Harcaması—', 'Reklam / Kâr—', 'Reklam / Ciro—', 'Reklam Cirosu ve ROAS—'])
-    expect(metricRows(page, 'returns')).toHaveLength(6)
+    // Returns and cancellations: eight rows, no explanation under the pointer; the change names the previous rate.
+    expect(metricRows(page, 'returns')).toHaveLength(8)
     expect(metricRows(page, 'returns')[3]).toContain('İade Edilen Tutar₺')
-    expect(metricRows(page, 'returns')[4]).toContain('İptal Oranı%20,0')
+    expect(metricRows(page, 'returns')[4]).toContain('İade Kargo Zararı—')
+    expect(metricRows(page, 'returns')[5]).toContain('İptal Oranı%20,0')
+    expect(metricRows(page, 'returns')[6]).toContain('İptal Edilen Sipariş')
+    expect(page.querySelectorAll('.reports-card-metrics.is-returns .reports-hover-tip')).toHaveLength(0)
+    expect(page.querySelector('.reports-card-metrics.is-returns .reports-delta')?.getAttribute('title')).toMatch(/^Önceki dönem /)
     expect(page.querySelector('.reports-card-metrics.is-returns li.is-warn')?.textContent).toContain('İptal Oranı')
     expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo1', 'Kargo FirmasıAras Kargo', 'Faturasız Paket1', 'Stok Riski0 ürün', 'Tekrar Alan Müşteri%50,0'])
     // The old cards are gone, and no card repeats another.

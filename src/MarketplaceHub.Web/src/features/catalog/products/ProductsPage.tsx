@@ -354,7 +354,7 @@ function lowStockSizeLabel(variant: Variant) {
 function lowStockMissingVariantCount(group: ProductGroup) {
   return group.variants.filter(item => item.variant.onHand <= 0).length
 }
-function LowStockDetailsModal({ products, loading, error, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string) => void }) {
+export function LowStockDetailsModal({ products, loading, error, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string) => void }) {
   const groups = useMemo(() => productRowsAsCards(products), [products])
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')

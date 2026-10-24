@@ -215,10 +215,11 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
 }
 
 // A change is good or bad by its direction; for returns and cancellations, up is bad.
-function Delta({ delta, invert = false }: { delta: Change | null | undefined; invert?: boolean }) {
+// previous: the previous period's value, shown under the pointer instead of the generic "Önceki döneme göre".
+function Delta({ delta, invert = false, previous }: { delta: Change | null | undefined; invert?: boolean; previous?: string }) {
   if (!delta) return <em className="reports-delta is-flat" title="Önceki dönemde veri yok">—</em>
   const tone = delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
-  return <em className={`reports-delta is-${tone}`} title="Önceki döneme göre">{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
+  return <em className={`reports-delta is-${tone}`} title={previous ? `Önceki dönem ${previous}` : 'Önceki döneme göre'}>{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
 }
 
 // A panel's explanation shows under its title while the pointer or the focus is on the title, as the overview's rows
@@ -324,7 +325,7 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
       <MetricCard title="Reklam" icon="target" tone="ads" rows={adMetrics(data, money)} onMore={onMore} />
     </div>
     <div className="reports-overview-row is-two">
-      <MetricCard title="İade ve İptal" icon="returns" tone="returns" rows={returnMetrics(data)} onMore={onMore} />
+      <MetricCard title="İade ve İptal" icon="returns" tone="returns" rows={returnMetrics(data)} onMore={onMore} hints={false} />
       <MetricCard title="Operasyon" icon="truck" tone="ops" rows={operationMetrics(data)} onMore={onMore} />
     </div>
   </div>
@@ -756,11 +757,11 @@ function ProfitLedger({ money }: { money: Money }) {
   </dl>
 }
 
-type Metric = { key: string; label: string; value: string; note: string; delta?: Change | null; invert?: boolean; tone?: 'warn' | 'bad'; detail?: DetailKey }
+type Metric = { key: string; label: string; value: string; note: string; delta?: Change | null; invert?: boolean; previous?: string; tone?: 'warn' | 'bad'; detail?: DetailKey }
 
 // A card of figures as rows: the name, and the value with its change when it has one. A row's explanation shows while
-// the pointer or the focus is on it, and a row that has its own tab opens it.
-function MetricCard({ title, icon, tone, rows, onMore }: { title: string; icon: UiIconName; tone: string; rows: Metric[]; onMore: OpenDetail }) {
+// the pointer or the focus is on it (not with hints off), and a row that has its own tab opens it.
+function MetricCard({ title, icon, tone, rows, onMore, hints = true }: { title: string; icon: UiIconName; tone: string; rows: Metric[]; onMore: OpenDetail; hints?: boolean }) {
   const tip = useId()
   return <Card title={title} icon={icon} className={`reports-card-metrics is-${tone}`}>
     {() => <ul className="reports-metrics">{rows.map(row => {
@@ -768,12 +769,12 @@ function MetricCard({ title, icon, tone, rows, onMore }: { title: string; icon: 
       const detail = row.detail
       const body = <>
         <span className="reports-metric-label">{row.label}</span>
-        <span className="reports-metric-value">{row.delta !== undefined && <Delta delta={row.delta} invert={row.invert} />}<strong>{row.value}</strong></span>
+        <span className="reports-metric-value">{row.delta !== undefined && <Delta delta={row.delta} invert={row.invert} previous={row.previous} />}<strong>{row.value}</strong></span>
       </>
       return <li key={row.key} className={`reports-tip-host${row.tone ? ` is-${row.tone}` : ''}`}>
-        {detail ? <button type="button" className="reports-metric" onClick={() => onMore(detail)} aria-describedby={id}>{body}</button>
-          : <button type="button" className="reports-metric is-static" aria-describedby={id}>{body}</button>}
-        <span role="tooltip" id={id} className="reports-hover-tip"><TipText text={row.note} /></span>
+        {detail ? <button type="button" className="reports-metric" onClick={() => onMore(detail)} aria-describedby={hints ? id : undefined}>{body}</button>
+          : <button type="button" className="reports-metric is-static" aria-describedby={hints ? id : undefined}>{body}</button>}
+        {hints && <span role="tooltip" id={id} className="reports-hover-tip"><TipText text={row.note} /></span>}
       </li>
     })}</ul>}
   </Card>
@@ -792,6 +793,7 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
     { key: 'profit', label: 'Adet Başına Kâr', value: profit === null || now.keptQuantity === 0 ? '—' : signedTl(profit / now.keptQuantity), tone: profit !== null && profit < 0 ? 'bad' : undefined,
       note: profit === null ? 'Satılan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `Satılan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet).` },
     { key: 'commission', label: 'Ortalama Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış.' },
+    { key: 'discountTotal', label: 'İndirim Toplamı', value: discountKnown ? formatTl(discount ?? 0) : '—', note: 'Liste fiyatından yapılan indirimlerin toplamı.\nİptaller hariç.' },
     { key: 'discount', label: 'Ortalama İndirim Oranı', value: discountKnown ? formatPercent((discount ?? 0) / list) : '—',
       note: discountKnown ? `Ürünlerin liste fiyatına göre ortalama indirimi.\nListe fiyatı toplamı ${formatTl(list)}, yapılan indirim ${formatTl(discount)}; iptaller hariç.` : 'Ürünlerin liste fiyatına göre ortalama indirimi.\nBu dönemde liste fiyatı okunmadı.' }
   ]
@@ -840,13 +842,15 @@ function returnMetrics(data: ReportSales): Metric[] {
   const warning = data.cancellations.warningRate
   const cancelled = data.cancellations.cancelledAmount
   return [
-    { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, detail: 'returns',
+    { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ satılan adet. Önceki dönem ${formatPercent(before.returnRate)}.` },
     { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
-    { key: 'amount', label: 'İade Edilen Tutar', value: formatTl(now.returnedAmount), detail: 'returns', note: 'İade edilen ürünlerin satış tutarı.\nSatıştan düşülür; Masraf Kalemleri\'nde de gösterilir.' },
+    { key: 'returned', label: 'İade Edilen Tutar', value: formatTl(now.returnedAmount), detail: 'returns', note: 'İade edilen ürünlerin satış tutarı.\nSatıştan düşülür; Masraf Kalemleri\'nde de gösterilir.' },
+    { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nİade kargosu kargo faturasında ayrı okunamadığı için gösterilemiyor.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Siparişlerin yüzde kaçının iptal edildiği.\n${formatCount(now.cancelledOrders)} sipariş iptal edildi; uyarı eşiği ${formatPercent(warning)}.` },
+    { key: 'cancelled', label: 'İptal Edilen Sipariş', value: formatCount(now.cancelledOrders), detail: 'cancellations', note: 'İptal edilen sipariş sayısı.' },
     { key: 'amount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTl(cancelled), detail: 'cancellations', note: 'İptal edilen ürünlerin tutarı.\nListe fiyatıyla; satış tutarına girmez.' }
   ]
 }
