@@ -201,11 +201,12 @@ describe('ReportsPage', () => {
     // 350 − 100 − 226,68 − 54 (commission and service fee) − 1 − 80 = −111,68: a loss, in red, on the bridge and the strip.
     expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Kargo − ₺226,68', '− Pazaryeri Masrafları − ₺54,00', '− Stopaj − ₺1,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Zarar − ₺111,68'])
     expect(page.querySelector('.reports-bridge > li.is-end.is-negative')).not.toBeNull()
-    expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('Shopify kargo ve hizmet bedeli')
+    // Shopify is costed from its own settings (cargo, card fees) on the server, so nothing is left out for it.
+    expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).not.toContain('kargo ve hizmet bedeli')
     // What the estimate leaves out is written under the bridge as well, for a phone that has no pointer: the cost
-    // entered for half the units, and Shopify's cargo and fees not taken off.
+    // entered for half the units.
     const gaps = texts(page, '.reports-card-bridge .reports-bridge-gaps > div')
-    expect(gaps).toEqual(['Maliyeti GiriliSatılan adetlerin payı%50,0', 'Kargo ve Hizmet BedeliDüşülmediShopify'])
+    expect(gaps).toEqual(['Maliyeti GiriliSatılan adetlerin payı%50,0'])
     const loss = page.querySelectorAll('.reports-kpis > div')[1]
     expect(loss.classList.contains('is-bad')).toBe(true)
     expect(loss.textContent).toContain('Tahmini Zarar')

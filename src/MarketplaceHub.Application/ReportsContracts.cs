@@ -270,7 +270,10 @@ public sealed record ReportRealCommissionView(decimal Real, int RealOrders, deci
 // UnbilledOrders: the period's Trendyol orders without one, estimated at the store's cargo tariff: the amount most
 // shipping lines of its last 30 days were billed at (AveragePerOrder; SampleOrders billed orders behind it). Estimated is null when no store has such a sample;
 // Combined = Real + Estimated.
-public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int UnbilledOrders, decimal? AveragePerOrder, int SampleOrders, decimal? Estimated, decimal Combined);
+// PlatformOrders / PlatformEstimated: the orders of the platforms whose statement is not read (Hepsiburada, n11,
+// Pazarama, PTT AVM, Shopify) and their cargo from the platforms' tariffs; part of Estimated and Combined.
+public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int UnbilledOrders, decimal? AveragePerOrder, int SampleOrders, decimal? Estimated, decimal Combined,
+    int PlatformOrders = 0, decimal PlatformEstimated = 0m);
 
 // One store. RealCommission: its settled orders and its commission records tied to no order of the period;
 // EstimatedCommission: its other orders; Amounts: its real costs by category (commission apart); EstimatedCargo: the

@@ -246,7 +246,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                           : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
                               .Sum(returned => (decimal?)returned.Quantity) ?? 0m,
                           CostPrice = variant == null ? null : variant.CostPrice,
-                          VatRate = line.VatRate
+                          VatRate = line.VatRate,
+                          Desi = variant == null ? null : variant.Desi
                       }).ToListAsync(cancellationToken);
     }
 

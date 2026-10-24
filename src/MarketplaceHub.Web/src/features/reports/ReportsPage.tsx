@@ -558,14 +558,15 @@ const costMeaning: Record<string, string> = {
   commission: 'Pazaryerinin her satıştan aldığı komisyon.',
   cargo: 'Siparişlerin kargo gönderim ücreti.',
   returned: 'Müşterilerin iade ettiği ürünlerin tutarı; satıştan düşülür.',
-  fee: 'Trendyol\'un sipariş başına aldığı platform hizmet bedeli.',
+  fee: 'Pazaryerlerinin sipariş ya da satış başına aldığı hizmet bedelleri.',
+  payment: 'Shopify\'da kartlı ödemenin iyzico ve Shopify kesintisi.',
   stoppage: 'Satıştan kesilen %1 e-ticaret stopajı (vergi kesintisi).',
   ads: 'Trendyol\'daki reklam harcaması.',
   penalty: 'Trendyol\'un kestiği cezalar (geç kargo, iptal gibi).',
   early: 'Hakedişi erken almak için ödenen kesinti.',
   otherDeduction: 'Trendyol\'un türünü belirtmeden kestiği diğer kesinti faturaları.',
   vat: 'Devlete ödenecek KDV farkı.',
-  fees: 'Trendyol\'un hizmet bedeli, stopaj, reklam ve benzeri kesintileri.',
+  fees: 'Pazaryerlerinin hizmet bedeli, stopaj, reklam ve benzeri kesintileri; Shopify\'da ödeme komisyonu.',
   marketplace: 'Pazaryerinin komisyonu ve hizmet bedelleri.'
 }
 const explain = (key: string, how: string) => `${costMeaning[key] ?? ''}\n${how}`
@@ -573,7 +574,7 @@ const explain = (key: string, how: string) => `${costMeaning[key] ?? ''}\n${how}
 function costLines(data: ReportSales, money: Money): OverviewCost[] {
   const finance = financeCosts(data)
   const part = (key: string) => money.deductions.find(item => item.key === key)
-  const notRead = 'Yalnız Trendyol cari hesabından okunabiliyor; bu seçimde okunmadı.'
+  const notRead = 'Bu seçimde hesaplanamadı.'
   const commission = part('commission')
   const cargo = part('cargo')
   const lines: OverviewCost[] = [
@@ -581,14 +582,14 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
     { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission', note: explain('commission', commission?.note || 'Siparişte komisyon gelmedi, komisyon tarifesi de yüklenmedi.') },
     { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo', note: explain('cargo', finance ? cargo?.note || 'Bu dönemde kargo yok.' : notRead) },
     { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: explain('returned', `Bu dönemde ${formatNumber(data.summary.returnedQuantity)} adet ürün iade edildi.`) },
-    // "Diğer Kesinti" gathers deduction invoices no rule names, so it is listed only when there is one.
-    ...feeCategories.filter(fee => fee.category !== 'OTHER_DEDUCTION' || finance?.lines.some(item => item.category === fee.category && item.amount !== 0)).map(fee => {
+    // "Diğer Kesinti" (deduction invoices no rule names) and "Ödeme Komisyonu" (Shopify only) are listed only when there is one.
+    ...feeCategories.filter(fee => !['OTHER_DEDUCTION', 'PAYMENT_FEE'].includes(fee.category) || finance?.lines.some(item => item.category === fee.category && item.amount !== 0)).map(fee => {
       const line = finance?.lines.find(item => item.category === fee.category)
       return { key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.label, value: finance ? line?.amount ?? 0 : null, tone: fee.key,
-        note: explain(fee.key, !finance ? notRead : line ? feeNote(line) : 'Trendyol cari hesabında bu dönemde kaydı yok.') }
+        note: explain(fee.key, !finance ? notRead : line ? feeNote(line) : 'Bu dönemde kaydı yok.') }
     }),
     { key: 'vat', label: 'Net KDV', value: finance?.netVat?.net ?? null, tone: 'vat', note: explain('vat', finance?.netVat
-      ? `Satışların KDV'si ${formatTl(finance.netVat.salesVat)}; bundan ürün maliyetindeki KDV ${formatTl(finance.netVat.productCostVat)} ve Trendyol masraflarındaki KDV ${formatTl(finance.netVat.expenseVat)} düşülür. Tahminidir.${finance.netVat.net < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`
+      ? `Satışların KDV'si ${formatTl(finance.netVat.salesVat)}; bundan ürün maliyetindeki KDV ${formatTl(finance.netVat.productCostVat)} ve masraflardaki (komisyon, kargo, hizmet bedeli) KDV ${formatTl(finance.netVat.expenseVat)} düşülür. Tahminidir.${finance.netVat.net < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`
       : notRead) }
   ]
   const known = lines.filter(line => line.value !== null && line.value > 0).sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
@@ -658,7 +659,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     { key: 'marketplace', label: 'Pazaryeri Masrafları', value: (commission?.value ?? 0) + otherFees.reduce((sum, fee) => sum + fee.value, 0),
       note: explain('marketplace', [commission ? `${commission.label} ${formatTl(commission.value)}` : null, ...otherFees.map(fee => `${fee.label} ${formatTl(fee.value)}`)].filter(Boolean).join(', ') + '.') },
     { key: 'stoppage', label: 'Stopaj', value: stoppage?.value ?? 0, note: explain('stoppage', 'KDV hariç yurt içi satıştan kesilir; hesap kesimi henüz olmayan siparişlerde tahmini.') },
-    { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla; fark devreden KDV\'dir ve kârı artırır.' : 'Satışların KDV\'sinden ürün maliyetindeki ve Trendyol masraflarındaki KDV düşülür. Tahminidir.') },
+    { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla; fark devreden KDV\'dir ve kârı artırır.' : 'Satışların KDV\'sinden ürün maliyetindeki ve masraflardaki KDV düşülür. Tahminidir.') },
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost ?? 0, note: explain('cost', costCoverageText(money.costCoverage)) }
   ].filter(item => item.value !== 0)
   const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: 'Müşterilerin ödediği toplam tutar.\nİptaller hariç, iadeler düşülmeden. Platformlara göre görmek için tıklayın.' }]
@@ -804,21 +805,22 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
   const profit = money?.profit ?? null
   const finance = financeCosts(data)
   const cargo = finance?.cargo ?? null
+  const cargoOrders = finance && cargo ? finance.financeOrders + (cargo.platformOrders ?? 0) : 0
   return [
     // Its change goes in the explanation: a badge beside it would wrap the name and put the card's rows out of line.
     { key: 'basket', label: 'Sipariş Başına Satış', value: noAmount ? '—' : formatTl(now.averageOrderValue),
       note: `Bir siparişin ortalama tutarı.\nSatış tutarı ÷ tutarı olan sipariş. Önceki dönem ${formatTl(before.averageOrderValue)}${noAmount ? '' : ` (${change(now.averageOrderValue, before.averageOrderValue)?.text ?? '—'})`}.` },
     { key: 'profit', label: 'Sipariş Başına Kâr', value: profit === null || now.ordersWithAmount === 0 ? '—' : signedTl(profit / now.ordersWithAmount), tone: profit !== null && profit < 0 ? 'bad' : undefined,
       note: profit === null ? 'Her siparişten kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : 'Her siparişten kalan tahmini kâr.\nTahmini net kâr ÷ tutarı olan sipariş.' },
-    { key: 'cargo', label: 'Sipariş Başına Kargo', value: finance && cargo && finance.financeOrders > 0 ? formatTl(cargo.combined / finance.financeOrders) : '—',
-      note: finance && cargo ? `Bir siparişin ortalama kargo ücreti.\nKargo ÷ ${formatCount(finance.financeOrders)} Trendyol siparişi. ${cargoNote(cargo)}` : 'Bir siparişin ortalama kargo ücreti.\nKargo yalnız Trendyol cari hesabından okunabiliyor.' },
+    { key: 'cargo', label: 'Sipariş Başına Kargo', value: finance && cargo && cargoOrders > 0 ? formatTl(cargo.combined / cargoOrders) : '—',
+      note: finance && cargo ? `Bir siparişin ortalama kargo ücreti.\nKargo ÷ ${formatCount(cargoOrders)} sipariş. ${cargoNote(cargo)}` : 'Bir siparişin ortalama kargo ücreti.\nBu seçimde hesaplanamadı.' },
     { key: 'units', label: 'Sipariş Başına Adet', value: now.orders > 0 ? formatNumber(now.soldQuantity / now.orders) : '—', note: `Bir siparişte ortalama kaç ürün olduğu.\n${formatNumber(now.soldQuantity)} adet ÷ ${formatCount(now.orders)} sipariş.` }
   ]
 }
 
 // Reklam: what was spent on advertising and what it weighs against the profit and the revenue; what is not read says so.
 function adMetrics(data: ReportSales, money: Money | null): Metric[] {
-  const finance = financeCosts(data)
+  const finance = trendyolRead(data) ? financeCosts(data) : null
   const spend = finance ? finance.lines.find(line => line.category === 'ADVERTISING')?.amount ?? 0 : null
   const profit = money?.profit ?? null
   const revenue = data.summary.netRevenue
@@ -1004,10 +1006,13 @@ type FlowStep = { key: string; label: string; value: number | null; kind: 'total
 
 // Trendyol's account statement when it was read for the period (else null): the commission and cargo of the period's
 // orders, real where Trendyol settled or billed them and estimated for the rest, and the store's fees by their date.
-function financeCosts(data: ReportSales): ReportCosts | null { return data.costs?.source === 'trendyol-finance' ? data.costs : null }
+function financeCosts(data: ReportSales): ReportCosts | null { return data.costs?.commission && data.costs.cargo ? data.costs : null }
+// Whether Trendyol's statement was read for the period (its cargo and fees are then real or estimated from it).
+function trendyolRead(data: ReportSales) { return data.costs?.source === 'trendyol-finance' }
 
 const feeCategories = [
   { category: 'SERVICE_FEE', key: 'fee', label: 'Hizmet Bedeli' },
+  { category: 'PAYMENT_FEE', key: 'payment', label: 'Ödeme Komisyonu' },
   { category: 'STOPPAGE', key: 'stoppage', label: 'Stopaj' },
   { category: 'ADVERTISING', key: 'ads', label: 'Reklam' },
   { category: 'PENALTY', key: 'penalty', label: 'Ceza' },
@@ -1026,8 +1031,8 @@ function feeLines(costs: ReportCosts) {
 // A fee line's note: how many records were read and how much was estimated for the orders not settled yet.
 function feeNote(line: ReportCosts['lines'][number]) {
   const read = line.records > 0 ? `Trendyol cari hesabındaki ${formatCount(line.records)} kayıttan, işlem tarihine göre.` : null
-  const estimated = line.estimated ? `Hesap kesimi henüz olmayan siparişler için ${formatTl(line.estimated)} tahmin edildi.` : null
-  return [read, estimated].filter(Boolean).join(' ') || 'Trendyol cari hesabında bu dönemde kaydı yok.'
+  const estimated = line.estimated ? `${formatTl(line.estimated)} tahmini: Trendyol'da hesap kesimi olmayan siparişler, diğer platformlarda 2026 tarifeleri.` : null
+  return [read, estimated].filter(Boolean).join(' ') || 'Bu dönemde kaydı yok.'
 }
 
 function commissionNote(costs: ReportCosts) {
@@ -1039,16 +1044,20 @@ function commissionNote(costs: ReportCosts) {
 }
 
 function cargoNote(cargo: NonNullable<ReportCosts['cargo']>) {
-  const billed = `${formatCount(cargo.billedOrders)} siparişin kargo faturası geldi: ${formatTl(cargo.real)}.`
-  if (cargo.unbilledOrders === 0) return billed
+  const platforms = cargo.platformOrders ? ` Diğer platformların ${formatCount(cargo.platformOrders)} siparişi kargo firması ve desiye göre 2026 tarifelerinden: ${formatTl(cargo.platformEstimated ?? 0)}.` : ''
+  if (cargo.billedOrders === 0 && cargo.unbilledOrders === 0) return platforms.trim()
+  const billed = `Trendyol'da ${formatCount(cargo.billedOrders)} siparişin kargo faturası geldi: ${formatTl(cargo.real)}.`
+  if (cargo.unbilledOrders === 0) return billed + platforms
   return cargo.estimated === null
-    ? `${billed} Faturası henüz gelmeyen ${formatCount(cargo.unbilledOrders)} siparişin kargosu tahmin edilemedi.`
-    : `${billed} Faturası henüz gelmeyen ${formatCount(cargo.unbilledOrders)} sipariş, mağazanın kargo tarifesiyle tahmin edildi: ${formatTl(cargo.estimated)}.`
+    ? `${billed} Faturası henüz gelmeyen ${formatCount(cargo.unbilledOrders)} siparişin kargosu tahmin edilemedi.${platforms}`
+    : `${billed} Faturası henüz gelmeyen ${formatCount(cargo.unbilledOrders)} sipariş, mağazanın kargo tarifesiyle tahmin edildi: ${formatTl(cargo.estimated - (cargo.platformEstimated ?? 0))}.${platforms}`
 }
 
-// Platforms with orders in the period whose cargo and fees are not read (only Trendyol's statement is).
+// Platforms with orders in the period whose cargo and fees are not counted: Trendyol when its statement was not read
+// (Hepsiburada, n11, Pazarama, PTT AVM and Shopify are costed from their tariffs).
+const tariffPlatforms = ['HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY']
 function unreadFeeCodes(data: ReportSales) {
-  return data.platforms.filter(group => group.known && group.key !== 'TRENDYOL' && group.orders > 0).map(group => group.key)
+  return data.platforms.filter(group => group.known && group.orders > 0 && !tariffPlatforms.includes(group.key) && !(group.key === 'TRENDYOL' && trendyolRead(data))).map(group => group.key)
 }
 function unreadFeePlatforms(data: ReportSales) { return unreadFeeCodes(data).map(platformName) }
 
@@ -1064,7 +1073,7 @@ function profitSteps(data: ReportSales): ProfitSteps {
   const finance = financeCosts(data)
   const unread = unreadFeePlatforms(data)
   const description = finance
-    ? `Komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; kesintiler Trendyol cari hesabından.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
+    ? `${trendyolRead(data) ? 'Trendyol\'da komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; kesintiler cari hesaptan.' : 'Komisyon siparişteki orandan tahmini.'} Diğer platformların kargo ve kesintileri 2026 tarifelerinden tahmini.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
     : 'Yalnız okunabilen kalemlerle; kargo, hizmet bedeli, stopaj, reklam ve ceza düşülmedi.'
   if (now.ordersWithAmount === 0) return { steps: null, description }
   const hasCommission = commission.coveredRevenue > 0
@@ -1083,7 +1092,7 @@ function profitSteps(data: ReportSales): ProfitSteps {
         note: `${commissionNote(finance)}${partialCommission ? ' Komisyon oranı bilinmeyen satışlardan komisyon düşülmedi.' : ''}` },
       { key: 'cargo', label: 'Kargo', value: finance.cargo.combined, kind: 'minus', note: cargoNote(finance.cargo) },
       { key: 'fees', label: 'Kesintiler', value: feeTotal, kind: 'minus',
-        note: fees.length ? `${fees.map(fee => fee.label).join(', ')} · Trendyol, işlem tarihine göre` : 'Bu dönemde Trendyol kesintisi yok' },
+        note: fees.length ? `${fees.map(fee => fee.label).join(', ')} · Trendyol cari hesabından ve diğer platformların tarifelerinden` : 'Bu dönemde kesinti yok' },
       { key: 'payout', label: 'Masraflar Düşülmüş', value: now.netRevenue - charged, kind: 'total',
         note: finance.cargo.estimated === null && finance.cargo.unbilledOrders > 0 ? 'Faturası gelmeyen kargo eksik; ürün maliyeti hariç' : 'Gerçek ve tahmini kalemlerle; ürün maliyeti hariç' }
     )
@@ -1524,13 +1533,13 @@ function Ledger({ title, description, rows, empty }: { title: string; descriptio
 // Trendyol's statement for the period, as rows of the commission account (none without the statement).
 function trendyolLedger(data: ReportSales): LedgerRow[] {
   const finance = financeCosts(data)
-  if (!finance?.commission || !finance.cargo) return []
+  if (!trendyolRead(data) || !finance?.commission || !finance.cargo) return []
   const { commission, cargo } = finance
   return [
     // One short line under each; the full account of each is on the overview's rows under the pointer.
     { label: 'Trendyol Komisyonu', value: formatTl(commission.combined), hint: commission.realOrders > 0 ? `${formatTl(commission.real)} kesin, ${formatTl(commission.estimatedForUnsettled)} tahmini` : 'Tümü tahmini' },
     { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: `Bu siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` },
-    { label: 'Trendyol Kargo', value: formatTl(cargo.combined), hint: cargo.unbilledOrders === 0 ? `${formatCount(cargo.billedOrders)} sipariş faturalı` : `${formatCount(cargo.billedOrders)} sipariş faturalı, ${formatCount(cargo.unbilledOrders)} sipariş tahmini` },
+    { label: 'Trendyol Kargo', value: formatTl(cargo.combined - (cargo.platformEstimated ?? 0)), hint: cargo.unbilledOrders === 0 ? `${formatCount(cargo.billedOrders)} sipariş faturalı` : `${formatCount(cargo.billedOrders)} sipariş faturalı, ${formatCount(cargo.unbilledOrders)} sipariş tahmini` },
     { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: 'Son 30 günde en sık kesilen tutar' }
   ]
 }
@@ -1539,7 +1548,7 @@ function trendyolLedger(data: ReportSales): LedgerRow[] {
 // read so far; another marketplace shows that in words instead of an empty table.
 function StatementLines({ data }: { data: ReportSales }) {
   const finance = financeCosts(data)
-  const read = Boolean(finance?.commission && finance.cargo)
+  const read = trendyolRead(data) && Boolean(finance?.commission && finance.cargo)
   const platforms = data.platforms.filter(group => group.known && group.orders > 0).map(group => group.key)
   const [picked, setPicked] = useState(() => read && platforms.includes('TRENDYOL') ? 'TRENDYOL' : platforms[0] ?? 'TRENDYOL')
   const selected = platforms.includes(picked) ? picked : platforms[0] ?? picked

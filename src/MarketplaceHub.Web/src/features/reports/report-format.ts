@@ -59,7 +59,7 @@ export type ReportCosts = {
   source: 'trendyol-finance' | 'estimate'; lastSyncedAt: string | null; coveredFrom: string | null; coveredThrough: string | null
   financeOrders: number; settledOrders: number; coverage: number | null; realCostTotal: number | null
   commission: { real: number; realOrders: number; estimatedForSettled: number; estimatedForUnsettled: number; combined: number } | null
-  cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number } | null
+  cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number; platformOrders?: number; platformEstimated?: number } | null
   lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; unlinked: number; estimated?: number }>
   // The net VAT of the Trendyol orders (server-side estimate): sales VAT less the VAT in the product cost and in Trendyol's
   // charges; below zero it is carried forward.

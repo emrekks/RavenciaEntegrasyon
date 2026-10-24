@@ -465,6 +465,13 @@ Kesintilerdeki KDV genel kurala göre indirilecek KDV'dir: kâr hesabında maliy
 
 ## Panel için notlar
 
+**Uygulandı (24 Ekim 2026):** Raporlar, ekstresi okunmayan platformların kargo, hizmet bedeli, ödeme komisyonu ve stopajını bu belgedeki tarifelerden hesaplıyor (`ReportPlatformCosts.cs`).
+- Kargo, paketin kargo firması ve ürün desisiyle (desi girilmemiş ürün 1 desi sayılır) ya da barem fiyatıyla bulunuyor.
+- Tamamen iade edilen pazaryeri siparişinde dönüş kargosu da satıcıya yazılıyor.
+- Shopify'da sipariş başına 120 TL kargo ve kartlı ödeme varsayılıyor.
+- Net KDV bütün platformların siparişlerinden hesaplanıyor.
+- Tarife değişince tablolar bu dosyada ve kodda birlikte güncellenmeli.
+
 - **Trendyol:** Raporlar kargosu fatura gelmemiş siparişlere güncel tarifeyi (son 30 günde en sık kesilen gönderi tutarı, şu an 98,34) yazıyor. Desi bazında hesap şöyle kurulabilir:
   - Kargo faturalarının satırlarında desi ve tutar var.
   - Her taşıyıcı ve desi için güncel fiyat bu satırlardan çıkarılabilir; tablo elle girilmez.

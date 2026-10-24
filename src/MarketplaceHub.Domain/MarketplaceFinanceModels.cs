@@ -11,6 +11,8 @@ public static class MarketplaceFinanceCategories
     public const string Commission = "COMMISSION";
     public const string Cargo = "CARGO";
     public const string ServiceFee = "SERVICE_FEE";
+    // The card payment fees of the own store (the payment provider's and Shopify's): estimated, never a marketplace record.
+    public const string PaymentFee = "PAYMENT_FEE";
     public const string Stoppage = "STOPPAGE";
     public const string Penalty = "PENALTY";
     public const string EarlyPayment = "EARLY_PAYMENT";
@@ -20,11 +22,11 @@ public static class MarketplaceFinanceCategories
     public const string OtherDeduction = "OTHER_DEDUCTION";
     public const string Other = "OTHER";
 
-    public static readonly IReadOnlyList<string> All = [Sale, Return, Discount, Coupon, Commission, Cargo, ServiceFee, Stoppage, Penalty, EarlyPayment, Advertising, OtherDeduction, Other];
+    public static readonly IReadOnlyList<string> All = [Sale, Return, Discount, Coupon, Commission, Cargo, ServiceFee, PaymentFee, Stoppage, Penalty, EarlyPayment, Advertising, OtherDeduction, Other];
 
     // The categories that are a cost to the seller; they add up to the report's real cost total. OTHER is shown apart:
     // an unrecognised record may be a correction in either direction.
-    public static readonly IReadOnlyList<string> Costs = [Commission, Cargo, ServiceFee, Stoppage, Penalty, EarlyPayment, Advertising, OtherDeduction];
+    public static readonly IReadOnlyList<string> Costs = [Commission, Cargo, ServiceFee, PaymentFee, Stoppage, Penalty, EarlyPayment, Advertising, OtherDeduction];
 }
 
 // One record of a marketplace's current account statement (Trendyol "Cari Hesap Ekstresi"), as the marketplace sent

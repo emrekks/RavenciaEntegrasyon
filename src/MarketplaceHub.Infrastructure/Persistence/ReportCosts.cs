@@ -95,6 +95,7 @@ internal static class ReportCosts
         [MarketplaceFinanceCategories.Commission] = "Komisyon",
         [MarketplaceFinanceCategories.Cargo] = "Kargo",
         [MarketplaceFinanceCategories.ServiceFee] = "Platform hizmet bedeli",
+        [MarketplaceFinanceCategories.PaymentFee] = "Ödeme komisyonu",
         [MarketplaceFinanceCategories.Stoppage] = "Stopaj",
         [MarketplaceFinanceCategories.Penalty] = "Ceza",
         [MarketplaceFinanceCategories.EarlyPayment] = "Erken ödeme",
@@ -113,8 +114,13 @@ internal static class ReportCosts
         var coveredThrough = states.Count == 0 || states.Values.Any(state => state?.CoveredThrough is null) ? null : states.Values.Min(state => state!.CoveredThrough);
         // A store whose statement has been read is costed even before Trendyol wrote a record of the period (yesterday's
         // orders): everything is then estimated from its own history.
-        if (finance is null || finance.Rows.Count == 0 && finance.CargoItems.Count == 0 && finance.States.Values.All(state => state?.CoveredThrough is null))
+        var platformOrders = orders.Where(order => order.Currency == "TRY" && ReportPlatformCosts.Covers(order.PlatformCode)).ToList();
+        var read = finance is not null && (finance.Rows.Count > 0 || finance.CargoItems.Count > 0 || finance.States.Values.Any(state => state?.CoveredThrough is not null));
+        if (!read && platformOrders.Count == 0)
             return new(EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, 0, null, null, null, null, [], [], []);
+        finance ??= new ReportFinance([], [], new HashSet<(Guid, string)>(), new Dictionary<Guid, MarketplaceFinanceSyncState?>());
+        // A Trendyol store whose statement is not read is not costed from it (its fees stay unknown).
+        if (!read) financeOrders = [];
 
         // The period's orders (any status) by store and order number; a record of another period's order is not here.
         var periodOrders = input.Orders.GroupBy(order => (order.ConnectionId, order.OrderNumber)).ToDictionary(group => group.Key, group => group.First().Id);
@@ -206,8 +212,39 @@ internal static class ReportCosts
         var realCargo = Round(lines.TryGetValue(MarketplaceFinanceCategories.Cargo, out var cargoLine) ? cargoLine.Amount : 0m);
         var unbilledCount = unbilledByStore.Values.Sum();
         decimal? cargoEstimate = unbilledCount == 0 ? 0m : estimatedCargo.Count > 0 ? estimatedCargo.Values.Sum() : null;
+
+        // The orders of the platforms whose statement is not read, costed from their tariffs (ReportPlatformCosts).
+        var carriers = input.Packages.Where(package => !string.IsNullOrWhiteSpace(package.CargoProvider))
+            .GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.First().CargoProvider);
+        decimal platformCargo = 0m, platformFees = 0m, platformVatFees = 0m;
+        foreach (var order in platformOrders)
+        {
+            var desi = order.Lines.Any(line => line.Row.Desi is > 0)
+                ? order.Lines.Sum(line => (line.Row.Desi is > 0 ? line.Row.Desi.Value : ReportPlatformCosts.DefaultDesi) * Math.Max(1m, line.Active))
+                : (decimal?)null;
+            var keptVatFree = order.Country == ReportBuckets.Turkey ? order.Lines.Sum(VatFree) : 0m;
+            var cost = ReportPlatformCosts.For(order.PlatformCode, order.Amount, keptVatFree, order.Back > 0 && order.Kept == 0m, desi, carriers.GetValueOrDefault(order.Order.Id));
+            var store = order.Order.ConnectionId;
+            Line(MarketplaceFinanceCategories.ServiceFee).Estimate(cost.ServiceFee);
+            Line(MarketplaceFinanceCategories.Stoppage).Estimate(cost.Stoppage);
+            Line(MarketplaceFinanceCategories.PaymentFee).Estimate(cost.PaymentFee);
+            foreach (var (category, amount) in new[] { (MarketplaceFinanceCategories.ServiceFee, cost.ServiceFee), (MarketplaceFinanceCategories.Stoppage, cost.Stoppage), (MarketplaceFinanceCategories.PaymentFee, cost.PaymentFee) })
+                if (amount != 0m) channelCosts[(store, category)] = channelCosts.GetValueOrDefault((store, category)) + amount;
+            estimatedCargo[store] = estimatedCargo.GetValueOrDefault(store) + cost.Cargo;
+            platformCargo += cost.Cargo;
+            platformFees += cost.ServiceFee;
+            // Shopify's own fees (iyzico's BSMV, Shopify's dollar invoice) carry no VAT to deduct.
+            if (order.PlatformCode != "SHOPIFY") platformVatFees += cost.ServiceFee;
+            financeStores.Add(store);
+        }
+        foreach (var category in new[] { MarketplaceFinanceCategories.ServiceFee, MarketplaceFinanceCategories.Stoppage, MarketplaceFinanceCategories.PaymentFee })
+            if (lines.TryGetValue(category, out var empty) && empty.Amount == 0m && empty.Records == 0) lines.Remove(category);
+        platformCargo = Round(platformCargo);
+        foreach (var store in estimatedCargo.Keys.ToList()) estimatedCargo[store] = Round(estimatedCargo[store]);
+        var allEstimated = (cargoEstimate ?? 0m) + platformCargo;
         var cargoView = new ReportCargoCostView(realCargo, financeOrders.Count(order => billed.Contains(order.Order.Id)), unbilledCount,
-            sampleOrders > 0 ? Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders, cargoEstimate, realCargo + (cargoEstimate ?? 0m));
+            sampleOrders > 0 ? Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders,
+            cargoEstimate is null && platformOrders.Count == 0 ? null : allEstimated, realCargo + allEstimated, platformOrders.Count, platformCargo);
 
         // The service fees and the withholding tax of the Trendyol orders Trendyol has not settled yet.
         foreach (var store in financeOrders.Where(order => !settled.Contains(order.Order.Id)).GroupBy(order => order.Order.ConnectionId))
@@ -260,14 +297,16 @@ internal static class ReportCosts
         // The net VAT of the Trendyol orders: the VAT in the domestic sales, less the VAT in their product cost and in
         // Trendyol's VAT-inclusive charges (the international service fee and the withholding tax carry none).
         var trendyolCommission = real + Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
-        var platformFees = finance.Rows.Where(row => row.Category == MarketplaceFinanceCategories.ServiceFee && !IsInternationalFee(row))
+        var trendyolFees = finance.Rows.Where(row => row.Category == MarketplaceFinanceCategories.ServiceFee && !IsInternationalFee(row))
             .Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit)) + financeOrders.Count(order => !settled.Contains(order.Order.Id)) * PlatformServiceFeePerOrder;
         var advertising = lines.TryGetValue(MarketplaceFinanceCategories.Advertising, out var adLine) ? adLine.Amount : 0m;
-        var salesVat = financeOrders.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(line => Vat(line.KeptAmount, line.Row.VatRate));
-        var costVat = financeOrders.SelectMany(order => order.Lines).Where(line => line.Row.CostPrice is > 0).Sum(line => Vat(line.Row.CostPrice!.Value * line.KeptUnits, line.Row.VatRate));
-        var expenseVat = Vat(trendyolCommission + cargoView.Combined + platformFees + advertising, ExpenseVatRate);
+        var vatOrders = financeOrders.Concat(platformOrders).ToList();
+        var platformCommission = Round(platformOrders.Sum(Estimated));
+        var salesVat = vatOrders.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(line => Vat(line.KeptAmount, line.Row.VatRate));
+        var costVat = vatOrders.SelectMany(order => order.Lines).Where(line => line.Row.CostPrice is > 0).Sum(line => Vat(line.Row.CostPrice!.Value * line.KeptUnits, line.Row.VatRate));
+        var expenseVat = Vat(trendyolCommission + platformCommission + cargoView.Combined + trendyolFees + platformVatFees + advertising, ExpenseVatRate);
         var netVat = new ReportNetVatView(Round(salesVat), Round(costVat), Round(expenseVat), Round(salesVat - costVat - expenseVat));
-        return new(FinanceSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, settledFinanceOrders,
+        return new(read ? FinanceSource : EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, settledFinanceOrders,
             financeOrders.Count > 0 ? Math.Round((decimal)settledFinanceOrders / financeOrders.Count, 4) : null,
             total, commissionView, cargoView, lineViews, channels, productViews, netVat);
     }
@@ -292,8 +331,10 @@ internal static class ReportCosts
                 : input.Finance!.States.Values.All(state => state?.CoveredThrough is null)
                     ? "Gerçek masraf verisi yok: Trendyol finans kayıtları henüz okunmadı; komisyon ve masraflar tahminidir."
                     : "Trendyol finans kayıtlarında bu döneme ait kayıt yok; komisyon ve masraflar tahminidir.";
+            if (PlatformNote(costs, tr) is { } unread) yield return unread;
             yield break;
         }
+        if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
         yield return $"Gerçek masraflar Trendyol cari hesap ekstresinden okunur{(costs.LastSyncedAt is { } synced ? $" (son okuma {Time(synced)})" : " (okuma sürüyor)")}: siparişe bağlı kalemler siparişin dönemine, siparişe bağlı olmayanlar (hizmet bedeli, stopaj, ceza) işlem tarihine göre yazılır.";
         if (costs.Coverage is { } coverage)
             yield return $"Trendyol siparişlerinin {costs.SettledOrders.ToString("N0", tr)} / {costs.FinanceOrders.ToString("N0", tr)} kadarında (%{coverage * 100:N1}) hesap kesimi var; Trendyol kaydı teslimattan sonra yazar, kalan siparişlerin komisyonu tahminidir.";
@@ -308,17 +349,23 @@ internal static class ReportCosts
         if (rejected.Count > 0)
             yield return $"Trendyol şu kayıt türlerini vermedi, bu türler masraflarda yok: {string.Join(", ", rejected)}.";
         yield return "Trendyol'un komisyon faturaları, hesap kesimindeki komisyonun faturasıdır; komisyona ikinci kez eklenmez.";
-        if (costs.Cargo is { } cargo)
+        if (costs.Cargo is { } cargo && (cargo.BilledOrders > 0 || cargo.UnbilledOrders > 0))
         {
             var billed = $"Kargo, Trendyol kargo faturalarının paket satırlarından okunur: {cargo.BilledOrders.ToString("N0", tr)} siparişin kargo faturası geldi ({Money(cargo.Real)}).";
             yield return cargo.UnbilledOrders == 0
                 ? billed
                 : cargo.Estimated is { } estimated && cargo.AveragePerOrder is { } average
-                    ? $"{billed} Trendyol kargoyu gönderiden haftalar sonra faturalar; faturası henüz gelmeyen {cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu son 60 günün sipariş başına ortalamasıyla ({Money(average)}, {cargo.SampleOrders.ToString("N0", tr)} sipariş) tahmin edildi: {Money(estimated)}."
+                    ? $"{billed} Trendyol kargoyu gönderiden haftalar sonra faturalar; faturası henüz gelmeyen {cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu mağazanın güncel kargo tarifesiyle ({Money(average)}: son 30 günün {cargo.SampleOrders.ToString("N0", tr)} faturalı siparişinde en sık kesilen tutar) tahmin edildi: {Money(estimated - cargo.PlatformEstimated)}."
                     : $"{billed} Faturası henüz gelmeyen {cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu tahmin edilemedi (son 60 günde faturalanmış kargo yok); kargo eksiktir.";
         }
         yield return "Kargo ve hizmet bedelleri ürünlere paylaştırılmaz.";
     }
+
+    // What the platforms costed from their tariffs (ReportPlatformCosts) rest on.
+    private static string? PlatformNote(ReportCostsView costs, CultureInfo tr) =>
+        costs.Cargo is { PlatformOrders: > 0 } cargo
+            ? $"Hepsiburada, n11, Pazarama, PTT AVM ve Shopify'ın {cargo.PlatformOrders.ToString("N0", tr)} siparişinin kargosu ({cargo.PlatformEstimated.ToString("N2", tr)} ₺), hizmet bedelleri ve stopajı pazaryerlerinin 2026 tarifelerinden tahmin edildi: kargo, paketin kargo firması ve ürünlerin desisiyle (desi girilmemiş ürün 1 desi sayılır, barem sınırları uygulanır); tamamen iade edilen siparişte dönüş kargosu da satıcıya yazılır. Shopify'da sipariş başına 120 ₺ kargo ve kartlı ödeme (iyzico %4,29 + 0,25 ₺, Shopify %2) varsayıldı."
+            : null;
 
     private static bool IsFinanceStore(ReportInput input, Guid connectionId) =>
         input.Channels.TryGetValue(connectionId, out var channel) && channel.PlatformCode == "TRENDYOL" && !channel.IsTest;

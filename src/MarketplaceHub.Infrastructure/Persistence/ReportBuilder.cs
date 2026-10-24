@@ -113,6 +113,8 @@ internal sealed class ReportLineRow
     public decimal? CostPrice { get; init; }
     // The line's VAT rate in percent (10 for 10 %); its price includes it.
     public decimal VatRate { get; init; }
+    // The variant's desi as entered on the product (null: none entered).
+    public decimal? Desi { get; init; }
 }
 
 internal sealed class ReportLineExtra
