@@ -282,17 +282,19 @@ public sealed partial class InvoicingBillingService
         var taxTotal = calculated.TaxTotal;
         var taxExclusive = calculated.TaxExclusiveTotal;
         var remoteInvoicePresent = activePackages.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received);
+        var manuallyUploaded = activePackages.Any(item => MarketplaceInvoiceStatePolicy.IsManuallyUploaded(item.ManualInvoiceStatus));
         var legacyInvoiceConflict = orderInvoices.Count > 1;
         var manualDocument = await db.ManualOrderInvoiceDocuments.AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.OrderId == order.Id && item.Status == "ACTIVE")
             .OrderByDescending(item => item.CreatedAt)
             .Select(item => new { item.Id, item.DocumentType, item.DocumentUrl, item.InvoiceNumber, item.IssuedAt })
             .FirstOrDefaultAsync(cancellationToken);
-        var canCreate = !remoteInvoicePresent && !legacyInvoiceConflict && manualDocument is null && deliveryBlockedReason is null
+        var canCreate = !remoteInvoicePresent && !manuallyUploaded && !legacyInvoiceConflict && manualDocument is null && deliveryBlockedReason is null
             && (existing is not null || MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson))
             && InvoiceDeliveryEnvironmentPolicy.IsCompatible(provider.Environment, marketplace.Environment);
         string? blockedReason = canCreate ? null
             : remoteInvoicePresent ? "Pazaryeri siparişinde fatura bulundu veya işleniyor. Yeni mali fatura kesimi kapatıldı; önce platformdaki belgeyi eşitleyin."
+            : manuallyUploaded ? "Sipariş fatura yüklendi olarak işaretlenmiş. Yeni mali fatura kesimi kapatıldı; önce fatura durumunu değiştirin."
             : legacyInvoiceConflict ? "Siparişte birden fazla tarihî mali fatura kaydı bulundu. Yeni kesim durduruldu; kayıtlar korunarak incelenmeli."
             : manualDocument is not null ? "Siparişe manuel fatura belgesi eklendi. İkinci mali fatura kesilmedi; aynı belgeyi platforma iletin veya yeni sürümle değiştirin."
             : deliveryBlockedReason is not null ? deliveryBlockedReason

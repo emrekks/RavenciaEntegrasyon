@@ -31,11 +31,13 @@ public sealed partial class PazaramaHttpClient : IInvoiceMarketplacePort
         return AdapterResult<InvoiceDeliveryResult>.Success(new(request.OrderNumber ?? request.OrderId!, "INVOICED", true, request.InvoiceNumber, request.StoredLink), saved.RateLimit);
     }
 
-    // No read-back service exists. Before a delivery the platform is treated as holding no link;
-    // a confirmation read of an earlier delivery cannot be answered.
+    // No read-back service exists, and an invoice uploaded in the Pazarama seller panel is invisible to the API. Before
+    // a delivery the answer is UNVERIFIED (as on n11 and PTT AVM), never "no invoice": the invoice workflow decides
+    // from local state (an observed invoice or a hand-set "uploaded") whether to issue or send. A confirmation read of
+    // an earlier delivery cannot be answered.
     public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) =>
         Task.FromResult(string.IsNullOrWhiteSpace(reference.InvoiceNumber) && string.IsNullOrWhiteSpace(reference.InvoiceLink)
-            ? AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, "NOT_INVOICED", IsTerminal: true))
+            ? AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, MarketplaceHub.Domain.MarketplaceInvoiceStatePolicy.Unverified, IsTerminal: true))
             : Failure<InvoiceDeliveryStatus>(AdapterErrorClass.NotSupported, "PAZARAMA_INVOICE_READBACK_UNSUPPORTED", "Pazarama gönderilen fatura linkini geri okuma servisi sunmuyor.", HttpStatusCode.NotImplemented));
 
     internal static bool AcceptsInvoiceExtension(Uri uri) => InvoiceLinkExtensions.Any(extension => uri.AbsolutePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase));

@@ -37,6 +37,30 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void UnverifiedReadDefersToLocalInvoiceEvidence(MarketplaceInvoiceStatus current, string? manual, bool expected) =>
         Assert.Equal(expected, MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(current, manual));
 
+    // Audit 2026-10-24 S3: only a hand-set "uploaded" stops a fiscal invoice and a link whatever the marketplace says.
+    [Theory]
+    [InlineData("UPLOADED", true)]
+    [InlineData(" uploaded ", true)]
+    [InlineData("PENDING", false)]
+    [InlineData(null, false)]
+    public void HandSetUploadedIsRecognised(string? manual, bool expected) =>
+        Assert.Equal(expected, MarketplaceInvoiceStatePolicy.IsManuallyUploaded(manual));
+
+    // Audit 2026-10-24 S2: the hand-set status decides the package label before the marketplace's word or a panel
+    // invoice, so the orders screens read like the invoice page.
+    [Theory]
+    [InlineData("N11", "UPLOADED", "FATURA_KONTROLDE")]
+    [InlineData("SHOPIFY", "UPLOADED", "FATURA_KONTROLDE")]
+    [InlineData("PTTAVM", "PENDING", "FATURA_BEKLIYOR")]
+    [InlineData("N11", null, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.UnverifiedInvoiceLabel)]
+    [InlineData("SHOPIFY", null, "FATURA_BEKLIYOR")]
+    public void HandSetStatusDecidesThePackageInvoiceLabel(string platformCode, string? manual, string expected)
+    {
+        var package = new ShipmentPackage { ExternalPackageId = "p1", RawStatus = "Delivered", MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, ManualInvoiceStatus = manual };
+
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.PackageInvoiceLabel(package, null, "{}", [package.RawStatus], platformCode));
+    }
+
     [Fact]
     public void InvoicedStateCannotBeDowngradedByAnOlderOrIncompleteSnapshot()
     {

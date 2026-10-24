@@ -1,5 +1,5 @@
 import { invoiceStatusLabel } from '../../shared/status-labels'
-import { versionedIdempotencyKey } from '../../shared/idempotency'
+import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceFailureReason } from './invoice-failure-reasons'
 
 // Turkish text for the codes the invoice pages receive from the server; a code without a text is shown readable, never raw.
@@ -52,9 +52,13 @@ export function workspaceInvoiceStatusFilterLabel(status: string) {
   return status === adjustmentRequiredStatus ? 'Düzeltme Gerekiyor' : invoiceStatusLabel(status)
 }
 
-/** One key per manual document and delivery state: a double click reaches the same request instead of queuing twice. */
-export function manualDeliveryIdempotencyKey(item: { manualInvoiceDocumentId: string | null; manualInvoiceDeliveryStatus: string | null }) {
-  return versionedIdempotencyKey('manual-invoice-delivery', item.manualInvoiceDocumentId ?? 'none', item.manualInvoiceDeliveryStatus ?? 'NEW')
+/**
+ * A fresh key for every delivery attempt. A key built from the document and its delivery state came again unchanged
+ * after a second failure (FAILED -> FAILED), so the server replayed the old 202 and queued nothing. A double click is
+ * stopped by the button (pending / queued), and a resend after a lost answer finds the still active job on the server.
+ */
+export function manualDeliveryIdempotencyKey(documentId: string) {
+  return newIdempotencyKey(`manual-invoice-delivery:${documentId}`)
 }
 
 function readable(code: string) {
