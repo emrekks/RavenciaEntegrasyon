@@ -2658,6 +2658,13 @@ button,
   transition: background-color 9999s ease-out;
 }
 
+/* Chrome draws an autofilled value in its own smaller font, so a filled password's dots shrink; the field's font and
+   size (the page's, 16 px) are set again on the text line. */
+.rv-auth-control input:-webkit-autofill::first-line {
+  font-family: var(--rv-font-ui);
+  font-size: var(--rv-font-size-md);
+}
+
 .rv-auth-label-row button {
   color: var(--rv-color-primary);
   font-weight: 500;
