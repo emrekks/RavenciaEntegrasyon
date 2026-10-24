@@ -72,11 +72,11 @@
   --rv-motion-enter: 520ms;
   --rv-motion-block-stagger: 70ms;
   --rv-motion-row: 400ms;
-  --rv-motion-row-delay: 280ms;
+  --rv-motion-row-delay: 60ms;
   --rv-motion-stagger: 35ms;
   --rv-motion-distance: 12px;
   --rv-motion-sheen: 900ms;
-  --rv-motion-sheen-delay: 380ms;
+  --rv-motion-sheen-delay: 120ms;
   --rv-motion-press: .96;
   --rv-motion-lift: -2px;
   --rv-ease-out: cubic-bezier(.22, 1, .36, 1);
