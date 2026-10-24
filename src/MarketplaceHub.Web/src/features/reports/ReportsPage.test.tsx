@@ -152,6 +152,12 @@ describe('ReportsPage', () => {
     expect(lines.slice(0, 3)).toEqual(['İade Edilen Tutar ₺100,00 %44,8', 'Ürün Maliyeti ₺80,00 %35,9', 'Tahmini Komisyon ₺43,00 %19,3'])
     expect(lines.slice(3)).toEqual(['Kargo —', 'Hizmet Bedeli —', 'Stopaj —', 'Reklam —', 'Ceza —', 'Erken Ödeme Kesintisi —', 'Net KDV —'])
     expect(card.textContent).not.toContain('₺0,00')
+    // A cost picked beside the ring (by the pointer or the keyboard) is shown in its middle and thickens on the ring.
+    await act(async () => { card.querySelector<HTMLButtonElement>('.reports-costlines li:first-child button')!.focus() })
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toBe('İade Edilen Tutar₺100masrafların %44,8 kadarı')
+    expect(card.querySelector('.reports-donut.has-active .reports-donut-part.is-active')).not.toBeNull()
+    await act(async () => { card.querySelector<HTMLButtonElement>('.reports-costlines li:first-child button')!.blur() })
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('Toplam masraf')
     // Kâr Köprüsü: each deduction taken from where the one before ended, down to the same 127.
     expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Pazaryeri Masrafları − ₺43,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Net Kâr ₺127,00'])
     // A row's explanation is there for the pointer, not printed under it.

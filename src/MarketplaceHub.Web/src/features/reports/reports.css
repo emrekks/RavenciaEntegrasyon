@@ -576,10 +576,16 @@
 .app-shell.stitch-shell main .reports-page .reports-donut svg { width: 100%; height: 100%; }
 .app-shell.stitch-shell main .reports-page .reports-donut circle { fill: none; stroke-width: 12; }
 .app-shell.stitch-shell main .reports-page .reports-donut-base { stroke: var(--rv-color-surface-soft); }
-.app-shell.stitch-shell main .reports-page .reports-donut-part { transition: stroke-dasharray 1100ms cubic-bezier(.2, .7, .2, 1); }
+.app-shell.stitch-shell main .reports-page .reports-donut-part { cursor: pointer; transition: stroke-dasharray 1100ms cubic-bezier(.2, .7, .2, 1), stroke-width 240ms cubic-bezier(.2, .7, .2, 1), opacity 240ms ease; }
+/* A part under the pointer (or its line beside the ring) thickens and the others fade; the middle shows it. */
+.app-shell.stitch-shell main .reports-page .reports-donut.has-active .reports-donut-part { opacity: .28; }
+.app-shell.stitch-shell main .reports-page .reports-donut.has-active .reports-donut-part.is-active { opacity: 1; stroke-width: 17; }
+.app-shell.stitch-shell main .reports-page .reports-donut-swap { display: grid; justify-items: center; gap: 2px; animation: reports-donut-swap 240ms cubic-bezier(.2, .7, .2, 1); }
+@keyframes reports-donut-swap { from { opacity: 0; transform: translateY(4px) scale(.96); } }
 .app-shell.stitch-shell main .reports-page .reports-donut-centre { position: absolute; display: grid; justify-items: center; gap: 2px; text-align: center; }
 .app-shell.stitch-shell main .reports-page .reports-donut-centre small { color: var(--rv-color-muted); font-size: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-donut-centre strong { color: var(--rv-color-ink); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-donut-centre small { max-width: 120px; }
 .app-shell.stitch-shell main .reports-page .reports-donut-centre span { max-width: 104px; color: var(--rv-color-subtle); font-size: 12px; line-height: 1.35; }
 .app-shell.stitch-shell main .reports-page .reports-costlines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; margin: 0; padding: 0; list-style: none; }
 .app-shell.stitch-shell main .reports-page .reports-costlines li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 48px; align-items: center; gap: 10px; min-height: 42px; border-top: 1px solid var(--rv-color-border); color: var(--rv-color-ink); font-size: 13.5px; }
@@ -588,6 +594,9 @@
 .app-shell.stitch-shell main .reports-page .reports-costlines b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-costlines em { color: var(--rv-color-subtle); font-size: 12px; font-style: normal; font-variant-numeric: tabular-nums; text-align: right; }
 .app-shell.stitch-shell main .reports-page .reports-costlines li.is-zero { color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .reports-page .reports-costlines li > i { transition: transform 200ms ease; }
+.app-shell.stitch-shell main .reports-page .reports-costlines li.is-active { font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-costlines li.is-active > i { transform: scale(1.35); }
 .app-shell.stitch-shell main .reports-page .reports-costlines li.is-zero b { color: var(--rv-color-subtle); font-weight: 500; }
 .app-shell.stitch-shell main .reports-page :is(.reports-costlines i, .reports-donut-part).is-cost { --reports-line: var(--rv-color-primary); }
 .app-shell.stitch-shell main .reports-page :is(.reports-costlines i, .reports-donut-part).is-commission { --reports-line: var(--rv-color-info); }
@@ -682,5 +691,6 @@
   .app-shell.stitch-shell main .reports-page .reports-period-facts > div { grid-row: auto; grid-template-rows: none; gap: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .app-shell.stitch-shell main .reports-page :is(.reports-donut-part, .reports-bridge-track i, .reports-hover-tip, button.reports-metric) { transition: none; }
+  .app-shell.stitch-shell main .reports-page :is(.reports-donut-part, .reports-bridge-track i, .reports-hover-tip, button.reports-metric, .reports-costlines li > i) { transition: none; }
+  .app-shell.stitch-shell main .reports-page .reports-donut-swap { animation: none; }
 }

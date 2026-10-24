@@ -496,21 +496,33 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
 // with its amount and its share of the costs, and how it was read under the pointer.
 function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null }) {
   const tip = useId()
+  // The cost under the pointer, on the ring or in the list: the ring shows it in its middle instead of the total.
+  const [active, setActive] = useState<string | null>(null)
   if (!money) return <Card title="Masraf Kalemleri" className="reports-card-costlines">{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
   const lines = costLines(data, money)
   const total = money.deducted + (money.cost ?? 0)
   const parts: Part[] = lines.filter(line => line.value !== null && line.value > 0).map(line => ({ key: line.key, label: line.label, value: line.value ?? 0, tone: line.tone }))
+  const picked = parts.find(part => part.key === active) ?? null
+  const pick = (key: string) => parts.some(part => part.key === key) ? setActive(key) : undefined
   return <Card title="Masraf Kalemleri" className="reports-card-costlines">
     {shown => <div className="reports-costs">
-      <Donut parts={parts} shown={shown} label={`Masraflar: ${parts.map(part => `${part.label} ${formatPercent(part.value / total)}`).join(', ')}`}>
-        <small>Toplam masraf</small>
-        <strong>{formatTlWhole(total)}</strong>
-        <span>satışın {formatPercent(money.total > 0 ? total / money.total : null)} kadarı</span>
+      <Donut parts={parts} shown={shown} active={active} onActive={setActive} label={`Masraflar: ${parts.map(part => `${part.label} ${formatPercent(part.value / total)}`).join(', ')}`}>
+        {/* A new key each time, so the middle fades in afresh. */}
+        <div key={picked?.key ?? 'total'} className="reports-donut-swap" aria-live="polite">{picked ? <>
+          <small>{picked.label}</small>
+          <strong>{formatTlWhole(picked.value)}</strong>
+          <span>masrafların {formatPercent(total > 0 ? picked.value / total : null)} kadarı</span>
+        </> : <>
+          <small>Toplam masraf</small>
+          <strong>{formatTlWhole(total)}</strong>
+          <span>satışın {formatPercent(money.total > 0 ? total / money.total : null)} kadarı</span>
+        </>}</div>
       </Donut>
       {/* A line's name is a button like the panel's "?": a tap on a phone or Tab on a keyboard opens its explanation too. */}
-      <ul className="reports-costlines">{lines.map(line => <li key={line.key} className={`reports-tip-host${line.value === null || line.value === 0 ? ' is-zero' : ''}`}>
+      <ul className="reports-costlines">{lines.map(line => <li key={line.key} className={`reports-tip-host${line.value === null || line.value === 0 ? ' is-zero' : ''}${line.key === picked?.key ? ' is-active' : ''}`}
+        onMouseEnter={() => pick(line.key)} onMouseLeave={() => setActive(null)}>
         <i className={`is-${line.value ? line.tone : 'none'}`} aria-hidden="true" />
-        <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`}>{line.label}</button>
+        <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`} onFocus={() => pick(line.key)} onBlur={() => setActive(null)}>{line.label}</button>
         <b>{line.value === null ? '—' : signedTl(line.value)}</b>
         <em>{line.value !== null && line.value > 0 && total > 0 ? formatPercent(line.value / total) : ''}</em>
         <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip">{line.note}</span>
