@@ -214,7 +214,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     }
 
     // One row per order line, with the units accepted back by return claims, the variant's current cost price and
-    // its product's brand and category.
+    // its product's brand and category. A Trendyol micro-export order's accepted claim counts only once Trendyol's
+    // statement records the return: 23-30 Sep 2026, a Saudi order's three accepted units had no
+    // refund and Trendyol's sales report did not count them (17 units back, the panel 20).
     private async Task<List<ReportLineRow>> LineRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
     {
         var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
@@ -240,7 +242,11 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           OrderedQuantity = line.OrderedQuantity,
                           CancelledQuantity = line.CancelledQuantity,
                           ReturnedQuantity = line.ReturnedQuantity,
-                          AcceptedReturnQuantity = db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
+                          AcceptedReturnQuantity = !(row.Order.StoreFrontCode == null || row.Order.StoreFrontCode == "" || row.Order.StoreFrontCode == "TR"
+                                  || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == row.Order.ConnectionId
+                                      && entry.OrderNumber == row.Order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return))
+                              ? 0m
+                              : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
                                   && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
                                       && (returned.RawStatus == null || returned.RawStatus == ""
                                           ? acceptedClaims.Contains(claim.Status)
@@ -255,6 +261,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     private async Task<List<ReportClaimRow>> ClaimRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken) =>
         await (from row in PeriodOrders(tenantId, allowedIds, period)
                join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
+               // A micro-export order's claim counts once Trendyol's statement records the return, as its units do (LineRowsAsync).
+               where row.Order.StoreFrontCode == null || row.Order.StoreFrontCode == "" || row.Order.StoreFrontCode == "TR"
+                   || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == row.Order.ConnectionId
+                       && entry.OrderNumber == row.Order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
                select new ReportClaimRow { OrderId = claim.OrderId, ConnectionId = claim.ConnectionId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
             .ToListAsync(cancellationToken);
 
