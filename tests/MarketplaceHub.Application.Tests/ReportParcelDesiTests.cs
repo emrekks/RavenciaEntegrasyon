@@ -60,7 +60,21 @@ public sealed class ReportParcelDesiTests
         Assert.Equal((3m, ReportParcelDesi.Default), ReportParcelDesi.ForOrder(null, [(2m, Coat, null, 1m), (null, Sweater, null, 1m)], ReportParcelDesi.Learned.None));
 
         var learned = ReportParcelDesi.Learn(Enumerable.Repeat(Parcel(1m, (Sweater, null, 2m)), 10));
-        Assert.Equal((1.5m, ReportParcelDesi.Default), ReportParcelDesi.ForOrder(null, [(null, Coat, null, 3m)], learned));
+        Assert.Equal((2m, ReportParcelDesi.Default), ReportParcelDesi.ForOrder(null, [(null, Coat, null, 3m)], learned));
+    }
+
+    [Fact]
+    public void ALearnedParcelTakesTheNearestWholeDesi_ADeclaredOrEnteredOneIsKeptForTheTariff()
+    {
+        // 0.35 a unit: like the billed parcels, two units go as 1 desi, three as 1, four as 1.4 → 1, five as 1.75 → 2.
+        var learned = ReportParcelDesi.Learn(Enumerable.Repeat(Parcel(0m, (Sweater, null, 1m)), 13).Concat(Enumerable.Repeat(Parcel(1m, (Sweater, null, 1m)), 7)));
+        Assert.Equal(0.35m, learned.ByProduct[Sweater]);
+        Assert.Equal(1m, ReportParcelDesi.ForOrder(null, [(null, Sweater, null, 2m)], learned).Desi);
+        Assert.Equal(1m, ReportParcelDesi.ForOrder(null, [(null, Sweater, null, 4m)], learned).Desi);
+        Assert.Equal(2m, ReportParcelDesi.ForOrder(null, [(null, Sweater, null, 5m)], learned).Desi);
+        // Hepsiburada's 1.1 and an entered 1.2 stay as they are; the tariff takes the next whole desi of them.
+        Assert.Equal(1.1m, ReportParcelDesi.ForOrder(1.1m, [(null, Sweater, null, 5m)], learned).Desi);
+        Assert.Equal(2.4m, ReportParcelDesi.ForOrder(null, [(1.2m, Sweater, null, 2m)], learned).Desi);
     }
 
     [Theory]

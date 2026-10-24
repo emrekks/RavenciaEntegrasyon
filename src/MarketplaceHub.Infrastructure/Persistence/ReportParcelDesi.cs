@@ -17,8 +17,9 @@ internal sealed record ReportDesiInput(ReportParcelDesi.Learned Learned, IReadOn
 //   MEASURED: the one-unit desi learned from what Trendyol's carriers measured and billed (Learn);
 //   DEFAULT: the store-wide measured mean for a product with no measurement of its own, or, with none at all, the old
 //   rule of a one-desi parcel.
-// A parcel's desi is its units' desi added up; the tariff then takes the next whole desi (ReportPlatformCosts.Desi),
-// which is how the carriers bill it: two units of 0.3 desi go as one parcel of 1 desi, not as 1 + 1.
+// A parcel's desi is its units' desi added up, one parcel for the order: two units of 0.3 desi go as one parcel of
+// 1 desi, not as 1 + 1. The tariff takes the next whole desi of a declared or entered desi (ReportPlatformCosts.Desi);
+// a learned one is rounded to the nearest whole desi first (ForOrder).
 internal static class ReportParcelDesi
 {
     public const string Marketplace = "MARKETPLACE";
@@ -86,6 +87,11 @@ internal static class ReportParcelDesi
         if (picked.Count == 0 || picked.All(line => line.Desi is null)) return (null, Default);
         var desi = picked.Sum(line => (line.Desi ?? ReportPlatformCosts.DefaultDesi) * line.Units);
         var source = picked.Any(line => line.Source == Default) ? Default : picked.Any(line => line.Source == Measured) ? Measured : Manual;
+        // A learned desi is a mean of billed whole desi, so the parcel takes the nearest whole desi (at least 1) rather
+        // than the tariff's next one: against 1,325 billed Trendyol parcels (Oct 2026) the nearest band was right for
+        // 98.2 %, the next band for 94.9 % and the old one-desi parcel for 97.4 % (36 % of the parcels of four units).
+        if (picked.Any(line => line.Source != Manual && line.Desi is not null))
+            desi = Math.Max(1m, Math.Round(desi, 0, MidpointRounding.AwayFromZero));
         return (desi, source);
 
         (decimal? Desi, decimal Units, string Source) Pick((decimal? EnteredDesi, Guid? ProductId, Guid? CategoryId, decimal Units) line)
