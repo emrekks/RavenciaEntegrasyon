@@ -20,6 +20,13 @@
   .pci-select { min-width: 220px; height: 36px; min-height: 0; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; }
   .pci-select:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 
+  .pci-fields { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .pci-fields legend { float: left; width: 100%; margin: 0 0 2px; padding: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+  .pci-field-list { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .pci-check { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--rv-color-ink); font-size: 13px; cursor: pointer; }
+  .pci-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); }
+  .pci-check.is-missing { color: var(--rv-color-muted); cursor: not-allowed; }
+
   .pci-drop { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; color: var(--rv-color-muted); text-align: center; background: var(--rv-color-surface); border: 1px dashed var(--rv-color-border-strong); border-radius: 12px; transition: border-color 120ms ease, background-color 120ms ease; }
   .pci-drop > b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
   .pci-drop > span { font-size: 12px; }
@@ -55,6 +62,10 @@
   .pci-arrow { margin: 0 6px; color: var(--rv-color-muted); }
   .pci-same { color: var(--rv-color-muted); }
   .pci-clear { color: var(--rv-color-warning); }
+  .pci-prices { min-width: 180px; }
+  .pci-price { display: grid; gap: 1px; font-variant-numeric: tabular-nums; }
+  .pci-price + .pci-price { margin-top: 6px; }
+  .pci-tbl .pci-price small { margin-top: 0; }
 
   .pci-badge { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; white-space: nowrap; }
   .pci-badge.is-ok { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }

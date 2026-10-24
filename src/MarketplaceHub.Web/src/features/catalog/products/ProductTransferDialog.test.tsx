@@ -12,16 +12,25 @@ vi.mock('../../../shared/api', async importOriginal => {
     const method = init?.method ?? 'GET'
     apiState.calls.push({ path, method, headers: Object.fromEntries(new Headers(init?.headers).entries()), body: init?.body })
     if (path === '/products/transfer/summary') return { variantCount: 3718, missingCostCount: 3666, missingDesiCount: 3646 }
+    const blank = { oldStock: null, newStock: null, stockChange: null, prices: [] }
+    const base = { fileName: 'urunler.xlsx', availableFields: ['COST', 'DESI', 'STOCK', 'PRICES'], stores: [{ connectionId: 'c1', name: 'Trendyol' }], totalRows: 5, unchanged: 1, skipped: 1, unmatched: 1, ambiguous: 0, errors: 0, rowsTruncated: false }
+    if (path === '/products/transfer/import' && (init?.body as FormData).get('fields') === 'STOCK,PRICES') return {
+      ...base, fields: ['STOCK', 'PRICES'], updates: 1, costUpdates: 0, costClears: 0, desiUpdates: 0, desiClears: 0, stockUpdates: 1, priceUpdates: 1,
+      rows: [{ rowNumber: 2, sku: 'ABC-01', barcode: '869', variantId: 'v1', productTitle: 'Gömlek', variantLabel: 'Beden: M', oldCost: null, newCost: null, costChange: null, oldDesi: 1, newDesi: null, desiChange: null, oldStock: 3, newStock: 8, stockChange: 'SET', prices: [{ connectionId: 'c1', storeName: 'Trendyol', oldSalePrice: 400, newSalePrice: 450, oldListPrice: 500, newListPrice: 500 }], outcome: 'UPDATE', message: null }],
+      changes: [{ variantId: 'v1', version: 2, setCost: false, cost: null, setDesi: false, desi: null, stock: { expectedOnHand: 3, onHand: 8 }, prices: [{ offerId: 'o1', version: 5, salePrice: 450, listPrice: 500 }] }]
+    }
     if (path === '/products/transfer/import') return {
-      fileName: 'urunler.xlsx', totalRows: 5, updates: 2, costUpdates: 1, costClears: 1, desiUpdates: 1, desiClears: 0, unchanged: 1, skipped: 1, unmatched: 1, ambiguous: 0, errors: 0, rowsTruncated: false,
+      ...base, fields: ['COST', 'DESI'], updates: 2, costUpdates: 1, costClears: 1, desiUpdates: 1, desiClears: 0, stockUpdates: 0, priceUpdates: 0,
       rows: [
-        { rowNumber: 6, sku: 'YOK-1', barcode: null, variantId: null, productTitle: null, variantLabel: null, oldCost: null, newCost: 10, costChange: null, oldDesi: null, newDesi: null, desiChange: null, outcome: 'UNMATCHED', message: 'Stok kodu katalogda yok.' },
-        { rowNumber: 2, sku: 'ABC-01', barcode: '869', variantId: 'v1', productTitle: 'Gömlek', variantLabel: 'Beden: M', oldCost: null, newCost: 123.45, costChange: 'SET', oldDesi: 1, newDesi: 2.5, desiChange: 'SET', outcome: 'UPDATE', message: null },
-        { rowNumber: 3, sku: 'ABC-02', barcode: null, variantId: 'v2', productTitle: 'Gömlek', variantLabel: 'Beden: L', oldCost: 5, newCost: null, costChange: 'CLEAR', oldDesi: 2, newDesi: null, desiChange: null, outcome: 'UPDATE', message: null }
+        { rowNumber: 6, sku: 'YOK-1', barcode: null, variantId: null, productTitle: null, variantLabel: null, oldCost: null, newCost: 10, costChange: null, oldDesi: null, newDesi: null, desiChange: null, ...blank, outcome: 'UNMATCHED', message: 'Stok kodu katalogda yok.' },
+        { rowNumber: 2, sku: 'ABC-01', barcode: '869', variantId: 'v1', productTitle: 'Gömlek', variantLabel: 'Beden: M', oldCost: null, newCost: 123.45, costChange: 'SET', oldDesi: 1, newDesi: 2.5, desiChange: 'SET', ...blank, outcome: 'UPDATE', message: null },
+        { rowNumber: 3, sku: 'ABC-02', barcode: null, variantId: 'v2', productTitle: 'Gömlek', variantLabel: 'Beden: L', oldCost: 5, newCost: null, costChange: 'CLEAR', oldDesi: 2, newDesi: null, desiChange: null, ...blank, outcome: 'UPDATE', message: null }
       ],
       changes: [{ variantId: 'v1', version: 2, setCost: true, cost: 123.45, setDesi: true, desi: 2.5 }, { variantId: 'v2', version: 4, setCost: true, cost: null, setDesi: false, desi: null }]
     }
-    if (path === '/products/transfer/apply') return { variants: 2, costsUpdated: 1, costsCleared: 1, desiUpdated: 1, desiCleared: 0, products: 1 }
+    if (path === '/products/transfer/apply') return JSON.parse(init?.body as string).changes.length === 1
+      ? { variants: 1, costsUpdated: 0, costsCleared: 0, desiUpdated: 0, desiCleared: 0, stocksUpdated: 1, pricesUpdated: 1, products: 1 }
+      : { variants: 2, costsUpdated: 1, costsCleared: 1, desiUpdated: 1, desiCleared: 0, stocksUpdated: 0, pricesUpdated: 0, products: 1 }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }
   return { ...original, hubApi: vi.fn(respond) }
@@ -123,5 +132,31 @@ describe('ProductTransferDialog', () => {
     expect(JSON.parse(applied.body as string)).toEqual({ changes: [{ variantId: 'v1', version: 2, setCost: true, cost: 123.45, setDesi: true, desi: 2.5 }, { variantId: 'v2', version: 4, setCost: true, cost: null, setDesi: false, desi: null }] })
     expect(document.body.textContent).toContain('Değişiklikler kaydedildi')
     expect(document.body.textContent).toContain('2 varyant kaydedildi (1 ürün): 1 maliyet güncellendi, 1 maliyet silindi, 1 desi güncellendi.')
+  })
+
+  it('previews the same file again when the picked fields change, and saves only stock and store prices', async () => {
+    await renderDialog()
+    await chooseFile('urunler.xlsx')
+    expect((apiState.calls.find(call => call.path === '/products/transfer/import')!.body as FormData).get('fields')).toBe('COST,DESI')
+
+    const check = (label: string) => Array.from(document.body.querySelectorAll<HTMLLabelElement>('.pci-check')).find(item => item.textContent === label)!.querySelector('input')!
+    for (const label of ['Maliyet', 'Desi', 'Stok', 'Mağaza Fiyatları']) {
+      await act(async () => { check(label).click() })
+      await settle()
+    }
+
+    const uploads = apiState.calls.filter(call => call.path === '/products/transfer/import')
+    expect((uploads.at(-1)!.body as FormData).get('fields')).toBe('STOCK,PRICES')
+    expect(document.body.textContent).toContain('stok gönderimi açık mağazalara yeni stok gönderilir')
+    const row = document.body.querySelector('.pci-tbl tbody tr')!
+    expect(row.textContent).toContain('Trendyol')
+    expect(row.textContent).toMatch(/₺450,00/)
+    expect(document.body.querySelector('.pci-tbl thead')!.textContent).not.toContain('Maliyet')
+
+    await act(async () => { button('Değişiklikleri Kaydet (1)')!.click() })
+    await settle()
+    const applied = apiState.calls.find(call => call.path === '/products/transfer/apply')!
+    expect(JSON.parse(applied.body as string).changes[0]).toMatchObject({ setCost: false, setDesi: false, stock: { expectedOnHand: 3, onHand: 8 } })
+    expect(document.body.textContent).toContain('1 stok güncellendi, 1 mağaza fiyatı güncellendi')
   })
 })

@@ -6,8 +6,8 @@ namespace MarketplaceHub.Infrastructure.Imports;
 
 public enum ProductTransferValueKind { Empty, Set, Clear, Invalid }
 
-// What a cost or desi cell asks for: nothing (Empty), a value (Set, rounded to two decimals), removing the stored value
-// (Clear) or a value that cannot be used (Invalid, Error says why).
+// What a cell asks for: nothing (Empty), a value (Set, rounded to two decimals), removing the stored value (Clear) or
+// a value that cannot be used (Invalid, Error says why).
 public readonly record struct ProductTransferValue(ProductTransferValueKind Kind, decimal? Amount, string? Error)
 {
     public static ProductTransferValue Empty => new(ProductTransferValueKind.Empty, null, null);
@@ -16,19 +16,37 @@ public readonly record struct ProductTransferValue(ProductTransferValueKind Kind
     public static ProductTransferValue Invalid(string error) => new(ProductTransferValueKind.Invalid, null, error);
 }
 
-public sealed record ProductTransferFileRow(int RowNumber, string? Sku, string? Barcode, ProductTransferValue Cost, ProductTransferValue Desi);
+// One store's two price cells on a row.
+public sealed record ProductTransferStorePrice(Guid ConnectionId, ProductTransferValue Sale, ProductTransferValue List);
 
-// A variant the uploaded rows can name, as the catalog holds it now.
-public sealed record ProductTransferCandidate(Guid VariantId, Guid ProductId, long Version, string Sku, string? Barcode, string ProductTitle, string? VariantLabel, decimal? CostPrice, decimal? Desi);
+// CodeError: the row's stock code or barcode cannot be read (a formula), so the row is an error whatever it asks for.
+public sealed record ProductTransferFileRow(int RowNumber, string? Sku, string? Barcode, ProductTransferValue Cost, ProductTransferValue Desi, ProductTransferValue Stock = default, IReadOnlyList<ProductTransferStorePrice>? Prices = null, string? CodeError = null)
+{
+    public IReadOnlyList<ProductTransferStorePrice> StorePrices => Prices ?? [];
+}
+
+// The rows of an uploaded file and the fields (ProductTransferFields) it has columns for.
+public sealed record ProductTransferFile(IReadOnlyList<ProductTransferFileRow> Rows, IReadOnlyList<string> AvailableFields);
+
+// A store's offer for a variant, as the catalog holds it now.
+public sealed record ProductTransferOffer(Guid ConnectionId, Guid OfferId, long Version, decimal SalePrice, decimal ListPrice);
+
+// A variant the uploaded rows can name, as the catalog holds it now. OnHand is null when it has no main stock record.
+public sealed record ProductTransferCandidate(Guid VariantId, Guid ProductId, long Version, string Sku, string? Barcode, string ProductTitle, string? VariantLabel, decimal? CostPrice, decimal? Desi, decimal? OnHand = null, IReadOnlyList<ProductTransferOffer>? Offers = null)
+{
+    public IReadOnlyList<ProductTransferOffer> StoreOffers => Offers ?? [];
+}
 
 // Reads the product export back (the .xlsx it was downloaded as, or a CSV saved from it), and the cost template of the
 // earlier "Maliyet Excel". Columns are found by their header text, whatever the order: at least one of "Stok Kodu" and
-// "Barkod", and at least one of "Maliyet" and "Desi". Every other column (price, stock, VAT, names) is ignored.
+// "Barkod", and at least one of "Maliyet", "Desi", "Stok" and a store's price columns. Every other column is ignored.
 public static partial class ProductTransferFileParser
 {
     public const int MaximumRows = 20_000;
     public const decimal MaximumCost = 10_000_000m;
     public const decimal MaximumDesi = 10_000m;
+    public const decimal MaximumStock = 1_000_000_000m;
+    public const decimal MaximumPrice = 10_000_000m;
 
     private static readonly string[] SkuHeaders = ["STOKKODU", "SKU", "STOKKODUSKU", "SATICISTOKKODU", "URUNSTOKKODU"];
     private static readonly string[] BarcodeHeaders = ["BARKOD", "BARCODE", "URUNBARKODU"];
@@ -37,20 +55,24 @@ public static partial class ProductTransferFileParser
     private static readonly string[] CostHeaders = ["MALIYET", "MALIYETTL", "BIRIMMALIYET"];
     private static readonly string[] NewDesiHeaders = ["YENIDESI"];
     private static readonly string[] DesiHeaders = ["DESI"];
+    private static readonly string[] StockHeaders = ["STOK", "STOKADEDI", "STOKMIKTARI", "ELDEKISTOK"];
 
-    public static IReadOnlyList<ProductTransferFileRow> ParseXlsx(Stream stream, long maximumExpandedBytes)
+    // The two price columns of a store, as the export names them.
+    public static (string Sale, string List) StorePriceHeaders(string storeName) => ($"{storeName} Satış Fiyatı", $"{storeName} Liste Fiyatı");
+
+    public static ProductTransferFile ParseXlsx(Stream stream, long maximumExpandedBytes, IReadOnlyList<ProductTransferStoreView>? stores = null)
     {
         var table = ImportFileReader.ReadXlsxTable(stream, maximumExpandedBytes);
-        return Parse(table.Headers, table.Rows.Select(row => (row.RowNumber, row.Cells, (IReadOnlyCollection<int>)row.FormulaColumns)), fromCsv: false);
+        return Parse(table.Headers, table.Rows.Select(row => (row.RowNumber, row.Cells, (IReadOnlyCollection<int>)row.FormulaColumns)), fromCsv: false, stores ?? []);
     }
 
-    public static IReadOnlyList<ProductTransferFileRow> ParseCsv(Stream stream)
+    public static ProductTransferFile ParseCsv(Stream stream, IReadOnlyList<ProductTransferStoreView>? stores = null)
     {
         var text = ImportFileReader.DecodeCsv(stream);
         using var records = ImportFileReader.ParseCsvRecords(text, ImportFileReader.SniffDelimiter(text)).GetEnumerator();
         if (!records.MoveNext()) throw new InvalidDataException("Dosyada başlık satırı yok.");
         var headers = records.Current.Cells;
-        return Parse(headers, Rest(records), fromCsv: true);
+        return Parse(headers, Rest(records), fromCsv: true, stores ?? []);
 
         static IEnumerable<(int, IReadOnlyList<string>, IReadOnlyCollection<int>)> Rest(IEnumerator<(int RowNumber, List<string> Cells)> records)
         {
@@ -62,7 +84,7 @@ public static partial class ProductTransferFileParser
         }
     }
 
-    internal static IReadOnlyList<ProductTransferFileRow> Parse(IReadOnlyList<string> headers, IEnumerable<(int RowNumber, IReadOnlyList<string> Cells, IReadOnlyCollection<int> FormulaColumns)> rows, bool fromCsv)
+    internal static ProductTransferFile Parse(IReadOnlyList<string> headers, IEnumerable<(int RowNumber, IReadOnlyList<string> Cells, IReadOnlyCollection<int> FormulaColumns)> rows, bool fromCsv, IReadOnlyList<ProductTransferStoreView> stores)
     {
         var keys = headers.Select(HeaderKey).ToArray();
         var sku = Column(keys, SkuHeaders);
@@ -71,7 +93,18 @@ public static partial class ProductTransferFileParser
         if (cost < 0) cost = Column(keys, CostHeaders);
         var desi = Column(keys, NewDesiHeaders);
         if (desi < 0) desi = Column(keys, DesiHeaders);
-        if (cost < 0 && desi < 0) throw new InvalidDataException("\"Maliyet\" ya da \"Desi\" sütunu bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
+        var stock = Column(keys, StockHeaders);
+        var storeColumns = stores
+            .Select(store => (store.ConnectionId, Headers: StorePriceHeaders(store.Name)))
+            .Select(store => (store.ConnectionId, Sale: Column(keys, [HeaderKey(store.Headers.Sale)]), List: Column(keys, [HeaderKey(store.Headers.List)])))
+            .Where(store => store.Sale >= 0 || store.List >= 0)
+            .ToList();
+        var available = new List<string>();
+        if (cost >= 0) available.Add(ProductTransferFields.Cost);
+        if (desi >= 0) available.Add(ProductTransferFields.Desi);
+        if (stock >= 0) available.Add(ProductTransferFields.Stock);
+        if (storeColumns.Count > 0) available.Add(ProductTransferFields.Prices);
+        if (available.Count == 0) throw new InvalidDataException("\"Maliyet\", \"Desi\", \"Stok\" ya da mağaza fiyatı sütunu bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
         if (sku < 0 && barcode < 0) throw new InvalidDataException("\"Stok Kodu\" ya da \"Barkod\" sütunu bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
 
         var result = new List<ProductTransferFileRow>();
@@ -81,18 +114,23 @@ public static partial class ProductTransferFileParser
             var skuText = Cell(cells, sku);
             var barcodeText = Cell(cells, barcode);
             // A formula's result is not read back (the reader never evaluates one): the seller pastes values instead.
+            var codeFormula = sku >= 0 && formulas.Contains(sku) || barcode >= 0 && formulas.Contains(barcode);
             var costValue = Read(cost, ParseCost);
             var desiValue = Read(desi, ParseDesi);
-            if (sku >= 0 && formulas.Contains(sku) || barcode >= 0 && formulas.Contains(barcode)) costValue = FormulaError;
-            if (skuText is null && barcodeText is null && costValue.Kind == ProductTransferValueKind.Empty && desiValue.Kind == ProductTransferValueKind.Empty) continue;
-            result.Add(new ProductTransferFileRow(rowNumber, skuText, barcodeText, costValue, desiValue));
+            var stockValue = Read(stock, ParseStock);
+            var prices = storeColumns
+                .Select(store => new ProductTransferStorePrice(store.ConnectionId, Read(store.Sale, ParsePrice), Read(store.List, ParsePrice)))
+                .Where(price => price.Sale.Kind != ProductTransferValueKind.Empty || price.List.Kind != ProductTransferValueKind.Empty)
+                .ToList();
+            if (skuText is null && barcodeText is null && costValue.Kind == ProductTransferValueKind.Empty && desiValue.Kind == ProductTransferValueKind.Empty && stockValue.Kind == ProductTransferValueKind.Empty && prices.Count == 0) continue;
+            result.Add(new ProductTransferFileRow(rowNumber, skuText, barcodeText, costValue, desiValue, stockValue, prices, codeFormula ? FormulaError.Error : null));
 
             ProductTransferValue Read(int column, Func<string, bool, ProductTransferValue> parse) =>
                 column < 0 ? ProductTransferValue.Empty
                 : formulas.Contains(column) ? FormulaError
                 : parse(Cell(cells, column) ?? string.Empty, fromCsv);
         }
-        return result;
+        return new ProductTransferFile(result, available);
     }
 
     private static ProductTransferValue FormulaError => ProductTransferValue.Invalid("Formül içeren hücre okunmaz; değerleri \"Değerleri Yapıştır\" ile yazın.");
@@ -104,6 +142,22 @@ public static partial class ProductTransferFileParser
     // Desi (volumetric weight); 0 is not one, as the product editor stores 0 as "no desi".
     public static ProductTransferValue ParseDesi(string text, bool fromCsv) =>
         ParseNumber(text, fromCsv, "Desi", MaximumDesi, "10.000", zeroAllowed: false);
+
+    // On-hand stock: a whole number, 0 included; it cannot be removed.
+    public static ProductTransferValue ParseStock(string text, bool fromCsv)
+    {
+        var value = ParseNumber(text, fromCsv, "Stok", MaximumStock, "1.000.000.000", zeroAllowed: true);
+        if (value.Kind == ProductTransferValueKind.Clear) return ProductTransferValue.Invalid("Stok silinemez; stok yoksa 0 yazın.");
+        if (value.Amount is decimal amount && amount != decimal.Truncate(amount)) return ProductTransferValue.Invalid("Stok tam sayı olmalıdır.");
+        return value;
+    }
+
+    // A store's sale or list price in TL: above 0; it cannot be removed.
+    public static ProductTransferValue ParsePrice(string text, bool fromCsv)
+    {
+        var value = ParseNumber(text, fromCsv, "Fiyat", MaximumPrice, "10.000.000 ₺", zeroAllowed: false);
+        return value.Kind == ProductTransferValueKind.Clear ? ProductTransferValue.Invalid("Mağaza fiyatı silinemez; hücreyi boş bırakırsanız fiyat değişmez.") : value;
+    }
 
     // "123,45", "123.45", "1.234,56", "1234", "₺ 99,90", "99,90 TL" are numbers; "-" or "sil" removes the value; an empty
     // cell asks for nothing. "1.234" alone is refused: in Turkish it is one thousand two hundred thirty-four, elsewhere a
@@ -134,7 +188,7 @@ public static partial class ProductTransferFileParser
         if (amount < 0) return ProductTransferValue.Invalid($"{label} negatif olamaz.");
         amount = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
         if (amount > maximum) return ProductTransferValue.Invalid($"{label} {maximumText} değerini aşamaz.");
-        if (amount == 0 && !zeroAllowed) return ProductTransferValue.Invalid($"{label} 0'dan büyük olmalıdır; silmek için - yazın.");
+        if (amount == 0 && !zeroAllowed) return ProductTransferValue.Invalid($"{label} 0'dan büyük olmalıdır.");
         return ProductTransferValue.Set(amount);
     }
 
@@ -171,24 +225,41 @@ public static partial class ProductTransferFileParser
     private static partial Regex ExponentNumber();
 }
 
-// Turns the parsed rows into the preview: which variant each row names (stock code first, then barcode), what changes,
-// and why a row is left out. Pure, so the same rules hold in tests and on the server.
+// Turns the parsed rows into the preview: which variant each row names (stock code first, then barcode), what changes
+// in the fields the seller picked, and why a row is left out. Pure, so the same rules hold in tests and on the server.
 public static class ProductTransferImportPlanner
 {
     public const int PreviewRowLimit = 200;
 
     private readonly record struct FieldPlan(string? Change, decimal? Value);
 
-    public static ProductTransferImportPreview Plan(string fileName, IReadOnlyList<ProductTransferFileRow> rows, IReadOnlyList<ProductTransferCandidate> variants)
+    private sealed record RowPlan(FieldPlan Cost, FieldPlan Desi, FieldPlan Stock, IReadOnlyList<ProductTransferPriceView> PriceViews, IReadOnlyList<ProductTransferPriceChange> PriceChanges, string? Error)
     {
+        public static readonly RowPlan None = new(default, default, default, [], [], null);
+        public bool Changes => Cost.Change is not null || Desi.Change is not null || Stock.Change is not null || PriceChanges.Count > 0;
+    }
+
+    public static ProductTransferImportPreview Plan(string fileName, IReadOnlyList<ProductTransferFileRow> rows, IReadOnlyList<ProductTransferCandidate> variants, IReadOnlyCollection<string>? fields = null, IReadOnlyList<ProductTransferStoreView>? stores = null, IReadOnlyList<string>? availableFields = null)
+    {
+        var picked = (fields ?? [ProductTransferFields.Cost, ProductTransferFields.Desi]).ToHashSet(StringComparer.Ordinal);
+        var storeNames = (stores ?? []).ToDictionary(store => store.ConnectionId, store => store.Name);
+        // A field the seller did not pick is read as if its column were empty.
+        var masked = rows.Select(row => row with
+        {
+            Cost = picked.Contains(ProductTransferFields.Cost) ? row.Cost : ProductTransferValue.Empty,
+            Desi = picked.Contains(ProductTransferFields.Desi) ? row.Desi : ProductTransferValue.Empty,
+            Stock = picked.Contains(ProductTransferFields.Stock) ? row.Stock : ProductTransferValue.Empty,
+            Prices = picked.Contains(ProductTransferFields.Prices) ? row.StorePrices : []
+        }).ToList();
+
         var bySku = variants.GroupBy(variant => CatalogKeyNormalizer.Key(variant.Sku)).Where(group => group.Key.Length > 0).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
         var byBarcode = variants.Where(variant => !string.IsNullOrWhiteSpace(variant.Barcode)).GroupBy(variant => CatalogKeyNormalizer.Key(variant.Barcode)).Where(group => group.Key.Length > 0).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
 
-        var resolved = new List<(ProductTransferFileRow Row, ProductTransferCandidate? Variant, string Outcome, string? Message)>(rows.Count);
+        var resolved = new List<(ProductTransferFileRow Row, ProductTransferCandidate? Variant, string Outcome, string? Message)>(masked.Count);
         var skipped = 0;
-        foreach (var row in rows)
+        foreach (var row in masked)
         {
-            if (row.Cost.Kind == ProductTransferValueKind.Empty && row.Desi.Kind == ProductTransferValueKind.Empty) { skipped++; continue; }
+            if (IsEmpty(row)) { skipped++; continue; }
             var (variant, outcome, message) = Match(row, bySku, byBarcode);
             if (variant is not null && InvalidMessage(row) is { } error) (outcome, message) = ("ERROR", error);
             resolved.Add((row, variant, outcome ?? "PENDING", message));
@@ -203,41 +274,54 @@ public static class ProductTransferImportPlanner
             var items = group.ToList();
             if (group.Key == Guid.Empty || items.All(item => item.Outcome != "PENDING"))
             {
-                views.AddRange(items.Select(item => View(item.Row, item.Variant, item.Outcome, item.Message, default, default)));
+                views.AddRange(items.Select(item => View(item.Row, item.Variant, item.Outcome, item.Message, RowPlan.None)));
                 continue;
             }
             var pending = items.Where(item => item.Outcome == "PENDING").ToList();
             var lines = string.Join(", ", items.Select(item => item.Row.RowNumber));
-            var distinct = pending.Select(item => (item.Row.Cost, item.Row.Desi)).Distinct().Count();
+            var distinct = pending.Select(item => Signature(item.Row)).Distinct(StringComparer.Ordinal).Count();
             if (items.Count > 1 && (distinct > 1 || pending.Count != items.Count))
             {
-                views.AddRange(items.Select(item => View(item.Row, item.Variant, "ERROR", item.Outcome == "ERROR" ? item.Message : $"Bu varyant dosyada birden çok satırda farklı değerle var (satır {lines}).", default, default)));
+                views.AddRange(items.Select(item => View(item.Row, item.Variant, "ERROR", item.Outcome == "ERROR" ? item.Message : $"Bu varyant dosyada birden çok satırda farklı değerle var (satır {lines}).", RowPlan.None)));
                 continue;
             }
             var first = pending[0];
             var variant = first.Variant!;
-            var cost = PlanField(first.Row.Cost, variant.CostPrice);
-            var desi = PlanField(first.Row.Desi, variant.Desi);
-            if (cost.Change is null && desi.Change is null) views.Add(View(first.Row, variant, "UNCHANGED", null, cost, desi));
+            var plan = PlanRow(first.Row, variant, storeNames);
+            if (plan.Error is not null) views.Add(View(first.Row, variant, "ERROR", plan.Error, RowPlan.None));
+            else if (!plan.Changes) views.Add(View(first.Row, variant, "UNCHANGED", null, plan));
             else
             {
-                views.Add(View(first.Row, variant, "UPDATE", null, cost, desi));
-                changes.Add(new ProductTransferChange(variant.VariantId, variant.Version, cost.Change is not null, cost.Value, desi.Change is not null, desi.Value));
+                views.Add(View(first.Row, variant, "UPDATE", null, plan));
+                changes.Add(new ProductTransferChange(
+                    variant.VariantId,
+                    variant.Version,
+                    plan.Cost.Change is not null,
+                    plan.Cost.Value,
+                    plan.Desi.Change is not null,
+                    plan.Desi.Value,
+                    plan.Stock.Change is null ? null : new ProductTransferStockChange(variant.OnHand!.Value, plan.Stock.Value!.Value),
+                    plan.PriceChanges.Count == 0 ? null : plan.PriceChanges));
             }
             foreach (var repeat in pending.Skip(1))
-                views.Add(View(repeat.Row, variant, "SKIPPED", $"Aynı varyant {first.Row.RowNumber}. satırda aynı değerle var.", default, default));
+                views.Add(View(repeat.Row, variant, "SKIPPED", $"Aynı varyant {first.Row.RowNumber}. satırda aynı değerle var.", RowPlan.None));
         }
 
         int Count(string outcome) => views.Count(view => view.Outcome == outcome);
         var ordered = views.OrderBy(view => OutcomeRank(view.Outcome)).ThenBy(view => view.RowNumber).ToList();
         return new ProductTransferImportPreview(
             fileName,
+            availableFields ?? ProductTransferFields.All,
+            ProductTransferFields.All.Where(picked.Contains).ToList(),
+            stores ?? [],
             rows.Count,
             Count("UPDATE"),
             views.Count(view => view.CostChange == ProductTransferFieldChange.Set),
             views.Count(view => view.CostChange == ProductTransferFieldChange.Clear),
             views.Count(view => view.DesiChange == ProductTransferFieldChange.Set),
             views.Count(view => view.DesiChange == ProductTransferFieldChange.Clear),
+            views.Count(view => view.StockChange == ProductTransferFieldChange.Set),
+            views.Sum(view => view.Prices.Count),
             Count("UNCHANGED"),
             skipped + Count("SKIPPED"),
             Count("UNMATCHED"),
@@ -248,18 +332,56 @@ public static class ProductTransferImportPlanner
             changes);
     }
 
+    private static bool IsEmpty(ProductTransferFileRow row) =>
+        row.Cost.Kind == ProductTransferValueKind.Empty && row.Desi.Kind == ProductTransferValueKind.Empty && row.Stock.Kind == ProductTransferValueKind.Empty && row.StorePrices.Count == 0;
+
+    private static string Signature(ProductTransferFileRow row) =>
+        string.Join("|", new[] { row.Cost, row.Desi, row.Stock }.Select(Key).Concat(row.StorePrices.OrderBy(price => price.ConnectionId).Select(price => $"{price.ConnectionId:N}:{Key(price.Sale)}:{Key(price.List)}")));
+
+    private static string Key(ProductTransferValue value) => $"{value.Kind}:{value.Amount?.ToString("0.##", CultureInfo.InvariantCulture)}";
+
+    private static RowPlan PlanRow(ProductTransferFileRow row, ProductTransferCandidate variant, IReadOnlyDictionary<Guid, string> storeNames)
+    {
+        var cost = PlanField(row.Cost, variant.CostPrice);
+        var desi = PlanField(row.Desi, variant.Desi);
+        FieldPlan stock = default;
+        if (row.Stock.Kind == ProductTransferValueKind.Set)
+        {
+            if (variant.OnHand is not decimal onHand) return RowPlan.None with { Error = "Bu varyantın stok kaydı yok; stoğu ürün sayfasından girin." };
+            if (onHand != row.Stock.Amount) stock = new(ProductTransferFieldChange.Set, row.Stock.Amount);
+        }
+        var priceViews = new List<ProductTransferPriceView>();
+        var priceChanges = new List<ProductTransferPriceChange>();
+        foreach (var price in row.StorePrices)
+        {
+            var store = storeNames.GetValueOrDefault(price.ConnectionId) ?? "Mağaza";
+            var offer = variant.StoreOffers.FirstOrDefault(item => item.ConnectionId == price.ConnectionId);
+            if (offer is null) return RowPlan.None with { Error = $"{store} mağazasında bu varyantın fiyat kaydı yok; fiyatı ürün sayfasından ekleyin." };
+            var sale = price.Sale.Amount ?? offer.SalePrice;
+            var list = price.List.Amount ?? offer.ListPrice;
+            if (list < sale) return RowPlan.None with { Error = $"{store}: liste fiyatı satış fiyatından küçük olamaz." };
+            if (Rounded(offer.SalePrice) == sale && Rounded(offer.ListPrice) == list) continue;
+            priceViews.Add(new ProductTransferPriceView(price.ConnectionId, store, offer.SalePrice, sale, offer.ListPrice, list));
+            priceChanges.Add(new ProductTransferPriceChange(offer.OfferId, offer.Version, sale, list));
+        }
+        return new RowPlan(cost, desi, stock, priceViews, priceChanges, null);
+    }
+
     // A stored value with more than two decimals (the product editor keeps four) is the same as the file's value when it
     // rounds to it: the export writes it rounded, and reading it back must not propose a change.
     private static FieldPlan PlanField(ProductTransferValue value, decimal? stored) => value.Kind switch
     {
-        ProductTransferValueKind.Set when stored is not decimal current || Math.Round(current, 2, MidpointRounding.AwayFromZero) != value.Amount => new(ProductTransferFieldChange.Set, value.Amount),
+        ProductTransferValueKind.Set when stored is not decimal current || Rounded(current) != value.Amount => new(ProductTransferFieldChange.Set, value.Amount),
         ProductTransferValueKind.Clear when stored is not null => new(ProductTransferFieldChange.Clear, null),
         _ => default
     };
 
+    private static decimal Rounded(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
     private static string? InvalidMessage(ProductTransferFileRow row)
     {
-        var errors = new[] { row.Cost, row.Desi }.Where(value => value.Kind == ProductTransferValueKind.Invalid).Select(value => value.Error).Distinct().ToList();
+        var values = new[] { row.Cost, row.Desi, row.Stock }.Concat(row.StorePrices.SelectMany(price => new[] { price.Sale, price.List }));
+        var errors = values.Where(value => value.Kind == ProductTransferValueKind.Invalid).Select(value => value.Error).Distinct().ToList();
         return errors.Count == 0 ? null : string.Join(" ", errors);
     }
 
@@ -267,6 +389,7 @@ public static class ProductTransferImportPlanner
     {
         var skuKey = CatalogKeyNormalizer.Key(row.Sku);
         var barcodeKey = CatalogKeyNormalizer.Key(row.Barcode);
+        if (row.CodeError is not null) return (null, "ERROR", row.CodeError);
         if (skuKey.Length == 0 && barcodeKey.Length == 0) return (null, "ERROR", "Stok kodu ya da barkod yok.");
         var skuMatches = skuKey.Length > 0 && bySku.TryGetValue(skuKey, out var foundBySku) ? foundBySku : [];
         var barcodeMatches = barcodeKey.Length > 0 && byBarcode.TryGetValue(barcodeKey, out var foundByBarcode) ? foundByBarcode : [];
@@ -283,7 +406,7 @@ public static class ProductTransferImportPlanner
         return (null, "UNMATCHED", skuKey.Length > 0 && barcodeKey.Length > 0 ? "Stok kodu ve barkod katalogda yok." : skuKey.Length > 0 ? "Stok kodu katalogda yok." : "Barkod katalogda yok.");
     }
 
-    private static ProductTransferRowView View(ProductTransferFileRow row, ProductTransferCandidate? variant, string outcome, string? message, FieldPlan cost, FieldPlan desi) => new(
+    private static ProductTransferRowView View(ProductTransferFileRow row, ProductTransferCandidate? variant, string outcome, string? message, RowPlan plan) => new(
         row.RowNumber,
         row.Sku,
         row.Barcode,
@@ -292,10 +415,14 @@ public static class ProductTransferImportPlanner
         variant?.VariantLabel,
         variant?.CostPrice,
         row.Cost.Kind == ProductTransferValueKind.Set ? row.Cost.Amount : null,
-        cost.Change,
+        plan.Cost.Change,
         variant?.Desi,
         row.Desi.Kind == ProductTransferValueKind.Set ? row.Desi.Amount : null,
-        desi.Change,
+        plan.Desi.Change,
+        variant?.OnHand,
+        row.Stock.Kind == ProductTransferValueKind.Set ? row.Stock.Amount : null,
+        plan.Stock.Change,
+        plan.PriceViews,
         outcome,
         message);
 

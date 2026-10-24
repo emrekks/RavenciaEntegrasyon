@@ -40,7 +40,7 @@ public sealed class ProductTransferImportTests
         Assert.Equal("0.5", table.Rows[1].Cells[12]);
 
         // Read back, only cost and desi count; the price, stock and VAT columns are ignored.
-        var rows = ProductTransferFileParser.ParseXlsx(new MemoryStream(bytes), 64 * 1024 * 1024);
+        var rows = ProductTransferFileParser.ParseXlsx(new MemoryStream(bytes), 64 * 1024 * 1024).Rows;
         Assert.Equal((12.5m, 2m), (rows[0].Cost.Amount, rows[0].Desi.Amount));
         Assert.Equal((ProductTransferValueKind.Empty, 0.5m), (rows[1].Cost.Kind, rows[1].Desi.Amount));
     }
@@ -122,7 +122,7 @@ public sealed class ProductTransferImportTests
     public void ColumnsAreFoundByTheirHeaderInAnyOrder()
     {
         var csv = "Desi;Yeni Maliyet;barkod;STOK KODU;Not\r\n;45,5;869;abc_01;x\r\n;;;;\r\n3;;870;;\r\n";
-        var rows = ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes(csv)));
+        var rows = ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes(csv))).Rows;
 
         Assert.Equal(2, rows.Count);
         Assert.Equal(("abc_01", "869", 45.5m), (rows[0].Sku, rows[0].Barcode, rows[0].Cost.Amount));
@@ -136,14 +136,14 @@ public sealed class ProductTransferImportTests
     public void TheOldCostTemplate_IsReadFromItsNewCostColumn()
     {
         var csv = "Stok Kodu;Güncel Maliyet;Yeni Maliyet\r\nA-1;5;7\r\n";
-        var row = Assert.Single(ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes(csv))));
+        var row = Assert.Single(ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes(csv))).Rows);
         Assert.Equal((7m, ProductTransferValueKind.Empty), (row.Cost.Amount, row.Desi.Kind));
     }
 
     [Fact]
-    public void AFileWithoutACostOrDesiOrACodeColumnIsRefused()
+    public void AFileWithoutAWritableOrACodeColumnIsRefused()
     {
-        Assert.Throws<InvalidDataException>(() => ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes("Stok Kodu;Güncel Maliyet;Stok\r\nA;5;3\r\n"))));
+        Assert.Throws<InvalidDataException>(() => ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes("Stok Kodu;Güncel Maliyet;Adet\r\nA;5;3\r\n"))));
         Assert.Throws<InvalidDataException>(() => ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes("Ürün Adı;Maliyet\r\nA;5\r\n"))));
     }
 
@@ -155,9 +155,9 @@ public sealed class ProductTransferImportTests
             (2, new[] { "A-1", "12", "2" }, new[] { 2 }),
             (3, new[] { "A-2", "12", "2" }, new[] { 0 })
         };
-        var rows = ProductTransferFileParser.Parse(["Stok Kodu", "Maliyet", "Desi"], cells, fromCsv: false);
+        var rows = ProductTransferFileParser.Parse(["Stok Kodu", "Maliyet", "Desi"], cells, fromCsv: false, []).Rows;
         Assert.Equal((ProductTransferValueKind.Set, ProductTransferValueKind.Invalid), (rows[0].Cost.Kind, rows[0].Desi.Kind));
-        Assert.Equal(ProductTransferValueKind.Invalid, rows[1].Cost.Kind);
+        Assert.NotNull(rows[1].CodeError);
     }
 
     [Fact]
@@ -241,6 +241,89 @@ public sealed class ProductTransferImportTests
         Assert.Equal(250, preview.Updates);
     }
 
+    [Theory]
+    [InlineData("12", "12")]
+    [InlineData("0", "0")]
+    [InlineData("1.250,00", "1250")]
+    public void AStockIsAWholeNumber(string text, string expected) =>
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ProductTransferFileParser.ParseStock(text, fromCsv: true).Amount);
+
+    [Theory]
+    [InlineData("2,5")]
+    [InlineData("-")]
+    [InlineData("-3")]
+    public void AStockThatIsNotAWholeNumberOrIsRemovedIsARowError(string text) =>
+        Assert.Equal(ProductTransferValueKind.Invalid, ProductTransferFileParser.ParseStock(text, fromCsv: true).Kind);
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("sil")]
+    public void APriceOfZeroOrARemovedPriceIsARowError(string text) =>
+        Assert.Equal(ProductTransferValueKind.Invalid, ProductTransferFileParser.ParsePrice(text, fromCsv: true).Kind);
+
+    [Fact]
+    public void StoreColumnsAreFoundByTheStoreName_AndTheFileSaysWhichFieldsItHas()
+    {
+        var trendyol = new ProductTransferStoreView(Guid.CreateVersion7(), "Trendyol");
+        var n11 = new ProductTransferStoreView(Guid.CreateVersion7(), "N11");
+        var csv = "Stok Kodu;Stok;Trendyol Satış Fiyatı;Trendyol Liste Fiyatı;Pazarama Satış Fiyatı\r\nA-1;7;499,90;;100\r\n";
+
+        var file = ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes(csv)), [trendyol, n11]);
+
+        Assert.Equal([ProductTransferFields.Stock, ProductTransferFields.Prices], file.AvailableFields);
+        var row = Assert.Single(file.Rows);
+        Assert.Equal(7m, row.Stock.Amount);
+        var price = Assert.Single(row.StorePrices);
+        Assert.Equal((trendyol.ConnectionId, 499.90m, ProductTransferValueKind.Empty), (price.ConnectionId, price.Sale.Amount, price.List.Kind));
+    }
+
+    [Fact]
+    public void OnlyThePickedFieldsArePlanned_AndStockAndStorePricesAreCheckedAgainstTheCatalog()
+    {
+        var trendyol = new ProductTransferStoreView(Guid.CreateVersion7(), "Trendyol");
+        var n11 = new ProductTransferStoreView(Guid.CreateVersion7(), "N11");
+        var offer = new ProductTransferOffer(trendyol.ConnectionId, Guid.CreateVersion7(), 5, 400m, 500m);
+        var a = Candidate("A-1", null, cost: 10m, desi: null) with { OnHand = 3m, Offers = [offer] };
+        var b = Candidate("B-1", null, cost: null, desi: null) with { OnHand = null };
+        var c = Candidate("C-1", null, cost: null, desi: null) with { OnHand = 4m, Offers = [offer with { OfferId = Guid.CreateVersion7() }] };
+        var rows = new[]
+        {
+            // Cost is in the file but not picked: it is not written.
+            new ProductTransferFileRow(2, "A-1", null, Set(99m), Empty, Set(8m), [new ProductTransferStorePrice(trendyol.ConnectionId, Set(450m), Empty)]),
+            new ProductTransferFileRow(3, "B-1", null, Empty, Empty, Set(1m)),                                                                   // no stock record → error
+            new ProductTransferFileRow(4, "C-1", null, Empty, Empty, Set(4m), [new ProductTransferStorePrice(n11.ConnectionId, Set(10m), Empty)]), // no N11 offer → error
+            new ProductTransferFileRow(5, "X-1", null, Set(5m), Set(2m)),                                                                       // only unpicked fields → skipped
+        };
+
+        var preview = ProductTransferImportPlanner.Plan("f.xlsx", rows, [a, b, c], [ProductTransferFields.Stock, ProductTransferFields.Prices], [trendyol, n11]);
+
+        Assert.Equal([ProductTransferFields.Stock, ProductTransferFields.Prices], preview.Fields);
+        Assert.Equal((1, 1, 1, 2, 1), (preview.Updates, preview.StockUpdates, preview.PriceUpdates, preview.Errors, preview.Skipped));
+        var change = Assert.Single(preview.Changes);
+        Assert.Equal((false, false), (change.SetCost, change.SetDesi));
+        Assert.Equal(new ProductTransferStockChange(3m, 8m), change.Stock);
+        Assert.Equal([new ProductTransferPriceChange(offer.OfferId, 5, 450m, 500m)], change.Prices);
+        var update = preview.Rows.Single(row => row.RowNumber == 2);
+        Assert.Equal(("SET", 3m, 8m, (string?)null), (update.StockChange, update.OldStock, update.NewStock, update.CostChange));
+        Assert.Equal(("Trendyol", 400m, 450m), (update.Prices[0].StoreName, update.Prices[0].OldSalePrice, update.Prices[0].NewSalePrice));
+        Assert.Contains("stok kaydı yok", preview.Rows.Single(row => row.RowNumber == 3).Message);
+        Assert.Contains("N11", preview.Rows.Single(row => row.RowNumber == 4).Message);
+    }
+
+    [Fact]
+    public void AStorePriceBelowItsListPriceIsKept_ButASalePriceAboveTheListPriceIsAnError()
+    {
+        var store = new ProductTransferStoreView(Guid.CreateVersion7(), "Trendyol");
+        var offer = new ProductTransferOffer(store.ConnectionId, Guid.CreateVersion7(), 1, 400m, 500m);
+        var a = Candidate("A-1", null, cost: null, desi: null) with { Offers = [offer] };
+        var rows = new[] { new ProductTransferFileRow(2, "A-1", null, Empty, Empty, Empty, [new ProductTransferStorePrice(store.ConnectionId, Set(600m), Empty)]) };
+
+        var preview = ProductTransferImportPlanner.Plan("f.xlsx", rows, [a], [ProductTransferFields.Prices], [store]);
+
+        Assert.Empty(preview.Changes);
+        Assert.Contains("liste fiyatı", Assert.Single(preview.Rows).Message);
+    }
+
     private static ProductTransferValue Empty => ProductTransferValue.Empty;
     private static ProductTransferValue Set(decimal value) => ProductTransferValue.Set(value);
 
@@ -279,18 +362,18 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         // The whole export read straight back proposes nothing.
         var export = await service.ExportAsync(tenant.Id, ProductTransferExportFilter.All, null, null, CancellationToken.None);
-        var roundTrip = await service.PreviewAsync(tenant.Id, "urunler.xlsx", new MemoryStream(export.Value!), CancellationToken.None);
+        var roundTrip = await service.PreviewAsync(tenant.Id, "urunler.xlsx", new MemoryStream(export.Value!), [ProductTransferFields.Cost, ProductTransferFields.Desi], CancellationToken.None);
         Assert.True(roundTrip.Succeeded, roundTrip.Error?.Message);
         Assert.Equal((0, 2), (roundTrip.Value!.Changes.Count, roundTrip.Value.Unchanged));
 
         var csv = "Stok Kodu;Barkod;Maliyet;Desi\r\ncost_1;;1.234,50;\r\n;8690000100002;sil;3,5\r\n";
-        var preview = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), CancellationToken.None);
+        var preview = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Cost, ProductTransferFields.Desi], CancellationToken.None);
         Assert.True(preview.Succeeded, preview.Error?.Message);
         Assert.Equal((2, 1, 1, 1), (preview.Value!.Updates, preview.Value.CostUpdates, preview.Value.CostClears, preview.Value.DesiUpdates));
 
         var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes), "transfer-test", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
-        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 1), applied.Value);
+        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var stored = await check.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Sku).ToListAsync();
@@ -303,7 +386,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         // The same changes again: every variant already holds its values, so nothing is written.
         await using var again = fixture.CreateContext();
         var repeat = await new ProductTransferService(again, fixture.TimeProvider).ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes), "transfer-test-2", CancellationToken.None);
-        Assert.Equal(new ProductTransferApplyResult(0, 0, 0, 0, 0, 0), repeat.Value);
+        Assert.Equal(new ProductTransferApplyResult(0, 0, 0, 0, 0, 0, 0, 0), repeat.Value);
 
         // A preview read before another change is refused whole.
         await using var stale = fixture.CreateContext();
@@ -314,6 +397,64 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
             new ApplyProductTransferCommand([new ProductTransferChange(second.Id, current.Version, true, 7m, false, null), new ProductTransferChange(first.Id, first.Version, false, null, true, 9m)]), "transfer-test-3", CancellationToken.None);
         Assert.Equal(409, staleResult.Error?.Status);
         Assert.False(stale.ChangeTracker.HasChanges());
+    }
+
+    [PostgreSqlFact]
+    public async Task StockAndStorePrices_AreWrittenOnlyWhenPicked_WithALedgerEntryAndPriceHistory()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-stock-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Aktarım Ürünü", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var variant = Variant(tenant, product, "STOCK-1", "8690000200001", cost: 5m, desi: 1m, now);
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "N11", Environment = "STAGE", DisplayName = "N11", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "VERIFIED", ApiVersion = "V1" };
+        var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 3m, Available = 3m };
+        var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 500m, SalePrice = 400m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE" };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.PlatformConnections.Add(connection);
+            seed.InventoryItems.Add(item);
+            seed.ChannelOffers.Add(offer);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new ProductTransferService(db, fixture.TimeProvider);
+        var export = await service.ExportAsync(tenant.Id, ProductTransferExportFilter.All, null, null, CancellationToken.None);
+        var table = ImportFileReader.ReadXlsxTable(new MemoryStream(export.Value!), 64 * 1024 * 1024);
+        Assert.Contains("N11 Satış Fiyatı", table.Headers);
+        Assert.Equal("400", table.Rows[0].Cells[table.Headers.ToList().IndexOf("N11 Satış Fiyatı")]);
+
+        var csv = "Stok Kodu;Maliyet;Stok;N11 Satış Fiyatı;N11 Liste Fiyatı\r\nSTOCK-1;9;8;450;\r\n";
+        var onlyCost = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Cost], CancellationToken.None);
+        var change = Assert.Single(onlyCost.Value!.Changes);
+        Assert.Equal((true, (ProductTransferStockChange?)null, (IReadOnlyList<ProductTransferPriceChange>?)null), (change.SetCost, change.Stock, change.Prices));
+
+        var preview = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Stock, ProductTransferFields.Prices], CancellationToken.None);
+        Assert.True(preview.Succeeded, preview.Error?.Message);
+        var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value!.Changes), "transfer-stock", CancellationToken.None);
+        Assert.True(applied.Succeeded, applied.Error?.Message);
+        Assert.Equal(new ProductTransferApplyResult(1, 0, 0, 0, 0, 1, 1, 1), applied.Value);
+        await using (var check = fixture.CreateContext())
+        {
+            var storedItem = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == item.Id);
+            Assert.Equal((8m, 8m, 2L), (storedItem.OnHand, storedItem.Available, storedItem.ProjectionVersion));
+            var ledger = await check.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
+            Assert.Equal(("MANUAL_ADJUSTMENT", 5m), (ledger.MovementType, ledger.QuantityDelta));
+            var storedOffer = await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offer.Id);
+            Assert.Equal((450m, 500m, 2L), (storedOffer.SalePrice, storedOffer.ListPrice, storedOffer.PriceVersion));
+            Assert.Equal(1, await check.ChannelPriceHistory.CountAsync(x => x.OfferId == offer.Id));
+            Assert.Equal(5m, (await check.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == variant.Id)).CostPrice);
+        }
+
+        // An order moved the stock after the preview: the stale preview writes nothing.
+        await using var moved = fixture.CreateContext();
+        await moved.InventoryItems.Where(x => x.Id == item.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.OnHand, 6m).SetProperty(x => x.Available, 6m).SetProperty(x => x.Version, x => x.Version + 1));
+        var stale = await new ProductTransferService(moved, fixture.TimeProvider).ApplyAsync(tenant.Id, Guid.CreateVersion7(),
+            new ApplyProductTransferCommand([new ProductTransferChange(variant.Id, variant.Version, false, null, false, null, new ProductTransferStockChange(8m, 10m))]), "transfer-stock-2", CancellationToken.None);
+        Assert.Equal(409, stale.Error?.Status);
     }
 
     private static ProductVariant Variant(Tenant tenant, Product product, string sku, string barcode, decimal? cost, decimal? desi, DateTimeOffset now) => new()
