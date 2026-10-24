@@ -600,8 +600,9 @@
 .app-shell.stitch-shell main .reports-page .reports-donut-part { stroke: var(--reports-line, var(--rv-color-border-strong)); }
 
 /* Kâr Köprüsü: a name, a bar on the sales' scale and the amount per row; the rows share the card's height. */
-.app-shell.stitch-shell main .reports-page .reports-bridge { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
-.app-shell.stitch-shell main .reports-page .reports-bridge li { display: grid; flex: 1 0 auto; grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 9px 0; border-top: 1px solid var(--rv-color-border); }
+/* One grid for the rows, so every bar track has the same width and the bars line up under each other. */
+.app-shell.stitch-shell main .reports-page .reports-bridge { display: grid; grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) max-content; column-gap: 14px; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-bridge li { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; column-gap: 14px; padding: 9px 0; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-bridge li:first-child { border-top: 0; }
 .app-shell.stitch-shell main .reports-page .reports-bridge-label { min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 13.5px; }
 .app-shell.stitch-shell main .reports-page .reports-bridge li.is-minus .reports-bridge-label { color: var(--rv-color-muted); }
