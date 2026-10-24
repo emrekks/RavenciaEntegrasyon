@@ -51,9 +51,13 @@
 .app-shell.stitch-shell main .reports-page .reports-table th { padding: 0; color: var(--rv-color-muted); background: transparent; border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 500; letter-spacing: 0; text-align: left; text-transform: none; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-table th button { display: inline-flex; align-items: center; gap: 4px; height: 36px; min-height: 36px; padding: 0 8px; color: inherit; background: transparent; border: 0; border-radius: 7px; box-shadow: none; font: inherit; cursor: pointer; }
 .app-shell.stitch-shell main .reports-page .reports-table th button:hover { color: var(--rv-color-ink); }
-.app-shell.stitch-shell main .reports-page .reports-table th.is-num { text-align: right; }
+.app-shell.stitch-shell main .reports-page .reports-table th.is-num { text-align: center; }
 .app-shell.stitch-shell main .reports-page .reports-table td { padding: 9px 8px; color: var(--rv-color-ink); border-bottom: 1px solid var(--rv-color-border); vertical-align: middle; }
-.app-shell.stitch-shell main .reports-page .reports-table td.is-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-table td.is-num { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Every column's name and values sit in its middle; only the first column, the row's name, reads from the left. */
+.app-shell.stitch-shell main .reports-page .reports-table :is(th, td) { text-align: center; }
+.app-shell.stitch-shell main .reports-page .reports-table tbody td:not(:first-child) { white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-table tr > :is(th, td):first-child:not(.reports-expand-col), .app-shell.stitch-shell main .reports-page .reports-table tr > .reports-expand-col + :is(th, td) { text-align: left; }
 .app-shell.stitch-shell main .reports-page .reports-table tbody tr:hover td { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .reports-page .reports-table tr.is-unknown td { color: var(--rv-color-subtle); font-style: italic; }
 .app-shell.stitch-shell main .reports-page .reports-table tr.reports-expanded > td { padding: 12px 0; background: var(--rv-color-surface-soft); }
@@ -69,7 +73,7 @@
 .app-shell.stitch-shell main .reports-page .reports-product strong { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-product small,
 .app-shell.stitch-shell main .reports-page .reports-measured small { color: var(--rv-color-subtle); font-size: 11px; }
-.app-shell.stitch-shell main .reports-page .reports-measured { display: inline-grid; justify-items: end; gap: 1px; }
+.app-shell.stitch-shell main .reports-page .reports-measured { display: inline-grid; justify-items: center; gap: 1px; }
 .app-shell.stitch-shell main .reports-page .reports-badge.is-warn { padding: 1px 8px; color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); border-radius: 7px; font-weight: 600; }
 
 /* The search sits in a table's title row, left of its CSV button; the box, not the input, shows the focus. */

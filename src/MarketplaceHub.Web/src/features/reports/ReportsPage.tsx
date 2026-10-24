@@ -8,7 +8,7 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import {
-  change, downloadCsv, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
+  bySalesChannel, change, downloadCsv, isMarketplace, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
@@ -22,8 +22,8 @@ import './reports.css'
 // with live stores as tabs above, a store picked when the platform has more than one. A platform whose tariff export
 // the panel does not read yet says so.
 function CommissionTariffs({ data }: { data: ReportSales }) {
-  const live = data.channels.filter(channel => !channel.isTest)
-  const platforms = [...new Set(live.map(channel => channel.platformCode))]
+  const live = data.channels.filter(channel => !channel.isTest && isMarketplace(channel.platformCode))
+  const platforms = [...new Set(live.map(channel => channel.platformCode))].sort(bySalesChannel)
   const [platform, setPlatform] = useState(() => platforms.find(code => commissionTariffPlatforms.has(code)) ?? platforms[0] ?? '')
   const stores = live.filter(channel => channel.platformCode === platform)
   const [storeId, setStoreId] = useState('')
@@ -131,7 +131,7 @@ export function ReportsPage() {
   const query = reportQuery({ from: range.from, to: range.to, platforms, granularity, includeTest })
   const report = useQuery({ queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
-  const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].map(code => ({ value: code, label: platformName(code) })), [data?.channels])
+  const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
   // A tab change cross-fades the body where the browser has view transitions (and motion is welcome); elsewhere it
   // simply switches.
   const go = (nextView: ViewKey, nextSub: string | null = null) => {
@@ -1207,7 +1207,7 @@ function Cities({ data }: { data: ReportSales }) {
 }
 
 // A variant's options as the catalogue names them (Beden: M · Renk: Siyah); empty when the line has none.
-function variantText(product: ReportProduct) { return (product.options ?? []).map(option => `${option.name}: ${option.value}`).join(' · ') }
+function variantText(product: ReportProduct) { const { colour, size } = variantColourAndSize(product.options); return [colour, size].filter(Boolean).join(' · ') }
 
 // The product's picture, or a placeholder of its first letter.
 function ProductImage({ product }: { product: ReportProduct }) {
@@ -1251,7 +1251,8 @@ function productColumns(): Column<ReportProduct>[] {
     { key: 'title', header: 'Ürün', value: row => row.title, render: row => <ProductCell product={row} />, csv: row => row.title },
     { key: 'model', header: 'Model Kodu', value: row => row.modelCode ?? null, render: row => row.modelCode ?? '—' },
     { key: 'sku', header: 'Stok Kodu', value: row => row.sku },
-    { key: 'options', header: 'Varyant', value: row => variantText(row) || null, render: row => variantText(row) || '—' },
+    { key: 'colour', header: 'Renk', value: row => variantColourAndSize(row.options).colour, render: row => variantColourAndSize(row.options).colour ?? '—' },
+    { key: 'size', header: 'Beden', value: row => variantColourAndSize(row.options).size, render: row => variantColourAndSize(row.options).size ?? '—' },
     { key: 'brand', header: 'Marka', value: row => row.brand },
     { key: 'sold', header: 'Satılan Adet', value: row => row.soldQuantity, render: row => formatNumber(row.soldQuantity), numeric: true },
     { key: 'returned', header: 'İade Adedi', value: row => row.returnedQuantity, render: row => formatNumber(row.returnedQuantity), numeric: true },
