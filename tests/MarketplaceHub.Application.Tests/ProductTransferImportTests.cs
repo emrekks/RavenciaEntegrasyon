@@ -425,7 +425,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         var export = await service.ExportAsync(tenant.Id, ProductTransferExportFilter.All, null, null, CancellationToken.None);
         var table = ImportFileReader.ReadXlsxTable(new MemoryStream(export.Value!), 64 * 1024 * 1024);
         Assert.Contains("N11 Satış Fiyatı", table.Headers);
-        Assert.Equal("400", table.Rows[0].Cells[table.Headers.ToList().IndexOf("N11 Satış Fiyatı")]);
+        Assert.Equal(400m, decimal.Parse(table.Rows[0].Cells[table.Headers.ToList().IndexOf("N11 Satış Fiyatı")], System.Globalization.CultureInfo.InvariantCulture));
 
         var csv = "Stok Kodu;Maliyet;Stok;N11 Satış Fiyatı;N11 Liste Fiyatı\r\nSTOCK-1;9;8;450;\r\n";
         var onlyCost = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Cost], CancellationToken.None);
