@@ -69,9 +69,11 @@
   /* Shared motion (styles/motion.css): measured, short and only on first appearance; all zero under reduced motion. */
   --rv-motion-fast: 160ms;
   --rv-motion-base: 280ms;
-  --rv-motion-enter: 460ms;
-  --rv-motion-stagger: 70ms;
-  --rv-motion-distance: 14px;
+  --rv-motion-enter: 180ms;
+  --rv-motion-row: 220ms;
+  --rv-motion-row-delay: 120ms;
+  --rv-motion-stagger: 25ms;
+  --rv-motion-distance: 8px;
   --rv-motion-press: .96;
   --rv-motion-lift: -2px;
   --rv-ease-out: cubic-bezier(.22, 1, .36, 1);
