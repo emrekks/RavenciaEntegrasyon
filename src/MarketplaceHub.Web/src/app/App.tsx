@@ -278,6 +278,13 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
   // Phones where the sign-in screen fits one screen: it holds the page still through the one counted page lock, which
   // is released for sure when the screen goes (iOS Safari kept an html:has(.rv-auth-page) lock after signing in).
   useScrollLock(useMediaQuery(authFitsOneScreen), false, { root: true })
+  // The sign-in screens take the saved light or dark theme too, and switch it from their header.
+  const [theme, setTheme] = useState<VisualTheme>(readVisualThemePreference)
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    document.documentElement.dataset.themeMode = theme
+  }, [theme])
+  const switchTheme = () => { const next = theme === 'light' ? 'dark' : 'light'; setVisualThemePreference(next); setTheme(next) }
   return <main className="rv-auth-page rv-auth-single">
     <div className="rv-auth-atmosphere" aria-hidden="true">
       <span className="auth-aurora auth-aurora-primary" />
@@ -312,9 +319,9 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
       </div>
     </div>
     <header className="rv-auth-header">
-      <div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-128.webp" alt="" /><span className="rv-auth-brand-name">Ravencia</span></div>
+      <div className="rv-auth-header-start"><div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-128.webp" alt="" /><span className="rv-auth-brand-name">Ravencia</span></div><span className="rv-auth-system-status"><i /> Sistem hazır</span></div>
       <span className="rv-auth-context"><UiIcon name="layers" /> Operasyon Merkezi</span>
-      <span className="rv-auth-system-status"><i /> Sistem hazır</span>
+      <button type="button" className="rv-auth-theme" aria-pressed={theme === 'dark'} aria-label={theme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} onClick={switchTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={16} /><span>{theme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button>
     </header>
     <section className="rv-auth-stage" aria-label={ariaLabel}>
       <div className="auth-focus-column">
