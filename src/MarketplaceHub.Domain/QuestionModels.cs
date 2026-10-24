@@ -16,6 +16,9 @@ public sealed class MarketplaceQuestion
     public string? ProductModelCode { get; set; }
     public string? ProductUrl { get; set; }
     public string? CustomerName { get; set; }
+    // The marketplace's own number for the customer who asked (Trendyol customerId), so a customer's earlier questions
+    // can be shown with a new one; null where the marketplace does not send one.
+    public string? CustomerKey { get; set; }
     public string? ExternalOrderNumber { get; set; }
     public string? HistoryJson { get; set; }
     public string? PendingAnswerText { get; set; }

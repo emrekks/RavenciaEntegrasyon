@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the question fixture is reshaped freely per test
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, templates: [] as Array<{ id: string; title: string; text: string; version: number; updatedAt: string }>, detail: null as any, answerFailure: false, staleOnce: false, templateId: 1, totalCount: 1, freshSync: false, emptyList: false }))
+const apiState = vi.hoisted(() => ({ customerHistory: [] as unknown[], calls: [] as Array<{ path: string; method: string; body?: string }>, templates: [] as Array<{ id: string; title: string; text: string; version: number; updatedAt: string }>, detail: null as any, answerFailure: false, staleOnce: false, templateId: 1, totalCount: 1, freshSync: false, emptyList: false }))
 
 vi.mock('../../shared/api', () => ({
   loadAllPages: vi.fn(async () => ({ items: [
@@ -25,6 +25,7 @@ vi.mock('../../shared/api', () => ({
     ]
     if (path.startsWith('/products?')) return { items: [{ title: 'Kadın triko bluz', primaryImageUrl: '/api/v1/files/product-media/asset-1/content', familyMediaUrls: [], variants: [{ sku: 'BLUZ-01', barcode: '86900001', modelCode: 'MZ001' }] }], nextCursor: null, hasMore: false }
     if (path === '/questions/sync') return { jobs: ['sync-1'], queuedConnections: 2 }
+    if (path.endsWith('/customer-history')) return apiState.customerHistory
     if (path === '/question-templates') {
       if (method === 'GET') return apiState.templates
       if (method === 'POST') {
@@ -126,6 +127,7 @@ beforeEach(() => {
   apiState.totalCount = 1
   apiState.freshSync = false
   apiState.emptyList = false
+  apiState.customerHistory = []
   container = document.createElement('div')
   document.body.append(container)
   vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
@@ -152,6 +154,31 @@ function composer() {
 }
 
 describe('QuestionsPage workspace flows', () => {
+  it('shows the customer\'s earlier questions and their answers above the new question, oldest first', async () => {
+    apiState.customerHistory = [
+      { ...createQuestion(), id: 'q-before', status: 'ANSWERED', productName: 'Viskon elbise', questionText: 'Elbisenin boyu kaç?', createdAt: '2026-10-03T09:00:00Z', conversations: [{ author: 'customer', text: 'Elbisenin boyu kaç?', createdAt: '2026-10-03T09:00:00Z' }, { author: 'merchant', text: 'Boyu 120 cm.', createdAt: '2026-10-03T10:00:00Z' }] },
+      { ...createQuestion(), id: 'q-first', status: 'EXPIRED', productName: 'Penye tunik', questionText: 'Tunik astarlı mı?', createdAt: '2026-09-20T09:00:00Z', conversations: [] },
+    ]
+    await renderPage()
+
+    expect(apiState.calls.some(call => call.path === '/questions/q-product/customer-history')).toBe(true)
+    const history = container.querySelector('.qi-customer-history')
+    expect(history?.textContent).toContain('Müşterinin Önceki Sorular')
+    const items = Array.from(history?.querySelectorAll('.qi-history-item') ?? []).map(item => item.textContent ?? '')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toContain('Penye tunik')
+    expect(items[0]).toContain('Süresi Doldu')
+    expect(items[1]).toContain('Elbisenin boyu kaç?')
+    expect(items[1]).toContain('Boyu 120 cm.')
+    // The new question follows them.
+    expect(history?.nextElementSibling?.textContent).toContain('Ürün boyu kaç santimetredir?')
+  })
+
+  it('shows no earlier block when the customer asked nothing before', async () => {
+    await renderPage()
+    expect(container.querySelector('.qi-customer-history')).toBeNull()
+  })
+
   it('renders a duplicate marketplace seller reply once without sending another answer', async () => {
     apiState.detail = {
       ...createQuestion(),

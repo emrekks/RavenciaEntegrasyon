@@ -97,8 +97,10 @@ internal static class TrendyolQuestionMapper
         var lastModified = Date(item, "lastModifiedDate") ?? Date(item, "rejectedDate") ?? Date(item, "reportedDate") ?? Date(Property(item, "answer"), "creationDate") ?? Date(Property(item, "rejectedAnswer"), "creationDate") ?? created;
         var rejectedReason = Text(item, "reason", "reportReason");
         return new(id, kind, status, Text(item, "text") ?? "", Text(item, "productName"), Text(item, "imageUrl"), null, Text(item, "barcode"), Text(item, "productMainId"), Text(item, "userName"), null, created, null, lastModified,
-            history.Select(message => message.RejectionReason is null && message.Author == "Merchant" && status == "REJECTED" && rejectedReason is not null ? message with { RejectionReason = rejectedReason } : message).ToArray(), ProductPage(Text(item, "webUrl")));
+            history.Select(message => message.RejectionReason is null && message.Author == "Merchant" && status == "REJECTED" && rejectedReason is not null ? message with { RejectionReason = rejectedReason } : message).ToArray(), ProductPage(Text(item, "webUrl")), CustomerKey(Text(item, "customerId")));
     }
+    // customerId is the asker's trendyol.com account (sent even when the name is hidden); a blank or zero is no customer.
+    private static string? CustomerKey(string? value) => string.IsNullOrWhiteSpace(value) || value.Trim() == "0" ? null : value.Trim();
     private static string? ProductPage(string? value) => Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.Host.EndsWith("trendyol.com", StringComparison.OrdinalIgnoreCase) ? uri.AbsoluteUri : null;
     public static string? Text(JsonElement item, params string[] names) { foreach (var name in names) { var value = Property(item, name); if (value.ValueKind == JsonValueKind.String) return value.GetString(); if (value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False) return value.ToString(); } return null; }
     private static void AppendAnswer(List<RemoteQuestionConversation> history, JsonElement answer, string author, DateTimeOffset fallback, string? reason = null)

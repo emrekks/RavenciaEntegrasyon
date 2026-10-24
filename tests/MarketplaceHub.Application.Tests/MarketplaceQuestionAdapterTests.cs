@@ -9,6 +9,22 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class MarketplaceQuestionAdapterTests
 {
     [Fact]
+    public void TrendyolQuestionKeepsTheCustomersNumberEvenWhenTheNameIsHidden()
+    {
+        const string json = """
+        {"content":[
+          {"id":1,"status":"WAITING_FOR_ANSWER","text":"Kalıbı dar mı?","creationDate":1790000000000,"customerId":98765432,"userName":"","showUserName":false},
+          {"id":2,"status":"WAITING_FOR_ANSWER","text":"Boyu kaç cm?","creationDate":1790000000000,"customerId":0},
+          {"id":3,"status":"WAITING_FOR_ANSWER","text":"Astarlı mı?","creationDate":1790000000000}
+        ],"page":0,"totalPages":1,"totalElements":3}
+        """;
+
+        var page = TrendyolQuestionMapper.Page(json, "PRODUCT");
+
+        Assert.Equal(["98765432", null, null], page.Items.Select(item => item.CustomerKey));
+    }
+
+    [Fact]
     public void TrendyolQuestionPageMapsAnswerAndRejectedAnswerHistory()
     {
         var firstMessageAt = DateTimeOffset.Parse("2026-10-01T10:00:00Z").ToUnixTimeMilliseconds();
