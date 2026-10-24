@@ -75,10 +75,11 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                 select new { tariff, row }).ToListAsync(cancellationToken);
         var tariffs = tariffRows.Count == 0 ? null : new ReportCommissionTariffs(tariffRows.Select(x => (x.tariff, x.row)));
         var finance = await FinanceAsync(tenantId, allowed, orders, current, cancellationToken);
-        var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, tariffs, finance);
+        var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, tariffs, finance,
+            await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken));
         var previousFinance = await FinanceAsync(tenantId, allowed, previousOrders, previous, cancellationToken);
         var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, previousOrderExtras, previousLines,
-            previousLineExtras, previousClaims, [], names, query.IncludeTest, tariffs, previousFinance);
+            previousLineExtras, previousClaims, [], names, query.IncludeTest, tariffs, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken));
         var stockVariants = ReportBuilder.StockCandidates(input);
         var stock = stockVariants.Length == 0
             ? new Dictionary<Guid, decimal>()
@@ -350,6 +351,27 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     // period, and those dated in the period that belong to no order the panel knows (fees, withholding tax, a record of
     // an order never imported). A record of an order of another period is left to that period. Cargo invoice lines
     // follow the same rule, by their order or by their invoice's date. Null when the report has no such store.
+    // The commission of the period's Pazarama orders whose money movements were read: the movements' commission netted
+    // (a refund gives it back), without VAT. An order with no movement read yet is not here.
+    private async Task<Dictionary<Guid, decimal>?> PazaramaCommissionsAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, IReadOnlyList<ReportOrderRow> orders,
+        CancellationToken cancellationToken)
+    {
+        var stores = allowed.Values.Where(channel => channel.PlatformCode == "PAZARAMA").Select(channel => channel.Id).ToHashSet();
+        var pazarama = orders.Where(order => stores.Contains(order.ConnectionId)).ToList();
+        if (pazarama.Count == 0) return null;
+        var storeIds = stores.ToArray();
+        var numbers = pazarama.Select(order => order.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
+        var sums = await db.MarketplaceFinanceTransactions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && storeIds.Contains(x.ConnectionId) && x.Source == Jobs.Handlers.PazaramaFinanceSyncJobHandler.Source
+                && x.OrderNumber != null && numbers.Contains(x.OrderNumber))
+            .GroupBy(x => new { x.ConnectionId, x.OrderNumber })
+            .Select(group => new { group.Key.ConnectionId, group.Key.OrderNumber, Commission = group.Sum(x => x.CommissionAmount ?? 0m) })
+            .ToListAsync(cancellationToken);
+        var byOrder = sums.ToDictionary(x => (x.ConnectionId, x.OrderNumber!), x => x.Commission);
+        return pazarama.Where(order => byOrder.ContainsKey((order.ConnectionId, order.OrderNumber)))
+            .ToDictionary(order => order.Id, order => byOrder[(order.ConnectionId, order.OrderNumber)]);
+    }
+
     private async Task<ReportFinance?> FinanceAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, IReadOnlyList<ReportOrderRow> orders,
         ReportPeriod period, CancellationToken cancellationToken)
     {

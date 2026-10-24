@@ -512,7 +512,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new("RETURN_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyJitterSeconds", 900)),
         new("REFERENCE_DATA", configuration.GetValue("MarketplaceSync:ReferenceData:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReferenceData:JitterSeconds", 60)),
         new("QUESTIONS", configuration.GetValue("MarketplaceSync:Questions:IntervalSeconds", 120), 0, 0),
-        // Trendyol's accounting records (only Trendyol supports it; production stores only, see EnqueueDueAsync).
+        // Trendyol's accounting records and Pazarama's order money movements (production stores only, see EnqueueDueAsync).
         new("FINANCE", configuration.GetValue("MarketplaceSync:TrendyolFinance:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:TrendyolFinance:JitterSeconds", 900)),
         new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
         new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
@@ -647,9 +647,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     // Pazarama runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the
     // open-order status scan (ORDER_LIFECYCLE), because the order list has no change filter, plus the
-    // category/attribute/brand references. The write flows are listed so the policies exist (and stay
-    // off) for the later phases.
-    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or "QUESTIONS"
+    // category/attribute/brand references and the daily money movements of the recent orders (FINANCE, production
+    // stores only). The write flows are listed so the policies exist (and stay off) for the later phases.
+    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or "QUESTIONS" or "FINANCE"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // PTT AVM runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the open-order
@@ -685,6 +685,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "REFERENCE_DATA" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.ReferenceSync), $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         "QUESTIONS" => (MarketplaceJobTypes.QuestionSync, $"scheduled:questions:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, kind = (string?)null })),
         "FINANCE" when platformCode == "TRENDYOL" => (MarketplaceJobTypes.TrendyolFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        "FINANCE" when platformCode == "PAZARAMA" => (MarketplaceJobTypes.PazaramaFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         _ => null
     };
 

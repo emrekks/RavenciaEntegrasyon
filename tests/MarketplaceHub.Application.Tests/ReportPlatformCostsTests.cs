@@ -61,6 +61,40 @@ public sealed class ReportPlatformCostsTests
     }
 
     [Fact]
+    public void A_pazarama_order_takes_the_commission_its_money_movements_net_out_to_plus_vat()
+    {
+        var store = Guid.NewGuid();
+        var day = new DateOnly(2026, 10, 23);
+        var start = new DateTimeOffset(2026, 10, 22, 21, 0, 0, TimeSpan.Zero);
+        var at = start.AddHours(12);
+        var (read, unread) = (Guid.NewGuid(), Guid.NewGuid());
+        var (lineA, lineB, lineC) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
+            new Dictionary<Guid, ReportChannelView> { [store] = new(store, "PAZARAMA", "Pazarama", false) },
+            [
+                new() { Id = read, ConnectionId = store, OrderNumber = "1", DerivedStatus = "DELIVERED", Amount = 800m, LineValue = 800m, RealAt = at, OrderedAt = at },
+                new() { Id = unread, ConnectionId = store, OrderNumber = "2", DerivedStatus = "DELIVERED", Amount = 500m, LineValue = 500m, RealAt = at, OrderedAt = at }
+            ],
+            new Dictionary<Guid, ReportOrderExtra>(),
+            [
+                new() { Id = lineA, OrderId = read, Title = "Ceket", Sku = "A", UnitPrice = 600m, OrderedQuantity = 1m, VatRate = 20m },
+                new() { Id = lineB, OrderId = read, Title = "Bluz", Sku = "B", UnitPrice = 200m, OrderedQuantity = 1m, VatRate = 20m },
+                new() { Id = lineC, OrderId = unread, Title = "Etek", Sku = "C", UnitPrice = 500m, OrderedQuantity = 1m, VatRate = 20m }
+            ],
+            new Dictionary<Guid, ReportLineExtra>(), [], [], new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false,
+            OrderCommissions: new Dictionary<Guid, decimal> { [read] = 96m });
+        var previous = new ReportInput(input.Period, input.Granularity, input.Timezone, input.Channels, [], new Dictionary<Guid, ReportOrderExtra>(), [],
+            new Dictionary<Guid, ReportLineExtra>(), [], [], input.Names, false);
+
+        var report = ReportBuilder.Build(input, previous, new Dictionary<Guid, decimal>());
+
+        // 96 TL without VAT, 115.20 with it, shared 3 : 1 over the lines; the order not read yet has no commission.
+        Assert.Equal(115.2m, report.Commission.EstimatedCommission);
+        Assert.Equal(800m, report.Commission.CoveredRevenue);
+        Assert.Equal(115.2m, report.Costs.Commission!.Combined);
+    }
+
+    [Fact]
     public void A_report_without_trendyol_is_costed_from_the_platforms_tariffs()
     {
         var (hb, shop) = (Guid.NewGuid(), Guid.NewGuid());

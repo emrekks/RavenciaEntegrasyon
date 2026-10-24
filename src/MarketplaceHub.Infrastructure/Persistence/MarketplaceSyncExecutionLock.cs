@@ -141,7 +141,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // lifecycle lane so a slow metadata repair cannot hold up status polling.
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return "order-cargo-info";
         // The accounting read writes only its own tables; it neither waits behind the order reads nor holds them up.
-        if (type == MarketplaceJobTypes.TrendyolFinanceSync) return FinanceGroup;
+        if (type is MarketplaceJobTypes.TrendyolFinanceSync or MarketplaceJobTypes.PazaramaFinanceSync) return FinanceGroup;
         // Trendyol invoice reconciliation has its own group again: it writes only the packages' invoice columns
         // and the order snapshot of partial return-claim orders, without checking or bumping their versions
         // (ExecuteUpdate), so it neither waits behind the long order reads nor makes them conflict. The partial
@@ -247,7 +247,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         or MarketplaceJobTypes.StockReconciliation
         or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync
         or MarketplaceJobTypes.QuestionSync
-        or MarketplaceJobTypes.TrendyolFinanceSync;
+        or MarketplaceJobTypes.TrendyolFinanceSync or MarketplaceJobTypes.PazaramaFinanceSync;
 
     internal static long LockKey(Guid connectionId, string group)
     {

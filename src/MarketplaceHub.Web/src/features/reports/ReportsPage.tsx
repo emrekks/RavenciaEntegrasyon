@@ -843,8 +843,8 @@ function returnMetrics(data: ReportSales): Metric[] {
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, detail: 'returns',
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ satılan adet. Önceki dönem ${formatPercent(before.returnRate)}.` },
     { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
-    { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: `İade edilen ürün adedi.\nİade tutarı ${formatTl(now.returnedAmount)}; Masraf Kalemleri'nde gösterilir.` },
-    { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nİade kargosu kargo faturasında ayrı okunamadığı için gösterilemiyor.' },
+    { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
+    { key: 'amount', label: 'İade Edilen Tutar', value: formatTl(now.returnedAmount), detail: 'returns', note: 'İade edilen ürünlerin satış tutarı.\nSatıştan düşülür; Masraf Kalemleri\'nde de gösterilir.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Siparişlerin yüzde kaçının iptal edildiği.\n${formatCount(now.cancelledOrders)} sipariş iptal edildi; uyarı eşiği ${formatPercent(warning)}.` },
     { key: 'amount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTl(cancelled), detail: 'cancellations', note: 'İptal edilen ürünlerin tutarı.\nListe fiyatıyla; satış tutarına girmez.' }

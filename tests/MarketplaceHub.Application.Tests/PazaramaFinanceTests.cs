@@ -1,5 +1,8 @@
 using System.Text.Json;
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
+using MarketplaceHub.Infrastructure.Jobs.Handlers;
+using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -26,6 +29,42 @@ public sealed class PazaramaFinanceTests
         var finance = PazaramaFinanceMapper.Finance(Parse(Answer), 541235638);
 
         Assert.Equal(["26095TyzB07114893", "REFUND1"], finance.Transactions.Select(x => x.TransactionCode));
+    }
+
+    // The finance job stores a sale and its refund; their commission nets out, so a returned order costs none.
+    [Fact]
+    public void The_finance_job_stores_the_commission_as_a_cost_that_a_refund_gives_back()
+    {
+        var finance = PazaramaFinanceMapper.Finance(Parse(Answer), 541235638);
+        var now = new DateTimeOffset(2026, 10, 24, 9, 0, 0, TimeSpan.Zero);
+        var rows = finance.Transactions.Select(movement =>
+        {
+            var row = new MarketplaceFinanceTransaction
+            {
+                PlatformCode = "PAZARAMA",
+                Source = PazaramaFinanceSyncJobHandler.Source,
+                ExternalId = movement.TransactionCode,
+                RequestedType = PazaramaFinanceSyncJobHandler.RequestedType,
+                Category = "",
+                RawJson = "{}"
+            };
+            PazaramaFinanceSyncJobHandler.Fill(row, movement, "541235638", now);
+            return row;
+        }).ToList();
+
+        Assert.Equal((MarketplaceFinanceCategories.Sale, 1450m, 0m, 174m), (rows[0].Category, rows[0].Credit, rows[0].Debt, rows[0].CommissionAmount));
+        Assert.Equal((MarketplaceFinanceCategories.Return, 0m, 1450m, -174m), (rows[1].Category, rows[1].Credit, rows[1].Debt, rows[1].CommissionAmount));
+        Assert.Equal(0m, rows.Sum(row => row.CommissionAmount));
+        Assert.All(rows, row => Assert.Equal("541235638", row.OrderNumber));
+    }
+
+    [Fact]
+    public void The_finance_job_runs_daily_beside_trendyols()
+    {
+        Assert.Contains(MarketplaceJobTypes.PazaramaFinanceSync, MarketplaceJobTypes.ProcessorJobTypes);
+        Assert.Equal("finance", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.PazaramaFinanceSync));
+        Assert.Equal(JobPriorityPolicy.Reconciliation, JobPriorityPolicy.For(MarketplaceJobTypes.PazaramaFinanceSync, userInitiated: false));
+        Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("FINANCE"));
     }
 
     [Fact]

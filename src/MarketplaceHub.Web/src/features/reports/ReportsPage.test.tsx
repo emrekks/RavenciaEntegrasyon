@@ -178,6 +178,7 @@ describe('ReportsPage', () => {
     expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Adet1,25'])
     expect(metricRows(page, 'ads')).toEqual(['Toplam Reklam Harcaması—', 'Reklam / Kâr—', 'Reklam / Ciro—', 'Reklam Cirosu ve ROAS—'])
     expect(metricRows(page, 'returns')).toHaveLength(6)
+    expect(metricRows(page, 'returns')[3]).toContain('İade Edilen Tutar₺')
     expect(metricRows(page, 'returns')[4]).toContain('İptal Oranı%20,0')
     expect(page.querySelector('.reports-card-metrics.is-returns li.is-warn')?.textContent).toContain('İptal Oranı')
     expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo1', 'Kargo FirmasıAras Kargo', 'Faturasız Paket1', 'Stok Riski0 ürün', 'Tekrar Alan Müşteri%50,0'])

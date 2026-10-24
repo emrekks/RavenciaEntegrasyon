@@ -56,6 +56,7 @@ const catalogue: Record<string, JobPresentation> = {
   RETURN_ACTION: job('İade', 'return', SEND, 'İade Kararı Gönderme', 'İade talebi için verilen onay veya ret kararı platforma iletilir.'),
   EXTERNAL_EFFECT_RECONCILE: job('Doğrulama', 'connection', READ, 'Gönderim Sonucu Doğrulama', 'Sonucu kesinleşmeyen bir gönderimin platformda uygulanıp uygulanmadığı kontrol edilir; uygulanmadıysa işlem yeniden gönderilir.'),
   MARKETPLACE_QUESTION_SYNC: job('Soru', 'connection', READ, 'Müşteri Sorularını Çekme', 'Ürün ve sipariş soruları platformdan okunarak panele alınır. Platforma cevap gönderilmez.'),
+  PAZARAMA_FINANCE_SYNC: job('Finans', 'invoice', READ, 'Sipariş Finans Hareketlerini Çekme', 'Son siparişlerin satış, iade ve komisyon hareketleri okunarak komisyon satış raporuna işlenir. Platforma veri gönderilmez.'),
   TRENDYOL_FINANCE_SYNC: job('Finans', 'invoice', READ, 'Cari Hesap Ekstresi Çekme', 'Platformun cari hesap ekstresi okunarak komisyon, kargo ve diğer kesintiler satış raporuna işlenir. Platforma veri gönderilmez.'),
   INVOICE_SUBMIT: job('Fatura', 'invoice', SEND, 'Fatura Oluşturma', 'Sipariş için hazırlanan e-Fatura veya e-Arşiv faturası E-Faturam’a gönderilerek kesilir.'),
   INVOICE_RECONCILE: job('Fatura', 'invoice', READ, 'Fatura Durumu Sorgulama', 'Gönderilen faturanın E-Faturam’daki onay ve iletim durumu sorgulanır.'),

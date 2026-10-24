@@ -25,7 +25,9 @@ internal sealed record ReportInput(
     ReportCatalogNames Names,
     bool IncludesTest,
     ReportCommissionTariffs? Tariffs = null,
-    ReportFinance? Finance = null);
+    ReportFinance? Finance = null,
+    // By order: the commission Pazarama's money movements of the order net out to, without VAT (PazaramaFinanceSyncJobHandler).
+    IReadOnlyDictionary<Guid, decimal>? OrderCommissions = null);
 
 // The commission tariffs uploaded for the report's stores (Komisyon Tarifeleri): a line the marketplace sent no
 // commission for takes the rate of the band its paid unit price falls in, in the tariff week the sale was made.
@@ -456,6 +458,16 @@ internal static class ReportBuilder
                     fromTariff = true;
                 }
                 lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason, fromTariff));
+            }
+            // Pazarama sends no commission on the order: its money movements carry it, net of a refund's, without VAT
+            // (its rates are VAT-exclusive and it invoices 20 % on top). It is shared over the lines by their price.
+            if (isTry && platform == "PAZARAMA" && input.OrderCommissions is { } read && read.TryGetValue(order.Id, out var net))
+            {
+                var basis = lines.Sum(fact => fact.PaidUnitPrice * fact.Active);
+                lines = lines.Select(fact => fact with
+                {
+                    Commission = Math.Round(net * 1.20m * (basis > 0 ? fact.PaidUnitPrice * fact.Active / basis : 1m / lines.Count), 2)
+                }).ToList();
             }
             var extras = input.OrderExtras.GetValueOrDefault(order.Id);
             var country = ReportBuckets.Country(order.StoreFrontCode, extras?.CountryCode);
