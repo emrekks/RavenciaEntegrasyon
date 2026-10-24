@@ -29,6 +29,17 @@ internal sealed class ReportFinance(
 internal sealed record ReportCargoSample(decimal Amount, int Orders)
 {
     public decimal? PerOrder => Orders > 0 ? Amount / Orders : null;
+
+    // An order not billed yet is costed at the store's current cargo tariff: the amount most of its recent shipping
+    // lines were billed at (98.34 TL in Oct 2026), not their mean, which the odd heavier parcel and an old tariff
+    // still inside the window pull away from what Trendyol bills a usual parcel now. Ties go to the dearer amount.
+    public static ReportCargoSample? Tariff(IReadOnlyCollection<(decimal Amount, string? OrderNumber)> shipping)
+    {
+        if (shipping.Count == 0) return null;
+        var tariff = shipping.GroupBy(line => line.Amount).OrderByDescending(group => group.Count()).ThenByDescending(group => group.Key).First().Key;
+        var orders = shipping.Select(line => line.OrderNumber).Distinct(StringComparer.Ordinal).Count();
+        return new(tariff * orders, orders);
+    }
 }
 
 internal sealed class ReportFinanceRow

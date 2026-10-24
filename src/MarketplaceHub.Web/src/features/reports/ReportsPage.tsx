@@ -1392,7 +1392,7 @@ function trendyolLedger(data: ReportSales): LedgerRow[] {
     { label: 'Trendyol Komisyonu', value: formatTl(commission.combined), hint: commissionNote(finance) },
     { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: `Aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` },
     { label: 'Trendyol Kargo', value: formatTl(cargo.combined), hint: cargoNote(cargo) },
-    { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: `Son 60 günün ${formatCount(cargo.sampleOrders)} faturalı siparişi` }
+    { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: `Güncel tarife: son 30 günün ${formatCount(cargo.sampleOrders)} faturalı siparişinde en sık kesilen tutar` }
   ]
 }
 

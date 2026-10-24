@@ -409,9 +409,13 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                              .Select(x => x.InvoiceSerialNumber).Distinct().ToListAsync(cancellationToken))
                     itemized.Add((storeId, serial));
 
-            // The store's recent cargo per order, for the period's orders Trendyol has not billed cargo for yet: the
-            // shipping lines of its cargo invoices dated in the 60 days before the period's end.
-            var sampleFrom = end.AddDays(-60);
+            // The store's cargo tariff, for the period's orders Trendyol has not billed cargo for yet: the shipping lines
+            // of its cargo invoices dated in the 30 days before the period's end (60 when none was dated then).
+            var sampleFrom = end.AddDays(-30);
+            if (!await db.MarketplaceFinanceTransactions.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == storeId
+                    && x.Source == TrendyolFinanceRequestContract.OtherFinancials && x.RequestedType == TrendyolFinanceCategorizer.DeductionInvoices
+                    && x.Category == MarketplaceFinanceCategories.Cargo && x.TransactionDate >= sampleFrom && x.TransactionDate < end, cancellationToken))
+                sampleFrom = end.AddDays(-60);
             var sampleSerials = db.MarketplaceFinanceTransactions
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId && x.Source == TrendyolFinanceRequestContract.OtherFinancials
                     && x.RequestedType == TrendyolFinanceCategorizer.DeductionInvoices && x.Category == MarketplaceFinanceCategories.Cargo
@@ -423,7 +427,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                     .ToListAsync(cancellationToken))
                 .Where(x => !x.IsReturn)
                 .ToList();
-            if (shipping.Count > 0) samples[storeId] = new(shipping.Sum(x => x.Amount), shipping.Select(x => x.OrderNumber).Distinct(StringComparer.Ordinal).Count());
+            if (ReportCargoSample.Tariff(shipping.Select(x => (x.Amount, x.OrderNumber)).ToList()) is { } sample) samples[storeId] = sample;
         }
         return new(rows, items, itemized, states, samples);
     }

@@ -267,8 +267,8 @@ public sealed record ReportRealCommissionView(decimal Real, int RealOrders, deci
 
 // The cargo of the period's Trendyol orders. Trendyol bills cargo weeks after shipping, so a recent order
 // often has no cargo invoice line yet. Real: the cargo invoice lines counted (BilledOrders of the period have one);
-// UnbilledOrders: the period's Trendyol orders without one, estimated at the store's cargo per billed order of the
-// last 60 days (AveragePerOrder over SampleOrders). Estimated is null when no store has such a sample;
+// UnbilledOrders: the period's Trendyol orders without one, estimated at the store's cargo tariff: the amount most
+// shipping lines of its last 30 days were billed at (AveragePerOrder; SampleOrders billed orders behind it). Estimated is null when no store has such a sample;
 // Combined = Real + Estimated.
 public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int UnbilledOrders, decimal? AveragePerOrder, int SampleOrders, decimal? Estimated, decimal Combined);
 
