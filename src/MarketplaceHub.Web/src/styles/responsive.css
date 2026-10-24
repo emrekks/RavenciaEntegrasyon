@@ -356,7 +356,6 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
 /* Phones: the header no longer repeats the brand (the logo sits right under it); it names the place instead, with the
    same layers mark the panel header uses. */
 @media (max-width: 760px) {
-  html body .rv-auth-page .rv-auth-header > .rv-auth-brand { display: none; }
   html body .rv-auth-page .rv-auth-header > .rv-auth-context { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 14px; font-weight: 500; }
   html body .rv-auth-page .rv-auth-header > .rv-auth-context .ui-icon { width: 16px; height: 16px; color: var(--rv-color-subtle); }
 }

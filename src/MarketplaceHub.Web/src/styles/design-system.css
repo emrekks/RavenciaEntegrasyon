@@ -965,8 +965,6 @@
   .rv-auth-atmosphere { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
   .rv-auth-header { position: relative; z-index: 1; display: flex; width: min(100% - 48px, 1180px); margin-inline: auto; align-items: center; justify-content: space-between; gap: var(--rv-space-5); }
   .rv-auth-header { min-height: 76px; padding-top: 18px; }
-  .rv-auth-brand { display: inline-flex; min-width: 0; align-items: center; gap: var(--rv-space-3); }
-  .rv-auth-symbol { width: 44px; height: 44px; flex: 0 0 44px; object-fit: contain; filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--rv-auth-accent) 28%, transparent)); }
   .rv-auth-system-status { display: inline-flex; align-items: center; gap: 9px; padding: 8px 12px; color: var(--rv-auth-muted); border: 1px solid var(--rv-auth-border); border-radius: 999px; font-family: var(--rv-font-mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
   .rv-auth-system-status i, .rv-auth-login-top i, .rv-auth-footer i { width: 7px; height: 7px; flex: 0 0 7px; background: var(--rv-auth-accent); border-radius: 50%; box-shadow: 0 0 0 4px color-mix(in srgb, var(--rv-auth-accent) 12%, transparent), 0 0 18px color-mix(in srgb, var(--rv-auth-accent) 72%, transparent); }
   .rv-auth-stage { position: relative; z-index: 1; display: grid; width: min(100%, 760px); margin: auto; padding: clamp(20px, 3.5vh, 36px) 24px 24px; justify-items: center; }
@@ -2422,26 +2420,7 @@ button,
   border-bottom: 1px solid var(--rv-color-border);
 }
 
-.rv-auth-brand {
-  gap: var(--rv-space-3);
-}
-
-.rv-auth-symbol {
-  display: block;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  padding: 0;
-  object-fit: contain;
-}
-
-.rv-auth-brand-name {
-  color: var(--rv-color-ink);
-  font-size: var(--rv-font-size-md);
-  font-weight: 600;
-}
-
-/* Sign-in header: the brand and the system status on the left, the light/dark switch on the right. */
+/* Sign-in header: the system status on the left, the light/dark switch on the right. */
 .rv-auth-header-start { display: inline-flex; min-width: 0; align-items: center; gap: var(--rv-space-4); }
 .rv-auth-header .rv-auth-theme { display: inline-flex; align-items: center; gap: var(--rv-space-2); min-height: 0; height: auto; padding: 6px 12px; color: var(--rv-color-muted); background: transparent; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); box-shadow: none; font: inherit; font-size: var(--rv-font-size-xs); font-weight: 500; letter-spacing: 0; text-transform: none; cursor: pointer; }
 .rv-auth-header .rv-auth-theme:hover { color: var(--rv-color-ink); border-color: var(--rv-color-border-strong); }

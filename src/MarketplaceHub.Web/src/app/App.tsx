@@ -319,7 +319,7 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
       </div>
     </div>
     <header className="rv-auth-header">
-      <div className="rv-auth-header-start"><div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-128.webp" alt="" /><span className="rv-auth-brand-name">Ravencia</span></div><span className="rv-auth-system-status"><i /> Sistem hazır</span></div>
+      <div className="rv-auth-header-start"><span className="rv-auth-system-status"><i /> Sistem hazır</span></div>
       <span className="rv-auth-context"><UiIcon name="layers" /> Operasyon Merkezi</span>
       <button type="button" className="rv-auth-theme" aria-pressed={theme === 'dark'} aria-label={theme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} onClick={switchTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={16} /><span>{theme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button>
     </header>
