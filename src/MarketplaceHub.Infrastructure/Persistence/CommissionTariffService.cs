@@ -130,8 +130,14 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         if (filter.HasCost is { } hasCost)
             query = query.Where(x => db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.CostPrice != null && variant.CostPrice > 0
                 && (variant.Barcode == x.Barcode || x.SellerSku != null && variant.Sku == x.SellerSku)) == hasCost);
-        var total = await query.CountAsync(cancellationToken);
-        var rows = await query.OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).Skip(page * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        // A page is a set of models (a row without a model code is a model of its own), each with all its variants, so a
+        // model's variants are never split across two pages.
+        var models = query.GroupBy(x => x.ModelCode != null && x.ModelCode != "" ? x.ModelCode : x.Barcode)
+            .Select(group => new { Key = group.Key, Name = group.Min(x => x.ProductName) });
+        var total = await models.CountAsync(cancellationToken);
+        var keys = await models.OrderBy(x => x.Name).ThenBy(x => x.Key).Skip(page * pageSize).Take(pageSize).Select(x => x.Key).ToListAsync(cancellationToken);
+        var rows = await query.Where(x => keys.Contains(x.ModelCode != null && x.ModelCode != "" ? x.ModelCode : x.Barcode))
+            .OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).ToListAsync(cancellationToken);
         var barcodes = rows.Select(x => x.Barcode).ToArray();
         var skus = rows.Where(x => x.SellerSku != null).Select(x => x.SellerSku!).ToArray();
         var matched = await PanelMatchesAsync(tenantId, connectionId, barcodes, skus, cancellationToken);

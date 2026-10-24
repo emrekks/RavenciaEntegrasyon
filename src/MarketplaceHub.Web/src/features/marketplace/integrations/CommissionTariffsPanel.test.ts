@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { bandRange, commissionTariffPlatforms, nextBandHint, noBulk, ownChoice, pickedTier, rateDisagrees, rateText, remainingText, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandRange, commissionTariffPlatforms, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+
+describe('commission tariff models', () => {
+  const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
+
+  it('puts a model\'s variants under it in their order, a row without a model code standing alone', () => {
+    const groups = groupByModel([row('1', 'MZ005'), row('2', 'MZ005'), row('3', null), row('4', ' '), row('5', 'MZ005')])
+    expect(groups.map(([key, rows]) => `${key}:${rows.map(item => item.id).join('')}`)).toEqual(['MZ005:125', 'B3:3', 'B4:4'])
+  })
+
+  it('writes a model\'s prices and what they leave as ranges, one value when all agree', () => {
+    expect(priceRange([791.01, 752.64, 899])).toBe('752,64 – 899,00 ₺')
+    expect(priceRange([752.64, 752.64])).toBe('752,64 ₺')
+    expect(amountRange([276.09, -12.5])).toBe('− 12,50 – 276,09 ₺')
+    expect(amountRange([276.09])).toBe('276,09 ₺')
+  })
+})
 
 const bands = [{ tier: 1, min: 470.64, max: null, rate: 21.5 }, { tier: 2, min: 435.98, max: 470.63, rate: 20.6 }, { tier: 3, min: 388.64, max: 435.97, rate: 19.4 }, { tier: 4, min: null, max: 388.63, rate: 17.5 }]
 const bulk = (values: Partial<TariffBulk>): TariffBulk => ({ ...noBulk, ...values })

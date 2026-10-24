@@ -63,6 +63,7 @@ public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost);
 public sealed record CommissionTariffChoice(Guid RowId, int? Tier, decimal? Price);
 public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows);
 
+// A page of models: Items are every variant of the page's models; TotalCount and PageSize count models.
 public sealed record CommissionTariffRowPage(IReadOnlyList<CommissionTariffRowView> Items, int TotalCount, int Page, int PageSize);
 
 // The rate a sale pays by the tariff in force at `At`, from the band its commission-basis price falls in.

@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react'
+import { Fragment, useRef, useState, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
@@ -60,6 +60,33 @@ export function ownChoice(row: Pick<CommissionTariffRow, 'bands' | 'costPrice'>,
   const commission = Math.round(rounded * band.rate) / 100
   return { tier: band.tier, price: rounded, rate: band.rate, commission, remaining: row.costPrice ? Math.round((rounded - commission - row.costPrice) * 100) / 100 : null }
 }
+
+// The page's rows by model, in their order: a row without a model code is a model of its own.
+export function groupByModel(rows: CommissionTariffRow[]): Array<[string, CommissionTariffRow[]]> {
+  const groups = new Map<string, CommissionTariffRow[]>()
+  for (const row of rows) {
+    const key = row.modelCode?.trim() || row.barcode
+    groups.set(key, [...(groups.get(key) ?? []), row])
+  }
+  return [...groups]
+}
+
+const amount = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// "752,64 – 791,01 ₺", or one price when all are the same.
+export function priceRange(values: number[]) {
+  const low = Math.min(...values), high = Math.max(...values)
+  return low === high ? money(low) : `${amount(low)} – ${money(high)}`
+}
+// What a model's variants leave, with its sign: "266,09 – 375,71 ₺".
+export function amountRange(values: number[]) {
+  const signed = (value: number) => `${value < 0 ? '− ' : ''}${amount(Math.abs(value))}`
+  const low = Math.min(...values), high = Math.max(...values)
+  return low === high ? `${signed(low)} ₺` : `${signed(low)} – ${signed(high)} ₺`
+}
+
+const productImage = (row: CommissionTariffRow) => row.imageUrl
+  ? <img src={thumbnailUrl(row.imageUrl)} alt="" loading="lazy" className="commission-product-image" />
+  : <i className="commission-product-image" aria-hidden="true">{(row.productName ?? row.barcode).slice(0, 1)}</i>
 
 // What a price leaves, with its share of the price.
 export function remainingText(choice: CommissionChoice) {
@@ -215,6 +242,18 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
   })
   // A click on the picked band takes it back (under a pick for every row, the row is then left out on purpose).
   const toggle = (row: CommissionTariffRow, tier: number, picked: boolean) => setPick(row.id, picked ? (bulkOn ? { tier: null, price: null } : null) : { tier, price: null })
+  // A model's switch picks the band for all its variants that have it, or takes it back from all of them.
+  const pickModel = (owners: CommissionTariffRow[], tier: number, all: boolean) => setPicks(current => {
+    const next = new Map(current)
+    for (const row of owners) {
+      if (!all) next.set(row.id, { tier, price: null })
+      else if (bulkOn) next.set(row.id, { tier: null, price: null })
+      else next.delete(row.id)
+    }
+    return next
+  })
+  // The models whose variants are folded away.
+  const [closed, setClosed] = useState<Set<string>>(() => new Set())
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   const download = useMutation({
     mutationFn: () => hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
@@ -282,43 +321,93 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
     {rows && rows.items.length === 0 && <p className="cs-empty">Aramaya uyan ürün yok.</p>}
     {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
       <thead><tr><th scope="col">Ürün</th><th scope="col">Güncel Fiyat</th>{tiers.map(tier => <th key={tier} scope="col">{tier}. Bant</th>)}<th scope="col">Kendi Fiyatın</th></tr></thead>
-      <tbody>{rows.items.map(row => {
-        const pick = picks.get(row.id)
-        const chosen = pickedTier(row, pick, applied)
-        return <tr key={row.id} className={chosen !== null ? 'is-picked' : undefined}>
-          <th scope="row"><span className="commission-product-cell">
-            {row.imageUrl ? <img src={thumbnailUrl(row.imageUrl)} alt="" loading="lazy" className="commission-product-image" /> : <i className="commission-product-image" aria-hidden="true">{(row.productName ?? row.barcode).slice(0, 1)}</i>}
-            <span>
-              <span className="commission-product">{row.productName ?? row.barcode}{row.size ? ` · ${row.size}` : ''}</span>
-              <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
-              <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
-              {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
-            </span>
-          </span></th>
-          <td>
-            <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
-            {row.currentSalePrice !== null && row.currentSalePrice !== row.basisPrice && <small>Satış fiyatı {money(row.currentSalePrice)}</small>}
-            {row.currentTier === null || row.currentBandRate === null ? <em className="commission-badge is-unknown">Bant bilinmiyor</em> : <em className={`commission-badge tier-${row.currentTier}`}>{rateText(row.currentBandRate)} · {row.currentTier}. bant</em>}
-            {rateDisagrees(row) && <small className="commission-warn" title="Pazaryerinin dosyadaki güncel komisyonu, fiyatın bandından farklı.">Dosyada {rateText(row.currentRate!)}</small>}
-          </td>
-          {tiers.map(tier => {
-            const choice = row.choices?.find(item => item.tier === tier)
-            if (!choice) return <td key={tier} className="commission-choice-none">—</td>
-            const band = row.bands.find(item => item.tier === tier)
-            const picked = chosen === tier
-            return <td key={tier}>
-              <button type="button" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}
-                className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
-                <strong>{money(choice.price)}</strong>
-                <small>{band?.max === null ? 've üzeri' : 've altı'}{row.currentTier === tier ? ' · şu an' : ''}</small>
-                <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
-                <b>{remainingText(choice)}</b>
-                <i className="commission-switch" aria-hidden="true"><span />{picked ? 'Seçili' : 'Seç'}</i>
-              </button>
+      <tbody>{groupByModel(rows.items).map(([key, group]) => {
+        // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
+        const variantRow = (row: CommissionTariffRow, nested: boolean) => {
+          const pick = picks.get(row.id)
+          const chosen = pickedTier(row, pick, applied)
+          return <tr key={row.id} className={`${nested ? 'is-variant' : ''}${chosen !== null ? ' is-picked' : ''}`.trim() || undefined}>
+            <th scope="row">{nested
+              ? <span className="commission-variant-cell">
+                <span className="commission-product">{row.size ?? row.productName ?? row.barcode}</span>
+                <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
+                <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
+                {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
+              </span>
+              : <span className="commission-product-cell">
+                {productImage(row)}
+                <span>
+                  <span className="commission-product">{row.productName ?? row.barcode}{row.size ? ` · ${row.size}` : ''}</span>
+                  <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
+                  <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
+                  {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
+                </span>
+              </span>}</th>
+            <td>
+              <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
+              {row.currentSalePrice !== null && row.currentSalePrice !== row.basisPrice && <small>Satış fiyatı {money(row.currentSalePrice)}</small>}
+              {row.currentTier === null || row.currentBandRate === null ? <em className="commission-badge is-unknown">Bant bilinmiyor</em> : <em className={`commission-badge tier-${row.currentTier}`}>{rateText(row.currentBandRate)} · {row.currentTier}. bant</em>}
+              {rateDisagrees(row) && <small className="commission-warn" title="Pazaryerinin dosyadaki güncel komisyonu, fiyatın bandından farklı.">Dosyada {rateText(row.currentRate!)}</small>}
             </td>
-          })}
-          <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>
-        </tr>
+            {tiers.map(tier => {
+              const choice = row.choices?.find(item => item.tier === tier)
+              if (!choice) return <td key={tier} className="commission-choice-none">—</td>
+              const band = row.bands.find(item => item.tier === tier)
+              const picked = chosen === tier
+              return <td key={tier}>
+                <button type="button" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}
+                  className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
+                  <strong>{money(choice.price)}</strong>
+                  <small>{band?.max === null ? 've üzeri' : 've altı'}{row.currentTier === tier ? ' · şu an' : ''}</small>
+                  <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
+                  <b>{remainingText(choice)}</b>
+                  <i className="commission-switch" aria-hidden="true"><span />{picked ? 'Seçili' : 'Seç'}</i>
+                </button>
+              </td>
+            })}
+            <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>
+          </tr>
+        }
+        if (group.length === 1) return variantRow(group[0], false)
+        const first = group.find(row => row.imageUrl) ?? group[0]
+        const open = !closed.has(key)
+        const prices = group.flatMap(row => row.basisPrice === null ? [] : [row.basisPrice])
+        // The model's row: its picture, name and code, how many variants it has, and each band over all of them.
+        return <Fragment key={key}>
+          <tr className="is-model">
+            <th scope="row"><span className="commission-product-cell">
+              {productImage(first)}
+              <span>
+                <span className="commission-product">{first.productName ?? first.barcode}</span>
+                <small className="technical-text">{group[0].modelCode}</small>
+                <button type="button" className="commission-model-toggle" aria-expanded={open} onClick={() => setClosed(current => { const next = new Set(current); if (open) next.add(key); else next.delete(key); return next })}>
+                  <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />{group.length.toLocaleString('tr-TR')} varyant
+                </button>
+              </span>
+            </span></th>
+            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} varyantın fiyatı</small></td>
+            {tiers.map(tier => {
+              const choices = group.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? [])
+              if (!choices.length) return <td key={tier} className="commission-choice-none">—</td>
+              const owners = group.filter(row => row.choices?.some(item => item.tier === tier))
+              const all = owners.every(row => pickedTier(row, picks.get(row.id), applied) === tier)
+              const rates = [...new Set(choices.map(item => item.rate))]
+              const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
+              return <td key={tier}>
+                <button type="button" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}
+                  className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
+                  <strong>{priceRange(choices.map(item => item.price))}</strong>
+                  <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
+                  <b>{lefts.length ? `${amountRange(lefts)} kalır` : 'Maliyet girilmemiş'}</b>
+                  {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın maliyeti yok</small>}
+                  <i className="commission-switch" aria-hidden="true"><span />{all ? 'Tümü seçili' : 'Tümünü seç'}</i>
+                </button>
+              </td>
+            })}
+            <td />
+          </tr>
+          {open && group.map(row => variantRow(row, true))}
+        </Fragment>
       })}</tbody>
     </table></div>}
     {rows && pageCount > 1 && <div className="commission-pager"><button type="button" className="secondary" disabled={page === 0} onClick={() => onPage(page - 1)}>Önceki</button><span>{(page + 1).toLocaleString('tr-TR')} / {pageCount.toLocaleString('tr-TR')}</span><button type="button" className="secondary" disabled={page + 1 >= pageCount} onClick={() => onPage(page + 1)}>Sonraki</button></div>}
