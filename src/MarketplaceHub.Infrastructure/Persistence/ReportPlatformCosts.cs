@@ -49,11 +49,11 @@ internal static class ReportPlatformCosts
             case "PAZARAMA":
                 {
                     // The barem below 300 TL up to 10 desi (the standard template, not same-day), otherwise the 7 Oct 2026
-                    // desi table, plus the post fee; an 8.99 + VAT platform fee an order.
+                    // desi table, plus the post fee; a 6.90 + VAT integration fee an order (live payouts of Oct 2026: 8.28).
                     var company = PazaramaCarrier(carrier);
                     var (low, high) = PazaramaBarem[company];
                     var cargo = parcel <= 10m && amount < 150m ? low : parcel <= 10m && amount < 300m ? high : Desi(PazaramaTable[company], parcel);
-                    return new(Shipping(cargo * PostFee * Vat, returned), 8.99m * Vat, Stoppage(keptVatFree), 0m);
+                    return new(Shipping(cargo * PostFee * Vat, returned), 6.90m * Vat, Stoppage(keptVatFree), 0m);
                 }
             case "PTTAVM":
                 // PTT Kargo at the contract's table (27 Mar 2026, VAT included); a 1.5 % infrastructure fee of the sale.

@@ -34,7 +34,7 @@ public sealed class ReportPlatformCostsTests
 
         var pazarama = ReportPlatformCosts.For("PAZARAMA", 100m, 0m, false, null, "Aras Kargo");
         Assert.Equal(80.83m * 1.0235m * 1.2m, pazarama.Cargo);
-        Assert.Equal(8.99m * 1.2m, pazarama.ServiceFee);
+        Assert.Equal(6.90m * 1.2m, pazarama.ServiceFee);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public sealed class ReportPlatformCostsTests
     }
 
     [Fact]
-    public void A_pazarama_order_takes_the_commission_its_money_movements_net_out_to_plus_vat()
+    public void A_pazarama_order_takes_the_commission_its_money_movements_net_out_to()
     {
         var store = Guid.NewGuid();
         var day = new DateOnly(2026, 10, 23);
@@ -88,10 +88,10 @@ public sealed class ReportPlatformCostsTests
 
         var report = ReportBuilder.Build(input, previous, new Dictionary<Guid, decimal>());
 
-        // 96 TL without VAT, 115.20 with it, shared 3 : 1 over the lines; the order not read yet has no commission.
-        Assert.Equal(115.2m, report.Commission.EstimatedCommission);
+        // 96 TL as the payout takes it off, shared 3 : 1 over the lines; the order not read yet has no commission.
+        Assert.Equal(96m, report.Commission.EstimatedCommission);
         Assert.Equal(800m, report.Commission.CoveredRevenue);
-        Assert.Equal(115.2m, report.Costs.Commission!.Combined);
+        Assert.Equal(96m, report.Costs.Commission!.Combined);
     }
 
     [Fact]

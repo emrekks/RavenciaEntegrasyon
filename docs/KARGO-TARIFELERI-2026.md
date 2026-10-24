@@ -347,7 +347,7 @@ Bu bölüm, komisyon ve kargo tarifesi dışında sipariş ya da satış başın
 
 | Bedel | Tutar | KDV dahil | Neye uygulanır | Geçerlilik | Güven |
 |---|---|---|---|---|---|
-| Platform (Entegrasyon) Hizmet Bedeli | **8,99 + KDV** | 10,79 | Her sipariş/gönderi, kargo modelinden bağımsız | 10 Şubat 2025'ten beri; 2026 değişikliği bulunamadı | D |
+| Platform (Entegrasyon) Hizmet Bedeli | **6,90 + KDV** | 8,28 | Her sipariş; bir siparişte 13,08 TL de görüldü | Kendi hakedişlerimizde Ekim 2026 (bloglardaki 8,99 + KDV doğru değil) | Kendi verimiz |
 | Kargo Posta Hizmet Bedeli | Kargo fiyatının %2,35'i | + KDV | Anlaşmalı kargo gönderileri | 7 Ekim 2026 listesi | R |
 | İkinci dağıtım / iade sevk | Gönderi ücretinin %50'si (DHL'de %100) | — | İade ya da tekrar dağıtım | 2026 | D |
 | E-ticaret stopajı | %1 | — | Yasal | 1 Ocak 2025'ten beri | B |
@@ -457,7 +457,7 @@ Stopaj iadesi, genel kural (D): aynı ay içinde dönen iadede stopaj oluşmaz. 
 | Trendyol | KDV dahil oran | Tarife + %20 KDV | Platform bedeli 10,99 + KDV; uluslararası bedel %6 KDV dahil; Azerbaycan vitrinindeki platform bedelinde KDV yok | Reklam kesinti faturası (%20 varsayılıyor, D). Cezalar hizmet karşılığı değilse KDV'siz olabilir (D). Stopajda KDV yok. | Komisyon faturası ayın 7, 14, 21, 28'i ve son günü; e-belge olarak Finans > Fatura Listeleme'de |
 | Hepsiburada | Oran KDV dahil fiyata uygulanıyor; üstüne KDV eklenip eklenmediği doğrulanmalı | Tarife KDV hariç + %20 | 10,99 + KDV (D) | — | Komisyon faturası ay sonunda, "Fatura Yönetimi"nde |
 | N11 | KDV dahil oran | Tarife + %2,35 PHB + KDV | %1 ve %0,67 + KDV; komisyon faturasında gösterilir | Stopaj ödeme öncesi kesilir | Komisyon faturası aylık, ayın 15'ine kadar |
-| Pazarama | **KDV hariç oran + %20 KDV** | Tarife + PHB + KDV | 8,99 + KDV (D) | — | Finans servisi sipariş başına komisyon faturası numarası ve KDV dahil tutar veriyor |
+| Pazarama | Hakedişten düşülen komisyon tutarı nihai tutardır (canlı: 625 − 75 komisyon − 5,68 stopaj − 112,33 kargo − 8,28 bedel = 423,71 hakediş). Tablodaki "KDV hariç" oranın üstüne ayrıca KDV düşülmüyor. | Tarife + PHB + KDV | 6,90 + KDV (kendi verimiz) | — | Finans servisi sipariş başına komisyon faturası numarası ve KDV dahil tutar veriyor |
 | PTT AVM | KDV dahil (2022, D) | Sözleşme tablosu KDV dahil | Altyapı %1,5 KDV dahil (D) | — | Bulunamadı |
 | Shopify | — | Kargo firmasının faturası | Abonelik USD; ödeme kuruluşu komisyonu BSMV'li (KDV indirimi yok) | — | Shopify faturası Billing sayfasında |
 
@@ -481,6 +481,6 @@ Kesintilerdeki KDV genel kurala göre indirilecek KDV'dir: kâr hesabında maliy
 - **Hizmet bedelleri:** Panel Trendyol'da platform bedeli (13,19), uluslararası bedel (%6) ve stopajı (%1) hesaplıyor. Diğer pazaryerlerinde de aynı yöntem uygulanabilir:
   - Hepsiburada: teslimat başına 10,99 + KDV.
   - N11: satışın %1 + %0,67'si + KDV.
-  - Pazarama: sipariş başına 8,99 + KDV.
+  - Pazarama: sipariş başına 6,90 + KDV (8,28 TL). Komisyon finans servisinden okunuyor.
   - PTT AVM: kaynak doğrulanınca %1,5.
 - **Tarifeler değişiyor:** 2026'da Trendyol'da 3, Hepsiburada'da en az 3 kez değişti. Elle girilen bir tablo eskir. Faturadan öğrenilen fiyat esas alınmalı, bu belge kontrol için kullanılmalı.

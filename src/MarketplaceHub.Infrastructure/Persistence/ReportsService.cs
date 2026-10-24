@@ -352,7 +352,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     // an order never imported). A record of an order of another period is left to that period. Cargo invoice lines
     // follow the same rule, by their order or by their invoice's date. Null when the report has no such store.
     // The commission of the period's Pazarama orders whose money movements were read: the movements' commission netted
-    // (a refund gives it back), without VAT. An order with no movement read yet is not here.
+    // (a refund gives it back), as the payout takes it off. An order with no movement read yet is not here.
     private async Task<Dictionary<Guid, decimal>?> PazaramaCommissionsAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, IReadOnlyList<ReportOrderRow> orders,
         CancellationToken cancellationToken)
     {
