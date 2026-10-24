@@ -292,6 +292,87 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         }
     }
 
+    // 23-30 Sep 2026: a Saudi micro-export order's accepted claim had no refund on Trendyol's statement and Trendyol's
+    // sales report did not count it; the panel counts such a return only once the statement records it.
+    [PostgreSqlFact]
+    public async Task A_micro_export_return_counts_once_trendyols_statement_records_it()
+    {
+        var tenant = NewTenant("rep-mx");
+        var trendyol = NewConnection(tenant.Id, "TRENDYOL", "PRODUCTION");
+        var saudi = NewOrder(tenant.Id, trendyol.Id, "t-sa", TrendyolNoon, 300m, "DELIVERED", "{}", "{}");
+        saudi.StoreFrontCode = "SA";
+        var saudiLine = NewLine(saudi, "t-sa-1", 100m, 3m, "{}", null);
+        var domestic = NewOrder(tenant.Id, trendyol.Id, "t-tr", TrendyolNoon, 100m, "DELIVERED", """{"city":"Ankara"}""", "{}");
+        var domesticLine = NewLine(domestic, "t-tr-1", 100m, 1m, "{}", null);
+        ReturnClaim Claim(Order order, string id) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = trendyol.Id,
+            OrderId = order.Id,
+            ExternalClaimId = id,
+            Status = ReturnClaimStatus.Approved,
+            RawStatus = "Accepted",
+            ReasonText = "Bedeni/Ebatı Büyük Geldi",
+            LastRemoteModifiedAt = Now,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        };
+        var saudiClaim = Claim(saudi, "claim-sa");
+        var domesticClaim = Claim(domestic, "claim-tr");
+        try
+        {
+            await using (var seed = fixture.CreateContext())
+            {
+                seed.Tenants.Add(tenant);
+                seed.PlatformConnections.Add(trendyol);
+                seed.Orders.AddRange(saudi, domestic);
+                seed.OrderLines.AddRange(saudiLine, domesticLine);
+                seed.ReturnClaims.AddRange(saudiClaim, domesticClaim);
+                seed.ReturnLines.AddRange(
+                    new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = saudiClaim.Id, OrderLineId = saudiLine.Id, ExternalLineId = "sa-1", Quantity = 3m, RawStatus = "Accepted" },
+                    new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = domesticClaim.Id, OrderLineId = domesticLine.Id, ExternalLineId = "tr-1", Quantity = 1m, RawStatus = "Accepted" });
+                await seed.SaveChangesAsync();
+            }
+
+            // No refund on the statement yet: only the domestic unit is back.
+            var before = await ReportAsync(tenant.Id, includeTest: false);
+            Assert.Equal(1m, before.Summary.ReturnedQuantity);
+            Assert.Equal(1, before.Summary.ReturnClaims);
+
+            await using (var refund = fixture.CreateContext())
+            {
+                refund.MarketplaceFinanceTransactions.Add(new MarketplaceFinanceTransaction
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenant.Id,
+                    ConnectionId = trendyol.Id,
+                    PlatformCode = "TRENDYOL",
+                    Source = "SETTLEMENTS",
+                    ExternalId = "ret-sa",
+                    RequestedType = "Return",
+                    TransactionType = "İade",
+                    Category = MarketplaceFinanceCategories.Return,
+                    TransactionDate = Now,
+                    OrderNumber = "t-sa",
+                    Debt = 300m,
+                    RawJson = "{}",
+                    FirstSeenAt = Now,
+                    UpdatedAt = Now
+                });
+                await refund.SaveChangesAsync();
+            }
+
+            var after = await ReportAsync(tenant.Id, includeTest: false);
+            Assert.Equal(4m, after.Summary.ReturnedQuantity);
+            Assert.Equal(2, after.Summary.ReturnClaims);
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task<ReportSalesView> ReportAsync(Guid tenantId, bool includeTest)
     {
         await using var db = fixture.CreateContext();
@@ -386,6 +467,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         await using var db = fixture.CreateContext();
         await db.MarketplaceCargoInvoiceItems.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceFinanceTransactions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnClaims.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
