@@ -272,8 +272,13 @@ public sealed record ReportRealCommissionView(decimal Real, int RealOrders, deci
 // Combined = Real + Estimated.
 // PlatformOrders / PlatformEstimated: the orders of the platforms whose statement is not read (Hepsiburada, n11,
 // Pazarama, PTT AVM, Shopify) and their cargo from the platforms' tariffs; part of Estimated and Combined.
+// DesiSources: of those orders, how many had their parcel's desi from the marketplace's order (MARKETPLACE), the
+// products' entered desi (MANUAL), the desi measured on billed Trendyol parcels (MEASURED) or a store-wide default
+// (DEFAULT); MeasuredParcels: the billed parcels the measured desi was learned from.
 public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int UnbilledOrders, decimal? AveragePerOrder, int SampleOrders, decimal? Estimated, decimal Combined,
-    int PlatformOrders = 0, decimal PlatformEstimated = 0m);
+    int PlatformOrders = 0, decimal PlatformEstimated = 0m, ReportDesiSourcesView? DesiSources = null);
+
+public sealed record ReportDesiSourcesView(int Marketplace, int Manual, int Measured, int Default, int MeasuredParcels);
 
 // One store. RealCommission: its settled orders and its commission records tied to no order of the period;
 // EstimatedCommission: its other orders; Amounts: its real costs by category (commission apart); EstimatedCargo: the

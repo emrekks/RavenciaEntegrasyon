@@ -218,11 +218,15 @@ internal static class ReportCosts
         var carriers = input.Packages.Where(package => !string.IsNullOrWhiteSpace(package.CargoProvider))
             .GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.First().CargoProvider);
         decimal platformCargo = 0m, platformFees = 0m, platformVatFees = 0m;
+        var desiInput = input.Desi ?? ReportDesiInput.None;
+        var desiSources = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var order in platformOrders)
         {
-            var desi = order.Lines.Any(line => line.Row.Desi is > 0)
-                ? order.Lines.Sum(line => (line.Row.Desi is > 0 ? line.Row.Desi.Value : ReportPlatformCosts.DefaultDesi) * Math.Max(1m, line.Active))
-                : (decimal?)null;
+            var (desi, desiSource) = ReportParcelDesi.ForOrder(
+                desiInput.DeclaredByOrder.TryGetValue(order.Order.Id, out var declared) ? declared : null,
+                order.Lines.Select(line => (line.Row.Desi, line.Row.ProductId, line.Row.CategoryId, line.Active)),
+                desiInput.Learned);
+            desiSources[desiSource] = desiSources.GetValueOrDefault(desiSource) + 1;
             var keptVatFree = order.Country == ReportBuckets.Turkey ? order.Lines.Sum(VatFree) : 0m;
             var cost = ReportPlatformCosts.For(order.PlatformCode, order.Amount, keptVatFree, order.Back > 0 && order.Kept == 0m, desi, carriers.GetValueOrDefault(order.Order.Id));
             var store = order.Order.ConnectionId;
@@ -245,7 +249,10 @@ internal static class ReportCosts
         var allEstimated = (cargoEstimate ?? 0m) + platformCargo;
         var cargoView = new ReportCargoCostView(realCargo, financeOrders.Count(order => billed.Contains(order.Order.Id)), unbilledCount,
             sampleOrders > 0 ? Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders,
-            cargoEstimate is null && platformOrders.Count == 0 ? null : allEstimated, realCargo + allEstimated, platformOrders.Count, platformCargo);
+            cargoEstimate is null && platformOrders.Count == 0 ? null : allEstimated, realCargo + allEstimated, platformOrders.Count, platformCargo,
+            platformOrders.Count == 0 ? null : new ReportDesiSourcesView(
+                desiSources.GetValueOrDefault(ReportParcelDesi.Marketplace), desiSources.GetValueOrDefault(ReportParcelDesi.Manual),
+                desiSources.GetValueOrDefault(ReportParcelDesi.Measured), desiSources.GetValueOrDefault(ReportParcelDesi.Default), desiInput.Learned.Parcels));
 
         // The service fees and the withholding tax of the Trendyol orders Trendyol has not settled yet.
         foreach (var store in financeOrders.Where(order => !settled.Contains(order.Order.Id)).GroupBy(order => order.Order.ConnectionId))

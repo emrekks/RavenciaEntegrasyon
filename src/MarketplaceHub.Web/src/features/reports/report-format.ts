@@ -53,13 +53,30 @@ export type ReportSales = {
 // period's cities and countries for the change, and how many orders went abroad (left out of `cities`).
 export type ReportGeography = { countries: ReportGroup[]; previousCities: ReportGroup[]; previousCountries: ReportGroup[]; abroadOrders: number }
 
+// Of the orders costed from a platform's cargo tariff, how many took their parcel's desi from the marketplace's order,
+// the products' entered desi, the desi measured on billed Trendyol parcels (measuredParcels of them) or a default.
+export type ReportDesiSources = { marketplace: number; manual: number; measured: number; default: number; measuredParcels: number }
+
+// "Desi: 5 siparişte pazaryerinin bildirdiği, 30 siparişte Trendyol kargo faturalarından ölçülen (1.320 koli)…"
+export function desiSourcesNote(sources: ReportDesiSources | null | undefined) {
+  if (!sources) return ''
+  const count = (value: number) => value.toLocaleString('tr-TR')
+  const parts = [
+    sources.marketplace ? `${count(sources.marketplace)} siparişte pazaryerinin siparişte bildirdiği` : '',
+    sources.manual ? `${count(sources.manual)} siparişte ürüne girilen` : '',
+    sources.measured ? `${count(sources.measured)} siparişte Trendyol kargo faturalarından ölçülen (${count(sources.measuredParcels)} koli)` : '',
+    sources.default ? `${count(sources.default)} siparişte ${sources.measuredParcels ? 'mağaza ortalaması' : 'varsayılan 1 desi'}` : ''
+  ].filter(Boolean)
+  return parts.length ? ` Desi: ${parts.join(', ')}.` : ''
+}
+
 // The real costs read from Trendyol's account statement (source "trendyol-finance"), next to the estimates; with
 // "estimate" nothing was read for the period and every field below the counts is null or empty.
 export type ReportCosts = {
   source: 'trendyol-finance' | 'estimate'; lastSyncedAt: string | null; coveredFrom: string | null; coveredThrough: string | null
   financeOrders: number; settledOrders: number; coverage: number | null; realCostTotal: number | null
   commission: { real: number; realOrders: number; estimatedForSettled: number; estimatedForUnsettled: number; combined: number } | null
-  cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number; platformOrders?: number; platformEstimated?: number } | null
+  cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number; platformOrders?: number; platformEstimated?: number; desiSources?: ReportDesiSources | null } | null
   lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; unlinked: number; estimated?: number }>
   // The net VAT of the Trendyol orders (server-side estimate): sales VAT less the VAT in the product cost and in Trendyol's
   // charges; below zero it is carried forward.

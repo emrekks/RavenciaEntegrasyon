@@ -214,6 +214,8 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
                 seed.OrderLines.AddRange(istanbulLine, ankaraLine, noCityLine, cancelledLine, testLine);
                 seed.ReturnClaims.Add(claim);
                 seed.ShipmentPackages.Add(package);
+                // A billed parcel the desi is learned from: the report reads it through orders, lines and products.
+                seed.MarketplaceCargoInvoiceItems.Add(new MarketplaceCargoInvoiceItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, InvoiceSerialNumber = "KRG-1", LineNo = 1, ShipmentPackageType = "Gönderi Kargo Bedeli", ParcelUniqueId = "p-1", OrderNumber = istanbul.OrderNumber, Amount = 93.05m, Desi = 1, RawJson = "{}", FetchedAt = Now });
                 seed.OrderStatusHistory.AddRange(
                     new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = istanbul.Id, PackageId = package.Id, CanonicalStatus = "SHIPPED", RawStatus = "Shipped", SourceEventId = "s1", OccurredAt = TrendyolNoon.AddHours(24), RecordedAt = Now },
                     new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = istanbul.Id, PackageId = package.Id, CanonicalStatus = "DELIVERED", RawStatus = "Delivered", SourceEventId = "s2", OccurredAt = TrendyolNoon.AddHours(72), RecordedAt = Now });
@@ -336,6 +338,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             // No refund on the statement yet: only the domestic unit is back.
             var before = await ReportAsync(tenant.Id, includeTest: false);
             Assert.Equal(1m, before.Summary.ReturnedQuantity);
+            Assert.Equal(100m, before.Summary.ReturnedAmount);
             Assert.Equal(1, before.Summary.ReturnClaims);
 
             await using (var refund = fixture.CreateContext())
@@ -363,6 +366,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
 
             var after = await ReportAsync(tenant.Id, includeTest: false);
             Assert.Equal(4m, after.Summary.ReturnedQuantity);
+            Assert.Equal(400m, after.Summary.ReturnedAmount);
             Assert.Equal(2, after.Summary.ReturnClaims);
         }
         finally
@@ -463,6 +467,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
     private async Task DeleteTenantAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();
+        await db.MarketplaceCargoInvoiceItems.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.MarketplaceFinanceTransactions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();

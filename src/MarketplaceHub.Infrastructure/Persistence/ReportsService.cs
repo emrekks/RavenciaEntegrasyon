@@ -75,11 +75,14 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                 select new { tariff, row }).ToListAsync(cancellationToken);
         var tariffs = tariffRows.Count == 0 ? null : new ReportCommissionTariffs(tariffRows.Select(x => (x.tariff, x.row)));
         var finance = await FinanceAsync(tenantId, allowed, orders, current, cancellationToken);
+        var learnedDesi = await LearnedDesiAsync(tenantId, cancellationToken);
         var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, tariffs, finance,
-            await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken));
+            await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken),
+            new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
         var previousFinance = await FinanceAsync(tenantId, allowed, previousOrders, previous, cancellationToken);
         var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, previousOrderExtras, previousLines,
-            previousLineExtras, previousClaims, [], names, query.IncludeTest, tariffs, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken));
+            previousLineExtras, previousClaims, [], names, query.IncludeTest, tariffs, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken),
+            new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, previousOrders, cancellationToken)));
         var stockVariants = ReportBuilder.StockCandidates(input);
         var stock = stockVariants.Length == 0
             ? new Dictionary<Guid, decimal>()
@@ -180,13 +183,17 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                           : 0m
                       let lineValue = orderLines.Where(line => line.OrderId == order.Id).Sum(line => line.UnitPrice * (line.OrderedQuantity - line.CancelledQuantity))
+                      // A micro-export order's accepted return counts once Trendyol's statement records it (LineRowsAsync).
+                      let returnBooked = order.StoreFrontCode == null || order.StoreFrontCode == "" || order.StoreFrontCode == "TR"
+                          || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == order.ConnectionId
+                              && entry.OrderNumber == order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
                       let lineBack = orderLines.Where(line => line.OrderId == order.Id)
                           .Select(line => new
                           {
                               line.UnitPrice,
                               Active = line.OrderedQuantity - line.CancelledQuantity,
                               line.ReturnedQuantity,
-                              Accepted = db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
+                              Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
                                       && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
                                           && (returned.RawStatus == null || returned.RawStatus == ""
                                               ? acceptedClaims.Contains(claim.Status)
@@ -380,6 +387,69 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var byOrder = sums.ToDictionary(x => (x.ConnectionId, x.OrderNumber!), x => x.Commission);
         return pazarama.Where(order => byOrder.ContainsKey((order.ConnectionId, order.OrderNumber)))
             .ToDictionary(order => order.Id, order => byOrder[(order.ConnectionId, order.OrderNumber)]);
+    }
+
+    // The unit desi learned from every billed Trendyol shipping parcel of the tenant's last year, whatever stores the
+    // report shows: the same products go to every marketplace in the same parcels. A parcel is one order with one
+    // shipping line; an order billed in several parcels says nothing of one parcel's contents and is left out.
+    private async Task<ReportParcelDesi.Learned> LearnedDesiAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var since = timeProvider.GetUtcNow().ToUniversalTime().AddDays(-365);
+        var items = await db.MarketplaceCargoInvoiceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderNumber != null && x.Desi != null && x.FetchedAt >= since)
+            .Select(x => new { x.ConnectionId, OrderNumber = x.OrderNumber!, x.ShipmentPackageType, x.ParcelUniqueId, Desi = x.Desi!.Value })
+            .ToListAsync(cancellationToken);
+        var parcels = items
+            .Where(x => !TrendyolFinanceCategorizer.Fold(x.ShipmentPackageType).Contains("iade", StringComparison.Ordinal))
+            .GroupBy(x => (x.ConnectionId, x.OrderNumber))
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => (decimal)group.First().Desi);
+        if (parcels.Count == 0) return ReportParcelDesi.Learned.None;
+
+        var lines = new List<(Guid ConnectionId, string OrderNumber, ReportParcelDesi.ParcelLine Line)>();
+        foreach (var chunk in parcels.Keys.Select(key => key.OrderNumber).Distinct(StringComparer.Ordinal).Chunk(2_000))
+            lines.AddRange((await (from order in db.Orders.AsNoTracking()
+                                   where order.TenantId == tenantId && chunk.Contains(order.OrderNumber)
+                                   join line in db.OrderLines.AsNoTracking() on new { order.TenantId, OrderId = order.Id } equals new { line.TenantId, line.OrderId }
+                                   join variant in db.ProductVariants.AsNoTracking() on new { line.TenantId, Id = line.VariantId ?? Guid.Empty } equals new { variant.TenantId, variant.Id } into variants
+                                   from variant in variants.DefaultIfEmpty()
+                                   join product in db.Products.AsNoTracking() on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
+                                   from product in products.DefaultIfEmpty()
+                                   select new
+                                   {
+                                       order.ConnectionId,
+                                       order.OrderNumber,
+                                       ProductId = variant == null ? null : (Guid?)variant.ProductId,
+                                       CategoryId = product == null ? null : product.CategoryId,
+                                       Units = line.OrderedQuantity - line.CancelledQuantity
+                                   }).ToListAsync(cancellationToken))
+                .Select(row => (row.ConnectionId, row.OrderNumber, new ReportParcelDesi.ParcelLine(row.ProductId, row.CategoryId, row.Units))));
+        return ReportParcelDesi.Learn(lines
+            .Where(row => parcels.ContainsKey((row.ConnectionId, row.OrderNumber)))
+            .GroupBy(row => (row.ConnectionId, row.OrderNumber))
+            .Select(group => new ReportParcelDesi.Parcel(parcels[group.Key], group.Select(row => row.Line).ToList())));
+    }
+
+    // By Hepsiburada order: the desi Hepsiburada put on its lines, added up; an order with a line without one has none.
+    private async Task<IReadOnlyDictionary<Guid, decimal>> DeclaredDesiAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, IReadOnlyList<ReportOrderRow> orders,
+        CancellationToken cancellationToken)
+    {
+        var stores = allowed.Values.Where(channel => channel.PlatformCode == "HEPSIBURADA").Select(channel => channel.Id).ToHashSet();
+        var orderIds = orders.Where(order => stores.Contains(order.ConnectionId)).Select(order => order.Id).ToArray();
+        var result = new Dictionary<Guid, decimal>();
+        foreach (var chunk in orderIds.Chunk(2_000))
+        {
+            var lines = await db.OrderLines.AsNoTracking()
+                .Where(line => line.TenantId == tenantId && chunk.Contains(line.OrderId))
+                .Select(line => new { line.OrderId, line.SourceSnapshotJson })
+                .ToListAsync(cancellationToken);
+            foreach (var order in lines.GroupBy(line => line.OrderId))
+            {
+                var desi = order.Select(line => ReportParcelDesi.HepsiburadaLineDesi(line.SourceSnapshotJson)).ToList();
+                if (desi.All(value => value is not null)) result[order.Key] = desi.Sum(value => value!.Value);
+            }
+        }
+        return result;
     }
 
     private async Task<ReportFinance?> FinanceAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, IReadOnlyList<ReportOrderRow> orders,
