@@ -206,9 +206,10 @@ describe('ReportsPage', () => {
     const costs = withFinance.costs!
     const page = await open('', { ...withFinance, costs: { ...costs, realCostTotal: 68, lines: [...costs.lines,
       { category: 'OTHER_DEDUCTION', label: 'Diğer kesinti', isCost: true, amount: 4.5, records: 1, orderLinked: 0, unlinked: 4.5 }] } })
-    const fees = await openStep(page, 'Masraflar:')
-    expect(fees).toContain('18,00')
-    expect(fees).toContain('Hizmet Bedeli, Stopaj, Diğer Kesinti')
+    // It has its own line among the costs, and only when there is one (the other tests list none).
+    const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
+    expect(lines).toContain('Diğer Kesinti ₺4,50')
+    expect(bridgeRows(page).some(row => row.includes('Pazaryeri Masrafları') && row.includes('58,50'))).toBe(true)
   })
 
   it('paints the provinces, ranks them beside the map, opens one and switches to the export countries', async () => {

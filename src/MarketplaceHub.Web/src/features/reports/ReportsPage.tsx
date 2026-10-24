@@ -422,7 +422,8 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
     { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission', note: commission?.note || 'Komisyon bilinmiyor' },
     { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo', note: finance ? cargo?.note || 'Bu dönemde kargo yok' : notRead },
     { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: `${formatNumber(data.summary.returnedQuantity)} adet iade` },
-    ...feeCategories.map(fee => {
+    // "Diğer Kesinti" gathers deduction invoices no rule names, so it is listed only when there is one.
+    ...feeCategories.filter(fee => fee.category !== 'OTHER_DEDUCTION' || finance?.lines.some(item => item.category === fee.category && item.amount !== 0)).map(fee => {
       const line = finance?.lines.find(item => item.category === fee.category)
       return { key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.label, value: finance ? line?.amount ?? 0 : null, tone: fee.key,
         note: !finance ? notRead : line ? `${formatCount(line.records)} kayıt · Trendyol cari hesabı, işlem tarihine göre` : 'Cari hesapta bu dönemde kayıt yok' }
