@@ -114,7 +114,8 @@ internal static class ReportCosts
         var coveredThrough = states.Count == 0 || states.Values.Any(state => state?.CoveredThrough is null) ? null : states.Values.Min(state => state!.CoveredThrough);
         // A store whose statement has been read is costed even before Trendyol wrote a record of the period (yesterday's
         // orders): everything is then estimated from its own history.
-        var platformOrders = orders.Where(order => order.Currency == "TRY" && ReportPlatformCosts.Covers(order.PlatformCode)).ToList();
+        // An order without an amount (its sale is not counted either) is not costed: its cargo would weigh on no sale.
+        var platformOrders = orders.Where(order => order.Currency == "TRY" && order.Amount > 0 && ReportPlatformCosts.Covers(order.PlatformCode)).ToList();
         var read = finance is not null && (finance.Rows.Count > 0 || finance.CargoItems.Count > 0 || finance.States.Values.Any(state => state?.CoveredThrough is not null));
         if (!read && platformOrders.Count == 0)
             return new(EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, 0, null, null, null, null, [], [], []);

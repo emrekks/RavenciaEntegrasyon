@@ -67,7 +67,7 @@ public sealed class ReportPlatformCostsTests
         var day = new DateOnly(2026, 10, 23);
         var start = new DateTimeOffset(2026, 10, 22, 21, 0, 0, TimeSpan.Zero);
         var at = start.AddHours(12);
-        var (a, b) = (Guid.NewGuid(), Guid.NewGuid());
+        var (a, b, free) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         var (lineA, lineB) = (Guid.NewGuid(), Guid.NewGuid());
         var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
             new Dictionary<Guid, ReportChannelView>
@@ -77,7 +77,9 @@ public sealed class ReportPlatformCostsTests
             },
             [
                 new() { Id = a, ConnectionId = hb, OrderNumber = "A", DerivedStatus = "SHIPPED", Amount = 600m, LineValue = 600m, RealAt = at, OrderedAt = at },
-                new() { Id = b, ConnectionId = shop, OrderNumber = "B", DerivedStatus = "SHIPPED", Amount = 1000m, LineValue = 1000m, RealAt = at, OrderedAt = at }
+                new() { Id = b, ConnectionId = shop, OrderNumber = "B", DerivedStatus = "SHIPPED", Amount = 1000m, LineValue = 1000m, RealAt = at, OrderedAt = at },
+                // No amount (live Shopify orders of 0 TL): not costed, as its sale is not counted.
+                new() { Id = free, ConnectionId = shop, OrderNumber = "F", DerivedStatus = "SHIPPED", Amount = 0m, LineValue = 0m, RealAt = at, OrderedAt = at }
             ],
             new Dictionary<Guid, ReportOrderExtra>(),
             [
