@@ -1,4 +1,6 @@
-# Pazaryeri Kargo Tarifeleri 2026
+# Pazaryeri Kargo Tarifeleri ve Hizmet Bedelleri 2026
+
+Bölüm 1–5 kargo tarifeleri ve baremler, bölüm 6 hizmet ve platform bedelleri.
 
 24 Ekim 2026'da derlendi. Kaynaklar:
 - herkese açık resmî sayfalar ve PDF'ler;
@@ -24,7 +26,7 @@ Güven:
 | Hepsiburada | hepsiJET | 81,99 | 98,39 | 400 TL altı, yalnızca hepsiJET/Sürat | R (desi), B (barem) |
 | N11 | PTT | 81,82 | 98,18 + PHB | 300 TL altı, 10 desiye kadar | R |
 | Pazarama | Aras | 91,46 | 109,75 + PHB | 300 TL altı, 10 desiye kadar | R |
-| PTT AVM | PTT Kargo | — | 61,43 (blogda KDV dahil yazılı) | çelişkili | D |
+| PTT AVM | PTT Kargo | 65,63 | 78,75 | çelişkili | R (sözleşme eki, 27 Mart 2026) |
 
 ## 1. Trendyol
 
@@ -262,14 +264,32 @@ Barem geçmişi (B): Haziran 2026 listesinde PTT 34,16 / 65,83 idi ve sınır 5 
 
 ## 5. PTT AVM
 
-- Resmî tablo satıcı panelinin arkasında (tedarikci.pttavm.com/app/informations/cargo-prices). Herkese açık, 2026 tarihli bir tablo bulunamadı.
-- Bloglardaki tablo (Sentos 17 Temmuz 2026, Sopyo 12 Haziran 2026):
-  - PTT Kargo, **KDV dahil**.
-  - Aynı tablo 2024 tarihli bir yazıda da geçiyor, güncel olmayabilir (D).
+**Desi tablosu (R).**
+- Kaynak: PTT AVM'nin satıcıya verdiği kargo sözleşmesi eki, "Güncellenen Yeni Kargo Fiyatları". PDF'in tarihi 27 Mart 2026.
+- Taşıyıcı PTT Kargo. Fiyatlar **KDV dahil**. Ağırlık ile desiden büyüğü esas alınır.
+- Tam tablo: [kargo-tarifeleri/pttavm-2026-03-27.tsv](kargo-tarifeleri/pttavm-2026-03-27.tsv).
 
-| kg/desi | 0–0,5 | 0,5–1 | 1–2 | 2–3 | 3–4 | 4–5 | 5–6 | 6–7 | 7–8 | 8–9 | 9–10 | 10–11 | 11–12 | 12–13 | 13–14 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| TL | 61,43 | 62,93 | 64,43 | 65,93 | 67,43 | 68,93 | 71,83 | 82,88 | 99,45 | 104,98 | 110,50 | 114,66 | 122,85 | 126,85 | 131,04 |
+| kg/desi | KDV dahil | KDV hariç | | kg/desi | KDV dahil | KDV hariç |
+|---|---|---|---|---|---|---|
+| 0–0,5 | 77,50 | 64,58 | | 10–11 | 143,75 | 119,79 |
+| 0,5–1 | 78,75 | 65,63 | | 15–16 | 156,25 | 130,21 |
+| 1–2 | 81,25 | 67,71 | | 20–21 | 169,90 | 141,58 |
+| 2–3 | 82,50 | 68,75 | | 25–26 | 194,90 | 162,42 |
+| 3–4 | 85,00 | 70,83 | | 30–31 | 199,90 | 166,58 |
+| 4–5 | 86,25 | 71,88 | | 40–41 | 337,50 | 281,25 |
+| 5–6 | 90,00 | 75,00 | | 50–51 | 398,75 | 332,29 |
+| 6–7 | 103,75 | 86,46 | | 75–76 | 681,25 | 567,71 |
+| 7–8 | 125,00 | 104,17 | | 99–100 | 1.019,64 | 849,70 |
+| 8–9 | 131,25 | 109,38 | | 101 | 1.253,18 | 1.044,32 |
+| 9–10 | 138,75 | 115,63 | | 1000 | 8.729,60 | 7.274,67 |
+
+- PTT AVM'nin fiyatı diğer pazaryerlerinden farklı kuruluyor:
+  - 0–6 desi arasında fiyat çok yavaş artıyor.
+  - Bazı aralıklarda fiyat sabit kalıyor (20–25 desi 169,90; 25–30 desi 194,90).
+  - 14–15 desi (153,75), 13–14 desiden (165,00) ucuz. Bu PDF'te öyle yazıyor.
+- 100 desinin üstünde PDF her desiyi tek tek veriyor. Fiyat desi başına yaklaşık 7,88 TL artıyor, 960–1000 desi arasında 8,25 TL.
+- PDF'te bariz yazım hataları var (örneğin 962 desi "2.380.196", 190 desi "19.845"). Bu satırlar komşu satırlardan okunmalı.
+- Bu kaynak, bloglardaki 61,43 TL'den başlayan eski tablonun yerini alıyor.
 
 **Barem:** Kaynaklar çelişiyor.
 - Bir kaynak genel kategoride 250 TL, kitapta 750 TL diyor.
@@ -278,6 +298,68 @@ Barem geçmişi (B): Haziran 2026 listesinde PTT 34,16 / 65,83 idi ve sınır 5 
 
 Kargodan ayrı olarak %1,5 altyapı/ödeme bedeli kesiliyor (2025).
 
+## 6. Hizmet ve platform bedelleri (komisyon ve kargo dışında)
+
+Bu bölüm, komisyon ve kargo tarifesi dışında sipariş ya da satış başına kesilen bedelleri listeler.
+
+### Trendyol
+
+| Bedel | Tutar | KDV dahil | Neye uygulanır | Geçerlilik | Güven |
+|---|---|---|---|---|---|
+| Platform Hizmet Bedeli | 10,99 + KDV | **13,19** | Taşıma statüsüne geçen her paket. Bölünen siparişte her paket için ayrı alınır. İade gönderisinde alınmaz. | 30 Ocak 2026'dan beri; öncesinde 8,49 + KDV | R + B, ekstrelerimizle doğrulandı |
+| Platform Hizmet Bedeli, "Bugün Kargoda" | 4,99 + KDV | 5,99 | Bugün Kargoda etiketli ve aynı gün taşımaya geçen paket; yalnızca hafta içi | 15 Haziran 2026'dan beri; 30 Ocak'ta 6,99 + KDV idi | R + B |
+| Uluslararası Hizmet Bedeli | Satış fiyatının **%6'sı** | KDV dahil | Mikro ihracat siparişleri, ürün başına. Trendyol'un karşıladığı indirimler hariç tutulur. İptal ve iadede alınmaz. | 30 Ocak 2026'dan beri; öncesinde %5 | B, ekstrelerimizle doğrulandı (34,22 / 570,34 = %6) |
+| AZ-Platform Hizmet Bedeli | 10,99 | KDV yok | Azerbaycan vitrini siparişleri | ekstrelerimizde | Kendi verimiz |
+| AZ-Uluslararası Hizmet Bedeli | %6 | — | Azerbaycan vitrini siparişleri | ekstrelerimizde | Kendi verimiz |
+| Yurtdışı Operasyon İade Bedeli | 159,90–1.025,00 | — | Mikro ihracat iadesi (Ağustos–Ekim 2026'da 11 kayıt) | ekstrelerimizde | Kendi verimiz |
+| E-ticaret stopajı | KDV hariç satışın %1'i | — | Hakedişten kesilir, ekstrede ayrı satır olarak görünür | 1 Ocak 2025'ten beri | R |
+| Tedarik edememe / eksik / yanlış gönderim cezası | 0–149 TL siparişte 50 TL'den 10.000 TL ve üstü siparişte 1.000 TL'ye kademeli; ağır kusurlu ürün gönderi başına 300 TL | — | Paket başına; tutar müşteriye hediye çeki olarak verilir | 2 Haziran 2025'ten beri; 2026 güncellemesi bulunamadı | B (2025) |
+| Geç kargolama cezası | Kademeli; üst kademe 250 TL. Termin 5 günden fazla aşılırsa tedarik edememe sayılır. | — | Terminde kargoya teslim edilmeyen paket | 2025 | D |
+
+### Hepsiburada
+
+| Bedel | Tutar | KDV dahil | Neye uygulanır | Geçerlilik | Güven |
+|---|---|---|---|---|---|
+| Hizmet Bedeli | **10,99 + KDV** | 13,19 | Her teslimat, barem gönderileri dahil | 21 Eylül 2026'dan beri | D (tek blog; HB ekstresiyle doğrulanmalı) |
+| Hizmet Bedeli (önceki) | 10,50 + KDV | 12,60 | Her teslimat; barem gönderileri hariç | 2 Ocak – 20 Eylül 2026 | B |
+| İşlem / ödeme bedeli | Ayrı kalem yok, Hizmet Bedeli'ne dahil | — | — | 5 Temmuz 2025'ten beri | B |
+| E-ticaret stopajı | %1 | — | Hakedişten kesilir | 1 Ocak 2025'ten beri | B |
+| Gecikme / iptal cezası | 2026 tutarı bulunamadı | — | — | — | — |
+
+### N11
+
+| Bedel | Tutar | KDV dahil | Neye uygulanır | Geçerlilik | Güven |
+|---|---|---|---|---|---|
+| Pazarlama Hizmet Bedeli | Ürün bedelinin **%1'i** (yatırımlık altın ve gümüşte %0,17) | %1,20 | Tamamlanan her ürün satışı | tarihsiz, 2026'da geçerli | R + B |
+| Pazaryeri Hizmet Bedeli | Ürün bedelinin **%0,67'si** | %0,80 | Tüm ürün satışları | tarihsiz, 2026'da geçerli | R + B |
+| Sipariş başına sabit bedel | Yok | — | — | — | B |
+| E-ticaret stopajı | %1 | — | N11 ödemeden keser | 1 Ocak 2025'ten beri | R |
+| Kargo Posta Hizmet Bedeli | Kargo fiyatının %2,35'i | + KDV | Anlaşmalı kargo gönderileri | 2026 | R |
+
+### Pazarama
+
+| Bedel | Tutar | KDV dahil | Neye uygulanır | Geçerlilik | Güven |
+|---|---|---|---|---|---|
+| Platform (Entegrasyon) Hizmet Bedeli | **8,99 + KDV** | 10,79 | Her sipariş/gönderi, kargo modelinden bağımsız | 10 Şubat 2025'ten beri; 2026 değişikliği bulunamadı | D |
+| Kargo Posta Hizmet Bedeli | Kargo fiyatının %2,35'i | + KDV | Anlaşmalı kargo gönderileri | 7 Ekim 2026 listesi | R |
+| İkinci dağıtım / iade sevk | Gönderi ücretinin %50'si (DHL'de %100) | — | İade ya da tekrar dağıtım | 2026 | D |
+| E-ticaret stopajı | %1 | — | Yasal | 1 Ocak 2025'ten beri | B |
+
+### PTT AVM
+
+| Bedel | Tutar | Neye uygulanır | Güven |
+|---|---|---|---|
+| Altyapı / ödeme bedeli | %1,5 (KDV dahil). 3 Şubat 2025'te %1'den yükseltildi. 2026 kaynağı bulunamadı. | Satış tutarı | D |
+| Sipariş başına hizmet bedeli | Herkese açık bilgi bulunamadı | — | — |
+| E-ticaret stopajı | %1 | Yasal | B |
+
+### Stopaj (bütün pazaryerleri)
+
+- **Dayanak:** 7524 sayılı Kanun; oran Cumhurbaşkanı Kararı 9284 ile %1. Yürürlük 1 Ocak 2025. 2026'da değişiklik yok.
+- **Matrah:** KDV hariç satış bedeli. Komisyon ve kargo matrahtan düşülmez.
+- **Kesinti:** Pazaryeri hakedişten keser; faturada görünmez. Satıcı geçici ve yıllık beyanda mahsup eder.
+- Mikro ihracat satışlarında stopaj olup olmadığına dair açık bir kaynak yok. Panel stopajı yalnızca yurt içi satışa uyguluyor.
+
 ## Panel için notlar
 
 - **Trendyol:** Raporlar kargosu fatura gelmemiş siparişlere güncel tarifeyi (son 30 günde en sık kesilen gönderi tutarı, şu an 98,34) yazıyor. Desi bazında hesap şöyle kurulabilir:
@@ -285,5 +367,10 @@ Kargodan ayrı olarak %1,5 altyapı/ödeme bedeli kesiliyor (2025).
   - Her taşıyıcı ve desi için güncel fiyat bu satırlardan çıkarılabilir; tablo elle girilmez.
   - Ürünün desisi (`ProductVariant.Desi`) ve siparişin kargo firması bilindiğinde sipariş o fiyatla hesaplanır.
   - Barem: 350 TL altı ve 10 desiye kadar siparişlerde barem fiyatı kullanılmalı. Hangi modelin (Hızlı/Standart) geçerli olduğu satıcının performansına bağlı; ilk barem faturası geldiğinde doğrulanmalı.
-- **Diğer pazaryerleri:** Kargo faturası satırı okunmuyor. Tahmin için bu tablolardan, satıcının seçtiği firma ve ürün desisiyle yararlanılabilir. PTT AVM'nin tablosu panelden alınmadan kullanılmamalı.
+- **Diğer pazaryerleri:** Kargo faturası satırı okunmuyor. Tahmin için bu tablolardan, satıcının seçtiği firma ve ürün desisiyle yararlanılabilir. PTT AVM'de tek taşıyıcı PTT Kargo olduğu için sözleşme tablosu doğrudan kullanılabilir.
+- **Hizmet bedelleri:** Panel Trendyol'da platform bedeli (13,19), uluslararası bedel (%6) ve stopajı (%1) hesaplıyor. Diğer pazaryerlerinde de aynı yöntem uygulanabilir:
+  - Hepsiburada: teslimat başına 10,99 + KDV.
+  - N11: satışın %1 + %0,67'si + KDV.
+  - Pazarama: sipariş başına 8,99 + KDV.
+  - PTT AVM: kaynak doğrulanınca %1,5.
 - **Tarifeler değişiyor:** 2026'da Trendyol'da 3, Hepsiburada'da en az 3 kez değişti. Elle girilen bir tablo eskir. Faturadan öğrenilen fiyat esas alınmalı, bu belge kontrol için kullanılmalı.
