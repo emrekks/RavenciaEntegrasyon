@@ -197,7 +197,7 @@ describe('ReportsPage', () => {
     const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
     expect(lines).toEqual(['Kargo ₺226,68', 'İade Edilen Tutar ₺100,00', 'Ürün Maliyeti ₺80,00', 'Komisyon ₺41,50', 'Hizmet Bedeli ₺12,50', 'Stopaj ₺1,00',
       'Reklam ₺0,00', 'Ceza ₺0,00', 'Erken Ödeme Kesintisi ₺0,00', 'Net KDV —'])
-    expect(page.querySelector('.reports-costlines li:first-child .reports-hover-tip')?.textContent).toContain('faturası gelmeyen 2 sipariş tahmini')
+    expect(page.querySelector('.reports-costlines li:first-child .reports-hover-tip')?.textContent).toContain('Faturası henüz gelmeyen 2 sipariş')
     // 350 − 100 − 226,68 − 54 (commission and service fee) − 1 − 80 = −111,68: a loss, in red, on the bridge and the strip.
     expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Kargo − ₺226,68', '− Pazaryeri Masrafları − ₺54,00', '− Stopaj − ₺1,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Zarar − ₺111,68'])
     expect(page.querySelector('.reports-bridge > li.is-end.is-negative')).not.toBeNull()
@@ -363,7 +363,7 @@ describe('ReportsPage', () => {
     // The product cost line says it is missing; the bridge ends at what the deductions leave, 207.
     const cost = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.includes('Ürün Maliyeti'))!
     expect(cost.textContent).toContain('—')
-    expect(cost.textContent).toContain('Ürün kartında varyant maliyeti girildiğinde görünür')
+    expect(cost.textContent).toContain('Ürün kartında varyantların maliyeti girildiğinde hesaplanır')
     expect(bridgeRows(page).at(-1)).toBe('Masraflar Sonrası ₺207,00')
     expect(bridgeRows(page).some(row => row.includes('Ürün Maliyeti'))).toBe(false)
     expect(metricRows(page, 'product')[1]).toBe('Adet Başına Kâr—')
