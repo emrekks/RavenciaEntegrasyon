@@ -1,11 +1,12 @@
 /*
  * Shared motion for every page, in the `base` layer: any component, feature or page rule (and every unlayered rule)
- * wins over it, so a screen with its own motion (Raporlar, Genel Bakış, the toasts, the login page) keeps it.
+ * wins over it, so a screen with its own motion (Raporlar, the toasts, the login page) keeps it.
  *
  * A page opening with a sweep of light: the page's blocks grow in from 94 % one after another, the first rows of a
  * table rise in after them, and a band of light passes once over each summary card. Only opacity, size and position
  * move (the light is a background inside the card), so the browser lays nothing out again. Things move when they
- * first appear; nothing loops, and nothing replays while a block stays mounted (a filter or a refresh keeps it). The
+ * first appear, once a load: only on the first page shown after the panel is opened or reloaded (the shell is
+ * `.is-opening` until the first move to another page); nothing loops, and nothing replays while a block stays mounted. The
  * keyframes use the individual `translate` and `scale` properties, not `transform`, so an element positioned with its
  * own transform (a centred modal) keeps it, and `backwards` fill so nothing stays applied after the animation: a
  * finished animation never turns an element into a containing block for fixed descendants.
@@ -21,34 +22,34 @@
 
 /* A page's blocks (heading, tabs, summary cards, filters, the table) grow in one after another. A modal or backdrop
    the page mounts as one of its blocks keeps its own motion below. */
-.app-shell main > .content:not(.reports-page, .rr-dashboard) > :not([class*="backdrop"], [class*="overlay"], [role="dialog"]) {
+.app-shell.is-opening main > .content:not(.reports-page) > :not([class*="backdrop"], [class*="overlay"], [role="dialog"]) {
   animation: rv-motion-grow var(--rv-motion-enter) var(--rv-ease-out) backwards;
 }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(2) { animation-delay: calc(var(--rv-motion-block-stagger) * 1); }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(3) { animation-delay: calc(var(--rv-motion-block-stagger) * 2); }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(4) { animation-delay: calc(var(--rv-motion-block-stagger) * 3); }
-.app-shell main > .content:not(.reports-page, .rr-dashboard) > :nth-child(n + 5) { animation-delay: calc(var(--rv-motion-block-stagger) * 4); }
+.app-shell.is-opening main > .content:not(.reports-page) > :nth-child(2) { animation-delay: calc(var(--rv-motion-block-stagger) * 1); }
+.app-shell.is-opening main > .content:not(.reports-page) > :nth-child(3) { animation-delay: calc(var(--rv-motion-block-stagger) * 2); }
+.app-shell.is-opening main > .content:not(.reports-page) > :nth-child(4) { animation-delay: calc(var(--rv-motion-block-stagger) * 3); }
+.app-shell.is-opening main > .content:not(.reports-page) > :nth-child(n + 5) { animation-delay: calc(var(--rv-motion-block-stagger) * 4); }
 
 /* Then the first rows of a table rise in one after another (the rest, below the fold, with the last of them); a page
    of the list that is mounted again comes in the same way. */
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr {
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr {
   animation: rv-motion-row var(--rv-motion-row) var(--rv-ease-out) backwards;
   animation-delay: var(--rv-motion-row-delay);
 }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(2) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 1); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(3) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 2); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(4) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 3); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(5) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 4); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(6) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 5); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(7) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 6); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(8) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 7); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(9) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 8); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) tbody > tr:nth-child(n + 10) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 9); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(2) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 1); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(3) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 2); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(4) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 3); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(5) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 4); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(6) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 5); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(7) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 6); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(8) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 7); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(9) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 8); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr:nth-child(n + 10) { animation-delay: calc(var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 9); }
 
 /* A band of light passes once over each summary card, one after another, as its figure counts up. The band is the
    card's own background layer moving inside it, so nothing spills out and the card needs no clipping. */
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics) > article { position: relative; }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics) > article::after {
+:where(.app-shell.is-opening main > .content:not(.reports-page)) :is(.rr-metrics, .invoice-reference-metrics) > article { position: relative; }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) :is(.rr-metrics, .invoice-reference-metrics) > article::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -59,10 +60,10 @@
   animation: rv-motion-sheen var(--rv-motion-sheen) ease-out backwards;
   animation-delay: var(--rv-motion-sheen-delay);
 }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(2)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 1); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(3)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 2); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(4)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 3); }
-:where(.app-shell main > .content:not(.reports-page, .rr-dashboard)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(n + 5)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 4); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(2)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 1); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(3)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 2); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(4)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 3); }
+:where(.app-shell.is-opening main > .content:not(.reports-page)) :is(.rr-metrics, .invoice-reference-metrics) > article:nth-child(n + 5)::after { animation-delay: calc(var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 4); }
 
 /* Cards under the pointer: a summary card lifts a little; an integration card only takes a shadow, because it holds
    its detail window and menus (fixed to the screen), and a moved card would hold them inside itself instead. */
