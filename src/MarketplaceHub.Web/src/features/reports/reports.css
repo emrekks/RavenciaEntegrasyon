@@ -714,3 +714,8 @@
   .app-shell.stitch-shell main .reports-page .reports-donut-swap { animation: none; }
   .app-shell.stitch-shell main .reports-page .reports-kpis-wrap > .reports-hover-tip.is-floating { animation: none; }
 }
+
+/* Two panels stacked in one grid column, the lower one taking what is left of the row's height; a table's total row. */
+.app-shell.stitch-shell main .reports-page .reports-stack { display: grid; grid-template-rows: auto 1fr; gap: 20px; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-table tfoot td { padding: 11px 10px; color: var(--rv-color-ink); font-weight: 700; border-top: 1px solid var(--rv-color-border-strong); border-bottom: 0; }
+.app-shell.stitch-shell main .reports-page .reports-ledger-panel > .reports-bridge-gaps { margin-top: 4px; }

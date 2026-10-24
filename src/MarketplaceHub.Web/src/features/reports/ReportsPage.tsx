@@ -526,6 +526,7 @@ const costMeaning: Record<string, string> = {
   early: 'Hakedişi erken almak için ödenen kesinti.',
   otherDeduction: 'Trendyol\'un türünü belirtmeden kestiği diğer kesinti faturaları.',
   vat: 'Devlete ödenecek KDV farkı.',
+  fees: 'Trendyol\'un hizmet bedeli, stopaj, reklam ve benzeri kesintileri.',
   marketplace: 'Pazaryerinin komisyonu ve hizmet bedelleri.'
 }
 const explain = (key: string, how: string) => `${costMeaning[key] ?? ''}\n${how}`
@@ -633,8 +634,6 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
     note: money.profit === null ? `Masraflar düştükten sonra kalan tutar.\nÜrün maliyeti girilmediği için kâr hesaplanamadı.${leftOut ? ` Düşülmeyenler: ${leftOut}` : ''}`
       : `Tüm masraflar ve ürün maliyeti düştükten sonra kalan tahmini kâr.\nNet marj ${formatPercent(money.margin)}.${(money.costCoverage ?? 1) < 1 ? ` ${costCoverageText(money.costCoverage)}` : ''}${leftOut ? ` Düşülmeyenler: ${leftOut}` : ''}` })
-  const partly = money.profit !== null && (money.costCoverage ?? 1) < 1
-  const { gaps } = money
   const low = Math.min(0, ...rows.flatMap(row => [row.from, row.to]))
   const span = Math.max(1, Math.max(money.total, ...rows.flatMap(row => [row.from, row.to])) - low)
   return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>
@@ -651,23 +650,31 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
           <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText text={row.note} /></span>
         </li>
       })}</ol>
-      {/* What the estimate leaves out is always written, not only under the pointer: how much of the cost is entered,
-          whose cargo and fees are not taken off, and an unknown commission. */}
-      {(partly || gaps.platforms.length > 0 || gaps.lines.length > 0 || gaps.commission) && <dl className="reports-bridge-gaps" aria-label="Tahminin kapsamı">
-        {/* Each row: what it is (and how to read it) on the left, the measure on the right. */}
-        {partly && <div><dt>Maliyeti Girili<small>Satılan adetlerin payı</small></dt><dd>
-          <Progress value={money.costCoverage} shown={shown} /><b>{formatPercent(money.costCoverage)}</b>
-        </dd></div>}
-        {gaps.platforms.length > 0 && <div><dt>Kargo ve Hizmet Bedeli<small>Düşülmedi</small></dt><dd>
-          <span className="reports-bridge-chips">{gaps.platforms.map(code => <span key={code}><PlatformSquareMark code={code} name={platformName(code)} />{platformName(code)}</span>)}</span>
-        </dd></div>}
-        {gaps.lines.length > 0 && <div><dt>Düşülmeyen<small>Cari hesap okunmadı</small></dt><dd><span>{gaps.lines.join(', ')}</span></dd></div>}
-        {gaps.commission && <div><dt>Komisyon<small>Düşülmedi</small></dt><dd><span>Bilinmiyor</span></dd></div>}
-      </dl>}
+      <EstimateGaps money={money} shown={shown} />
       {/* The platforms open over the page, so nothing under the card moves. */}
       <Modal open={open} onClose={() => setOpen(false)} className="reports-journey-modal" title="Satış Tutarı"><SalesDetail data={data} /></Modal>
     </>}
   </Card>
+}
+
+// What an estimate leaves out, always written and not only under the pointer: how much of the cost is entered (or
+// that none is), whose cargo and fees are not taken off, and an unknown commission. Each row names the gap on the left
+// with how to read it, and its measure on the right; nothing is drawn when nothing is left out.
+function EstimateGaps({ money, shown }: { money: Money; shown: boolean }) {
+  const { gaps } = money
+  const partly = money.cost !== null && (money.costCoverage ?? 1) < 1
+  if (!partly && money.cost !== null && !gaps.platforms.length && !gaps.lines.length && !gaps.commission) return null
+  return <dl className="reports-bridge-gaps" aria-label="Tahminin kapsamı">
+    {money.cost === null && <div><dt>Ürün Maliyeti<small>Ürün kartında girilmedi</small></dt><dd><span>Kâr hesaplanamadı</span></dd></div>}
+    {partly && <div><dt>Maliyeti Girili<small>Satılan adetlerin payı</small></dt><dd>
+      <Progress value={money.costCoverage} shown={shown} /><b>{formatPercent(money.costCoverage)}</b>
+    </dd></div>}
+    {gaps.platforms.length > 0 && <div><dt>Kargo ve Hizmet Bedeli<small>Düşülmedi</small></dt><dd>
+      <span className="reports-bridge-chips">{gaps.platforms.map(code => <span key={code}><PlatformSquareMark code={code} name={platformName(code)} />{platformName(code)}</span>)}</span>
+    </dd></div>}
+    {gaps.lines.length > 0 && <div><dt>Düşülmeyen<small>Cari hesap okunmadı</small></dt><dd><span>{gaps.lines.join(', ')}</span></dd></div>}
+    {gaps.commission && <div><dt>Komisyon<small>Düşülmedi</small></dt><dd><span>Bilinmiyor</span></dd></div>}
+  </dl>
 }
 
 // Satış Tutarı's breakdown: each platform's sales with its share, the total under them.
@@ -688,14 +695,24 @@ function SalesDetail({ data }: { data: ReportSales }) {
 
 // The account from the sales to the profit, line by line; the overview's window and the profit tab show the same.
 function ProfitLedger({ money }: { money: Money }) {
+  const tip = useId()
   const amount = (value: number) => value < 0 ? `− ${formatTl(-value)}` : formatTl(value)
+  const share = (value: number) => `Satış tutarının ${money.total > 0 ? formatPercent(Math.abs(value) / money.total) : '—'} kadarı.`
+  const row = (key: string, className: string | undefined, label: string, value: string, note: string, extra?: ReactNode) =>
+    <div key={key} className={`reports-tip-host${className ? ` ${className}` : ''}`}>
+      <dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${key}`}>{label}</button>{extra}</dt>
+      <dd>{value}</dd>
+      <span role="tooltip" id={`${tip}-${key}`} className="reports-hover-tip"><TipText text={note} /></span>
+    </div>
   return <dl className="reports-ledger">
-    <div><dt>Satış Tutarı</dt><dd>{formatTl(money.total)}</dd></div>
-    {money.deductions.map(part => <div key={part.key} className="is-minus"><dt>{part.label}</dt><dd>− {formatTl(part.value)}</dd></div>)}
-    <div className={`is-total is-${money.left < 0 ? 'bad' : 'good'}`}><dt>Masraflar Sonrası</dt><dd>{amount(money.left)}</dd></div>
-    {money.tax !== null && <div className={money.tax < 0 ? undefined : 'is-minus'}><dt>Net KDV</dt><dd>{money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`}</dd></div>}
-    {money.cost !== null && <div className="is-minus"><dt>Ürün Maliyeti</dt><dd>− {formatTl(money.cost)}</dd></div>}
-    {money.profit !== null && <div className={`is-result is-${money.profit < 0 ? 'bad' : 'good'}`}><dt>Tahmini Net Kâr<small>Net marj {formatPercent(money.margin)}</small></dt><dd>{amount(money.profit)}</dd></div>}
+    {row('sales', undefined, 'Satış Tutarı', formatTl(money.total), 'Müşterilerin ödediği toplam tutar.\nİptaller hariç, iadeler düşülmeden.')}
+    {money.deductions.map(part => row(part.key, 'is-minus', part.label, `− ${formatTl(part.value)}`, `${costMeaning[part.key] ?? part.label}\n${share(part.value)}`))}
+    {row('left', `is-total is-${money.left < 0 ? 'bad' : 'good'}`, 'Masraflar Sonrası', amount(money.left), `Satıştan iade ve pazaryeri masrafları düştükten sonra kalan.\n${share(money.left)}`)}
+    {money.tax !== null && row('vat', money.tax < 0 ? undefined : 'is-minus', 'Net KDV', money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`,
+      `${costMeaning.vat}\n${share(money.tax)}${money.tax < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`)}
+    {money.cost !== null && row('cost', 'is-minus', 'Ürün Maliyeti', `− ${formatTl(money.cost)}`, `${costMeaning.cost}\n${share(money.cost)}`)}
+    {money.profit !== null && row('profit', `is-result is-${money.profit < 0 ? 'bad' : 'good'}`, money.profit < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', amount(money.profit),
+      `Tüm masraflar ve ürün maliyeti düştükten sonra kalan tahmini kâr.\n${share(money.profit)} Bu, net marjdır.`, <small>Net marj {formatPercent(money.margin)}</small>)}
   </dl>
 }
 
@@ -1113,15 +1130,10 @@ function groupColumns(first: Column<ReportGroup>, options: { commission?: boolea
 
 const labelColumn = (header: string, label: (row: ReportGroup) => string = row => row.label): Column<ReportGroup> => ({ key: 'label', header, value: label, render: row => <span className="reports-cell-label">{label(row)}{row.isTest && <em className="reports-tag">Test</em>}</span> })
 
-// The marketplaces' account statements (one picked at a time) beside the platforms' net revenue, then their summary.
+// The marketplaces' account statements (one picked at a time), then the platforms' summary, each across the tab.
 function Platforms({ data }: { data: ReportSales }) {
-  return <div className="reports-grid is-ledger">
-    <StatementLines data={data} />
-    <Panel title="Platformlara Göre Net Ciro" description="Komisyon ve hakediş tahminidir; kapsam, komisyon bilgisi olan cironun payıdır.">
-      {/* A platform without amounts is listed in words, not drawn as a ₺0 bar. */}
-      <Bars label="Platformlara göre net ciro" format={formatTl} items={data.platforms.filter(group => group.ordersWithAmount > 0).map(group => ({ key: group.key, label: platformName(group.label), value: group.netRevenue }))} />
-      <NoAmountNote platforms={data.platforms} />
-    </Panel>
+  return <div className="reports-grid">
+    <div className="is-wide"><StatementLines data={data} /></div>
     <div className="is-wide"><DataTable title="Platform Özeti" csvName="rapor-platformlar" rows={data.platforms} rowKey={row => row.key} unknown={row => !row.known} initialSort="sold"
       columns={groupColumns(labelColumn('Platform', row => platformName(row.label)), { commission: true, share: data.summary.netRevenue })}
       expand={row => <DataTable title={`${platformName(row.label)} Mağazaları`} csvName={`rapor-${row.key.toLowerCase()}-magazalar`} rows={row.children} rowKey={child => child.key} initialSort="sold"
@@ -1442,11 +1454,18 @@ function Stock({ data }: { data: ReportSales }) {
 function CostAndProfit({ data }: { data: ReportSales }) {
   const money = moneyBreakdown(data, profitSteps(data))
   return <div className="reports-grid">
-    <Panel title="Kâr Hesabı" description="Genel Bakış'taki hesabın satır satır hâli: satıştan iade ve pazaryeri kesintileri, sonra ürün maliyeti düşülür." className="reports-ledger-panel">
-      {money ? <><ProfitLedger money={money} /><p className="reports-note"><UiIcon name="info" size={16} />{money.profitNote}</p></> : <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}
+    <Panel title="Kâr Hesabı" description="Genel Bakış'taki hesabın satır satır hâli: satıştan iade ve pazaryeri kesintileri, sonra ürün maliyeti düşülür. Bir satırın üzerine gelince satış tutarına oranı görünür." className="reports-ledger-panel">
+      {money ? <><ProfitLedger money={money} /><EstimateGaps money={money} shown /></> : <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}
     </Panel>
-    <Ledger title="Trendyol Komisyon ve Kargo" description="Trendyol cari hesabından: kesinleşen komisyon ve kargo faturası, kalanı tahmini." rows={trendyolLedger(data)}
-      empty="Trendyol cari hesabı bu seçimde okunmadı." />
+    <div className="reports-stack">
+      <Ledger title="Trendyol Komisyon ve Kargo" description="Trendyol cari hesabından: kesinleşen komisyon ve kargo faturası, kalanı tahmini." rows={trendyolLedger(data)}
+        empty="Trendyol cari hesabı bu seçimde okunmadı." />
+      <Panel title="Platformlara Göre Net Ciro" description="Her platformun satıştan iadeler düştükten sonra kalan cirosu.">
+        {/* A platform without amounts is listed in words, not drawn as a ₺0 bar. */}
+        <Bars label="Platformlara göre net ciro" format={formatTl} items={data.platforms.filter(group => group.ordersWithAmount > 0).map(group => ({ key: group.key, label: platformName(group.label), value: group.netRevenue }))} />
+        <NoAmountNote platforms={data.platforms} />
+      </Panel>
+    </div>
   </div>
 }
 
@@ -1469,10 +1488,11 @@ function trendyolLedger(data: ReportSales): LedgerRow[] {
   if (!finance?.commission || !finance.cargo) return []
   const { commission, cargo } = finance
   return [
-    { label: 'Trendyol Komisyonu', value: formatTl(commission.combined), hint: commissionNote(finance) },
-    { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: `Aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` },
-    { label: 'Trendyol Kargo', value: formatTl(cargo.combined), hint: cargoNote(cargo) },
-    { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: `Güncel tarife: son 30 günün ${formatCount(cargo.sampleOrders)} faturalı siparişinde en sık kesilen tutar` }
+    // One short line under each; the full account of each is on the overview's rows under the pointer.
+    { label: 'Trendyol Komisyonu', value: formatTl(commission.combined), hint: commission.realOrders > 0 ? `${formatTl(commission.real)} kesin, ${formatTl(commission.estimatedForUnsettled)} tahmini` : 'Tümü tahmini' },
+    { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: `Bu siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` },
+    { label: 'Trendyol Kargo', value: formatTl(cargo.combined), hint: cargo.unbilledOrders === 0 ? `${formatCount(cargo.billedOrders)} sipariş faturalı` : `${formatCount(cargo.billedOrders)} sipariş faturalı, ${formatCount(cargo.unbilledOrders)} sipariş tahmini` },
+    { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: 'Son 30 günde en sık kesilen tutar' }
   ]
 }
 
@@ -1517,7 +1537,9 @@ Toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOIC
         <ul className="reports-legend-row">{parts.map(part => <li key={part.key}><i className={`is-${part.tone}`} aria-hidden="true" />{part.label}<b>{formatPercent(part.value / total)}</b></li>)}</ul>
       </> : <p className="reports-empty">Bu dönemde paket yok.</p>}
     </RevealPanel>
-    <div><DataTable title="Platformlara Göre Fatura Durumu" csvName="rapor-fatura" rows={data.invoices.platforms} rowKey={row => row.platformCode} initialSort="invoiced" columns={[
+    <div><DataTable title="Platformlara Göre Fatura Durumu" csvName="rapor-fatura" rows={data.invoices.platforms} rowKey={row => row.platformCode} initialSort="invoiced"
+      footer={data.invoices.platforms.length > 1 && <tr><td>Toplam</td>{(['invoiced', 'notInvoiced', 'unknown'] as const).map(key => <td key={key} className="is-num">{formatCount(data.invoices.platforms.reduce((sum, row) => sum + row[key], 0))}</td>)}</tr>}
+      columns={[
       { key: 'platform', header: 'Platform', value: row => platformName(row.platformCode) },
       { key: 'invoiced', header: 'Faturalı', value: row => row.invoiced, render: row => formatCount(row.invoiced), numeric: true },
       { key: 'notInvoiced', header: 'Faturasız', value: row => row.notInvoiced, render: row => formatCount(row.notInvoiced), numeric: true },

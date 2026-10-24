@@ -128,6 +128,7 @@ internal sealed class ReportLineExtra
 internal sealed class ReportClaimRow
 {
     public Guid OrderId { get; init; }
+    public Guid ConnectionId { get; init; }
     public ReturnClaimStatus Status { get; init; }
     public string? ReasonCode { get; init; }
     public string? ReasonText { get; init; }
@@ -259,7 +260,7 @@ public static class ReportBuckets
 
     private static readonly (string Word, string Company)[] CargoCompanies =
     [
-        ("trendyol express", "Trendyol Express"), ("hepsijet", "hepsiJET"), ("ptt", "PTT Kargo"), ("aras", "Aras Kargo"),
+        ("trendyol express", "Trendyol Express"), ("hepsijet", "HepsiJET"), ("ptt", "PTT Kargo"), ("aras", "Aras Kargo"),
         ("yurtici", "Yurtiçi Kargo"), ("mng", "MNG Kargo"), ("surat", "Sürat Kargo"), ("kolay gelsin", "Kolay Gelsin"),
         ("sendeo", "Sendeo"), ("ups", "UPS"), ("dhl", "DHL"), ("fedex", "FedEx"), ("fanex", "FANEX"), ("logistiq", "LOGISTIQ")
     ];
@@ -361,7 +362,7 @@ internal static class ReportBuilder
         var categories = LineGroups(lines, line => line.Row.CategoryId is { } id && input.Names.Categories.TryGetValue(id, out var name) ? name : null);
 
         var validClaims = input.Claims.Where(x => x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled)).ToList();
-        var reasons = Reasons(validClaims.Select(claim => Label(claim.ReasonText, claim.ReasonCode)));
+        var reasons = Reasons(validClaims.Select(claim => ClaimReason(input.Channels.TryGetValue(claim.ConnectionId, out var channel) ? channel.PlatformCode : null, claim.ReasonCode, claim.ReasonText)));
 
         var stockView = StockView(products, stock, input.Period.Days);
         var costs = ReportCosts.Build(input, orders);
@@ -715,6 +716,36 @@ internal static class ReportBuilder
             .ToList();
 
     // The same reason under one name: the marketplace's text when it gave one, else its code, else "Bilinmiyor".
+    // A return's reason as the marketplace's own option, never the customer's note: Trendyol keeps the customer's note
+    // in the text when there is one, so its reason is read from the option's code (BIGSIZE, DISLIKE…); Hepsiburada and
+    // n11 send the option's name as the code. Only a claim with no code falls back to its text.
+    internal static string ClaimReason(string? platformCode, string? code, string? text)
+    {
+        var key = code?.Trim();
+        if (string.IsNullOrEmpty(key)) return Label(text, null);
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+            return TrendyolClaimReasons.GetValueOrDefault(key.ToUpperInvariant()) ?? Label(null, key);
+        return Label(key, null);
+    }
+
+    // Trendyol's return reason options by code. The first six are Trendyol's own names (the text of the live claims
+    // with no customer note, 24 Oct 2026); the rest, rare, are named after their code.
+    private static readonly Dictionary<string, string> TrendyolClaimReasons = new(StringComparer.Ordinal)
+    {
+        ["BIGSIZE"] = "Bedeni/Ebatı Büyük Geldi",
+        ["SMALLSIZE"] = "Bedeni/Ebatı Küçük Geldi",
+        ["DISLIKE"] = "Beğenmedim",
+        ["ABANDON"] = "Vazgeçtim",
+        ["UNDELIVERED"] = "Teslim edilemeyen gönderi",
+        ["WRONGORDER"] = "Yanlış sipariş verdim",
+        ["UNDELIVEREDINT"] = "Teslim edilemeyen yurt dışı gönderi",
+        ["WRONGITEM"] = "Yanlış ürün gönderildi",
+        ["DAMAGEDITEM"] = "Hasarlı ürün gönderildi",
+        ["FAKEPRODUCT"] = "Ürün orijinal değil",
+        ["LATEINTDELIVERY"] = "Yurt dışı teslimat gecikti",
+        ["OTHER"] = "Diğer"
+    };
+
     internal static string Label(string? text, string? code)
     {
         var label = !string.IsNullOrWhiteSpace(text) ? text.Trim() : !string.IsNullOrWhiteSpace(code) ? code.Trim() : Unknown;

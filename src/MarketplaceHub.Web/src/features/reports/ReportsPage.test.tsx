@@ -369,7 +369,7 @@ describe('ReportsPage', () => {
     expect(metricRows(page, 'product')[1]).toBe('Adet Başına Kâr—')
     // The profit tab's account says the same instead of a row of zeros.
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
-    expect(body(page)).toContain('Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.')
+    expect(body(page)).toContain('Ürün MaliyetiÜrün kartında girilmediKâr hesaplanamadı')
   })
 
   it('lists a product with its picture, model code, stock code and the variant\'s size and colour', async () => {

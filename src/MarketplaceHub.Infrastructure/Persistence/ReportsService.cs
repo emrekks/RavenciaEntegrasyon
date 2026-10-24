@@ -253,7 +253,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     private async Task<List<ReportClaimRow>> ClaimRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken) =>
         await (from row in PeriodOrders(tenantId, allowedIds, period)
                join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
-               select new ReportClaimRow { OrderId = claim.OrderId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
+               select new ReportClaimRow { OrderId = claim.OrderId, ConnectionId = claim.ConnectionId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
             .ToListAsync(cancellationToken);
 
     // The current packages of the period's orders with their first "shipped" and "delivered" status times and what
