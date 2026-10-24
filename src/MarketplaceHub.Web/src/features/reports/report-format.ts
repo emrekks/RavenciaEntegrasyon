@@ -45,6 +45,8 @@ export type ReportSales = {
   costs: ReportCosts
   geography: ReportGeography
   dataNotes: string[]
+  // The previous period's commission, cost and statement, read as the period's are (absent in an older server's answer).
+  previousAccount?: { commission: ReportSales['commission']; cost: ReportSales['cost']; costs: ReportCosts } | null
 }
 
 // The sales map: countries for every order (a Trendyol cross-border storefront's order in its country), the previous
@@ -98,15 +100,15 @@ export function formatDay(value: string) { const [year, month, day] = value.spli
 // A money value that only means something when the bucket had orders with an amount (Shopify sends none).
 export function moneyOrMissing(value: number, ordersWithAmount: number) { return ordersWithAmount > 0 ? formatTl(value) : 'Tutar yok' }
 
-// The change against the previous period. A rate is compared in points; a count or amount as a percentage, and not at
-// all when the previous period had nothing (no "+∞%").
+// The change against the previous period. A rate is compared by its difference (13,7 % to 11,8 % is −%1,9); a count
+// or amount as a percentage, and not at all when the previous period had nothing (no "+∞%").
 export type Change = { text: string; direction: 'up' | 'down' | 'flat' }
-export function change(current: number | null, previous: number | null, kind: 'value' | 'rate' = 'value'): Change | null {
-  if (current === null || previous === null) return null
+export function change(current: number | null | undefined, previous: number | null | undefined, kind: 'value' | 'rate' = 'value'): Change | null {
+  if (current === null || current === undefined || previous === null || previous === undefined) return null
   if (kind === 'rate') {
     const points = (current - previous) * 100
-    if (Math.abs(points) < 0.05) return { text: '0,0 puan', direction: 'flat' }
-    return { text: `${points > 0 ? '+' : '−'}${Math.abs(points).toLocaleString('tr-TR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} puan`, direction: points > 0 ? 'up' : 'down' }
+    if (Math.abs(points) < 0.05) return { text: '%0,0', direction: 'flat' }
+    return { text: `${points > 0 ? '+' : '−'}%${Math.abs(points).toLocaleString('tr-TR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}`, direction: points > 0 ? 'up' : 'down' }
   }
   if (previous === 0) return current === 0 ? { text: '%0', direction: 'flat' } : null
   const percent = (current - previous) / Math.abs(previous) * 100

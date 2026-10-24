@@ -1,5 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { UiIcon } from '../../shared/components'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 // The overview's charts. Each plays once, when its card first comes into view: bars and gauges grow from zero to their
 // value and figures count up, then everything stays still. Without IntersectionObserver (tests, old browsers) or with
@@ -45,14 +44,6 @@ export function CountUp({ value, format, active = true }: { value: number; forma
   return <><span aria-hidden="true">{format(animate ? shown : value)}</span><span className="reports-sr">{format(value)}</span></>
 }
 
-// The "?" button: the explanation shows on hover and on keyboard focus.
-export function InfoTip({ label, text }: { label: string; text: string }) {
-  const id = useId()
-  return <span className="reports-info">
-    <button type="button" aria-label={`${label} nasıl hesaplanır`} aria-describedby={id}><UiIcon name="help" size={14} /></button>
-    <span role="tooltip" id={id}>{text}</span>
-  </span>
-}
 
 // A round top for an axis: 1, 2, 2.5 or 5 times a power of ten, at least the largest value.
 function niceMax(value: number) {
@@ -107,18 +98,25 @@ export function StackedBar({ parts, total, shown, label }: { parts: Part[]; tota
 
 // Parts of a whole round a ring, a hair's gap between them, each sweeping from nothing to its share when first seen;
 // the middle holds what the caller puts there (the total).
-export function Donut({ parts, shown, label, children }: { parts: Part[]; shown: boolean; label: string; children?: ReactNode }) {
+// The part under the pointer (or picked beside the ring, `active`) thickens while the others fade, and the caller shows
+// it in the middle; a tap picks a part on a phone.
+export function Donut({ parts, shown, label, active = null, onActive, children }: {
+  parts: Part[]; shown: boolean; label: string; active?: string | null; onActive?: (key: string | null) => void; children?: ReactNode
+}) {
   const drawn = parts.filter(part => part.value > 0)
   const sum = drawn.reduce((value, part) => value + part.value, 0)
+  const picked = drawn.some(part => part.key === active)
   let offset = 0
-  return <div className="reports-donut">
-    <svg viewBox="0 0 120 120" role="img" aria-label={label}>
+  return <div className={`reports-donut${picked ? ' has-active' : ''}`}>
+    <svg viewBox="0 0 120 120" role="img" aria-label={label} onMouseLeave={() => onActive?.(null)}>
       <circle className="reports-donut-base" cx="60" cy="60" r="50" />
       {sum > 0 && drawn.map((part, index) => {
         const share = part.value / sum * 100
         const length = Math.max(0.35, share - (drawn.length > 1 ? 0.7 : 0))
-        const ring = <circle key={part.key} className={`reports-donut-part is-${part.tone}`} cx="60" cy="60" r="50" pathLength={100} transform="rotate(-90 60 60)"
-          strokeDasharray={`${shown ? length : 0} 100`} strokeDashoffset={-offset} style={{ transitionDelay: `${index * 90}ms` }} />
+        // Only the first drawing waits its turn; thickening and fading answer the pointer at once.
+        const ring = <circle key={part.key} className={`reports-donut-part is-${part.tone}${part.key === active ? ' is-active' : ''}`} cx="60" cy="60" r="50" pathLength={100} transform="rotate(-90 60 60)"
+          strokeDasharray={`${shown ? length : 0} 100`} strokeDashoffset={-offset} style={{ transitionDelay: `${index * 90}ms, 0ms, 0ms` }}
+          onMouseEnter={() => onActive?.(part.key)} onClick={() => onActive?.(part.key === active ? null : part.key)} />
         offset += share
         return ring
       })}

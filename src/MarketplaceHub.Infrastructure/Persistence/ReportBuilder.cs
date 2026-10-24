@@ -386,7 +386,8 @@ internal static class ReportBuilder
             geography,
             orders.GroupBy(order => order.PlatformCode, StringComparer.Ordinal).OrderBy(group => group.Key, StringComparer.Ordinal)
                 .Select(group => new ReportPlatformHeatmapView(group.Key, Heatmap(group.ToList(), input.Timezone))).ToList(),
-            rising, falling);
+            rising, falling,
+            new ReportPreviousAccountView(CommissionView(previousOrders, previousSummary.NetRevenue), CostView(previousOrders), ReportCosts.Build(previous, previousOrders)));
         return view;
     }
 

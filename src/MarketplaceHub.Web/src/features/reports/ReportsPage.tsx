@@ -13,7 +13,7 @@ import {
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
 import { SalesMap } from './SalesMap'
-import { Columns, CountUp, Donut, InfoTip, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
+import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import './reports.css'
@@ -185,10 +185,18 @@ function Delta({ delta, invert = false }: { delta: Change | null | undefined; in
   return <em className={`reports-delta is-${tone}`} title="Önceki döneme göre">{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
 }
 
-// A panel's explanation is either written under its title or, on the overview, kept behind a "?" beside it.
-function Panel({ title, description, info, actions, children, className }: { title: string; description?: string; info?: string; actions?: ReactNode; children: ReactNode; className?: string }) {
+// A panel's explanation shows under its title while the pointer or the focus is on the title, as the overview's rows
+// do; nothing is written under the title.
+function Panel({ title, description, actions, children, className }: { title: string; description?: string; actions?: ReactNode; children: ReactNode; className?: string }) {
+  const tip = useId()
   return <section className={`reports-panel${className ? ` ${className}` : ''}`}>
-    <header><div>{info ? <span className="reports-panel-title"><h2>{title}</h2><InfoTip label={title} text={info} /></span> : <h2>{title}</h2>}{description && <p>{description}</p>}</div>{actions && <div className="reports-panel-actions">{actions}</div>}</header>
+    <header>
+      {description ? <div className="reports-tip-host reports-panel-title">
+        <h2><button type="button" className="reports-tip-trigger" aria-describedby={tip}>{title}</button></h2>
+        <span role="tooltip" id={tip} className="reports-hover-tip is-below">{description}</span>
+      </div> : <div className="reports-panel-title"><h2>{title}</h2></div>}
+      {actions && <div className="reports-panel-actions">{actions}</div>}
+    </header>
     {children}
   </section>
 }
@@ -274,13 +282,13 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   </div>
 }
 
-// A board card: its icon and title (with the "?" when it has an explanation), its actions, and its content, which
-// learns when the card first came into view so its chart can play then.
-function Card({ title, icon, info, actions, className, children }: { title: string; icon?: UiIconName; info?: string; actions?: ReactNode; className?: string; children: (shown: boolean) => ReactNode }) {
+// A board card: its icon and title, its actions, and its content, which learns when the card first came into view so
+// its chart can play then.
+function Card({ title, icon, actions, className, children }: { title: string; icon?: UiIconName; actions?: ReactNode; className?: string; children: (shown: boolean) => ReactNode }) {
   const [ref, shown] = useReveal<HTMLElement>()
   return <section ref={ref} className={`reports-card${className ? ` ${className}` : ''}${shown ? ' is-shown' : ''}`}>
     <header>
-      <span className="reports-card-title">{icon && <span className="reports-card-icon" aria-hidden="true"><UiIcon name={icon} size={16} /></span>}<h2>{title}</h2>{info && <InfoTip label={title} text={info} />}</span>
+      <span className="reports-card-title">{icon && <span className="reports-card-icon" aria-hidden="true"><UiIcon name={icon} size={16} /></span>}<h2>{title}</h2></span>
       {actions && <div className="reports-card-actions">{actions}</div>}
     </header>
     {children(shown)}
@@ -339,6 +347,9 @@ type Money = {
   tax: number | null
   total: number; deductions: MoneyPart[]; deducted: number; left: number; cost: number | null; costCoverage: number | null
   profit: number | null; margin: number | null; leftNote: string; profitNote: string; description: string
+  // What the account could not take off: the commission when none is known, and the platforms whose cargo and fees are
+  // not read (with Trendyol's statement) or, without it, the cost lines read nowhere.
+  gaps: { commission: boolean; platforms: string[]; lines: string[] }
 }
 
 const deductionTones: Record<string, string> = { returned: 'returned', commission: 'commission', cargo: 'cargo', fees: 'fees' }
@@ -354,14 +365,15 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   const cost = data.cost.costedQuantity > 0 ? data.cost.costTotal : null
   const tax = finance?.netVat?.net ?? null
   const profit = cost === null ? null : left - (tax ?? 0) - cost
-  const unread = finance ? unreadFeePlatforms(data) : []
+  const unread = finance ? unreadFeeCodes(data) : []
   const commissionKnown = flow.steps.some(step => step.key === 'commission' && step.value !== null)
   const gaps = [
     commissionKnown ? null : 'komisyon bilinmiyor',
-    finance ? (unread.length ? `${unread.join(', ')} kargo ve hizmet bedeli` : null) : unreadCostLines.join(', ').toLocaleLowerCase('tr-TR')
+    finance ? (unread.length ? `${unread.map(platformName).join(', ')} kargo ve hizmet bedeli` : null) : unreadCostLines.join(', ').toLocaleLowerCase('tr-TR')
   ].filter(Boolean)
   const coverage = data.cost.coverage
   return {
+    gaps: { commission: !commissionKnown, platforms: unread, lines: finance ? [] : unreadCostLines },
     total: now.grossSales, deductions, deducted, left, tax, cost, costCoverage: cost === null ? null : coverage, profit,
     margin: profit !== null && now.grossSales > 0 ? profit / now.grossSales : null, description: flow.description,
     leftNote: `Satıştan iade ve pazaryeri kesintileri düşüldükten sonra kalan; ürün maliyeti hariç, tahminidir.${gaps.length ? ` Düşülmeyenler: ${gaps.join('; ')}.` : ''}`,
@@ -378,35 +390,76 @@ function Figure({ value, format, shown }: { value: number; format: (value: numbe
   return value < 0 ? <>− {format(-value)}</> : <CountUp value={value} format={format} active={shown} />
 }
 
-type OverviewFigure = { key: string; label: string; value: number | null; format: (value: number) => string; empty: string; note: ReactNode; bad?: boolean; good?: boolean }
+// A figure of a strip: its value (or a word, as a province's name), its change against the previous period with the
+// previous value under it, and how it is worked out, shown under the pointer.
+type Kpi = {
+  key: string; label: string; value: number | null; format?: (value: number) => string; text?: string; empty?: string
+  delta?: Change | null; invert?: boolean; note: string; tip: string; tone?: 'good' | 'bad' | 'warn'
+}
 
-// The period's six figures in one strip: the net revenue and the orders with their change, the estimated net profit,
-// its margin over the sales and over the product cost, and the units the customers kept.
-function OverviewFigures({ data, money }: { data: ReportSales; money: Money | null }) {
+// A strip of figures divided by hairlines; the figures count up once when the strip first comes into view. In a strip
+// that compares, a figure without a previous value keeps the change's line empty, so every note starts on one line.
+function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
   const [ref, shown] = useReveal<HTMLDivElement>()
+  const tip = useId()
+  const compares = items.some(item => item.delta !== undefined)
+  return <div ref={ref} className={`reports-kpis is-${items.length}`} role="group" aria-label={label}>{items.map(item => {
+    const id = `${tip}-${item.key}`
+    const empty = item.empty ?? '—'
+    const missing = item.value === null && item.text === undefined
+    // Whole counts stay whole while they count up.
+    const format = item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
+    return <div key={item.key} className={`reports-tip-host${missing && empty !== '—' ? ' is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}`}>
+      <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}>{item.label}</button>
+      <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
+      {compares && <span className="reports-kpi-change">{item.delta !== undefined && <Delta delta={item.delta} invert={item.invert} />}</span>}
+      <span className="reports-kpi-note">{item.note}</span>
+      <span role="tooltip" id={id} className="reports-hover-tip">{item.tip}</span>
+    </div>
+  })}</div>
+}
+
+// "Önceki dönem …", or that the previous period has nothing to compare.
+const previousText = (value: string | null) => value === null || value === '—' ? 'Önceki dönemde veri yok' : `Önceki dönem ${value}`
+const percent = (value: number) => formatPercent(value)
+
+// The previous period's account, worked out as the period's is; null when the server sent none, or when one period
+// read Trendyol's statement and the other did not (their profits would not be counted alike).
+function previousMoney(data: ReportSales): Money | null {
+  const account = data.previousAccount
+  if (!account) return null
+  const earlier: ReportSales = { ...data, summary: data.previousSummary, commission: account.commission, cost: account.cost, costs: account.costs }
+  if ((financeCosts(earlier) === null) !== (financeCosts(data) === null)) return null
+  return moneyBreakdown(earlier, profitSteps(earlier))
+}
+
+// The period's six figures in one strip: the net revenue, the estimated net profit, its margin over the sales and
+// over the product cost, the orders and the units the customers kept, each against the previous period.
+function OverviewFigures({ data, money }: { data: ReportSales; money: Money | null }) {
   const now = data.summary
-  const before = data.previousSummary
+  const then = data.previousSummary
+  const earlier = previousMoney(data)
   const noAmount = now.ordersWithAmount === 0
   const profit = money?.profit ?? null
   const onCost = profit !== null && money?.cost ? profit / money.cost : null
-  const percent = (value: number) => formatPercent(value)
-  // Whole units stay whole while they count up.
-  const units = (value: number) => formatNumber(Number.isInteger(now.keptQuantity) ? Math.round(value) : value)
-  const items: OverviewFigure[] = [
-    { key: 'net', label: 'Net Ciro', value: noAmount ? null : now.netRevenue, format: formatTl, empty: 'Tutar yok', note: <><Delta delta={noAmount ? null : change(now.netRevenue, before.netRevenue)} />önceki döneme göre</> },
+  const earlierProfit = earlier?.profit ?? null
+  const earlierOnCost = earlierProfit !== null && earlier?.cost ? earlierProfit / earlier.cost : null
+  const items: Kpi[] = [
+    { key: 'net', label: 'Net Ciro', value: noAmount ? null : now.netRevenue, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.netRevenue, then.netRevenue),
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null), tip: 'Satış tutarından iade edilen tutar düşülmüş hâli; iptaller hariç' },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noAmount ? 'Tutar yok' : 'Maliyet girilmemiş',
-      note: profit === null ? 'Ürün maliyeti girilince görünür' : 'Tahmini, tüm masraflar sonrası', bad: profit !== null && profit < 0, good: profit !== null && profit > 0 },
-    { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, empty: '—', note: 'Net kâr / satış tutarı', bad: (money?.margin ?? 0) < 0 },
-    { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, empty: '—', note: 'Net kâr / ürün maliyeti', bad: (onCost ?? 0) < 0 },
-    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, empty: '—', note: <><Delta delta={change(now.orders, before.orders)} />önceki dönem {formatCount(before.orders)}</> },
-    { key: 'kept', label: 'Net Satılan Adet', value: now.keptQuantity, format: units, empty: '—',
-      note: now.soldQuantity > 0 ? `${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşüldü` : 'Bu dönemde satış yok' }
+      delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)),
+      tip: profit === null ? 'Ürün kartında varyant maliyeti girildiğinde görünür' : 'Tahmini; satıştan iade, kargo, pazaryeri masrafları ve ürün maliyeti düşülür',
+      tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
+    { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
+      note: previousText(formatPercent(earlier?.margin)), tip: 'Tahmini net kâr / satış tutarı', tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
+    { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
+      note: previousText(formatPercent(earlierOnCost)), tip: 'Tahmini net kâr / ürün maliyeti: maliyetin her lirası ne kadar kâr bıraktı', tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
+    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: previousText(formatCount(then.orders)), tip: 'İptal edilmeyen siparişler' },
+    { key: 'kept', label: 'Net Satılan Adet', value: now.keptQuantity, delta: change(now.keptQuantity, then.keptQuantity), note: previousText(formatNumber(then.keptQuantity)),
+      tip: now.soldQuantity > 0 ? `${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşüldü` : 'Bu dönemde satış yok' }
   ]
-  return <div ref={ref} className="reports-kpis" role="group" aria-label="Dönemin göstergeleri">{items.map(item => <div key={item.key} className={`${item.value === null ? 'is-missing' : ''}${item.bad ? ' is-bad' : ''}${item.good ? ' is-good' : ''}`.trim() || undefined}>
-    <small>{item.label}</small>
-    <strong>{item.value === null ? item.empty : <Figure value={item.value} format={item.format} shown={shown} />}</strong>
-    <span>{item.note}</span>
-  </div>)}</div>
+  return <KpiStrip label="Dönemin göstergeleri" items={items} />
 }
 
 type OverviewCost = { key: string; label: string; value: number | null; tone: string; note: string }
@@ -443,21 +496,33 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
 // with its amount and its share of the costs, and how it was read under the pointer.
 function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null }) {
   const tip = useId()
+  // The cost under the pointer, on the ring or in the list: the ring shows it in its middle instead of the total.
+  const [active, setActive] = useState<string | null>(null)
   if (!money) return <Card title="Masraf Kalemleri" className="reports-card-costlines">{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
   const lines = costLines(data, money)
   const total = money.deducted + (money.cost ?? 0)
   const parts: Part[] = lines.filter(line => line.value !== null && line.value > 0).map(line => ({ key: line.key, label: line.label, value: line.value ?? 0, tone: line.tone }))
+  const picked = parts.find(part => part.key === active) ?? null
+  const pick = (key: string) => parts.some(part => part.key === key) ? setActive(key) : undefined
   return <Card title="Masraf Kalemleri" className="reports-card-costlines">
     {shown => <div className="reports-costs">
-      <Donut parts={parts} shown={shown} label={`Masraflar: ${parts.map(part => `${part.label} ${formatPercent(part.value / total)}`).join(', ')}`}>
-        <small>Toplam masraf</small>
-        <strong>{formatTlWhole(total)}</strong>
-        <span>satışın {formatPercent(money.total > 0 ? total / money.total : null)} kadarı</span>
+      <Donut parts={parts} shown={shown} active={active} onActive={setActive} label={`Masraflar: ${parts.map(part => `${part.label} ${formatPercent(part.value / total)}`).join(', ')}`}>
+        {/* A new key each time, so the middle fades in afresh. */}
+        <div key={picked?.key ?? 'total'} className="reports-donut-swap" aria-live="polite">{picked ? <>
+          <small>{picked.label}</small>
+          <strong>{formatTlWhole(picked.value)}</strong>
+          <span>masrafların {formatPercent(total > 0 ? picked.value / total : null)} kadarı</span>
+        </> : <>
+          <small>Toplam masraf</small>
+          <strong>{formatTlWhole(total)}</strong>
+          <span>satışın {formatPercent(money.total > 0 ? total / money.total : null)} kadarı</span>
+        </>}</div>
       </Donut>
       {/* A line's name is a button like the panel's "?": a tap on a phone or Tab on a keyboard opens its explanation too. */}
-      <ul className="reports-costlines">{lines.map(line => <li key={line.key} className={`reports-tip-host${line.value === null || line.value === 0 ? ' is-zero' : ''}`}>
+      <ul className="reports-costlines">{lines.map(line => <li key={line.key} className={`reports-tip-host${line.value === null || line.value === 0 ? ' is-zero' : ''}${line.key === picked?.key ? ' is-active' : ''}`}
+        onMouseEnter={() => pick(line.key)} onMouseLeave={() => setActive(null)}>
         <i className={`is-${line.value ? line.tone : 'none'}`} aria-hidden="true" />
-        <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`}>{line.label}</button>
+        <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`} onFocus={() => pick(line.key)} onBlur={() => setActive(null)}>{line.label}</button>
         <b>{line.value === null ? '—' : signedTl(line.value)}</b>
         <em>{line.value !== null && line.value > 0 && total > 0 ? formatPercent(line.value / total) : ''}</em>
         <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip">{line.note}</span>
@@ -504,8 +569,8 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   const leftOut = money.leftNote.split(' Düşülmeyenler: ')[1]
   rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
     note: money.profit === null ? money.leftNote : `${money.profitNote} Net marj ${formatPercent(money.margin)}.${leftOut ? ` Düşülmeyenler: ${leftOut}` : ''}` })
-  const partly = money.profit !== null && (money.costCoverage ?? 1) < 1 ? `ürün maliyeti satılan adetlerin ${formatPercent(money.costCoverage)} kadarı için girili` : null
-  const gapsNote = partly || leftOut ? `Tahmini: ${[partly, leftOut ? `düşülmeyenler: ${leftOut.replace(/\.$/, '')}` : null].filter(Boolean).join('; ')}.` : null
+  const partly = money.profit !== null && (money.costCoverage ?? 1) < 1
+  const { gaps } = money
   const low = Math.min(0, ...rows.flatMap(row => [row.from, row.to]))
   const span = Math.max(1, Math.max(money.total, ...rows.flatMap(row => [row.from, row.to])) - low)
   return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>
@@ -522,8 +587,19 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
           <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip">{row.note}</span>
         </li>
       })}</ol>
-      {/* What the estimate leaves out is always written, not only under the pointer. */}
-      {gapsNote && <p className="reports-note"><UiIcon name="info" size={16} />{gapsNote}</p>}
+      {/* What the estimate leaves out is always written, not only under the pointer: how much of the cost is entered,
+          whose cargo and fees are not taken off, and an unknown commission. */}
+      {(partly || gaps.platforms.length > 0 || gaps.lines.length > 0 || gaps.commission) && <dl className="reports-bridge-gaps" aria-label="Tahminin kapsamı">
+        {/* Each row: what it is (and how to read it) on the left, the measure on the right. */}
+        {partly && <div><dt>Maliyeti Girili<small>Satılan adetlerin payı</small></dt><dd>
+          <Progress value={money.costCoverage} shown={shown} /><b>{formatPercent(money.costCoverage)}</b>
+        </dd></div>}
+        {gaps.platforms.length > 0 && <div><dt>Kargo ve Hizmet Bedeli<small>Düşülmedi</small></dt><dd>
+          <span className="reports-bridge-chips">{gaps.platforms.map(code => <span key={code}><PlatformSquareMark code={code} name={platformName(code)} />{platformName(code)}</span>)}</span>
+        </dd></div>}
+        {gaps.lines.length > 0 && <div><dt>Düşülmeyen<small>Cari hesap okunmadı</small></dt><dd><span>{gaps.lines.join(', ')}</span></dd></div>}
+        {gaps.commission && <div><dt>Komisyon<small>Düşülmedi</small></dt><dd><span>Bilinmiyor</span></dd></div>}
+      </dl>}
       {/* The platforms open over the page, so nothing under the card moves. */}
       <Modal open={open} onClose={() => setOpen(false)} className="reports-journey-modal" title="Satış Tutarı"><SalesDetail data={data} /></Modal>
     </>}
@@ -550,12 +626,12 @@ function SalesDetail({ data }: { data: ReportSales }) {
 function ProfitLedger({ money }: { money: Money }) {
   const amount = (value: number) => value < 0 ? `− ${formatTl(-value)}` : formatTl(value)
   return <dl className="reports-ledger">
-    <div><dt>Satış tutarı</dt><dd>{formatTl(money.total)}</dd></div>
+    <div><dt>Satış Tutarı</dt><dd>{formatTl(money.total)}</dd></div>
     {money.deductions.map(part => <div key={part.key} className="is-minus"><dt>{part.label}</dt><dd>− {formatTl(part.value)}</dd></div>)}
-    <div className={`is-total is-${money.left < 0 ? 'bad' : 'good'}`}><dt>Masraflar sonrası</dt><dd>{amount(money.left)}</dd></div>
+    <div className={`is-total is-${money.left < 0 ? 'bad' : 'good'}`}><dt>Masraflar Sonrası</dt><dd>{amount(money.left)}</dd></div>
     {money.tax !== null && <div className={money.tax < 0 ? undefined : 'is-minus'}><dt>Net KDV</dt><dd>{money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`}</dd></div>}
-    {money.cost !== null && <div className="is-minus"><dt>Ürün maliyeti</dt><dd>− {formatTl(money.cost)}</dd></div>}
-    {money.profit !== null && <div className={`is-result is-${money.profit < 0 ? 'bad' : 'good'}`}><dt>Tahmini net kâr<small>Net marj {formatPercent(money.margin)}</small></dt><dd>{amount(money.profit)}</dd></div>}
+    {money.cost !== null && <div className="is-minus"><dt>Ürün Maliyeti</dt><dd>− {formatTl(money.cost)}</dd></div>}
+    {money.profit !== null && <div className={`is-result is-${money.profit < 0 ? 'bad' : 'good'}`}><dt>Tahmini Net Kâr<small>Net marj {formatPercent(money.margin)}</small></dt><dd>{amount(money.profit)}</dd></div>}
   </dl>
 }
 
@@ -570,7 +646,7 @@ function MetricCard({ title, icon, tone, rows, onMore }: { title: string; icon: 
       const id = `${tip}-${row.key}`
       const detail = row.detail
       const body = <>
-        <span className="reports-metric-label">{row.tone === 'warn' && <i className="reports-metric-dot" aria-hidden="true" />}{row.label}</span>
+        <span className="reports-metric-label">{row.label}</span>
         <span className="reports-metric-value">{row.delta !== undefined && <Delta delta={row.delta} invert={row.invert} />}<strong>{row.value}</strong></span>
       </>
       return <li key={row.key} className={`reports-tip-host${row.tone ? ` is-${row.tone}` : ''}`}>
@@ -676,7 +752,8 @@ function operationMetrics(data: ReportSales): Metric[] {
 }
 
 
-// Coğrafya: the sales map with its breakdown, the provinces ranked by sales and by returns, and the full city table.
+// Coğrafya: the sales map with its breakdown (its own figures over the map), the provinces ranked by sales and by
+// returns, and the full city table.
 function Geography({ data }: { data: ReportSales }) {
   return <div className="reports-summary">
     <SalesMap data={data} />
@@ -686,7 +763,21 @@ function Geography({ data }: { data: ReportSales }) {
 
 // Ürünler: the best sellers, the most returned, brands and categories as bars, then their tables under two sub-tabs.
 function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub; onSub: (sub: ProductSub) => void }) {
+  const now = data.summary
+  const then = data.previousSummary
+  const unit = (summary: ReportSales['summary']) => summary.ordersWithAmount > 0 && summary.soldQuantity > 0 ? summary.grossSales / summary.soldQuantity : null
+  const selling = (groups: ReportGroup[]) => groups.filter(group => group.known && group.soldQuantity > 0).length
+  const items: Kpi[] = [
+    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity), note: previousText(formatNumber(then.soldQuantity)), tip: 'İptal edilen adetler hariç, iadeler düşülmeden' },
+    { key: 'returned', label: 'İade Edilen Adet', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
+      note: previousText(formatNumber(then.returnedQuantity)), tip: 'Kabul edilen iadeler' },
+    { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
+      note: previousText(formatPercent(then.returnRate)), tip: 'İade edilen adet / satılan adet' },
+    { key: 'price', label: 'Adet Başına Satış', value: unit(now), format: formatTl, delta: change(unit(now), unit(then)), note: previousText(formatTl(unit(then))), tip: 'Satış tutarı / satılan adet' },
+    { key: 'brands', label: 'Satan Marka', value: selling(data.brands), format: formatCount, note: `${formatCount(selling(data.categories))} kategoride`, tip: 'Ürün kartındaki markası okunan, satışı olan markalar' }
+  ]
   return <div className="reports-summary">
+    <KpiStrip label="Ürünlerin göstergeleri" items={items} />
     <div className="reports-lists is-pairs">
       <Panel title="En Çok Satanlar" description="Satılan adede göre; yanında satış tutarı." className="reports-list">
         <Bars label="En çok satan ürünler" format={formatNumber} items={[...data.topProducts].sort((a, b) => b.soldQuantity - a.soldQuantity).slice(0, 8)
@@ -717,9 +808,30 @@ function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub
   </div>
 }
 
-// Kârlılık: coverage, profit and commission figures, Trendyol's real costs, and the platforms with their commission.
+// Kârlılık: the commission and how much of the sales carry a cost and a commission, each against the previous period;
+// the profit account, Trendyol's real costs, and the platforms with their commission. The commission is the account's
+// (Trendyol's statement where it was read), so it is the one the profit account under the strip takes off.
 function ProfitView({ data }: { data: ReportSales }) {
+  const commission = data.commission
+  const cost = data.cost
+  const earlier = data.previousAccount
+  const charged = moneyBreakdown(data, profitSteps(data))?.deductions.find(part => part.key === 'commission') ?? null
+  const chargedBefore = previousMoney(data)?.deductions.find(part => part.key === 'commission') ?? null
+  const items: Kpi[] = [
+    { key: 'commission', label: charged?.label ?? 'Komisyon', value: charged?.value ?? null, format: formatTl, delta: change(charged?.value, chargedBefore?.value), invert: true,
+      note: previousText(chargedBefore ? formatTl(chargedBefore.value) : null), tip: charged?.note || 'Komisyon bilinmiyor; siparişte gelmedi, tarife de yüklenmedi' },
+    { key: 'rate', label: 'Komisyon Oranı', value: commission.effectiveRate, format: percent, delta: change(commission.effectiveRate, earlier?.commission.effectiveRate, 'rate'), invert: true,
+      note: previousText(formatPercent(earlier?.commission.effectiveRate)), tip: 'Tahmini komisyon / komisyonu bilinen satış' },
+    { key: 'costed', label: 'Maliyeti Girili Satış', value: cost.coverage, format: percent, delta: change(cost.coverage, earlier?.cost.coverage, 'rate'),
+      note: previousText(formatPercent(earlier?.cost.coverage)),
+      tip: `${formatNumber(cost.costedQuantity)} / ${formatNumber(cost.keptQuantity)} adet, ${formatCount(cost.costedVariants)} varyant; eksik maliyet ürün kartındaki Maliyet alanına girilir` },
+    { key: 'covered', label: 'Komisyon Kapsamı', value: commission.coverage, format: percent, delta: change(commission.coverage, earlier?.commission.coverage, 'rate'),
+      note: previousText(formatPercent(earlier?.commission.coverage)), tip: `Komisyonu bilinen ciro: ${formatTl(commission.coveredRevenue)} / ${formatTl(data.summary.netRevenue)}` },
+    { key: 'both', label: 'Kâr Kapsamı', value: cost.profitCoverage, format: percent, delta: change(cost.profitCoverage, earlier?.cost.profitCoverage, 'rate'),
+      note: previousText(formatPercent(earlier?.cost.profitCoverage)), tip: `Maliyeti ve komisyonu bilinen satış: ${formatNumber(cost.profitQuantity)} adet; kâr yalnız bunlar üzerinden kesin hesaplanır` }
+  ]
   return <div className="reports-summary">
+    <KpiStrip label="Kârlılığın göstergeleri" items={items} />
     <CostAndProfit data={data} />
     <Platforms data={data} />
   </div>
@@ -812,9 +924,10 @@ function cargoNote(cargo: NonNullable<ReportCosts['cargo']>) {
 }
 
 // Platforms with orders in the period whose cargo and fees are not read (only Trendyol's statement is).
-function unreadFeePlatforms(data: ReportSales) {
-  return data.platforms.filter(group => group.known && group.key !== 'TRENDYOL' && group.orders > 0).map(group => platformName(group.key))
+function unreadFeeCodes(data: ReportSales) {
+  return data.platforms.filter(group => group.known && group.key !== 'TRENDYOL' && group.orders > 0).map(group => group.key)
 }
+function unreadFeePlatforms(data: ReportSales) { return unreadFeeCodes(data).map(platformName) }
 
 // Satış Tutarı → Net Ciro → komisyon (and, with Trendyol's statement, cargo and fees) → kâr, from known amounts only.
 // Each step says what it leaves out; the profit covers only the sales whose cost (and commission) is known. No steps
@@ -1069,16 +1182,25 @@ function ReasonsCard({ title, description, reasons, csvName, empty }: { title: s
   </Panel>
 }
 
-// İadeler: four figures, the reasons beside the provinces they came from, then every province's returns.
+// İadeler: four figures against the previous period, the reasons beside the provinces they came from, then every
+// province's returns.
 function Returns({ data }: { data: ReportSales }) {
   const byCity = data.cities.filter(city => city.returnedQuantity > 0 || city.returnClaims > 0)
+  const now = data.summary
+  const then = data.previousSummary
+  const items: Kpi[] = [
+    { key: 'claims', label: 'İade Talebi', value: now.returnClaims, format: formatCount, delta: change(now.returnClaims, then.returnClaims), invert: true,
+      note: previousText(formatCount(then.returnClaims)), tip: 'Reddedilen ve iptal edilen talepler hariç' },
+    { key: 'units', label: 'İade Adedi', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
+      note: previousText(formatNumber(then.returnedQuantity)), tip: 'Kabul edilen iadeler' },
+    { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
+      note: previousText(formatPercent(then.returnRate)), tip: 'İade edilen adet / satılan adet' },
+    { key: 'amount', label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? now.returnedAmount : null, format: formatTl, empty: 'Tutar yok',
+      delta: now.ordersWithAmount > 0 ? change(now.returnedAmount, then.returnedAmount) : null, invert: true,
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.returnedAmount) : null), tip: 'Satış tutarından düşülen' }
+  ]
   return <div className="reports-grid">
-    <div className="reports-stat-row is-wide">
-      <Stat label="İade Talebi" value={formatCount(data.summary.returnClaims)} hint="Reddedilen ve iptal edilenler hariç" />
-      <Stat label="İade Adedi" value={formatNumber(data.summary.returnedQuantity)} hint="Kabul edilen iadeler" />
-      <Stat label="İade Oranı" value={formatPercent(data.summary.returnRate)} hint="İade / satılan adet" />
-      <Stat label="İade Tutarı" value={data.summary.ordersWithAmount > 0 ? formatTl(data.summary.returnedAmount) : 'Tutar yok'} hint="Satıştan düşülen" />
-    </div>
+    <div className="is-wide"><KpiStrip label="İadelerin göstergeleri" items={items} /></div>
     <ReasonsCard title="İade Nedenleri" description="Pazaryerinin bildirdiği nedene göre; neden yoksa Bilinmiyor." reasons={data.returnReasons} csvName="rapor-iade-nedenleri" empty="Bu dönemde iade talebi yok." />
     <Panel title="İade Gelen İller" description="İade adedine göre; yanında iade oranı." className="reports-list">
       <Bars label="İllere göre iade" format={formatNumber} items={topGroups(data.cities, group => group.returnedQuantity, group => formatPercent(group.returnRate))} />
@@ -1087,19 +1209,19 @@ function Returns({ data }: { data: ReportSales }) {
   </div>
 }
 
-function Stat({ label, value, hint, warn = false }: { label: string; value: string; hint?: string; warn?: boolean }) {
-  return <article className={`reports-kpi is-compact${warn ? ' is-warn' : ''}`}><small>{label}</small><strong>{value}</strong>{hint && <span className="reports-kpi-foot"><span>{hint}</span></span>}</article>
-}
-
 function Cancellations({ data }: { data: ReportSales }) {
   const cancellations = data.cancellations
+  const then = data.previousSummary
   const warn = (rate: number | null) => (rate ?? 0) > cancellations.warningRate
   return <div className="reports-grid">
-    <div className="reports-stat-row is-wide">
-      <Stat label="İptal Edilen Sipariş" value={formatCount(cancellations.cancelledOrders)} />
-      <Stat label="İptal Edilen Adet" value={formatNumber(cancellations.cancelledQuantity)} hint="Kısmi iptaller dahil" />
-      <Stat label="İptal Oranı" value={formatPercent(cancellations.cancelRate)} warn={warn(cancellations.cancelRate)} hint={`Uyarı eşiği ${formatPercent(cancellations.warningRate)}`} />
-    </div>
+    <div className="is-wide"><KpiStrip label="İptallerin göstergeleri" items={[
+      { key: 'orders', label: 'İptal Edilen Sipariş', value: cancellations.cancelledOrders, format: formatCount, delta: change(cancellations.cancelledOrders, then.cancelledOrders), invert: true,
+        note: previousText(formatCount(then.cancelledOrders)), tip: 'Tamamı iptal edilen siparişler' },
+      { key: 'rate', label: 'İptal Oranı', value: cancellations.cancelRate, format: percent, delta: change(cancellations.cancelRate, then.cancelRate, 'rate'), invert: true,
+        note: previousText(formatPercent(then.cancelRate)), tip: `İptal / (sipariş + iptal); uyarı eşiği ${formatPercent(cancellations.warningRate)}`, tone: warn(cancellations.cancelRate) ? 'warn' : undefined },
+      { key: 'units', label: 'İptal Edilen Adet', value: cancellations.cancelledQuantity, note: 'Kısmi iptaller dahil', tip: 'İptal edilen siparişlerin ve kısmi iptallerin adedi' },
+      { key: 'amount', label: 'İptal Edilen Tutar', value: cancellations.cancelledAmount ?? null, format: formatTl, note: 'Satış tutarına girmez', tip: 'İptal edilen ürünlerin liste fiyatı' }
+    ]} /></div>
     {warn(cancellations.cancelRate) && <p className="reports-warning is-wide" role="alert"><UiIcon name="alert" size={16} />İptal oranı {formatPercent(cancellations.warningRate)} eşiğinin üstünde; Trendyol satıcı puanı yönergesi bu oranı izler.</p>}
     <ReasonsCard title="İptal Nedenleri" description="Siparişte gelen iptal nedenine göre; neden gelmeyenler Bilinmiyor." reasons={cancellations.reasons} csvName="rapor-iptal-nedenleri" empty="Bu dönemde iptal yok." />
     <Panel title="Platformlara Göre İptal Oranı" description={`Uyarı eşiği ${formatPercent(cancellations.warningRate)}.`} className="reports-list">
@@ -1122,12 +1244,14 @@ function Cargo({ data }: { data: ReportSales }) {
   const ship = weightedHours(data.cargo, row => row.averageHoursToShip, row => row.measuredShip)
   const deliver = weightedHours(data.cargo, row => row.averageHoursToDeliver, row => row.measuredDeliver)
   const measured = (count: number) => count > 0 ? `${formatCount(count)} pakette ölçüldü` : 'Ölçülemedi'
+  const carrier = [...data.cargo].filter(row => row.known).sort((a, b) => b.packages - a.packages)[0]
   return <div className="reports-grid">
-    <div className="reports-stat-row is-wide">
-      <Stat label="Paket" value={formatCount(packages)} hint={`${formatCount(data.cargo.filter(row => row.known).length)} kargo firması`} />
-      <Stat label="Kargo Teslim Alma" value={formatHours(ship.hours)} hint={measured(ship.measured)} />
-      <Stat label="Teslimat" value={formatHours(deliver.hours)} hint={measured(deliver.measured)} />
-    </div>
+    <div className="is-wide"><KpiStrip label="Kargonun göstergeleri" items={[
+      { key: 'packages', label: 'Paket', value: packages, format: formatCount, note: `${formatCount(data.cargo.filter(row => row.known).length)} kargo firması`, tip: 'Dönemin siparişlerinin paketleri' },
+      { key: 'carrier', label: 'Kargo Firması', value: null, text: carrier?.label, note: carrier ? `Paketlerin ${formatPercent(carrier.share)} kadarı` : 'Okunamadı', tip: 'En çok paket taşıyan kargo firması' },
+      { key: 'ship', label: 'Kargo Teslim Alma', value: ship.hours, format: formatHours, note: measured(ship.measured), tip: 'Siparişten kargo firmasının paketi okuttuğu ana kadar; ortalama, yaklaşık' },
+      { key: 'deliver', label: 'Teslimat', value: deliver.hours, format: formatHours, note: measured(deliver.measured), tip: 'Kargoya verilişten teslime kadar; ortalama, yaklaşık' }
+    ]} /></div>
     <Panel title="Kargo Firmalarının Payı" description="Paket sayısına göre." className="reports-list is-wide">
       <Bars label="Kargo firmalarının payı" format={value => formatPercent(value)} items={[...data.cargo].sort((a, b) => b.packages - a.packages)
         .map(row => ({ key: row.label, label: row.label, value: row.share ?? 0, note: `${formatCount(row.packages)} paket`, muted: !row.known }))} />
@@ -1201,12 +1325,13 @@ function TimeOfDay({ data }: { data: ReportSales }) {
 function Customers({ data }: { data: ReportSales }) {
   const customers = data.customers
   return <div className="reports-grid">
-    <div className="reports-stat-row is-wide">
-      <Stat label="Tekil Müşteri" value={formatCount(customers.uniqueCustomers)} hint={`${formatCount(customers.identifiedOrders)} siparişten`} />
-      <Stat label="Tekrar Alan Müşteri" value={formatCount(customers.repeatCustomers)} hint="Dönemde birden çok sipariş" />
-      <Stat label="Tekrar Alım Oranı" value={formatPercent(customers.repeatRate)} />
-      <Stat label="Müşteri Başına Sipariş" value={formatNumber(customers.ordersPerCustomer)} />
-    </div>
+    <div className="is-wide"><KpiStrip label="Müşterilerin göstergeleri" items={[
+      { key: 'unique', label: 'Tekil Müşteri', value: customers.uniqueCustomers, format: formatCount, note: `${formatCount(customers.identifiedOrders)} siparişten`, tip: 'Müşteri numarası, e-posta ya da telefonla tanınan müşteriler' },
+      { key: 'repeat', label: 'Tekrar Alan Müşteri', value: customers.repeatCustomers, format: formatCount, note: 'Dönemde birden çok sipariş', tip: 'Dönemde birden çok sipariş veren müşteriler' },
+      { key: 'rate', label: 'Tekrar Alım Oranı', value: customers.repeatRate, format: percent, note: 'Tekrar alan / tekil müşteri', tip: 'Tekrar alan müşteri / tekil müşteri' },
+      { key: 'orders', label: 'Müşteri Başına Sipariş', value: customers.ordersPerCustomer, note: 'Ortalama', tip: 'Kimliği okunan sipariş / tekil müşteri' },
+      { key: 'unknown', label: 'Kimliği Okunamayan', value: customers.unidentifiedOrders, format: formatCount, note: 'Müşteri sayılarına girmez', tip: 'Müşteri numarası, e-postası ya da telefonu gelmeyen siparişler; müşteri sayılarına girmez' }
+    ]} /></div>
     <RevealPanel title="Bir Kez Alan ve Tekrar Alan" className="is-wide" description="Dönemde birden çok sipariş veren müşteriler tekrar alan sayılır.">
       {shown => customers.uniqueCustomers > 0 ? <>
         <StackedBar shown={shown} total={customers.uniqueCustomers} label={`Bir kez alan ${formatCount(customers.uniqueCustomers - customers.repeatCustomers)}, tekrar alan ${formatCount(customers.repeatCustomers)}`}
@@ -1234,44 +1359,30 @@ function Stock({ data }: { data: ReportSales }) {
   const low = data.stock.bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const unknownStock = data.stock.bestSellers.filter(row => row.available === null).length
   return <div className="reports-grid">
-    <div className="reports-stat-row is-wide">
-      <Stat label="Kalan Günü 7'den Az" value={formatCount(low)} hint={`En çok satan ${formatCount(data.stock.bestSellers.length)} ürün içinde`} warn={low > 0} />
-      <Stat label="Satıp Stoğu Biten" value={formatCount(data.stock.soldOut.length)} hint="Mevcut stoğu sıfır" warn={data.stock.soldOut.length > 0} />
-      <Stat label="Stoğu Bilinmeyen" value={formatCount(unknownStock)} hint="En çok satanlar içinde" />
-    </div>
+    <div className="is-wide"><KpiStrip label="Stoğun göstergeleri" items={[
+      { key: 'low', label: "Kalan Günü 7'den Az", value: low, format: formatCount, note: `En çok satan ${formatCount(data.stock.bestSellers.length)} ürün içinde`, tip: 'Dönemin günlük satışıyla stoğu 7 günden az yetecek ürünler', tone: low > 0 ? 'warn' : undefined },
+      { key: 'out', label: 'Satıp Stoğu Biten', value: data.stock.soldOut.length, format: formatCount, note: 'Mevcut stoğu sıfır', tip: 'Dönemde satılan, ana depoda kullanılabilir stoğu kalmayan ürünler', tone: data.stock.soldOut.length > 0 ? 'warn' : undefined },
+      { key: 'unknown', label: 'Stoğu Bilinmeyen', value: unknownStock, format: formatCount, note: 'En çok satanlar içinde', tip: 'Panelde stok kaydı olmayan ürünler' }
+    ]} /></div>
     <div className="is-wide"><DataTable title="En Çok Satanların Stoğu" description="Ana depodaki kullanılabilir stok (şu an) ve dönemin günlük satışına göre kalan gün; 7 günden az olanlar işaretli." csvName="rapor-stok" rows={data.stock.bestSellers} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} /></div>
     <div className="is-wide"><DataTable title="Satıp Stoğu Biten Ürünler" csvName="rapor-stok-biten" rows={data.stock.soldOut} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} empty="Dönemde satılıp stoğu sıfır olan ürün yok." /></div>
   </div>
 }
 
+// The profit account line by line beside Trendyol's commission and cargo (the strip above holds the coverage and the
+// estimated commission).
 function CostAndProfit({ data }: { data: ReportSales }) {
-  const cost = data.cost
   const money = moneyBreakdown(data, profitSteps(data))
-  const commission = data.commission
   return <div className="reports-grid">
-    <Panel className="is-wide" title="Kapsam" description="Kâr yalnız maliyeti (ve net kâr için ayrıca komisyonu) bilinen satışlar üzerinden hesaplanır.">
-      <div className="reports-coverage">
-        <Coverage label="Maliyeti Girilmiş Satış" rate={cost.coverage} detail={`${formatNumber(cost.costedQuantity)} / ${formatNumber(cost.keptQuantity)} adet · ${formatCount(cost.costedVariants)} varyant`} />
-        <Coverage label="Komisyon Bilgisi Olan Ciro" rate={commission.coverage} detail={`${formatTl(commission.coveredRevenue)} / ${formatTl(data.summary.netRevenue)}`} />
-        <Coverage label="Maliyet ve Komisyonu Olan Satış" rate={cost.profitCoverage} detail={`${formatNumber(cost.profitQuantity)} adet`} />
-      </div>
-      {(cost.coverage ?? 0) < 1 && <p className="reports-note"><UiIcon name="info" size={16} />Maliyeti eksik ürünlerin maliyetini ürün kartındaki Maliyet alanına (varyant tablosunda) girerek kapsamı artırabilirsiniz.</p>}
-    </Panel>
     <Panel title="Kâr Hesabı" description="Genel Bakış'taki hesabın satır satır hâli: satıştan iade ve pazaryeri kesintileri, sonra ürün maliyeti düşülür." className="reports-ledger-panel">
       {money ? <><ProfitLedger money={money} /><p className="reports-note"><UiIcon name="info" size={16} />{money.profitNote}</p></> : <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}
     </Panel>
-    <Ledger title="Komisyon ve Hakediş" description="Tahminidir; kesinleşen tutar pazaryerinin hesap kesimindedir." rows={[
-      { label: 'Tahmini komisyon', value: commission.coveredRevenue > 0 ? formatTl(commission.estimatedCommission) : '—', hint: `Etkin oran ${formatPercent(commission.effectiveRate)}` },
-      { label: 'Tahmini hakediş', value: commission.coveredRevenue > 0 ? formatTl(commission.estimatedPayout) : '—', hint: 'Kesinleşmiş hakediş değildir', kind: 'total', tone: commission.coveredRevenue > 0 ? signTone(commission.estimatedPayout) : undefined },
-      ...trendyolLedger(data)
-    ]} empty="Komisyon bilgisi yok." />
+    <Ledger title="Trendyol Komisyon ve Kargo" description="Trendyol cari hesabından: kesinleşen komisyon ve kargo faturası, kalanı tahmini." rows={trendyolLedger(data)}
+      empty="Trendyol cari hesabı bu seçimde okunmadı." />
   </div>
 }
 
 type LedgerRow = { label: string; value: string; hint?: string; kind?: 'minus' | 'total' | 'result'; tone?: 'good' | 'bad' }
-
-// The tone of a result: green at or above zero, red below.
-const signTone = (value: number): 'good' | 'bad' => value < 0 ? 'bad' : 'good'
 
 // A small account: rows one under another, deductions in red with a minus, subtotals and the result ruled above and
 // coloured by their sign.
@@ -1290,10 +1401,10 @@ function trendyolLedger(data: ReportSales): LedgerRow[] {
   if (!finance?.commission || !finance.cargo) return []
   const { commission, cargo } = finance
   return [
-    { label: 'Trendyol komisyonu', value: formatTl(commission.combined), hint: commissionNote(finance) },
-    { label: 'Hesap kesimi olan sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: `Aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` },
-    { label: 'Trendyol kargo', value: formatTl(cargo.combined), hint: cargoNote(cargo) },
-    { label: 'Sipariş başına kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: `Güncel tarife: son 30 günün ${formatCount(cargo.sampleOrders)} faturalı siparişinde en sık kesilen tutar` }
+    { label: 'Trendyol Komisyonu', value: formatTl(commission.combined), hint: commissionNote(finance) },
+    { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: `Aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` },
+    { label: 'Trendyol Kargo', value: formatTl(cargo.combined), hint: cargoNote(cargo) },
+    { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: `Güncel tarife: son 30 günün ${formatCount(cargo.sampleOrders)} faturalı siparişinde en sık kesilen tutar` }
   ]
 }
 
@@ -1323,25 +1434,14 @@ function StatementLines({ data }: { data: ReportSales }) {
 
 type CostLine = ReportCosts['lines'][number]
 
-// A coverage share with its bar, which fills once when it first comes into view.
-function Coverage({ label, rate, detail }: { label: string; rate: number | null; detail: string }) {
-  const [ref, shown] = useReveal<HTMLDivElement>()
-  const value = Math.max(0, Math.min(1, rate ?? 0))
-  return <div ref={ref} className="reports-coverage-item">
-    <span>{label}</span>
-    <strong>{formatPercent(rate)}</strong>
-    <span className="reports-bar-track" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}><span style={{ width: shown ? `${value * 100}%` : '0%' }} /></span>
-    <small>{detail}</small>
-  </div>
-}
-
 // Fatura: the packages by invoice state as one bar beside each platform's counts.
 function Invoices({ data }: { data: ReportSales }) {
   const total = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
   const tone = (key: string) => key === 'INVOICED' ? 'left' : key === 'NOT_INVOICED' ? 'returned' : 'fees'
   const parts: Part[] = data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, tone: tone(bucket.key) }))
   return <div className="reports-grid">
-    <div className="reports-stat-row is-wide">{data.invoices.buckets.map(bucket => <Stat key={bucket.key} label={bucket.label} value={formatCount(bucket.packages)} hint={`${formatPercent(total > 0 ? bucket.packages / total : null)} · ${formatTl(bucket.amount)}`} warn={bucket.key === 'NOT_INVOICED' && bucket.packages > 0} />)}</div>
+    <div className="is-wide"><KpiStrip label="Faturanın göstergeleri" items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, format: formatCount,
+      note: `Paketlerin ${formatPercent(total > 0 ? bucket.packages / total : null)} kadarı`, tip: `${formatTl(bucket.amount)} tutarında paket`, tone: bucket.key === 'NOT_INVOICED' && bucket.packages > 0 ? 'warn' as const : undefined }))} /></div>
     <RevealPanel title="Fatura Durumu" description="Panelde kesilmiş fatura, elle seçilen durum ya da pazaryerinin bildirdiği duruma göre; hiçbiri yoksa Bilinmiyor. Ayrıntı Faturalar sayfasında.">
       {shown => total > 0 ? <>
         <StackedBar parts={parts} total={total} shown={shown} label={`Fatura durumu: ${parts.map(part => `${part.label} ${formatCount(part.value)}`).join(', ')}`} />
