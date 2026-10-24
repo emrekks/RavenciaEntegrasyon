@@ -33,7 +33,7 @@
 .app-shell.stitch-shell main .reports-page .reports-panel > header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
 .app-shell.stitch-shell main .reports-page .reports-panel h2 { margin: 0; color: var(--rv-color-ink); font-size: 15px; font-weight: 600; }
 .app-shell.stitch-shell main .reports-page .reports-panel header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; max-width: 80ch; }
-.app-shell.stitch-shell main .reports-page .reports-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-panel-actions { display: flex; flex: none; flex-wrap: nowrap; align-items: center; gap: 8px; max-width: 100%; }
 .app-shell.stitch-shell main .reports-page .reports-csv { display: inline-flex; align-items: center; gap: 6px; height: 36px; min-height: 36px; padding: 0 12px; border-radius: 7px; font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-empty { margin: 0; padding: 18px 0; color: var(--rv-color-subtle); font-size: 13px; text-align: center; }
 .app-shell.stitch-shell main .reports-page .reports-note,
@@ -72,8 +72,11 @@
 .app-shell.stitch-shell main .reports-page .reports-measured { display: inline-grid; justify-items: end; gap: 1px; }
 .app-shell.stitch-shell main .reports-page .reports-badge.is-warn { padding: 1px 8px; color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); border-radius: 7px; font-weight: 600; }
 
-.app-shell.stitch-shell main .reports-page .reports-search { display: flex; align-items: center; gap: 8px; width: min(320px, 100%); height: 36px; margin-bottom: 12px; padding: 0 10px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
-.app-shell.stitch-shell main .reports-page .reports-search input { flex: 1; min-width: 0; height: 34px; padding: 0; color: var(--rv-color-ink); background: transparent; border: 0; box-shadow: none; font-size: 13px; outline: none; }
+/* The search sits in a table's title row, left of its CSV button; the box, not the input, shows the focus. */
+.app-shell.stitch-shell main .reports-page .reports-search { display: flex; align-items: center; gap: 8px; width: min(240px, 100%); height: 36px; margin: 0; padding: 0 10px; cursor: text; transition: border-color 140ms ease, box-shadow 140ms ease; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+.app-shell.stitch-shell main .reports-page .reports-search:focus-within { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 16%, transparent); }
+.app-shell.stitch-shell main .reports-page .reports-search input:focus-visible { outline: none; }
+.app-shell.stitch-shell main .reports-page .reports-search input { flex: 1; min-width: 0; height: 34px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: transparent; border: 0; box-shadow: none; font-size: 13px; outline: none; }
 
 /* Horizontal bars: label, track, the value written out. */
 .app-shell.stitch-shell main .reports-page .reports-bars { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
@@ -378,6 +381,8 @@
 @media (max-width: 700px) {
   .app-shell.stitch-shell main .reports-page .reports-grid { gap: 14px; }
   .app-shell.stitch-shell main .reports-page .reports-panel { padding: 18px 16px; border-radius: 16px; }
+  .app-shell.stitch-shell main .reports-page .reports-panel-actions:has(> .reports-search) { flex: 1 1 100%; flex-wrap: wrap; }
+  .app-shell.stitch-shell main .reports-page .reports-panel-actions > .reports-search { flex: 1 1 180px; width: auto; }
 }
 /* Kârlılık with Trendyol's statement: its five-column table takes the wider share beside the platforms' bars. */
 .app-shell.stitch-shell main .reports-page .reports-grid.is-ledger { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
@@ -538,11 +543,14 @@
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-3 { --kpi-columns: 3; }
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-4 { --kpi-columns: 4; }
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-5 { --kpi-columns: 5; }
-.app-shell.stitch-shell main .reports-page .reports-kpis > div { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 18px 20px; background: var(--rv-color-surface); }
+.app-shell.stitch-shell main .reports-page .reports-kpis > div { transition: background-color 140ms ease; display: grid; align-content: start; gap: 6px; min-width: 0; padding: 18px 20px; background: var(--rv-color-surface); }
 .app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-label { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-kpi-change { display: flex; align-items: center; min-height: 22px; }
 .app-shell.stitch-shell main .reports-page .reports-kpi-note { color: var(--rv-color-subtle); font-size: 12.5px; line-height: 1.4; }
-.app-shell.stitch-shell main .reports-page .reports-kpis .reports-hover-tip { top: auto; right: 10px; bottom: 10px; left: 10px; width: auto; max-width: none; }
+.app-shell.stitch-shell main .reports-page .reports-kpis-wrap { position: relative; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-kpis > div.is-open { background: color-mix(in srgb, var(--rv-color-surface) 92%, var(--rv-color-ink)); }
+.app-shell.stitch-shell main .reports-page .reports-kpis-wrap > .reports-hover-tip.is-floating { z-index: 8; bottom: auto; max-width: none; opacity: 1; visibility: visible; transform: none; animation: reports-tip-in 140ms ease; }
+@keyframes reports-tip-in { from { opacity: 0; transform: translateY(-4px); } }
 .app-shell.stitch-shell main .reports-page .reports-kpis strong { overflow: hidden; color: var(--rv-color-ink); font-size: 24px; font-weight: 700; letter-spacing: -.01em; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .reports-page .reports-kpis .is-bad strong { color: var(--rv-color-danger); }
 .app-shell.stitch-shell main .reports-page .reports-kpis .is-good strong { color: var(--rv-color-accent); }
@@ -552,8 +560,11 @@
 
 /* A row's explanation: a small card over the row while the pointer or the focus is on it; nothing moves. */
 .app-shell.stitch-shell main .reports-page .reports-tip-host { position: relative; }
-.app-shell.stitch-shell main .reports-page .reports-hover-tip { position: absolute; z-index: 6; bottom: calc(100% - 4px); left: 0; width: max-content; max-width: min(320px, 100%); padding: 8px 10px; color: var(--rv-color-ink); font-size: 12px; font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border); border-radius: 10px; box-shadow: 0 12px 30px rgb(0 0 0 / 14%); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 120ms ease, visibility 120ms ease; }
-.app-shell.stitch-shell main .reports-page .reports-tip-host:is(:hover, :focus-within) > .reports-hover-tip { opacity: 1; visibility: visible; }
+/* A row's explanation: a card over the row, what the figure is in bold on its first line and how it is worked out
+   under it, in the body size; it fades and rises in a little. */
+.app-shell.stitch-shell main .reports-page .reports-hover-tip { position: absolute; z-index: 6; bottom: calc(100% + 2px); left: 0; display: grid; gap: 4px; width: max-content; max-width: min(320px, 100%); padding: 10px 12px; color: color-mix(in srgb, var(--rv-color-ink) 78%, var(--rv-color-muted)); font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 28%); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip > b { color: var(--rv-color-ink); font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-tip-host:is(:hover, :focus-within) > .reports-hover-tip { opacity: 1; visibility: visible; transform: none; }
 .app-shell.stitch-shell main .reports-page .reports-tip-trigger { display: block; min-width: 0; max-width: 100%; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; color: inherit; font: inherit; text-align: left; text-decoration: underline dotted var(--rv-color-border-strong); text-underline-offset: 3px; text-overflow: ellipsis; text-transform: none; letter-spacing: 0; white-space: nowrap; background: transparent; border: 0; border-radius: 4px; box-shadow: none; cursor: default; }
 .app-shell.stitch-shell main .reports-page .reports-tip-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .reports-page .reports-overview .reports-card-bridge { grid-template-rows: auto 1fr auto; }
@@ -693,4 +704,5 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .reports-page :is(.reports-donut-part, .reports-bridge-track i, .reports-hover-tip, button.reports-metric, .reports-costlines li > i) { transition: none; }
   .app-shell.stitch-shell main .reports-page .reports-donut-swap { animation: none; }
+  .app-shell.stitch-shell main .reports-page .reports-kpis-wrap > .reports-hover-tip.is-floating { animation: none; }
 }
