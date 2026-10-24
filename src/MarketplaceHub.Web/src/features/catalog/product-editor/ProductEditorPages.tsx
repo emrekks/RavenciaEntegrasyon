@@ -32,7 +32,7 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, type EditorFieldErrors } from '../product-editor-state'
+import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
@@ -1091,6 +1091,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [variantPlatformPricingSaving, setVariantPlatformPricingSaving] = useState(false)
   const initialEditMediaUrl = useRef('')
   const initialEditModelCode = useRef('')
+  const initialEditDesi = useRef(1)
   const initialEditVariantMediaRefs = useRef<Record<string, string[]>>({})
   useEffect(() => {
     if (!barcodeSkuMenuOpen && !barcodePasteMenuOpen) return
@@ -1193,6 +1194,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const initialListPrice = product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
+    initialEditDesi.current = Number(primary?.desi ?? 1)
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     if (!editProductId && duplicateProductId) setChannelPricing(Object.fromEntries((primary?.platformStatuses ?? []).flatMap(platform => platform.connectionId ? [[platform.connectionId, { listPrice: String(platform.listPrice ?? initialListPrice), salePrice: String(platform.salePrice ?? initialSalePrice) }] as const] : [])))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
@@ -2225,6 +2227,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             // Only a cost the user changed is sent, with the cost it was loaded with; an unsent (null) cost is left as
             // it is on the server, and a cost changed there meanwhile refuses the save (409).
             ...editorVariantCostUpdate(row),
+            ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : Number(form.desi) || 1, initialEditDesi.current, editProduct.variants.find(variant => variant.id === row.key)?.desi),
             defaultListPrice: row.listPrice,
             defaultSalePrice: row.salePrice,
             sortOrder: rows.findIndex(candidate => candidate.key === row.key),

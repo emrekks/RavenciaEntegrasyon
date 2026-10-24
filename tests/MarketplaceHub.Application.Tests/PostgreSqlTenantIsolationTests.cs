@@ -627,6 +627,35 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var afterSave = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
         Assert.Equal([45m, 30m], afterSave.Select(x => x.CostPrice));
 
+        // Desi the same way: the editor opened with no desi, then the products import set 4 on the first variant.
+        await db.ProductVariants.Where(x => x.Id == imported.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.Desi, 4m).SetProperty(x => x.Version, x => x.Version + 1));
+        var productVersion = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == product.Id)).Version;
+        Task<ServiceResult<ProductView>> SaveDesiAsync(decimal? loadedDesi) => service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            productVersion,
+            new UpdateProductCommand(
+                product.Title,
+                product.Description,
+                null,
+                null,
+                VariantUpdates:
+                [
+                    new UpdateVariantCommand(imported.Id, imported.Sku, null, null, 0, Desi: 3m, LoadedDesi: loadedDesi),
+                    new UpdateVariantCommand(empty.Id, empty.Sku, null, null, 1)
+                ]),
+            CancellationToken.None);
+        var staleDesi = await SaveDesiAsync(null);
+        Assert.Equal(("VARIANT_DESI_CHANGED", (int?)409), (staleDesi.Error?.Code, staleDesi.Error?.Status));
+        db.ChangeTracker.Clear();
+        Assert.Equal(4m, (await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == imported.Id)).Desi);
+        var currentDesi = await SaveDesiAsync(4m);
+        Assert.True(currentDesi.Succeeded, currentDesi.Error?.Message);
+        db.ChangeTracker.Clear();
+        var afterDesi = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
+        // An unsent desi leaves the stored one as it is.
+        Assert.Equal([3m, null], afterDesi.Select(x => x.Desi));
+
         await transaction.RollbackAsync();
     }
 

@@ -56,6 +56,14 @@ export function editorVariantCostUpdate(row: { costPrice: number | null; loadedC
   return { costPrice: row.costPrice, loadedCostPrice: row.loadedCostPrice ?? null }
 }
 
+// The desi field of an existing variant's update. The form has one desi for the product: it is sent only when the user
+// changed it from the value the form opened with, together with the variant's stored desi as loaded, so the server
+// refuses a desi changed meanwhile elsewhere (ürün içe aktarma) instead of overwriting it.
+export function editorVariantDesiUpdate(desi: number, openedDesi: number, loadedDesi: number | null | undefined): { desi?: number; loadedDesi?: number | null } {
+  if (!(desi > 0) || desi === openedDesi) return {}
+  return { desi, loadedDesi: loadedDesi ?? null }
+}
+
 // Field messages the server attached to a refused save (422 fieldErrors), keyed the way the editor shows them.
 export type EditorFieldErrors = Partial<Record<'title' | 'description' | 'categoryId' | 'brandId' | 'prices' | 'variants' | 'attributes' | 'stock', string>>
 const serverFieldToEditorField: Record<string, keyof EditorFieldErrors> = {

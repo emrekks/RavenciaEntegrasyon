@@ -1179,6 +1179,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var variantsToCreate = command.VariantsToCreate ?? [];
         var variantUpdates = command.VariantUpdates ?? [];
         if (variantUpdates.Any(variant => variant.CostPrice is < 0) || variantsToCreate.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
+        if (variantUpdates.Any(variant => variant.Desi is <= 0)) return Invalid<ProductView>("variants", "Desi sıfırdan büyük olmalıdır.");
         if (variantUpdates.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0) || variantsToCreate.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0)) return Invalid<ProductView>("variants", "Varyant fiyatı negatif olamaz.");
         if (variantsToCreate.Any(variant => variant.DefaultListPrice is decimal variantList && variant.DefaultSalePrice is decimal variantSale && variantList < variantSale)) return Invalid<ProductView>("variantsToCreate", "Varyant liste fiyatı satış fiyatından küçük olamaz.");
         // Status updates apply to every existing sale row as well. Load the rows
@@ -1207,11 +1208,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         {
             var existing = existingVariants.SingleOrDefault(variant => variant.Id == update.Id);
             if (existing is null) continue;
-            // K2: a cost import (Maliyet Excel) bumps only the variant's version, so the product version above does
-            // not see it. A sent cost is written only over the cost the editor was loaded with; one set meanwhile
-            // is refused instead of silently overwritten. A cost already equal to the sent one is no conflict.
+            // K2: the products import bumps only the variant's version, so the product version above does not see
+            // it. A sent cost or desi is written only over the value the editor was loaded with; one set meanwhile
+            // is refused instead of silently overwritten. A value already equal to the sent one is no conflict.
             if (update.CostPrice is decimal sentCost && existing.CostPrice != NonNegativeOrNull(sentCost) && existing.CostPrice != update.LoadedCostPrice)
                 return Conflict<ProductView>("VARIANT_COST_CHANGED", $"{existing.Sku} varyantının maliyeti bu form açıkken başka bir işlemle (ör. ürün içe aktarma) değişti; güncel maliyet {(existing.CostPrice is decimal storedCost ? storedCost.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")) + " TL" : "boş")}. Sayfayı yenileyip maliyeti tekrar girin.");
+            if (update.Desi is decimal sentDesi && existing.Desi != sentDesi && existing.Desi != update.LoadedDesi)
+                return Conflict<ProductView>("VARIANT_DESI_CHANGED", $"{existing.Sku} varyantının desisi bu form açıkken başka bir işlemle (ör. ürün içe aktarma) değişti; güncel desi {(existing.Desi is decimal storedDesi ? storedDesi.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")) : "boş")}. Sayfayı yenileyip desiyi tekrar girin.");
             var effectiveVariantListPrice = update.DefaultListPrice ?? existing.DefaultListPrice ?? product.DefaultListPrice;
             var effectiveVariantSalePrice = update.DefaultSalePrice ?? existing.DefaultSalePrice ?? product.DefaultSalePrice;
             if (effectiveVariantListPrice is decimal variantList && effectiveVariantSalePrice is decimal variantSale && variantList < variantSale)
@@ -1259,7 +1262,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 if (CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku);
                 if (variant.BarcodeNormalized is not null && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode);
                 if (!dataChanged && variant.SortOrder == Math.Max(0, update.SortOrder)) continue;
-                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); if (update.CostPrice is decimal variantCost) variant.CostPrice = NonNegativeOrNull(variantCost); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
+                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); if (update.CostPrice is decimal variantCost) variant.CostPrice = NonNegativeOrNull(variantCost); if (update.Desi is decimal variantDesi) variant.Desi = variantDesi; if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
@@ -2112,6 +2115,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!string.Equals(variant.ModelCode, NullTrim(update.ModelCode), StringComparison.Ordinal)) return true;
         // An unsent cost (null) leaves the stored one as it is; the editor sends only a cost the user changed.
         if (update.CostPrice is decimal cost && variant.CostPrice != NonNegativeOrNull(cost)) return true;
+        if (update.Desi is decimal desi && variant.Desi != desi) return true;
         if (update.DefaultListPrice is decimal listPrice && variant.DefaultListPrice != listPrice) return true;
         if (update.DefaultSalePrice is decimal salePrice && variant.DefaultSalePrice != salePrice) return true;
         if (update.Options is not null)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate } from './product-editor-state'
+import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate } from './product-editor-state'
 
 describe('product editor state', () => {
   it('builds one seed key for the seed and for a version bump made by the editor itself', () => {
@@ -28,6 +28,14 @@ describe('product editor state', () => {
     expect(editorVariantCostUpdate({ costPrice: 40, loadedCostPrice: 40 })).toEqual({ costPrice: null })
     expect(editorVariantCostUpdate({ costPrice: null, loadedCostPrice: 40 })).toEqual({ costPrice: null })
     expect(JSON.parse(JSON.stringify(editorVariantCostUpdate({ costPrice: 12.5, loadedCostPrice: null })))).toEqual({ costPrice: 12.5, loadedCostPrice: null })
+  })
+
+  it('sends the desi only when the user changed it, with each variant\'s stored desi as loaded', () => {
+    expect(editorVariantDesiUpdate(3, 2, 2)).toEqual({ desi: 3, loadedDesi: 2 })
+    expect(editorVariantDesiUpdate(3, 2, undefined)).toEqual({ desi: 3, loadedDesi: null })
+    // Untouched: a desi set per variant (e.g. by the products import) is left as it is.
+    expect(editorVariantDesiUpdate(2, 2, 5)).toEqual({})
+    expect(editorVariantDesiUpdate(0, 2, 2)).toEqual({})
   })
 
   it('ignores platform prices when deciding whether the form has unsaved edits', () => {
