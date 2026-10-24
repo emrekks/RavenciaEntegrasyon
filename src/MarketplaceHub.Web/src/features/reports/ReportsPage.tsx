@@ -490,21 +490,24 @@ function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
       const id = `${tip}-${item.key}`
       const empty = item.empty ?? '—'
       const missing = item.value === null && item.text === undefined
-      // Whole counts stay whole while they count up.
-      const format = item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
+      // Whole counts stay whole while they count up; money shows whole liras (the kuruş rounded) in a strip.
+      const format = item.format === formatTl ? formatTlWhole : item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
       return <div key={item.key} className={`${missing && empty !== '—' ? 'is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
         onMouseEnter={event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}
           onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && <Delta delta={item.delta} invert={item.invert} />}</span>}
-        <span className="reports-kpi-note">{item.note}</span>
+        <span className="reports-kpi-note">{wholeLiras(item.note)}</span>
         <span id={id} className="reports-sr">{item.tip.replace('\n', ' ')}</span>
       </div>
     })}</div>
     {open && current && <div key={current.key} className="reports-hover-tip is-floating" aria-hidden="true" style={{ top: open.top, left: open.left, width: open.width }}><TipText text={current.tip} /></div>}
   </div>
 }
+
+// The amounts written in a strip's note in whole liras, as its figures are ("₺422.394,54" → "₺422.395").
+const wholeLiras = (text: string) => text.replace(/₺([\d.]+),(\d{2})/gu, (_, whole: string, kurus: string) => formatTlWhole(Number(whole.replace(/\./gu, '')) + Number(kurus) / 100))
 
 // "Önceki dönem …", or that the previous period has nothing to compare.
 const previousText = (value: string | null) => value === null || value === '—' ? 'Önceki dönemde veri yok' : `Önceki dönem ${value}`

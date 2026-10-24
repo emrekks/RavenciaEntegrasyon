@@ -126,10 +126,12 @@ describe('ReportsPage', () => {
     const figures = texts(page, '.reports-kpis > div')
     expect(figures).toHaveLength(6)
     expect(figures[0]).toContain('Net Ciro')
-    expect(figures[0]).toContain('250,00')
+    // Money in a strip is shown in whole liras, the previous period's too.
+    expect(figures[0]).toContain('Net Ciro₺250')
+    expect(figures[0]).toContain('Önceki dönem ₺200Satıştan')
     expect(figures[0]).toContain('+%25')
     expect(figures[1]).toContain('Net Kâr')
-    expect(figures[1]).toContain('127,00')
+    expect(figures[1]).toContain('Net Kâr₺127')
     expect(page.querySelectorAll('.reports-kpis > div')[1].classList.contains('is-good')).toBe(true)
     expect(figures[2]).toContain('%36,3')
     expect(figures[3]).toContain('%158,8')
@@ -138,7 +140,7 @@ describe('ReportsPage', () => {
     // Every figure against the previous period: the profit against its 160, the margin against 45,7 % (a rate's change
     // written in per cent, not points); every change on its own line, so the notes under them start level.
     expect(figures[1]).toContain('−%20,6')
-    expect(figures[1]).toContain('Önceki dönem ₺160,00')
+    expect(figures[1]).toContain('Önceki dönem ₺160')
     expect(figures[2]).toContain('−%9,4')
     expect(figures[2]).toContain('Önceki dönem %45,7')
     expect(page.querySelectorAll('.reports-kpis > div > .reports-kpi-change')).toHaveLength(6)
@@ -216,7 +218,7 @@ describe('ReportsPage', () => {
     const loss = page.querySelectorAll('.reports-kpis > div')[1]
     expect(loss.classList.contains('is-bad')).toBe(true)
     expect(loss.textContent).toContain('Tahmini Zarar')
-    expect(loss.textContent).toContain('− ₺111,68')
+    expect(loss.textContent).toContain('− ₺112')
     // The previous period read no statement, so its profit is not set against this one.
     expect(loss.textContent).toContain('Önceki dönemde veri yok')
     expect(metricRows(page, 'ads')[0]).toBe('Toplam Reklam Harcaması₺0,00')
@@ -228,7 +230,7 @@ describe('ReportsPage', () => {
     // second "what is left" figure on another basis.
     const commission = page.querySelector('.reports-kpis > div')!
     expect(commission.querySelector('.reports-kpi-label')?.textContent).toBe('Komisyon')
-    expect(commission.textContent).toContain('₺41,50')
+    expect(commission.textContent).toContain('Komisyon₺42')
     expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('Hakediş')
     expect(body(page)).toContain('Trendyol Cari Hesap Kalemleri')
     expect(body(page)).toContain('Masraf Değil')
