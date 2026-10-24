@@ -49,6 +49,19 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(expected, TrendyolFinanceCategorizer.Charged(source, type, stored, (decimal)debt, (decimal)credit));
 
     [Fact]
+    public void The_cargo_estimate_is_the_tariff_most_recent_parcels_were_billed_at_not_their_mean()
+    {
+        // 23 Oct 2026: most parcels at 98.34, a few heavier ones at 106.76 and one order with two parcels.
+        var sample = Assert.IsType<ReportCargoSample>(ReportCargoSample.Tariff(
+            [(98.34m, "A"), (98.34m, "B"), (98.34m, "C"), (106.76m, "D"), (106.76m, "E"), (98.34m, "E")]));
+
+        Assert.Equal(98.34m, sample.PerOrder);
+        Assert.Equal(5, sample.Orders);
+        Assert.Equal(106.76m, ReportCargoSample.Tariff([(98.34m, "A"), (106.76m, "B")])!.PerOrder);
+        Assert.Null(ReportCargoSample.Tariff([]));
+    }
+
+    [Fact]
     public void Another_deduction_is_a_cost_and_a_row_stored_as_other_moves_to_it_when_read_again()
     {
         Assert.Contains(MarketplaceFinanceCategories.OtherDeduction, MarketplaceFinanceCategories.Costs);
