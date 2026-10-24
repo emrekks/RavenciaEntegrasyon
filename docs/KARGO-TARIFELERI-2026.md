@@ -371,6 +371,7 @@ Bu bölüm, komisyon ve kargo tarifesi dışında sipariş ya da satış başın
 
 **Mağazamızın ayarları (24 Ekim 2026, mağaza sahibinden):**
 - Plan: en düşük ücretli paket (Basic).
+- Kartlı ödeme **iyzico** ile alınıyor.
 - Kargoyu satıcı öder, ortalama 120 TL.
 - İade kargosunu müşteri öder.
 
@@ -379,13 +380,16 @@ Bu bölüm, komisyon ve kargo tarifesi dışında sipariş ya da satış başın
 | Basic plan | Aylık ödemede $27, yıllık ödemede ayda $19 | USD faturalanır. Türkiye KDV'sinin faturada nasıl gösterildiği Shopify'ın Billing sayfasından bakılmalı. | R (shopify.com/tr/pricing, 24 Ekim 2026) |
 | Shopify işlem ücreti (Basic) | Harici ödeme altyapısıyla alınan her ödemenin **%2'si** | — | R. Shopify Payments Türkiye'de yok, bu yüzden her kartlı ödemede alınır. |
 | Havale/EFT, kapıda ödeme | Shopify işlem ücreti **alınmaz** | — | R (manuel ödeme) |
-| Ödeme kuruluşu komisyonu | iyzico liste fiyatı %4,29 + işlem başına 0,25 TL; PayTR %2,19'dan başlayan teklif; Param %2,49; taksitte banka vade farkı | KDV değil **%5 BSMV**; iyzico liste fiyatı BSMV dahil | iyzico için R; diğerleri D. Gerçek oran sözleşmeye göre değişir. |
+| iyzico komisyonu (kullandığımız) | Liste fiyatı tek çekimde **%4,29 + işlem başına 0,25 TL**. Taksitli satışta banka vade farkı panelden alıcıya ya da satıcıya yansıtılır. Ödeme haftalık yapılır. | KDV değil **%5 BSMV**; liste fiyatı BSMV dahil | R (iyzico.com/fiyatlandirma, 24 Ekim 2026). iyzico'nun özel teklifleri %2,49'dan başlıyor; mağazanın sözleşmesindeki oran iyzico panelinden bakılıp buraya yazılmalı. |
 | Kargo | Ortalama **120 TL** sipariş başına (satıcı öder) | Faturaya göre KDV dahil kabul edildi | Mağaza sahibi |
 | İade kargosu | Müşteri öder (mağaza ayarı) | — | Mağaza sahibi. **Yasal not:** cayma hakkıyla yapılan iadede kargo masrafı satıcıya aittir. "Tüketici öder" değişikliği 24 Mayıs 2025'te geri alındı (B). Müşteriden kargo bedeli alınan iadeler hukuken itiraza açıktır. |
 | E-ticaret stopajı | **Uygulanmaz.** Stopajı aracı hizmet sağlayıcılar (pazaryerleri) keser. Kendi sitesinden kendi ödeme altyapısıyla satan satıcıda kesen yoktur. | — | B/D (Paraşüt, 30 Haziran 2026). Mevzuatta açık bir istisna cümlesi yok; sonuç kesintiyi yapacak kişinin tanımından çıkıyor. |
 | Uygulamalar | E-fatura uygulaması ayda yaklaşık $5–9 (ör. Hızlı BT $8,99) + entegratör kontörü; PayTR uygulaması ücretsiz | USD | R/D |
 
-**Örnek:** Basic planda iyzico liste fiyatıyla kartlı tek çekimde satışın yaklaşık **%6,29'u + 0,25 TL** kesilir (iyzico %4,29 + Shopify %2). Buna sipariş başına 120 TL kargo eklenir.
+**Bir Shopify siparişinin maliyeti (iyzico liste fiyatıyla):**
+- Kartlı tek çekim: satışın **%6,29'u + 0,25 TL** (iyzico %4,29 + Shopify %2) ve sipariş başına 120 TL kargo.
+  - Örnek: 1.000 TL'lik siparişte 62,90 + 0,25 + 120 = **183,15 TL** kesinti.
+- Havale/EFT ya da kapıda ödeme: yalnızca 120 TL kargo (iyzico ve Shopify işlem ücreti yok). Kapıda ödemede kargo firmasının tahsilat ücreti ayrıca eklenir.
 
 **Panelde:** Shopify siparişlerinde komisyon alanı yok. Ödeme yöntemi (kart mı havale mi) panel tarafından henüz okunmuyor. Kâr hesabı için yüzde ve kargo tutarının panele ayar olarak girilmesi gerekir.
 
@@ -402,7 +406,7 @@ Canlı veride son 60 günün sipariş satırlarında hangi alanların dolu oldu�
 | N11 | `commissionRate`: **oran**; kampanyada `sellerCampaignCommissionRate` düşülür | 27 / 27 satır | yok | **KDV dahil** (R) | %5,5–21 | magazadestek.n11.com/s/komisyon-oranlari |
 | PTT AVM | `Komisyon`: **oran** (ör. 20) | 4 / 4 satır | yok | 2022 PDF'ine göre KDV dahil (D) | %5–15 | pttavm.com/lp/magaza-komisyonu |
 | Pazarama | **Yok.** Komisyon sipariş servisinde değil, finans servisinde (`order/paymentAgreement` → `commissionAmount`) | 0 / 6 satır | yok | **KDV hariç, %20 KDV eklenir** (R) | %0–19 | isortagim.pazarama.com/static-pages/pazarama-comission-rate-list |
-| Shopify | Komisyon yok; ödeme kuruluşu ve Shopify işlem ücreti var (bölüm 7) | — | — | BSMV | — | — |
+| Shopify | Komisyon yok; iyzico %4,29 + 0,25 TL ve Shopify %2 işlem ücreti var (bölüm 7) | — | — | iyzico BSMV dahil | — | — |
 
 Doğrulama: Trendyol'da 69 siparişin gerçek komisyonu (12.832,12 TL), satırdaki oranla hesaplanan tutarla (12.831,93 TL) neredeyse aynı.
 
