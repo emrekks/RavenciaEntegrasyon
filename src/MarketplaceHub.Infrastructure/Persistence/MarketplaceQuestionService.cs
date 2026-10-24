@@ -89,6 +89,26 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                       select Map(question, connection.PlatformCode, connection.DisplayName)).SingleOrDefaultAsync(cancellationToken);
     }
 
+    // The questions the same customer asked the same marketplace before this one, newest first, with the answers they
+    // got: the seller sees what was already asked and said. Empty when the marketplace sends no customer number;
+    // null when the question is not found.
+    internal const int CustomerHistoryLimit = 20;
+    public async Task<IReadOnlyList<MarketplaceQuestionView>?> CustomerHistoryAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
+    {
+        var current = await (from question in db.MarketplaceQuestions.AsNoTracking()
+                             join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
+                             where question.TenantId == tenantId && question.Id == id
+                             select new { question.CustomerKey, question.CreatedAt, connection.PlatformCode }).SingleOrDefaultAsync(cancellationToken);
+        if (current is null) return null;
+        if (current.CustomerKey is null) return [];
+        return await (from question in db.MarketplaceQuestions.AsNoTracking()
+                      join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
+                      where question.TenantId == tenantId && question.CustomerKey == current.CustomerKey && connection.PlatformCode == current.PlatformCode
+                          && question.Id != id && question.CreatedAt < current.CreatedAt
+                      orderby question.CreatedAt descending
+                      select Map(question, connection.PlatformCode, connection.DisplayName)).Take(CustomerHistoryLimit).ToListAsync(cancellationToken);
+    }
+
     public async Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken)
     {
         var connections = await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId
@@ -601,6 +621,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             row.Kind = remote.Kind; row.Status = remote.Status;
             if (remote.Text.Length > 0) row.QuestionText = remote.Text;
             row.ProductName = remote.ProductName; row.ProductImageUrl = remote.ProductImageUrl; row.ProductSku = remote.ProductSku; row.ProductBarcode = remote.ProductBarcode; row.ProductModelCode = remote.ProductModelCode; row.ProductUrl = remote.ProductUrl ?? row.ProductUrl; row.CustomerName = remote.CustomerName; row.ExternalOrderNumber = remote.OrderNumber;
+            // A read without the customer's number (another call of the marketplace) keeps the one already known.
+            row.CustomerKey = remote.CustomerKey ?? row.CustomerKey;
             // HistoryJson is jsonb, so it comes back with PostgreSQL's key order and spacing; compare it in our own
             // serialized form, or every re-read would look like a change.
             var history = MergeHistory(row.HistoryJson, remote.Conversations);

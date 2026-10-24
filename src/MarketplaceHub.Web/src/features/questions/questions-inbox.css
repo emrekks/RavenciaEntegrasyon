@@ -128,6 +128,15 @@
 .qi-page .qi-detail-body .rv-question-thread-message p { margin: 0; font-size: 14px; line-height: 1.55; }
 .qi-page .qi-detail-body .rv-question-rejection { color: var(--rv-color-danger); font-size: 12px; }
 .qi-page .qi-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--rv-color-subtle); font-size: 12px; }
+/* The customer's earlier questions sit above the new one, oldest first, each under its product, then a divider. */
+.app-shell.stitch-shell main .qi-page .qi-customer-history { display: grid; gap: 12px; margin: 0; padding: 0; border: 0; }
+.qi-page .qi-customer-history > header { display: flex; align-items: center; gap: 6px; color: var(--rv-color-subtle); font-size: 12px; }
+.qi-page .qi-customer-history > header b { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.qi-page .qi-history-item { display: grid; gap: 8px; padding: 0 0 0 12px; border-left: 2px solid var(--rv-color-border); }
+.qi-page .qi-history-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; color: var(--rv-color-subtle); font-size: 12px; }
+.qi-page .qi-history-meta > span:first-child { min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.qi-page .qi-history-divider { display: flex; align-items: center; gap: 10px; margin: 4px 0 0; color: var(--rv-color-subtle); font-size: 12px; }
+.qi-page .qi-history-divider::before, .qi-page .qi-history-divider::after { content: ""; flex: 1; height: 1px; background: var(--rv-color-border); }
 .qi-page .qi-composer { display: grid; gap: 10px; padding: 14px 20px 16px; background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); }
 .qi-page .qi-templates-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--rv-color-subtle); font-size: 12px; }
 .qi-page .qi-templates-row > span { margin-right: 4px; }

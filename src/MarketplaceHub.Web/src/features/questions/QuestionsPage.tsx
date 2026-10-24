@@ -273,6 +273,8 @@ export function QuestionsPage() {
   const listedSelection = rows.find(item => item.id === selectedId)
   const pinned = useQuery({ queryKey: ['questions', 'detail', selectedId], queryFn: () => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
   const selected = listedSelection ?? (selectedId && pinned.data?.id === selectedId ? pinned.data : undefined) ?? (selectedId ? undefined : rows[0])
+  // What the same customer asked this marketplace before (newest first), shown above the open question.
+  const customerHistory = useQuery({ queryKey: ['questions', 'customer-history', selected?.id], queryFn: () => hubApi<MarketplaceQuestion[]>(`/questions/${selected!.id}/customer-history`), enabled: Boolean(selected), staleTime: 60_000 })
   const totalCount = questions.data?.totalCount ?? 0
   const pageCount = Math.max(1, Math.ceil(totalCount / 50))
   const currentStatus = statusFilters.find(item => item.value === status) ?? statusFilters[0]
@@ -302,6 +304,8 @@ export function QuestionsPage() {
     const length = draft.trim().length
     const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) { const warning = answerWarning(row.platformCode); if (warning) setConfirmAnswer({ id: row.id, version: row.version, text: draft, ...warning }); else sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) } }
     const next = nextWaiting(row.id)
+    const earlier = customerHistory.data && customerHistory.data.length > 0 && selected.id === row.id ? [...customerHistory.data].reverse() : []
+    const thread = (message: QuestionConversation, key: string) => { const seller = isSeller(message.author); return <article className={`rv-question-thread-message ${seller ? 'is-seller' : 'is-customer'}`} key={key}><header><strong>{seller ? 'Satıcı Cevabı' : message.author || 'Müşteri'}</strong><time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></header><p>{message.text}</p>{message.rejectionReason && <small className="rv-question-rejection">Ret nedeni: {message.rejectionReason}</small>}</article> }
     return <article className="qi-detail" aria-label="Seçili soru">
       <div className="qi-detail-head">
         <button type="button" className="qi-back" onClick={() => setDetailOpen(false)}><UiIcon name="chevronLeft" size={16} />Sorular</button>
@@ -311,8 +315,17 @@ export function QuestionsPage() {
         </div>
       </div>
       <div className="qi-detail-body rv-question-content" aria-label="Soru ve konuşmalar">
+        {earlier.length > 0 && <section className="qi-customer-history" aria-label="Müşterinin önceki soruları">
+          <header><UiIcon name="clock" size={14} /><b>Müşterinin Önceki Soruları</b><span className="qi-count">{earlier.length}</span></header>
+          {earlier.map(item => { const itemState = questionStatus(item.status); return <div className="qi-history-item" key={item.id}>
+            <p className="qi-history-meta"><span>{item.productName || (item.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span>{item.storeName !== row.storeName && <span>{item.storeName}</span>}<span className="qi-tag"><StateGlyph state={itemState.glyph} />{itemState.label}</span></p>
+            {thread({ author: item.customerName || 'Müşteri', text: item.questionText, createdAt: item.createdAt }, `${item.id}-question`)}
+            {visibleQuestionConversation(item.conversations ?? [], item.questionText).map((message, index) => thread(message, `${item.id}-${message.createdAt}-${index}`))}
+          </div> })}
+          <p className="qi-history-divider"><span>Yeni Soru</span></p>
+        </section>}
         <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri Sorusu'}</strong><time dateTime={row.createdAt}>{formatDate(row.createdAt)}</time></header><p>{row.questionText}</p></div>
-        {previousMessages.length > 0 && <div className="rv-question-conversation" aria-label="Konuşma geçmişi">{previousMessages.map((message, index) => { const seller = isSeller(message.author); return <article className={`rv-question-thread-message ${seller ? 'is-seller' : 'is-customer'}`} key={`${message.createdAt}-${index}`}><header><strong>{seller ? 'Satıcı Cevabı' : message.author || 'Müşteri'}</strong><time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></header><p>{message.text}</p>{message.rejectionReason && <small className="rv-question-rejection">Ret nedeni: {message.rejectionReason}</small>}</article> })}</div>}
+        {previousMessages.length > 0 && <div className="rv-question-conversation" aria-label="Konuşma geçmişi">{previousMessages.map((message, index) => thread(message, `${message.createdAt}-${index}`))}</div>}
         <p className="qi-note"><UiIcon name="info" size={14} />Cevabınız yalnızca soruyu soran müşteri tarafından görüntülenir.</p>
       </div>
       {waiting ? <div className="qi-composer rv-answer-composer" aria-label={`#${row.externalQuestionId} için cevap`}>
