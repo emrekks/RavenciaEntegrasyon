@@ -307,11 +307,14 @@ function Card({ title, icon, actions, className, children }: { title: string; ic
 type Measure = 'netRevenue' | 'orders' | 'soldQuantity'
 const measures: Record<Measure, string> = { netRevenue: 'Net Ciro', orders: 'Sipariş', soldQuantity: 'Satılan Adet' }
 
-const bucketNames: Record<ReportSales['granularity'], { title: string; unit: string; every: string }> = {
-  day: { title: 'Günler', unit: 'Gün', every: 'Günlük' },
-  week: { title: 'Haftalar', unit: 'Hafta', every: 'Haftalık' },
-  month: { title: 'Aylar', unit: 'Ay', every: 'Aylık' }
+// A bucket's name with the Turkish endings its explanations need (its, of it, from it, with it, many).
+const bucketNames: Record<ReportSales['granularity'], { title: string; unit: string; every: string; its: string; of: string; from: string; with: string; many: string }> = {
+  day: { title: 'Günler', unit: 'Gün', every: 'Günlük', its: 'günü', of: 'günün', from: 'gününden', with: 'günüyle', many: 'günler' },
+  week: { title: 'Haftalar', unit: 'Hafta', every: 'Haftalık', its: 'haftası', of: 'haftanın', from: 'haftasından', with: 'haftasıyla', many: 'haftalar' },
+  month: { title: 'Aylar', unit: 'Ay', every: 'Aylık', its: 'ayı', of: 'ayın', from: 'ayından', with: 'ayıyla', many: 'aylar' }
 }
+// The measure as what a bucket has: a day's net revenue ("günün net cirosu").
+const measureOf: Record<Measure, string> = { netRevenue: 'net cirosu', orders: 'sipariş sayısı', soldQuantity: 'satılan adedi' }
 
 // The period's buckets as columns of net revenue (or orders or units), the best one marked and the previous period's
 // beside each under the pointer; under them the best bucket, the average one and how many beat the previous period's.
@@ -333,15 +336,30 @@ function PeriodCard({ data }: { data: ReportSales }) {
   const compared = points.filter(point => point.previous !== null)
   const ahead = compared.filter(point => point.value > (point.previous ?? 0)).length
   const unit = names.unit.toLocaleLowerCase('tr-TR')
+  const tip = useId()
+  const hasBest = !noAmount && best !== null && best.value > 0
+  // The best day with its weekday; a week or a month by its own name.
+  const bestWhen = (point: ColumnPoint) => data.granularity === 'day' ? `${point.title}, ${weekdays[(new Date(`${point.key}T12:00:00`).getDay() + 6) % 7]}` : point.title
   return <Card title={names.title} className="reports-card-period"
     actions={<select aria-label="Grafik ölçüsü" value={measure} onChange={event => setMeasure(event.target.value as Measure)}>{(Object.keys(measures) as Measure[]).map(key => <option key={key} value={key}>{measures[key]}</option>)}</select>}>
     {shown => <>
       {noAmount ? <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>
         : <Columns points={points} format={format} axisFormat={money ? formatTlShort : formatNumber} shown={shown} label={`${measures[measure]} dönem içinde`} />}
+      {/* Three tiles: the best bucket's figure and its date, the average against the previous period's, and how many
+          buckets beat the same bucket of the previous period, drawn as a share of the period. */}
       <dl className="reports-period-facts">
-        <div><dt>En İyi {names.unit}</dt><dd><strong>{!noAmount && best && best.value > 0 ? best.title : '—'}</strong><small>{!noAmount && best && best.value > 0 ? format(best.value) : 'Bu dönemde veri yok'}</small></dd></div>
-        <div><dt>{names.every} Ortalama</dt><dd><strong>{noAmount || average === null ? '—' : format(average)}</strong><small>{previousAverage === null ? 'Önceki dönemde veri yok' : `Önceki dönem ${format(previousAverage)}`}</small></dd></div>
-        <div><dt>Önceki Döneme Göre</dt><dd><strong>{noAmount || !compared.length ? '—' : `${ahead} / ${compared.length} ${unit} önde`}</strong><small>{noAmount || !compared.length ? 'Önceki dönemde veri yok' : `${compared.length - ahead} ${unit} geride kaldı`}</small></dd></div>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-best`}>En İyi {names.unit}</button></dt>
+          <dd><strong>{hasBest && best ? format(best.value) : '—'}</strong><small>{hasBest && best ? bestWhen(best) : 'Bu dönemde veri yok'}</small></dd>
+          <span role="tooltip" id={`${tip}-best`} className="reports-hover-tip"><TipText text={`Dönemin ${measureOf[measure]} en yüksek ${names.its}.\nGrafikte mor sütunla gösterilir.`} /></span></div>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-average`}>{names.every} Ortalama</button></dt>
+          <dd><strong>{noAmount || average === null ? '—' : format(average)}{!noAmount && average !== null && <Delta delta={change(average, previousAverage)} />}</strong>
+            <small>{previousAverage === null ? 'Önceki dönemde veri yok' : `Önceki dönem ${format(previousAverage)}`}</small></dd>
+          <span role="tooltip" id={`${tip}-average`} className="reports-hover-tip"><TipText text={`Bir ${names.of} ortalama ${measureOf[measure]}.\nDönem toplamı ÷ ${unit} sayısı; önceki dönemin ortalamasıyla karşılaştırılır.`} /></span></div>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-ahead`}>Önceki Döneme Göre</button></dt>
+          <dd><strong>{noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`}</strong>
+            {!noAmount && compared.length > 0 && <Progress value={ahead / compared.length} shown={shown} tone="good" />}
+            <small>{noAmount || !compared.length ? 'Önceki dönemde veri yok' : `${compared.length - ahead} ${unit} geride; toplam ${compared.length} ${unit}`}</small></dd>
+          <span role="tooltip" id={`${tip}-ahead`} className="reports-hover-tip"><TipText text={`Önceki dönemin aynı sıradaki ${names.from} yüksek geçen ${names.many}.\nDönemin ilk ${names.its} önceki dönemin ilk ${names.with}, ikincisi ikincisiyle karşılaştırılır.`} /></span></div>
       </dl>
     </>}
   </Card>

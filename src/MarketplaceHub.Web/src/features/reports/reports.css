@@ -61,7 +61,7 @@
 .app-shell.stitch-shell main .reports-page .reports-expand-col { width: 44px; }
 .app-shell.stitch-shell main .reports-page .reports-expand { display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 28px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 1px solid var(--rv-color-border); border-radius: 7px; cursor: pointer; }
 .app-shell.stitch-shell main .reports-page .reports-expand:hover { color: var(--rv-color-ink); border-color: var(--rv-color-border-strong); }
-.app-shell.stitch-shell main .reports-page .reports-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0 12px; }
+.app-shell.stitch-shell main .reports-page .reports-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 0 12px; }
 .app-shell.stitch-shell main .reports-page .reports-split .reports-panel { margin: 0; }
 .app-shell.stitch-shell main .reports-page .reports-cell-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
 .app-shell.stitch-shell main .reports-page .reports-tag { padding: 0 6px; color: var(--rv-color-warning); border: 1px solid var(--rv-color-warning); border-radius: 7px; font-size: 11px; font-style: normal; line-height: 18px; }
@@ -644,12 +644,19 @@
 
 .app-shell.stitch-shell main .reports-page .reports-overview .reports-card-period { grid-template-rows: auto 1fr auto; }
 .app-shell.stitch-shell main .reports-page .reports-card-period .reports-columns { height: auto; min-height: 230px; }
-.app-shell.stitch-shell main .reports-page .reports-period-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto; gap: 4px 16px; margin: 0; padding-top: 16px; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .reports-page .reports-period-facts > div { display: grid; grid-row: span 2; grid-template-rows: subgrid; align-content: start; min-width: 0; }
-.app-shell.stitch-shell main .reports-page .reports-period-facts dt { overflow: hidden; color: var(--rv-color-ink); font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell main .reports-page .reports-period-facts dd { display: grid; gap: 2px; margin: 0; min-width: 0; }
-.app-shell.stitch-shell main .reports-page .reports-period-facts strong { overflow: hidden; color: var(--rv-color-ink); font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.app-shell.stitch-shell main .reports-page .reports-period-facts small { color: var(--rv-color-subtle); font-size: 12px; }
+/* Three tiles under the columns: the name (its explanation under the pointer), the figure, and a line under it. */
+.app-shell.stitch-shell main .reports-page .reports-period-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto; gap: 0 12px; margin: 0; padding-top: 16px; border-top: 1px solid var(--rv-color-border); }
+/* The tiles share their rows, so a name on two lines keeps every figure level. */
+.app-shell.stitch-shell main .reports-page .reports-period-facts > div { display: grid; grid-row: span 2; grid-template-rows: subgrid; align-content: start; gap: 6px; min-width: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts dt .reports-tip-trigger { white-space: normal; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts dt { min-width: 0; color: var(--rv-color-muted); font-size: 12.5px; font-weight: 500; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts dd { display: grid; gap: 6px; margin: 0; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts strong { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--rv-color-ink); font-size: 17px; font-weight: 700; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts small { color: var(--rv-color-subtle); font-size: 12px; line-height: 1.4; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts .reports-progress { height: 6px; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts .reports-progress i { background: var(--rv-color-accent); }
+.app-shell.stitch-shell main .reports-page .reports-period-facts .reports-hover-tip { width: 260px; max-width: none; }
+.app-shell.stitch-shell main .reports-page .reports-period-facts > div:last-child .reports-hover-tip { right: 0; left: auto; }
 
 /* The metric cards: a name and a value per row, the rows sharing the card's height; a row with its own tab is a button. */
 .app-shell.stitch-shell main .reports-page .reports-metrics { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
@@ -698,8 +705,9 @@
   .app-shell.stitch-shell main .reports-page .reports-donut { width: 190px; }
   .app-shell.stitch-shell main .reports-page .reports-bridge li { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
   .app-shell.stitch-shell main .reports-page .reports-bridge-track { grid-column: 1 / -1; grid-row: 2; height: 10px; }
-  .app-shell.stitch-shell main .reports-page .reports-period-facts { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 12px; }
-  .app-shell.stitch-shell main .reports-page .reports-period-facts > div { grid-row: auto; grid-template-rows: none; gap: 4px; }
+  .app-shell.stitch-shell main .reports-page .reports-period-facts { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 10px; }
+  .app-shell.stitch-shell main .reports-page .reports-period-facts > div { grid-row: auto; grid-template-rows: none; }
+  .app-shell.stitch-shell main .reports-page .reports-period-facts > div:last-child .reports-hover-tip { right: auto; left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .reports-page :is(.reports-donut-part, .reports-bridge-track i, .reports-hover-tip, button.reports-metric, .reports-costlines li > i) { transition: none; }
