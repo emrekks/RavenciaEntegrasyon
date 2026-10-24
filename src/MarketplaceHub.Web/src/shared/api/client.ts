@@ -133,6 +133,19 @@ export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   return readSuccessJson<T>(response)
 }
 
+// A file the server writes (an Excel export), refused the way hubApi refuses: its bytes and the name it gives.
+export async function hubFile(path: string, init?: RequestInit): Promise<{ blob: Blob; fileName: string | null }> {
+  const response = await fetchWithCsrf(`/api/v1${path}`, automaticReadInit(init))
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as ApiProblem
+    if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
+    throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const name = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] ?? /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null
+  return { blob: await response.blob(), fileName: name ? decodeURIComponent(name) : null }
+}
+
 // Settings answer with the strong ETag "v{version}" and the same version in their envelope; a save sends it back so a
 // change made meanwhile in another tab or session is refused (412) instead of overwritten. Version 0 = never saved.
 export function settingsIfMatch(version: number | null | undefined): Record<string, string> {

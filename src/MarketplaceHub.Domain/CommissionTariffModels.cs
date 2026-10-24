@@ -81,4 +81,13 @@ public static class CommissionTariffBands
             .OrderByDescending(band => band.Max)
             .FirstOrDefault();
     }
+
+    // The price a band is priced at when the seller picks it: the highest price that still earns it (its upper limit);
+    // for the open top band the current price when it already earns it, else the band's lower limit.
+    public static decimal? TargetPrice(CommissionBand band, decimal? currentPrice)
+    {
+        if (band.Max is { } max) return max;
+        if (currentPrice is { } price && band.Min is { } min && price >= min) return decimal.Round(price, 2, MidpointRounding.AwayFromZero);
+        return band.Min;
+    }
 }

@@ -719,3 +719,8 @@
 .app-shell.stitch-shell main .reports-page .reports-stack { display: grid; grid-template-rows: auto 1fr; gap: 20px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-table tfoot td { padding: 11px 10px; color: var(--rv-color-ink); font-weight: 700; border-top: 1px solid var(--rv-color-border-strong); border-bottom: 0; }
 .app-shell.stitch-shell main .reports-page .reports-ledger-panel > .reports-bridge-gaps { margin-top: 4px; }
+
+/* Tarifeler: the platforms as tabs above the store's tariffs. */
+.app-shell.stitch-shell main .reports-page .reports-tariffs { display: grid; gap: 20px; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-tariff-platforms button { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px 0 8px; font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-tariff-platforms .platform-square-mark { width: 20px; height: 20px; border-radius: 6px; }

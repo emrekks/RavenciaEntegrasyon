@@ -18,18 +18,32 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import './reports.css'
 
-// The weekly commission tariffs the reports read a missing commission from, uploaded here per store (live stores of a
-// platform whose tariff export the panel reads); a store is picked when there is more than one.
+// The weekly commission tariffs the reports read a missing commission from, uploaded here per store: the platforms
+// with live stores as tabs above, a store picked when the platform has more than one. A platform whose tariff export
+// the panel does not read yet says so.
 function CommissionTariffs({ data }: { data: ReportSales }) {
-  const stores = data.channels.filter(channel => commissionTariffPlatforms.has(channel.platformCode) && !channel.isTest)
-  const [storeId, setStoreId] = useState(stores[0]?.id ?? '')
+  const live = data.channels.filter(channel => !channel.isTest)
+  const platforms = [...new Set(live.map(channel => channel.platformCode))]
+  const [platform, setPlatform] = useState(() => platforms.find(code => commissionTariffPlatforms.has(code)) ?? platforms[0] ?? '')
+  const stores = live.filter(channel => channel.platformCode === platform)
+  const [storeId, setStoreId] = useState('')
   const store = stores.find(channel => channel.id === storeId) ?? stores[0]
-  if (!store) return <p className="reports-empty">Komisyon tarifesi yüklenebilecek bir mağaza yok (şimdilik yalnız Trendyol).</p>
   return <div className="reports-tariffs">
-    {stores.length > 1 && <label className="reports-field"><span>Mağaza</span><select value={store.id} onChange={event => setStoreId(event.target.value)}>
-      {stores.map(channel => <option key={channel.id} value={channel.id}>{channel.displayName}</option>)}
-    </select></label>}
-    <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
+    {platforms.length > 0 && <div className="reports-segmented reports-tariff-platforms" role="group" aria-label="Pazaryeri">
+      {platforms.map(code => <button key={code} type="button" aria-pressed={code === platform} onClick={() => { setPlatform(code); setStoreId('') }}>
+        <PlatformSquareMark code={code} name={platformName(code)} />{platformName(code)}
+      </button>)}
+    </div>}
+    {!store ? <p className="reports-empty">Komisyon tarifesi yüklenebilecek bir mağaza yok.</p>
+      : !commissionTariffPlatforms.has(store.platformCode) ? <Panel title={`${platformName(store.platformCode)} Komisyon Tarifesi`}>
+        <p className="reports-empty">{platformName(store.platformCode)} için komisyon tarifesi dosyası henüz okunmuyor; şimdilik Trendyol’un haftalık tarife dosyası yükleniyor.</p>
+      </Panel>
+      : <>
+        {stores.length > 1 && <label className="reports-field"><span>Mağaza</span><select value={store.id} onChange={event => setStoreId(event.target.value)}>
+          {stores.map(channel => <option key={channel.id} value={channel.id}>{channel.displayName}</option>)}
+        </select></label>}
+        <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
+      </>}
   </div>
 }
 

@@ -41,7 +41,21 @@ public sealed record CommissionTariffRowView(
     decimal? CurrentBandRate,
     IReadOnlyList<CommissionBandView> Bands,
     CommissionBandView? NextLowerBand,
-    bool MatchesPanel);
+    bool MatchesPanel,
+    decimal? CostPrice = null,
+    IReadOnlyList<CommissionChoiceView>? Choices = null,
+    int? RecommendedTier = null);
+
+// One band as a price the seller can pick (CommissionTariffBands.TargetPrice), its commission and what is left of the
+// price after the commission and the product's cost (null without a cost; cargo, service fee and withholding tax are not
+// per product and are not taken off). RecommendedTier: the band that leaves the most.
+public sealed record CommissionChoiceView(int Tier, decimal Price, decimal Rate, decimal Commission, decimal? Remaining);
+
+// The seller's picks for a tariff's Excel: a pick for every row (the recommended band, or one band number), and row by
+// row picks over it, a band, a price of their own, or neither (that row left out).
+public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IReadOnlyList<CommissionTariffChoice>? Choices);
+public sealed record CommissionTariffChoice(Guid RowId, int? Tier, decimal? Price);
+public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows);
 
 public sealed record CommissionTariffRowPage(IReadOnlyList<CommissionTariffRowView> Items, int TotalCount, int Page, int PageSize);
 
@@ -54,6 +68,7 @@ public interface ICommissionTariffService
     Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> ListAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<CommissionTariffExportFile>> ExportAsync(Guid tenantId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken);
 }
 
 public interface ICommissionTariffLookup

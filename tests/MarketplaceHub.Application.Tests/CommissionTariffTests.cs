@@ -60,6 +60,31 @@ public sealed class CommissionTariffTests
     }
 
     [Fact]
+    public void EachBandIsPricedAtTheHighestPriceThatEarnsItAndTheBandLeavingTheMostIsRecommended()
+    {
+        // At 519,75 the product is already in band 1: picking it keeps the price; the others go to their upper limit.
+        var row = SampleRow();
+        row.BasisPrice = 519.75m;
+        var choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, 160m);
+        Assert.Equal([1, 2, 3, 4], choices.Select(x => x.Tier));
+        Assert.Equal([519.75m, 470.63m, 435.97m, 388.63m], choices.Select(x => x.Price));
+        // 470,63 × %20,6 = 96,95 of commission, 160 of cost: 213,68 left.
+        Assert.Equal(96.95m, choices[1].Commission);
+        Assert.Equal(213.68m, choices[1].Remaining);
+        Assert.Equal(1, Infrastructure.Persistence.CommissionTariffChoices.Recommended(choices));
+
+        // Below band 1 the open band starts at its lower limit; 470,64 at %21,5 leaves less than 470,63 at %20,6.
+        row.BasisPrice = 450m;
+        choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, 160m);
+        Assert.Equal(470.64m, choices[0].Price);
+        Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Recommended(choices));
+
+        // Without a cost nothing is left to compare, so nothing is recommended; a price of the seller's own falls in its band.
+        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Recommended(Infrastructure.Persistence.CommissionTariffChoices.Of(row, null)));
+        Assert.Equal(3, Infrastructure.Persistence.CommissionTariffChoices.PricedAt(row, 400m, null)?.Tier);
+    }
+
+    [Fact]
     public void ThePeriodTextIsReadInTurkeyTimeWithTheNearestYearAndAnExclusiveEnd()
     {
         var now = new DateTimeOffset(2026, 10, 21, 18, 7, 55, TimeSpan.Zero);
