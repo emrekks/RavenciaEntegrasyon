@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
@@ -100,7 +100,28 @@ export function ReportsPage() {
   const view: ViewKey = legacy?.view ?? (isViewKey(viewParam) ? viewParam : 'overview')
   const sub = legacy?.sub ?? searchParams.get('sub')
   const body = useRef<HTMLDivElement>(null)
+  const page = useRef<HTMLElement>(null)
+  // An explanation opens above its row when the screen has room for it there (under the top bar), else under it, and
+  // towards the left when it would run off the right edge.
+  useEffect(() => {
+    const element = page.current
+    if (!element) return
+    const place = (event: Event) => {
+      const host = event.target instanceof Element ? event.target.closest('.reports-tip-host') : null
+      const tip = host?.querySelector<HTMLElement>(':scope > .reports-hover-tip')
+      if (!host || !tip) return
+      const box = host.getBoundingClientRect()
+      host.toggleAttribute('data-tip-below', box.top - 72 < tip.offsetHeight + 8)
+      host.toggleAttribute('data-tip-end', box.left + tip.offsetWidth > window.innerWidth - 16)
+    }
+    element.addEventListener('pointerover', place)
+    element.addEventListener('focusin', place)
+    return () => { element.removeEventListener('pointerover', place); element.removeEventListener('focusin', place) }
+  }, [])
   const [range, setRange] = useState(() => lastDays(30))
+  // A custom range being picked: the picker shows the first day picked until the second one is, and the report keeps
+  // the last whole range meanwhile.
+  const [draft, setDraft] = useState<{ from: string; to: string } | null>(null)
   const presets = periodPresets()
   // The preset the range matches, if any; another range is a custom one, shown on the picker.
   const activePreset = presets.find(preset => preset.range.from === range.from && preset.range.to === range.to)?.key ?? null
@@ -128,13 +149,14 @@ export function ReportsPage() {
   // "Tümünü Gör": the area's tab, scrolled to the tabs so the breakdown starts at the top.
   const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null); body.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) }
 
-  return <section className="content reports-page">
+  return <section ref={page} className="content reports-page">
     <div className="page-heading reports-heading">
       <div><p className="eyebrow">Analiz</p><h1>Raporlar</h1><p className="reports-lead">Satış, iade, iptal, kargo ve kârlılık; platform, şehir ve ürün kırılımıyla, önceki dönemle karşılaştırmalı.</p></div>    </div>
     <div className="reports-filters" role="search" aria-label="Rapor filtreleri">
       <div className="reports-field reports-period-field"><span>Dönem</span><div className="reports-period-row">
-        <div className="reports-segmented" role="group" aria-label="Hazır dönemler">{presets.map(preset => <button key={preset.key} type="button" aria-pressed={preset.key === activePreset} onClick={() => setRange(preset.range)}>{preset.label}</button>)}</div>
-        <div className={`reports-period-custom${activePreset ? '' : ' is-active'}`}><DateRangePicker from={range.from} to={range.to} onChange={next => { if (next.from && next.to) setRange({ from: next.from, to: next.to }) }} label="Özel dönem" /></div>
+        <div className="reports-segmented" role="group" aria-label="Hazır dönemler">{presets.map(preset => <button key={preset.key} type="button" aria-pressed={preset.key === activePreset} onClick={() => { setDraft(null); setRange(preset.range) }}>{preset.label}</button>)}</div>
+        <div className={`reports-period-custom${activePreset ? '' : ' is-active'}`}><DateRangePicker from={draft?.from ?? range.from} to={draft ? draft.to : range.to} label="Özel dönem"
+          onChange={next => { if (next.from && next.to) { setDraft(null); setRange({ from: next.from, to: next.to }) } else setDraft(next) }} /></div>
       </div></div>
       <div className="reports-field"><PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={platforms} onChange={next => setPlatforms(next.length ? next : null)} /></div>
       <label className="reports-field"><span>Gruplama</span><select value={granularity} onChange={event => setGranularity(event.target.value)} aria-label="Zaman gruplaması">
@@ -207,7 +229,7 @@ function Panel({ title, description, actions, children, className }: { title: st
     <header>
       {description ? <div className="reports-tip-host reports-panel-title">
         <h2><button type="button" className="reports-tip-trigger" aria-describedby={tip}>{title}</button></h2>
-        <span role="tooltip" id={tip} className="reports-hover-tip is-below"><TipText text={description} /></span>
+        <span role="tooltip" id={tip} className="reports-hover-tip"><TipText text={description} /></span>
       </div> : <div className="reports-panel-title"><h2>{title}</h2></div>}
       {actions && <div className="reports-panel-actions">{actions}</div>}
     </header>
@@ -275,9 +297,12 @@ type OpenDetail = (key: DetailKey) => void
 
 // An explanation shown under the pointer: its first line (before a line break) says what the figure is, in bold, and
 // the lines after it how it is worked out.
+// Each sentence of the working goes on a line of its own.
 function TipText({ text }: { text: string }) {
   const [what, ...how] = text.split('\n')
-  return <>{how.length ? <b>{what}</b> : what}{how.map(line => <span key={line}>{line}</span>)}</>
+  const sentences = (lines: string[]) => lines.flatMap(line => line.split(/(?<=\.)\s+(?=[A-ZÇĞİÖŞÜ0-9₺%])/u)).filter(Boolean)
+  if (!how.length) return <>{sentences([what]).map(line => <span key={line}>{line}</span>)}</>
+  return <><b>{what}</b>{sentences(how).map(line => <span key={line}>{line}</span>)}</>
 }
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut, the way from the sales to the profit
@@ -1518,11 +1543,12 @@ function StatementLines({ data }: { data: ReportSales }) {
   const platforms = data.platforms.filter(group => group.known && group.orders > 0).map(group => group.key)
   const [picked, setPicked] = useState(() => read && platforms.includes('TRENDYOL') ? 'TRENDYOL' : platforms[0] ?? 'TRENDYOL')
   const selected = platforms.includes(picked) ? picked : platforms[0] ?? picked
-  const rows = selected === 'TRENDYOL' && read && finance ? finance.lines : []
+  // The costs A to Z, then what is not a cost (sales, returns, discounts) A to Z under them.
+  const rows = selected === 'TRENDYOL' && read && finance ? [...finance.lines].sort((a, b) => Number(!a.isCost) - Number(!b.isCost) || a.label.localeCompare(b.label, 'tr')) : []
   const toolbar = platforms.length > 1 && <div className="reports-segmented" role="group" aria-label="Pazaryeri">
     {platforms.map(code => <button key={code} type="button" aria-pressed={selected === code} onClick={() => setPicked(code)}>{platformName(code)}</button>)}
   </div>
-  return <DataTable<CostLine> key={selected} title={`${platformName(selected)} Cari Hesap Kalemleri`} csvName={`rapor-${selected.toLowerCase()}-cari`} rows={rows} rowKey={row => row.category} initialSort="amount" toolbar={toolbar}
+  return <DataTable<CostLine> key={selected} title={`${platformName(selected)} Cari Hesap Kalemleri`} csvName={`rapor-${selected.toLowerCase()}-cari`} rows={rows} rowKey={row => row.category} toolbar={toolbar}
     empty={`${platformName(selected)} cari hesabı henüz okunmuyor; şimdilik yalnız Trendyol'un hesap ekstresi okunuyor.`}
     description="Siparişe bağlı kalemler siparişin dönemine, bağlı olmayanlar işlem tarihine göre; eksi tutar satıcıya ödenendir."
     columns={[

@@ -283,7 +283,8 @@
 .app-shell.stitch-shell main .reports-page .reports-panel { position: relative; }
 .app-shell.stitch-shell main .reports-page .reports-panel-title { flex: 1 1 160px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-panel-title .reports-tip-trigger { display: inline; }
-.app-shell.stitch-shell main .reports-page .reports-hover-tip.is-below { top: calc(100% + 6px); bottom: auto; }
+.app-shell.stitch-shell main .reports-page .reports-tip-host[data-tip-below] > .reports-hover-tip { top: calc(100% + 6px); bottom: auto; }
+.app-shell.stitch-shell main .reports-page .reports-tip-host[data-tip-end] > .reports-hover-tip { right: 0; left: auto; }
 .app-shell.stitch-shell main .reports-page .reports-more.is-compact { width: 32px; padding: 0; justify-content: center; }
 
 /* Report cards: a plain card on the surface colour, its title row, actions and charts that grow from zero once, when
@@ -563,7 +564,9 @@
 /* A row's explanation: a card over the row, what the figure is in bold on its first line and how it is worked out
    under it, in the body size; it fades and rises in a little. */
 .app-shell.stitch-shell main .reports-page .reports-hover-tip { position: absolute; z-index: 6; bottom: calc(100% + 2px); left: 0; display: grid; gap: 4px; width: max-content; max-width: min(320px, 100%); padding: 10px 12px; color: color-mix(in srgb, var(--rv-color-ink) 78%, var(--rv-color-muted)); font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 28%); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease; }
-.app-shell.stitch-shell main .reports-page .reports-hover-tip > b { color: var(--rv-color-ink); font-weight: 600; }
+/* The lines inside keep the card's own type whatever row they sit in (a row's amount is bold, right-aligned, on one line). */
+.app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > :is(b, span) { display: block; margin: 0; padding: 0; color: inherit; font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: none; border: 0; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > b { color: var(--rv-color-ink); font-weight: 600; }
 .app-shell.stitch-shell main .reports-page .reports-tip-host:is(:hover, :focus-within) > .reports-hover-tip { opacity: 1; visibility: visible; transform: none; }
 .app-shell.stitch-shell main .reports-page .reports-tip-trigger { display: block; min-width: 0; max-width: 100%; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; color: inherit; font: inherit; text-align: left; text-decoration: underline dotted var(--rv-color-border-strong); text-underline-offset: 3px; text-overflow: ellipsis; text-transform: none; letter-spacing: 0; white-space: nowrap; background: transparent; border: 0; border-radius: 4px; box-shadow: none; cursor: default; }
 .app-shell.stitch-shell main .reports-page .reports-tip-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
@@ -571,7 +574,7 @@
 /* What the bridge's estimate leaves out: a ruled block of name and content rows (the cost entered as a bar, the
    platforms not taken off as chips). */
 .app-shell.stitch-shell main .reports-page .reports-bridge-gaps { display: grid; gap: 10px; margin: 0; padding-top: 14px; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .reports-page .reports-bridge-gaps > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-gaps > div { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-bridge-gaps dt { display: grid; gap: 1px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main .reports-page .reports-bridge-gaps dt small { color: var(--rv-color-subtle); font-size: 11.5px; font-weight: 400; }
 .app-shell.stitch-shell main .reports-page .reports-bridge-gaps dd { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 10px; min-width: 0; margin: 0; color: var(--rv-color-ink); font-size: 13px; }

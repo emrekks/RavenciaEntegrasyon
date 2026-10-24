@@ -431,6 +431,23 @@ describe('ReportsPage', () => {
     expect(preset('Son 30 Gün').getAttribute('aria-pressed')).toBe('false')
   })
 
+  it('picks a custom range day by day: the first day stays picked until the second one asks for the range', async () => {
+    const page = await open()
+    const before = requests.length
+    await act(async () => { page.querySelector<HTMLButtonElement>('.reports-period-custom .date-range-picker-trigger')!.click() })
+    const day = (number: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="gridcell"]')].find(button => button.textContent === number && !button.disabled)!
+    await act(async () => { day('1').click() })
+    // Half a range asks for nothing, and the picker keeps the first day.
+    expect(requests.length).toBe(before)
+    expect(day('1').getAttribute('aria-selected')).toBe('true')
+    await act(async () => { day('2').click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    // The first and second day of the month the picker opened on.
+    const [, from, to] = /from=([\d-]+)&to=([\d-]+)/.exec(requests.at(-1) ?? '') ?? []
+    expect(from?.slice(8)).toBe('01')
+    expect(to).toBe(`${from?.slice(0, 8)}02`)
+  })
+
   it('opens an operation\'s tab', async () => {
     const page = await open()
     await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-card-metrics.is-ops button')].find(button => button.textContent?.includes('Stok Riski'))!.click() })
