@@ -2441,6 +2441,11 @@ button,
   font-weight: 600;
 }
 
+/* Sign-in header: the brand and the system status on the left, the light/dark switch on the right. */
+.rv-auth-header-start { display: inline-flex; min-width: 0; align-items: center; gap: var(--rv-space-4); }
+.rv-auth-header .rv-auth-theme { display: inline-flex; align-items: center; gap: var(--rv-space-2); min-height: 0; height: auto; padding: 6px 12px; color: var(--rv-color-muted); background: transparent; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); box-shadow: none; font: inherit; font-size: var(--rv-font-size-xs); font-weight: 500; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.rv-auth-header .rv-auth-theme:hover { color: var(--rv-color-ink); border-color: var(--rv-color-border-strong); }
+.rv-auth-header .rv-auth-theme:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .rv-auth-system-status {
   gap: var(--rv-space-2);
   padding: 6px 10px;
