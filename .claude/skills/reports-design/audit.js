@@ -12,7 +12,7 @@ window.__reportsAudit = { done: false, findings: [] };
     '?view=ops&sub=cargo', '?view=ops&sub=invoices', '?view=ops&sub=stock', '?view=customers', '?view=tariffs']
   const widths = [1000, 1280, 1800]
   const findings = window.__reportsAudit.findings
-  const box = item => item.matches('.reports-panel, .reports-card, section') ? item : item.querySelector('.reports-panel, .reports-card, section') ?? item
+  const box = item => item.matches('.reports-panel, .reports-card, section, .reports-stack') ? item : item.querySelector('.reports-panel, .reports-card, section') ?? item
   for (const width of widths) for (const view of views) {
     const frame = document.createElement('iframe')
     frame.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:900px;opacity:0;pointer-events:none`
@@ -32,7 +32,7 @@ window.__reportsAudit = { done: false, findings: [] };
       for (const row of Object.values(rows)) {
         if (row.length < 2) continue
         const boxes = row.map(box)
-        if (!boxes.every(item => /reports-(panel|card)/.test(item.className))) continue
+        if (!boxes.every(item => /reports-(panel|card|stack)/.test(item.className))) continue
         const heights = boxes.map(item => Math.round(item.getBoundingClientRect().height))
         if (Math.max(...heights) - Math.min(...heights) > 2)
           findings.push(`HEIGHT ${where} .${grid.className.split(' ').join('.')}: ${boxes.map((item, index) => `${item.querySelector('h2')?.textContent ?? item.className} ${heights[index]}px`).join(' | ')}`)

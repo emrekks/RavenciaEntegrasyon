@@ -171,8 +171,8 @@ describe('ReportsPage', () => {
     expect(days.querySelector('h2')?.textContent).toBe('Günler')
     expect(days.querySelectorAll('.reports-columns li')).toHaveLength(2)
     expect(days.querySelector('.reports-columns li.is-peak')).not.toBeNull()
-    expect(days.querySelector('.reports-period-facts')?.textContent).toContain('01.10.2026')
-    expect(days.querySelector('.reports-period-facts')?.textContent).toContain('1 / 1')
+    expect(days.querySelector('.reports-period-facts')?.textContent).toContain('01.10.2026, Perşembe')
+    expect(days.querySelector('.reports-period-facts')?.textContent).toContain('1 gün önde0 gün geride; toplam 1 gün')
     // The metric cards: four rows on each of the first three, six on the two under them.
     expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Ortalama Komisyon Oranı%21,5', 'Ortalama İndirim Oranı%7,9'])
     expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Adet1,25'])
@@ -369,7 +369,7 @@ describe('ReportsPage', () => {
     expect(metricRows(page, 'product')[1]).toBe('Adet Başına Kâr—')
     // The profit tab's account says the same instead of a row of zeros.
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
-    expect(body(page)).toContain('Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.')
+    expect(body(page)).toContain('Ürün MaliyetiÜrün kartında girilmediKâr hesaplanamadı')
   })
 
   it('lists a product with its picture, model code, stock code and the variant\'s size and colour', async () => {

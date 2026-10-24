@@ -14,7 +14,19 @@ internal static class CommissionTariffEndpoints
         api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery();
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync);
         api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync);
+        // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
+        // roles, as the upload does.
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync);
         return api;
+    }
+
+    private static async Task<IResult> ExportAsync(Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, HttpContext http, ICommissionTariffService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var result = await service.ExportAsync(tenant.TenantId, connectionId, tariffId, request, http.RequestAborted);
+        if (!result.Succeeded) return ApiProblems.Of(http, result.Error!);
+        http.Response.Headers.CacheControl = "no-store";
+        return Results.File(result.Value!.Content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.Value.FileName);
     }
 
     private static async Task<IResult> ListAsync(Guid connectionId, HttpContext http, ICommissionTariffService service)

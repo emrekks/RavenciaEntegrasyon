@@ -25,7 +25,7 @@ public sealed class ReportGeographyTests
     [InlineData("Aras Kargo Marketplace", "Aras Kargo")]
     [InlineData("Aras Kargo", "Aras Kargo")]
     [InlineData("Trendyol Express Marketplace", "Trendyol Express")]
-    [InlineData("hepsiJET", "hepsiJET")]
+    [InlineData("hepsiJET", "HepsiJET")]
     [InlineData("Yurtiçi Kargo", "Yurtiçi Kargo")]
     [InlineData("YURTICI KARGO", "Yurtiçi Kargo")]
     [InlineData("FANEX", "FANEX")]
