@@ -175,7 +175,7 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className={`nav-count${warnWhenPositive && count! > 0 ? ' is-warn' : ''}`} aria-hidden="true" title={`${accessibleCount} ${countNoun}`}>{visibleCount}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data), true, 'bekleyen sipariş'), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns, true, 'bekleyen iade'), item('/invoices', 'invoice', 'Faturalar', false, invoiceWorkspaceSummary.data?.dueSoonCount, true, 'faturanın süresi yaklaşıyor', true), item('/questions', 'products', 'Ürün soruları', false, questionWaitingSummary.data?.totalCount, true, 'bekleyen soru'), item('/reports', 'chart', 'Raporlar'), item('/promotions', 'sparkle', 'Promosyon'), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data), true, 'bekleyen sipariş'), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns, true, 'bekleyen iade'), item('/invoices', 'invoice', 'Faturalar', false, invoiceWorkspaceSummary.data?.dueSoonCount, true, 'faturanın süresi yaklaşıyor', true), item('/questions', 'products', 'Ürün soruları', false, questionWaitingSummary.data?.totalCount, true, 'bekleyen soru'), item('/reports', 'chart', 'Raporlar'), item('/promotions', 'promotion', 'Promosyon'), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
@@ -183,7 +183,7 @@ function Shell({ me }: { me: Me }) {
     { to: '/products', label: 'Ürünler', description: 'Kataloğu ve stokları yönet', icon: 'products' },
     { to: '/orders', label: 'Siparişler', description: 'Sipariş akışını incele', icon: 'orders' },
     { to: '/reports', label: 'Raporlar', description: 'Satış, iade, kargo ve kâr raporları', icon: 'chart' },
-    { to: '/promotions', label: 'Promosyon', description: 'Komisyon tarifesi, Plus, Avantajlı Ürün ve Flash kârlılığı', icon: 'sparkle' },
+    { to: '/promotions', label: 'Promosyon', description: 'Komisyon tarifesi, Plus, Avantajlı Ürün ve Flash kârlılığı', icon: 'promotion' },
     { to: '/integrations', label: 'Entegrasyonlar', description: 'Platform bağlantılarını yönet', icon: 'connect' },
     { to: '/mappings/categories', label: 'Eşleştirmeler', description: 'Kategori ve özellik eşlemeleri', icon: 'layers' },
     { to: '/settings', label: 'Sistem ayarları', description: 'Güvenlik ve görünüm ayarları', icon: 'settings' },
