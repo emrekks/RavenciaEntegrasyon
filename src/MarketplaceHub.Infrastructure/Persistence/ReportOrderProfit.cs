@@ -82,7 +82,11 @@ internal static class ReportOrderProfit
             var realCommission = settled.Contains(id) && commission.ContainsKey(id);
             var orderCommission = Round(realCommission ? commission[id] : lineCommission);
             costs.Add(new("commission", "Komisyon", orderCommission, !realCommission, realCommission ? "Trendyol cari hesabından"
-                : order.Lines.Any(line => line.CommissionFromTariff) ? "Komisyon tarifesinden" : "Siparişteki komisyon oranından"));
+                : order.Lines.Any(line => line.CommissionFromTariff) ? "Komisyon tarifesinden"
+                // The line's rate is read again on every order sync, so Trendyol's discounted rate, sent once the order is
+                // being processed, replaces the first one.
+                : trendyol ? "Siparişten gelen oran; Trendyol indirimli komisyonu sipariş işleme alınınca bildirir, oran o zaman güncellenir"
+                : "Siparişteki komisyon oranından"));
 
             decimal orderCargo, serviceFee, stoppage, paymentFee = 0m, vatFees;
             if (trendyol)

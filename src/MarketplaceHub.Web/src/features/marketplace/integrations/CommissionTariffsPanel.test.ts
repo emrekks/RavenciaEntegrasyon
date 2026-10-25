@@ -74,7 +74,7 @@ describe('commission tariff picks', () => {
   })
 
   it('writes what a price leaves with its share, and says so when the cost is not entered', () => {
-    expect(remainingText({ tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68 })).toBe('213,68 ₺ kalır · %45,4')
+    expect(remainingText({ tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68 })).toBe('213,68 ₺ kâr · %45,4')
     expect(remainingText({ tier: 1, price: 100, rate: 20, commission: 20, remaining: null })).toBe('Maliyet girilmemiş')
   })
 })

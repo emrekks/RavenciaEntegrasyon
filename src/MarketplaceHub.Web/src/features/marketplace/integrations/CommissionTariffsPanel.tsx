@@ -106,7 +106,7 @@ const productImage = (row: CommissionTariffRow) => row.imageUrl
 export function remainingText(choice: CommissionChoice) {
   if (choice.remaining === null) return 'Maliyet girilmemiş'
   const share = choice.price > 0 ? ` · %${(choice.remaining / choice.price * 100).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ''
-  return `${choice.remaining < 0 ? '− ' : ''}${money(Math.abs(choice.remaining))} kalır${share}`
+  return `${choice.remaining < 0 ? '− ' : ''}${money(Math.abs(choice.remaining))} kâr${share}`
 }
 type UploadResult = { tariffs: CommissionTariff[]; importedRows: number; skippedRows: number; alreadyUploaded: boolean; warnings: string[] }
 
@@ -463,13 +463,14 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
     {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
-      <thead><tr><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col" className="commission-stock">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{groupByModel(rows.items).map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
           const pick = picks.get(row.id)
           const chosen = pickedTier(row, pick, applied)
           return <tr key={row.id} className={`${nested ? 'is-variant' : ''}${chosen !== null ? ' is-picked' : ''}`.trim() || undefined}>
+            <td className="commission-expand" />
             <th scope="row">{nested
               ? <span className="commission-variant-cell">
                 <span className="commission-product">{row.size ?? row.productName ?? row.barcode}</span>
@@ -517,14 +518,14 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
         // The model's row: its picture, name and code, how many variants it has, and each band over all of them.
         return <Fragment key={key}>
           <tr className="is-model">
+            <td className="commission-expand"><button type="button" className="commission-model-toggle" aria-expanded={open} aria-label={`${group.length.toLocaleString('tr-TR')} ${first.color ? 'beden' : 'varyant'} ${open ? 'gizle' : 'göster'}`}
+              onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}><UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={16} /></button></td>
             <th scope="row"><span className="commission-product-cell">
               {productImage(first)}
               <span>
                 <span className="commission-product">{first.productName ?? first.barcode}</span>
                 <small className="technical-text">{group[0].modelCode}{first.color ? ` · ${first.color}` : ''}</small>
-                <button type="button" className="commission-model-toggle" aria-expanded={open} onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}>
-                  <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />{group.length.toLocaleString('tr-TR')} {first.color ? 'beden' : 'varyant'}
-                </button>
+                <small className="commission-model-count">{group.length.toLocaleString('tr-TR')} {first.color ? 'beden' : 'varyant'}</small>
               </span>
             </span></th>
             <td className="commission-stock">{stockText(group.some(row => row.stock != null) ? group.reduce((sum, row) => sum + (row.stock ?? 0), 0) : null)}</td>
@@ -541,7 +542,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                   className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
                   <strong>{priceRange(choices.map(item => item.price))}</strong>
                   <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
-                  <b>{lefts.length ? `${amountRange(lefts)} kalır` : 'Maliyet girilmemiş'}</b>
+                  <b>{lefts.length ? `${amountRange(lefts)} kâr` : 'Maliyet girilmemiş'}</b>
                   {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın maliyeti yok</small>}
                   <i className="commission-switch" aria-hidden="true"><span />{all ? 'Tümü seçili' : 'Tümünü seç'}</i>
                 </button>
@@ -575,7 +576,7 @@ function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; p
   return <div className={`commission-own${price !== null && shared.every(value => value === price) ? ' is-picked' : ''}`}>
     <input type="text" inputMode="decimal" placeholder="Tüm bedenlere fiyat" value={text} aria-label={`${rows[0]?.productName ?? 'Model'} için tüm bedenlere kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
-    {text.trim() !== '' && (banded.length ? <small>{tiersHit.map(tier => `${tier}.`).join(', ')} bant · {rows.length} beden<b>{lefts.length ? `${amountRange(lefts)} kalır` : 'Maliyet girilmemiş'}</b>{banded.length < rows.length && <span className="commission-warn">{rows.length - banded.length} beden hiçbir banda düşmüyor</span>}</small> : <small className="commission-warn">Hiçbir banda düşmüyor</small>)}
+    {text.trim() !== '' && (banded.length ? <small>{tiersHit.map(tier => `${tier}.`).join(', ')} bant · {rows.length} beden<b>{lefts.length ? `${amountRange(lefts)} kâr` : 'Maliyet girilmemiş'}</b>{banded.length < rows.length && <span className="commission-warn">{rows.length - banded.length} beden hiçbir banda düşmüyor</span>}</small> : <small className="commission-warn">Hiçbir banda düşmüyor</small>)}
   </div>
 }
 

@@ -31,7 +31,7 @@ type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings
 export const promotionTitles: Record<PromotionKind, string> = { PLUS: 'Plus Komisyon Tarifesi', ADVANTAGE: 'Avantajlı Ürün Etiketi', FLASH: 'Flash Ürünler' }
 const promotionHelp: Record<PromotionKind, string> = {
   PLUS: 'Plus fiyat üst limitinde Trendyol’un önerdiği komisyonla ürünün bıraktığı tutar, bugünkü fiyatın bıraktığıyla karşılaştırılır.',
-  ADVANTAGE: 'Her yıldızın üst fiyatı, o fiyatın düştüğü komisyon tarifesi bandıyla hesaplanır; komisyon tarifesi yüklü değilse oran bilinmez.',
+  ADVANTAGE: 'Her etiketin üst fiyatı, o fiyatın düştüğü komisyon tarifesi bandıyla hesaplanır; komisyon tarifesi yüklü değilse oran bilinmez.',
   FLASH: 'Flaş fiyatında komisyon, tarifeye dahil ürünlerde flaşın başladığı haftanın tarifesindeki banttan, dahil olmayanlarda mevcut komisyondan okunur.'
 }
 const pageSize = 50
@@ -43,9 +43,9 @@ const signed = (value: number) => `${value < 0 ? '− ' : ''}${money(Math.abs(va
 export function leavesText(price: PromotionPrice) {
   if (price.rate === null) return 'Komisyon bilinmiyor'
   if (price.remaining === null) return 'Maliyet girilmemiş'
-  if (price.remainingHigh != null) return `${signed(price.remaining)} – ${signed(price.remainingHigh)} kalır`
+  if (price.remainingHigh != null) return `${signed(price.remaining)} – ${signed(price.remainingHigh)} kâr`
   const share = price.price > 0 ? ` · %${(price.remaining / price.price * 100).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ''
-  return `${signed(price.remaining)} kalır${share}`
+  return `${signed(price.remaining)} kâr${share}`
 }
 
 // Rows by model, colour and size (S, M, L, XL …), as the commission tariff lists them.
@@ -269,7 +269,7 @@ function RangeCard({ prices, label }: { prices: PromotionPrice[]; label?: ReactN
     <strong>{priceRange(prices.map(price => price.price))}</strong>
     {label && <small>{label}</small>}
     <span>{rates.length === 0 ? 'Komisyon oranı bilinmiyor' : rates.length === 1 ? `${rateText(rates[0])} komisyon` : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))} komisyon`}</span>
-    <b>{rates.length === 0 ? 'Komisyon bilinmiyor' : lefts.length ? `${amountRange(lefts)} kalır` : 'Maliyet girilmemiş'}</b>
+    <b>{rates.length === 0 ? 'Komisyon bilinmiyor' : lefts.length ? `${amountRange(lefts)} kâr` : 'Maliyet girilmemiş'}</b>
   </div>
 }
 
@@ -290,18 +290,18 @@ function GroupedRows<T extends Product>({ groups, label, cells, groupCells }: {
 }) {
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
   return <>{groups.map(([key, rows]) => {
-    if (rows.length === 1) return <tr key={key}><th scope="row"><ProductCell row={rows[0]} detail={<>{modelLine(rows[0])} · {label.title(rows[0])}</>} code={label.code(rows[0])} /></th>{cells(rows[0])}</tr>
+    if (rows.length === 1) return <tr key={key}><td className="commission-expand" /><th scope="row"><ProductCell row={rows[0]} detail={<>{modelLine(rows[0])} · {label.title(rows[0])}</>} code={label.code(rows[0])} /></th>{cells(rows[0])}</tr>
     const first = rows.find(row => row.imageUrl) ?? rows[0]
     const open = opened.has(key)
     return <Fragment key={key}>
       <tr className="is-model">
-        <th scope="row"><ProductCell row={first} detail={modelLine(first)} code={
-          <button type="button" className="commission-model-toggle" aria-expanded={open} onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}>
-            <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />{rows.length.toLocaleString('tr-TR')} {label.unit}
-          </button>} /></th>
+        <td className="commission-expand"><button type="button" className="commission-model-toggle" aria-expanded={open} aria-label={`${rows.length.toLocaleString('tr-TR')} ${label.unit} ${open ? 'gizle' : 'göster'}`}
+          onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}><UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={16} /></button></td>
+        <th scope="row"><ProductCell row={first} detail={modelLine(first)} code={<span className="commission-model-count">{rows.length.toLocaleString('tr-TR')} {label.unit}</span>} /></th>
         {groupCells(rows)}
       </tr>
       {open && rows.map(row => <tr key={label.key(row)} className="is-variant">
+        <td className="commission-expand" />
         <th scope="row"><span className="commission-variant-cell"><span className="commission-product">{label.title(row)}</span><small>{label.code(row)}</small></span></th>
         {cells(row)}
       </tr>)}
@@ -338,7 +338,7 @@ function PlusTable({ rows }: { rows: PlusOffer[] }) {
     <ListingHead listing={listing} rows={rows} columns={plusColumns}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · Plus’ta ${gains.toLocaleString('tr-TR')} ürün daha çok, ${losses.toLocaleString('tr-TR')} ürün daha az bırakıyor`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
-      <thead><tr><th>Ürün</th><th>Stok</th><th>Güncel Fiyat</th><th>Plus Teklifi</th><th>Fark</th></tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th>Ürün</th><th className="commission-stock">Stok</th><th>Güncel Fiyat</th><th>Plus Teklifi</th><th>Fark</th></tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={sizeLabel} cells={row => <>
         {stockCell([row.stock])}
         {priceCell([row.now?.price])}
@@ -358,8 +358,10 @@ function PlusTable({ rows }: { rows: PlusOffer[] }) {
   </div>
 }
 
-export const starText = (stars: number) => stars === 0 ? 'Yıldız yok' : `${'★'.repeat(stars)} ${stars} yıldız`
-const advantageColumns: Array<[string, string]> = [['1', '1 Yıldız'], ['2', '2 Yıldız'], ['3', '3 Yıldız']]
+// Trendyol's names of the three advantage labels, one star to three.
+export const starNames: Record<number, string> = { 1: 'Avantajlı Ürün', 2: 'Çok Avantajlı Ürün', 3: 'Süper Avantajlı Ürün' }
+export const starText = (stars: number) => stars === 0 ? 'Etiket yok' : `${'★'.repeat(stars)} ${starNames[stars]}`
+const advantageColumns: Array<[string, string]> = [1, 2, 3].map(star => [String(star), starNames[star]])
 export const advantagePrices = (row: AdvantageOffer, column: string) => row.stars.filter(item => String(item.star) === column).map(item => item.price)
 
 function AdvantageTable({ rows }: { rows: AdvantageOffer[] }) {
@@ -368,13 +370,13 @@ function AdvantageTable({ rows }: { rows: AdvantageOffer[] }) {
   const unstarred = listing.shown.filter(row => row.currentStars === 0).length
   const stars = (values: number[]) => {
     const distinct = [...new Set(values)].sort()
-    return <small className={`promotion-stars is-${Math.max(...distinct)}`}>{distinct.length === 1 ? starText(distinct[0]) : `${distinct.join('–')} yıldız`}</small>
+    return <small className={`promotion-stars is-${Math.max(...distinct)}`}>{distinct.length === 1 ? starText(distinct[0]) : distinct.map(star => starNames[star] ?? 'Etiket yok').join(' – ')}</small>
   }
   return <div className="commission-rows">
     <ListingHead listing={listing} rows={rows} columns={advantageColumns}
-      summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · şu an ${(listing.shown.length - unstarred).toLocaleString('tr-TR')} ürün etiketli, ${unstarred.toLocaleString('tr-TR')} ürün yıldızsız`} />
+      summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · şu an ${(listing.shown.length - unstarred).toLocaleString('tr-TR')} ürün etiketli, ${unstarred.toLocaleString('tr-TR')} ürün etiketsiz`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
-      <thead><tr><th>Ürün</th><th>Stok</th><th>Güncel Fiyat</th><th>1 Yıldız</th><th>2 Yıldız</th><th>3 Yıldız</th></tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th>Ürün</th><th className="commission-stock">Stok</th><th>Güncel Fiyat</th>{[1, 2, 3].map(star => <th key={star}>{starNames[star]}</th>)}</tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={sizeLabel} cells={row => <>
         {stockCell([row.stock])}
         {priceCell([row.now?.price], stars([row.currentStars]))}
@@ -416,7 +418,7 @@ function FlashTable({ rows }: { rows: FlashOffer[] }) {
     <ListingHead listing={listing} rows={rows} columns={slots.map(name => [name, `${name} Flaş`] as [string, string])}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} flaş teklifi · ${losses.toLocaleString('tr-TR')} teklif flaş fiyatında zarar ediyor`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
-      <thead><tr><th>Ürün</th><th>Stok</th><th>Güncel Fiyat</th>{slots.map(name => <th key={name}>{name} Flaş</th>)}</tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th>Ürün</th><th className="commission-stock">Stok</th><th>Güncel Fiyat</th>{slots.map(name => <th key={name}>{name} Flaş</th>)}</tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={flashLabel} cells={row => <>
         {stockCell([row.stock])}
         {priceCell([row.now?.price])}

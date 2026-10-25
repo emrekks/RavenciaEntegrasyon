@@ -5,8 +5,8 @@ const product = { modelCode: 'RYP001', productName: 'Anne Penye Bluz', color: 'S
 
 describe('promotion offers', () => {
   it('writes what a price leaves, a range for a model of different costs, and why it is not known', () => {
-    expect(leavesText({ price: 359.02, rate: 14.1, commission: 50.62, remaining: 0.4 })).toBe('0,40 ₺ kalır · %0,1')
-    expect(leavesText({ price: 426.46, rate: 21.5, commission: 91.69, remaining: -4.77, remainingHigh: 34.77 })).toBe('− 4,77 ₺ – 34,77 ₺ kalır')
+    expect(leavesText({ price: 359.02, rate: 14.1, commission: 50.62, remaining: 0.4 })).toBe('0,40 ₺ kâr · %0,1')
+    expect(leavesText({ price: 426.46, rate: 21.5, commission: 91.69, remaining: -4.77, remainingHigh: 34.77 })).toBe('− 4,77 ₺ – 34,77 ₺ kâr')
     expect(leavesText({ price: 470.63, rate: null, commission: null, remaining: null })).toBe('Komisyon bilinmiyor')
     expect(leavesText({ price: 470.63, rate: 20.6, commission: 96.95, remaining: null })).toBe('Maliyet girilmemiş')
   })
@@ -47,8 +47,8 @@ describe('promotion offers', () => {
   })
 
   it('names the stars a price earns', () => {
-    expect(starText(0)).toBe('Yıldız yok')
-    expect(starText(2)).toBe('★★ 2 yıldız')
+    expect(starText(0)).toBe('Etiket yok')
+    expect(starText(2)).toBe('★★ Çok Avantajlı Ürün')
   })
 })
 
