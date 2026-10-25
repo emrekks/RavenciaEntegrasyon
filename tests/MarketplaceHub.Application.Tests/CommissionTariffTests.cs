@@ -167,6 +167,7 @@ public sealed class CommissionTariffTests
         Assert.Equal(17.5m, row.Rate4);
         Assert.Equal(519.75m, row.BasisPrice);
         Assert.Equal(525.0m, row.CurrentSalePrice);
+        Assert.Equal(("Bluz", "Ravencia", 14.0m), (row.Category, row.Brand, row.Stock!.Value));
         Assert.Equal(3, parsed.SkippedRows);
         Assert.Contains(parsed.Warnings, warning => warning.Contains("barkod yok", StringComparison.Ordinal));
         Assert.Contains(parsed.Warnings, warning => warning.Contains("1.Fiyat Alt Limit değeri sayı değil", StringComparison.Ordinal));

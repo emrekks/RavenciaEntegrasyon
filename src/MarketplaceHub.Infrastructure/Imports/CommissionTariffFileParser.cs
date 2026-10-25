@@ -16,7 +16,7 @@ public static partial class CommissionTariffFileParser
     public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private const int MaximumWarnings = 20;
 
-    private enum Column { ProductName, Barcode, SellerSku, Size, ModelCode, Tier1Min, Tier2Max, Tier2Min, Tier3Max, Tier3Min, Tier4Max, Period, Rate1, Rate2, Rate3, Rate4, BasisPrice, CurrentRate, CurrentSalePrice, TariffGroup }
+    private enum Column { ProductName, Barcode, SellerSku, Size, ModelCode, Tier1Min, Tier2Max, Tier2Min, Tier3Max, Tier3Min, Tier4Max, Period, Rate1, Rate2, Rate3, Rate4, BasisPrice, CurrentRate, CurrentSalePrice, TariffGroup, Category, Brand, Stock }
 
     private static readonly IReadOnlyDictionary<string, Column> Headers = new Dictionary<string, Column>(StringComparer.Ordinal)
     {
@@ -39,7 +39,10 @@ public static partial class CommissionTariffFileParser
         ["KOMISYONAESASFIYAT"] = Column.BasisPrice,
         ["GUNCELKOMISYON"] = Column.CurrentRate,
         ["GUNCELTSF"] = Column.CurrentSalePrice,
-        ["TARIFEGRUBU"] = Column.TariffGroup
+        ["TARIFEGRUBU"] = Column.TariffGroup,
+        ["KATEGORI"] = Column.Category,
+        ["MARKA"] = Column.Brand,
+        ["STOK"] = Column.Stock
     };
 
     public static ParsedCommissionTariffFile Parse(XlsxTable table, DateTimeOffset now)
@@ -112,7 +115,11 @@ public static partial class CommissionTariffFileParser
                 BasisPrice = numbers[Column.BasisPrice],
                 CurrentRate = numbers[Column.CurrentRate],
                 CurrentSalePrice = numbers[Column.CurrentSalePrice],
-                TariffGroup = Short(Text(Column.TariffGroup), 80)
+                TariffGroup = Short(Text(Column.TariffGroup), 80),
+                Category = Short(Text(Column.Category), 160),
+                Brand = Short(Text(Column.Brand), 160),
+                // A stock that does not read is left unknown; it does not make the row unreadable.
+                Stock = Text(Column.Stock) is { } stock && TryParseNumber(stock, out var units) && units >= 0 ? units : null
             });
         }
         if (periods.Count == 0)

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type DragEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
@@ -22,6 +22,8 @@ export type CommissionTariffRow = {
   costPrice?: number | null; choices?: CommissionChoice[] | null; recommendedTier?: number | null; imageUrl?: string | null
   // The panel variant's colour ("Bej"); a model's rows are grouped by it.
   color?: string | null
+  // The stock the tariff file gives (absent in a tariff uploaded before it was read).
+  stock?: number | null
 }
 // A band as a price the seller can pick: its commission and what the price leaves after it and the product cost.
 export type CommissionChoice = { tier: number; price: number; rate: number; commission: number; remaining: number | null }
@@ -140,17 +142,16 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<TariffFilter>({ tier: '', cost: '' })
+  const [filter, setFilter] = useState<TariffFilter>(noFilter)
   const [page, setPage] = useState(0)
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] } | null>(null)
   const [confirm, confirmDialog] = useConfirmDialog()
   const tariffs = useQuery({ queryKey: ['commission-tariffs', connectionId], queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`) })
   const active = tariffs.data?.find(tariff => tariff.id === selected) ?? tariffs.data?.find(tariff => tariff.isCurrent) ?? tariffs.data?.[0] ?? null
   const rows = useQuery({
-    queryKey: ['commission-tariff-rows', connectionId, active?.id, search.trim(), filter.tier, filter.cost, page],
+    queryKey: ['commission-tariff-rows', connectionId, active?.id, filter, page],
     queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${active!.id}/rows?${new URLSearchParams({ page: String(page), limit: '50',
-      ...(search.trim() ? { search: search.trim() } : {}), ...(filter.tier ? { tier: filter.tier } : {}), ...(filter.cost ? { cost: filter.cost } : {}) })}`),
+      ...filterQuery(filter) })}`),
     enabled: active !== null
   })
   const upload = useMutation({
@@ -215,7 +216,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     </div>}
 
     {active && <TariffPlan key={active.id} connectionId={connectionId} tariff={active} rows={rows.data} loading={rows.isLoading} error={rows.isError ? rows.error : null} onRetry={() => void rows.refetch()}
-      search={search} onSearch={value => { setSearch(value); setPage(0) }} filter={filter} onFilter={value => { setFilter(value); setPage(0) }} page={page} pageCount={pageCount} onPage={setPage} onMessage={setMessage} />}
+      filter={filter} onFilter={value => { setFilter(value); setPage(0) }} page={page} pageCount={pageCount} onPage={setPage} onMessage={setMessage} />}
     {confirmDialog}
   </section>
 }
@@ -223,7 +224,84 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
 type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
 const tiers = [1, 2, 3, 4]
 // Which rows the list shows: by the band their price is in now, and whether their cost is entered.
-type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without' }
+export type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without'; name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string }
+export const noFilter: TariffFilter = { tier: '', cost: '', name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '' }
+
+// The rows query's parameters for a filter: empty fields left out, a stock that is not a number left out.
+export function filterQuery(filter: TariffFilter): Record<string, string> {
+  const query: Record<string, string> = {}
+  for (const key of ['tier', 'cost', 'name', 'barcode', 'model', 'category', 'brand'] as const) if (filter[key].trim()) query[key] = filter[key].trim()
+  for (const key of ['minStock', 'maxStock'] as const) {
+    const value = Number(filter[key].trim().replace(',', '.'))
+    if (filter[key].trim() && Number.isFinite(value) && value >= 0) query[key] = String(value)
+  }
+  return query
+}
+
+// The columns the table can show beside the product; all of them by default.
+type TariffColumn = 'price' | '1' | '2' | '3' | '4' | 'own'
+const tariffColumns: Array<[TariffColumn, string]> = [['price', 'Güncel Fiyat'], ['1', '1. Bant'], ['2', '2. Bant'], ['3', '3. Bant'], ['4', '4. Bant'], ['own', 'Kendi Fiyatın']]
+
+// Which products the list shows: the fields are typed first and applied with Filtrele (Enter too); Filtreleri Temizle
+// empties them and shows every product again.
+function TariffFilters({ value, facets, columns, onApply, onColumns }: { value: TariffFilter; facets: { categories: string[]; brands: string[] } | undefined; columns: Set<TariffColumn>; onApply: (filter: TariffFilter) => void; onColumns: (columns: Set<TariffColumn>) => void }) {
+  const [draft, setDraft] = useState(value)
+  const set = (key: keyof TariffFilter) => (event: { target: { value: string } }) => setDraft(current => ({ ...current, [key]: event.target.value }))
+  const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft) }
+  const clear = () => { setDraft(noFilter); onApply(noFilter) }
+  const noFacts = facets !== undefined && facets.categories.length === 0 && facets.brands.length === 0
+  return <form className="commission-filters" onSubmit={apply} aria-label="Ürün filtreleri">
+    <input type="search" placeholder="Ürün adı" value={draft.name} onChange={set('name')} aria-label="Ürün adı" />
+    <input type="search" placeholder="Barkod" value={draft.barcode} onChange={set('barcode')} aria-label="Barkod" />
+    <input type="search" placeholder="Model kodu" value={draft.model} onChange={set('model')} aria-label="Model kodu" />
+    <span className="commission-filter-range">
+      <input type="text" inputMode="numeric" placeholder="Min stok" value={draft.minStock} onChange={set('minStock')} aria-label="En az stok" />
+      <i aria-hidden="true">–</i>
+      <input type="text" inputMode="numeric" placeholder="Max stok" value={draft.maxStock} onChange={set('maxStock')} aria-label="En çok stok" />
+    </span>
+    <select value={draft.category} onChange={set('category')} aria-label="Kategori" disabled={!facets?.categories.length}>
+      <option value="">Kategori</option>{facets?.categories.map(item => <option key={item} value={item}>{item}</option>)}
+    </select>
+    <select value={draft.brand} onChange={set('brand')} aria-label="Marka" disabled={!facets?.brands.length}>
+      <option value="">Marka</option>{facets?.brands.map(item => <option key={item} value={item}>{item}</option>)}
+    </select>
+    <select value={draft.tier} onChange={set('tier')} aria-label="Güncel bant">
+      <option value="">Güncel bant: Tümü</option>{tiers.map(tier => <option key={tier} value={String(tier)}>Güncel bant: {tier}. bant</option>)}
+    </select>
+    <select value={draft.cost} onChange={set('cost')} aria-label="Maliyet">
+      <option value="">Maliyet: Tümü</option><option value="with">Maliyet: Girili</option><option value="without">Maliyet: Girilmemiş</option>
+    </select>
+    <ColumnPicker columns={columns} onColumns={onColumns} />
+    <button type="button" className="commission-filter-clear" onClick={clear}>Filtreleri Temizle</button>
+    <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
+    {noFacts && <p className="commission-filter-note">Kategori, marka ve stok bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
+  </form>
+}
+
+// Kolon Seçimi: which of the table's columns are shown.
+function ColumnPicker({ columns, onColumns }: { columns: Set<TariffColumn>; onColumns: (columns: Set<TariffColumn>) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => { if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
+  }, [open])
+  const hidden = tariffColumns.length - columns.size
+  return <div className="commission-columns" ref={ref}>
+    <button type="button" className="commission-columns-trigger" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+      <span>Kolon Seçimi{hidden > 0 ? ` · ${hidden} gizli` : ''}</span><UiIcon name="chevronDown" size={14} />
+    </button>
+    {open && <div className="commission-columns-menu" role="group" aria-label="Gösterilen kolonlar">
+      {tariffColumns.map(([key, label]) => <label key={key}>
+        <input type="checkbox" checked={columns.has(key)} onChange={() => { const next = new Set(columns); if (next.has(key)) next.delete(key); else next.add(key); onColumns(next) }} />{label}
+      </label>)}
+    </div>}
+  </div>
+}
 const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. bant` : bulk.kind === 'amount' ? 'En yüksek kâr tutarı' : 'En yüksek kâr oranı'
 
 // Toplu Seçim: a column (a band, or the band leaving the most money or share), a criterion on what the pick leaves
@@ -293,9 +371,9 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
 // after the commission and the product cost, the one that leaves the most marked "Önerilen". A pick is made row by row
 // (a band, or a price of the seller's own) or for every row at once; the picks go out as an Excel sheet the server
 // writes. Picks are kept across pages and searches until the period changes.
-function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, search, onSearch, filter, onFilter, page, pageCount, onPage, onMessage }: {
+function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage }: {
   connectionId: string; tariff: CommissionTariff; rows: RowPage | undefined; loading: boolean; error: unknown; onRetry: () => void
-  search: string; onSearch: (value: string) => void; filter: TariffFilter; onFilter: (filter: TariffFilter) => void
+  filter: TariffFilter; onFilter: (filter: TariffFilter) => void
   page: number; pageCount: number; onPage: (page: number) => void; onMessage: (message: PanelMessage | null) => void
 }) {
   const [picks, setPicks] = useState<Map<string, TariffPick>>(() => new Map())
@@ -329,6 +407,9 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
   // The models whose variants are shown: a model starts folded, its row alone, so a page of 50 models (each colour with
   // all its sizes and their band cards) does not draw thousands of cards at once.
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
+  const facets = useQuery({ queryKey: ['commission-tariff-facets', connectionId, tariff.id], queryFn: () => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`) })
+  const [columns, setColumns] = useState<Set<TariffColumn>>(() => new Set(tariffColumns.map(([key]) => key)))
+  const shownTiers = tiers.filter(tier => columns.has(String(tier) as TariffColumn))
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   const download = useMutation({
     mutationFn: () => hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
@@ -355,20 +436,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
     <div className="commission-rows-head">
       <strong>{tariff.periodText} Bantları</strong>
     </div>
-    {/* Which products the list shows. */}
-    <div className="commission-plan-bar">
-      <input type="search" className="commission-search" placeholder="Barkod, stok kodu ya da ürün ara" value={search} onChange={event => onSearch(event.target.value)} aria-label="Tarife satırlarında ara" />
-      <label className="commission-plan-field"><span>Güncel Bant</span>
-        <select value={filter.tier} onChange={event => onFilter({ ...filter, tier: event.target.value as TariffFilter['tier'] })}>
-          <option value="">Tümü</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. bant</option>)}
-        </select>
-      </label>
-      <label className="commission-plan-field"><span>Maliyet</span>
-        <select value={filter.cost} onChange={event => onFilter({ ...filter, cost: event.target.value as TariffFilter['cost'] })}>
-          <option value="">Tümü</option><option value="with">Girili</option><option value="without">Girilmemiş</option>
-        </select>
-      </label>
-    </div>
+    {/* Which products the list shows, and which columns. */}
+    <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} columns={columns} onApply={onFilter} onColumns={setColumns} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
       <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
@@ -380,9 +449,9 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
     <p className="commission-plan-note">Kalan: fiyattan komisyon ve ürün maliyeti düştükten sonra kalan tutar; kargo, hizmet bedeli ve stopaj ürün bazında bilinmediği için düşülmedi. Excel yalnız seçilen ürünleri yeni fiyatlarıyla içerir; pazaryerine hiçbir şey gönderilmez.</p>
     {loading && <Busy />}
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
-    {rows && rows.items.length === 0 && <p className="cs-empty">Aramaya uyan ürün yok.</p>}
+    {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
     {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
-      <thead><tr><th scope="col">Ürün</th><th scope="col">Güncel Fiyat</th>{tiers.map(tier => <th key={tier} scope="col">{tier}. Bant</th>)}<th scope="col">Kendi Fiyatın</th></tr></thead>
+      <thead><tr><th scope="col">Ürün</th>{columns.has('price') && <th scope="col">Güncel Fiyat</th>}{shownTiers.map(tier => <th key={tier} scope="col">{tier}. Bant</th>)}{columns.has('own') && <th scope="col">Kendi Fiyatın</th>}</tr></thead>
       <tbody>{groupByModel(rows.items).map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
@@ -393,7 +462,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
               ? <span className="commission-variant-cell">
                 <span className="commission-product">{row.size ?? row.productName ?? row.barcode}</span>
                 <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
-                <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
+                <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}{row.stock != null ? ` · Stok ${row.stock.toLocaleString('tr-TR')}` : ''}</small>
                 {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
               </span>
               : <span className="commission-product-cell">
@@ -401,15 +470,15 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
                 <span>
                   <span className="commission-product">{row.productName ?? row.barcode}{row.size ? ` · ${row.size}` : ''}</span>
                   <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
-                  <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
+                  <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}{row.stock != null ? ` · Stok ${row.stock.toLocaleString('tr-TR')}` : ''}</small>
                   {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
                 </span>
               </span>}</th>
-            <td>
+            {columns.has('price') && <td>
               <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
               {rateDisagrees(row) && <small className="commission-warn" title="Pazaryerinin dosyadaki güncel komisyonu, fiyatın bandından farklı.">Dosyada {rateText(row.currentRate!)}</small>}
-            </td>
-            {tiers.map(tier => {
+            </td>}
+            {shownTiers.map(tier => {
               const choice = row.choices?.find(item => item.tier === tier)
               if (!choice) return <td key={tier} className="commission-choice-none">—</td>
               const band = row.bands.find(item => item.tier === tier)
@@ -425,7 +494,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
                 </button>
               </td>
             })}
-            <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>
+            {columns.has('own') && <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>}
           </tr>
         }
         if (group.length === 1) return variantRow(group[0], false)
@@ -445,8 +514,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
                 </button>
               </span>
             </span></th>
-            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} {first.color ? 'bedenin' : 'varyantın'} fiyatı</small></td>
-            {tiers.map(tier => {
+            {columns.has('price') && <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} {first.color ? 'bedenin' : 'varyantın'} fiyatı</small></td>}
+            {shownTiers.map(tier => {
               const choices = group.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? [])
               if (!choices.length) return <td key={tier} className="commission-choice-none">—</td>
               const owners = group.filter(row => row.choices?.some(item => item.tier === tier))
@@ -464,7 +533,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
                 </button>
               </td>
             })}
-            <td />
+            {columns.has('own') && <td />}
           </tr>
           {open && group.map(row => variantRow(row, true))}
         </Fragment>

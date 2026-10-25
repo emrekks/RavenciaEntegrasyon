@@ -48,7 +48,9 @@ public sealed record CommissionTariffRowView(
     string? ImageUrl = null,
     // The colour of the panel variant with the row's barcode (else seller SKU), from its options ("Renk: Bej"); the table
     // groups a model's rows by it.
-    string? Color = null);
+    string? Color = null,
+    // The stock the file gives (STOK); null in a tariff uploaded before it was read.
+    decimal? Stock = null);
 
 // One band as a price the seller can pick (CommissionTariffBands.TargetPrice), its commission and what is left of the
 // price after the commission and the product's cost (null without a cost; cargo, service fee and withholding tax are not
@@ -62,8 +64,13 @@ public sealed record CommissionChoiceView(int Tier, decimal Price, decimal Rate,
 public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IReadOnlyList<CommissionTariffChoice>? Choices, decimal? MinRate = null, decimal? MinAmount = null,
     decimal? MaxRate = null, decimal? MaxAmount = null);
 
-// Which rows a page lists: by the band their price is in now (1-4) and whether the panel has their cost.
-public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost);
+// Which rows a page lists: by the band their price is in now (1-4), whether the panel has their cost, and by the file's
+// own name, barcode (or seller SKU), model code, stock range, category and brand.
+public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost, string? Name = null, string? Barcode = null, string? ModelCode = null,
+    decimal? MinStock = null, decimal? MaxStock = null, string? Category = null, string? Brand = null);
+
+// The categories and brands a tariff's rows carry, for the list's filters.
+public sealed record CommissionTariffFacets(IReadOnlyList<string> Categories, IReadOnlyList<string> Brands);
 public sealed record CommissionTariffChoice(Guid RowId, int? Tier, decimal? Price);
 public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows);
 
@@ -79,6 +86,7 @@ public interface ICommissionTariffService
     Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> ListAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CommissionTariffRowFilter filter, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<CommissionTariffFacets>> FacetsAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffExportFile>> ExportAsync(Guid tenantId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken);
 }
 

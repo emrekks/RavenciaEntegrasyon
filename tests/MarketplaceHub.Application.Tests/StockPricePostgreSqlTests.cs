@@ -335,6 +335,55 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // The tariff list is filtered by the file's name, barcode, model code, stock range, category and brand; the same file
+    // uploaded again fills the category, brand and stock of rows stored before they were read.
+    [PostgreSqlFact]
+    public async Task CommissionTariff_FiltersByTheFilesFactsAndFillsThemOnReupload()
+    {
+        var tenant = NewTenant("commission-filter");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            await seed.SaveChangesAsync();
+        }
+        string[] headers = ["ÜRÜN İSMİ", "BARKOD", "MODEL KODU", "KATEGORİ", "MARKA", "STOK", "1.Fiyat Alt Limit", "Tarih aralığı (7 Gün)", "1.KOMİSYON", "KOMİSYONA ESAS FİYAT"];
+        var file = CommissionTariffTests.Xlsx(headers,
+        [
+            ["Anne Penye Bluz", "RYP00101", "RYP001", "Bluz", "Ravencia", "11.0", "470.64", "22 Ekim 08.00-29 Ekim 07.59", "21.5", "519.75"],
+            ["Viskon Bluz", "MZ005S10", "MZ005S", "Bluz", "Ravencia", "0.0", "470.64", "22 Ekim 08.00-29 Ekim 07.59", "21.5", "791.01"],
+            ["Uzun Etek", "ETK001", "ETK", "Etek", "Başka", "40.0", "300", "22 Ekim 08.00-29 Ekim 07.59", "20", "320"]
+        ]);
+        var clock = new FixedClock(new DateTimeOffset(2026, 10, 23, 9, 0, 0, TimeSpan.Zero));
+        Guid tariffId;
+        await using (var db = fixture.CreateContext())
+        {
+            tariffId = Assert.Single((await new CommissionTariffService(db, clock).UploadAsync(tenant.Id, null, trendyol.Id, "tarife.xlsx", new MemoryStream(file), "test", CancellationToken.None)).Value!.Tariffs).Id;
+            // As a tariff stored before the facts were read.
+            await db.CommissionTariffRows.Where(x => x.TariffId == tariffId).ExecuteUpdateAsync(set => set.SetProperty(x => x.Category, (string?)null).SetProperty(x => x.Brand, (string?)null).SetProperty(x => x.Stock, (decimal?)null));
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CommissionTariffService(db, clock);
+            Assert.True((await service.UploadAsync(tenant.Id, null, trendyol.Id, "tarife.xlsx", new MemoryStream(file), "test", CancellationToken.None)).Value!.AlreadyUploaded);
+            var facets = (await service.FacetsAsync(tenant.Id, trendyol.Id, tariffId, CancellationToken.None)).Value!;
+            Assert.Equal(["Bluz", "Etek"], facets.Categories);
+            Assert.Equal(["Başka", "Ravencia"], facets.Brands);
+
+            async Task<string[]> Barcodes(CommissionTariffRowFilter filter) =>
+                (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, null, 0, 50, filter, CancellationToken.None)).Value!.Items.Select(x => x.Barcode).Order().ToArray();
+            Assert.Equal(["MZ005S10", "RYP00101"], await Barcodes(new(null, null, Category: "Bluz")));
+            Assert.Equal(["ETK001"], await Barcodes(new(null, null, Brand: "Başka")));
+            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, Name: "penye")));
+            Assert.Equal(["MZ005S10"], await Barcodes(new(null, null, ModelCode: "mz005")));
+            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, Barcode: "ryp001")));
+            Assert.Equal(["ETK001", "RYP00101"], await Barcodes(new(null, null, MinStock: 1)));
+            Assert.Equal(["MZ005S10", "RYP00101"], await Barcodes(new(null, null, MaxStock: 11)));
+            Assert.Equal(11m, (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "RYP00101", 0, 50, new(null, null), CancellationToken.None)).Value!.Items.Single().Stock);
+        }
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

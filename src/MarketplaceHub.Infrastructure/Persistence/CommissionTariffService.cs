@@ -41,10 +41,13 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         var created = new List<CommissionTariff>();
         var alreadyUploaded = true;
         var imported = 0;
+        var backfilled = 0;
         foreach (var period in parsed.Tariffs)
         {
-            var existing = await db.CommissionTariffs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash && x.PeriodStart == period.PeriodStart, cancellationToken);
-            if (existing) continue;
+            var existing = await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash && x.PeriodStart == period.PeriodStart)
+                .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
+            // The same file again fills the category, brand and stock of rows stored before they were read.
+            if (existing is { } existingId) { backfilled += await FillFactsAsync(tenantId, existingId, period.Rows, cancellationToken); continue; }
             alreadyUploaded = false;
             var tariff = new CommissionTariff
             {
@@ -79,6 +82,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
                 imported = 0;
             }
         }
+        else if (backfilled > 0) await db.SaveChangesAsync(cancellationToken);
         var periodStarts = parsed.Tariffs.Select(x => x.PeriodStart).ToArray();
         var tariffs = await db.CommissionTariffs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash && periodStarts.Contains(x.PeriodStart))
@@ -127,6 +131,17 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             4 => query.Where(x => x.Rate4 != null && x.Tier4Max != null && x.BasisPrice <= x.Tier4Max),
             _ => query
         };
+        if (Term(filter.Name) is { } name)
+            query = query.Where(x => x.ProductName != null && EF.Functions.ILike(x.ProductName, Like(name), LikeEscape));
+        if (Term(filter.Barcode) is { } code)
+            query = query.Where(x => EF.Functions.ILike(x.Barcode, Like(code), LikeEscape) || x.SellerSku != null && EF.Functions.ILike(x.SellerSku, Like(code), LikeEscape));
+        if (Term(filter.ModelCode) is { } model)
+            query = query.Where(x => x.ModelCode != null && EF.Functions.ILike(x.ModelCode, Like(model), LikeEscape));
+        // A stock range keeps only rows whose stock the file gave.
+        if (filter.MinStock is { } minStock) query = query.Where(x => x.Stock != null && x.Stock >= minStock);
+        if (filter.MaxStock is { } maxStock) query = query.Where(x => x.Stock != null && x.Stock <= maxStock);
+        if (Term(filter.Category) is { } category) query = query.Where(x => x.Category == category);
+        if (Term(filter.Brand) is { } brand) query = query.Where(x => x.Brand == brand);
         if (filter.HasCost is { } hasCost)
             query = query.Where(x => db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.CostPrice != null && variant.CostPrice > 0
                 && (variant.Barcode == x.Barcode || x.SellerSku != null && variant.Sku == x.SellerSku)) == hasCost);
@@ -153,10 +168,43 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             return new CommissionTariffRowView(row.Id, row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, row.BasisPrice, row.CurrentSalePrice, row.CurrentRate,
                 current?.Tier, current?.Rate, CommissionTariffBands.Bands(row).Select(Band).ToList(), next is null ? null : Band(next),
                 matched.Contains(row.Barcode) || row.SellerSku is not null && matched.Contains(row.SellerSku), cost, choices, CommissionTariffChoices.Recommended(choices),
-                images.GetValueOrDefault(row.Id), colors.ByBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : colors.BySku.GetValueOrDefault(row.SellerSku)));
+                images.GetValueOrDefault(row.Id), colors.ByBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : colors.BySku.GetValueOrDefault(row.SellerSku)), row.Stock);
         }).ToList();
         return ServiceResult<CommissionTariffRowPage>.Ok(new(items, total, page, pageSize));
     }
+
+    public async Task<ServiceResult<CommissionTariffFacets>> FacetsAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken)
+    {
+        if (!await db.CommissionTariffs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken))
+            return ServiceResult<CommissionTariffFacets>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
+        var rows = db.CommissionTariffRows.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId);
+        var categories = await rows.Where(x => x.Category != null).Select(x => x.Category!).Distinct().OrderBy(x => x).ToListAsync(cancellationToken);
+        var brands = await rows.Where(x => x.Brand != null).Select(x => x.Brand!).Distinct().OrderBy(x => x).ToListAsync(cancellationToken);
+        return ServiceResult<CommissionTariffFacets>.Ok(new(categories, brands));
+    }
+
+    // The category, brand and stock of a stored tariff's rows that have none, from the same file read again.
+    private async Task<int> FillFactsAsync(Guid tenantId, Guid tariffId, IReadOnlyList<CommissionTariffRow> parsed, CancellationToken cancellationToken)
+    {
+        var facts = parsed.GroupBy(x => x.Barcode, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var stored = await db.CommissionTariffRows.Where(x => x.TenantId == tenantId && x.TariffId == tariffId && x.Category == null && x.Brand == null && x.Stock == null).ToListAsync(cancellationToken);
+        var filled = 0;
+        foreach (var row in stored)
+        {
+            if (!facts.TryGetValue(row.Barcode, out var fact) || fact.Category is null && fact.Brand is null && fact.Stock is null) continue;
+            (row.Category, row.Brand, row.Stock) = (fact.Category, fact.Brand, fact.Stock);
+            filled++;
+        }
+        return filled;
+    }
+
+    private static string? Term(string? value)
+    {
+        var term = value?.Trim();
+        return string.IsNullOrEmpty(term) ? null : term.Length > 120 ? term[..120] : term;
+    }
+
+    private static string Like(string term) => $"%{CatalogService.EscapeLike(term)}%";
 
     // The seller's picks written out as an Excel sheet: one row per product picked, its new price, band, commission and
     // what is left after the commission and its cost. Products picked for no band are left out.

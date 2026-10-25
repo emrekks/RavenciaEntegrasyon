@@ -22,7 +22,7 @@ internal static class CommissionTariffModelConfiguration
         {
             entity.ToTable("commission_tariff_rows", "catalog"); entity.HasKey(x => x.Id);
             entity.Property(x => x.Barcode).HasMaxLength(160); entity.Property(x => x.SellerSku).HasMaxLength(160); entity.Property(x => x.ModelCode).HasMaxLength(160);
-            entity.Property(x => x.ProductName).HasMaxLength(500); entity.Property(x => x.Size).HasMaxLength(80); entity.Property(x => x.TariffGroup).HasMaxLength(80);
+            entity.Property(x => x.ProductName).HasMaxLength(500); entity.Property(x => x.Size).HasMaxLength(80); entity.Property(x => x.TariffGroup).HasMaxLength(80); entity.Property(x => x.Category).HasMaxLength(160); entity.Property(x => x.Brand).HasMaxLength(160); entity.Property(x => x.Stock).HasPrecision(19, 4);
             foreach (var property in new[] { nameof(CommissionTariffRow.Tier1Min), nameof(CommissionTariffRow.Tier2Max), nameof(CommissionTariffRow.Tier2Min), nameof(CommissionTariffRow.Tier3Max), nameof(CommissionTariffRow.Tier3Min), nameof(CommissionTariffRow.Tier4Max), nameof(CommissionTariffRow.BasisPrice), nameof(CommissionTariffRow.CurrentSalePrice) })
                 entity.Property(property).HasPrecision(19, 4);
             foreach (var property in new[] { nameof(CommissionTariffRow.Rate1), nameof(CommissionTariffRow.Rate2), nameof(CommissionTariffRow.Rate3), nameof(CommissionTariffRow.Rate4), nameof(CommissionTariffRow.CurrentRate) })

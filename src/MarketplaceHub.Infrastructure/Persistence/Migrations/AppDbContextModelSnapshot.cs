@@ -1042,6 +1042,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
 
+                    b.Property<string>("Brand")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
                     b.Property<decimal?>("CurrentRate")
                         .HasPrecision(7, 4)
                         .HasColumnType("numeric(7,4)");
@@ -1081,6 +1089,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("Size")
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
+
+                    b.Property<decimal?>("Stock")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
 
                     b.Property<string>("TariffGroup")
                         .HasMaxLength(80)

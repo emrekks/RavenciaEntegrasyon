@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandRange, commissionTariffPlatforms, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandRange, commissionTariffPlatforms, filterQuery, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -103,5 +103,14 @@ describe('commission tariff presentation', () => {
   it('shows the tariffs only where the panel reads the export', () => {
     expect(commissionTariffPlatforms.has('TRENDYOL')).toBe(true)
     expect(commissionTariffPlatforms.has('HEPSIBURADA')).toBe(false)
+  })
+})
+
+describe('commission tariff filters', () => {
+  it('sends only the filled fields, a stock only when it is a number', () => {
+    expect(filterQuery(noFilter)).toEqual({})
+    expect(filterQuery({ ...noFilter, name: ' penye ', model: 'MZ005', minStock: '1', maxStock: 'abc', category: 'Bluz', tier: '2' }))
+      .toEqual({ name: 'penye', model: 'MZ005', minStock: '1', category: 'Bluz', tier: '2' })
+    expect(filterQuery({ ...noFilter, maxStock: '12,5' })).toEqual({ maxStock: '12.5' })
   })
 })

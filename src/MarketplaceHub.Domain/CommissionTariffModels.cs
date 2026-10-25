@@ -44,6 +44,10 @@ public sealed class CommissionTariffRow
     public decimal? CurrentRate { get; set; }
     public decimal? CurrentSalePrice { get; set; }
     public string? TariffGroup { get; set; }
+    // The file's KATEGORİ, MARKA and STOK: what the list is filtered by (null in a tariff uploaded before they were read).
+    public string? Category { get; set; }
+    public string? Brand { get; set; }
+    public decimal? Stock { get; set; }
 }
 
 public sealed record CommissionBand(int Tier, decimal? Min, decimal? Max, decimal Rate);
