@@ -134,7 +134,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
                 slots.Add(new(slot, start, end, flashRate is { } known2 ? Ranged(flashPrice, known2, low, high) : new PromotionPriceView(flashPrice, null, null, null)));
             }
             views.Add(new FlashOfferView(row.ModelCode, row.Barcodes, row.ProductName, known.Select(x => x.Color).FirstOrDefault(x => x is not null), known.Select(x => x.ImageUrl).FirstOrDefault(x => x is not null),
-                row.Stock, low, high, row.InTariff, row.Campaign, current, slots, row.Promotions, row.Category, row.Brand));
+                known.Any(x => x.Stock is not null) ? known.Sum(x => x.Stock ?? 0m) : row.Stock, low, high, row.InTariff, row.Campaign, current, slots, row.Promotions, row.Category, row.Brand));
         }
         return ServiceResult<PromotionOfferDetail>.Ok(new(summary, null, null, views));
     }
@@ -149,14 +149,15 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
         return ServiceResult<bool>.Ok(true);
     }
 
-    internal sealed record VariantFact(decimal? Cost, string? Color, string? ImageUrl);
+    // Stock: the panel's own stock of the variant (on hand in the main location), what the file's stock gives way to.
+    internal sealed record VariantFact(decimal? Cost, string? Color, string? ImageUrl, decimal? Stock = null);
 
     // Now: the commission-basis price at the current rate; Plus: the Plus ceiling at the offered rate.
     internal static PlusOfferView PlusView(PlusOfferRow row, VariantFact? fact)
     {
         var current = row.BasisPrice is { } basis && row.CurrentRate is { } rate ? Ranged(basis, rate, fact?.Cost, fact?.Cost) : null;
         var plus = row.PlusPriceLimit is { } limit && row.PlusRate is { } plusRate ? Ranged(limit, plusRate, fact?.Cost, fact?.Cost) : null;
-        return new(row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, row.Stock, fact?.Cost, current, plus,
+        return new(row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, fact?.Stock ?? row.Stock, fact?.Cost, current, plus,
             current?.Remaining is { } before && plus?.Remaining is { } after ? after - before : null, row.Promotions, row.Category, row.Brand);
     }
 
@@ -170,7 +171,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
             if (max is { } ceiling and > 0) stars.Add(new(star, min, ceiling, Priced(ceiling)));
         var current = row.CustomerPrice is { } price ? Priced(price) : null;
         var earned = row.CustomerPrice is { } customer ? stars.Where(x => customer <= x.Max).Select(x => x.Star).DefaultIfEmpty(0).Max() : 0;
-        return new(row.Barcode, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, row.Stock, fact?.Cost, row.InTariff, earned, current, stars, row.Promotions, row.Category, row.Brand);
+        return new(row.Barcode, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, fact?.Stock ?? row.Stock, fact?.Cost, row.InTariff, earned, current, stars, row.Promotions, row.Category, row.Brand);
     }
 
     internal static PromotionPriceView Ranged(decimal price, decimal rate, decimal? lowCost, decimal? highCost)
@@ -259,6 +260,9 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
             .Select(x => new { x.Id, x.ProductId, x.Barcode, x.Sku, x.CostPrice, x.OptionSignature })
             .ToListAsync(cancellationToken);
         var productIds = variants.Select(x => x.ProductId).Distinct().ToArray();
+        var variantIds = variants.Select(x => x.Id).ToArray();
+        var stocks = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+            .GroupBy(x => x.VariantId).Select(group => new { VariantId = group.Key, OnHand = group.Sum(x => x.OnHand) }).ToDictionaryAsync(x => x.VariantId, x => x.OnHand, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                            where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE"
@@ -271,7 +275,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
         {
             var picked = media.FirstOrDefault(x => x.VariantId == variant.Id) ?? media.FirstOrDefault(x => x.ProductId == variant.ProductId && x.VariantId == null) ?? media.FirstOrDefault(x => x.ProductId == variant.ProductId);
             var fact = new VariantFact(variant.CostPrice is > 0 ? variant.CostPrice : null, CommissionTariffService.ColorOf(variant.OptionSignature),
-                picked is null ? null : CatalogMediaDisplay.Url(picked.Id, picked.Classification, picked.Url));
+                picked is null ? null : CatalogMediaDisplay.Url(picked.Id, picked.Classification, picked.Url), stocks.TryGetValue(variant.Id, out var onHand) ? onHand : null);
             if (variant.Barcode is not null) byBarcode.TryAdd(variant.Barcode, fact);
             bySku.TryAdd(variant.Sku, fact);
         }

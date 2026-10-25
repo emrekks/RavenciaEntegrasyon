@@ -302,7 +302,7 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
         <input type="text" inputMode="decimal" placeholder="Max kâr oranı" value={draft.maxShare ?? ''} onChange={set('maxShare')} aria-label="En çok kâr oranı (%)" />
       </span>
     </div>}
-    {noFacts && <p className="commission-filter-note">Kategori, marka ve stok bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
+    {noFacts && <p className="commission-filter-note">Kategori ve marka bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
   </form>
 }
 

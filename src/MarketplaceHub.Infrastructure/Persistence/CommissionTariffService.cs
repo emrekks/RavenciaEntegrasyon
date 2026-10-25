@@ -138,8 +138,20 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         if (Term(filter.ModelCode) is { } model)
             query = query.Where(x => x.ModelCode != null && EF.Functions.ILike(x.ModelCode, Like(model), LikeEscape));
         // A stock range keeps only rows whose stock the file gave.
-        if (filter.MinStock is { } minStock) query = query.Where(x => x.Stock != null && x.Stock >= minStock);
-        if (filter.MaxStock is { } maxStock) query = query.Where(x => x.Stock != null && x.Stock <= maxStock);
+        // The panel's own stock of the variant with the row's barcode (else seller SKU), else the file's.
+        // (SQL's SUM over no rows reads as 0 here, so a row with no panel stock is told apart first.)
+        var stocked = query.Select(x => new
+        {
+            Row = x,
+            Stock = db.InventoryItems.Any(item => item.TenantId == tenantId && item.LocationCode == "MAIN"
+                && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == item.VariantId && (variant.Barcode == x.Barcode || x.SellerSku != null && variant.Sku == x.SellerSku)))
+                ? (decimal?)db.InventoryItems.Where(item => item.TenantId == tenantId && item.LocationCode == "MAIN"
+                && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == item.VariantId && (variant.Barcode == x.Barcode || x.SellerSku != null && variant.Sku == x.SellerSku))).Sum(item => item.OnHand)
+                : x.Stock
+        });
+        if (filter.MinStock is { } minStock) stocked = stocked.Where(x => x.Stock != null && x.Stock >= minStock);
+        if (filter.MaxStock is { } maxStock) stocked = stocked.Where(x => x.Stock != null && x.Stock <= maxStock);
+        if (filter.MinStock is not null || filter.MaxStock is not null) query = stocked.Select(x => x.Row);
         if (Term(filter.Category) is { } category) query = query.Where(x => x.Category == category);
         if (Term(filter.Brand) is { } brand) query = query.Where(x => x.Brand == brand);
         if (filter.HasCost is { } hasCost)
@@ -198,6 +210,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         var costs = await CostsAsync(tenantId, barcodes, skus, cancellationToken);
         var images = await ImagesAsync(tenantId, rows, cancellationToken);
         var colors = await ColorsAsync(tenantId, barcodes, skus, cancellationToken);
+        var stocks = await StocksAsync(tenantId, barcodes, skus, cancellationToken);
         var items = rows.Select(row =>
         {
             var current = row.BasisPrice is { } basis ? CommissionTariffBands.BandFor(row, basis) : null;
@@ -207,7 +220,8 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             return new CommissionTariffRowView(row.Id, row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, row.BasisPrice, row.CurrentSalePrice, row.CurrentRate,
                 current?.Tier, current?.Rate, CommissionTariffBands.Bands(row).Select(Band).ToList(), next is null ? null : Band(next),
                 matched.Contains(row.Barcode) || row.SellerSku is not null && matched.Contains(row.SellerSku), cost, choices, CommissionTariffChoices.Recommended(choices),
-                images.GetValueOrDefault(row.Id), colors.ByBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : colors.BySku.GetValueOrDefault(row.SellerSku)), row.Stock);
+                images.GetValueOrDefault(row.Id), colors.ByBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : colors.BySku.GetValueOrDefault(row.SellerSku)),
+                stocks.TryGetValue(row.Barcode, out var stock) ? stock : row.SellerSku is not null && stocks.TryGetValue(row.SellerSku, out var skuStock) ? skuStock : row.Stock);
         }).ToList();
         return items;
     }
@@ -349,6 +363,24 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             bySku.TryAdd(variant.Sku, color);
         }
         return (byBarcode, bySku);
+    }
+
+    // Each code's stock on the panel: the variant with it as barcode or SKU, on hand in the main location.
+    private async Task<Dictionary<string, decimal>> StocksAsync(Guid tenantId, string[] barcodes, string[] skus, CancellationToken cancellationToken)
+    {
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (x.Barcode != null && barcodes.Contains(x.Barcode) || skus.Contains(x.Sku)))
+            .Select(x => new { x.Id, x.Barcode, x.Sku }).ToListAsync(cancellationToken);
+        var ids = variants.Select(x => x.Id).ToArray();
+        var onHand = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && ids.Contains(x.VariantId))
+            .GroupBy(x => x.VariantId).Select(group => new { VariantId = group.Key, OnHand = group.Sum(x => x.OnHand) }).ToDictionaryAsync(x => x.VariantId, x => x.OnHand, cancellationToken);
+        var result = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var variant in variants.Where(x => onHand.ContainsKey(x.Id)))
+        {
+            if (variant.Barcode is not null) result.TryAdd(variant.Barcode, onHand[variant.Id]);
+            result.TryAdd(variant.Sku, onHand[variant.Id]);
+        }
+        return result;
     }
 
     internal static string? ColorOf(string? optionSignature) =>

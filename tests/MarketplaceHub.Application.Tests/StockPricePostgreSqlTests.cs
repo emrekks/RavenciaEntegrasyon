@@ -397,6 +397,12 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(["MZ005S", "ETK", "RYP001"], await Models("name", true));
             Assert.Equal(["MZ005S", "RYP001", "ETK"], await Models("price", true));
             Assert.Equal(11m, (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "RYP00101", 0, 50, new(null, null), CancellationToken.None)).Value!.Items.Single().Stock);
+
+            // The panel's own stock of the variant comes before the file's, in the list and in the stock range.
+            db.InventoryItems.Add(new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 25m, Available = 25m });
+            await db.SaveChangesAsync();
+            Assert.Equal(25m, (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "RYP00101", 0, 50, new(null, null), CancellationToken.None)).Value!.Items.Single().Stock);
+            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, MinStock: 20, MaxStock: 30)));
         }
     }
 
