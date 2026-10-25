@@ -224,8 +224,16 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
 type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
 const tiers = [1, 2, 3, 4]
 // Which rows the list shows: by the band their price is in now, and whether their cost is entered.
-export type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without'; name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string }
+export type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without'; name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; sort?: TariffSort; dir?: 'asc' | 'desc' }
 export const noFilter: TariffFilter = { tier: '', cost: '', name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '' }
+// A header's order: by name, by the current price, or by what a band leaves.
+export type TariffSort = 'name' | 'price' | 'tier1' | 'tier2' | 'tier3' | 'tier4'
+
+// A header click goes up, then down, then back to no order.
+export function nextSort(filter: TariffFilter, sort: TariffSort): TariffFilter {
+  if (filter.sort !== sort) return { ...filter, sort, dir: 'asc' }
+  return filter.dir === 'asc' ? { ...filter, sort, dir: 'desc' } : { ...filter, sort: undefined, dir: undefined }
+}
 
 // The rows query's parameters for a filter: empty fields left out, a stock that is not a number left out.
 export function filterQuery(filter: TariffFilter): Record<string, string> {
@@ -235,6 +243,7 @@ export function filterQuery(filter: TariffFilter): Record<string, string> {
     const value = Number(filter[key].trim().replace(',', '.'))
     if (filter[key].trim() && Number.isFinite(value) && value >= 0) query[key] = String(value)
   }
+  if (filter.sort) { query.sort = filter.sort; query.dir = filter.dir ?? 'asc' }
   return query
 }
 
@@ -276,6 +285,17 @@ function TariffFilters({ value, facets, columns, onApply, onColumns }: { value: 
     <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
     {noFacts && <p className="commission-filter-note">Kategori, marka ve stok bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
   </form>
+}
+
+// A column's header with its order beside it: up (A–Z, low to high), down, then none. A band orders by what it leaves.
+function SortHeader({ label, sort, filter, onFilter }: { label: string; sort: TariffSort; filter: TariffFilter; onFilter: (filter: TariffFilter) => void }) {
+  const on = filter.sort === sort ? filter.dir ?? 'asc' : null
+  return <th scope="col" aria-sort={on === 'asc' ? 'ascending' : on === 'desc' ? 'descending' : 'none'}>
+    <button type="button" className={`commission-sort${on ? ' is-on' : ''}`} onClick={() => onFilter(nextSort(filter, sort))}
+      title={on === null ? 'Artan sırala' : on === 'asc' ? 'Azalan sırala' : 'Sıralamayı kaldır'}>
+      {label}<span aria-hidden="true">{on === 'asc' ? '↑' : on === 'desc' ? '↓' : '↕'}</span>
+    </button>
+  </th>
 }
 
 // Kolon Seçimi: which of the table's columns are shown.
@@ -451,7 +471,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
     {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
-      <thead><tr><th scope="col">Ürün</th>{columns.has('price') && <th scope="col">Güncel Fiyat</th>}{shownTiers.map(tier => <th key={tier} scope="col">{tier}. Bant</th>)}{columns.has('own') && <th scope="col">Kendi Fiyatın</th>}</tr></thead>
+      <thead><tr><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} />{columns.has('price') && <SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />}{shownTiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}{columns.has('own') && <th scope="col">Kendi Fiyatın</th>}</tr></thead>
       <tbody>{groupByModel(rows.items).map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {

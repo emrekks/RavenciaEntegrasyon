@@ -380,6 +380,12 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(["RYP00101"], await Barcodes(new(null, null, Barcode: "ryp001")));
             Assert.Equal(["ETK001", "RYP00101"], await Barcodes(new(null, null, MinStock: 1)));
             Assert.Equal(["MZ005S10", "RYP00101"], await Barcodes(new(null, null, MaxStock: 11)));
+            // Models in the order a header asks for; the same order reversed, and by price.
+            async Task<string[]> Models(string sort, bool descending) =>
+                (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, null, 0, 50, new(null, null, Sort: sort, Descending: descending), CancellationToken.None)).Value!.Items.Select(x => x.ModelCode!).ToArray();
+            Assert.Equal(["RYP001", "ETK", "MZ005S"], await Models("name", false));
+            Assert.Equal(["MZ005S", "ETK", "RYP001"], await Models("name", true));
+            Assert.Equal(["MZ005S", "RYP001", "ETK"], await Models("price", true));
             Assert.Equal(11m, (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "RYP00101", 0, 50, new(null, null), CancellationToken.None)).Value!.Items.Single().Stock);
         }
     }

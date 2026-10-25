@@ -65,9 +65,11 @@ public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IRea
     decimal? MaxRate = null, decimal? MaxAmount = null);
 
 // Which rows a page lists: by the band their price is in now (1-4), whether the panel has their cost, and by the file's
-// own name, barcode (or seller SKU), model code, stock range, category and brand.
+// own name, barcode (or seller SKU), model code, stock range, category and brand. Sort orders the models by their name
+// ("name"), their lowest current price ("price") or the most a band leaves after commission and cost ("tier1"-"tier4");
+// without it the models run by name as before.
 public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost, string? Name = null, string? Barcode = null, string? ModelCode = null,
-    decimal? MinStock = null, decimal? MaxStock = null, string? Category = null, string? Brand = null);
+    decimal? MinStock = null, decimal? MaxStock = null, string? Category = null, string? Brand = null, string? Sort = null, bool Descending = false);
 
 // The categories and brands a tariff's rows carry, for the list's filters.
 public sealed record CommissionTariffFacets(IReadOnlyList<string> Categories, IReadOnlyList<string> Brands);

@@ -163,3 +163,11 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-columns-menu input { width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; accent-color: var(--rv-color-primary); }
 @media (max-width: 900px) { .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: minmax(0, 1fr); } .app-shell.stitch-shell main .commission-tariffs .commission-columns { grid-column: auto; } }
+
+/* A header's order beside its name: ↕ with no order, ↑ / ↓ in the primary colour when on. */
+.app-shell.stitch-shell main .commission-tariffs .commission-sort { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: auto; margin: 0; padding: 0; color: inherit; font: inherit; text-transform: none; background: none; border: 0; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .commission-tariffs .commission-sort span { color: var(--rv-color-subtle); font-size: 13px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-sort:hover span { color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .commission-tariffs .commission-sort.is-on { color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .commission-tariffs .commission-sort.is-on span { color: var(--rv-color-primary); font-weight: 700; }
+.app-shell.stitch-shell main .commission-tariffs .commission-sort:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; border-radius: 4px; }

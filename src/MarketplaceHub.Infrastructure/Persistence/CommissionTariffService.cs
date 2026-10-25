@@ -145,6 +145,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         if (filter.HasCost is { } hasCost)
             query = query.Where(x => db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.CostPrice != null && variant.CostPrice > 0
                 && (variant.Barcode == x.Barcode || x.SellerSku != null && variant.Sku == x.SellerSku)) == hasCost);
+        if (filter.Sort is not null) return ServiceResult<CommissionTariffRowPage>.Ok(await SortedPageAsync(tenantId, connectionId, query, filter, page, pageSize, cancellationToken));
         // A page is a set of models (a row without a model code is a model of its own), each with all its variants, so a
         // model's variants are never split across two pages.
         var models = query.GroupBy(x => x.ModelCode != null && x.ModelCode != "" ? x.ModelCode : x.Barcode)
@@ -153,6 +154,38 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         var keys = await models.OrderBy(x => x.Name).ThenBy(x => x.Key).Skip(page * pageSize).Take(pageSize).Select(x => x.Key).ToListAsync(cancellationToken);
         var rows = await query.Where(x => keys.Contains(x.ModelCode != null && x.ModelCode != "" ? x.ModelCode : x.Barcode))
             .OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).ToListAsync(cancellationToken);
+        return ServiceResult<CommissionTariffRowPage>.Ok(new(await ViewsAsync(tenantId, connectionId, rows, cancellationToken), total, page, pageSize));
+    }
+
+    // A page of models in the order asked for. The order needs each band's price, commission and the panel's cost, so the
+    // filtered rows (a tariff holds a few thousand at most) are ordered here; a model with no value goes last either way.
+    private async Task<CommissionTariffRowPage> SortedPageAsync(Guid tenantId, Guid connectionId, IQueryable<CommissionTariffRow> query, CommissionTariffRowFilter filter, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var all = await query.ToListAsync(cancellationToken);
+        var costs = await CostsAsync(tenantId, all.Select(x => x.Barcode).ToArray(), all.Where(x => x.SellerSku != null).Select(x => x.SellerSku!).ToArray(), cancellationToken);
+        var tier = filter.Sort is { Length: 5 } sort && sort.StartsWith("tier", StringComparison.Ordinal) && sort[4] is >= '1' and <= '4' ? sort[4] - '0' : (int?)null;
+        var groups = all.GroupBy(x => string.IsNullOrEmpty(x.ModelCode) ? x.Barcode : x.ModelCode).Select(group =>
+        {
+            var name = group.Min(x => x.ProductName) ?? group.Key;
+            IComparable? value = filter.Sort switch
+            {
+                "name" => name,
+                "price" => group.Min(x => x.BasisPrice),
+                _ when tier is { } band => group.Select(row => CommissionTariffChoices.Of(row, CostOf(costs, row)).FirstOrDefault(x => x.Tier == band)?.Remaining).Max(),
+                _ => null
+            };
+            return (Key: group.Key, Name: name, Value: value, Rows: group.ToList());
+        }).ToList();
+        var known = groups.Where(x => x.Value is not null);
+        var ordered = (filter.Descending ? known.OrderByDescending(x => x.Value) : known.OrderBy(x => x.Value)).ThenBy(x => x.Name, StringComparer.CurrentCulture)
+            .Concat(groups.Where(x => x.Value is null).OrderBy(x => x.Name, StringComparer.CurrentCulture)).ToList();
+        var rows = ordered.Skip(page * pageSize).Take(pageSize).SelectMany(x => x.Rows.OrderBy(row => row.ProductName).ThenBy(row => row.Barcode)).ToList();
+        return new(await ViewsAsync(tenantId, connectionId, rows, cancellationToken), ordered.Count, page, pageSize);
+    }
+
+    // The rows of a page as the table shows them: matched to the panel, with cost, picture, colour and each band priced.
+    private async Task<List<CommissionTariffRowView>> ViewsAsync(Guid tenantId, Guid connectionId, List<CommissionTariffRow> rows, CancellationToken cancellationToken)
+    {
         var barcodes = rows.Select(x => x.Barcode).ToArray();
         var skus = rows.Where(x => x.SellerSku != null).Select(x => x.SellerSku!).ToArray();
         var matched = await PanelMatchesAsync(tenantId, connectionId, barcodes, skus, cancellationToken);
@@ -170,7 +203,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
                 matched.Contains(row.Barcode) || row.SellerSku is not null && matched.Contains(row.SellerSku), cost, choices, CommissionTariffChoices.Recommended(choices),
                 images.GetValueOrDefault(row.Id), colors.ByBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : colors.BySku.GetValueOrDefault(row.SellerSku)), row.Stock);
         }).ToList();
-        return ServiceResult<CommissionTariffRowPage>.Ok(new(items, total, page, pageSize));
+        return items;
     }
 
     public async Task<ServiceResult<CommissionTariffFacets>> FacetsAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken)

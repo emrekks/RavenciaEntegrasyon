@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandRange, commissionTariffPlatforms, filterQuery, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandRange, commissionTariffPlatforms, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -112,5 +112,17 @@ describe('commission tariff filters', () => {
     expect(filterQuery({ ...noFilter, name: ' penye ', model: 'MZ005', minStock: '1', maxStock: 'abc', category: 'Bluz', tier: '2' }))
       .toEqual({ name: 'penye', model: 'MZ005', minStock: '1', category: 'Bluz', tier: '2' })
     expect(filterQuery({ ...noFilter, maxStock: '12,5' })).toEqual({ maxStock: '12.5' })
+  })
+})
+
+describe('commission tariff header order', () => {
+  it('goes up, then down, then back to no order, and is sent with the filter', () => {
+    const up = nextSort(noFilter, 'tier2')
+    expect([up.sort, up.dir]).toEqual(['tier2', 'asc'])
+    const down = nextSort(up, 'tier2')
+    expect([down.sort, down.dir]).toEqual(['tier2', 'desc'])
+    expect(nextSort(down, 'tier2').sort).toBeUndefined()
+    expect(nextSort(down, 'name')).toMatchObject({ sort: 'name', dir: 'asc' })
+    expect(filterQuery(down)).toEqual({ sort: 'tier2', dir: 'desc' })
   })
 })
