@@ -24,5 +24,6 @@ export const ShipmentsPage = lazyPage(() => import('../features/marketplace/orde
 export const InvoiceDetailPage = lazyPage(() => import('../features/invoicing').then(module => ({ default: module.InvoiceDetailPage })))
 export const InvoicesPage = lazyPage(() => import('../features/invoicing').then(module => ({ default: module.InvoicesPage })))
 export const ReportsPage = lazyPage(() => import('../features/reports/ReportsPage').then(module => ({ default: module.ReportsPage })))
+export const PromotionsPage = lazyPage(() => import('../features/promotions/PromotionsPage').then(module => ({ default: module.PromotionsPage })))
 export const JobsPage = lazyPage(() => import('../features/operations').then(module => ({ default: module.JobsPage })))
 export const QuestionsPage = lazyPage(() => import('../features/questions').then(module => ({ default: module.QuestionsPage })))

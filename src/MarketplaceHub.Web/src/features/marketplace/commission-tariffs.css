@@ -99,9 +99,9 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-threshold { box-sizing: border-box; width: 84px; height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar .commission-search { flex: 1 1 240px; }
 /* The product with its picture. */
-.app-shell.stitch-shell main .commission-tariffs .commission-product-cell { display: flex; align-items: flex-start; gap: 10px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-cell { display: flex; align-items: flex-start; gap: 12px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-product-cell > span { display: grid; gap: 2px; min-width: 0; }
-.app-shell.stitch-shell main .commission-tariffs .commission-product-image { display: grid; flex: none; place-items: center; width: 44px; height: 58px; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 14px; font-style: normal; font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-image { display: grid; flex: none; place-items: center; width: 64px; aspect-ratio: 2 / 3; height: auto; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 14px; font-style: normal; font-weight: 600; }
 /* A band's switch: off grey, on in the primary colour, the knob sliding across. */
 .app-shell.stitch-shell main .commission-tariffs .commission-switch { display: flex; align-items: center; justify-content: center; gap: 8px; justify-self: stretch; margin-top: 6px; padding-top: 7px; color: var(--rv-color-muted); font-size: 12px; font-style: normal; font-weight: 600; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .commission-tariffs .commission-switch > span { position: relative; flex: none; width: 30px; height: 17px; background: var(--rv-color-border-strong); border-radius: 999px; transition: background-color 160ms ease; }

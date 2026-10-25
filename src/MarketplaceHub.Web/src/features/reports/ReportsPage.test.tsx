@@ -469,9 +469,4 @@ describe('ReportsPage', () => {
     expect(body(page)).toContain('En Çok Satanların Stoğu')
   })
 
-  it('shows the commission tariffs as the second view', async () => {
-    const page = await open('?view=tariffs')
-    expect(page.querySelector('.reports-kpis')).toBeNull()
-    expect(page.querySelector('.reports-body')?.textContent?.length).toBeGreaterThan(0)
-  })
 })

@@ -1,66 +1,27 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal, UiIcon, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import {
-  bySalesChannel, change, desiSourcesNote, downloadCsv, isMarketplace, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
+  bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow
 } from './report-format'
-import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
-import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../marketplace/integrations/PromotionOffersPanel'
 import { SalesMap } from './SalesMap'
 import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import './reports.css'
 
-// The weekly commission tariffs the reports read a missing commission from, uploaded here per store: the platforms
-// with live stores as tabs above, a store picked when the platform has more than one. A platform whose tariff export
-// the panel does not read yet says so.
-function CommissionTariffs({ data }: { data: ReportSales }) {
-  const live = data.channels.filter(channel => !channel.isTest && isMarketplace(channel.platformCode))
-  const platforms = [...new Set(live.map(channel => channel.platformCode))].sort(bySalesChannel)
-  const [platform, setPlatform] = useState(() => platforms.find(code => commissionTariffPlatforms.has(code)) ?? platforms[0] ?? '')
-  const stores = live.filter(channel => channel.platformCode === platform)
-  const [storeId, setStoreId] = useState('')
-  const [section, setSection] = useState<'TARIFF' | PromotionKind>('TARIFF')
-  const store = stores.find(channel => channel.id === storeId) ?? stores[0]
-  return <div className="reports-tariffs">
-    {platforms.length > 0 && <div className="reports-segmented reports-tariff-platforms" role="group" aria-label="Pazaryeri">
-      {platforms.map(code => <button key={code} type="button" aria-pressed={code === platform} onClick={() => { setPlatform(code); setStoreId('') }}>
-        <PlatformSquareMark code={code} name={platformName(code)} />{platformName(code)}
-      </button>)}
-    </div>}
-    {!store ? <p className="reports-empty">Komisyon tarifesi yüklenebilecek bir mağaza yok.</p>
-      : !commissionTariffPlatforms.has(store.platformCode) ? <Panel title={`${platformName(store.platformCode)} Komisyon Tarifesi`}>
-        <p className="reports-empty">{platformName(store.platformCode)} için komisyon tarifesi dosyası henüz okunmuyor; şimdilik Trendyol’un haftalık tarife dosyası yükleniyor.</p>
-      </Panel>
-      : <>
-        {stores.length > 1 && <label className="reports-field"><span>Mağaza</span><select value={store.id} onChange={event => setStoreId(event.target.value)}>
-          {stores.map(channel => <option key={channel.id} value={channel.id}>{channel.displayName}</option>)}
-        </select></label>}
-        <div className="reports-segmented reports-promotion-tabs" role="group" aria-label="Promosyon Kârlılık Analizi">
-          {promotionSections.map(([key, label]) => <button key={key} type="button" aria-pressed={key === section} onClick={() => setSection(key)}>{label}</button>)}
-        </div>
-        {section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
-          : <PromotionOffersPanel key={`${store.id}-${section}`} connectionId={store.id} kind={section} />}
-      </>}
-  </div>
-}
-
-// The promotion analysis pages beside each other: the weekly commission tariff first, then Trendyol's offers.
-const promotionSections: Array<['TARIFF' | PromotionKind, string]> = [['TARIFF', 'Ürün Komisyon Tarifesi'], ...(Object.entries(promotionTitles) as Array<[PromotionKind, string]>)]
-
 // The report as tabs: an overview, then one tab per area with its own breakdown (Ürünler and Operasyon have sub-tabs),
-// and the commission tariffs. A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
+// A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
 // lands on the same tab.
-type ViewKey = 'overview' | 'geo' | 'products' | 'profit' | 'ops' | 'customers' | 'tariffs'
-const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'profit', 'ops', 'customers', 'tariffs']
+type ViewKey = 'overview' | 'geo' | 'products' | 'profit' | 'ops' | 'customers'
+const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'profit', 'ops', 'customers']
 type ProductSub = 'products' | 'brands'
 type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices' | 'stock'
 type DetailKey = 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
@@ -106,6 +67,9 @@ export function ReportsPage() {
   const detailParam = searchParams.get('detail')
   const legacy = isDetailKey(detailParam) ? detailHome[detailParam] : null
   const viewParam = searchParams.get('view')
+  // The promotion analysis moved to its own page; an old ?view=tariffs link goes there.
+  const navigate = useNavigate()
+  useEffect(() => { if (viewParam === 'tariffs') void navigate('/promotions', { replace: true }) }, [viewParam, navigate])
   const view: ViewKey = legacy?.view ?? (isViewKey(viewParam) ? viewParam : 'overview')
   const sub = legacy?.sub ?? searchParams.get('sub')
   const body = useRef<HTMLDivElement>(null)
@@ -188,8 +152,7 @@ export function ReportsPage() {
             : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={next => go('products', next)} />
             : view === 'profit' ? <ProfitView data={data} />
             : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
-            : view === 'customers' ? <CustomersView data={data} />
-            : <CommissionTariffs data={data} />}
+            : <CustomersView data={data} />}
         </div>
       </>
     })()}
@@ -210,8 +173,7 @@ function reportTabs(data: ReportSales): ReportTab[] {
     { value: 'products', label: 'Ürünler', icon: 'products' },
     { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
     { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
-    { value: 'customers', label: 'Müşteriler', icon: 'users' },
-    { value: 'tariffs', label: 'Promosyon Analizi', icon: 'invoice' }
+    { value: 'customers', label: 'Müşteriler', icon: 'users' }
   ]
 }
 
