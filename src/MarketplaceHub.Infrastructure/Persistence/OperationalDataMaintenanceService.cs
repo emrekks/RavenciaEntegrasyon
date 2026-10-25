@@ -213,7 +213,9 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         TRUNCATE purge_invoices;
         INSERT INTO purge_invoices SELECT i."Id" FROM billing.invoices i LEFT JOIN sales.orders o ON o."TenantId"=i."TenantId" AND o."Id"=i."OrderId" WHERE i."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR i."ProviderConnectionId"={{connectionId}} OR o."ConnectionId"={{connectionId}});
         INSERT INTO purge_files SELECT d."FileAssetId" FROM billing.invoice_documents d JOIN purge_invoices p ON p."Id"=d."InvoiceId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
+        DELETE FROM billing.marketplace_delivery_states s USING purge_invoices p WHERE s."TenantId"={{tenantId}} AND s."InvoiceId"=p."Id";
         DELETE FROM billing.marketplace_deliveries d USING purge_invoices p WHERE d."TenantId"={{tenantId}} AND d."InvoiceId"=p."Id";
+        UPDATE billing.invoices i SET "OriginalInvoiceId"=NULL FROM purge_invoices p WHERE i."TenantId"={{tenantId}} AND i."OriginalInvoiceId"=p."Id";
         DELETE FROM billing.invoice_submission_attempts a USING purge_invoices p WHERE a."TenantId"={{tenantId}} AND a."InvoiceId"=p."Id";
         DELETE FROM billing.invoice_documents d USING purge_invoices p WHERE d."TenantId"={{tenantId}} AND d."InvoiceId"=p."Id";
         DELETE FROM billing.invoice_party_snapshots s USING purge_invoices p WHERE s."TenantId"={{tenantId}} AND s."InvoiceId"=p."Id";

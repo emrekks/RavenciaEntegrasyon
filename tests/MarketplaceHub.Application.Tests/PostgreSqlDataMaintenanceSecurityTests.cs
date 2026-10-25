@@ -52,7 +52,27 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         seed.Provider.Environment = environment;
         try
         {
-            await SeedAsync(seed, db => db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)));
+            await SeedAsync(seed, db =>
+            {
+                var invoice = NewInvoice(seed, InvoiceStatus.Completed, issued: true);
+                db.Invoices.Add(invoice);
+                // 25 Oct 2026: the live STAGE invoices had a delivery state to the marketplace, which a delete must take too.
+                db.MarketplaceDeliveryStates.Add(new MarketplaceDeliveryState
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = seed.Tenant.Id,
+                    InvoiceId = invoice.Id,
+                    ConnectionId = seed.Marketplace.Id,
+                    PackageId = seed.Package.Id,
+                    AttemptNumber = 1,
+                    ExternalIdempotencyKey = $"delivery-{environment}-{Guid.NewGuid():N}",
+                    RequestHash = "hash",
+                    DeliveryType = "LINK",
+                    Status = "DELIVERED",
+                    CreatedAt = fixture.Now,
+                    UpdatedAt = fixture.Now
+                });
+            });
 
             await using var db = fixture.CreateContext();
             var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
@@ -271,6 +291,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         await db.ShipmentDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceDeliveryStates.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Invoices.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.FileAssets.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoicePolicies.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
