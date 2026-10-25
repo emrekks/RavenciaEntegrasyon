@@ -9,7 +9,6 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
-import { initialImportSummary, type InitialImportView } from '../../../shared/data-freshness'
 import { webhookSetupText, type WebhookSetup } from '../webhook-setup'
 import { RrModal } from '../returns-ui'
 import { externalWriteEvidenceState, externalWriteGroupState } from '../external-write-group-state'
@@ -118,14 +117,6 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   const connected = item.status === 'ACTIVE' || item.status === 'VERIFIED'
   const hidden = item.status === 'HIDDEN'
   const supportsInitialDataSync = item.platformCode === 'TRENDYOL' || item.platformCode === 'SHOPIFY' || item.platformCode === 'HEPSIBURADA' || item.platformCode === 'N11'
-  // While a first import runs, the card says how far each kind of data has come.
-  const initialImport = useQuery({
-    queryKey: ['initial-import', item.id],
-    queryFn: () => hubPoll<InitialImportView>(`/connections/${item.id}/initial-import`),
-    enabled: connected && !hidden && ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM'].includes(item.platformCode),
-    refetchInterval: query => query.state.data?.running ? 10_000 : 120_000
-  })
-  const initialImportText = initialImport.data?.running ? initialImportSummary(initialImport.data.parts) : null
   useEffect(() => {
     if (!settingsOpen) return
     const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setSettingsOpen(false) }
@@ -210,7 +201,6 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
       <div className="reference-integration-brand"><img className={`reference-provider-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /><div><h2>{item.displayName}</h2>{authSummary && !hidden ? <ConnectionAuthBadge item={item} /> : <span className={`reference-connection-state ${hidden ? 'hidden' : awaitingActivation ? 'pending' : connected ? 'connected' : 'inactive'}`}><MappingStateGlyph state={connected && !hidden && !awaitingActivation ? 'done' : 'none'} />{hidden ? 'Veriler gizli' : awaitingActivation ? 'Bağlı, aktifleştirilmedi' : connected ? 'Bağlı ve aktif' : 'Pasif'}</span>}</div></div>
       <div className="reference-integration-menu" ref={referenceMenuRef}><button type="button" className="reference-menu-trigger" aria-label="Entegrasyon seçenekleri" aria-expanded={menuOpen} onClick={toggleReferenceMenu}><UiIcon name="moreVertical" /></button>{menuOpen && <div ref={referenceMenuPopoverRef} className={`reference-menu-popover opens-${menuPlacement}`} style={menuMaxHeight === null ? undefined : { maxHeight: `${menuMaxHeight}px` }} role="menu">{menuActions.map(action => <button type="button" key={action.key} role="menuitem" disabled={action.disabled} onClick={action.run}>{action.displayLabel ?? action.label}</button>)}</div>}</div>
     </header>
-      {initialImportText && !privateDataHidden && <p className="reference-initial-import" role="status">{initialImportText}</p>}
       {privateDataHidden ? <div className="reference-integration-body is-passive" role="status" aria-label={hidden ? 'Veriler gizli' : 'Bağlantı pasif; bilgiler gizli'}><div className="reference-data-point"><span>{efaturam ? 'VKN / TCKN' : shopify ? 'Shopify mağazası' : item.platformCode === 'HEPSIBURADA' ? 'Hepsiburada mağaza ID' : 'Mağaza Kimliği (Seller ID)'}</span><strong>Gizli</strong></div><div className="reference-data-point"><span>Kimlik bilgileri</span><strong>Gizli</strong></div><div className="reference-data-point"><span>Ortam</span><strong>{connectionEnvironmentLabel(item.platformCode, item.environment)}</strong></div><div className="reference-data-point"><span>Dış yazma</span><strong>Kapalı</strong></div></div> : <div className="reference-integration-body"><div className="reference-data-point"><span>{efaturam ? 'VKN / TCKN' : shopify ? 'Shopify mağazası' : item.platformCode === 'HEPSIBURADA' ? 'Hepsiburada mağaza ID' : 'Mağaza Kimliği (Seller ID)'}</span><strong>{shopify ? shopifyStoreDisplayName(item.externalStoreId) || 'Tanımlanmadı' : item.externalStoreId || 'Tanımlanmadı'}</strong></div><div className="reference-data-point"><span>Kimlik bilgileri</span><strong>{credentialLabel(item)}</strong></div><div className="reference-data-point"><span>Ortam</span><strong>{connectionEnvironmentLabel(item.platformCode, item.environment)}</strong></div><div className="reference-data-point"><span>Dış yazma</span><strong>{item.externalWritesEnabled ? 'Açık' : 'Salt-okunur'}</strong></div></div>}
     <footer className="reference-integration-footer"><span>{shopify ? 'E-Ticaret' : efaturam ? 'E-Fatura' : 'Pazaryeri'}</span><div className="reference-footer-actions">{authSummary && item.hasCredential && <button type="button" className="reference-action reference-action-test" onClick={() => test.mutate()} disabled={test.isPending}>{test.isPending ? 'Test Ediliyor…' : 'Test Et'}</button>}<button type="button" className="reference-action" onClick={() => setSettingsOpen(true)} disabled={disconnect.isPending || activate.isPending || test.isPending}><UiIcon name="settings" /> Yönet</button></div></footer>
     {disconnectOpen && <ReferenceActionDialog id={`disconnect-${item.id}`} title="Bağlantıyı Pasife Al" description="Bağlantı pasife alınacak ve canlı veri akışı duracaktır." confirmLabel={disconnect.isPending ? 'Pasife alınıyor…' : 'Onayla'} confirmDisabled={disconnect.isPending} onClose={() => setDisconnectOpen(false)} onConfirm={() => disconnect.mutate()} />}
