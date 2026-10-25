@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import '../commission-tariffs.css'
@@ -75,7 +76,8 @@ export function groupByModel(rows: CommissionTariffRow[]): Array<[string, Commis
     const key = model ? `${model}|${row.color?.trim() || ''}` : row.barcode
     groups.set(key, [...(groups.get(key) ?? []), row])
   }
-  return [...groups]
+  // Inside a colour its sizes run in size order (S, M, L, XL, 2XL …), not in the file's order.
+  return [...groups].map(([key, rows]) => [key, [...rows].sort((a, b) => compareOptionValues('Beden', a.size ?? '', b.size ?? ''))] as [string, CommissionTariffRow[]])
 }
 
 const amount = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

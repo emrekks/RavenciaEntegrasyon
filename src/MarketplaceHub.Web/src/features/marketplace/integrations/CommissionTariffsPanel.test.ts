@@ -15,6 +15,12 @@ describe('commission tariff models', () => {
     expect(groups.map(([key, rows]) => `${key}:${rows.map(item => item.id).join('')}`)).toEqual(['MZ019CD|Bej:13', 'MZ019CD|Siyah:2', 'MZ019CD|Mürdüm:4'])
   })
 
+  it('runs the sizes of a colour in size order', () => {
+    const sized = (id: string, size: string) => ({ ...row(id, 'MZ040RCY'), color: 'Bej', size }) as CommissionTariffRow
+    const [[, rows]] = groupByModel([sized('1', 'M'), sized('2', 'XL'), sized('3', '2XL'), sized('4', 'L'), sized('5', 'S')])
+    expect(rows.map(item => item.size)).toEqual(['S', 'M', 'L', 'XL', '2XL'])
+  })
+
   it('writes a model\'s prices and what they leave as ranges, one value when all agree', () => {
     expect(priceRange([791.01, 752.64, 899])).toBe('752,64 – 899,00 ₺')
     expect(priceRange([752.64, 752.64])).toBe('752,64 ₺')
