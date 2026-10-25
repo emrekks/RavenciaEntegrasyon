@@ -406,7 +406,6 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
               </span>}</th>
             <td>
               <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
-              {row.currentSalePrice !== null && row.currentSalePrice !== row.basisPrice && <small>Satış fiyatı {money(row.currentSalePrice)}</small>}
               {row.currentTier === null || row.currentBandRate === null ? <em className="commission-badge is-unknown">Bant bilinmiyor</em> : <em className={`commission-badge tier-${row.currentTier}`}>{rateText(row.currentBandRate)} · {row.currentTier}. bant</em>}
               {rateDisagrees(row) && <small className="commission-warn" title="Pazaryerinin dosyadaki güncel komisyonu, fiyatın bandından farklı.">Dosyada {rateText(row.currentRate!)}</small>}
             </td>
