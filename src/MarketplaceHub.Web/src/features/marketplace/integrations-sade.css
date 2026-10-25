@@ -146,3 +146,6 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connection-auth-badge .cm-glyph { color: currentColor; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connection-auth-badge.is-warning { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connection-auth-badge.is-info { color: var(--sade-text-2); }
+
+/* A tested connection that waits to be activated: it reads, but invoices and writes wait, so it is not shown as active. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.pending { color: var(--rv-color-warning); }
