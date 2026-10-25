@@ -166,7 +166,8 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         if (tariff is null) return ServiceResult<CommissionTariffExportFile>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
         var bulk = request.Bulk?.Trim().ToLowerInvariant() switch { "recommended" => "amount", var value => value };
         if (bulk is not (null or "" or "tier" or "amount" or "rate") || bulk == "tier" && request.Tier is not (>= 1 and <= 4)
-            || request.MinRate is < -1000 or > 100 || request.MinAmount is < -10_000_000 or > 10_000_000)
+            || request.MinRate is < -1000 or > 100 || request.MinAmount is < -10_000_000 or > 10_000_000
+            || request.MaxRate is < -1000 or > 100 || request.MaxAmount is < -10_000_000 or > 10_000_000)
             return ServiceResult<CommissionTariffExportFile>.Fail("COMMISSION_TARIFF_EXPORT_INVALID", "Toplu seçim geçersiz.", 400);
         if (request.Choices is { Count: > 50_000 } || request.Choices?.Any(x => x.Tier is not (null or (>= 1 and <= 4)) || x.Price is <= 0 or > 10_000_000) == true)
             return ServiceResult<CommissionTariffExportFile>.Fail("COMMISSION_TARIFF_EXPORT_INVALID", "Seçimlerden biri geçersiz.", 400);
@@ -185,7 +186,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             CommissionChoiceView? choice;
             if (picks.TryGetValue(row.Id, out var pick))
                 choice = pick.Price is { } own ? CommissionTariffChoices.PricedAt(row, own, cost) : pick.Tier is { } tier ? CommissionTariffChoices.Of(row, cost).FirstOrDefault(x => x.Tier == tier) : null;
-            else choice = string.IsNullOrEmpty(bulk) ? null : CommissionTariffChoices.Pick(CommissionTariffChoices.Of(row, cost), bulk, request.Tier, request.MinRate, request.MinAmount);
+            else choice = string.IsNullOrEmpty(bulk) ? null : CommissionTariffChoices.Pick(CommissionTariffChoices.Of(row, cost), bulk, request.Tier, request.MinRate, request.MinAmount, request.MaxRate, request.MaxAmount);
             if (choice is null) continue;
             var current = row.BasisPrice is { } basis ? CommissionTariffBands.BandFor(row, basis) : null;
             sheet.Add(new object?[]
@@ -372,9 +373,10 @@ internal static class CommissionTariffChoices
     public static int? Recommended(IReadOnlyList<CommissionChoiceView> choices) => Pick(choices, "amount", null, null, null)?.Tier;
 
     // The pick for every row: one band ("tier"), the band leaving the most ("amount") or the largest share of its price
-    // ("rate"); none when it leaves less than MinRate per cent of the price or MinAmount lira, or the cost is not known
-    // for a comparison that needs it.
-    public static CommissionChoiceView? Pick(IReadOnlyList<CommissionChoiceView> choices, string kind, int? tier, decimal? minRate, decimal? minAmount)
+    // ("rate"); none when it leaves less than MinRate per cent of the price or MinAmount lira, more than MaxRate or
+    // MaxAmount, or the cost is not known for a comparison that needs it.
+    public static CommissionChoiceView? Pick(IReadOnlyList<CommissionChoiceView> choices, string kind, int? tier, decimal? minRate, decimal? minAmount,
+        decimal? maxRate = null, decimal? maxAmount = null)
     {
         var choice = kind switch
         {
@@ -386,6 +388,8 @@ internal static class CommissionTariffChoices
         if (choice is null) return null;
         if (minRate is { } rate && (choice.Remaining is not { } left || choice.Price <= 0 || left / choice.Price * 100m < rate)) return null;
         if (minAmount is { } amount && (choice.Remaining is not { } kept || kept < amount)) return null;
+        if (maxRate is { } top && (choice.Remaining is not { } over || choice.Price <= 0 || over / choice.Price * 100m > top)) return null;
+        if (maxAmount is { } most && (choice.Remaining is not { } above || above > most)) return null;
         return choice;
     }
 }

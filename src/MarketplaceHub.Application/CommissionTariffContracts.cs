@@ -58,8 +58,9 @@ public sealed record CommissionChoiceView(int Tier, decimal Price, decimal Rate,
 // The seller's picks for a tariff's Excel: a pick for every row, and row by row picks over it (a band, a price of their
 // own, or neither: that row left out). The pick for every row is one band ("tier" with Tier), or the band leaving the
 // most ("amount") or the largest share of the price ("rate"); with MinRate (per cent of the price) or MinAmount (lira)
-// a row whose pick leaves less is left out.
-public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IReadOnlyList<CommissionTariffChoice>? Choices, decimal? MinRate = null, decimal? MinAmount = null);
+// a row whose pick leaves less is left out, with MaxRate or MaxAmount one whose pick leaves more.
+public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IReadOnlyList<CommissionTariffChoice>? Choices, decimal? MinRate = null, decimal? MinAmount = null,
+    decimal? MaxRate = null, decimal? MaxAmount = null);
 
 // Which rows a page lists: by the band their price is in now (1-4) and whether the panel has their cost.
 public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost);

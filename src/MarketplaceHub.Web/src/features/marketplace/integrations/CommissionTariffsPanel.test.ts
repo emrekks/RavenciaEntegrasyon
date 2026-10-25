@@ -48,6 +48,11 @@ describe('commission tariff picks', () => {
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minRate: 46 }))).toBeNull()
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minAmount: 200 }))).toBe(2)
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minAmount: 250 }))).toBeNull()
+    // Below a value too (Verilenden küçük değerler): kept under %46 or 250 lira, left out under %45 or 200 lira.
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxRate: 46 }))).toBe(2)
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxRate: 45 }))).toBeNull()
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxAmount: 250 }))).toBe(2)
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxAmount: 200 }))).toBeNull()
     // Without a cost the condition cannot be met; the band alone still can.
     const unknown = { choices: row.choices.map(choice => ({ ...choice, remaining: null })) }
     expect(pickedTier(unknown, undefined, bulk({ kind: 'tier', tier: 2, minRate: 10 }))).toBeNull()

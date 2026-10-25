@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type DragEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
@@ -29,9 +29,10 @@ type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number;
 // A row's own pick: a band, a price of the seller's own, or neither (the row left out of the Excel).
 export type TariffPick = { tier: number | null; price: number | null }
 // The pick for every row: one band ('tier'), or the band leaving the most money ('amount') or the largest share of its
-// price ('rate'); with a least share (per cent) or amount (lira) a row whose pick leaves less is left out.
-export type TariffBulk = { kind: '' | 'tier' | 'amount' | 'rate'; tier: number; minRate: number | null; minAmount: number | null }
-export const noBulk: TariffBulk = { kind: '', tier: 1, minRate: null, minAmount: null }
+// price ('rate'); with a least share (per cent) or amount (lira) a row whose pick leaves less is left out, with a most
+// share or amount one whose pick leaves more.
+export type TariffBulk = { kind: '' | 'tier' | 'amount' | 'rate'; tier: number; minRate: number | null; minAmount: number | null; maxRate?: number | null; maxAmount?: number | null }
+export const noBulk: TariffBulk = { kind: '', tier: 1, minRate: null, minAmount: null, maxRate: null, maxAmount: null }
 
 const share = (choice: CommissionChoice) => choice.remaining === null || choice.price <= 0 ? null : choice.remaining / choice.price
 
@@ -45,6 +46,8 @@ export function bulkChoice(choices: CommissionChoice[], bulk: TariffBulk): Commi
   if (!choice) return null
   if (bulk.minRate !== null && (share(choice) === null || (share(choice) ?? 0) * 100 < bulk.minRate)) return null
   if (bulk.minAmount !== null && (choice.remaining === null || choice.remaining < bulk.minAmount)) return null
+  if (bulk.maxRate != null && (share(choice) === null || (share(choice) ?? 0) * 100 > bulk.maxRate)) return null
+  if (bulk.maxAmount != null && (choice.remaining === null || choice.remaining > bulk.maxAmount)) return null
   return choice
 }
 
@@ -219,8 +222,70 @@ type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings
 const tiers = [1, 2, 3, 4]
 // Which rows the list shows: by the band their price is in now, and whether their cost is entered.
 type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without' }
-type BulkCondition = '' | 'rate' | 'amount'
 const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. bant` : bulk.kind === 'amount' ? 'En yüksek kâr tutarı' : 'En yüksek kâr oranı'
+
+// Toplu Seçim: a column (a band, or the band leaving the most money or share), a criterion on what the pick leaves
+// (its share of the price or its amount) above or below a value, and the buttons that apply it, take that column's
+// picks back or take every pick back.
+function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: TariffBulk; onApply: (bulk: TariffBulk) => void; onClearColumn: (column: string) => void; onClearAll: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [column, setColumn] = useState(bulk.kind === 'tier' ? String(bulk.tier) : bulk.kind || '1')
+  const [criterion, setCriterion] = useState<'' | 'rate' | 'amount'>(bulk.minRate != null || bulk.maxRate != null ? 'rate' : bulk.minAmount != null || bulk.maxAmount != null ? 'amount' : '')
+  const [above, setAbove] = useState(bulk.maxRate == null && bulk.maxAmount == null)
+  const [value, setValue] = useState(String(bulk.minRate ?? bulk.minAmount ?? bulk.maxRate ?? bulk.maxAmount ?? ''))
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => { if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
+  }, [open])
+  const limit = Number(value.replace(',', '.'))
+  const valid = !criterion || (value.trim() !== '' && Number.isFinite(limit))
+  const apply = () => {
+    const tierColumn = /^[1-4]$/.test(column)
+    const at = criterion && valid ? limit : null
+    onApply({ kind: tierColumn ? 'tier' : column as TariffBulk['kind'], tier: tierColumn ? Number(column) : 1,
+      minRate: criterion === 'rate' && above ? at : null, minAmount: criterion === 'amount' && above ? at : null,
+      maxRate: criterion === 'rate' && !above ? at : null, maxAmount: criterion === 'amount' && !above ? at : null })
+    setOpen(false)
+  }
+  const active = bulk.kind !== ''
+  return <div className="commission-bulk" ref={ref}>
+    <button type="button" className={`commission-bulk-trigger${active ? ' is-active' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+      {active && <em>Filtre aktif</em>}Toplu Seçim <UiIcon name="chevronDown" size={14} />
+    </button>
+    {open && <div className="commission-bulk-popover" role="dialog" aria-label="Toplu seçim">
+      <label><span>Sütun</span>
+        <select value={column} onChange={event => setColumn(event.target.value)}>
+          {tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Bant</option>)}
+          <option value="amount">En yüksek kâr tutarı</option><option value="rate">En yüksek kâr oranı</option>
+        </select>
+      </label>
+      <hr />
+      <label><span>Ölçüt</span>
+        <select value={criterion} onChange={event => setCriterion(event.target.value as '' | 'rate' | 'amount')}>
+          <option value="">Koşulsuz, tüm ürünler</option><option value="rate">Kâr / zarar oranına göre (%)</option><option value="amount">Kâr / zarar tutarına göre (₺)</option>
+        </select>
+      </label>
+      <label><span>Karşılaştırma</span>
+        <select value={above ? 'above' : 'below'} disabled={!criterion} onChange={event => setAbove(event.target.value === 'above')}>
+          <option value="above">Verilenden büyük değerler</option><option value="below">Verilenden küçük değerler</option>
+        </select>
+      </label>
+      <label><span>Değer</span>
+        <input type="text" inputMode="decimal" value={value} disabled={!criterion} onChange={event => setValue(event.target.value)} placeholder={criterion === 'rate' ? 'ör. 30' : criterion === 'amount' ? 'ör. 100' : 'Ölçüt seçin'} />
+      </label>
+      <hr />
+      <button type="button" className="rv-button-primary" disabled={!valid} onClick={apply}>Belirlenen Kriterlere Göre Seçimleri Yap</button>
+      <button type="button" className="secondary is-danger" onClick={() => { onClearColumn(column); setOpen(false) }}>Bu Sütundaki Seçimleri Kaldır</button>
+      <hr />
+      <button type="button" className="secondary" onClick={() => { onClearAll(); setCriterion(''); setValue(''); setOpen(false) }}>Tüm Sütunlardan Seçimleri Kaldır</button>
+    </div>}
+  </div>
+}
 
 // One period's products with each band as a price to pick: the band's price, its commission and what the price leaves
 // after the commission and the product cost, the one that leaves the most marked "Önerilen". A pick is made row by row
@@ -232,12 +297,15 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
   page: number; pageCount: number; onPage: (page: number) => void; onMessage: (message: PanelMessage | null) => void
 }) {
   const [picks, setPicks] = useState<Map<string, TariffPick>>(() => new Map())
+  // The pick for every row, set in the Toplu Seçim popover.
   const [bulk, setBulk] = useState<TariffBulk>(noBulk)
-  // The condition on the pick for every row: none, a least share of the price or a least amount left.
-  const [condition, setCondition] = useState<BulkCondition>('')
-  const [threshold, setThreshold] = useState('')
-  const limit = Number(threshold.replace(',', '.'))
-  const applied: TariffBulk = { ...bulk, minRate: condition === 'rate' && threshold.trim() && Number.isFinite(limit) ? limit : null, minAmount: condition === 'amount' && threshold.trim() && Number.isFinite(limit) ? limit : null }
+  const applied = bulk
+  // A column's picks taken back: the pick for every row when it is that column, and the rows picked for that band.
+  const clearColumn = (column: string) => {
+    const tier = /^[1-4]$/.test(column) ? Number(column) : null
+    if (tier === null ? bulk.kind === column : bulk.kind === 'tier' && bulk.tier === tier) setBulk(noBulk)
+    if (tier !== null) setPicks(current => new Map([...current].filter(([, pick]) => pick.tier !== tier)))
+  }
   const bulkOn = applied.kind !== ''
   const setPick = (rowId: string, pick: TariffPick | null) => setPicks(current => {
     const next = new Map(current)
@@ -262,7 +330,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
   const download = useMutation({
     mutationFn: () => hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
       method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-export') },
-      body: JSON.stringify({ bulk: applied.kind || null, tier: applied.kind === 'tier' ? applied.tier : null, minRate: applied.minRate, minAmount: applied.minAmount,
+      body: JSON.stringify({ bulk: applied.kind || null, tier: applied.kind === 'tier' ? applied.tier : null, minRate: applied.minRate, minAmount: applied.minAmount, maxRate: applied.maxRate ?? null, maxAmount: applied.maxAmount ?? null,
         choices: [...picks].map(([rowId, pick]) => ({ rowId, tier: pick.tier, price: pick.price })) })
     }),
     onSuccess: ({ blob, fileName }) => {
@@ -276,7 +344,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
     },
     onError: reason => onMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Excel hazırlanamadı.' })
   })
-  const conditionText = applied.minRate !== null ? `, kâr oranı en az %${applied.minRate.toLocaleString('tr-TR')}` : applied.minAmount !== null ? `, kâr en az ${money(applied.minAmount)}` : ''
+  const conditionText = applied.minRate !== null ? `, kâr oranı %${applied.minRate.toLocaleString('tr-TR')} üstü` : applied.minAmount !== null ? `, kâr ${money(applied.minAmount)} üstü`
+    : applied.maxRate != null ? `, kâr oranı %${applied.maxRate.toLocaleString('tr-TR')} altı` : applied.maxAmount != null ? `, kâr ${money(applied.maxAmount)} altı` : ''
   const summary = bulkOn ? `${bulkLabel(applied)} tüm ürünlerde${conditionText}${picks.size ? `; ${picks.size.toLocaleString('tr-TR')} ürün elle değişti` : ''}` : `${ownPicks.toLocaleString('tr-TR')} ürün seçildi`
 
   return <div className="commission-rows">
@@ -299,22 +368,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
     </div>
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
-      <label className="commission-plan-field"><span>Toplu Seçim</span>
-        <select value={bulk.kind} onChange={event => setBulk({ ...bulk, kind: event.target.value as TariffBulk['kind'] })}>
-          <option value="">Yok</option><option value="tier">Bant (sütun)</option><option value="amount">En yüksek kâr tutarı</option><option value="rate">En yüksek kâr oranı</option>
-        </select>
-      </label>
-      {bulk.kind === 'tier' && <label className="commission-plan-field"><span>Bant</span>
-        <select value={String(bulk.tier)} onChange={event => setBulk({ ...bulk, tier: Number(event.target.value) })}>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. bant</option>)}</select>
-      </label>}
-      {bulkOn && <label className="commission-plan-field"><span>Koşul</span>
-        <select value={condition} onChange={event => setCondition(event.target.value as BulkCondition)}>
-          <option value="">Koşul yok</option><option value="rate">Kâr oranı en az (%)</option><option value="amount">Kâr tutarı en az (₺)</option>
-        </select>
-        {condition && <input type="text" inputMode="decimal" className="commission-plan-threshold" value={threshold} onChange={event => setThreshold(event.target.value)} placeholder={condition === 'rate' ? '30' : '100'} aria-label={condition === 'rate' ? 'En az kâr oranı' : 'En az kâr tutarı'} />}
-      </label>}
+      <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
       <span className="commission-plan-count" role="status">{summary}</span>
-      <button type="button" className="secondary" disabled={!bulkOn && picks.size === 0} onClick={() => { setBulk(noBulk); setCondition(''); setThreshold(''); setPicks(new Map()) }}>Seçimleri Temizle</button>
       <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0) || download.isPending} onClick={() => download.mutate()}>
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
       </button>
