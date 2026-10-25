@@ -44,7 +44,7 @@ export function ProfitBadge({ price, title, missing, label }: { price: ProfitPri
   return <>
     <button type="button" className={`unit-profit-badge${price.remaining < 0 ? ' is-loss' : ''}`} onClick={event => { event.stopPropagation(); setOpen(true) }}
       title="Nasıl hesaplandığını görmek için tıklayın">
-      {label ?? profitText(price.remaining, price.costs)}<span aria-hidden="true">Detay ›</span>
+      {label ?? profitText(price.remaining, price.costs)}<span aria-hidden="true">›</span>
     </button>
     {/* Out of the table cell, so the card's styles do not reach it. */}
     {open && createPortal(<ProfitBreakdown price={price} title={title} onClose={() => setOpen(false)} />, document.body)}

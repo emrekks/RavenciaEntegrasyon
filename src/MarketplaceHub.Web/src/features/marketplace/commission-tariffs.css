@@ -178,11 +178,11 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-clear { grid-column: 1; }
 @media (max-width: 900px) { .app-shell.stitch-shell main .commission-tariffs .commission-filter-clear { grid-column: auto; } }
 
-/* A price's profit: a badge that opens Hesaplama Kalemleri; its "Detay" shows on hover and focus. */
+/* A price's profit: a badge that opens Hesaplama Kalemleri, its arrow always shown so a hover does not widen the card. */
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: auto; margin: 4px 0 0; padding: 2px 9px; color: var(--rv-color-accent); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; text-transform: none; background: var(--rv-color-accent-soft); border: 0; border-radius: 999px; box-shadow: none; }
 .app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge { cursor: pointer; }
-.app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge > span { display: none; color: inherit; font-size: 11px; font-weight: 500; }
-.app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge:is(:hover, :focus-visible) > span { display: inline; }
+.app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge > span { color: inherit; font-size: 13px; font-weight: 700; line-height: 1; }
+.app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge:is(:hover, :focus-visible) { box-shadow: inset 0 0 0 1px currentColor; }
 .app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge:focus-visible { outline: 2px solid var(--rv-color-accent); outline-offset: 2px; }
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge.is-unknown { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); font-weight: 500; }
