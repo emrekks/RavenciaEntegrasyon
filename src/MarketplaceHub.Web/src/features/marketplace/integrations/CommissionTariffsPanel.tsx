@@ -19,6 +19,8 @@ export type CommissionTariffRow = {
   // The product cost entered on the panel, each band as a price to pick, the band that leaves the most and the
   // panel product's picture (absent in an older server's answer).
   costPrice?: number | null; choices?: CommissionChoice[] | null; recommendedTier?: number | null; imageUrl?: string | null
+  // The panel variant's colour ("Bej"); a model's rows are grouped by it.
+  color?: string | null
 }
 // A band as a price the seller can pick: its commission and what the price leaves after it and the product cost.
 export type CommissionChoice = { tier: number; price: number; rate: number; commission: number; remaining: number | null }
@@ -61,11 +63,13 @@ export function ownChoice(row: Pick<CommissionTariffRow, 'bands' | 'costPrice'>,
   return { tier: band.tier, price: rounded, rate: band.rate, commission, remaining: row.costPrice ? Math.round((rounded - commission - row.costPrice) * 100) / 100 : null }
 }
 
-// The page's rows by model, in their order: a row without a model code is a model of its own.
+// The page's rows by model and colour, in their order: a model's sizes of one colour make a group, and a row without
+// a model code is a group of its own.
 export function groupByModel(rows: CommissionTariffRow[]): Array<[string, CommissionTariffRow[]]> {
   const groups = new Map<string, CommissionTariffRow[]>()
   for (const row of rows) {
-    const key = row.modelCode?.trim() || row.barcode
+    const model = row.modelCode?.trim()
+    const key = model ? `${model}|${row.color?.trim() || ''}` : row.barcode
     groups.set(key, [...(groups.get(key) ?? []), row])
   }
   return [...groups]
@@ -379,13 +383,13 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
               {productImage(first)}
               <span>
                 <span className="commission-product">{first.productName ?? first.barcode}</span>
-                <small className="technical-text">{group[0].modelCode}</small>
+                <small className="technical-text">{group[0].modelCode}{first.color ? ` · ${first.color}` : ''}</small>
                 <button type="button" className="commission-model-toggle" aria-expanded={open} onClick={() => setClosed(current => { const next = new Set(current); if (open) next.add(key); else next.delete(key); return next })}>
-                  <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />{group.length.toLocaleString('tr-TR')} varyant
+                  <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />{group.length.toLocaleString('tr-TR')} {first.color ? 'beden' : 'varyant'}
                 </button>
               </span>
             </span></th>
-            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} varyantın fiyatı</small></td>
+            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} {first.color ? 'bedenin' : 'varyantın'} fiyatı</small></td>
             {tiers.map(tier => {
               const choices = group.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? [])
               if (!choices.length) return <td key={tier} className="commission-choice-none">—</td>

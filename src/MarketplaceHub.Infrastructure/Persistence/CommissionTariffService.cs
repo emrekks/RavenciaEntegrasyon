@@ -143,6 +143,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         var matched = await PanelMatchesAsync(tenantId, connectionId, barcodes, skus, cancellationToken);
         var costs = await CostsAsync(tenantId, barcodes, skus, cancellationToken);
         var images = await ImagesAsync(tenantId, rows, cancellationToken);
+        var colors = await ColorsAsync(tenantId, barcodes, skus, cancellationToken);
         var items = rows.Select(row =>
         {
             var current = row.BasisPrice is { } basis ? CommissionTariffBands.BandFor(row, basis) : null;
@@ -152,7 +153,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             return new CommissionTariffRowView(row.Id, row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, row.BasisPrice, row.CurrentSalePrice, row.CurrentRate,
                 current?.Tier, current?.Rate, CommissionTariffBands.Bands(row).Select(Band).ToList(), next is null ? null : Band(next),
                 matched.Contains(row.Barcode) || row.SellerSku is not null && matched.Contains(row.SellerSku), cost, choices, CommissionTariffChoices.Recommended(choices),
-                images.GetValueOrDefault(row.Id));
+                images.GetValueOrDefault(row.Id), colors.ByBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : colors.BySku.GetValueOrDefault(row.SellerSku)));
         }).ToList();
         return ServiceResult<CommissionTariffRowPage>.Ok(new(items, total, page, pageSize));
     }
@@ -243,6 +244,29 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         }
         return result;
     }
+
+    // Each variant's colour from its option signature ("Renk: Bej | Beden: L | …"), by barcode and by SKU.
+    private async Task<(Dictionary<string, string> ByBarcode, Dictionary<string, string> BySku)> ColorsAsync(Guid tenantId, string[] barcodes, string[] skus, CancellationToken cancellationToken)
+    {
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (x.Barcode != null && barcodes.Contains(x.Barcode) || skus.Contains(x.Sku)))
+            .Select(x => new { x.Barcode, x.Sku, x.OptionSignature })
+            .ToListAsync(cancellationToken);
+        var byBarcode = new Dictionary<string, string>(StringComparer.Ordinal);
+        var bySku = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var variant in variants)
+        {
+            if (ColorOf(variant.OptionSignature) is not { } color) continue;
+            if (variant.Barcode is not null) byBarcode.TryAdd(variant.Barcode, color);
+            bySku.TryAdd(variant.Sku, color);
+        }
+        return (byBarcode, bySku);
+    }
+
+    internal static string? ColorOf(string? optionSignature) =>
+        optionSignature?.Split('|').Select(part => part.Split(':', 2)).Where(pair => pair.Length == 2)
+            .Where(pair => pair[0].Trim().Equals("Renk", StringComparison.OrdinalIgnoreCase) || pair[0].Trim().Equals("Color", StringComparison.OrdinalIgnoreCase))
+            .Select(pair => pair[1].Trim()).FirstOrDefault(value => value.Length > 0);
 
     private static decimal? CostOf((Dictionary<string, decimal> ByBarcode, Dictionary<string, decimal> BySku) costs, CommissionTariffRow row) =>
         costs.ByBarcode.TryGetValue(row.Barcode, out var cost) ? cost : row.SellerSku is not null && costs.BySku.TryGetValue(row.SellerSku, out var skuCost) ? skuCost : null;

@@ -45,7 +45,10 @@ public sealed record CommissionTariffRowView(
     decimal? CostPrice = null,
     IReadOnlyList<CommissionChoiceView>? Choices = null,
     int? RecommendedTier = null,
-    string? ImageUrl = null);
+    string? ImageUrl = null,
+    // The colour of the panel variant with the row's barcode (else seller SKU), from its options ("Renk: Bej"); the table
+    // groups a model's rows by it.
+    string? Color = null);
 
 // One band as a price the seller can pick (CommissionTariffBands.TargetPrice), its commission and what is left of the
 // price after the commission and the product's cost (null without a cost; cargo, service fee and withholding tax are not

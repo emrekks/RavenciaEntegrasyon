@@ -6,7 +6,13 @@ describe('commission tariff models', () => {
 
   it('puts a model\'s variants under it in their order, a row without a model code standing alone', () => {
     const groups = groupByModel([row('1', 'MZ005'), row('2', 'MZ005'), row('3', null), row('4', ' '), row('5', 'MZ005')])
-    expect(groups.map(([key, rows]) => `${key}:${rows.map(item => item.id).join('')}`)).toEqual(['MZ005:125', 'B3:3', 'B4:4'])
+    expect(groups.map(([key, rows]) => `${key}:${rows.map(item => item.id).join('')}`)).toEqual(['MZ005|:125', 'B3:3', 'B4:4'])
+  })
+
+  it('groups a model\'s sizes by colour, each colour its own row', () => {
+    const colored = (id: string, color: string) => ({ ...row(id, 'MZ019CD'), color }) as CommissionTariffRow
+    const groups = groupByModel([colored('1', 'Bej'), colored('2', 'Siyah'), colored('3', 'Bej'), colored('4', 'Mürdüm')])
+    expect(groups.map(([key, rows]) => `${key}:${rows.map(item => item.id).join('')}`)).toEqual(['MZ019CD|Bej:13', 'MZ019CD|Siyah:2', 'MZ019CD|Mürdüm:4'])
   })
 
   it('writes a model\'s prices and what they leave as ranges, one value when all agree', () => {

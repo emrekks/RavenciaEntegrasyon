@@ -8,6 +8,15 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class CommissionTariffTests
 {
+    // The tariff table groups a model's rows by the panel variant's colour, read from its option signature.
+    [Theory]
+    [InlineData("Renk: Bej | Beden: L | Desen: Çiçekli", "Bej")]
+    [InlineData("Beden: XL | renk:  Mürdüm ", "Mürdüm")]
+    [InlineData("Beden: XL", null)]
+    [InlineData(null, null)]
+    public void A_variants_colour_comes_from_its_options(string? signature, string? expected) =>
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.CommissionTariffService.ColorOf(signature));
+
     // The bands of a row in Trendyol's weekly tariff export (22 Ekim 08.00-29 Ekim 07.59).
     private static CommissionTariffRow SampleRow() => new()
     {
