@@ -429,7 +429,7 @@
 
 /* Ürün tablosu: the picture beside the name. */
 .app-shell.stitch-shell main .reports-page .reports-product { display: flex; align-items: center; gap: 12px; min-width: 220px; max-width: 360px; }
-.app-shell.stitch-shell main .reports-page .reports-product-image { display: grid; flex: none; place-items: center; width: 40px; height: 52px; color: var(--rv-color-muted); font-size: 14px; font-style: normal; font-weight: 600; object-fit: cover; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-product-image { display: grid; flex: none; place-items: center; width: 40px; height: 60px; color: var(--rv-color-muted); font-size: 14px; font-style: normal; font-weight: 600; object-fit: cover; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 8px; }
 
 /* Satış Haritası: the title, the scope tabs and the switches on one centre line. */
 .app-shell.stitch-shell main .reports-page .reports-panel > header.reports-map-head { align-items: center; }
@@ -484,7 +484,7 @@
 .app-shell.stitch-shell main .reports-page .reports-movers { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .app-shell.stitch-shell main .reports-page .reports-movers li { display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(70px, 120px) 92px; align-items: center; gap: 12px; padding: 7px 0; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-movers li:first-child { border-top: 0; }
-.app-shell.stitch-shell main .reports-page .reports-movers .reports-product-image { width: 34px; height: 44px; }
+.app-shell.stitch-shell main .reports-page .reports-movers .reports-product-image { width: 34px; height: 51px; }
 .app-shell.stitch-shell main .reports-page .reports-mover-name { display: grid; gap: 2px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-mover-name :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-mover-name strong { color: var(--rv-color-ink); font-size: 13px; font-weight: 500; }
@@ -675,7 +675,8 @@
 .app-shell.stitch-shell main .reports-page button.reports-metric.is-static { cursor: default; }
 .app-shell.stitch-shell main .reports-page button.reports-metric.is-static:hover { background: transparent; }
 .app-shell.stitch-shell main .reports-page button.reports-metric:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
-.app-shell.stitch-shell main .reports-page .reports-metric-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; text-decoration: underline dotted var(--rv-color-border-strong); text-underline-offset: 3px; }
+.app-shell.stitch-shell main .reports-page .reports-metric-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; }
+.app-shell.stitch-shell main .reports-page .reports-metric-label.has-tip { text-decoration: underline dotted var(--rv-color-border-strong); text-underline-offset: 3px; }
 .app-shell.stitch-shell main .reports-page .reports-metric-value { display: inline-flex; flex: none; align-items: center; gap: 8px; }
 .app-shell.stitch-shell main .reports-page .reports-metric-value strong { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-metrics li.is-warn .reports-metric-value strong { color: var(--rv-color-warning); }

@@ -96,7 +96,8 @@ export function returnPlatformName(platformCode: string | null | undefined) {
 }
 export type ReturnNoticeKind = 'success' | 'error' | 'info'
 export function notificationKindFromMessage(message: string): ReturnNoticeKind {
-  const normalized = message.toLocaleLowerCase('tr-TR')
+  // A count of none ("3 başarılı, 0 başarısız") reports no failure.
+  const normalized = message.toLocaleLowerCase('tr-TR').replace(/(?<![\d.,])0\s+(?:başarısız|hatalı|hata)/gu, '')
   if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|zorunlu|seçin|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi)/u.test(normalized)) return 'error'
   if (/(kuyruğa|işleniyor|bekleniyor|salt-okunur|değişiklik yok|henüz)/u.test(normalized)) return 'info'
   return 'success'

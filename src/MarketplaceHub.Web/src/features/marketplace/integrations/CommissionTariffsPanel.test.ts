@@ -126,3 +126,12 @@ describe('commission tariff header order', () => {
     expect(filterQuery(down)).toEqual({ sort: 'tier2', dir: 'desc' })
   })
 })
+
+describe('commission tariff profit range', () => {
+  it('sends a band with the profit range typed for it, nothing without a band or a range', () => {
+    expect(filterQuery({ ...noFilter, profitTier: '4', minProfit: '100', maxShare: '35,5' })).toEqual({ profitTier: '4', minProfit: '100', maxShare: '35.5' })
+    expect(filterQuery({ ...noFilter, profitTier: '2', minProfit: '−20' })).toEqual({ profitTier: '2', minProfit: '-20' })
+    expect(filterQuery({ ...noFilter, profitTier: '4' })).toEqual({})
+    expect(filterQuery({ ...noFilter, minProfit: '100' })).toEqual({})
+  })
+})

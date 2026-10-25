@@ -224,7 +224,9 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
 type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
 const tiers = [1, 2, 3, 4]
 // Which rows the list shows: by the band their price is in now, and whether their cost is entered.
-export type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without'; name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; sort?: TariffSort; dir?: 'asc' | 'desc' }
+export type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without'; name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; sort?: TariffSort; dir?: 'asc' | 'desc'
+  // Fiyat Aralığı: a band and what its price leaves after commission and cost, in lira and as a share of the price.
+  profitTier?: '' | '1' | '2' | '3' | '4'; minProfit?: string; maxProfit?: string; minShare?: string; maxShare?: string }
 export const noFilter: TariffFilter = { tier: '', cost: '', name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '' }
 // A header's order: by name, by the current price, or by what a band leaves.
 export type TariffSort = 'name' | 'price' | 'tier1' | 'tier2' | 'tier3' | 'tier4'
@@ -243,17 +245,23 @@ export function filterQuery(filter: TariffFilter): Record<string, string> {
     const value = Number(filter[key].trim().replace(',', '.'))
     if (filter[key].trim() && Number.isFinite(value) && value >= 0) query[key] = String(value)
   }
+  // A profit range counts only with a band picked; a loss is typed with a minus sign.
+  if (filter.profitTier) {
+    let ranged = false
+    for (const key of ['minProfit', 'maxProfit', 'minShare', 'maxShare'] as const) {
+      const text = (filter[key] ?? '').trim().replace(',', '.').replace('−', '-')
+      const value = Number(text)
+      if (text && Number.isFinite(value)) { query[key] = String(value); ranged = true }
+    }
+    if (ranged) query.profitTier = filter.profitTier
+  }
   if (filter.sort) { query.sort = filter.sort; query.dir = filter.dir ?? 'asc' }
   return query
 }
 
-// The columns the table can show beside the product; all of them by default.
-type TariffColumn = 'price' | '1' | '2' | '3' | '4' | 'own'
-const tariffColumns: Array<[TariffColumn, string]> = [['price', 'Güncel Fiyat'], ['1', '1. Bant'], ['2', '2. Bant'], ['3', '3. Bant'], ['4', '4. Bant'], ['own', 'Kendi Fiyatın']]
-
 // Which products the list shows: the fields are typed first and applied with Filtrele (Enter too); Filtreleri Temizle
 // empties them and shows every product again.
-function TariffFilters({ value, facets, columns, onApply, onColumns }: { value: TariffFilter; facets: { categories: string[]; brands: string[] } | undefined; columns: Set<TariffColumn>; onApply: (filter: TariffFilter) => void; onColumns: (columns: Set<TariffColumn>) => void }) {
+function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets: { categories: string[]; brands: string[] } | undefined; onApply: (filter: TariffFilter) => void }) {
   const [draft, setDraft] = useState(value)
   const set = (key: keyof TariffFilter) => (event: { target: { value: string } }) => setDraft(current => ({ ...current, [key]: event.target.value }))
   const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft) }
@@ -280,9 +288,23 @@ function TariffFilters({ value, facets, columns, onApply, onColumns }: { value: 
     <select value={draft.cost} onChange={set('cost')} aria-label="Maliyet">
       <option value="">Maliyet: Tümü</option><option value="with">Maliyet: Girili</option><option value="without">Maliyet: Girilmemiş</option>
     </select>
-    <ColumnPicker columns={columns} onColumns={onColumns} />
+    <select className="commission-filter-band" value={draft.profitTier ?? ''} onChange={set('profitTier')} aria-label="Fiyat aralığı">
+      <option value="">Kolon Seçimi</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
+    </select>
     <button type="button" className="commission-filter-clear" onClick={clear}>Filtreleri Temizle</button>
     <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
+    {draft.profitTier && <div className="commission-filter-profit">
+      <span className="commission-filter-range">
+        <input type="text" inputMode="decimal" placeholder="Min kâr tutarı" value={draft.minProfit ?? ''} onChange={set('minProfit')} aria-label="En az kâr tutarı (₺)" />
+        <i aria-hidden="true">–</i>
+        <input type="text" inputMode="decimal" placeholder="Max kâr tutarı" value={draft.maxProfit ?? ''} onChange={set('maxProfit')} aria-label="En çok kâr tutarı (₺)" />
+      </span>
+      <span className="commission-filter-range">
+        <input type="text" inputMode="decimal" placeholder="Min kâr oranı" value={draft.minShare ?? ''} onChange={set('minShare')} aria-label="En az kâr oranı (%)" />
+        <i aria-hidden="true">–</i>
+        <input type="text" inputMode="decimal" placeholder="Max kâr oranı" value={draft.maxShare ?? ''} onChange={set('maxShare')} aria-label="En çok kâr oranı (%)" />
+      </span>
+    </div>}
     {noFacts && <p className="commission-filter-note">Kategori, marka ve stok bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
   </form>
 }
@@ -298,30 +320,6 @@ function SortHeader({ label, sort, filter, onFilter }: { label: string; sort: Ta
   </th>
 }
 
-// Kolon Seçimi: which of the table's columns are shown.
-function ColumnPicker({ columns, onColumns }: { columns: Set<TariffColumn>; onColumns: (columns: Set<TariffColumn>) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => { if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
-  }, [open])
-  const hidden = tariffColumns.length - columns.size
-  return <div className="commission-columns" ref={ref}>
-    <button type="button" className="commission-columns-trigger" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      <span>Kolon Seçimi{hidden > 0 ? ` · ${hidden} gizli` : ''}</span><UiIcon name="chevronDown" size={14} />
-    </button>
-    {open && <div className="commission-columns-menu" role="group" aria-label="Gösterilen kolonlar">
-      {tariffColumns.map(([key, label]) => <label key={key}>
-        <input type="checkbox" checked={columns.has(key)} onChange={() => { const next = new Set(columns); if (next.has(key)) next.delete(key); else next.add(key); onColumns(next) }} />{label}
-      </label>)}
-    </div>}
-  </div>
-}
 const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. bant` : bulk.kind === 'amount' ? 'En yüksek kâr tutarı' : 'En yüksek kâr oranı'
 
 // Toplu Seçim: a column (a band, or the band leaving the most money or share), a criterion on what the pick leaves
@@ -428,8 +426,6 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
   // all its sizes and their band cards) does not draw thousands of cards at once.
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
   const facets = useQuery({ queryKey: ['commission-tariff-facets', connectionId, tariff.id], queryFn: () => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`) })
-  const [columns, setColumns] = useState<Set<TariffColumn>>(() => new Set(tariffColumns.map(([key]) => key)))
-  const shownTiers = tiers.filter(tier => columns.has(String(tier) as TariffColumn))
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   const download = useMutation({
     mutationFn: () => hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
@@ -456,8 +452,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
     <div className="commission-rows-head">
       <strong>{tariff.periodText} Bantları</strong>
     </div>
-    {/* Which products the list shows, and which columns. */}
-    <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} columns={columns} onApply={onFilter} onColumns={setColumns} />
+    {/* Which products the list shows. */}
+    <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
       <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
@@ -471,7 +467,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
     {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
-      <thead><tr><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} />{columns.has('price') && <SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />}{shownTiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}{columns.has('own') && <th scope="col">Kendi Fiyatın</th>}</tr></thead>
+      <thead><tr><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{groupByModel(rows.items).map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
@@ -494,11 +490,11 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                   {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
                 </span>
               </span>}</th>
-            {columns.has('price') && <td>
+            <td>
               <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
               {rateDisagrees(row) && <small className="commission-warn" title="Pazaryerinin dosyadaki güncel komisyonu, fiyatın bandından farklı.">Dosyada {rateText(row.currentRate!)}</small>}
-            </td>}
-            {shownTiers.map(tier => {
+            </td>
+            {tiers.map(tier => {
               const choice = row.choices?.find(item => item.tier === tier)
               if (!choice) return <td key={tier} className="commission-choice-none">—</td>
               const band = row.bands.find(item => item.tier === tier)
@@ -514,7 +510,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                 </button>
               </td>
             })}
-            {columns.has('own') && <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>}
+            <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>
           </tr>
         }
         if (group.length === 1) return variantRow(group[0], false)
@@ -534,8 +530,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                 </button>
               </span>
             </span></th>
-            {columns.has('price') && <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} {first.color ? 'bedenin' : 'varyantın'} fiyatı</small></td>}
-            {shownTiers.map(tier => {
+            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} {first.color ? 'bedenin' : 'varyantın'} fiyatı</small></td>
+            {tiers.map(tier => {
               const choices = group.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? [])
               if (!choices.length) return <td key={tier} className="commission-choice-none">—</td>
               const owners = group.filter(row => row.choices?.some(item => item.tier === tier))
@@ -553,7 +549,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                 </button>
               </td>
             })}
-            {columns.has('own') && <td />}
+            <td />
           </tr>
           {open && group.map(row => variantRow(row, true))}
         </Fragment>

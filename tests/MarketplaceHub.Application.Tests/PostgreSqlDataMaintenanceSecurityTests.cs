@@ -39,6 +39,38 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // A live e-invoice provider with an issued invoice is kept; a STAGE one's invoices are tests and go with it.
+    [PostgreSqlFact]
+    public Task ProviderDelete_KeepsALiveProvidersIssuedInvoices() => ProviderDeleteAsync("PRODUCTION", deleted: false);
+
+    [PostgreSqlFact]
+    public Task ProviderDelete_TakesATestEnvironmentsInvoicesWithIt() => ProviderDeleteAsync("STAGE", deleted: true);
+
+    private async Task ProviderDeleteAsync(string environment, bool deleted)
+    {
+        var seed = NewSeed($"dm-{environment[..3].ToLowerInvariant()}");
+        seed.Provider.Environment = environment;
+        try
+        {
+            await SeedAsync(seed, db => db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)));
+
+            await using var db = fixture.CreateContext();
+            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Provider.Id, seed.Provider.Version, new DeleteConnectionCommand(seed.Provider.DisplayName), "corr", CancellationToken.None);
+
+            Assert.Equal(deleted, result.Succeeded);
+            if (!deleted) Assert.Equal("ISSUED_INVOICES_KEPT", result.Error!.Code);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(deleted ? 0 : 1, await verification.Invoices.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(deleted ? "DELETED" : "ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Provider.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task OrderReset_MarksTheFilesOfRemovedRowsForPurge_AndTheSweepDeletesThem()
     {

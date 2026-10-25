@@ -100,8 +100,7 @@ export function ReportsPage() {
   const activePreset = presets.find(preset => preset.range.from === range.from && preset.range.to === range.to)?.key ?? null
   const [platforms, setPlatforms] = useState<string[] | null>(null)
   const [granularity, setGranularity] = useState('')
-  const [includeTest, setIncludeTest] = useState(false)
-  const query = reportQuery({ from: range.from, to: range.to, platforms, granularity, includeTest })
+  const query = reportQuery({ from: range.from, to: range.to, platforms, granularity, includeTest: false })
   const report = useQuery({ queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
@@ -135,7 +134,6 @@ export function ReportsPage() {
       <label className="reports-field"><span>Gruplama</span><select value={granularity} onChange={event => setGranularity(event.target.value)} aria-label="Zaman gruplaması">
         <option value="">Otomatik</option><option value="day">Gün</option><option value="week">Hafta</option><option value="month">Ay</option>
       </select></label>
-      <label className="reports-toggle"><input type="checkbox" checked={includeTest} onChange={event => setIncludeTest(event.target.checked)} /><span>Test Mağazalarını Dahil Et</span></label>
       {report.isFetching && data && <span className="reports-refreshing" role="status"><UiIcon name="loader" size={14} />Güncelleniyor</span>}
     </div>
     {report.isLoading && <Busy text="Rapor hazırlanıyor…" />}
@@ -741,14 +739,16 @@ function MetricCard({ title, icon, tone, rows, onMore, hints = true }: { title: 
     {() => <ul className="reports-metrics">{rows.map(row => {
       const id = `${tip}-${row.key}`
       const detail = row.detail
+      // Only a label with an explanation is underlined.
+      const explained = hints && Boolean(row.note)
       const body = <>
-        <span className="reports-metric-label">{row.label}</span>
+        <span className={`reports-metric-label${explained ? ' has-tip' : ''}`}>{row.label}</span>
         <span className="reports-metric-value">{row.delta !== undefined && <Delta delta={row.delta} invert={row.invert} previous={row.previous} />}<strong>{row.value}</strong></span>
       </>
       return <li key={row.key} className={`reports-tip-host${row.tone ? ` is-${row.tone}` : ''}`}>
-        {detail ? <button type="button" className="reports-metric" onClick={() => onMore(detail)} aria-describedby={hints ? id : undefined}>{body}</button>
-          : <button type="button" className="reports-metric is-static" aria-describedby={hints ? id : undefined}>{body}</button>}
-        {hints && <span role="tooltip" id={id} className="reports-hover-tip"><TipText text={row.note} /></span>}
+        {detail ? <button type="button" className="reports-metric" onClick={() => onMore(detail)} aria-describedby={explained ? id : undefined}>{body}</button>
+          : <button type="button" className="reports-metric is-static" aria-describedby={explained ? id : undefined}>{body}</button>}
+        {explained && <span role="tooltip" id={id} className="reports-hover-tip"><TipText text={row.note} /></span>}
       </li>
     })}</ul>}
   </Card>

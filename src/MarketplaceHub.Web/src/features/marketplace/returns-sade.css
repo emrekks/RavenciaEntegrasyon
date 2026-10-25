@@ -248,8 +248,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; font-size: 13px; line-height: 1.35; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small { display: block; color: var(--rr-muted); font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small b { display: inline; color: var(--rr-ink); font-weight: 500; -webkit-line-clamp: unset; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb { position: relative; display: block; width: 40px; height: 40px; padding: 0; background: linear-gradient(135deg, #3a3a46, #24242c); border: 1px solid var(--rr-line); border-radius: 7px; cursor: zoom-in; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb.rr-lg { width: 52px; height: 52px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb { position: relative; display: block; width: 40px; height: 60px; padding: 0; background: linear-gradient(135deg, #3a3a46, #24242c); border: 1px solid var(--rr-line); border-radius: 7px; cursor: zoom-in; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb.rr-lg { width: 52px; height: 78px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb { position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px; display: grid; place-items: center; padding: 0 4px; color: #fff; background: var(--rr-primary); border: 2px solid var(--rr-surface); border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prodsum { color: var(--rr-muted); font-size: 12px; text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cargocell { display: grid; gap: 4px; justify-items: start; min-width: 0; }

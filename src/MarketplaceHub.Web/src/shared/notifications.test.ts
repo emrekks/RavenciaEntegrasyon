@@ -54,3 +54,12 @@ describe('which notifications are kept in the history', () => {
     expect(shouldRecordNotification('Seçilen varyantlar güncelleniyor…', 'info')).toBe(false)
   })
 })
+
+describe('notification kind of a count', () => {
+  it('reads "0 başarısız" as no failure and any other count as one', async () => {
+    const { normalizeNotificationKind } = await import('./notifications')
+    expect(normalizeNotificationKind('3 siparişin faturası işlendi: 3 başarılı, 0 başarısız.', 'success')).toBe('success')
+    expect(normalizeNotificationKind('3 siparişin faturası işlendi: 2 başarılı, 1 başarısız.', 'success')).toBe('error')
+    expect(normalizeNotificationKind('10 başarısız kayıt var.', 'success')).toBe('error')
+  })
+})

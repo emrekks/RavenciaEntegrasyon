@@ -43,7 +43,8 @@ const notificationStorageKey = 'ravencia.notification-history'
 const notificationChangeEvent = 'ravencia:notification-change'
 
 export function normalizeNotificationKind(message: string, kind: AppNotification['kind']): AppNotification['kind'] {
-  const normalized = message.toLocaleLowerCase('tr-TR')
+  // A count of none ("3 başarılı, 0 başarısız") reports no failure.
+  const normalized = message.toLocaleLowerCase('tr-TR').replace(/(?<![\d.,])0\s+(?:başarısız|hatalı|hata)/gu, '')
   if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|reddi|reddedildi|yayın uyarısı|eşlemesi (?:yok|gerek)|zorunlu özellik)/u.test(normalized)) return 'error'
   if (/(kuyruğa\s+alındı|kuyrukta|işleniyor|sonucu\s+(?:henüz\s+)?bekleniyor|incelemesi\s+bekleniyor|onayı\s+bekleniyor|yeniden\s+kuyruğa|waiting(?:fraudcheck|[_\s-]*approval)|pending|processing|salt-okunur)/u.test(normalized)) return 'info'
   return kind

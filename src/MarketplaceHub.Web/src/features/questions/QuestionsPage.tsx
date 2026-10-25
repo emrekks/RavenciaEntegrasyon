@@ -55,7 +55,7 @@ const ORDER_QUESTION_PLATFORMS = ['HEPSIBURADA', 'PAZARAMA']
 
 type WorkspaceTab = 'PRODUCT' | 'ORDER' | 'TEMPLATES'
 
-type Glyph = 'done' | 'partial' | 'none' | 'bad'
+type Glyph = 'done' | 'partial' | 'none' | 'bad' | 'running'
 const statusFilters: Array<{ value: QuestionStatus; label: string; glyph: Glyph }> = [
   { value: 'WAITING', label: 'Cevap Bekleyenler', glyph: 'partial' }, { value: 'ANSWERED', label: 'Cevaplananlar', glyph: 'done' },
   { value: 'EXPIRED', label: 'Süresi Dolanlar', glyph: 'bad' }, { value: 'OTHER', label: 'Diğer Durumlar', glyph: 'none' }, { value: 'ALL', label: 'Tümü', glyph: 'none' },
@@ -65,6 +65,8 @@ const statusFilters: Array<{ value: QuestionStatus; label: string; glyph: Glyph 
 function StateGlyph({ state }: { state: Glyph }) {
   if (state === 'done') return <svg className="qi-glyph is-done" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
   if (state === 'partial') return <svg className="qi-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".35" /><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3" /><path d="M8 5.6v2.6l1.8 1.1" /></svg>
+  // A transfer under way: an arc turning on a faint ring (still under reduced motion).
+  if (state === 'running') return <svg className="qi-glyph is-running" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".25" /><path d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2" /></svg>
   if (state === 'bad') return <svg className="qi-glyph is-bad" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4" /></svg>
   return <svg className="qi-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /></svg>
 }
@@ -145,7 +147,7 @@ export function syncSummary(item: SyncState, tab: WorkspaceTab) {
   const records = count.toLocaleString('tr-TR')
   if (item.progressStatus === 'FAILED') return { records, state: 'Son aktarım başarısız', glyph: 'bad' as Glyph }
   if (item.historyImported) return { records, state: 'Geçmiş tamamlandı', glyph: 'done' as Glyph }
-  if (item.progressStatus === 'INITIAL') return { records, state: 'Geçmiş aktarılıyor', glyph: 'partial' as Glyph }
+  if (item.progressStatus === 'INITIAL') return { records, state: 'Geçmiş aktarılıyor', glyph: 'running' as Glyph }
   if (item.progressStatus === 'QUEUED') return { records, state: 'İlk aktarım sırada', glyph: 'partial' as Glyph }
   return { records, state: 'İlk aktarım bekleniyor', glyph: 'none' as Glyph }
 }

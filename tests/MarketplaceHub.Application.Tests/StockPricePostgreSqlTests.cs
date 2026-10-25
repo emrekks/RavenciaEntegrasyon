@@ -342,10 +342,14 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     {
         var tenant = NewTenant("commission-filter");
         var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (product, variant) = NewVariant(tenant, "RYP00101", "RYP00101");
+        variant.CostPrice = 300m;
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
             seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
             await seed.SaveChangesAsync();
         }
         string[] headers = ["ÜRÜN İSMİ", "BARKOD", "MODEL KODU", "KATEGORİ", "MARKA", "STOK", "1.Fiyat Alt Limit", "Tarih aralığı (7 Gün)", "1.KOMİSYON", "KOMİSYONA ESAS FİYAT"];
@@ -380,6 +384,12 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(["RYP00101"], await Barcodes(new(null, null, Barcode: "ryp001")));
             Assert.Equal(["ETK001", "RYP00101"], await Barcodes(new(null, null, MinStock: 1)));
             Assert.Equal(["MZ005S10", "RYP00101"], await Barcodes(new(null, null, MaxStock: 11)));
+            // Fiyat Aralığı: RYP00101 in band 1 is 519,75 at %21,5 (111,75) over a 300 cost, leaving 108,00 (%20,8); the
+            // rows without a cost never meet a profit range.
+            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, ProfitTier: 1, MinProfit: 100)));
+            Assert.Empty(await Barcodes(new(null, null, ProfitTier: 1, MinProfit: 200)));
+            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, ProfitTier: 1, MinShare: 20, MaxShare: 21)));
+            Assert.Empty(await Barcodes(new(null, null, ProfitTier: 1, MaxShare: 20)));
             // Models in the order a header asks for; the same order reversed, and by price.
             async Task<string[]> Models(string sort, bool descending) =>
                 (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, null, 0, 50, new(null, null, Sort: sort, Descending: descending), CancellationToken.None)).Value!.Items.Select(x => x.ModelCode!).ToArray();

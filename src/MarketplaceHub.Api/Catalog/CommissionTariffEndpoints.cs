@@ -108,7 +108,7 @@ internal static class CommissionTariffEndpoints
     }
 
     private static async Task<IResult> RowsAsync(Guid connectionId, Guid tariffId, string? search, int? page, int? limit, int? tier, string? cost, string? name, string? barcode, string? model,
-        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, HttpContext http, ICommissionTariffService service)
+        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (page is < 0 or > 100_000) return Problem(http, new("PAGE_INVALID", "page 0 ile 100000 arasında olmalıdır.", 400));
@@ -116,10 +116,12 @@ internal static class CommissionTariffEndpoints
         if (tier is not null and (< 1 or > 4)) return Problem(http, new("TIER_INVALID", "tier 1 ile 4 arasında olmalıdır.", 400));
         if (cost is not (null or "" or "with" or "without")) return Problem(http, new("COST_FILTER_INVALID", "cost with ya da without olmalıdır.", 400));
         if (minStock is < 0 or > 10_000_000 || maxStock is < 0 or > 10_000_000) return Problem(http, new("STOCK_FILTER_INVALID", "Stok 0 ile 10000000 arasında olmalıdır.", 400));
+        if (profitTier is not null and (< 1 or > 4) || minShare is < -1000 or > 100 || maxShare is < -1000 or > 100 || minProfit is < -10_000_000 or > 10_000_000 || maxProfit is < -10_000_000 or > 10_000_000)
+            return Problem(http, new("PROFIT_FILTER_INVALID", "Fiyat aralığı 1-4, kâr oranı en fazla %100 olmalıdır.", 400));
         if (sort is not (null or "" or "name" or "price" or "tier1" or "tier2" or "tier3" or "tier4") || dir is not (null or "" or "asc" or "desc"))
             return Problem(http, new("SORT_INVALID", "sort name, price ya da tier1-tier4; dir asc ya da desc olmalıdır.", 400));
         var filter = new CommissionTariffRowFilter(tier, cost switch { "with" => true, "without" => false, _ => null }, name, barcode, model, minStock, maxStock, category, brand,
-            string.IsNullOrEmpty(sort) ? null : sort, dir == "desc");
+            string.IsNullOrEmpty(sort) ? null : sort, dir == "desc", profitTier, minProfit, maxProfit, minShare, maxShare);
         return Result(await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, page ?? 0, limit ?? 50, filter, http.RequestAborted));
     }
 

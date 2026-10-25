@@ -70,6 +70,15 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
     if (open && compact) repositionCompactMenu()
   }, [open, compact, selectedCodes])
 
+  // The menu opens under the trigger's right edge; when that would run it off the left of the screen (a narrow trigger
+  // near the sidebar) it opens from the trigger's left edge instead.
+  const [alignStart, setAlignStart] = useState(false)
+  useLayoutEffect(() => {
+    if (!open || compact || !menu.current || !trigger.current) return
+    const width = menu.current.getBoundingClientRect().width
+    setAlignStart(trigger.current.getBoundingClientRect().right - width < 12)
+  }, [open, compact])
+
   function toggleOption(value: string, checked: boolean) {
     const current = selectedCodes ?? []
     const next = checked ? Array.from(new Set([...current, value])) : current.filter(item => item !== value)
@@ -89,7 +98,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
     setOpen(true)
   }
 
-  const menuContent = open && <div ref={menu} className={`platform-multi-select-menu${compact ? ' is-compact' : ''}`} id={`${id}-menu`} role="group" aria-labelledby={`${id}-label`} style={compact ? { position: 'fixed', ...(compactMenuPosition ?? {}) } : undefined}>
+  const menuContent = open && <div ref={menu} className={`platform-multi-select-menu${compact ? ' is-compact' : alignStart ? ' is-start' : ''}`} id={`${id}-menu`} role="group" aria-labelledby={`${id}-label`} style={compact ? { position: 'fixed', ...(compactMenuPosition ?? {}) } : undefined}>
     <div className="platform-multi-select-menu-header"><strong>Platformlar</strong><button type="button" onClick={() => onChange(selectedOptions.length ? [] : options.map(option => option.value))}>{selectedOptions.length ? 'Tümünü kaldır' : 'Tümünü seç'}</button></div>
     {options.map(option => <label className="platform-multi-select-option" key={option.value}>
       <input type="checkbox" checked={Boolean(selectedCodes?.includes(option.value))} onChange={event => toggleOption(option.value, event.target.checked)} />

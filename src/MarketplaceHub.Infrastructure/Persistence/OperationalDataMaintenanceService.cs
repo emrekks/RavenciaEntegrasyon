@@ -71,7 +71,9 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (connection.Version != expectedVersion) return ServiceResult<OperationalDataResetView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
         if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
-        if (await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
+        // A test environment's invoices (an e-invoice provider's STAGE) are no fiscal record: they go with the connection.
+        var testEnvironment = connection.Environment is "STAGE" or "SANDBOX";
+        if (!testEnvironment && await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
         var scopes = new HashSet<string>(ConnectionDeleteScopes, StringComparer.Ordinal);
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);

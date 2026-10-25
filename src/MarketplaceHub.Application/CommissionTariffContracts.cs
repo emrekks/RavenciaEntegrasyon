@@ -67,9 +67,14 @@ public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IRea
 // Which rows a page lists: by the band their price is in now (1-4), whether the panel has their cost, and by the file's
 // own name, barcode (or seller SKU), model code, stock range, category and brand. Sort orders the models by their name
 // ("name"), their lowest current price ("price") or the most a band leaves after commission and cost ("tier1"-"tier4");
-// without it the models run by name as before.
+// without it the models run by name as before. ProfitTier with a least or most amount (lira) or share of the price (per
+// cent) keeps the variants whose price in that band leaves that much after commission and cost (Fiyat Aralığı).
 public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost, string? Name = null, string? Barcode = null, string? ModelCode = null,
-    decimal? MinStock = null, decimal? MaxStock = null, string? Category = null, string? Brand = null, string? Sort = null, bool Descending = false);
+    decimal? MinStock = null, decimal? MaxStock = null, string? Category = null, string? Brand = null, string? Sort = null, bool Descending = false,
+    int? ProfitTier = null, decimal? MinProfit = null, decimal? MaxProfit = null, decimal? MinShare = null, decimal? MaxShare = null)
+{
+    public bool FiltersProfit => ProfitTier is not null && (MinProfit ?? MaxProfit ?? MinShare ?? MaxShare) is not null;
+}
 
 // The categories and brands a tariff's rows carry, for the list's filters.
 public sealed record CommissionTariffFacets(IReadOnlyList<string> Categories, IReadOnlyList<string> Brands);
