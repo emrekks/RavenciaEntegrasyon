@@ -175,12 +175,12 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
     private async Task<CommissionTariffRowPage> SortedPageAsync(Guid tenantId, Guid connectionId, IQueryable<CommissionTariffRow> query, CommissionTariffRowFilter filter, int page, int pageSize, CancellationToken cancellationToken)
     {
         var all = await query.ToListAsync(cancellationToken);
-        var costs = await CostsAsync(tenantId, all.Select(x => x.Barcode).ToArray(), all.Where(x => x.SellerSku != null).Select(x => x.SellerSku!).ToArray(), cancellationToken);
+        var facts = await ProfitFactsAsync(tenantId, connectionId, all, cancellationToken);
         if (filter.FiltersProfit)
-            all = all.Where(row => CommissionTariffChoices.Of(row, CostOf(costs, row)).FirstOrDefault(x => x.Tier == filter.ProfitTier) is { Remaining: { } left } choice
+            all = all.Where(row => CommissionTariffChoices.Of(row, facts(row)).FirstOrDefault(x => x.Tier == filter.ProfitTier) is { Remaining: { } left } choice
                 && (filter.MinProfit is not { } minProfit || left >= minProfit) && (filter.MaxProfit is not { } maxProfit || left <= maxProfit)
-                && (filter.MinShare is not { } minShare || choice.Price > 0 && left / choice.Price * 100m >= minShare)
-                && (filter.MaxShare is not { } maxShare || choice.Price > 0 && left / choice.Price * 100m <= maxShare)).ToList();
+                && (filter.MinShare is not { } minShare || CommissionTariffChoices.OnCost(choice) >= minShare)
+                && (filter.MaxShare is not { } maxShare || CommissionTariffChoices.OnCost(choice) <= maxShare)).ToList();
         var tier = filter.Sort is { Length: 5 } sort && sort.StartsWith("tier", StringComparison.Ordinal) && sort[4] is >= '1' and <= '4' ? sort[4] - '0' : (int?)null;
         var groups = all.GroupBy(x => string.IsNullOrEmpty(x.ModelCode) ? x.Barcode : x.ModelCode).Select(group =>
         {
@@ -189,7 +189,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             {
                 "name" => name,
                 "price" => group.Min(x => x.BasisPrice),
-                _ when tier is { } band => group.Select(row => CommissionTariffChoices.Of(row, CostOf(costs, row)).FirstOrDefault(x => x.Tier == band)?.Remaining).Max(),
+                _ when tier is { } band => group.Select(row => CommissionTariffChoices.Of(row, facts(row)).FirstOrDefault(x => x.Tier == band)?.Remaining).Max(),
                 _ => null
             };
             return (Key: group.Key, Name: name, Value: value, Rows: group.ToList());
@@ -207,7 +207,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         var barcodes = rows.Select(x => x.Barcode).ToArray();
         var skus = rows.Where(x => x.SellerSku != null).Select(x => x.SellerSku!).ToArray();
         var matched = await PanelMatchesAsync(tenantId, connectionId, barcodes, skus, cancellationToken);
-        var costs = await CostsAsync(tenantId, barcodes, skus, cancellationToken);
+        var facts = await ProfitFactsAsync(tenantId, connectionId, rows, cancellationToken);
         var images = await ImagesAsync(tenantId, rows, cancellationToken);
         var colors = await ColorsAsync(tenantId, barcodes, skus, cancellationToken);
         var stocks = await StocksAsync(tenantId, barcodes, skus, cancellationToken);
@@ -215,11 +215,11 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         {
             var current = row.BasisPrice is { } basis ? CommissionTariffBands.BandFor(row, basis) : null;
             var next = row.BasisPrice is { } price ? CommissionTariffBands.NextLowerBand(row, price) : null;
-            var cost = CostOf(costs, row);
-            var choices = CommissionTariffChoices.Of(row, cost);
+            var fact = facts(row);
+            var choices = CommissionTariffChoices.Of(row, fact);
             return new CommissionTariffRowView(row.Id, row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, row.BasisPrice, row.CurrentSalePrice, row.CurrentRate,
                 current?.Tier, current?.Rate, CommissionTariffBands.Bands(row).Select(Band).ToList(), next is null ? null : Band(next),
-                matched.Contains(row.Barcode) || row.SellerSku is not null && matched.Contains(row.SellerSku), cost, choices, CommissionTariffChoices.Recommended(choices),
+                matched.Contains(row.Barcode) || row.SellerSku is not null && matched.Contains(row.SellerSku), fact.Cost, choices, CommissionTariffChoices.Recommended(choices),
                 images.GetValueOrDefault(row.Id), colors.ByBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : colors.BySku.GetValueOrDefault(row.SellerSku)),
                 stocks.TryGetValue(row.Barcode, out var stock) ? stock : row.SellerSku is not null && stocks.TryGetValue(row.SellerSku, out var skuStock) ? skuStock : row.Stock);
         }).ToList();
@@ -260,7 +260,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
     private static string Like(string term) => $"%{CatalogService.EscapeLike(term)}%";
 
     // The seller's picks written out as an Excel sheet: one row per product picked, its new price, band, commission and
-    // what is left after the commission and its cost. Products picked for no band are left out.
+    // the charges and the profit it leaves (UnitProfit). Products picked for no band are left out.
     public async Task<ServiceResult<CommissionTariffExportFile>> ExportAsync(Guid tenantId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken)
     {
         var tariff = await db.CommissionTariffs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken);
@@ -275,47 +275,56 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         var picks = (request.Choices ?? []).GroupBy(x => x.RowId).ToDictionary(x => x.Key, x => x.Last());
         var rows = await db.CommissionTariffRows.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId)
             .OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).ToListAsync(cancellationToken);
-        var costs = await CostsAsync(tenantId, rows.Select(x => x.Barcode).ToArray(), rows.Where(x => x.SellerSku != null).Select(x => x.SellerSku!).ToArray(), cancellationToken);
+        var facts = await ProfitFactsAsync(tenantId, connectionId, rows, cancellationToken);
         var sheet = new List<IReadOnlyList<object?>>
         {
             new object?[] { "Barkod", "Satıcı Stok Kodu", "Model Kodu", "Ürün", "Beden", "Güncel Satış Fiyatı", "Komisyona Esas Fiyat", "Güncel Bant", "Seçilen Bant", "Yeni Fiyat",
-                "Komisyon Oranı (%)", "Komisyon", "Ürün Maliyeti", "Komisyon ve Maliyet Sonrası Kalan" }
+                "Komisyon Oranı (%)", "Komisyon", "Ürün Maliyeti", "Kargo", "Hizmet Bedeli", "Stopaj", "Net KDV", "Kâr" }
         };
         foreach (var row in rows)
         {
-            var cost = CostOf(costs, row);
+            var fact = facts(row);
             CommissionChoiceView? choice;
             if (picks.TryGetValue(row.Id, out var pick))
-                choice = pick.Price is { } own ? CommissionTariffChoices.PricedAt(row, own, cost) : pick.Tier is { } tier ? CommissionTariffChoices.Of(row, cost).FirstOrDefault(x => x.Tier == tier) : null;
-            else choice = string.IsNullOrEmpty(bulk) ? null : CommissionTariffChoices.Pick(CommissionTariffChoices.Of(row, cost), bulk, request.Tier, request.MinRate, request.MinAmount, request.MaxRate, request.MaxAmount);
+                choice = pick.Price is { } own ? CommissionTariffChoices.PricedAt(row, own, fact) : pick.Tier is { } tier ? CommissionTariffChoices.Of(row, fact).FirstOrDefault(x => x.Tier == tier) : null;
+            else choice = string.IsNullOrEmpty(bulk) ? null : CommissionTariffChoices.Pick(CommissionTariffChoices.Of(row, fact), bulk, request.Tier, request.MinRate, request.MinAmount, request.MaxRate, request.MaxAmount);
             if (choice is null) continue;
             var current = row.BasisPrice is { } basis ? CommissionTariffBands.BandFor(row, basis) : null;
             sheet.Add(new object?[]
             {
                 row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, row.CurrentSalePrice, row.BasisPrice,
-                current is null ? null : $"{current.Tier}. bant", $"{choice.Tier}. bant", choice.Price, choice.Rate, choice.Commission, cost, choice.Remaining
+                current is null ? null : $"{current.Tier}. bant", $"{choice.Tier}. bant", choice.Price, choice.Rate, choice.Commission, fact.Cost, choice.Costs?.Cargo, choice.Costs?.ServiceFee, choice.Costs?.Stoppage, choice.Costs?.NetVat, choice.Remaining
             });
         }
-        var content = SimpleXlsxWriter.Write([new SimpleXlsxSheet("Seçimler", sheet, [16, 18, 16, 48, 10, 16, 18, 12, 12, 14, 16, 14, 14, 22])]);
+        var content = SimpleXlsxWriter.Write([new SimpleXlsxSheet("Seçimler", sheet, [16, 18, 16, 48, 10, 16, 18, 12, 12, 14, 16, 14, 14, 12, 14, 12, 12, 14])]);
         var name = $"komisyon-tarifesi-secimler-{tariff.PeriodStart.ToOffset(CommissionTariffFileParser.TurkeyOffset):yyyyMMdd}.xlsx";
         return ServiceResult<CommissionTariffExportFile>.Ok(new(content, name, sheet.Count - 1));
     }
 
-    // The product cost entered on the panel's variant with the row's barcode, else its seller SKU.
-    private async Task<(Dictionary<string, decimal> ByBarcode, Dictionary<string, decimal> BySku)> CostsAsync(Guid tenantId, string[] barcodes, string[] skus, CancellationToken cancellationToken)
+    // What each row's profit needs, from the panel's variant with the row's barcode (else its seller SKU): its cost and
+    // the VAT rate of its offer on this store, and the store's current cargo tariff (ReportsService.CargoTariffAsync).
+    private async Task<Func<CommissionTariffRow, UnitProfitFacts>> ProfitFactsAsync(Guid tenantId, Guid connectionId, IReadOnlyList<CommissionTariffRow> rows, CancellationToken cancellationToken)
     {
+        var barcodes = rows.Select(x => x.Barcode).ToArray();
+        var skus = rows.Where(x => x.SellerSku != null).Select(x => x.SellerSku!).ToArray();
         var variants = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.CostPrice != null && x.CostPrice > 0 && (x.Barcode != null && barcodes.Contains(x.Barcode) || skus.Contains(x.Sku)))
-            .Select(x => new { x.Barcode, x.Sku, Cost = x.CostPrice!.Value })
+            .Where(x => x.TenantId == tenantId && (x.Barcode != null && barcodes.Contains(x.Barcode) || skus.Contains(x.Sku)))
+            .Select(x => new { x.Id, x.Barcode, x.Sku, x.CostPrice })
             .ToListAsync(cancellationToken);
-        var byBarcode = new Dictionary<string, decimal>(StringComparer.Ordinal);
-        var bySku = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var ids = variants.Select(x => x.Id).ToArray();
+        var vats = (await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && ids.Contains(x.VariantId) && x.VatRate > 0)
+            .Select(x => new { x.VariantId, x.VatRate }).ToListAsync(cancellationToken)).GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().VatRate);
+        var cargo = (await ReportsService.CargoTariffAsync(db, tenantId, connectionId, timeProvider.GetUtcNow(), cancellationToken))?.PerOrder;
+        var byBarcode = new Dictionary<string, UnitProfitFacts>(StringComparer.Ordinal);
+        var bySku = new Dictionary<string, UnitProfitFacts>(StringComparer.Ordinal);
         foreach (var variant in variants)
         {
-            if (variant.Barcode is not null) byBarcode.TryAdd(variant.Barcode, variant.Cost);
-            bySku.TryAdd(variant.Sku, variant.Cost);
+            var fact = new UnitProfitFacts(variant.CostPrice is > 0 ? variant.CostPrice : null, vats.TryGetValue(variant.Id, out var vat) ? vat : null, cargo);
+            if (variant.Barcode is not null) byBarcode.TryAdd(variant.Barcode, fact);
+            bySku.TryAdd(variant.Sku, fact);
         }
-        return (byBarcode, bySku);
+        var none = new UnitProfitFacts(null, null, cargo);
+        return row => byBarcode.GetValueOrDefault(row.Barcode) ?? (row.SellerSku is null ? null : bySku.GetValueOrDefault(row.SellerSku)) ?? none;
     }
 
     // Each row's picture from the panel's product with its barcode (else seller SKU): the variant's own first, else the
@@ -387,9 +396,6 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         optionSignature?.Split('|').Select(part => part.Split(':', 2)).Where(pair => pair.Length == 2)
             .Where(pair => pair[0].Trim().Equals("Renk", StringComparison.OrdinalIgnoreCase) || pair[0].Trim().Equals("Color", StringComparison.OrdinalIgnoreCase))
             .Select(pair => pair[1].Trim()).FirstOrDefault(value => value.Length > 0);
-
-    private static decimal? CostOf((Dictionary<string, decimal> ByBarcode, Dictionary<string, decimal> BySku) costs, CommissionTariffRow row) =>
-        costs.ByBarcode.TryGetValue(row.Barcode, out var cost) ? cost : row.SellerSku is not null && costs.BySku.TryGetValue(row.SellerSku, out var skuCost) ? skuCost : null;
 
     public async Task<ServiceResult<bool>> DeleteAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, string correlationId, CancellationToken cancellationToken)
     {
@@ -470,30 +476,36 @@ public sealed class CommissionTariffLookup(AppDbContext db) : ICommissionTariffL
 internal static class CommissionTariffChoices
 {
     // Every band of the row as a price to pick, from the highest price band down.
-    public static List<CommissionChoiceView> Of(CommissionTariffRow row, decimal? cost) =>
+    public static List<CommissionChoiceView> Of(CommissionTariffRow row, UnitProfitFacts facts) =>
         CommissionTariffBands.Bands(row)
-            .Select(band => CommissionTariffBands.TargetPrice(band, row.BasisPrice) is { } price and > 0 ? Priced(band, price, cost) : null)
+            .Select(band => CommissionTariffBands.TargetPrice(band, row.BasisPrice) is { } price and > 0 ? Priced(band, price, facts) : null)
             .OfType<CommissionChoiceView>().ToList();
 
     // A price of the seller's own, in the band it falls in (none when it falls in no band).
-    public static CommissionChoiceView? PricedAt(CommissionTariffRow row, decimal price, decimal? cost)
+    public static CommissionChoiceView? PricedAt(CommissionTariffRow row, decimal price, UnitProfitFacts facts)
     {
         var rounded = decimal.Round(price, 2, MidpointRounding.AwayFromZero);
-        return CommissionTariffBands.BandFor(row, rounded) is { } band ? Priced(band, rounded, cost) : null;
+        return CommissionTariffBands.BandFor(row, rounded) is { } band ? Priced(band, rounded, facts) : null;
     }
 
-    private static CommissionChoiceView Priced(CommissionBand band, decimal price, decimal? cost)
+    private static CommissionChoiceView Priced(CommissionBand band, decimal price, UnitProfitFacts facts)
     {
         var commission = decimal.Round(price * band.Rate / 100m, 2, MidpointRounding.AwayFromZero);
-        return new(band.Tier, price, band.Rate, commission, cost is { } known ? price - commission - known : null);
+        var (profit, costs) = UnitProfit.Of(price, commission, facts);
+        return new(band.Tier, price, band.Rate, commission, profit, costs);
     }
 
-    // The band that leaves the most after the commission and the cost; none when the cost is not known.
+    // The band that leaves the most profit; none when the profit is not known.
     public static int? Recommended(IReadOnlyList<CommissionChoiceView> choices) => Pick(choices, "amount", null, null, null)?.Tier;
 
-    // The pick for every row: one band ("tier"), the band leaving the most ("amount") or the largest share of its price
-    // ("rate"); none when it leaves less than MinRate per cent of the price or MinAmount lira, more than MaxRate or
-    // MaxAmount, or the cost is not known for a comparison that needs it.
+    // The profit as a share of the product cost (Kâr Oranı, as the order profit report and Melontik give it); unknown
+    // without a profit or a cost above zero.
+    public static decimal? OnCost(CommissionChoiceView choice) =>
+        choice is { Remaining: { } left, Costs.Cost: > 0 } ? Math.Round(left / choice.Costs.Cost * 100m, 2, MidpointRounding.AwayFromZero) : null;
+
+    // The pick for every row: one band ("tier"), the band leaving the most ("amount") or the largest profit on its cost
+    // ("rate"); none when it leaves less than MinRate per cent of the cost or MinAmount lira, more than MaxRate or
+    // MaxAmount, or the profit is not known for a comparison that needs it.
     public static CommissionChoiceView? Pick(IReadOnlyList<CommissionChoiceView> choices, string kind, int? tier, decimal? minRate, decimal? minAmount,
         decimal? maxRate = null, decimal? maxAmount = null)
     {
@@ -501,13 +513,13 @@ internal static class CommissionTariffChoices
         {
             "tier" => choices.FirstOrDefault(x => x.Tier == tier),
             "amount" => choices.Where(x => x.Remaining is not null).OrderByDescending(x => x.Remaining).ThenBy(x => x.Rate).FirstOrDefault(),
-            "rate" => choices.Where(x => x.Remaining is not null && x.Price > 0).OrderByDescending(x => x.Remaining!.Value / x.Price).ThenBy(x => x.Rate).FirstOrDefault(),
+            "rate" => choices.Where(x => OnCost(x) is not null).OrderByDescending(OnCost).ThenBy(x => x.Rate).FirstOrDefault(),
             _ => null
         };
         if (choice is null) return null;
-        if (minRate is { } rate && (choice.Remaining is not { } left || choice.Price <= 0 || left / choice.Price * 100m < rate)) return null;
+        if (minRate is { } rate && (OnCost(choice) is not { } share || share < rate)) return null;
         if (minAmount is { } amount && (choice.Remaining is not { } kept || kept < amount)) return null;
-        if (maxRate is { } top && (choice.Remaining is not { } over || choice.Price <= 0 || over / choice.Price * 100m > top)) return null;
+        if (maxRate is { } top && (OnCost(choice) is not { } over || over > top)) return null;
         if (maxAmount is { } most && (choice.Remaining is not { } above || above > most)) return null;
         return choice;
     }

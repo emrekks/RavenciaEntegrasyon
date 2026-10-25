@@ -7,6 +7,7 @@ import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { amountRange, priceRange, rateText } from './CommissionTariffsPanel'
+import { onCost, profitText, ProfitBadge, type UnitProfitCosts } from './unit-profit'
 import { UiIcon } from '../../../shared/components'
 import '../commission-tariffs.css'
 
@@ -15,9 +16,10 @@ import '../commission-tariffs.css'
 // commission and the product's cost, beside what the price leaves now. Nothing is sent to the marketplace.
 export type PromotionKind = 'PLUS' | 'ADVANTAGE' | 'FLASH'
 export type PromotionSummary = { kind: PromotionKind; fileName: string; uploadedAt: string; periodText: string | null; rowCount: number; matchedRowCount: number }
-// Rate null: the commission at that price is not known (no commission tariff covers it). RemainingHigh: the most a
-// model's variants leave when their costs differ (remaining is then the least).
-export type PromotionPrice = { price: number; rate: number | null; commission: number | null; remaining: number | null; remainingHigh?: number | null }
+// Rate null: the commission at that price is not known (no commission tariff covers it). Remaining: the profit after the
+// commission and costs (the product cost, cargo, service fee, withholding tax and net VAT). RemainingHigh: the most a
+// model's variants leave when their costs differ (remaining and costs are then the dearest variant's).
+export type PromotionPrice = { price: number; rate: number | null; commission: number | null; remaining: number | null; remainingHigh?: number | null; costs?: UnitProfitCosts | null }
 type Product = { modelCode: string | null; productName: string | null; color: string | null; imageUrl: string | null; stock: number | null; promotions: string | null; category?: string | null; brand?: string | null }
 export type PlusOffer = Product & { barcode: string; sellerSku: string | null; size: string | null; costPrice: number | null; now: PromotionPrice | null; plus: PromotionPrice | null; gain: number | null }
 export type AdvantageStar = { star: number; min: number | null; max: number; price: PromotionPrice }
@@ -39,13 +41,18 @@ const pageSize = 50
 const money = (value: number) => `${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
 const signed = (value: number) => `${value < 0 ? '− ' : ''}${money(Math.abs(value))}`
 
-// What a price leaves, with its share of the price; a range when a model's variants' costs differ.
+// A price's profit with its share of the cost; a range when a model's variants' costs differ.
 export function leavesText(price: PromotionPrice) {
   if (price.rate === null) return 'Komisyon bilinmiyor'
   if (price.remaining === null) return 'Maliyet girilmemiş'
-  if (price.remainingHigh != null) return `${signed(price.remaining)} – ${signed(price.remainingHigh)} kâr`
-  const share = price.price > 0 ? ` · %${(price.remaining / price.price * 100).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ''
-  return `${signed(price.remaining)} kâr${share}`
+  if (price.remainingHigh != null) return `${signed(price.remaining)} – ${signed(price.remainingHigh)} Kâr`
+  return profitText(price.remaining, price.costs)
+}
+
+// The profit badge of a price, opening its calculation; the reason it is not known otherwise.
+function PriceProfit({ price, title }: { price: PromotionPrice; title?: string }) {
+  if (price.rate === null) return <b className="unit-profit-badge is-unknown">Komisyon bilinmiyor</b>
+  return <ProfitBadge price={price} title={title} missing="Maliyet girilmemiş" label={price.remainingHigh != null ? leavesText(price) : undefined} />
 }
 
 // Rows by model, colour and size (S, M, L, XL …), as the commission tariff lists them.
@@ -68,7 +75,7 @@ function PriceCard({ price, label, highlight }: { price: PromotionPrice; label?:
     <strong>{money(price.price)}</strong>
     {label && <small>{label}</small>}
     <span>{price.rate === null ? 'Komisyon oranı bilinmiyor' : `${rateText(price.rate)} komisyon · ${money(price.commission ?? 0)}`}</span>
-    <b>{leavesText(price)}</b>
+    <PriceProfit price={price} title={typeof label === 'string' ? `${money(price.price)} · ${label}` : money(price.price)} />
   </div>
 }
 
@@ -191,7 +198,7 @@ export function keepOffer<T extends OfferRow>(row: T, filter: OfferFilter, price
   const [minProfit, maxProfit, minShare, maxShare] = ranges
   return prices(row, filter.column).some(price => {
     if (price.remaining === null || price.rate === null) return false
-    const share = price.price > 0 ? price.remaining / price.price * 100 : null
+    const share = onCost(price.remaining, price.costs)
     return (minProfit === null || price.remaining >= minProfit) && (maxProfit === null || price.remaining <= maxProfit)
       && (minShare === null || (share !== null && share >= minShare)) && (maxShare === null || (share !== null && share <= maxShare))
   })
@@ -269,7 +276,13 @@ function RangeCard({ prices, label }: { prices: PromotionPrice[]; label?: ReactN
     <strong>{priceRange(prices.map(price => price.price))}</strong>
     {label && <small>{label}</small>}
     <span>{rates.length === 0 ? 'Komisyon oranı bilinmiyor' : rates.length === 1 ? `${rateText(rates[0])} komisyon` : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))} komisyon`}</span>
-    <b>{rates.length === 0 ? 'Komisyon bilinmiyor' : lefts.length ? `${amountRange(lefts)} kâr` : 'Maliyet girilmemiş'}</b>
+    {(() => {
+      // The badge opens the price leaving the least.
+      const least = prices.filter(price => price.remaining !== null && price.rate !== null).sort((a, b) => a.remaining! - b.remaining!)[0]
+      if (rates.length === 0) return <b className="unit-profit-badge is-unknown">Komisyon bilinmiyor</b>
+      return <ProfitBadge price={least ?? prices[0]} missing="Maliyet girilmemiş" label={lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? `${amountRange(lefts)} Kâr` : undefined}
+        title={lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? 'En az kâr bırakan beden' : undefined} />
+    })()}
   </div>
 }
 

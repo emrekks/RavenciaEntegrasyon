@@ -344,12 +344,17 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var trendyol = NewConnection(tenant, "TRENDYOL");
         var (product, variant) = NewVariant(tenant, "RYP00101", "RYP00101");
         variant.CostPrice = 300m;
+        var billedAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
             seed.PlatformConnections.Add(trendyol);
             seed.Products.Add(product);
             seed.ProductVariants.Add(variant);
+            // Its offer's VAT rate and a cargo invoice of the store billing a parcel at 98,34 (the store's cargo tariff).
+            seed.ChannelOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = variant.Id, ListPrice = 500m, SalePrice = 465.92m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE" });
+            seed.MarketplaceFinanceTransactions.Add(new MarketplaceFinanceTransaction { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, PlatformCode = "TRENDYOL", Source = "OTHER_FINANCIALS", ExternalId = "KRG-1", RequestedType = "DeductionInvoices", Category = MarketplaceFinanceCategories.Cargo, TransactionDate = billedAt, RawJson = "{}", FirstSeenAt = billedAt, UpdatedAt = billedAt });
+            seed.MarketplaceCargoInvoiceItems.Add(new MarketplaceCargoInvoiceItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, InvoiceSerialNumber = "KRG-1", LineNo = 1, ShipmentPackageType = "Gönderi Kargo Bedeli", OrderNumber = "o-1", Amount = 98.34m, RawJson = "{}", FetchedAt = billedAt });
             await seed.SaveChangesAsync();
         }
         string[] headers = ["ÜRÜN İSMİ", "BARKOD", "MODEL KODU", "KATEGORİ", "MARKA", "STOK", "1.Fiyat Alt Limit", "Tarih aralığı (7 Gün)", "1.KOMİSYON", "KOMİSYONA ESAS FİYAT"];
@@ -384,12 +389,12 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(["RYP00101"], await Barcodes(new(null, null, Barcode: "ryp001")));
             Assert.Equal(["ETK001", "RYP00101"], await Barcodes(new(null, null, MinStock: 1)));
             Assert.Equal(["MZ005S10", "RYP00101"], await Barcodes(new(null, null, MaxStock: 11)));
-            // Fiyat Aralığı: RYP00101 in band 1 is 519,75 at %21,5 (111,75) over a 300 cost, leaving 108,00 (%20,8); the
-            // rows without a cost never meet a profit range.
-            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, ProfitTier: 1, MinProfit: 100)));
-            Assert.Empty(await Barcodes(new(null, null, ProfitTier: 1, MinProfit: 200)));
-            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, ProfitTier: 1, MinShare: 20, MaxShare: 21)));
-            Assert.Empty(await Barcodes(new(null, null, ProfitTier: 1, MaxShare: 20)));
+            // Fiyat Aralığı: RYP00101 in band 1 is 519,75 at %21,5 (111,75) over a 300 cost, 98,34 cargo, 13,19 fee, 4,73
+            // withholding tax and −17,24 net VAT, leaving 8,98 (%2,99 of the cost); the rows without a cost never meet a profit range.
+            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, ProfitTier: 1, MinProfit: 5)));
+            Assert.Empty(await Barcodes(new(null, null, ProfitTier: 1, MinProfit: 10)));
+            Assert.Equal(["RYP00101"], await Barcodes(new(null, null, ProfitTier: 1, MinShare: 2.5m, MaxShare: 3)));
+            Assert.Empty(await Barcodes(new(null, null, ProfitTier: 1, MaxShare: 2.5m)));
             // Models in the order a header asks for; the same order reversed, and by price.
             async Task<string[]> Models(string sort, bool descending) =>
                 (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, null, 0, 50, new(null, null, Sort: sort, Descending: descending), CancellationToken.None)).Value!.Items.Select(x => x.ModelCode!).ToArray();

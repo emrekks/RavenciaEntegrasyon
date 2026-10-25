@@ -36,9 +36,11 @@ public sealed class PromotionOfferPostgreSqlTests(PostgreSqlTenantIsolationFixtu
                 Assert.Equal(["ADVANTAGE", "PLUS"], list.Select(x => x.Kind).Order());
                 Assert.Equal(2, await db.PromotionOfferFiles.CountAsync(x => x.TenantId == tenantId));
 
-                // The second Plus file replaced the first: 400 at %14,1 pays 56,40 and leaves 183,60 over a 160 cost.
+                // The second Plus file replaced the first: 400 at %14,1 pays 56,40; over a 160 cost, 98,34 cargo, 13,19 fee,
+                // 3,64 withholding tax and −6,18 net VAT it leaves 74,61.
                 var plusRow = Assert.Single((await service.DetailAsync(tenantId, connectionId, PromotionOfferKinds.Plus, CancellationToken.None)).Value!.Plus!);
-                Assert.Equal((400m, 56.40m, 183.60m), (plusRow.Plus!.Price, plusRow.Plus.Commission!.Value, plusRow.Plus.Remaining!.Value));
+                Assert.Equal((400m, 56.40m, 74.61m), (plusRow.Plus!.Price, plusRow.Plus.Commission!.Value, plusRow.Plus.Remaining!.Value));
+                Assert.Equal((98.34m, 3.64m, -6.18m), (plusRow.Plus.Costs!.Cargo, plusRow.Plus.Costs.Stoppage, plusRow.Plus.Costs.NetVat));
                 Assert.Equal("Siyah", plusRow.Color);
 
                 // Each star is priced with the band of the tariff in force: 1 star at 470,63 is band 2 (%20,6).
@@ -71,6 +73,10 @@ public sealed class PromotionOfferPostgreSqlTests(PostgreSqlTenantIsolationFixtu
         db.Products.Add(product);
         db.ProductVariants.Add(variant);
         db.CommissionTariffs.Add(tariff);
+        // Its offer's VAT rate and a cargo invoice of the store billing a parcel at 98,34 (the store's cargo tariff).
+        db.ChannelOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 500m, SalePrice = 465.92m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE" });
+        db.MarketplaceFinanceTransactions.Add(new MarketplaceFinanceTransaction { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, PlatformCode = "TRENDYOL", Source = "OTHER_FINANCIALS", ExternalId = "KRG-1", RequestedType = "DeductionInvoices", Category = MarketplaceFinanceCategories.Cargo, TransactionDate = now.AddDays(-5), RawJson = "{}", FirstSeenAt = now.AddDays(-5), UpdatedAt = now.AddDays(-5) });
+        db.MarketplaceCargoInvoiceItems.Add(new MarketplaceCargoInvoiceItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, InvoiceSerialNumber = "KRG-1", LineNo = 1, ShipmentPackageType = "Gönderi Kargo Bedeli", OrderNumber = "o-1", Amount = 98.34m, RawJson = "{}", FetchedAt = now.AddDays(-5) });
         db.CommissionTariffRows.Add(new CommissionTariffRow { Id = Guid.CreateVersion7(), TenantId = tenant.Id, TariffId = tariff.Id, Barcode = "RYP00101", Tier1Min = 470.64m, Tier2Max = 470.63m, Tier2Min = 435.98m, Tier3Max = 435.97m, Tier3Min = 388.64m, Tier4Max = 388.63m, Rate1 = 21.5m, Rate2 = 20.6m, Rate3 = 19.4m, Rate4 = 17.5m });
         await db.SaveChangesAsync();
         return (tenant.Id, connection.Id);
@@ -82,6 +88,9 @@ public sealed class PromotionOfferPostgreSqlTests(PostgreSqlTenantIsolationFixtu
         await db.AuditLogs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PromotionOfferFiles.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceCargoInvoiceItems.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceFinanceTransactions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ChannelOffers.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.CommissionTariffRows.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.CommissionTariffs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ProductVariants.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();

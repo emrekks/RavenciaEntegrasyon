@@ -26,11 +26,12 @@ public sealed class PromotionOfferTests
         var row = Assert.IsType<PlusOfferRow>(Assert.Single(parsed.Rows));
         Assert.Equal((465.92m, 20.6m, 359.02m, 14.1m), (row.BasisPrice!.Value, row.CurrentRate!.Value, row.PlusPriceLimit!.Value, row.PlusRate!.Value));
 
-        // Now 465,92 at %20,6 pays 95,98 and leaves 61,94 over a 308 cost; Plus 359,02 at %14,1 pays 50,62 and leaves 0,40.
-        var view = PromotionOfferService.PlusView(row, new(308m, "Siyah", null));
-        Assert.Equal((95.98m, 61.94m), (view.Now!.Commission!.Value, view.Now.Remaining!.Value));
-        Assert.Equal((50.62m, 0.40m), (view.Plus!.Commission!.Value, view.Plus.Remaining!.Value));
-        Assert.Equal(-61.54m, view.Gain);
+        // Over a 308 cost (VAT 10 %, cargo 98,34): now 465,92 at %20,6 pays 95,98 and loses 33,60; Plus 359,02 at %14,1
+        // pays 50,62 and loses 92,00.
+        var view = PromotionOfferService.PlusView(row, new(308m, "Siyah", null, VatRate: 10m, Cargo: 98.34m));
+        Assert.Equal((95.98m, -33.60m), (view.Now!.Commission!.Value, view.Now.Remaining!.Value));
+        Assert.Equal((50.62m, -92.00m), (view.Plus!.Commission!.Value, view.Plus.Remaining!.Value));
+        Assert.Equal(-58.40m, view.Gain);
         // Without a cost what is left is not known.
         Assert.Null(PromotionOfferService.PlusView(row, null).Gain);
     }
@@ -47,11 +48,11 @@ public sealed class PromotionOfferTests
         Assert.Equal((true, 470.63m, 388.63m, 465.92m), (row.InTariff!.Value, row.Star1Max!.Value, row.Star3Max!.Value, row.CustomerPrice!.Value));
 
         var tariff = new CommissionTariffRow { Barcode = "RYP00101", Tier1Min = 470.64m, Tier2Max = 470.63m, Tier2Min = 435.98m, Tier3Max = 435.97m, Tier3Min = 388.64m, Tier4Max = 388.63m, Rate1 = 21.5m, Rate2 = 20.6m, Rate3 = 19.4m, Rate4 = 17.5m };
-        var view = PromotionOfferService.AdvantageView(row, new(160m, null, null), tariff);
+        var view = PromotionOfferService.AdvantageView(row, new(160m, null, null, VatRate: 10m, Cargo: 98.34m), tariff);
         Assert.Equal(1, view.CurrentStars);
         Assert.Equal([20.6m, 19.4m, 17.5m], view.Stars.Select(x => x.Price.Rate!.Value));
-        // 3 stars: 388,63 at %17,5 pays 68,01 and leaves 160,62 over a 160 cost.
-        Assert.Equal((68.01m, 160.62m), (view.Stars[2].Price.Commission!.Value, view.Stars[2].Price.Remaining!.Value));
+        // 3 stars: 388,63 at %17,5 pays 68,01 and leaves 54,71 over a 160 cost.
+        Assert.Equal((68.01m, 54.71m), (view.Stars[2].Price.Commission!.Value, view.Stars[2].Price.Remaining!.Value));
         // Without a commission tariff the rate at a star price is not known, never guessed.
         Assert.Null(PromotionOfferService.AdvantageView(row, new(160m, null, null), null).Stars[0].Price.Rate);
         // A product outside the tariff ("Yok") pays its one current rate at every star price; one inside it does not.
@@ -88,7 +89,8 @@ public sealed class PromotionOfferTests
     [Fact]
     public void Variants_of_different_costs_leave_a_range()
     {
-        var price = PromotionOfferService.Ranged(426.46m, 21.5m, 300m, 330m);
-        Assert.Equal((91.69m, 4.77m, 34.77m), (price.Commission!.Value, price.Remaining!.Value, price.RemainingHigh!.Value));
+        var price = PromotionOfferService.Ranged(426.46m, 21.5m, 300m, 330m, new(null, null, null, VatRate: 10m, Cargo: 98.34m));
+        Assert.Equal((91.69m, -85.54m, -58.27m), (price.Commission!.Value, price.Remaining!.Value, price.RemainingHigh!.Value));
+        Assert.Equal(330m, price.Costs!.Cost);
     }
 }

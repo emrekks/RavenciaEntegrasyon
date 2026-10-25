@@ -89,14 +89,14 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
         if (file.Kind == PromotionOfferKinds.Plus)
         {
             var rows = JsonSerializer.Deserialize<List<PlusOfferRow>>(file.RowsJson, Json) ?? [];
-            var facts = await VariantFactsAsync(tenantId, rows.Select(x => x.Barcode).Concat(rows.Where(x => x.SellerSku != null).Select(x => x.SellerSku!)).ToArray(), cancellationToken);
+            var facts = await VariantFactsAsync(tenantId, connectionId, rows.Select(x => x.Barcode).Concat(rows.Where(x => x.SellerSku != null).Select(x => x.SellerSku!)).ToArray(), cancellationToken);
             return ServiceResult<PromotionOfferDetail>.Ok(new(summary, rows.Select(row => PlusView(row, facts.Of(row.Barcode) ?? (row.SellerSku is null ? null : facts.Of(row.SellerSku)))).ToList(), null, null));
         }
         if (file.Kind == PromotionOfferKinds.Advantage)
         {
             var rows = JsonSerializer.Deserialize<List<AdvantageOfferRow>>(file.RowsJson, Json) ?? [];
             var barcodes = rows.Select(x => x.Barcode).ToArray();
-            var facts = await VariantFactsAsync(tenantId, barcodes, cancellationToken);
+            var facts = await VariantFactsAsync(tenantId, connectionId, barcodes, cancellationToken);
             var tariff = await TariffRowsAsync(tenantId, connectionId, barcodes, now, cancellationToken);
             // A product outside the commission tariff pays one rate at any price: its current rate, read where it is known.
             var outside = rows.Where(row => row.InTariff == false && !tariff.ContainsKey(row.Barcode)).Select(row => row.Barcode).ToArray();
@@ -107,7 +107,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
 
         var flashRows = JsonSerializer.Deserialize<List<FlashOfferRow>>(file.RowsJson, Json) ?? [];
         var flashCodes = flashRows.SelectMany(x => x.Barcodes).Distinct(StringComparer.Ordinal).ToArray();
-        var flashFacts = await VariantFactsAsync(tenantId, flashCodes, cancellationToken);
+        var flashFacts = await VariantFactsAsync(tenantId, connectionId, flashCodes, cancellationToken);
         // The tariff in force when each slot starts (a flash runs in the coming days).
         var tariffs = new Dictionary<DateTimeOffset, Dictionary<string, CommissionTariffRow>>();
         var views = new List<FlashOfferView>(flashRows.Count);
@@ -118,7 +118,8 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
             // What the model leaves needs every variant's cost; it is then a range from the dearest to the cheapest.
             decimal? low = costs.Count == row.Barcodes.Count && costs.Count > 0 ? costs.Min() : null;
             decimal? high = low is null ? null : costs.Max();
-            var current = row.CustomerPrice is { } price && row.CurrentRate is { } rate ? Ranged(price, rate, low, high) : null;
+            var basis = known.FirstOrDefault(x => x.VatRate is not null) ?? known.FirstOrDefault();
+            var current = row.CustomerPrice is { } price && row.CurrentRate is { } rate ? Ranged(price, rate, low, high, basis) : null;
             var slots = new List<FlashSlotView>(2);
             foreach (var (slot, offered, start, end) in new[] { ("24 Saat", row.Price24h, row.Start24h, row.End24h), ("3 Saat", row.Price3h, row.Start3h, row.End3h) })
             {
@@ -131,7 +132,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
                     if (!tariffs.TryGetValue(at, out var rowsAt)) tariffs[at] = rowsAt = await TariffRowsAsync(tenantId, connectionId, flashCodes, at, cancellationToken);
                     flashRate = row.Barcodes.Select(code => rowsAt.GetValueOrDefault(code)).OfType<CommissionTariffRow>().Select(x => CommissionTariffBands.BandFor(x, flashPrice)?.Rate).FirstOrDefault(x => x is not null);
                 }
-                slots.Add(new(slot, start, end, flashRate is { } known2 ? Ranged(flashPrice, known2, low, high) : new PromotionPriceView(flashPrice, null, null, null)));
+                slots.Add(new(slot, start, end, flashRate is { } known2 ? Ranged(flashPrice, known2, low, high, basis) : new PromotionPriceView(flashPrice, null, null, null)));
             }
             views.Add(new FlashOfferView(row.ModelCode, row.Barcodes, row.ProductName, known.Select(x => x.Color).FirstOrDefault(x => x is not null), known.Select(x => x.ImageUrl).FirstOrDefault(x => x is not null),
                 known.Any(x => x.Stock is not null) ? known.Sum(x => x.Stock ?? 0m) : row.Stock, low, high, row.InTariff, row.Campaign, current, slots, row.Promotions, row.Category, row.Brand));
@@ -150,13 +151,14 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
     }
 
     // Stock: the panel's own stock of the variant (on hand in the main location), what the file's stock gives way to.
-    internal sealed record VariantFact(decimal? Cost, string? Color, string? ImageUrl, decimal? Stock = null);
+    // VatRate: the VAT rate of the variant's offer on the store; Cargo: the store's current cargo tariff (UnitProfit).
+    internal sealed record VariantFact(decimal? Cost, string? Color, string? ImageUrl, decimal? Stock = null, decimal? VatRate = null, decimal? Cargo = null);
 
     // Now: the commission-basis price at the current rate; Plus: the Plus ceiling at the offered rate.
     internal static PlusOfferView PlusView(PlusOfferRow row, VariantFact? fact)
     {
-        var current = row.BasisPrice is { } basis && row.CurrentRate is { } rate ? Ranged(basis, rate, fact?.Cost, fact?.Cost) : null;
-        var plus = row.PlusPriceLimit is { } limit && row.PlusRate is { } plusRate ? Ranged(limit, plusRate, fact?.Cost, fact?.Cost) : null;
+        var current = row.BasisPrice is { } basis && row.CurrentRate is { } rate ? Ranged(basis, rate, fact?.Cost, fact?.Cost, fact) : null;
+        var plus = row.PlusPriceLimit is { } limit && row.PlusRate is { } plusRate ? Ranged(limit, plusRate, fact?.Cost, fact?.Cost, fact) : null;
         return new(row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, fact?.Stock ?? row.Stock, fact?.Cost, current, plus,
             current?.Remaining is { } before && plus?.Remaining is { } after ? after - before : null, row.Promotions, row.Category, row.Brand);
     }
@@ -165,7 +167,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
     // FixedRate: the one rate of a product outside the commission tariff, at any price (null when it is not known).
     internal static AdvantageOfferView AdvantageView(AdvantageOfferRow row, VariantFact? fact, CommissionTariffRow? tariff, decimal? fixedRate = null)
     {
-        PromotionPriceView Priced(decimal price) => tariff is null && row.InTariff == false && fixedRate is { } rate ? Ranged(price, rate, fact?.Cost, fact?.Cost) : PricedByTariff(price, tariff, fact?.Cost);
+        PromotionPriceView Priced(decimal price) => tariff is null && row.InTariff == false && fixedRate is { } rate ? Ranged(price, rate, fact?.Cost, fact?.Cost, fact) : PricedByTariff(price, tariff, fact);
         var stars = new List<AdvantageStarView>(3);
         foreach (var (star, min, max) in new[] { (1, row.Star1Min, row.Star1Max), (2, row.Star2Min, row.Star2Max), (3, (decimal?)null, row.Star3Max) })
             if (max is { } ceiling and > 0) stars.Add(new(star, min, ceiling, Priced(ceiling)));
@@ -174,17 +176,18 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
         return new(row.Barcode, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, fact?.Stock ?? row.Stock, fact?.Cost, row.InTariff, earned, current, stars, row.Promotions, row.Category, row.Brand);
     }
 
-    internal static PromotionPriceView Ranged(decimal price, decimal rate, decimal? lowCost, decimal? highCost)
+    // The profit (UnitProfit) of a price for the dearest variant, and for the cheapest when the costs differ; Basis gives
+    // the VAT rate and the store's cargo tariff.
+    internal static PromotionPriceView Ranged(decimal price, decimal rate, decimal? lowCost, decimal? highCost, VariantFact? basis)
     {
         var commission = decimal.Round(price * rate / 100m, 2, MidpointRounding.AwayFromZero);
-        // The dearest variant leaves the least.
-        decimal? least = highCost is { } high ? price - commission - high : null;
-        decimal? most = lowCost is { } low && lowCost != highCost ? price - commission - low : null;
-        return new(price, rate, commission, least, most);
+        var (least, costs) = UnitProfit.Of(price, commission, new(highCost, basis?.VatRate, basis?.Cargo));
+        decimal? most = lowCost != highCost ? UnitProfit.Of(price, commission, new(lowCost, basis?.VatRate, basis?.Cargo)).Profit : null;
+        return new(price, rate, commission, least, most, costs);
     }
 
-    private static PromotionPriceView PricedByTariff(decimal price, CommissionTariffRow? row, decimal? cost) =>
-        row is not null && CommissionTariffBands.BandFor(row, price) is { } band ? Ranged(price, band.Rate, cost, cost) : new(price, null, null, null);
+    private static PromotionPriceView PricedByTariff(decimal price, CommissionTariffRow? row, VariantFact? fact) =>
+        row is not null && CommissionTariffBands.BandFor(row, price) is { } band ? Ranged(price, band.Rate, fact?.Cost, fact?.Cost, fact) : new(price, null, null, null);
 
     // "26/10/2026 00:00" in Istanbul time, as a UTC instant.
     internal static DateTimeOffset? ParseLocal(string? text) =>
@@ -253,7 +256,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
     }
 
     // The panel variant with each code as its barcode or SKU: its cost, colour and picture (its own, else its product's).
-    private async Task<VariantFacts> VariantFactsAsync(Guid tenantId, string[] codes, CancellationToken cancellationToken)
+    private async Task<VariantFacts> VariantFactsAsync(Guid tenantId, Guid connectionId, string[] codes, CancellationToken cancellationToken)
     {
         var variants = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && (x.Barcode != null && codes.Contains(x.Barcode) || codes.Contains(x.Sku)))
@@ -261,6 +264,9 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
             .ToListAsync(cancellationToken);
         var productIds = variants.Select(x => x.ProductId).Distinct().ToArray();
         var variantIds = variants.Select(x => x.Id).ToArray();
+        var vats = (await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId) && x.VatRate > 0)
+            .Select(x => new { x.VariantId, x.VatRate }).ToListAsync(cancellationToken)).GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().VatRate);
+        var cargo = (await ReportsService.CargoTariffAsync(db, tenantId, connectionId, timeProvider.GetUtcNow(), cancellationToken))?.PerOrder;
         var stocks = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
             .GroupBy(x => x.VariantId).Select(group => new { VariantId = group.Key, OnHand = group.Sum(x => x.OnHand) }).ToDictionaryAsync(x => x.VariantId, x => x.OnHand, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
@@ -275,7 +281,8 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
         {
             var picked = media.FirstOrDefault(x => x.VariantId == variant.Id) ?? media.FirstOrDefault(x => x.ProductId == variant.ProductId && x.VariantId == null) ?? media.FirstOrDefault(x => x.ProductId == variant.ProductId);
             var fact = new VariantFact(variant.CostPrice is > 0 ? variant.CostPrice : null, CommissionTariffService.ColorOf(variant.OptionSignature),
-                picked is null ? null : CatalogMediaDisplay.Url(picked.Id, picked.Classification, picked.Url), stocks.TryGetValue(variant.Id, out var onHand) ? onHand : null);
+                picked is null ? null : CatalogMediaDisplay.Url(picked.Id, picked.Classification, picked.Url), stocks.TryGetValue(variant.Id, out var onHand) ? onHand : null,
+                vats.TryGetValue(variant.Id, out var vat) ? vat : null, cargo);
             if (variant.Barcode is not null) byBarcode.TryAdd(variant.Barcode, fact);
             bySku.TryAdd(variant.Sku, fact);
         }

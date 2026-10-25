@@ -74,40 +74,53 @@ public sealed class CommissionTariffTests
         // At 519,75 the product is already in band 1: picking it keeps the price; the others go to their upper limit.
         var row = SampleRow();
         row.BasisPrice = 519.75m;
-        var choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, 160m);
+        // Cost 160, VAT 10 %, the store's cargo tariff 98,34.
+        var facts = new Infrastructure.Persistence.UnitProfitFacts(160m, 10m, 98.34m);
+        var choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, facts);
         Assert.Equal([1, 2, 3, 4], choices.Select(x => x.Tier));
         Assert.Equal([519.75m, 470.63m, 435.97m, 388.63m], choices.Select(x => x.Price));
-        // 470,63 × %20,6 = 96,95 of commission, 160 of cost: 213,68 left.
+        // 470,63 × %20,6 = 96,95 of commission; 160 cost, 98,34 cargo, 13,19 service fee, 4,28 withholding tax and a net
+        // VAT of 42,78 − 14,55 − 16,16 − 16,39 − 2,20 = −6,52 leave 104,39.
         Assert.Equal(96.95m, choices[1].Commission);
-        Assert.Equal(213.68m, choices[1].Remaining);
+        Assert.Equal(104.39m, choices[1].Remaining);
+        Assert.Equal((160m, 98.34m, 13.19m, 4.28m, -6.52m), (choices[1].Costs!.Cost, choices[1].Costs!.Cargo, choices[1].Costs!.ServiceFee, choices[1].Costs!.Stoppage, choices[1].Costs!.NetVat));
         Assert.Equal(1, Infrastructure.Persistence.CommissionTariffChoices.Recommended(choices));
 
         // Below band 1 the open band starts at its lower limit; 470,64 at %21,5 leaves less than 470,63 at %20,6.
         row.BasisPrice = 450m;
-        choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, 160m);
+        choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, facts);
         Assert.Equal(470.64m, choices[0].Price);
+        // Melontik's example of the same product: 470,64 at %21,5 leaves 100,86 (it shows 100,85, its commission VAT
+        // 16,865 rounded down) after a net VAT of −7,22.
+        Assert.Equal((101.19m, 100.86m, -7.22m), (choices[0].Commission, choices[0].Remaining!.Value, choices[0].Costs!.NetVat));
         Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Recommended(choices));
 
-        // Without a cost nothing is left to compare, so nothing is recommended; a price of the seller's own falls in its band.
-        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Recommended(Infrastructure.Persistence.CommissionTariffChoices.Of(row, null)));
-        Assert.Equal(3, Infrastructure.Persistence.CommissionTariffChoices.PricedAt(row, 400m, null)?.Tier);
+        // Without a cost, a VAT rate or a cargo tariff the profit is not known, so nothing is recommended; a price of the
+        // seller's own falls in its band.
+        var none = Infrastructure.Persistence.UnitProfitFacts.None;
+        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Recommended(Infrastructure.Persistence.CommissionTariffChoices.Of(row, none)));
+        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Recommended(Infrastructure.Persistence.CommissionTariffChoices.Of(row, facts with { Cargo = null })));
+        Assert.Equal(3, Infrastructure.Persistence.CommissionTariffChoices.PricedAt(row, 400m, none)?.Tier);
     }
 
     [Fact]
     public void APickForEveryRowTakesABandOrTheBestByAmountOrByShareAndLeavesOutWhatFallsShortOfItsCondition()
     {
-        // With no cost the most money is left at the highest price (band 1), the largest share at the lowest rate (band 4).
+        // Over a cost of 100 the highest price leaves the most money and, the cost being the same in every band, the most
+        // on the cost too (band 1: 190,80).
         var row = SampleRow();
         row.BasisPrice = 519.75m;
-        var choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, 0m);
+        var choices = Infrastructure.Persistence.CommissionTariffChoices.Of(row, new(100m, 10m, 98.34m));
         Assert.Equal(1, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "amount", null, null, null)?.Tier);
-        Assert.Equal(4, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "rate", null, null, null)?.Tier);
-        // Band 2 leaves %79,4 of 470,63 (373,68): kept over 300 lira, left out over %80.
-        Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "tier", 2, null, 300m)?.Tier);
-        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "tier", 2, 80m, null));
-        // A condition needs the cost: without it the row is left out rather than picked blind.
-        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Pick(Infrastructure.Persistence.CommissionTariffChoices.Of(row, null), "tier", 2, 10m, null));
-        Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Pick(Infrastructure.Persistence.CommissionTariffChoices.Of(row, null), "tier", 2, null, null)?.Tier);
+        Assert.Equal(1, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "rate", null, null, null)?.Tier);
+        // Band 2 leaves 158,93, %158,93 of the cost: kept over 150 lira, left out over %160.
+        Assert.Equal((158.93m, 158.93m), (choices[1].Remaining!.Value, Infrastructure.Persistence.CommissionTariffChoices.OnCost(choices[1])!.Value));
+        Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "tier", 2, null, 150m)?.Tier);
+        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Pick(choices, "tier", 2, 160m, null));
+        // A condition needs the profit: without it the row is left out rather than picked blind.
+        var none = Infrastructure.Persistence.UnitProfitFacts.None;
+        Assert.Null(Infrastructure.Persistence.CommissionTariffChoices.Pick(Infrastructure.Persistence.CommissionTariffChoices.Of(row, none), "tier", 2, 10m, null));
+        Assert.Equal(2, Infrastructure.Persistence.CommissionTariffChoices.Pick(Infrastructure.Persistence.CommissionTariffChoices.Of(row, none), "tier", 2, null, null)?.Tier);
     }
 
     [Fact]

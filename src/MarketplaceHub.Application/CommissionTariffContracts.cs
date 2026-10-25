@@ -52,14 +52,20 @@ public sealed record CommissionTariffRowView(
     // The stock the file gives (STOK); null in a tariff uploaded before it was read.
     decimal? Stock = null);
 
-// One band as a price the seller can pick (CommissionTariffBands.TargetPrice), its commission and what is left of the
-// price after the commission and the product's cost (null without a cost; cargo, service fee and withholding tax are not
-// per product and are not taken off). RecommendedTier: the band that leaves the most.
-public sealed record CommissionChoiceView(int Tier, decimal Price, decimal Rate, decimal Commission, decimal? Remaining);
+// What one unit sold at a price pays besides its commission, costed as the order profit report costs an order Trendyol
+// has not settled yet: the product cost, the store's current cargo tariff, the service fee, the withholding tax (1 % of
+// the VAT-free price) and the net VAT (the sale's VAT less the VAT in the cost, the commission, the cargo and the fee;
+// negative when the expenses carry more). VatRate: the product's VAT rate the sale and the cost are taken at.
+public sealed record UnitProfitCostsView(decimal Cost, decimal Cargo, decimal ServiceFee, decimal Stoppage, decimal NetVat, decimal VatRate);
+
+// One band as a price the seller can pick (CommissionTariffBands.TargetPrice), its commission and the profit the price
+// leaves after the commission and Costs (null without a cost, the product's VAT rate or the store's cargo tariff).
+// RecommendedTier: the band that leaves the most.
+public sealed record CommissionChoiceView(int Tier, decimal Price, decimal Rate, decimal Commission, decimal? Remaining, UnitProfitCostsView? Costs = null);
 
 // The seller's picks for a tariff's Excel: a pick for every row, and row by row picks over it (a band, a price of their
 // own, or neither: that row left out). The pick for every row is one band ("tier" with Tier), or the band leaving the
-// most ("amount") or the largest share of the price ("rate"); with MinRate (per cent of the price) or MinAmount (lira)
+// most ("amount") or the largest profit on its cost ("rate"); with MinRate (per cent of the cost) or MinAmount (lira)
 // a row whose pick leaves less is left out, with MaxRate or MaxAmount one whose pick leaves more.
 public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IReadOnlyList<CommissionTariffChoice>? Choices, decimal? MinRate = null, decimal? MinAmount = null,
     decimal? MaxRate = null, decimal? MaxAmount = null);
@@ -67,8 +73,8 @@ public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IRea
 // Which rows a page lists: by the band their price is in now (1-4), whether the panel has their cost, and by the file's
 // own name, barcode (or seller SKU), model code, stock range, category and brand. Sort orders the models by their name
 // ("name"), their lowest current price ("price") or the most a band leaves after commission and cost ("tier1"-"tier4");
-// without it the models run by name as before. ProfitTier with a least or most amount (lira) or share of the price (per
-// cent) keeps the variants whose price in that band leaves that much after commission and cost (Fiyat Aralığı).
+// without it the models run by name as before. ProfitTier with a least or most profit (lira) or profit on cost (per
+// cent) keeps the variants whose price in that band leaves that much (Fiyat Aralığı).
 public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost, string? Name = null, string? Barcode = null, string? ModelCode = null,
     decimal? MinStock = null, decimal? MaxStock = null, string? Category = null, string? Brand = null, string? Sort = null, bool Descending = false,
     int? ProfitTier = null, decimal? MinProfit = null, decimal? MaxProfit = null, decimal? MinShare = null, decimal? MaxShare = null)

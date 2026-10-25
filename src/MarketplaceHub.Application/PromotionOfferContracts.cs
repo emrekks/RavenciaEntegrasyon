@@ -7,10 +7,11 @@ public sealed record PromotionOfferSummary(string Kind, string FileName, DateTim
 
 public sealed record PromotionOfferUploadResult(PromotionOfferSummary Offer, int SkippedRows, IReadOnlyList<string> Warnings);
 
-// A price, the commission it pays and what it leaves after the commission and the cost. Rate is null when the
-// commission at that price is not known (no commission tariff covers it); Remaining is null then or without a cost.
-// RemainingHigh: the most a model's variants leave when their costs differ (Remaining is then the least).
-public sealed record PromotionPriceView(decimal Price, decimal? Rate, decimal? Commission, decimal? Remaining, decimal? RemainingHigh = null);
+// A price, the commission it pays and the profit it leaves after the commission and Costs (UnitProfitCostsView). Rate
+// is null when the commission at that price is not known (no commission tariff covers it); Remaining is null then, or
+// without a cost, the VAT rate or the store's cargo tariff. RemainingHigh: the most a model's variants leave when their
+// costs differ (Remaining and Costs are then the dearest variant's).
+public sealed record PromotionPriceView(decimal Price, decimal? Rate, decimal? Commission, decimal? Remaining, decimal? RemainingHigh = null, UnitProfitCostsView? Costs = null);
 
 // Now: the commission-basis price at the current commission. Plus: the Plus price ceiling at the offered commission.
 // Gain: what Plus leaves minus what the price leaves now.

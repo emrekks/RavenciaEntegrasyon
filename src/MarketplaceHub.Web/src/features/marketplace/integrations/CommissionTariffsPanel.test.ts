@@ -33,9 +33,10 @@ const bands = [{ tier: 1, min: 470.64, max: null, rate: 21.5 }, { tier: 2, min: 
 const bulk = (values: Partial<TariffBulk>): TariffBulk => ({ ...noBulk, ...values })
 
 describe('commission tariff picks', () => {
-  // Band 1 leaves the most money (248, %47,7 of its price), band 4 the largest share (200, %51,5).
-  const row = { choices: [{ tier: 1, price: 519.75, rate: 21.5, commission: 111.75, remaining: 248 }, { tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68 },
-    { tier: 4, price: 388.63, rate: 17.5, commission: 68.01, remaining: 200 }] }
+  // Over a cost of 160 band 1 leaves the most money (248, %155 of the cost) and so the most on the cost too.
+  const costs = { cost: 160, cargo: 98.34, serviceFee: 13.19, stoppage: 4.28, netVat: -6.52, vatRate: 10 }
+  const row = { choices: [{ tier: 1, price: 519.75, rate: 21.5, commission: 111.75, remaining: 248, costs }, { tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68, costs },
+    { tier: 4, price: 388.63, rate: 17.5, commission: 68.01, remaining: 200, costs }] }
 
   it('takes a row its own pick, else the pick for every row, and leaves it out when neither applies', () => {
     expect(pickedTier(row, { tier: 2, price: null }, bulk({ kind: 'amount' }))).toBe(2)
@@ -48,15 +49,15 @@ describe('commission tariff picks', () => {
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2 }))).toBe(2)
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 3 }))).toBeNull()
     expect(pickedTier(row, undefined, bulk({ kind: 'amount' }))).toBe(1)
-    expect(pickedTier(row, undefined, bulk({ kind: 'rate' }))).toBe(4)
-    // Band 2 leaves %45,4 and 213,68: kept for at least %45 or 200 lira, left out for %46 or 250 lira.
-    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minRate: 45 }))).toBe(2)
-    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minRate: 46 }))).toBeNull()
+    expect(pickedTier(row, undefined, bulk({ kind: 'rate' }))).toBe(1)
+    // Band 2 leaves 213,68, %133,55 of the cost: kept for at least %133 or 200 lira, left out for %134 or 250 lira.
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minRate: 133 }))).toBe(2)
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minRate: 134 }))).toBeNull()
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minAmount: 200 }))).toBe(2)
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, minAmount: 250 }))).toBeNull()
-    // Below a value too (Verilenden küçük değerler): kept under %46 or 250 lira, left out under %45 or 200 lira.
-    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxRate: 46 }))).toBe(2)
-    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxRate: 45 }))).toBeNull()
+    // Below a value too (Verilenden küçük değerler): kept under %134 or 250 lira, left out under %133 or 200 lira.
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxRate: 134 }))).toBe(2)
+    expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxRate: 133 }))).toBeNull()
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxAmount: 250 }))).toBe(2)
     expect(pickedTier(row, undefined, bulk({ kind: 'tier', tier: 2, maxAmount: 200 }))).toBeNull()
     // Without a cost the condition cannot be met; the band alone still can.
@@ -67,14 +68,20 @@ describe('commission tariff picks', () => {
   })
 
   it('works out a price of the seller\'s own as the server does', () => {
-    // 470,63 is band 2: %20,6 of it is 96,95, and 160 of cost leaves 213,68.
-    expect(ownChoice({ bands, costPrice: 160 }, 470.63)).toEqual({ tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68 })
-    expect(ownChoice({ bands, costPrice: null }, 400)?.remaining).toBeNull()
+    // 470,63 is band 2: %20,6 of it is 96,95; with the cargo, fee and VAT rate a band of the row was priced at, a cost of
+    // 160 leaves 104,39 (the server's UnitProfit gives the same).
+    const priced = [{ tier: 1, price: 519.75, rate: 21.5, commission: 111.75, remaining: 136.26, costs: { cost: 160, cargo: 98.34, serviceFee: 13.19, stoppage: 4.28, netVat: -6.52, vatRate: 10 } }]
+    expect(ownChoice({ bands, costPrice: 160, choices: priced }, 470.63)).toEqual({ tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 104.39, costs: { cost: 160, cargo: 98.34, serviceFee: 13.19, stoppage: 4.28, netVat: -6.52, vatRate: 10 } })
+    // Melontik's 470,64 at %21,5: 101,19 of commission and a net VAT of −7,22 leave 100,86.
+    expect(ownChoice({ bands, costPrice: 160, choices: priced }, 470.64)).toMatchObject({ commission: 101.19, remaining: 100.86, costs: { netVat: -7.22 } })
+    expect(ownChoice({ bands, costPrice: null, choices: priced }, 400)?.remaining).toBeNull()
+    expect(ownChoice({ bands, costPrice: 160 }, 400)?.remaining).toBeNull()
     expect(ownChoice({ bands: [{ tier: 1, min: 500, max: null, rate: 20 }], costPrice: 100 }, 450)).toBeNull()
   })
 
   it('writes what a price leaves with its share, and says so when the cost is not entered', () => {
-    expect(remainingText({ tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 213.68 })).toBe('213,68 ₺ kâr · %45,4')
+    expect(remainingText({ tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 104.39, costs: { cost: 160, cargo: 98.34, serviceFee: 13.19, stoppage: 4.28, netVat: -6.52, vatRate: 10 } })).toBe('104,39 ₺ Kâr (%65,24)')
+    expect(remainingText({ tier: 1, price: 470.64, rate: 21.5, commission: 101.19, remaining: -12.5, costs: { cost: 160, cargo: 98.34, serviceFee: 13.19, stoppage: 4.28, netVat: -6.52, vatRate: 10 } })).toBe('−12,50 ₺ Zarar (%−7,81)')
     expect(remainingText({ tier: 1, price: 100, rate: 20, commission: 20, remaining: null })).toBe('Maliyet girilmemiş')
   })
 })

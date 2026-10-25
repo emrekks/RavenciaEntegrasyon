@@ -6,6 +6,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
+import { onCost, profitText, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
 import '../commission-tariffs.css'
 
 // The marketplaces whose commission tariff export the panel reads (CommissionTariffPlatforms on the server).
@@ -25,31 +26,33 @@ export type CommissionTariffRow = {
   // The stock the tariff file gives (absent in a tariff uploaded before it was read).
   stock?: number | null
 }
-// A band as a price the seller can pick: its commission and what the price leaves after it and the product cost.
-export type CommissionChoice = { tier: number; price: number; rate: number; commission: number; remaining: number | null }
+// A band as a price the seller can pick: its commission and the profit the price leaves after it and its other charges
+// (costs: the product cost, cargo, service fee, withholding tax and net VAT; absent in an older server's answer).
+export type CommissionChoice = { tier: number; price: number; rate: number; commission: number; remaining: number | null; costs?: UnitProfitCosts | null }
 type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number; pageSize: number }
 
 // A row's own pick: a band, a price of the seller's own, or neither (the row left out of the Excel).
 export type TariffPick = { tier: number | null; price: number | null }
-// The pick for every row: one band ('tier'), or the band leaving the most money ('amount') or the largest share of its
-// price ('rate'); with a least share (per cent) or amount (lira) a row whose pick leaves less is left out, with a most
-// share or amount one whose pick leaves more.
+// The pick for every row: one band ('tier'), or the band leaving the most money ('amount') or the most on its cost
+// ('rate'); with a least share of the cost (per cent) or amount (lira) a row whose pick leaves less is left out, with a
+// most share or amount one whose pick leaves more.
 export type TariffBulk = { kind: '' | 'tier' | 'amount' | 'rate'; tier: number; minRate: number | null; minAmount: number | null; maxRate?: number | null; maxAmount?: number | null }
 export const noBulk: TariffBulk = { kind: '', tier: 1, minRate: null, minAmount: null, maxRate: null, maxAmount: null }
 
-const share = (choice: CommissionChoice) => choice.remaining === null || choice.price <= 0 ? null : choice.remaining / choice.price
+// The profit as a share of the cost, per cent (Kâr Oranı, the server's CommissionTariffChoices.OnCost).
+const share = (choice: CommissionChoice) => choice.remaining === null ? null : onCost(choice.remaining, choice.costs)
 
 // The pick for every row in one row, worked out as the server's CommissionTariffChoices.Pick does.
 export function bulkChoice(choices: CommissionChoice[], bulk: TariffBulk): CommissionChoice | null {
   const known = choices.filter(choice => choice.remaining !== null)
   const choice = bulk.kind === 'tier' ? choices.find(item => item.tier === bulk.tier) ?? null
     : bulk.kind === 'amount' ? [...known].sort((a, b) => (b.remaining ?? 0) - (a.remaining ?? 0) || a.rate - b.rate)[0] ?? null
-    : bulk.kind === 'rate' ? [...known].filter(item => item.price > 0).sort((a, b) => (share(b) ?? 0) - (share(a) ?? 0) || a.rate - b.rate)[0] ?? null
+    : bulk.kind === 'rate' ? [...known].filter(item => share(item) !== null).sort((a, b) => (share(b) ?? 0) - (share(a) ?? 0) || a.rate - b.rate)[0] ?? null
     : null
   if (!choice) return null
-  if (bulk.minRate !== null && (share(choice) === null || (share(choice) ?? 0) * 100 < bulk.minRate)) return null
+  if (bulk.minRate !== null && (share(choice) === null || (share(choice) ?? 0) < bulk.minRate)) return null
   if (bulk.minAmount !== null && (choice.remaining === null || choice.remaining < bulk.minAmount)) return null
-  if (bulk.maxRate != null && (share(choice) === null || (share(choice) ?? 0) * 100 > bulk.maxRate)) return null
+  if (bulk.maxRate != null && (share(choice) === null || (share(choice) ?? 0) > bulk.maxRate)) return null
   if (bulk.maxAmount != null && (choice.remaining === null || choice.remaining > bulk.maxAmount)) return null
   return choice
 }
@@ -60,13 +63,16 @@ export function pickedTier(row: Pick<CommissionTariffRow, 'choices'>, pick: Tari
   return bulkChoice(row.choices ?? [], bulk)?.tier ?? null
 }
 
-// A price of the seller's own, worked out as the server does: the band it falls in, its commission and what it leaves.
-export function ownChoice(row: Pick<CommissionTariffRow, 'bands' | 'costPrice'>, price: number): CommissionChoice | null {
+// A price of the seller's own, worked out as the server does: the band it falls in, its commission and its profit, with
+// the cargo, fee and VAT rate the server priced the row's bands at (unknown when it priced none).
+export function ownChoice(row: Pick<CommissionTariffRow, 'bands' | 'costPrice' | 'choices'>, price: number): CommissionChoice | null {
   const rounded = Math.round(price * 100) / 100
   const band = row.bands.find(item => (item.min === null || rounded >= item.min) && (item.max === null || rounded <= item.max))
   if (!band || rounded <= 0) return null
   const commission = Math.round(rounded * band.rate) / 100
-  return { tier: band.tier, price: rounded, rate: band.rate, commission, remaining: row.costPrice ? Math.round((rounded - commission - row.costPrice) * 100) / 100 : null }
+  const basis = row.choices?.find(choice => choice.costs)?.costs
+  const known = row.costPrice && basis ? unitProfit(rounded, commission, row.costPrice, basis) : null
+  return { tier: band.tier, price: rounded, rate: band.rate, commission, remaining: known?.profit ?? null, costs: known?.costs ?? null }
 }
 
 // The page's rows by model and colour, in their order: a model's sizes of one colour make a group, and a row without
@@ -102,11 +108,9 @@ const productImage = (row: CommissionTariffRow) => row.imageUrl
   ? <img src={thumbnailUrl(row.imageUrl)} alt="" loading="lazy" className="commission-product-image" />
   : <i className="commission-product-image" aria-hidden="true">{(row.productName ?? row.barcode).slice(0, 1)}</i>
 
-// What a price leaves, with its share of the price.
+// A price's profit with its share of the cost: "100,85 ₺ Kâr (%63,03)".
 export function remainingText(choice: CommissionChoice) {
-  if (choice.remaining === null) return 'Maliyet girilmemiş'
-  const share = choice.price > 0 ? ` · %${(choice.remaining / choice.price * 100).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : ''
-  return `${choice.remaining < 0 ? '− ' : ''}${money(Math.abs(choice.remaining))} kâr${share}`
+  return choice.remaining === null ? 'Maliyet girilmemiş' : profitText(choice.remaining, choice.costs)
 }
 type UploadResult = { tariffs: CommissionTariff[]; importedRows: number; skippedRows: number; alreadyUploaded: boolean; warnings: string[] }
 
@@ -317,14 +321,14 @@ function SortHeader({ label, sort, filter, onFilter }: { label: string; sort: Ta
   </th>
 }
 
-const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. bant` : bulk.kind === 'amount' ? 'En yüksek kâr tutarı' : 'En yüksek kâr oranı'
+const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. Fiyat Aralığı` : bulk.kind === 'amount' ? 'En yüksek kâr tutarı' : 'En yüksek kâr oranı'
 
-// Toplu Seçim: a column (a band, or the band leaving the most money or share), a criterion on what the pick leaves
-// (its share of the price or its amount) above or below a value, and the buttons that apply it, take that column's
-// picks back or take every pick back.
+// Toplu Seçim: a column (a band, or the band leaving the most money or share), then a criterion on its profit (its share
+// of the cost or its amount) above or below a value, and the buttons that apply it, take that column's picks back or
+// take every pick back.
 function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: TariffBulk; onApply: (bulk: TariffBulk) => void; onClearColumn: (column: string) => void; onClearAll: () => void }) {
   const [open, setOpen] = useState(false)
-  const [column, setColumn] = useState(bulk.kind === 'tier' ? String(bulk.tier) : bulk.kind || '1')
+  const [column, setColumn] = useState(bulk.kind === 'tier' ? String(bulk.tier) : bulk.kind)
   const [criterion, setCriterion] = useState<'' | 'rate' | 'amount'>(bulk.minRate != null || bulk.maxRate != null ? 'rate' : bulk.minAmount != null || bulk.maxAmount != null ? 'amount' : '')
   const [above, setAbove] = useState(bulk.maxRate == null && bulk.maxAmount == null)
   const [value, setValue] = useState(String(bulk.minRate ?? bulk.minAmount ?? bulk.maxRate ?? bulk.maxAmount ?? ''))
@@ -338,7 +342,7 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
   }, [open])
   const limit = Number(value.replace(',', '.'))
-  const valid = !criterion || (value.trim() !== '' && Number.isFinite(limit))
+  const valid = column !== '' && (!criterion || (value.trim() !== '' && Number.isFinite(limit)))
   const apply = () => {
     const tierColumn = /^[1-4]$/.test(column)
     const at = criterion && valid ? limit : null
@@ -353,21 +357,23 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
       {active && <em>Filtre aktif</em>}Toplu Seçim <UiIcon name="chevronDown" size={14} />
     </button>
     {open && <div className="commission-bulk-popover" role="dialog" aria-label="Toplu seçim">
-      <label><span>Sütun</span>
+      <label><span>Kolon</span>
         <select value={column} onChange={event => setColumn(event.target.value)}>
-          {tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Bant</option>)}
+          <option value="">Kolon Seçimi</option>
+          {tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
           <option value="amount">En yüksek kâr tutarı</option><option value="rate">En yüksek kâr oranı</option>
         </select>
       </label>
+      {column !== '' && <>
       <hr />
       <label><span>Ölçüt</span>
         <select value={criterion} onChange={event => setCriterion(event.target.value as '' | 'rate' | 'amount')}>
-          <option value="">Koşulsuz, tüm ürünler</option><option value="rate">Kâr / zarar oranına göre (%)</option><option value="amount">Kâr / zarar tutarına göre (₺)</option>
+          <option value="">Koşulsuz, tüm ürünler</option><option value="rate">Kâr / Zarar Oranına Göre (%)</option><option value="amount">Kâr / Zarar Tutarına Göre (₺)</option>
         </select>
       </label>
       <label><span>Karşılaştırma</span>
         <select value={above ? 'above' : 'below'} disabled={!criterion} onChange={event => setAbove(event.target.value === 'above')}>
-          <option value="above">Verilenden büyük değerler</option><option value="below">Verilenden küçük değerler</option>
+          <option value="above">Verilenden Büyük Değerler</option><option value="below">Verilenden Küçük Değerler</option>
         </select>
       </label>
       <label><span>Değer</span>
@@ -375,9 +381,10 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
       </label>
       <hr />
       <button type="button" className="rv-button-primary" disabled={!valid} onClick={apply}>Belirlenen Kriterlere Göre Seçimleri Yap</button>
-      <button type="button" className="secondary is-danger" onClick={() => { onClearColumn(column); setOpen(false) }}>Bu Sütundaki Seçimleri Kaldır</button>
+      <button type="button" className="secondary is-danger" onClick={() => { onClearColumn(column); setOpen(false) }}>Yapılan Seçimleri Kaldır</button>
+      </>}
       <hr />
-      <button type="button" className="secondary" onClick={() => { onClearAll(); setCriterion(''); setValue(''); setOpen(false) }}>Tüm Sütunlardan Seçimleri Kaldır</button>
+      <button type="button" className="secondary" onClick={() => { onClearAll(); setColumn(''); setCriterion(''); setValue(''); setOpen(false) }}>Tüm Kolonlardan Seçimleri Kaldır</button>
     </div>}
   </div>
 }
@@ -453,8 +460,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
     <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
-      <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
       <span className="commission-plan-count" role="status">{summary}</span>
+      <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
       <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0) || download.isPending} onClick={() => download.mutate()}>
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
       </button>
@@ -463,7 +470,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
     {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
-      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col" className="commission-stock">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col" className="commission-stock">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Fiyat Aralığı`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{groupByModel(rows.items).map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
@@ -498,14 +505,13 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
               const band = row.bands.find(item => item.tier === tier)
               const picked = chosen === tier
               return <td key={tier}>
-                <button type="button" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}
-                  className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
+                <div className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
                   <strong>{money(choice.price)}</strong>
                   <small>{band?.max === null ? 've üzeri' : 've altı'}{row.currentTier === tier ? ' · şu an' : ''}</small>
                   <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
-                  <b>{remainingText(choice)}</b>
-                  <i className="commission-switch" aria-hidden="true"><span />{picked ? 'Seçili' : 'Seç'}</i>
-                </button>
+                  <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''} · ${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
+                  <button type="button" className="commission-switch" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
+                </div>
               </td>
             })}
             <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>
@@ -537,15 +543,17 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
               const all = owners.every(row => pickedTier(row, picks.get(row.id), applied) === tier)
               const rates = [...new Set(choices.map(item => item.rate))]
               const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
+              // The variant leaving the least is the one the badge opens.
+              const least = choices.filter(item => item.remaining !== null).sort((a, b) => a.remaining! - b.remaining!)[0]
               return <td key={tier}>
-                <button type="button" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}
-                  className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
+                <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
                   <strong>{priceRange(choices.map(item => item.price))}</strong>
                   <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
-                  <b>{lefts.length ? `${amountRange(lefts)} kâr` : 'Maliyet girilmemiş'}</b>
-                  {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın maliyeti yok</small>}
-                  <i className="commission-switch" aria-hidden="true"><span />{all ? 'Tümü seçili' : 'Tümünü seç'}</i>
-                </button>
+                  <ProfitBadge price={least ?? choices[0]} label={lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? `${amountRange(lefts)} Kâr` : undefined}
+                    title={`${first.productName ?? first.barcode} · ${tier}. Fiyat Aralığı${lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? ' · en az kâr bırakan beden' : ''}`} missing="Maliyet girilmemiş" />
+                  {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
+                  <button type="button" className="commission-switch" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : 'Tüm Varyantlarını Seç'}</button>
+                </div>
               </td>
             })}
             <td><ModelOwnPrice rows={group} picks={picks} onPick={price => setPicks(current => {
@@ -576,7 +584,7 @@ function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; p
   return <div className={`commission-own${price !== null && shared.every(value => value === price) ? ' is-picked' : ''}`}>
     <input type="text" inputMode="decimal" placeholder="Tüm bedenlere fiyat" value={text} aria-label={`${rows[0]?.productName ?? 'Model'} için tüm bedenlere kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
-    {text.trim() !== '' && (banded.length ? <small>{tiersHit.map(tier => `${tier}.`).join(', ')} bant · {rows.length} beden<b>{lefts.length ? `${amountRange(lefts)} kâr` : 'Maliyet girilmemiş'}</b>{banded.length < rows.length && <span className="commission-warn">{rows.length - banded.length} beden hiçbir banda düşmüyor</span>}</small> : <small className="commission-warn">Hiçbir banda düşmüyor</small>)}
+    {text.trim() !== '' && (banded.length ? <small>{tiersHit.map(tier => `${tier}.`).join(', ')} fiyat aralığı · {rows.length} beden<b>{lefts.length ? `${amountRange(lefts)} Kâr` : 'Maliyet girilmemiş'}</b>{banded.length < rows.length && <span className="commission-warn">{rows.length - banded.length} beden hiçbir fiyat aralığına düşmüyor</span>}</small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
   </div>
 }
 
@@ -590,6 +598,6 @@ function OwnPrice({ row, pick, picked, onPick }: { row: CommissionTariffRow; pic
   return <div className={`commission-own${picked ? ' is-picked' : ''}`}>
     <input type="text" inputMode="decimal" placeholder="Fiyat girin" value={text} aria-label={`${row.productName ?? row.barcode} için kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
-    {text.trim() !== '' && (choice ? <small>{choice.tier}. bant · {rateText(choice.rate)}<b>{remainingText(choice)}</b></small> : <small className="commission-warn">Hiçbir banda düşmüyor</small>)}
+    {text.trim() !== '' && (choice ? <small>{choice.tier}. fiyat aralığı · {rateText(choice.rate)}<ProfitBadge price={choice} title={`${row.productName ?? row.barcode} · kendi fiyatın`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} /></small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
   </div>
 }
