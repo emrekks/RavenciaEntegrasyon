@@ -77,7 +77,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-badge { margin-top: 6px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan :is(th, td) + :is(th, td) { border-left: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice-none { color: var(--rv-color-subtle); text-align: center; }
-.app-shell.stitch-shell main .commission-tariffs .commission-choice { position: relative; display: grid; justify-items: start; gap: 2px; width: 100%; min-width: 150px; min-height: 0; height: auto; margin: 0; padding: 10px 12px 8px; color: var(--rv-color-ink); font: inherit; text-align: left; text-transform: none; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-choice { position: relative; display: grid; justify-items: start; gap: 2px; width: 100%; min-width: 150px; min-height: 0; height: auto; margin: 0; padding: 10px 12px 8px; color: var(--rv-color-ink); font: inherit; text-align: left; text-transform: none; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice:hover { border-color: var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice.is-picked { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
@@ -86,7 +86,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-choice span { color: var(--rv-color-muted); font-size: 12px; white-space: nowrap; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice b { margin-top: 4px; padding: 2px 8px; color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice.is-loss b { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
-.app-shell.stitch-shell main .commission-tariffs .commission-choice.is-unknown b { color: var(--rv-color-muted); background: var(--rv-color-surface); font-weight: 500; }
+.app-shell.stitch-shell main .commission-tariffs .commission-choice.is-unknown b { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); font-weight: 500; }
 .app-shell.stitch-shell main .commission-tariffs .commission-own { display: grid; gap: 4px; min-width: 140px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-own input { box-sizing: border-box; width: 100%; height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-own.is-picked input { border-color: var(--rv-color-primary); }
@@ -117,7 +117,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant > th { position: relative; padding-left: 68px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant > th::before { content: ''; position: absolute; top: 0; bottom: 50%; left: 34px; width: 18px; border-bottom: 1px dashed var(--rv-color-border-strong); border-left: 1px dashed var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .commission-tariffs .commission-variant-cell { display: grid; gap: 2px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-choice.is-model { background: var(--rv-color-surface); }
+.app-shell.stitch-shell main .commission-tariffs .commission-choice.is-model { background: var(--rv-color-surface-raised); }
 
 /* Toplu Seçim: a button that opens the bulk pick under it (column, criterion, comparison, value and the actions). */
 .app-shell.stitch-shell main .commission-tariffs .commission-bulk { position: relative; }
