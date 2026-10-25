@@ -890,10 +890,10 @@ function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub
         <Bars label="En çok iade edilen ürünler" format={formatNumber} items={[...data.topReturned].sort((a, b) => b.returnedQuantity - a.returnedQuantity).slice(0, 8)
           .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.returnedQuantity, note: formatPercent(product.returnRate) }))} />
       </Panel>
-      <Panel title="Yükselen Ürünler" description="Önceki döneme göre satılan adedi en çok artanlar." className="reports-list">
+      <Panel title="Satışta Yükselen Ürünler" description="Önceki döneme göre satılan adedi en çok artanlar." className="reports-list">
         <Movers items={data.rising ?? []} tone="up" empty="Önceki döneme göre satışı artan ürün yok." />
       </Panel>
-      <Panel title="Düşen Ürünler" description="Önceki döneme göre satılan adedi en çok azalanlar." className="reports-list">
+      <Panel title="Satışta Düşen Ürünler" description="Önceki döneme göre satılan adedi en çok azalanlar." className="reports-list">
         <Movers items={data.falling ?? []} tone="down" empty="Önceki döneme göre satışı azalan ürün yok." />
       </Panel>
       <Panel title="Markalar" description="Satılan adede göre." className="reports-list">
