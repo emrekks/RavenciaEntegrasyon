@@ -80,6 +80,8 @@ internal sealed class ReportOrderRow
     public DateTimeOffset? ShipmentDueAt { get; init; }
     // Trendyol's storefront ("TR", or a cross-border one such as "SA", "AZ"); null for other marketplaces.
     public string? StoreFrontCode { get; init; }
+    // False for a Trendyol micro-export order whose return Trendyol's statement has not recorded: nothing of it counts back.
+    public bool ReturnBooked { get; init; } = true;
 }
 
 internal sealed class ReportOrderExtra
@@ -431,7 +433,7 @@ internal static class ReportBuilder
                 cancelled.Add(new(order, platform, day, rows.Sum(x => x.OrderedQuantity), reason, cancelledTry ? rows.Sum(x => x.UnitPrice * x.OrderedQuantity) : 0m));
                 continue;
             }
-            var returnedOrder = returnedStatuses.Contains(order.DerivedStatus);
+            var returnedOrder = order.ReturnBooked && returnedStatuses.Contains(order.DerivedStatus);
             var currency = string.IsNullOrWhiteSpace(order.Currency) ? Try : order.Currency.Trim().ToUpperInvariant();
             var isTry = currency == Try;
             var linesBack = order.LineValue > 0 ? order.Amount * order.LineBack / order.LineValue : 0m;

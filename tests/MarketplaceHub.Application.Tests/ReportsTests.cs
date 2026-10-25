@@ -304,6 +304,14 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         var saudiLine = NewLine(saudi, "t-sa-1", 100m, 3m, "{}", null);
         var domestic = NewOrder(tenant.Id, trendyol.Id, "t-tr", TrendyolNoon, 100m, "DELIVERED", """{"city":"Ankara"}""", "{}");
         var domesticLine = NewLine(domestic, "t-tr-1", 100m, 1m, "{}", null);
+        // 10 Sep 2026: a Romanian order Trendyol marked returned (line, package and order) with no refund on the statement.
+        var romania = NewOrder(tenant.Id, trendyol.Id, "t-ro", TrendyolNoon, 50m, "RETURNED", "{}", "{}");
+        romania.StoreFrontCode = "RO";
+        var romaniaLine = NewLine(romania, "t-ro-1", 50m, 1m, "{}", null);
+        romaniaLine.ShippedQuantity = 1m;
+        romaniaLine.DeliveredQuantity = 1m;
+        romaniaLine.ReturnedQuantity = 1m;
+        var romaniaPackage = NewPackage(romania, "pkg-ro", 50m, ShipmentPackageStatus.Returned, "Trendyol Express");
         ReturnClaim Claim(Order order, string id) => new()
         {
             Id = Guid.CreateVersion7(),
@@ -326,8 +334,9 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             {
                 seed.Tenants.Add(tenant);
                 seed.PlatformConnections.Add(trendyol);
-                seed.Orders.AddRange(saudi, domestic);
-                seed.OrderLines.AddRange(saudiLine, domesticLine);
+                seed.Orders.AddRange(saudi, domestic, romania);
+                seed.OrderLines.AddRange(saudiLine, domesticLine, romaniaLine);
+                seed.ShipmentPackages.Add(romaniaPackage);
                 seed.ReturnClaims.AddRange(saudiClaim, domesticClaim);
                 seed.ReturnLines.AddRange(
                     new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = saudiClaim.Id, OrderLineId = saudiLine.Id, ExternalLineId = "sa-1", Quantity = 3m, RawStatus = "Accepted" },
@@ -335,7 +344,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
                 await seed.SaveChangesAsync();
             }
 
-            // No refund on the statement yet: only the domestic unit is back.
+            // No refund on the statement yet: only the domestic unit is back (the Romanian order's sale is kept throughout).
             var before = await ReportAsync(tenant.Id, includeTest: false);
             Assert.Equal(1m, before.Summary.ReturnedQuantity);
             Assert.Equal(100m, before.Summary.ReturnedAmount);

@@ -178,21 +178,22 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
                               .Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount)
                           : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
-                      let packagesBack = priced
+                      // A Trendyol micro-export order's return (claim, returned line or package, returned status) counts once Trendyol's
+                      // statement records the refund: Trendyol keeps the sale and charges a weekly overseas return fee instead.
+                      let returnBooked = order.StoreFrontCode == null || order.StoreFrontCode == "" || order.StoreFrontCode == "TR"
+                          || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == order.ConnectionId
+                              && entry.OrderNumber == order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
+                      let packagesBack = priced && returnBooked
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                           : 0m
                       let lineValue = orderLines.Where(line => line.OrderId == order.Id).Sum(line => line.UnitPrice * (line.OrderedQuantity - line.CancelledQuantity))
-                      // A micro-export order's accepted return counts once Trendyol's statement records it (LineRowsAsync).
-                      let returnBooked = order.StoreFrontCode == null || order.StoreFrontCode == "" || order.StoreFrontCode == "TR"
-                          || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == order.ConnectionId
-                              && entry.OrderNumber == order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
                       let lineBack = orderLines.Where(line => line.OrderId == order.Id)
                           .Select(line => new
                           {
                               line.UnitPrice,
                               Active = line.OrderedQuantity - line.CancelledQuantity,
-                              line.ReturnedQuantity,
+                              ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
                               Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
                                       && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
                                           && (returned.RawStatus == null || returned.RawStatus == ""
@@ -216,7 +217,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           RealAt = row.RealAt,
                           OrderedAt = order.OrderedAt,
                           ShipmentDueAt = order.ShipmentDueAt,
-                          StoreFrontCode = order.StoreFrontCode
+                          StoreFrontCode = order.StoreFrontCode,
+                          ReturnBooked = returnBooked
                       }).ToListAsync(cancellationToken);
     }
 
@@ -248,7 +250,11 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           UnitPrice = line.UnitPrice,
                           OrderedQuantity = line.OrderedQuantity,
                           CancelledQuantity = line.CancelledQuantity,
-                          ReturnedQuantity = line.ReturnedQuantity,
+                          ReturnedQuantity = row.Order.StoreFrontCode == null || row.Order.StoreFrontCode == "" || row.Order.StoreFrontCode == "TR"
+                              || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == row.Order.ConnectionId
+                                  && entry.OrderNumber == row.Order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
+                              ? line.ReturnedQuantity
+                              : 0m,
                           AcceptedReturnQuantity = !(row.Order.StoreFrontCode == null || row.Order.StoreFrontCode == "" || row.Order.StoreFrontCode == "TR"
                                   || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == row.Order.ConnectionId
                                       && entry.OrderNumber == row.Order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return))
