@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byModel, keepAdvantage, keepFlash, keepPlus, leavesText, matches, starText, type AdvantageOffer, type FlashOffer, type PlusOffer } from './PromotionOffersPanel'
+import { byModel, groupOffers, keepAdvantage, keepFlash, keepPlus, leavesText, matches, starText, type AdvantageOffer, type FlashOffer, type PlusOffer } from './PromotionOffersPanel'
 
 const product = { modelCode: 'RYP001', productName: 'Anne Penye Bluz', color: 'Siyah', imageUrl: null, stock: 11, promotions: null }
 
@@ -39,5 +39,13 @@ describe('promotion offers', () => {
   it('names the stars a price earns', () => {
     expect(starText(0)).toBe('Yıldız yok')
     expect(starText(2)).toBe('★★ 2 yıldız')
+  })
+})
+
+describe('promotion offer groups', () => {
+  it('groups a model\'s sizes by colour, a row without a model code alone', () => {
+    const row = (barcode: string, modelCode: string | null, color: string | null) => ({ ...product, barcode, modelCode, color })
+    const groups = groupOffers([row('1', 'RYP001', 'Siyah'), row('2', 'RYP001', 'Siyah'), row('3', 'RYP001', 'Mavi'), row('4', null, null)])
+    expect(groups.map(([key, rows]) => `${key}:${rows.map(item => item.barcode).join('')}`)).toEqual(['RYP001|Siyah:12', 'RYP001|Mavi:3', '4:4'])
   })
 })
