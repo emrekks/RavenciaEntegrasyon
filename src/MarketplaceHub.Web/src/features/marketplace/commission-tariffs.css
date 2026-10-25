@@ -95,7 +95,7 @@
 
 /* Filters and the pick for every row: name above or beside, controls 36 px. */
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-field { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 13px; white-space: nowrap; }
-.app-shell.stitch-shell main .commission-tariffs .commission-plan-field select { height: 36px; min-height: 36px; padding: 0 10px; border-radius: 7px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-plan-field select { height: 36px; min-height: 36px; min-width: 180px; padding: 0 34px 0 10px; border-radius: 7px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-threshold { box-sizing: border-box; width: 84px; height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar .commission-search { flex: 1 1 240px; }
 /* The product with its picture. */

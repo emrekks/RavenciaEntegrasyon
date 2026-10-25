@@ -45,7 +45,7 @@ describe('promotion offers', () => {
 describe('promotion offer groups', () => {
   it('groups a model\'s sizes by colour, a row without a model code alone', () => {
     const row = (barcode: string, modelCode: string | null, color: string | null) => ({ ...product, barcode, modelCode, color })
-    const groups = groupOffers([row('1', 'RYP001', 'Siyah'), row('2', 'RYP001', 'Siyah'), row('3', 'RYP001', 'Mavi'), row('4', null, null)])
+    const groups = groupOffers([row('1', 'RYP001', 'Siyah'), row('2', 'RYP001', 'Siyah'), row('3', 'RYP001', 'Mavi'), row('4', null, null)], item => item.barcode)
     expect(groups.map(([key, rows]) => `${key}:${rows.map(item => item.barcode).join('')}`)).toEqual(['RYP001|Siyah:12', 'RYP001|Mavi:3', '4:4'])
   })
 })

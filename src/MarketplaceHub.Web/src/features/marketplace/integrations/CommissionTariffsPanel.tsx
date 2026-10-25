@@ -82,6 +82,9 @@ export function groupByModel(rows: CommissionTariffRow[]): Array<[string, Commis
   return [...groups].map(([key, rows]) => [key, [...rows].sort((a, b) => compareOptionValues('Beden', a.size ?? '', b.size ?? ''))] as [string, CommissionTariffRow[]])
 }
 
+// A stock as the file gives it; unknown in a tariff uploaded before stock was read.
+export const stockText = (stock: number | null | undefined) => stock == null ? '—' : stock.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
+
 const amount = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 // "752,64 – 791,01 ₺", or one price when all are the same.
 export function priceRange(values: number[]) {
@@ -456,12 +459,11 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
       </button>
     </div>
-    <p className="commission-plan-note">Kalan: fiyattan komisyon ve ürün maliyeti düştükten sonra kalan tutar; kargo, hizmet bedeli ve stopaj ürün bazında bilinmediği için düşülmedi. Excel yalnız seçilen ürünleri yeni fiyatlarıyla içerir; pazaryerine hiçbir şey gönderilmez.</p>
     {loading && <Busy />}
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
     {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
-      <thead><tr><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
+      <thead><tr><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Bant`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{groupByModel(rows.items).map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
@@ -472,7 +474,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
               ? <span className="commission-variant-cell">
                 <span className="commission-product">{row.size ?? row.productName ?? row.barcode}</span>
                 <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
-                <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}{row.stock != null ? ` · Stok ${row.stock.toLocaleString('tr-TR')}` : ''}</small>
+                <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
                 {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
               </span>
               : <span className="commission-product-cell">
@@ -480,10 +482,11 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                 <span>
                   <span className="commission-product">{row.productName ?? row.barcode}{row.size ? ` · ${row.size}` : ''}</span>
                   <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
-                  <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}{row.stock != null ? ` · Stok ${row.stock.toLocaleString('tr-TR')}` : ''}</small>
+                  <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
                   {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
                 </span>
               </span>}</th>
+            <td className="commission-stock">{stockText(row.stock)}</td>
             <td>
               <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
               {rateDisagrees(row) && <small className="commission-warn" title="Pazaryerinin dosyadaki güncel komisyonu, fiyatın bandından farklı.">Dosyada {rateText(row.currentRate!)}</small>}
@@ -524,7 +527,8 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                 </button>
               </span>
             </span></th>
-            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span><small>{group.length.toLocaleString('tr-TR')} {first.color ? 'bedenin' : 'varyantın'} fiyatı</small></td>
+            <td className="commission-stock">{stockText(group.some(row => row.stock != null) ? group.reduce((sum, row) => sum + (row.stock ?? 0), 0) : null)}</td>
+            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span></td>
             {tiers.map(tier => {
               const choices = group.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? [])
               if (!choices.length) return <td key={tier} className="commission-choice-none">—</td>
