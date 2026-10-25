@@ -545,12 +545,14 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
               const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
               // The variant leaving the least is the one the badge opens.
               const least = choices.filter(item => item.remaining !== null).sort((a, b) => a.remaining! - b.remaining!)[0]
+              const leastRow = least && group.find(row => row.choices?.includes(least))
+              const ranged = lefts.length > 0 && Math.min(...lefts) !== Math.max(...lefts)
               return <td key={tier}>
                 <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
                   <strong>{priceRange(choices.map(item => item.price))}</strong>
                   <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
-                  <ProfitBadge price={least ?? choices[0]} label={lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? `${amountRange(lefts)} Kâr` : undefined}
-                    title={`${first.productName ?? first.barcode} · ${tier}. Fiyat Aralığı${lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? ' · en az kâr bırakan beden' : ''}`} missing="Maliyet girilmemiş" />
+                  <ProfitBadge price={least ?? choices[0]} label={ranged ? `${amountRange(lefts)} Kâr` : undefined}
+                    title={`${first.productName ?? first.barcode} · ${tier}. Fiyat Aralığı${ranged ? ` · en az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}` : ''}`} missing="Maliyet girilmemiş" />
                   {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
                   <button type="button" className="commission-switch" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : 'Tüm Varyantlarını Seç'}</button>
                 </div>

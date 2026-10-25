@@ -194,6 +194,10 @@
 .unit-profit-modal .unit-profit-rows b { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
 .unit-profit-modal .unit-profit-rows small { color: var(--rv-color-muted); font-size: 12px; }
 .unit-profit-modal .unit-profit-rows strong { color: var(--rv-color-ink); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.unit-profit-modal .unit-profit-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0 0; padding: 12px 14px; color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-radius: 12px; font-weight: 600; }
-.unit-profit-modal .unit-profit-total strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.unit-profit-modal .unit-profit-rows strong.is-gain { color: var(--rv-color-accent); }
+.unit-profit-modal .unit-profit-total { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 12px 0 0; padding: 12px 14px; color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-radius: 12px; font-size: 12px; font-weight: 600; }
+.unit-profit-modal .unit-profit-total > span { display: grid; gap: 2px; }
+.unit-profit-modal .unit-profit-total > span + span { text-align: right; }
+.unit-profit-modal .unit-profit-total strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.unit-profit-modal .unit-profit-total small { font-size: 11px; font-weight: 500; opacity: .8; }
 .unit-profit-modal .unit-profit-total.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }

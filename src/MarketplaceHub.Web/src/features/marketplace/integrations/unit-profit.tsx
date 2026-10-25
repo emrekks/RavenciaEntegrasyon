@@ -54,19 +54,27 @@ export function ProfitBadge({ price, title, missing, label }: { price: ProfitPri
 // Hesaplama Kalemleri: every charge the price pays, and what is left.
 export function ProfitBreakdown({ price, title, onClose }: { price: ProfitPrice; title?: string; onClose: () => void }) {
   const costs = price.costs!
+  const profit = price.remaining!
+  const share = onCost(profit, costs)
+  // Net VAT owed is a charge; when the charges carry more VAT than the sale it comes back and adds to the profit.
+  const vatBack = costs.netVat < 0
   const rows: Array<[string, string, number]> = [
     ['Satış Fiyatı', 'Müşterinin ödediği', price.price],
-    ['Komisyon Tutarı', price.rate === null ? 'Komisyon oranı' : `Komisyon oranı ${percent(price.rate)}`, -(price.commission ?? 0)],
+    ['Komisyon Tutarı', price.rate === null ? 'Komisyon oranı bilinmiyor' : `Komisyon oranı %${price.rate.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`, -(price.commission ?? 0)],
     ['Ürün Maliyeti', `Ürün ayarlarındaki maliyet, KDV'si %${costs.vatRate.toLocaleString('tr-TR')}`, -costs.cost],
     ['Kargo Ücreti', 'Mağazanın güncel kargo tarifesi', -costs.cargo],
     ['Hizmet Bedeli', 'Sipariş başına 10,99 ₺ + KDV', -costs.serviceFee],
     ['Stopaj Kesintisi', "KDV hariç fiyatın %1'i", -costs.stoppage],
-    ['Net KDV', "Satış KDV'si − maliyet, komisyon, kargo ve hizmet bedeli KDV'si", -costs.netVat]
+    ['Net KDV', vatBack ? "Giderlerin KDV'si satışınkinden fazla; fark kâra eklenir" : "Satış KDV'si − maliyet, komisyon, kargo ve hizmet bedeli KDV'si", -costs.netVat]
   ]
   return <Modal open onClose={onClose} className="unit-profit-modal" title="Hesaplama Kalemleri" description={title}>
     <ul className="unit-profit-rows">
-      {rows.map(([label, note, amount]) => <li key={label}><span><b>{label}</b><small>{note}</small></span><strong>{money(amount)}</strong></li>)}
+      {rows.map(([label, note, amount], index) => <li key={label}><span><b>{label}</b><small>{note}</small></span>
+        <strong className={index > 0 && amount > 0 ? 'is-gain' : undefined}>{index > 0 && amount > 0 ? '+' : ''}{money(amount)}</strong></li>)}
     </ul>
-    <p className={`unit-profit-total${price.remaining! < 0 ? ' is-loss' : ''}`}><span>{price.remaining! < 0 ? 'Zarar' : 'Kâr'}</span><strong>{profitText(price.remaining!, costs)}</strong></p>
+    <div className={`unit-profit-total${profit < 0 ? ' is-loss' : ''}`}>
+      <span>{profit < 0 ? 'Zarar' : 'Kâr'}<strong>{money(profit)}</strong></span>
+      {share !== null && <span>Kâr Oranı<strong>{percent(share)}</strong><small>maliyete göre</small></span>}
+    </div>
   </Modal>
 }
