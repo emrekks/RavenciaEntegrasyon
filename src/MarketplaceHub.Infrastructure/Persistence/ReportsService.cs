@@ -96,6 +96,89 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         return ServiceResult<ReportSalesView>.Ok(await WithProductDetailsAsync(tenantId, report, cancellationToken));
     }
 
+    // Sipariş Kârlılık Analizi: the period's orders (test stores out) with each one's profit, worked out from the same input
+    // the sales report reads (ReportOrderProfit), filtered, ordered and paged here; the page's lines get their pictures.
+    public async Task<ServiceResult<ReportOrderProfitPage>> OrderProfitabilityAsync(Guid tenantId, ReportOrderProfitQuery query, CancellationToken cancellationToken)
+    {
+        var timezoneId = await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken);
+        var timezone = DashboardReadService.ResolveTimezone(timezoneId);
+        var resolved = DashboardPerformancePeriod.Resolve(query.From, query.To, timeProvider.GetUtcNow(), timezone);
+        if (!resolved.Succeeded) return ServiceResult<ReportOrderProfitPage>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status);
+        var period = resolved.Value!;
+        var current = new ReportPeriod(period.From, period.To, period.CurrentStart, period.CurrentEnd);
+        var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
+        var platformFilter = query.PlatformCodes?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant()).ToHashSet(StringComparer.Ordinal);
+        var allowed = (await db.PlatformConnections.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status))
+                .Select(x => new { x.Id, x.PlatformCode, x.DisplayName, x.Environment })
+                .ToListAsync(cancellationToken))
+            .Select(x => new ReportChannelView(x.Id, x.PlatformCode.Trim().ToUpperInvariant(), x.DisplayName, ReportBuckets.IsTestEnvironment(x.Environment)))
+            .Where(x => !x.IsTest && (platformFilter is not { Count: > 0 } || platformFilter.Contains(x.PlatformCode)))
+            .ToDictionary(x => x.Id);
+        var allowedIds = allowed.Keys.ToArray();
+
+        var orders = await OrderRowsAsync(tenantId, allowedIds, current, cancellationToken);
+        var orderIds = orders.Select(x => x.Id).ToArray();
+        var lines = await LineRowsAsync(tenantId, allowedIds, current, cancellationToken);
+        var tariffRows = await (from tariff in db.CommissionTariffs.AsNoTracking()
+                                join row in db.CommissionTariffRows.AsNoTracking() on new { tariff.TenantId, TariffId = tariff.Id } equals new { row.TenantId, row.TariffId }
+                                where tariff.TenantId == tenantId && allowedIds.Contains(tariff.ConnectionId) && tariff.PeriodEnd > current.Start && tariff.PeriodStart < current.End
+                                select new { tariff, row }).ToListAsync(cancellationToken);
+        var input = new ReportInput(current, ReportBuckets.Day, timezone, allowed, orders, await OrderExtrasAsync(tenantId, orderIds, cancellationToken), lines,
+            await LineExtrasAsync(tenantId, orderIds, cancellationToken), await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken),
+            await PackageRowsAsync(tenantId, allowedIds, current, cancellationToken), await CatalogNamesAsync(tenantId, lines, cancellationToken), false,
+            tariffRows.Count == 0 ? null : new ReportCommissionTariffs(tariffRows.Select(x => (x.tariff, x.row))), await FinanceAsync(tenantId, allowed, orders, current, cancellationToken),
+            await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken),
+            new ReportDesiInput(await LearnedDesiAsync(tenantId, cancellationToken), await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
+        var all = ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders);
+
+        var term = query.Search?.Trim();
+        if (!string.IsNullOrEmpty(term))
+            all = all.Where(order => order.OrderNumber.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || order.Lines.Any(line => line.Title.Contains(term, StringComparison.OrdinalIgnoreCase) || line.Sku.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || (line.Barcode?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))).ToList();
+        // An order whose value is unknown goes last either way.
+        Func<ReportOrderProfitView, decimal?> key = query.Sort switch
+        {
+            "amount" => order => order.Amount,
+            "profit" => order => order.Profit,
+            "profitOnCost" => order => order.ProfitOnCost,
+            "margin" => order => order.Margin,
+            _ => order => order.OrderedAt.UtcTicks
+        };
+        var known = all.Where(order => key(order) is not null);
+        var ordered = (query.Descending ? known.OrderByDescending(key) : known.OrderBy(key)).ThenByDescending(order => order.OrderedAt)
+            .Concat(all.Where(order => key(order) is null).OrderByDescending(order => order.OrderedAt)).ToList();
+        var page = ordered.Skip(query.Page * query.PageSize).Take(query.PageSize).ToList();
+
+        // The page's lines with the panel product's picture and options (size, colour).
+        var variantIds = page.SelectMany(order => order.Lines).Where(line => line.VariantId != null).Select(line => line.VariantId!.Value).Distinct().ToArray();
+        var productIds = page.SelectMany(order => order.Lines).Where(line => line.ProductId != null).Select(line => line.ProductId!.Value).Distinct().ToArray();
+        var signatures = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.OptionSignature, cancellationToken);
+        var media = await (from item in db.ProductMedia.AsNoTracking()
+                           join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                           where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE"
+                               && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+                           orderby item.SortOrder, item.Id
+                           select new { item.ProductId, item.VariantId, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        string? Image(ReportOrderProfitLineView line)
+        {
+            var picked = (line.VariantId is { } variantId ? media.FirstOrDefault(x => x.VariantId == variantId) : null)
+                ?? (line.ProductId is { } productId ? media.FirstOrDefault(x => x.ProductId == productId && x.VariantId == null) ?? media.FirstOrDefault(x => x.ProductId == productId) : null);
+            return picked is null ? null : CatalogMediaDisplay.Url(picked.Id, picked.Classification, picked.Url);
+        }
+        page = page.Select(order => order with
+        {
+            Lines = order.Lines.Select(line => line with
+            {
+                ImageUrl = Image(line),
+                Options = line.VariantId is { } id && signatures.TryGetValue(id, out var signature) ? signature : null
+            }).ToList()
+        }).ToList();
+        return ServiceResult<ReportOrderProfitPage>.Ok(new(page, ordered.Count, query.Page, query.PageSize, all.Sum(order => order.Amount),
+            all.Sum(order => order.Profit ?? 0m), all.Count(order => order.Profit is null)));
+    }
+
     // The listed products' catalogue details, as the product list shows them: the variant's model code and options
     // (size, colour…) and a picture, the variant's own first, else the product's. Only the top lists are looked up.
     private async Task<ReportSalesView> WithProductDetailsAsync(Guid tenantId, ReportSalesView report, CancellationToken cancellationToken)

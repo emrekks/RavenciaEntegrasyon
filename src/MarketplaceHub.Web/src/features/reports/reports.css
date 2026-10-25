@@ -738,3 +738,60 @@
 .app-shell.stitch-shell main .reports-page .reports-promotion-tabs button { flex: none; height: 34px; padding: 0 14px; font-size: 13px; white-space: nowrap; }
 /* The promotion page: the platforms and, for a platform with more stores, the store beside them. */
 .app-shell.stitch-shell main .reports-page .promotions-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; }
+
+/* Sipariş Kârlılık Analizi: a search over the orders, the totals as a strip, a row per order and its analysis in a dialog. */
+.app-shell.stitch-shell main .reports-page .reports-order-profit { display: grid; gap: 16px; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-order-profit-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
+.app-shell.stitch-shell main .reports-page .reports-order-profit-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-order-profit-head p { max-width: 640px; margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-order-search { display: flex; gap: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-order-search input { box-sizing: border-box; width: min(280px, 60vw); height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-order-search button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; text-transform: none; }
+.app-shell.stitch-shell main .reports-page .reports-order-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; margin: 0; overflow: hidden; background: var(--rv-color-border); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-order-summary > div { padding: 12px 14px; background: var(--rv-color-surface); }
+.app-shell.stitch-shell main .reports-page .reports-order-summary dt { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-order-summary dd { margin: 4px 0 0; color: var(--rv-color-ink); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-order-summary dd.is-gain { color: var(--rv-color-accent); }
+.app-shell.stitch-shell main .reports-page .reports-order-summary dd.is-loss { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-order-summary .is-warn dd { color: var(--rv-color-warning); font-size: 15px; }
+.app-shell.stitch-shell main .reports-page .reports-order-table { min-width: 860px; }
+.app-shell.stitch-shell main .reports-page .reports-order-table :is(th, td) { vertical-align: middle; }
+.app-shell.stitch-shell main .reports-page .reports-order-table .is-gain { color: var(--rv-color-accent); font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-order-table .is-loss { color: var(--rv-color-danger); font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-order-table .is-unknown { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .reports-page .reports-order-number { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-order-number .platform-square-mark { width: 20px; height: 20px; border-radius: 6px; }
+.app-shell.stitch-shell main .reports-page .reports-order-badge { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-order-badge.is-micro { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+.app-shell.stitch-shell main .reports-page .reports-order-badge.is-return { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.app-shell.stitch-shell main .reports-page .reports-order-sort { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: auto; margin: 0; padding: 0; color: inherit; font: inherit; text-transform: none; background: none; border: 0; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .reports-page .reports-order-sort span { color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .reports-page .reports-order-sort.is-on, .app-shell.stitch-shell main .reports-page .reports-order-sort.is-on span { color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .reports-page .reports-order-detail { min-height: 0; height: 32px; padding: 0 12px; border-radius: 7px; font-size: 12px; text-transform: none; }
+.app-shell.stitch-shell main .reports-page .reports-order-pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-order-pager button { min-height: 0; height: 36px; border-radius: 7px; text-transform: none; }
+
+/* The order's analysis: what is left on top, the items and the charges side by side. */
+.reports-order-modal { width: min(1040px, calc(100vw - 32px)); }
+.reports-order-modal .reports-order-result { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; padding: 14px 18px; border-radius: 12px; }
+.reports-order-modal .reports-order-result span { display: grid; gap: 2px; font-weight: 600; }
+.reports-order-modal .reports-order-result small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
+.reports-order-modal .reports-order-result strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.reports-order-modal .reports-order-result.is-gain { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+.reports-order-modal .reports-order-result.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.reports-order-modal .reports-order-result.is-unknown { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
+.reports-order-modal .reports-order-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.reports-order-modal h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.reports-order-modal h3 em { padding: 1px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 11px; font-style: normal; }
+.reports-order-modal ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.reports-order-modal .reports-order-lines li { display: flex; align-items: flex-start; gap: 12px; padding: 10px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.reports-order-modal .reports-order-lines :is(img, i) { display: grid; flex: none; place-items: center; width: 56px; aspect-ratio: 2 / 3; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-style: normal; }
+.reports-order-modal .reports-order-lines span { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.reports-order-modal .reports-order-lines b { font-size: 13px; }
+.reports-order-modal :is(.reports-order-lines, .reports-order-costs) small { color: var(--rv-color-muted); font-size: 12px; }
+.reports-order-modal :is(.reports-order-lines, .reports-order-costs) strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reports-order-modal .reports-order-costs li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 12px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.reports-order-modal .reports-order-costs span { display: grid; gap: 2px; }
+.reports-order-modal .reports-order-costs b { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.reports-order-modal .reports-order-costs b em { padding: 1px 7px; color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; }
+@media (max-width: 760px) { .reports-order-modal .reports-order-columns { grid-template-columns: minmax(0, 1fr); } }

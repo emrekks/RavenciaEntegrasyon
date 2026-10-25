@@ -296,7 +296,30 @@ public sealed record ReportCostAmountView(string Category, decimal Amount);
 // order or the store and are not shared out to products.
 public sealed record ReportCostProductView(Guid? VariantId, string Title, string Sku, string Barcode, decimal Commission, decimal Discount, decimal Coupon, int Records);
 
+// Sipariş Kârlılık Analizi: each order of the period with what it leaves. Sort: date (default), amount, profit,
+// profitOnCost or margin; Search matches the order number or a line's title, barcode or stock code.
+public sealed record ReportOrderProfitQuery(DateOnly? From, DateOnly? To, IReadOnlyList<string>? PlatformCodes, string? Search, string? Sort, bool Descending, int Page, int PageSize);
+
+// One charge of an order: Estimated when it is not the marketplace's own figure yet, Source where it comes from.
+public sealed record ReportOrderProfitCostView(string Key, string Label, decimal Amount, bool Estimated, string? Source);
+
+// One line: the kept units and their paid amount, the commission rate and amount the marketplace sent (null: none), the
+// variant's current cost and VAT rate.
+public sealed record ReportOrderProfitLineView(Guid? VariantId, Guid? ProductId, string Title, string? Barcode, string Sku, decimal Quantity, decimal ReturnedQuantity,
+    decimal Amount, decimal? CommissionRate, decimal? Commission, decimal? CostPrice, decimal VatRate, string? ImageUrl = null, string? Options = null);
+
+// Amount: what the customer kept paying (returned units out). Cost: the kept units' product cost (null when a line has
+// none, and so Profit). ProfitOnCost = Profit / Cost, Margin = Profit / Amount, in per cent. State: SOLD,
+// PARTLY_RETURNED or RETURNED. MicroExport: an order of a storefront abroad.
+public sealed record ReportOrderProfitView(Guid OrderId, string OrderNumber, string PlatformCode, string StoreName, string? StoreFront, bool MicroExport,
+    DateTimeOffset OrderedAt, string State, decimal Amount, decimal? Cost, decimal? Profit, decimal? ProfitOnCost, decimal? Margin,
+    IReadOnlyList<ReportOrderProfitCostView> Costs, IReadOnlyList<ReportOrderProfitLineView> Lines);
+
+// A page of orders and the totals of every order the filter keeps (MissingCost: orders whose profit is unknown).
+public sealed record ReportOrderProfitPage(IReadOnlyList<ReportOrderProfitView> Items, int TotalCount, int Page, int PageSize, decimal Amount, decimal Profit, int MissingCost);
+
 public interface IReportsService
 {
     Task<ServiceResult<ReportSalesView>> SalesAsync(Guid tenantId, ReportSalesQuery query, CancellationToken cancellationToken);
+    Task<ServiceResult<ReportOrderProfitPage>> OrderProfitabilityAsync(Guid tenantId, ReportOrderProfitQuery query, CancellationToken cancellationToken);
 }

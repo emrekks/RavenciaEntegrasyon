@@ -11,6 +11,7 @@ import {
   bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow
 } from './report-format'
+import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -20,8 +21,8 @@ import './reports.css'
 // The report as tabs: an overview, then one tab per area with its own breakdown (Ürünler and Operasyon have sub-tabs),
 // A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
 // lands on the same tab.
-type ViewKey = 'overview' | 'geo' | 'products' | 'profit' | 'ops' | 'customers'
-const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'profit', 'ops', 'customers']
+type ViewKey = 'overview' | 'geo' | 'products' | 'profit' | 'orders' | 'ops' | 'customers'
+const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'profit', 'orders', 'ops', 'customers']
 type ProductSub = 'products' | 'brands'
 type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices' | 'stock'
 type DetailKey = 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
@@ -149,6 +150,7 @@ export function ReportsPage() {
             : view === 'geo' ? <Geography data={data} />
             : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={next => go('products', next)} />
             : view === 'profit' ? <ProfitView data={data} />
+            : view === 'orders' ? <OrderProfitability from={range.from} to={range.to} platforms={platforms} />
             : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
             : <CustomersView data={data} />}
         </div>
@@ -170,6 +172,7 @@ function reportTabs(data: ReportSales): ReportTab[] {
     { value: 'geo', label: 'Coğrafya', icon: 'globe' },
     { value: 'products', label: 'Ürünler', icon: 'products' },
     { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
+    { value: 'orders', label: 'Sipariş Kârlılığı', icon: 'orders' },
     { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
     { value: 'customers', label: 'Müşteriler', icon: 'users' }
   ]

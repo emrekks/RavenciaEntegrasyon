@@ -84,7 +84,7 @@ internal static class ReportCosts
     internal const decimal InternationalServiceFeeRate = 0.06m;
     internal const decimal StoppageRate = 0.01m;
     // The VAT inside Trendyol's invoices (commission, cargo, service fee, advertising).
-    private const decimal ExpenseVatRate = 20m;
+    internal const decimal ExpenseVatRate = 20m;
 
     private static readonly Dictionary<string, string> Labels = new(StringComparer.Ordinal)
     {
@@ -319,7 +319,7 @@ internal static class ReportCosts
             total, commissionView, cargoView, lineViews, channels, productViews, netVat);
     }
 
-    private static bool IsCommissionInvoice(ReportFinanceRow row) =>
+    internal static bool IsCommissionInvoice(ReportFinanceRow row) =>
         row.Source == TrendyolFinanceRequestContract.OtherFinancials
         && string.Equals(row.RequestedType, TrendyolFinanceCategorizer.DeductionInvoices, StringComparison.OrdinalIgnoreCase)
         && row.Category == MarketplaceFinanceCategories.Commission;
@@ -379,10 +379,10 @@ internal static class ReportCosts
         input.Channels.TryGetValue(connectionId, out var channel) && channel.PlatformCode == "TRENDYOL" && !channel.IsTest;
 
     // The VAT inside a VAT-inclusive amount at a rate in percent, and a line's kept sale without its VAT.
-    private static decimal Vat(decimal amount, decimal rate) => rate > 0 ? amount * rate / (100m + rate) : 0m;
-    private static decimal VatFree(ReportBuilder.LineFact line) => line.KeptAmount - Vat(line.KeptAmount, line.Row.VatRate);
+    internal static decimal Vat(decimal amount, decimal rate) => rate > 0 ? amount * rate / (100m + rate) : 0m;
+    internal static decimal VatFree(ReportBuilder.LineFact line) => line.KeptAmount - Vat(line.KeptAmount, line.Row.VatRate);
 
-    private static bool IsInternationalFee(ReportFinanceRow row) =>
+    internal static bool IsInternationalFee(ReportFinanceRow row) =>
         TrendyolFinanceCategorizer.Fold(row.TransactionType).Contains("uluslararasi", StringComparison.Ordinal);
 
     private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);

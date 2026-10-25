@@ -25,6 +25,18 @@ public static class ReportsEndpoints
             var result = await service.SalesAsync(tenant.TenantId, new ReportSalesQuery(start, end, Split(platformCodes), ids, granularity, includeTest ?? false), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
+        // Sipariş Kârlılık Analizi: the period's orders with each one's profit, a page at a time.
+        api.MapGet("/reports/order-profitability", async (HttpContext http, IReportsService service, string? from, string? to, string? platformCodes, string? search, string? sort, string? dir, int? page, int? limit) =>
+        {
+            if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            if (!MarketplaceHub.Api.Dashboard.DashboardEndpoints.TryDay(from, out var start) || !MarketplaceHub.Api.Dashboard.DashboardEndpoints.TryDay(to, out var end))
+                return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_RANGE_INVALID", "Tarihler yyyy-AA-gg biçiminde olmalıdır.", 400);
+            if (page is < 0 or > 100_000 || limit is not null and (< 1 or > 200) || sort is not (null or "" or "date" or "amount" or "profit" or "profitOnCost" or "margin") || dir is not (null or "" or "asc" or "desc"))
+                return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_QUERY_INVALID", "Sayfa, sıralama ya da yön geçersiz.", 400);
+            var result = await service.OrderProfitabilityAsync(tenant.TenantId, new ReportOrderProfitQuery(start, end, Split(platformCodes), search?.Length > 120 ? search[..120] : search,
+                sort, dir != "asc", page ?? 0, limit ?? 50), http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
+        });
         return endpoints;
     }
 
