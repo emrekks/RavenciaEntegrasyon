@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal } from '../../shared/components'
+import { Busy, ErrorBox, Modal, UiIcon } from '../../shared/components'
+import { copyText } from '../../shared/copy-text'
 import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -31,8 +32,11 @@ export function orderProfitQuery(filters: { from: string; to: string; platforms:
   return query.toString()
 }
 
-// "Renk: Siyah | Beden: M" as "Siyah · M".
-export const optionText = (options: string | null) => options?.split('|').map(part => part.split(':').slice(1).join(':').trim()).filter(Boolean).join(' · ') ?? ''
+// "Renk: Siyah | Beden: M | Kumaş: Pamuk" as "Siyah · M": only the colour and the size; a variant's other attributes stay out.
+const shownOption = /^(renk|beden|numara|color|colour|size|web color)$/i
+export const optionText = (options: string | null) => options?.split('|')
+  .map(part => { const [key, ...rest] = part.split(':'); return shownOption.test(key.trim()) ? rest.join(':').trim() : '' })
+  .filter(Boolean).join(' · ') ?? ''
 
 export function OrderProfitability({ from, to, platforms }: { from: string; to: string; platforms: string[] | null }) {
   const [search, setSearch] = useState('')
@@ -72,7 +76,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
     {data && data.items.length > 0 && <div className="reports-table-wrap"><table className="reports-table reports-order-table">
       <thead><tr><th scope="col">Sipariş Numarası</th>{header('date', 'Sipariş Tarihi')}{header('amount', 'Sipariş Tutarı')}{header('profit', 'Kâr Tutarı')}{header('profitOnCost', 'Kâr Oranı')}{header('margin', 'Kâr Marjı')}<th scope="col"><span className="reports-sr">Ayrıntı</span></th></tr></thead>
       <tbody>{data.items.map(item => <tr key={item.orderId}>
-        <th scope="row"><span className="reports-order-number"><PlatformSquareMark code={item.platformCode} name={platformName(item.platformCode)} />{item.orderNumber}
+        <th scope="row"><span className="reports-order-number"><PlatformSquareMark code={item.platformCode} name={platformName(item.platformCode)} />{item.orderNumber}<CopyNumber value={item.orderNumber} />
           {item.microExport && <em className="reports-order-badge is-micro" title={item.storeFront ?? undefined}>Mikro</em>}
           {stateText[item.state] && <em className="reports-order-badge is-return">{stateText[item.state]}</em>}</span></th>
         <td>{formatIstanbul(item.orderedAt, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
@@ -90,6 +94,16 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
     </div>}
     {open && <OrderProfitModal order={open} onClose={() => setOpen(null)} />}
   </section>
+}
+
+// The order number's copy button: a check for a moment once it is on the clipboard.
+function CopyNumber({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => { if (!await copyText(value)) return; setCopied(true); window.setTimeout(() => setCopied(false), 1400) }
+  return <button type="button" className="reports-order-copy" title={copied ? 'Kopyalandı' : 'Kopyala'}
+    aria-label={copied ? `Sipariş numarası ${value} kopyalandı` : `Sipariş numarası ${value} kopyala`} onClick={() => void copy()}>
+    <UiIcon name={copied ? 'check' : 'copy'} size={14} />
+  </button>
 }
 
 // Sipariş Analizi: the order's items and every charge with where it comes from, and what is left.

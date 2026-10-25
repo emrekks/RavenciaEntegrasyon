@@ -11,6 +11,7 @@ describe('order profitability', () => {
 
   it('writes a variant\'s options and a returned order\'s state', () => {
     expect(optionText('Renk: Siyah | Beden: M')).toBe('Siyah · M')
+    expect(optionText('Renk: Zümrüt | Beden: L | Astar Durumu: Astarsız | Kalıp: Regular | Menşei: TR')).toBe('Zümrüt · L')
     expect(optionText(null)).toBe('')
     expect(stateText.RETURNED).toBe('İade')
     expect(stateText.SOLD).toBeNull()
