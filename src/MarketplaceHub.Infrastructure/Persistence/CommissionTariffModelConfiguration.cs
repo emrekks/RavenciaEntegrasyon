@@ -31,5 +31,14 @@ internal static class CommissionTariffModelConfiguration
             entity.HasIndex(x => new { x.TariffId, x.SellerSku });
             entity.HasOne<CommissionTariff>().WithMany().HasForeignKey(x => new { x.TenantId, x.TariffId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
+        builder.Entity<PromotionOfferFile>(entity =>
+        {
+            entity.ToTable("promotion_offer_files", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlatformCode).HasMaxLength(64); entity.Property(x => x.Kind).HasMaxLength(16); entity.Property(x => x.PeriodText).HasMaxLength(120);
+            entity.Property(x => x.FileName).HasMaxLength(260); entity.Property(x => x.FileHash).HasMaxLength(64); entity.Property(x => x.RowsJson).HasColumnType("jsonb");
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.Kind });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

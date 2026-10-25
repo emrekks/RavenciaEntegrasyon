@@ -12,6 +12,7 @@ import {
   type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow
 } from './report-format'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
+import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../marketplace/integrations/PromotionOffersPanel'
 import { SalesMap } from './SalesMap'
 import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -27,6 +28,7 @@ function CommissionTariffs({ data }: { data: ReportSales }) {
   const [platform, setPlatform] = useState(() => platforms.find(code => commissionTariffPlatforms.has(code)) ?? platforms[0] ?? '')
   const stores = live.filter(channel => channel.platformCode === platform)
   const [storeId, setStoreId] = useState('')
+  const [section, setSection] = useState<'TARIFF' | PromotionKind>('TARIFF')
   const store = stores.find(channel => channel.id === storeId) ?? stores[0]
   return <div className="reports-tariffs">
     {platforms.length > 0 && <div className="reports-segmented reports-tariff-platforms" role="group" aria-label="Pazaryeri">
@@ -42,10 +44,22 @@ function CommissionTariffs({ data }: { data: ReportSales }) {
         {stores.length > 1 && <label className="reports-field"><span>Mağaza</span><select value={store.id} onChange={event => setStoreId(event.target.value)}>
           {stores.map(channel => <option key={channel.id} value={channel.id}>{channel.displayName}</option>)}
         </select></label>}
-        <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
+        <div className="reports-promotions">
+          <nav className="reports-promotion-nav" aria-label="Promosyon Kârlılık Analizi">
+            <strong>Promosyon Kârlılık Analizi</strong>
+            {promotionSections.map(([key, label]) => <button key={key} type="button" aria-current={key === section ? 'page' : undefined} onClick={() => setSection(key)}>{label}</button>)}
+          </nav>
+          <div className="reports-promotion-body">
+            {section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
+              : <PromotionOffersPanel key={`${store.id}-${section}`} connectionId={store.id} kind={section} />}
+          </div>
+        </div>
       </>}
   </div>
 }
+
+// The promotion analysis pages beside each other: the weekly commission tariff first, then Trendyol's offers.
+const promotionSections: Array<['TARIFF' | PromotionKind, string]> = [['TARIFF', 'Ürün Komisyon Tarifesi'], ...(Object.entries(promotionTitles) as Array<[PromotionKind, string]>)]
 
 // The report as tabs: an overview, then one tab per area with its own breakdown (Ürünler and Operasyon have sub-tabs),
 // and the commission tariffs. A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
@@ -202,7 +216,7 @@ function reportTabs(data: ReportSales): ReportTab[] {
     { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
     { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
     { value: 'customers', label: 'Müşteriler', icon: 'users' },
-    { value: 'tariffs', label: 'Tarifeler', icon: 'invoice' }
+    { value: 'tariffs', label: 'Promosyon Analizi', icon: 'invoice' }
   ]
 }
 

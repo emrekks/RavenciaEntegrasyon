@@ -74,6 +74,7 @@ public static class DependencyInjection
         services.AddScoped<IShopifyOrderCsvImportService, ShopifyOrderCsvImportService>();
         services.AddScoped<ICommissionTariffService, CommissionTariffService>();
         services.AddScoped<ICommissionTariffLookup, CommissionTariffLookup>();
+        services.AddScoped<IPromotionOfferService, PromotionOfferService>();
         services.AddScoped<IProductTransferService, ProductTransferService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();

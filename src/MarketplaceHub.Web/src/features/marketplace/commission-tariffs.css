@@ -131,3 +131,14 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover hr { width: 100%; margin: 2px 0; border: 0; border-top: 1px dashed var(--rv-color-border); }
 .app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover > button { width: 100%; min-height: 36px; height: 36px; justify-content: center; font-size: 13px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover > button.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border)); }
+
+/* Promotion offers (Plus, advantage label, flash): each price a card to read, not to pick. */
+.app-shell.stitch-shell main .commission-tariffs .commission-choice.is-static { cursor: default; }
+.app-shell.stitch-shell main .commission-tariffs .promotion-table { min-width: 900px; }
+.app-shell.stitch-shell main .commission-tariffs .promotion-product-name { color: var(--rv-color-ink); font-weight: 600; line-height: 1.35; }
+.app-shell.stitch-shell main .commission-tariffs .promotion-table small.promotion-code { font-family: inherit; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .commission-tariffs .promotion-gain { display: inline-flex; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-style: normal; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .commission-tariffs .promotion-gain.is-up { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+.app-shell.stitch-shell main .commission-tariffs .promotion-gain.is-down { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.app-shell.stitch-shell main .commission-tariffs .promotion-stars { color: var(--rv-color-muted); font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .promotion-stars:not(.is-0) { color: var(--rv-color-warning); }

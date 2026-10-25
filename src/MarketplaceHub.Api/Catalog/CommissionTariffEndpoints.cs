@@ -17,8 +17,54 @@ internal static class CommissionTariffEndpoints
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
         api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync);
+        // Promotion offers (Plus, advantage label, flash): the latest file of each kind, the kind told by its columns.
+        api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync);
+        api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery();
+        api.MapGet("/connections/{connectionId:guid}/promotion-offers/{kind}", OfferAsync);
+        api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync);
         return api;
     }
+
+    private static async Task<IResult> ListOffersAsync(Guid connectionId, HttpContext http, IPromotionOfferService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        return Result(await service.ListAsync(tenant.TenantId, connectionId, http.RequestAborted));
+    }
+
+    private static async Task<IResult> OfferAsync(Guid connectionId, string kind, HttpContext http, IPromotionOfferService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (OfferKind(kind) is not { } known) return Problem(http, new("PROMOTION_KIND_INVALID", "Promosyon türü PLUS, ADVANTAGE ya da FLASH olmalıdır.", 400));
+        return Result(await service.DetailAsync(tenant.TenantId, connectionId, known, http.RequestAborted));
+    }
+
+    private static async Task<IResult> DeleteOfferAsync(Guid connectionId, string kind, HttpContext http, IPromotionOfferService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (OfferKind(kind) is not { } known) return Problem(http, new("PROMOTION_KIND_INVALID", "Promosyon türü PLUS, ADVANTAGE ya da FLASH olmalıdır.", 400));
+        return Result(await service.DeleteAsync(tenant.TenantId, tenant.UserId, connectionId, known, http.TraceIdentifier, http.RequestAborted));
+    }
+
+    private static async Task<IResult> UploadOfferAsync(Guid connectionId, HttpContext http, IPromotionOfferService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])) return Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400));
+        var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+        if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = PromotionOfferService.MaximumFileBytes + 128 * 1024;
+        if (http.Request.ContentLength is > PromotionOfferService.MaximumFileBytes + 128 * 1024)
+            return Problem(http, new("PROMOTION_OFFER_FILE_SIZE", "Dosya en fazla 10 MiB olabilir.", 413));
+        if (!http.Request.HasFormContentType) return Problem(http, new("PROMOTION_OFFER_FORM_REQUIRED", "multipart/form-data biçiminde bir .xlsx dosyası gönderilmelidir.", 400));
+        var form = await http.Request.ReadFormAsync(http.RequestAborted);
+        var file = form.Files.GetFile("file");
+        if (file is null || file.Length <= 0) return Problem(http, new("PROMOTION_OFFER_FILE_REQUIRED", "Promosyon dosyasını seçin.", 400));
+        if (file.Length > PromotionOfferService.MaximumFileBytes) return Problem(http, new("PROMOTION_OFFER_FILE_SIZE", "Dosya en fazla 10 MiB olabilir.", 413));
+        if (!string.Equals(Path.GetExtension(Path.GetFileName(file.FileName)), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            return Problem(http, new("PROMOTION_OFFER_EXTENSION_INVALID", "Yalnız Trendyol'dan indirilen .xlsx dosyası kabul edilir.", 415));
+        await using var input = file.OpenReadStream();
+        return Result(await service.UploadAsync(tenant.TenantId, tenant.UserId, connectionId, file.FileName, input, http.TraceIdentifier, http.RequestAborted));
+    }
+
+    private static string? OfferKind(string kind) => Domain.PromotionOfferKinds.All.FirstOrDefault(x => x.Equals(kind, StringComparison.OrdinalIgnoreCase));
 
     private static async Task<IResult> ExportAsync(Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, HttpContext http, ICommissionTariffService service)
     {
