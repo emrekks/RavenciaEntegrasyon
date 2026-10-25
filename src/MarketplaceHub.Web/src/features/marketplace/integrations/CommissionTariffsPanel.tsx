@@ -543,13 +543,35 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
                 </button>
               </td>
             })}
-            <td />
+            <td><ModelOwnPrice rows={group} picks={picks} onPick={price => setPicks(current => {
+              const next = new Map(current)
+              for (const row of group) { if (price === null) next.delete(row.id); else next.set(row.id, { tier: null, price }) }
+              return next
+            })} /></td>
           </tr>
           {open && group.map(row => variantRow(row, true))}
         </Fragment>
       })}</tbody>
     </table></div>}
     {rows && pageCount > 1 && <div className="commission-pager"><button type="button" className="secondary" disabled={page === 0} onClick={() => onPage(page - 1)}>Önceki</button><span>{(page + 1).toLocaleString('tr-TR')} / {pageCount.toLocaleString('tr-TR')}</span><button type="button" className="secondary" disabled={page + 1 >= pageCount} onClick={() => onPage(page + 1)}>Sonraki</button></div>}
+  </div>
+}
+
+// A price of the seller's own for all of a model's sizes at once: each size takes it as its own pick (and its own field
+// shows it when opened); what it leaves is the range over the sizes, and the sizes it puts in no band are counted.
+function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; picks: Map<string, TariffPick>; onPick: (price: number | null) => void }) {
+  const shared = rows.map(row => picks.get(row.id)?.price ?? null)
+  const [text, setText] = useState(() => shared[0] !== null && shared.every(price => price === shared[0]) ? String(shared[0]).replace('.', ',') : '')
+  const parse = (value: string) => { const number = Number(value.trim().replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return value.trim() && Number.isFinite(number) && number > 0 ? number : null }
+  const price = parse(text)
+  const choices = price === null ? [] : rows.map(row => ownChoice(row, price))
+  const banded = choices.filter((choice): choice is CommissionChoice => choice !== null)
+  const tiersHit = [...new Set(banded.map(choice => choice.tier))].sort()
+  const lefts = banded.flatMap(choice => choice.remaining === null ? [] : [choice.remaining])
+  return <div className={`commission-own${price !== null && shared.every(value => value === price) ? ' is-picked' : ''}`}>
+    <input type="text" inputMode="decimal" placeholder="Tüm bedenlere fiyat" value={text} aria-label={`${rows[0]?.productName ?? 'Model'} için tüm bedenlere kendi fiyatın`}
+      onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
+    {text.trim() !== '' && (banded.length ? <small>{tiersHit.map(tier => `${tier}.`).join(', ')} bant · {rows.length} beden<b>{lefts.length ? `${amountRange(lefts)} kalır` : 'Maliyet girilmemiş'}</b>{banded.length < rows.length && <span className="commission-warn">{rows.length - banded.length} beden hiçbir banda düşmüyor</span>}</small> : <small className="commission-warn">Hiçbir banda düşmüyor</small>)}
   </div>
 }
 
