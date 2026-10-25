@@ -326,8 +326,9 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
     }
     return next
   })
-  // The models whose variants are folded away.
-  const [closed, setClosed] = useState<Set<string>>(() => new Set())
+  // The models whose variants are shown: a model starts folded, its row alone, so a page of 50 models (each colour with
+  // all its sizes and their band cards) does not draw thousands of cards at once.
+  const [opened, setOpened] = useState<Set<string>>(() => new Set())
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   const download = useMutation({
     mutationFn: () => hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
@@ -429,7 +430,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
         }
         if (group.length === 1) return variantRow(group[0], false)
         const first = group.find(row => row.imageUrl) ?? group[0]
-        const open = !closed.has(key)
+        const open = opened.has(key)
         const prices = group.flatMap(row => row.basisPrice === null ? [] : [row.basisPrice])
         // The model's row: its picture, name and code, how many variants it has, and each band over all of them.
         return <Fragment key={key}>
@@ -439,7 +440,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, searc
               <span>
                 <span className="commission-product">{first.productName ?? first.barcode}</span>
                 <small className="technical-text">{group[0].modelCode}{first.color ? ` · ${first.color}` : ''}</small>
-                <button type="button" className="commission-model-toggle" aria-expanded={open} onClick={() => setClosed(current => { const next = new Set(current); if (open) next.add(key); else next.delete(key); return next })}>
+                <button type="button" className="commission-model-toggle" aria-expanded={open} onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}>
                   <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />{group.length.toLocaleString('tr-TR')} {first.color ? 'beden' : 'varyant'}
                 </button>
               </span>
