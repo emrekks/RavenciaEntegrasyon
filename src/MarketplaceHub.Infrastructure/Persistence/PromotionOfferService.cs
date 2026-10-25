@@ -98,7 +98,11 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
             var barcodes = rows.Select(x => x.Barcode).ToArray();
             var facts = await VariantFactsAsync(tenantId, barcodes, cancellationToken);
             var tariff = await TariffRowsAsync(tenantId, connectionId, barcodes, now, cancellationToken);
-            return ServiceResult<PromotionOfferDetail>.Ok(new(summary, null, rows.Select(row => AdvantageView(row, facts.Of(row.Barcode), tariff.GetValueOrDefault(row.Barcode))).ToList(), null));
+            // A product outside the commission tariff pays one rate at any price: its current rate, read where it is known.
+            var outside = rows.Where(row => row.InTariff == false && !tariff.ContainsKey(row.Barcode)).Select(row => row.Barcode).ToArray();
+            var fixedRates = outside.Length == 0 ? [] : await CurrentRatesAsync(tenantId, connectionId, outside, cancellationToken);
+            return ServiceResult<PromotionOfferDetail>.Ok(new(summary, null, rows.Select(row => AdvantageView(row, facts.Of(row.Barcode), tariff.GetValueOrDefault(row.Barcode),
+                fixedRates.TryGetValue(row.Barcode, out var rate) ? rate : null)).ToList(), null));
         }
 
         var flashRows = JsonSerializer.Deserialize<List<FlashOfferRow>>(file.RowsJson, Json) ?? [];
@@ -130,7 +134,7 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
                 slots.Add(new(slot, start, end, flashRate is { } known2 ? Ranged(flashPrice, known2, low, high) : new PromotionPriceView(flashPrice, null, null, null)));
             }
             views.Add(new FlashOfferView(row.ModelCode, row.Barcodes, row.ProductName, known.Select(x => x.Color).FirstOrDefault(x => x is not null), known.Select(x => x.ImageUrl).FirstOrDefault(x => x is not null),
-                row.Stock, low, high, row.InTariff, row.Campaign, current, slots, row.Promotions));
+                row.Stock, low, high, row.InTariff, row.Campaign, current, slots, row.Promotions, row.Category, row.Brand));
         }
         return ServiceResult<PromotionOfferDetail>.Ok(new(summary, null, null, views));
     }
@@ -153,18 +157,20 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
         var current = row.BasisPrice is { } basis && row.CurrentRate is { } rate ? Ranged(basis, rate, fact?.Cost, fact?.Cost) : null;
         var plus = row.PlusPriceLimit is { } limit && row.PlusRate is { } plusRate ? Ranged(limit, plusRate, fact?.Cost, fact?.Cost) : null;
         return new(row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, row.Stock, fact?.Cost, current, plus,
-            current?.Remaining is { } before && plus?.Remaining is { } after ? after - before : null, row.Promotions);
+            current?.Remaining is { } before && plus?.Remaining is { } after ? after - before : null, row.Promotions, row.Category, row.Brand);
     }
 
     // Each star priced at its ceiling with the commission tariff's band there; the stars the customer's price earns now.
-    internal static AdvantageOfferView AdvantageView(AdvantageOfferRow row, VariantFact? fact, CommissionTariffRow? tariff)
+    // FixedRate: the one rate of a product outside the commission tariff, at any price (null when it is not known).
+    internal static AdvantageOfferView AdvantageView(AdvantageOfferRow row, VariantFact? fact, CommissionTariffRow? tariff, decimal? fixedRate = null)
     {
+        PromotionPriceView Priced(decimal price) => tariff is null && row.InTariff == false && fixedRate is { } rate ? Ranged(price, rate, fact?.Cost, fact?.Cost) : PricedByTariff(price, tariff, fact?.Cost);
         var stars = new List<AdvantageStarView>(3);
         foreach (var (star, min, max) in new[] { (1, row.Star1Min, row.Star1Max), (2, row.Star2Min, row.Star2Max), (3, (decimal?)null, row.Star3Max) })
-            if (max is { } ceiling and > 0) stars.Add(new(star, min, ceiling, PricedByTariff(ceiling, tariff, fact?.Cost)));
-        var current = row.CustomerPrice is { } price ? PricedByTariff(price, tariff, fact?.Cost) : null;
+            if (max is { } ceiling and > 0) stars.Add(new(star, min, ceiling, Priced(ceiling)));
+        var current = row.CustomerPrice is { } price ? Priced(price) : null;
         var earned = row.CustomerPrice is { } customer ? stars.Where(x => customer <= x.Max).Select(x => x.Star).DefaultIfEmpty(0).Max() : 0;
-        return new(row.Barcode, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, row.Stock, fact?.Cost, row.InTariff, earned, current, stars, row.Promotions);
+        return new(row.Barcode, row.ModelCode, row.ProductName, row.Size, fact?.Color, fact?.ImageUrl, row.Stock, fact?.Cost, row.InTariff, earned, current, stars, row.Promotions, row.Category, row.Brand);
     }
 
     internal static PromotionPriceView Ranged(decimal price, decimal rate, decimal? lowCost, decimal? highCost)
@@ -183,6 +189,46 @@ public sealed class PromotionOfferService(AppDbContext db, TimeProvider timeProv
     internal static DateTimeOffset? ParseLocal(string? text) =>
         text is not null && DateTime.TryParseExact(text.Trim(), ["dd/MM/yyyy HH:mm", "d/M/yyyy HH:mm", "dd.MM.yyyy HH:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
             ? new DateTimeOffset(local, CommissionTariffFileParser.TurkeyOffset).ToUniversalTime() : null;
+
+    // Each barcode's current commission rate where the panel has it: the latest Plus file (Güncel Komisyon), else the
+    // latest flash file (Mevcut Komisyon), else the rate Trendyol sent on the barcode's latest order line of the last 120 days.
+    private async Task<Dictionary<string, decimal>> CurrentRatesAsync(Guid tenantId, Guid connectionId, string[] barcodes, CancellationToken cancellationToken)
+    {
+        var wanted = barcodes.ToHashSet(StringComparer.Ordinal);
+        var result = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var files = await db.PromotionOfferFiles.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.Kind == PromotionOfferKinds.Plus || x.Kind == PromotionOfferKinds.Flash))
+            .OrderByDescending(x => x.UploadedAt).ToListAsync(cancellationToken);
+        foreach (var file in files.Where(x => x.Kind == PromotionOfferKinds.Plus).Take(1))
+            foreach (var row in JsonSerializer.Deserialize<List<PlusOfferRow>>(file.RowsJson, Json) ?? [])
+                if (row.CurrentRate is { } rate && wanted.Contains(row.Barcode)) result.TryAdd(row.Barcode, rate);
+        foreach (var file in files.Where(x => x.Kind == PromotionOfferKinds.Flash).Take(1))
+            foreach (var row in JsonSerializer.Deserialize<List<FlashOfferRow>>(file.RowsJson, Json) ?? [])
+                if (row.CurrentRate is { } rate)
+                    foreach (var code in row.Barcodes.Where(wanted.Contains)) result.TryAdd(code, rate);
+        var missing = wanted.Where(code => !result.ContainsKey(code)).ToArray();
+        if (missing.Length == 0) return result;
+        var since = timeProvider.GetUtcNow().AddDays(-120).ToUniversalTime();
+        var lines = await (from line in db.OrderLines.AsNoTracking()
+                           join order in db.Orders.AsNoTracking() on new { line.TenantId, Id = line.OrderId } equals new { order.TenantId, order.Id }
+                           where line.TenantId == tenantId && order.ConnectionId == connectionId && order.OrderedAt >= since
+                               && line.Barcode != null && missing.Contains(line.Barcode) && line.SourceSnapshotJson != null
+                           orderby order.OrderedAt descending
+                           select new { line.Barcode, line.SourceSnapshotJson }).ToListAsync(cancellationToken);
+        foreach (var line in lines)
+        {
+            if (result.ContainsKey(line.Barcode!)) continue;
+            try
+            {
+                using var json = JsonDocument.Parse(line.SourceSnapshotJson!);
+                if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("commission", out var value)
+                    && (value.ValueKind == JsonValueKind.Number ? value.TryGetDecimal(out var rate) : value.ValueKind == JsonValueKind.String && CommissionTariffFileParser.TryParseNumber(value.GetString()!, out rate))
+                    && rate is > 0 and <= 100)
+                    result[line.Barcode!] = rate;
+            }
+            catch (JsonException) { }
+        }
+        return result;
+    }
 
     // Each barcode's row of the commission tariffs in force at `at`, the latest upload first.
     private async Task<Dictionary<string, CommissionTariffRow>> TariffRowsAsync(Guid tenantId, Guid connectionId, string[] barcodes, DateTimeOffset at, CancellationToken cancellationToken)

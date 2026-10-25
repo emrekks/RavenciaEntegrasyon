@@ -54,6 +54,10 @@ public sealed class PromotionOfferTests
         Assert.Equal((68.01m, 160.62m), (view.Stars[2].Price.Commission!.Value, view.Stars[2].Price.Remaining!.Value));
         // Without a commission tariff the rate at a star price is not known, never guessed.
         Assert.Null(PromotionOfferService.AdvantageView(row, new(160m, null, null), null).Stars[0].Price.Rate);
+        // A product outside the tariff ("Yok") pays its one current rate at every star price; one inside it does not.
+        var outside = row with { InTariff = false };
+        Assert.Equal([17.5m, 17.5m, 17.5m], PromotionOfferService.AdvantageView(outside, new(160m, null, null), null, 17.5m).Stars.Select(x => x.Price.Rate!.Value));
+        Assert.Null(PromotionOfferService.AdvantageView(row, new(160m, null, null), null, 17.5m).Stars[0].Price.Rate);
     }
 
     [Fact]

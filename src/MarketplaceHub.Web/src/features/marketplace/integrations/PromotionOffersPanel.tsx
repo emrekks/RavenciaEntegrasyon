@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { Fragment, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { Busy, ErrorBox, useConfirmDialog } from '../../../shared/components'
@@ -18,7 +18,7 @@ export type PromotionSummary = { kind: PromotionKind; fileName: string; uploaded
 // Rate null: the commission at that price is not known (no commission tariff covers it). RemainingHigh: the most a
 // model's variants leave when their costs differ (remaining is then the least).
 export type PromotionPrice = { price: number; rate: number | null; commission: number | null; remaining: number | null; remainingHigh?: number | null }
-type Product = { modelCode: string | null; productName: string | null; color: string | null; imageUrl: string | null; stock: number | null; promotions: string | null }
+type Product = { modelCode: string | null; productName: string | null; color: string | null; imageUrl: string | null; stock: number | null; promotions: string | null; category?: string | null; brand?: string | null }
 export type PlusOffer = Product & { barcode: string; sellerSku: string | null; size: string | null; costPrice: number | null; now: PromotionPrice | null; plus: PromotionPrice | null; gain: number | null }
 export type AdvantageStar = { star: number; min: number | null; max: number; price: PromotionPrice }
 export type AdvantageOffer = Product & { barcode: string; size: string | null; costPrice: number | null; inTariff: boolean | null; currentStars: number; now: PromotionPrice | null; stars: AdvantageStar[] }
@@ -164,21 +164,101 @@ export function groupOffers<T extends { modelCode: string | null; color: string 
   return [...groups]
 }
 
-// Search, a filter and a page of 50 model groups over a list.
-function useGroupedListing<T extends { modelCode: string | null; color: string | null }>(rows: T[], keep: (row: T, search: string, filter: string) => boolean, keyOf: (row: T) => string) {
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('')
+// The filter of a promotion page, as the commission tariff's: name, barcode, model code, a stock range, category and
+// brand, and a column (an offered price) with a range of what it leaves in lira and as a share of the price.
+export type OfferFilter = { name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; column: string; minProfit: string; maxProfit: string; minShare: string; maxShare: string }
+export const noOfferFilter: OfferFilter = { name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '', column: '', minProfit: '', maxProfit: '', minShare: '', maxShare: '' }
+type OfferRow = Product & { barcode?: string; barcodes?: string[]; sellerSku?: string | null }
+
+const number = (text: string) => {
+  const cleaned = text.trim().replace(',', '.').replace('−', '-')
+  const value = Number(cleaned)
+  return cleaned && Number.isFinite(value) ? value : null
+}
+const has = (value: string | null | undefined, term: string) => !term.trim() || (value ?? '').toLocaleLowerCase('tr').includes(term.trim().toLocaleLowerCase('tr'))
+
+// Whether a row passes the filter; prices(row, column) are the offered prices of the picked column (a model's sizes may
+// leave different amounts: the least counts). A profit range needs a known commission and cost.
+export function keepOffer<T extends OfferRow>(row: T, filter: OfferFilter, prices: (row: T, column: string) => PromotionPrice[]): boolean {
+  if (!has(row.productName, filter.name) || !has(row.modelCode, filter.model)) return false
+  if (filter.barcode.trim() && ![row.barcode, row.sellerSku, ...(row.barcodes ?? [])].some(code => code && has(code, filter.barcode))) return false
+  if (filter.category && row.category !== filter.category) return false
+  if (filter.brand && row.brand !== filter.brand) return false
+  const minStock = number(filter.minStock), maxStock = number(filter.maxStock)
+  if ((minStock !== null || maxStock !== null) && (row.stock == null || (minStock !== null && row.stock < minStock) || (maxStock !== null && row.stock > maxStock))) return false
+  const ranges = [number(filter.minProfit), number(filter.maxProfit), number(filter.minShare), number(filter.maxShare)] as const
+  if (!filter.column || ranges.every(value => value === null)) return true
+  const [minProfit, maxProfit, minShare, maxShare] = ranges
+  return prices(row, filter.column).some(price => {
+    if (price.remaining === null || price.rate === null) return false
+    const share = price.price > 0 ? price.remaining / price.price * 100 : null
+    return (minProfit === null || price.remaining >= minProfit) && (maxProfit === null || price.remaining <= maxProfit)
+      && (minShare === null || (share !== null && share >= minShare)) && (maxShare === null || (share !== null && share <= maxShare))
+  })
+}
+
+// The filter panel: the fields are typed first and applied with Filtrele (Enter too); Filtreleri Temizle empties them.
+function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; rows: OfferRow[]; columns: Array<[string, string]>; onApply: (filter: OfferFilter) => void }) {
+  const [draft, setDraft] = useState(value)
+  const set = (key: keyof OfferFilter) => (event: { target: { value: string } }) => setDraft(current => ({ ...current, [key]: event.target.value }))
+  const categories = useMemo(() => [...new Set(rows.flatMap(row => row.category ? [row.category] : []))].sort((a, b) => a.localeCompare(b, 'tr')), [rows])
+  const brands = useMemo(() => [...new Set(rows.flatMap(row => row.brand ? [row.brand] : []))].sort((a, b) => a.localeCompare(b, 'tr')), [rows])
+  const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft) }
+  return <form className="commission-filters" onSubmit={apply} aria-label="Ürün filtreleri">
+    <input type="search" placeholder="Ürün adı" value={draft.name} onChange={set('name')} aria-label="Ürün adı" />
+    <input type="search" placeholder="Barkod" value={draft.barcode} onChange={set('barcode')} aria-label="Barkod" />
+    <input type="search" placeholder="Model kodu" value={draft.model} onChange={set('model')} aria-label="Model kodu" />
+    <span className="commission-filter-range">
+      <input type="text" inputMode="numeric" placeholder="Min stok" value={draft.minStock} onChange={set('minStock')} aria-label="En az stok" />
+      <i aria-hidden="true">–</i>
+      <input type="text" inputMode="numeric" placeholder="Max stok" value={draft.maxStock} onChange={set('maxStock')} aria-label="En çok stok" />
+    </span>
+    <select value={draft.category} onChange={set('category')} aria-label="Kategori" disabled={!categories.length}>
+      <option value="">Kategori</option>{categories.map(item => <option key={item} value={item}>{item}</option>)}
+    </select>
+    <select value={draft.brand} onChange={set('brand')} aria-label="Marka" disabled={!brands.length}>
+      <option value="">Marka</option>{brands.map(item => <option key={item} value={item}>{item}</option>)}
+    </select>
+    <select className="commission-filter-band" value={draft.column} onChange={set('column')} aria-label="Kolon seçimi">
+      <option value="">Kolon Seçimi</option>{columns.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+    </select>
+    <button type="button" className="commission-filter-clear" onClick={() => { setDraft(noOfferFilter); onApply(noOfferFilter) }}>Filtreleri Temizle</button>
+    <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
+    {draft.column && <div className="commission-filter-profit">
+      <span className="commission-filter-range">
+        <input type="text" inputMode="decimal" placeholder="Min kâr tutarı" value={draft.minProfit} onChange={set('minProfit')} aria-label="En az kâr tutarı (₺)" />
+        <i aria-hidden="true">–</i>
+        <input type="text" inputMode="decimal" placeholder="Max kâr tutarı" value={draft.maxProfit} onChange={set('maxProfit')} aria-label="En çok kâr tutarı (₺)" />
+      </span>
+      <span className="commission-filter-range">
+        <input type="text" inputMode="decimal" placeholder="Min kâr oranı" value={draft.minShare} onChange={set('minShare')} aria-label="En az kâr oranı (%)" />
+        <i aria-hidden="true">–</i>
+        <input type="text" inputMode="decimal" placeholder="Max kâr oranı" value={draft.maxShare} onChange={set('maxShare')} aria-label="En çok kâr oranı (%)" />
+      </span>
+    </div>}
+    {rows.length > 0 && !categories.length && !brands.length && <p className="commission-filter-note">Kategori ve marka bu dosyada okunmadı: dosya önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
+  </form>
+}
+
+// The filter and a page of 50 model groups over a list.
+function useGroupedListing<T extends OfferRow>(rows: T[], prices: (row: T, column: string) => PromotionPrice[], keyOf: (row: T) => string) {
+  const [filter, setFilter] = useState<OfferFilter>(noOfferFilter)
   const [page, setPage] = useState(0)
-  const shown = useMemo(() => rows.filter(row => keep(row, search, filter)), [rows, search, filter, keep])
+  const shown = useMemo(() => rows.filter(row => keepOffer(row, filter, prices)), [rows, filter, prices])
   const groups = useMemo(() => groupOffers(shown, keyOf), [shown, keyOf])
   const pageCount = Math.max(1, Math.ceil(groups.length / pageSize))
   const current = Math.min(page, pageCount - 1)
-  return {
-    search, filter, shown, groups: groups.slice(current * pageSize, current * pageSize + pageSize), page: current, pageCount, items: shown,
-    onSearch: (value: string) => { setSearch(value); setPage(0) }, onFilter: (value: string) => { setFilter(value); setPage(0) }, onPage: setPage
-  }
+  return { filter, shown, groups: groups.slice(current * pageSize, current * pageSize + pageSize), page: current, pageCount, onFilter: (value: OfferFilter) => { setFilter(value); setPage(0) }, onPage: setPage }
 }
-type Listing = { search: string; filter: string; page: number; pageCount: number; onSearch: (value: string) => void; onFilter: (value: string) => void; onPage: (page: number) => void }
+type Listing = { page: number; pageCount: number; onPage: (page: number) => void }
+
+// The panel and the line of counts over a table.
+function ListingHead<T extends OfferRow>({ listing, rows, columns, summary }: { listing: { filter: OfferFilter; onFilter: (filter: OfferFilter) => void }; rows: T[]; columns: Array<[string, string]>; summary: string }) {
+  return <>
+    <OfferFilters key={JSON.stringify(listing.filter)} value={listing.filter} rows={rows} columns={columns} onApply={listing.onFilter} />
+    <div className="commission-plan-bar"><span className="commission-plan-count" role="status">{summary}</span></div>
+  </>
+}
 
 // A model's prices in one card: the range of its sizes' prices, rates and what they leave.
 function RangeCard({ prices, label }: { prices: PromotionPrice[]; label?: ReactNode }) {
@@ -229,16 +309,6 @@ function GroupedRows<T extends Product>({ groups, label, cells, groupCells }: {
   })}</>
 }
 
-function ListingBar({ listing, filters, summary }: { listing: Listing; filters: Array<[string, string]>; summary: string }) {
-  return <div className="commission-plan-bar">
-    <input className="commission-search" type="search" value={listing.search} onChange={event => listing.onSearch(event.target.value)} placeholder="Barkod, model kodu ya da ürün ara" aria-label="Ürün ara" />
-    <label className="commission-plan-field"><span>Göster</span>
-      <select value={listing.filter} onChange={event => listing.onFilter(event.target.value)}>{filters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-    </label>
-    <span className="commission-plan-count" role="status">{summary}</span>
-  </div>
-}
-
 function Pager({ listing }: { listing: Listing }) {
   if (listing.pageCount <= 1) return null
   return <div className="commission-pager">
@@ -256,22 +326,16 @@ const sizeLabel: RowLabel<{ barcode: string; size: string | null; costPrice: num
 }
 const byBarcode = (row: { barcode: string }) => row.barcode
 
-// Which Plus rows a filter keeps: Plus leaving more than now, less, or no cost to tell.
-export function keepPlus(row: PlusOffer, search: string, filter: string) {
-  if (!matches(row, search)) return false
-  if (filter === 'gain') return row.gain !== null && row.gain > 0
-  if (filter === 'loss') return row.gain !== null && row.gain <= 0
-  if (filter === 'nocost') return row.costPrice === null
-  return true
-}
+const plusColumns: Array<[string, string]> = [['plus', 'Plus Teklifi']]
+export const plusPrices = (row: PlusOffer) => row.plus ? [row.plus] : []
 
 function PlusTable({ rows }: { rows: PlusOffer[] }) {
   const sorted = useMemo(() => byModel(rows, row => row.size), [rows])
-  const listing = useGroupedListing(sorted, keepPlus, byBarcode)
-  const gains = rows.filter(row => row.gain !== null && row.gain > 0).length
-  const losses = rows.filter(row => row.gain !== null && row.gain <= 0).length
+  const listing = useGroupedListing(sorted, plusPrices, byBarcode)
+  const gains = listing.shown.filter(row => row.gain !== null && row.gain > 0).length
+  const losses = listing.shown.filter(row => row.gain !== null && row.gain <= 0).length
   return <div className="commission-rows">
-    <ListingBar listing={listing} filters={[['', 'Tüm ürünler'], ['gain', 'Plus’ta daha çok kalan'], ['loss', 'Plus’ta daha az kalan'], ['nocost', 'Maliyeti girilmemiş']]}
+    <ListingHead listing={listing} rows={rows} columns={plusColumns}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · Plus’ta ${gains.toLocaleString('tr-TR')} ürün daha çok, ${losses.toLocaleString('tr-TR')} ürün daha az bırakıyor`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
       <thead><tr><th>Ürün</th><th>Stok</th><th>Güncel Fiyat</th><th>Plus Teklifi</th><th>Fark</th></tr></thead>
@@ -295,22 +359,20 @@ function PlusTable({ rows }: { rows: PlusOffer[] }) {
 }
 
 export const starText = (stars: number) => stars === 0 ? 'Yıldız yok' : `${'★'.repeat(stars)} ${stars} yıldız`
-
-export function keepAdvantage(row: AdvantageOffer, search: string, filter: string) {
-  return matches(row, search) && (filter === '' || String(row.currentStars) === filter)
-}
+const advantageColumns: Array<[string, string]> = [['1', '1 Yıldız'], ['2', '2 Yıldız'], ['3', '3 Yıldız']]
+export const advantagePrices = (row: AdvantageOffer, column: string) => row.stars.filter(item => String(item.star) === column).map(item => item.price)
 
 function AdvantageTable({ rows }: { rows: AdvantageOffer[] }) {
   const sorted = useMemo(() => byModel(rows, row => row.size), [rows])
-  const listing = useGroupedListing(sorted, keepAdvantage, byBarcode)
-  const unstarred = rows.filter(row => row.currentStars === 0).length
+  const listing = useGroupedListing(sorted, advantagePrices, byBarcode)
+  const unstarred = listing.shown.filter(row => row.currentStars === 0).length
   const stars = (values: number[]) => {
     const distinct = [...new Set(values)].sort()
     return <small className={`promotion-stars is-${Math.max(...distinct)}`}>{distinct.length === 1 ? starText(distinct[0]) : `${distinct.join('–')} yıldız`}</small>
   }
   return <div className="commission-rows">
-    <ListingBar listing={listing} filters={[['', 'Tüm ürünler'], ['0', 'Yıldızsız'], ['1', '1 yıldızlı'], ['2', '2 yıldızlı'], ['3', '3 yıldızlı']]}
-      summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · şu an ${(rows.length - unstarred).toLocaleString('tr-TR')} ürün etiketli, ${unstarred.toLocaleString('tr-TR')} ürün yıldızsız`} />
+    <ListingHead listing={listing} rows={rows} columns={advantageColumns}
+      summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · şu an ${(listing.shown.length - unstarred).toLocaleString('tr-TR')} ürün etiketli, ${unstarred.toLocaleString('tr-TR')} ürün yıldızsız`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
       <thead><tr><th>Ürün</th><th>Stok</th><th>Güncel Fiyat</th><th>1 Yıldız</th><th>2 Yıldız</th><th>3 Yıldız</th></tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={sizeLabel} cells={row => <>
@@ -334,13 +396,7 @@ function AdvantageTable({ rows }: { rows: AdvantageOffer[] }) {
 }
 
 const losesInFlash = (row: FlashOffer) => row.slots.some(slot => slot.price.remaining !== null && slot.price.remaining < 0)
-
-export function keepFlash(row: FlashOffer, search: string, filter: string) {
-  if (!matches(row, search)) return false
-  if (filter === 'loss') return losesInFlash(row)
-  if (filter === 'nocost') return row.costHigh === null
-  return true
-}
+export const flashPrices = (row: FlashOffer, column: string) => row.slots.filter(slot => slot.slot === column).map(slot => slot.price)
 
 // A flash offer of a model's colour: its days (a colour can be offered on several), its sizes and cost.
 const flashKey = (row: FlashOffer) => `${row.barcodes.join(',')}|${row.slots.map(slot => slot.start).join(',')}`
@@ -353,11 +409,11 @@ const flashLabel: RowLabel<FlashOffer> = {
 
 function FlashTable({ rows }: { rows: FlashOffer[] }) {
   const sorted = useMemo(() => byModel(rows, () => null), [rows])
-  const listing = useGroupedListing(sorted, keepFlash, flashKey)
+  const listing = useGroupedListing(sorted, flashPrices, flashKey)
   const slots = ['24 Saat', ...(rows.some(row => row.slots.some(slot => slot.slot === '3 Saat')) ? ['3 Saat'] : [])]
-  const losses = rows.filter(losesInFlash).length
+  const losses = listing.shown.filter(losesInFlash).length
   return <div className="commission-rows">
-    <ListingBar listing={listing} filters={[['', 'Tüm teklifler'], ['loss', 'Flaşta zarar eden'], ['nocost', 'Maliyeti eksik']]}
+    <ListingHead listing={listing} rows={rows} columns={slots.map(name => [name, `${name} Flaş`] as [string, string])}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} flaş teklifi · ${losses.toLocaleString('tr-TR')} teklif flaş fiyatında zarar ediyor`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
       <thead><tr><th>Ürün</th><th>Stok</th><th>Güncel Fiyat</th>{slots.map(name => <th key={name}>{name} Flaş</th>)}</tr></thead>

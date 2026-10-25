@@ -51,6 +51,8 @@ public static class PromotionOfferFileParser
             var name = Short(Text("URUNISMI") ?? Text("URUNADI"), 500);
             var model = Short(Text("MODELKODU"), 160);
             var promotions = Short(Text("GUNCELUYGULANANPROMOSYONLAR"), 2000);
+            var category = Short(Text("KATEGORI"), 160);
+            var brand = Short(Text("MARKA"), 160);
             switch (kind)
             {
                 case PromotionOfferKinds.Plus:
@@ -59,13 +61,13 @@ public static class PromotionOfferFileParser
                     var plusRate = Number("PLUSKOMISYONTEKLIFI");
                     var rate = Number("GUNCELKOMISYON");
                     rows.Add(new PlusOfferRow(Short(barcodeText, 160)!, Short(Text("SATICISTOKKODU"), 160), model, name, Short(Text("BEDEN"), 80), Number("STOK"),
-                        Number("GUNCELTSF"), Number("KOMISYONAESASFIYAT"), rate is > 100 ? null : rate, Number("PLUSFIYATUSTLIMIT"), plusRate is > 100 ? null : plusRate, promotions));
+                        Number("GUNCELTSF"), Number("KOMISYONAESASFIYAT"), rate is > 100 ? null : rate, Number("PLUSFIYATUSTLIMIT"), plusRate is > 100 ? null : plusRate, promotions, category, brand));
                     break;
                 case PromotionOfferKinds.Advantage:
                     if (!seen.Add(barcodeText)) { skipped++; Warn($"{barcodeText} barkodu dosyada birden çok kez var; ilki alındı."); continue; }
                     rows.Add(new AdvantageOfferRow(Short(barcodeText, 160)!, model, name, Short(Text("BEDEN"), 80), Number("STOK"), YesNo("KOMISYONTARIFESI"),
                         Number("1YILDIZUSTFIYAT"), Number("1YILDIZALTFIYAT"), Number("2YILDIZUSTFIYAT"), Number("2YILDIZALTFIYAT"), Number("3YILDIZUSTFIYAT"),
-                        Number("MUSTERININGORDUGUFIYAT") ?? Number("MUSTERININGORDUGUGUNCELFIYAT"), Number("TRENDYOLSATISFIYATI"), promotions));
+                        Number("MUSTERININGORDUGUFIYAT") ?? Number("MUSTERININGORDUGUGUNCELFIYAT"), Number("TRENDYOLSATISFIYATI"), promotions, category, brand));
                     break;
                 default:
                     // A flash row is a model's colour with all its barcodes ("A, B, C").
@@ -74,7 +76,7 @@ public static class PromotionOfferFileParser
                     rows.Add(new FlashOfferRow(model, barcodes, name, Number("STOK"), Number("MEVCUTFIYAT"), Number("MUSTERININGORDUGUFIYAT"), flashRate is > 100 ? null : flashRate,
                         Number("24SAATFIYAT"), Short(Text("24SAATFLASBASLANGICTARIHI"), 40), Short(Text("24SAATFLASBITISTARIHI"), 40),
                         Number("3SAATFIYAT"), Short(Text("3SAATFLASBASLANGICTARIHI"), 40), Short(Text("3SAATFLASBITISTARIHI"), 40),
-                        YesNo("URUNKOMISYONTARIFESECENEGI"), YesNo("KAMPANYALIURUN"), promotions));
+                        YesNo("URUNKOMISYONTARIFESECENEGI"), YesNo("KAMPANYALIURUN"), promotions, category, brand));
                     break;
             }
         }

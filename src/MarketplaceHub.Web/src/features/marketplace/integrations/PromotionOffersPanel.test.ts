@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byModel, groupOffers, keepAdvantage, keepFlash, keepPlus, leavesText, matches, starText, type AdvantageOffer, type FlashOffer, type PlusOffer } from './PromotionOffersPanel'
+import { advantagePrices, byModel, flashPrices, groupOffers, keepOffer, leavesText, matches, noOfferFilter, plusPrices, starText, type AdvantageOffer, type FlashOffer, type OfferFilter, type PlusOffer } from './PromotionOffersPanel'
 
 const product = { modelCode: 'RYP001', productName: 'Anne Penye Bluz', color: 'Siyah', imageUrl: null, stock: 11, promotions: null }
 
@@ -23,17 +23,27 @@ describe('promotion offers', () => {
     expect(matches({ ...product, barcode: 'RYP00101' }, 'MZ005')).toBe(false)
   })
 
-  it('keeps the rows a filter asks for', () => {
-    const plus = (gain: number | null, costPrice: number | null) => ({ ...product, barcode: 'B', sellerSku: null, size: 'M', costPrice, now: null, plus: null, gain }) as PlusOffer
-    expect([plus(5, 300), plus(-61.54, 308), plus(null, null)].filter(row => keepPlus(row, '', 'gain')).length).toBe(1)
-    expect([plus(5, 300), plus(-61.54, 308), plus(null, null)].filter(row => keepPlus(row, '', 'nocost')).length).toBe(1)
-    const advantage = { ...product, barcode: 'B', size: 'M', costPrice: null, inTariff: true, currentStars: 1, now: null, stars: [] } as AdvantageOffer
-    expect(keepAdvantage(advantage, '', '1')).toBe(true)
-    expect(keepAdvantage(advantage, '', '0')).toBe(false)
+  it('keeps the rows the filter panel asks for', () => {
+    const plus = { ...product, barcode: 'RYP00101', sellerSku: null, size: 'M', costPrice: 308, category: 'Bluz', brand: 'Ravencia', now: null, gain: -61.54,
+      plus: { price: 359.02, rate: 14.1, commission: 50.62, remaining: 0.4 } } as PlusOffer
+    const keep = (filter: Partial<OfferFilter>) => keepOffer(plus, { ...noOfferFilter, ...filter }, plusPrices)
+    expect(keep({ name: 'penye', model: 'ryp', barcode: '00101', category: 'Bluz', brand: 'Ravencia' })).toBe(true)
+    expect(keep({ category: 'Etek' })).toBe(false)
+    expect(keep({ minStock: '5', maxStock: '11' })).toBe(true)
+    expect(keep({ minStock: '12' })).toBe(false)
+    // Kolon Seçimi: Plus leaves 0,40 (%0,1).
+    expect(keep({ column: 'plus', minProfit: '0', maxProfit: '1' })).toBe(true)
+    expect(keep({ column: 'plus', minShare: '5' })).toBe(false)
+    // A range without a column filters nothing.
+    expect(keep({ minProfit: '100' })).toBe(true)
+    const advantage = { ...product, barcode: 'B', size: 'M', costPrice: null, inTariff: true, currentStars: 1, now: null,
+      stars: [{ star: 2, min: null, max: 435.97, price: { price: 435.97, rate: null, commission: null, remaining: null } }] } as AdvantageOffer
+    // An unknown commission meets no profit range.
+    expect(keepOffer(advantage, { ...noOfferFilter, column: '2', minProfit: '-1000' }, advantagePrices)).toBe(false)
     const flash = { ...product, barcodes: ['B'], costLow: 300, costHigh: 330, inTariff: true, campaign: true, now: null,
       slots: [{ slot: '24 Saat', start: null, end: null, price: { price: 426.46, rate: 21.5, commission: 91.69, remaining: -4.77, remainingHigh: 34.77 } }] } as FlashOffer
-    expect(keepFlash(flash, '', 'loss')).toBe(true)
-    expect(keepFlash(flash, '', 'nocost')).toBe(false)
+    expect(keepOffer(flash, { ...noOfferFilter, column: '24 Saat', maxProfit: '0' }, flashPrices)).toBe(true)
+    expect(keepOffer(flash, { ...noOfferFilter, barcode: 'b' }, flashPrices)).toBe(true)
   })
 
   it('names the stars a price earns', () => {

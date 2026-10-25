@@ -31,13 +31,15 @@ public static class PromotionOfferKinds
 // One product of a Plus offer: its price and commission now, and the Plus price ceiling with the commission Trendyol
 // offers at it for the period.
 public sealed record PlusOfferRow(string Barcode, string? SellerSku, string? ModelCode, string? ProductName, string? Size, decimal? Stock,
-    decimal? SalePrice, decimal? BasisPrice, decimal? CurrentRate, decimal? PlusPriceLimit, decimal? PlusRate, string? Promotions);
+    decimal? SalePrice, decimal? BasisPrice, decimal? CurrentRate, decimal? PlusPriceLimit, decimal? PlusRate, string? Promotions, string? Category = null, string? Brand = null);
 
 // One product of the advantage label offer: the price ceiling of each star (1 to 3) and the price the customer sees now.
 public sealed record AdvantageOfferRow(string Barcode, string? ModelCode, string? ProductName, string? Size, decimal? Stock, bool? InTariff,
-    decimal? Star1Max, decimal? Star1Min, decimal? Star2Max, decimal? Star2Min, decimal? Star3Max, decimal? CustomerPrice, decimal? SalePrice, string? Promotions);
+    decimal? Star1Max, decimal? Star1Min, decimal? Star2Max, decimal? Star2Min, decimal? Star3Max, decimal? CustomerPrice, decimal? SalePrice, string? Promotions,
+    string? Category = null, string? Brand = null);
 
 // One model (colour) of the flash offer: its barcodes, its price and commission now, and the 24-hour and 3-hour flash
 // prices with their times (Istanbul local time as the file writes it, "26/10/2026 00:00").
 public sealed record FlashOfferRow(string? ModelCode, IReadOnlyList<string> Barcodes, string? ProductName, decimal? Stock, decimal? CurrentPrice, decimal? CustomerPrice,
-    decimal? CurrentRate, decimal? Price24h, string? Start24h, string? End24h, decimal? Price3h, string? Start3h, string? End3h, bool? InTariff, bool? Campaign, string? Promotions);
+    decimal? CurrentRate, decimal? Price24h, string? Start24h, string? End24h, decimal? Price3h, string? Start3h, string? End3h, bool? InTariff, bool? Campaign, string? Promotions,
+    string? Category = null, string? Brand = null);

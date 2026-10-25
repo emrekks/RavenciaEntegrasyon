@@ -15,20 +15,20 @@ public sealed record PromotionPriceView(decimal Price, decimal? Rate, decimal? C
 // Now: the commission-basis price at the current commission. Plus: the Plus price ceiling at the offered commission.
 // Gain: what Plus leaves minus what the price leaves now.
 public sealed record PlusOfferView(string Barcode, string? SellerSku, string? ModelCode, string? ProductName, string? Size, string? Color, string? ImageUrl, decimal? Stock,
-    decimal? CostPrice, PromotionPriceView? Now, PromotionPriceView? Plus, decimal? Gain, string? Promotions);
+    decimal? CostPrice, PromotionPriceView? Now, PromotionPriceView? Plus, decimal? Gain, string? Promotions, string? Category = null, string? Brand = null);
 
 // One star of the advantage label: the price range that earns it and its ceiling priced with the commission tariff.
 public sealed record AdvantageStarView(int Star, decimal? Min, decimal Max, PromotionPriceView Price);
 
 // CurrentStars: the stars the customer's price earns now (0 when it is above the 1-star ceiling).
 public sealed record AdvantageOfferView(string Barcode, string? ModelCode, string? ProductName, string? Size, string? Color, string? ImageUrl, decimal? Stock,
-    decimal? CostPrice, bool? InTariff, int CurrentStars, PromotionPriceView? Now, IReadOnlyList<AdvantageStarView> Stars, string? Promotions);
+    decimal? CostPrice, bool? InTariff, int CurrentStars, PromotionPriceView? Now, IReadOnlyList<AdvantageStarView> Stars, string? Promotions, string? Category = null, string? Brand = null);
 
 // One flash slot (24 hours or 3 hours) with its times as the file writes them.
 public sealed record FlashSlotView(string Slot, string? Start, string? End, PromotionPriceView Price);
 
 public sealed record FlashOfferView(string? ModelCode, IReadOnlyList<string> Barcodes, string? ProductName, string? Color, string? ImageUrl, decimal? Stock,
-    decimal? CostLow, decimal? CostHigh, bool? InTariff, bool? Campaign, PromotionPriceView? Now, IReadOnlyList<FlashSlotView> Slots, string? Promotions);
+    decimal? CostLow, decimal? CostHigh, bool? InTariff, bool? Campaign, PromotionPriceView? Now, IReadOnlyList<FlashSlotView> Slots, string? Promotions, string? Category = null, string? Brand = null);
 
 public sealed record PromotionOfferDetail(PromotionOfferSummary Offer, IReadOnlyList<PlusOfferView>? Plus, IReadOnlyList<AdvantageOfferView>? Advantage, IReadOnlyList<FlashOfferView>? Flash);
 
