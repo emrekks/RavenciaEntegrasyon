@@ -282,12 +282,6 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
     <select value={draft.brand} onChange={set('brand')} aria-label="Marka" disabled={!facets?.brands.length}>
       <option value="">Marka</option>{facets?.brands.map(item => <option key={item} value={item}>{item}</option>)}
     </select>
-    <select value={draft.tier} onChange={set('tier')} aria-label="Güncel bant">
-      <option value="">Güncel bant: Tümü</option>{tiers.map(tier => <option key={tier} value={String(tier)}>Güncel bant: {tier}. bant</option>)}
-    </select>
-    <select value={draft.cost} onChange={set('cost')} aria-label="Maliyet">
-      <option value="">Maliyet: Tümü</option><option value="with">Maliyet: Girili</option><option value="without">Maliyet: Girilmemiş</option>
-    </select>
     <select className="commission-filter-band" value={draft.profitTier ?? ''} onChange={set('profitTier')} aria-label="Fiyat aralığı">
       <option value="">Kolon Seçimi</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
     </select>

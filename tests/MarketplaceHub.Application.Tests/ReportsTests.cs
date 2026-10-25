@@ -304,6 +304,8 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         saudi.StoreFrontCode = "SA";
         var saudiLine = NewLine(saudi, "t-sa-1", 100m, 3m, "{}", null);
         var domestic = NewOrder(tenant.Id, trendyol.Id, "t-tr", TrendyolNoon, 100m, "DELIVERED", """{"city":"Ankara"}""", "{}");
+        // Listed at 110, paid 100 after the marketplace's discount.
+        domestic.GrossAmount = 110m;
         var domesticLine = NewLine(domestic, "t-tr-1", 100m, 1m, "{}", null);
         // 10 Sep 2026: a Romanian order Trendyol marked returned (line, package and order) with no refund on the statement.
         var romania = NewOrder(tenant.Id, trendyol.Id, "t-ro", TrendyolNoon, 50m, "RETURNED", "{}", "{}");
@@ -349,6 +351,8 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             var before = await ReportAsync(tenant.Id, includeTest: false);
             Assert.Equal(1m, before.Summary.ReturnedQuantity);
             Assert.Equal(100m, before.Summary.ReturnedAmount);
+            // At list price, as Trendyol's sales report shows returns.
+            Assert.Equal(110m, before.Summary.ReturnedListAmount);
             Assert.Equal(1, before.Summary.ReturnClaims);
 
             await using (var refund = fixture.CreateContext())
@@ -377,6 +381,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             var after = await ReportAsync(tenant.Id, includeTest: false);
             Assert.Equal(4m, after.Summary.ReturnedQuantity);
             Assert.Equal(400m, after.Summary.ReturnedAmount);
+            Assert.Equal(410m, after.Summary.ReturnedListAmount);
             Assert.Equal(2, after.Summary.ReturnClaims);
         }
         finally

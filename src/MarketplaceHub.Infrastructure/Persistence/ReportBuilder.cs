@@ -444,6 +444,9 @@ internal static class ReportBuilder
             var returnedAmount = order.PackagesBack > linesBack ? order.PackagesBack : linesBack;
             var kept = returnedOrder ? 0m : Math.Max(0m, order.Amount - returnedAmount);
             var back = returnedOrder ? order.Amount : Math.Min(returnedAmount, order.Amount);
+            // The same part of the order at its list price.
+            var listAmount = Math.Max(order.ListAmount, order.Amount);
+            var backList = order.Amount > 0 ? Math.Round(back * listAmount / order.Amount, 2) : 0m;
             // A line's money is its share of what the customer paid for the order.
             var scale = order.LineValue > 0 ? order.Amount / order.LineValue : 0m;
             var lines = new List<LineFact>();
@@ -484,7 +487,7 @@ internal static class ReportBuilder
             var city = extras is null || !domestic ? null : ReportBuckets.Province(extras.CityName, extras.City, extras.ShippingCity, extras.Province);
             var district = extras is null || city is null ? null : ReportBuckets.District(extras.DistrictName, extras.District, extras.ShippingDistrict, extras.Town, extras.ShippingTown);
             orders.Add(new(order, platform, currency, day, city, district, extras?.CustomerKey, isTry ? order.Amount : 0m, isTry ? back : 0m, isTry ? kept : 0m, lines,
-                claimsByOrder.GetValueOrDefault(order.Id), country));
+                claimsByOrder.GetValueOrDefault(order.Id), country, isTry ? backList : 0m));
         }
         return (orders, cancelled);
     }
@@ -504,7 +507,7 @@ internal static class ReportBuilder
         return new(orders.Count, cancelled.Count, Rate(cancelledUnits, ordered), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, ordered),
             priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? Math.Round(gross / priced, 2) : null,
             orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try),
-            list, list - gross);
+            list, list - gross, orders.Sum(x => x.BackList));
     }
 
     private static ReportCommissionView CommissionView(IReadOnlyList<OrderFact> orders, decimal netRevenue)
@@ -842,7 +845,7 @@ internal static class ReportBuilder
 
     // Country: where the order goes (ReportBuckets.Country); City and District are only set for an order to Turkey.
     internal sealed record OrderFact(ReportOrderRow Order, string PlatformCode, string Currency, DateOnly Day, string? City, string? District, string? CustomerKey,
-        decimal Amount, decimal Back, decimal Kept, List<LineFact> Lines, int Claims, string Country = ReportBuckets.Turkey);
+        decimal Amount, decimal Back, decimal Kept, List<LineFact> Lines, int Claims, string Country = ReportBuckets.Turkey, decimal BackList = 0m);
 
     internal sealed record CancelledFact(ReportOrderRow Order, string PlatformCode, DateOnly Day, decimal Quantity, string? Reason, decimal Amount = 0m);
 }

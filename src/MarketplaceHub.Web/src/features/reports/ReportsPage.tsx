@@ -810,6 +810,9 @@ function adMetrics(data: ReportSales, money: Money | null): Metric[] {
 }
 
 // İade ve İptal: the return rate and claims, the units sent back, then the cancel rate against its warning line.
+// Returns at their list price, as Trendyol's sales report shows them; what was paid when an older server sends no list.
+export const returnedAtList = (summary: { returnedAmount: number; returnedListAmount?: number }) => summary.returnedListAmount ?? summary.returnedAmount
+
 function returnMetrics(data: ReportSales): Metric[] {
   const now = data.summary
   const before = data.previousSummary
@@ -820,7 +823,7 @@ function returnMetrics(data: ReportSales): Metric[] {
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
     { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
-    { key: 'returned', label: 'İade Edilen Tutar', value: formatTl(now.returnedAmount), detail: 'returns', note: 'İade edilen ürünlerin satış tutarı.\nSatıştan düşülür; Masraf Kalemleri\'nde de gösterilir.' },
+    { key: 'returned', label: 'İade Edilen Tutar', value: formatTl(returnedAtList(now)), detail: 'returns', note: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatıştan ödenen tutarı düşülür.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nİade kargosu kargo faturasında ayrı okunamadığı için gösterilemiyor.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
@@ -1301,9 +1304,9 @@ function Returns({ data }: { data: ReportSales }) {
       note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.\nKabul edilen iadeler sayılır.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
       note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi.' },
-    { key: 'amount', label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? now.returnedAmount : null, format: formatTl, empty: 'Tutar yok',
-      delta: now.ordersWithAmount > 0 ? change(now.returnedAmount, then.returnedAmount) : null, invert: true,
-      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.returnedAmount) : null), tip: 'İade edilen ürünlerin tutarı.\nSatış tutarından düşülür.' }
+    { key: 'amount', label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl, empty: 'Tutar yok',
+      delta: now.ordersWithAmount > 0 ? change(returnedAtList(now), returnedAtList(then)) : null, invert: true,
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatış tutarından ödenen tutarı düşülür.' }
   ]
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="İadelerin göstergeleri" items={items} /></div>

@@ -168,3 +168,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-band { grid-column: span 2; }
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-profit { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 520px) { .app-shell.stitch-shell main .commission-tariffs .commission-filter-band { grid-column: auto; } .app-shell.stitch-shell main .commission-tariffs .commission-filter-profit { grid-template-columns: minmax(0, 1fr); } }
+
+/* Kategori, marka and the price range fill the second row; the buttons close the third on the right. */
+.app-shell.stitch-shell main .commission-tariffs .commission-filter-clear { grid-column: 3; }
+@media (max-width: 900px) { .app-shell.stitch-shell main .commission-tariffs .commission-filter-clear { grid-column: auto; } }

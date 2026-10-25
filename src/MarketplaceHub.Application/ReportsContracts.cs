@@ -92,7 +92,11 @@ public sealed record ReportSummaryView(
     int OrdersWithoutAmount,
     int OtherCurrencyOrders,
     decimal ListAmount,
-    decimal DiscountAmount);
+    decimal DiscountAmount,
+    // The returned units at their list price, before the marketplace's discounts, as Trendyol's sales report shows returns
+    // (1-14 Oct 2026: 20 units, 14,435.58 at list price, 13,994.18 paid). ReturnedAmount stays what was paid: it is taken
+    // off GrossSales for NetRevenue.
+    decimal ReturnedListAmount = 0m);
 
 // Estimated from the commission the marketplace sent on each order line (Trendyol and n11 rate, Hepsiburada amount,
 // PTT AVM rate), over the kept units. CoveredRevenue: the net revenue of lines that carry one; Coverage: its share of
