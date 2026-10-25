@@ -72,6 +72,8 @@ internal sealed class ReportOrderRow
     public decimal Amount { get; init; }
     // The same packages at their list price, before the marketplace's discounts (the order's own when none carries one).
     public decimal ListAmount { get; init; }
+    // The order's own list price (cancelled packages included): a cancelled order's amount, as Trendyol shows it.
+    public decimal OrderListAmount { get; init; }
     public decimal PackagesBack { get; init; }
     public decimal LineValue { get; init; }
     public decimal LineBack { get; init; }
@@ -430,7 +432,9 @@ internal static class ReportBuilder
             {
                 var reason = rows.Select(line => input.LineExtras.GetValueOrDefault(line.Id)?.CancelReason).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
                 var cancelledTry = string.IsNullOrWhiteSpace(order.Currency) || order.Currency.Trim().ToUpperInvariant() == Try;
-                cancelled.Add(new(order, platform, day, rows.Sum(x => x.OrderedQuantity), reason, cancelledTry ? rows.Sum(x => x.UnitPrice * x.OrderedQuantity) : 0m));
+                // At its list price, as Trendyol's sales report shows cancellations (7-13 Sep 2026: 875 + 1,050 + 850 + 525 + 799).
+                var linePrice = rows.Sum(x => x.UnitPrice * x.OrderedQuantity);
+                cancelled.Add(new(order, platform, day, rows.Sum(x => x.OrderedQuantity), reason, cancelledTry ? Math.Max(order.OrderListAmount, linePrice) : 0m));
                 continue;
             }
             var returnedOrder = order.ReturnBooked && returnedStatuses.Contains(order.DerivedStatus);
@@ -493,7 +497,11 @@ internal static class ReportBuilder
         var gross = orders.Sum(x => x.Amount);
         // The list price of the same orders (Amount is zero for another currency); never below what was paid.
         var list = orders.Where(x => x.Amount > 0).Sum(x => Math.Max(x.Order.ListAmount, x.Amount));
-        return new(orders.Count, cancelled.Count, Rate(cancelled.Count, orders.Count + cancelled.Count), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, sold),
+        // Rates over every unit ordered, cancelled ones included, as Trendyol's sales report has them (7-13 Sep 2026: 6 returned
+        // and 8 cancelled of 113 units, 5.31 % and 7.08 %).
+        var cancelledUnits = cancelled.Sum(x => x.Quantity) + orders.SelectMany(x => x.Lines).Sum(x => Math.Max(0m, x.Row.CancelledQuantity));
+        var ordered = sold + cancelledUnits;
+        return new(orders.Count, cancelled.Count, Rate(cancelledUnits, ordered), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, ordered),
             priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? Math.Round(gross / priced, 2) : null,
             orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try),
             list, list - gross);
@@ -628,7 +636,8 @@ internal static class ReportBuilder
             {
                 var live = orders.Where(x => x.PlatformCode == code).ToList();
                 var gone = cancelled.Where(x => x.PlatformCode == code).ToList();
-                return new ReportCancelGroupView(code, code, live.Count + gone.Count, gone.Count, gone.Sum(x => x.Quantity) + PartlyCancelled(live), Rate(gone.Count, live.Count + gone.Count));
+                var goneUnits = gone.Sum(x => x.Quantity) + PartlyCancelled(live);
+                return new ReportCancelGroupView(code, code, live.Count + gone.Count, gone.Count, goneUnits, Rate(goneUnits, live.SelectMany(x => x.Lines).Sum(x => x.Active) + goneUnits));
             })
             .OrderByDescending(x => x.CancelledOrders).ThenBy(x => x.Label, StringComparer.Ordinal)
             .ToList();
@@ -636,7 +645,8 @@ internal static class ReportBuilder
             .Concat(orders.SelectMany(x => x.Lines).Where(x => x.Row.CancelledQuantity > 0).Select(x => Label(x.CancelReason, null))));
         // A partly cancelled line of a TRY order at its list price.
         var partlyAmount = orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines).Sum(x => x.Row.UnitPrice * Math.Max(0m, x.Row.CancelledQuantity));
-        return new(cancelled.Count, cancelled.Sum(x => x.Quantity) + PartlyCancelled(orders), Rate(cancelled.Count, orders.Count + cancelled.Count), CancelWarningRate, platforms, reasons,
+        var cancelledUnits = cancelled.Sum(x => x.Quantity) + PartlyCancelled(orders);
+        return new(cancelled.Count, cancelledUnits, Rate(cancelledUnits, orders.SelectMany(x => x.Lines).Sum(x => x.Active) + cancelledUnits), CancelWarningRate, platforms, reasons,
             Math.Round(cancelled.Sum(x => x.Amount) + partlyAmount, 2));
     }
 

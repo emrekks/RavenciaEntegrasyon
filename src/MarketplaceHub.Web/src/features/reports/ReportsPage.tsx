@@ -846,14 +846,14 @@ function returnMetrics(data: ReportSales): Metric[] {
   const cancelled = data.cancellations.cancelledAmount
   return [
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
-      note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ satılan adet. Önceki dönem ${formatPercent(before.returnRate)}.` },
+      note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
     { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
     { key: 'returned', label: 'İade Edilen Tutar', value: formatTl(now.returnedAmount), detail: 'returns', note: 'İade edilen ürünlerin satış tutarı.\nSatıştan düşülür; Masraf Kalemleri\'nde de gösterilir.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nİade kargosu kargo faturasında ayrı okunamadığı için gösterilemiyor.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
-      note: `Siparişlerin yüzde kaçının iptal edildiği.\n${formatCount(now.cancelledOrders)} sipariş iptal edildi; uyarı eşiği ${formatPercent(warning)}.` },
-    { key: 'cancelled', label: 'İptal Edilen Sipariş', value: formatCount(now.cancelledOrders), detail: 'cancellations', note: 'İptal edilen sipariş sayısı.' },
+      note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
+    { key: 'cancelled', label: 'İptal Edilen Sipariş', value: `${formatCount(now.cancelledOrders)} sipariş · ${formatNumber(data.cancellations.cancelledQuantity)} adet`, detail: 'cancellations', note: 'İptal edilen sipariş ve ürün adedi.' },
     { key: 'amount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTl(cancelled), detail: 'cancellations', note: 'İptal edilen ürünlerin tutarı.\nListe fiyatıyla; satış tutarına girmez.' }
   ]
 }
@@ -901,7 +901,7 @@ function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub
     { key: 'returned', label: 'İade Edilen Adet', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
       note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.\nKabul edilen iadeler sayılır.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
-      note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ satılan adet.' },
+      note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi.' },
     { key: 'price', label: 'Adet Başına Satış', value: unit(now), format: formatTl, delta: change(unit(now), unit(then)), note: previousText(formatTl(unit(then))), tip: 'Bir ürünün ortalama satış fiyatı.\nSatış tutarı ÷ satılan adet.' },
     { key: 'brands', label: 'Satan Marka', value: selling(data.brands), format: formatCount, note: `${formatCount(selling(data.categories))} kategoride`, tip: 'Dönemde satışı olan marka sayısı.\nÜrün kartında markası girili ürünlerden sayılır.' }
   ]
@@ -1329,7 +1329,7 @@ function Returns({ data }: { data: ReportSales }) {
     { key: 'units', label: 'İade Adedi', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
       note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.\nKabul edilen iadeler sayılır.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
-      note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ satılan adet.' },
+      note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi.' },
     { key: 'amount', label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? now.returnedAmount : null, format: formatTl, empty: 'Tutar yok',
       delta: now.ordersWithAmount > 0 ? change(now.returnedAmount, then.returnedAmount) : null, invert: true,
       note: previousText(then.ordersWithAmount > 0 ? formatTl(then.returnedAmount) : null), tip: 'İade edilen ürünlerin tutarı.\nSatış tutarından düşülür.' }

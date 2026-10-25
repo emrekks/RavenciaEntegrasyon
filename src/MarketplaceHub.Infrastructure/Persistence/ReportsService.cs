@@ -211,6 +211,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           DerivedStatus = order.DerivedStatus,
                           Amount = amount,
                           ListAmount = listAmount,
+                          OrderListAmount = order.GrossAmount,
                           PackagesBack = packagesBack,
                           LineValue = lineValue,
                           LineBack = lineBack,

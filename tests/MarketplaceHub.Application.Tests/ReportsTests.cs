@@ -227,7 +227,8 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             var summary = report.Summary;
             Assert.Equal(3, summary.Orders);
             Assert.Equal(1, summary.CancelledOrders);
-            Assert.Equal(0.25m, summary.CancelRate);
+            // One cancelled unit of the five ordered (Trendyol counts the rate over units, cancelled ones included).
+            Assert.Equal(0.2m, summary.CancelRate);
             Assert.Equal(4m, summary.SoldQuantity);
             Assert.Equal(1m, summary.ReturnedQuantity);
             Assert.Equal(350m, summary.GrossSales);
