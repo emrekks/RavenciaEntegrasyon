@@ -35,18 +35,14 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
 
 `.last-success` henüz yoksa (bu betiğin ilk kurulumu) eski kural geçerlidir: HEAD'in atası olan SHA için 0.
 
-**Gece kapanışı (00:30 TR)**: kilit alındıktan sonra saat **23:45–00:30 (Europe/Istanbul)** arasındaysa
-deploy başlatılmaz; `::warning::Deploy of <sha> deferred to morning` yazılır ve çıkış 0'dır. Sabah 09:20
-çalışması son yeşil SHA'yı deploy eder. Sunucudaki root kopyası henüz güncellenmediyse aynı kural
-`fast-deploy.sh` içinde de (yalnız CI yolu, `DEPLOY_REVISION`) uygulanır; elle çalıştırılan deploy
-ertelenmez. Kapanışın kendisi depoda değil (AWS tarafında durdurma); bunun için
+**Gece kapanışı (00:30 TR)**: deploy saate bakılmadan başlatılır (23:45 ertelemesi 26 Ekim 2026'da kaldırıldı). Kapanışın kendisi depoda değil (AWS tarafında durdurma); bunun için
 `ravencia-deploy-guard.service` kurulur: açılışta bir şey yapmaz, kapanışta `ExecStop`
 (`wait-for-deploy-lock.sh`) `~/deploy-logs/.lock` serbest kalana kadar en çok 23 dk bekler. Docker'dan
 önce durdurulduğu için konteynerler bu sırada çalışır; deploy'un koştuğu SSH oturum kapsamları
 `/etc/systemd/system/session-.scope.d/ravencia-deploy-guard.conf` ile bu birimden sonra durdurulur.
 Sunucuda doğrulama: `systemctl show -p After session-<n>.scope` çıktısında `ravencia-deploy-guard.service`
-görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; kesin koruma
-23:45 kuralıdır.
+görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; 00:30'a yakın
+başlayan bir deploy yarıda kesilebilir.
 `releases.tsv` her deploy/geri alma için bir satır tutar (zaman, tür, SHA, imajlar).
 
 **`ci-entrypoint.sh` değiştiğinde** sunucuda bir kez yeniden kurulmalıdır (root'a ait kopya):
@@ -285,7 +281,7 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
   için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Hash'ler
   Dockerfile'ları ve `deploy/caddy`'yi de kapsar; imaj işi de geçmeden işaret yazılmaz.
 - `ops` işi deploy betiklerini `bash -n` + `shellcheck` ile denetler ve `tests/ops/run.sh`'ı çalıştırır:
-  çerçevesiz bash testleri (yedek saklama kuralları, `ci-entrypoint.sh` karar tablosu ve 23:45 ertelemesi,
+  çerçevesiz bash testleri (yedek saklama kuralları, `ci-entrypoint.sh` karar tablosu,
   kapanış kilidi beklemesi). Yerelde: `bash tests/ops/run.sh` (GNU coreutils, git, flock gerekir).
 - `ops` işi, sunucunun gerektirdiği Docker Compose 2.40.2'yi checksum'la kurup sürümü doğrular,
   birleşik compose dosyalarını ve journald sürücüsünü, systemd takvim ifadelerini denetler.

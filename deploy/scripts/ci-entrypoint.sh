@@ -12,23 +12,6 @@ set -Eeuo pipefail
 #   ~/deploy-logs/.hold          SHA that was rolled back; it and its ancestors are
 #                                refused until a newer commit is deployed
 
-# The host is stopped every night at 00:30 Istanbul time. A deploy started late
-# could be cut off in the middle of its backup or migration, so from 23:45 until
-# the stop no deploy is started; the 09:20 morning run (deploy.yml schedule)
-# deploys the latest green revision instead. RAVENCIA_DEPLOY_NOW_HHMM replaces
-# the clock in tests (a forced-command key cannot pass environment variables).
-deploy_window_closed() {
-  local hhmm="${RAVENCIA_DEPLOY_NOW_HHMM:-$(TZ=Europe/Istanbul date +%H%M)}"
-  [[ "$hhmm" =~ ^[0-9]{4}$ ]] || return 1
-  hhmm="$((10#$hhmm))"
-  (( hhmm >= 2345 || hhmm < 30 ))
-}
-
-# Sourcing the script (tests) only defines the functions above.
-if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
-  return 0
-fi
-
 # A dropped SSH session must not interrupt a deployment in the middle of a migration.
 trap '' HUP
 
@@ -47,12 +30,6 @@ hold_file="$log_dir/.hold"
 # The deployment child inherits this descriptor, so the lock outlives the SSH session.
 exec 9>"$log_dir/.lock"
 flock -w 3600 9 || { echo "Another deployment is still running." >&2; exit 75; }
-
-# Checked after the lock: a deploy that waited for another one may now be too late.
-if deploy_window_closed; then
-  echo "::warning::Deploy of $revision deferred to morning: no deploy starts between 23:45 and the 00:30 nightly stop (Europe/Istanbul); the 09:20 scheduled run deploys the latest green revision."
-  exit 0
-fi
 
 cd "$repository_root"
 # The explicit refspec updates origin/main even where the clone's fetch configuration would not.

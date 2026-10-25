@@ -51,8 +51,8 @@ push
 
 # Runs the entrypoint as sshd would; prints its output and "exit=<code>".
 deploy() {
-  local request="$1" clock="${2:-1200}" status=0 output
-  output="$(SSH_ORIGINAL_COMMAND="$request" RAVENCIA_REPOSITORY_ROOT="$checkout" RAVENCIA_DEPLOY_NOW_HHMM="$clock" \
+  local request="$1" status=0 output
+  output="$(SSH_ORIGINAL_COMMAND="$request" RAVENCIA_REPOSITORY_ROOT="$checkout" \
     bash "$entrypoint" 2>&1)" || status=$?
   printf '%s\nexit=%s\n' "$output" "$status"
 }
@@ -61,15 +61,6 @@ echo "ci-entrypoint decisions"
 
 result="$(deploy "not-a-sha")"
 assert_contains "$result" "exit=2" "rejects a request that is not a 40-character SHA"
-
-result="$(deploy "$rev_b" 2350)"
-assert_contains "$result" "deferred to morning" "defers a deploy at 23:50 Istanbul"
-assert_contains "$result" "exit=0" "a deferred deploy exits 0"
-assert_not_contains "$result" "stub deploy" "a deferred deploy does not start fast-deploy.sh"
-assert_eq "$rev_a" "$(git -C "$checkout" rev-parse HEAD)" "a deferred deploy leaves the checkout alone"
-
-result="$(deploy "$rev_b" 0015)"
-assert_contains "$result" "deferred to morning" "defers a deploy at 00:15 Istanbul"
 
 result="$(deploy "$rev_b")"
 assert_contains "$result" "stub deploy of $rev_b" "deploys a newer validated revision"

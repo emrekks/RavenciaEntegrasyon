@@ -23,8 +23,8 @@ changes: commit first (English message, no attribution lines).
    - `validate=0` / `validate=1`: CI result; on failure the failing tests are printed. Fix, commit, ship again.
    - `pushed`: main now points at the commit. `not pushed`: main moved meanwhile (its last commits are printed):
      merge `origin/main`, re-test, ship again. Never force-push.
-   - `live: …`: the edge, api and worker images all run the commit. Without it the deploy has not finished; between
-     23:45 and 00:30 Istanbul time deploys are deferred to the 09:20 scheduled run.
+   - `live: …`: the edge, api and worker images all run the commit. Without it the deploy has not finished; while the
+     host is stopped (00:30-09:00 Istanbul time) the 09:20 scheduled run ships it.
 4. Only after `live:` check the change on the live panel (your own browser tab) before calling it done.
 
 To stop a running ship, stop its background task; nothing is pushed to `main` before Validate is green.
