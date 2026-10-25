@@ -44,16 +44,11 @@ function CommissionTariffs({ data }: { data: ReportSales }) {
         {stores.length > 1 && <label className="reports-field"><span>Mağaza</span><select value={store.id} onChange={event => setStoreId(event.target.value)}>
           {stores.map(channel => <option key={channel.id} value={channel.id}>{channel.displayName}</option>)}
         </select></label>}
-        <div className="reports-promotions">
-          <nav className="reports-promotion-nav" aria-label="Promosyon Kârlılık Analizi">
-            <strong>Promosyon Kârlılık Analizi</strong>
-            {promotionSections.map(([key, label]) => <button key={key} type="button" aria-current={key === section ? 'page' : undefined} onClick={() => setSection(key)}>{label}</button>)}
-          </nav>
-          <div className="reports-promotion-body">
-            {section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
-              : <PromotionOffersPanel key={`${store.id}-${section}`} connectionId={store.id} kind={section} />}
-          </div>
+        <div className="reports-segmented reports-promotion-tabs" role="group" aria-label="Promosyon Kârlılık Analizi">
+          {promotionSections.map(([key, label]) => <button key={key} type="button" aria-pressed={key === section} onClick={() => setSection(key)}>{label}</button>)}
         </div>
+        {section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
+          : <PromotionOffersPanel key={`${store.id}-${section}`} connectionId={store.id} kind={section} />}
       </>}
   </div>
 }

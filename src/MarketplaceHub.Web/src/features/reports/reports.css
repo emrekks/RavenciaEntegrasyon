@@ -732,18 +732,6 @@
 .app-shell.stitch-shell main .reports-page .reports-tariff-platforms button { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px 0 8px; font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-tariff-platforms .platform-square-mark { width: 20px; height: 20px; border-radius: 6px; }
 
-/* Promosyon Kârlılık Analizi: the pages as a list on the left (the weekly tariff, then Trendyol's offers), the page beside it. */
-.app-shell.stitch-shell main .reports-page .reports-promotions { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 20px; min-width: 0; }
-.app-shell.stitch-shell main .reports-page .reports-promotion-body { min-width: 0; }
-.app-shell.stitch-shell main .reports-page .reports-promotion-nav { position: sticky; top: 16px; display: grid; gap: 2px; padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; }
-.app-shell.stitch-shell main .reports-page .reports-promotion-nav strong { margin: 0 0 6px; padding: 0 10px; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-promotion-nav button { display: flex; align-items: center; min-height: 0; height: 36px; padding: 0 10px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; text-align: left; text-transform: none; background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
-.app-shell.stitch-shell main .reports-page .reports-promotion-nav button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
-.app-shell.stitch-shell main .reports-page .reports-promotion-nav button[aria-current='page'] { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-promotion-nav button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
-@media (max-width: 900px) {
-  .app-shell.stitch-shell main .reports-page .reports-promotions { grid-template-columns: minmax(0, 1fr); }
-  .app-shell.stitch-shell main .reports-page .reports-promotion-nav { position: static; display: flex; overflow-x: auto; padding: 6px; }
-  .app-shell.stitch-shell main .reports-page .reports-promotion-nav strong { display: none; }
-  .app-shell.stitch-shell main .reports-page .reports-promotion-nav button { flex: none; white-space: nowrap; }
-}
+/* Promosyon Kârlılık Analizi: the pages as tabs under the platforms (the weekly tariff, then Trendyol's offers). */
+.app-shell.stitch-shell main .reports-page .reports-promotion-tabs { justify-self: start; max-width: 100%; overflow-x: auto; }
+.app-shell.stitch-shell main .reports-page .reports-promotion-tabs button { flex: none; height: 34px; padding: 0 14px; font-size: 13px; white-space: nowrap; }
