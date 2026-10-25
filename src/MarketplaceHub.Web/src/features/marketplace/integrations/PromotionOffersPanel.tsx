@@ -309,7 +309,7 @@ function GroupedRows<T extends Product>({ groups, label, cells, groupCells }: {
     return <Fragment key={key}>
       <tr className="is-model">
         <td className="commission-expand"><button type="button" className="commission-model-toggle" aria-expanded={open} aria-label={`${rows.length.toLocaleString('tr-TR')} ${label.unit} ${open ? 'gizle' : 'göster'}`}
-          onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}><UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={16} /></button></td>
+          onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}><UiIcon name="chevronRight" size={16} /></button></td>
         <th scope="row"><ProductCell row={first} detail={modelLine(first)} code={<span className="commission-model-count">{rows.length.toLocaleString('tr-TR')} {label.unit}</span>} /></th>
         {groupCells(rows)}
       </tr>

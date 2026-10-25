@@ -525,7 +525,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
         return <Fragment key={key}>
           <tr className="is-model">
             <td className="commission-expand"><button type="button" className="commission-model-toggle" aria-expanded={open} aria-label={`${group.length.toLocaleString('tr-TR')} ${first.color ? 'beden' : 'varyant'} ${open ? 'gizle' : 'göster'}`}
-              onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}><UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={16} /></button></td>
+              onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}><UiIcon name="chevronRight" size={16} /></button></td>
             <th scope="row"><span className="commission-product-cell">
               {productImage(first)}
               <span>
