@@ -40,7 +40,8 @@ const yesNo = (value: boolean | null | undefined) => value == null ? null : valu
 
 // How Trendyol settled each line (from the return sync) and, on request, its status history read live from Trendyol.
 // Read only: nothing here writes to the marketplace.
-export function ReturnMarketplaceHistory({ returnId, lines }: { returnId: string; lines: SettledLine[] }) {
+// showSettlement: false where the lines' own table already shows the settlement (the Detaylı Bilgi window).
+export function ReturnMarketplaceHistory({ returnId, lines, showSettlement = true }: { returnId: string; lines: SettledLine[]; showSettlement?: boolean }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const audits = useQuery({ queryKey: ['return-audits', returnId], queryFn: () => hubApi<LineAudit[]>(`/returns/${returnId}/audits`), enabled: historyOpen, staleTime: 5 * 60_000 })
   const settled = lines.map(line => ({ line, facts: [
@@ -50,8 +51,8 @@ export function ReturnMarketplaceHistory({ returnId, lines }: { returnId: string
     ['Trendyol Notu', line.marketplaceNote?.trim() || null]
   ].filter((fact): fact is [string, string] => Boolean(fact[1])) }))
   return <article className="rr-mhist">
-    <div className="rr-h3">Trendyol Kararı ve Durum Geçmişi</div>
-    {settled.some(entry => entry.facts.length) ? settled.filter(entry => entry.facts.length).map(({ line, facts }) => <div className="rr-mhist-line" key={line.id}>
+    <div className="rr-h3">{showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}</div>
+    {!showSettlement ? null : settled.some(entry => entry.facts.length) ? settled.filter(entry => entry.facts.length).map(({ line, facts }) => <div className="rr-mhist-line" key={line.id}>
       {lines.length > 1 && <b>{line.title}</b>}
       <dl className="rr-kv">{facts.map(([label, value]) => <div key={label} style={{ display: 'contents' }}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </div>) : <p className="rr-mhist-none">Trendyol bu iade için henüz bir karar bilgisi göndermedi.</p>}
