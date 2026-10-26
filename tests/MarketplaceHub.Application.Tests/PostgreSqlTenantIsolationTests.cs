@@ -821,6 +821,64 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await transaction.RollbackAsync();
     }
 
+    // A product is deleted with its stock history: an order stock movement and an open reservation no longer refuse it.
+    [PostgreSqlFact]
+    public async Task DeleteProductAsync_WithOrderStockMovementAndReservation_DeletesTheProductAndItsStockHistory()
+    {
+        var tenant = NewTenant("product-delete-history");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"History delete {Guid.NewGuid():N}",
+            Description = "History delete test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        var code = $"HST-{Guid.NewGuid():N}";
+        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = code, SkuNormalized = code, OptionSignature = "Beden=M", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 3, Reserved = 1, Available = 2 };
+        // The delete opens its own transaction, so the rows are committed and the tenant removed at the end.
+        await using var db = fixture.CreateContext();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.Add(variant);
+        db.InventoryItems.Add(item);
+        db.StockLedgerEntries.Add(new StockLedgerEntry
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            InventoryItemId = item.Id,
+            MovementType = "ORDER_RESERVED",
+            QuantityDelta = -1,
+            SourceType = "ORDER_LINE",
+            SourceId = Guid.NewGuid().ToString("D"),
+            SourceEventId = "history-delete-test",
+            IdempotencyKey = $"history-delete-test:{Guid.NewGuid():N}",
+            OccurredAt = fixture.Now,
+            RecordedAt = fixture.Now,
+            CorrelationId = "history-delete-test"
+        });
+        db.StockReservations.Add(new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = Guid.NewGuid().ToString("D"), Quantity = 1 });
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+        var deleted = await service.DeleteProductAsync(tenant.Id, product.Id, product.Version, CancellationToken.None);
+
+        Assert.True(deleted.Succeeded, deleted.Error?.Message);
+        db.ChangeTracker.Clear();
+        Assert.False(await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == product.Id));
+        Assert.False(await db.InventoryItems.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == item.Id));
+        Assert.False(await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == item.Id));
+        Assert.False(await db.StockReservations.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == item.Id));
+
+        await db.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+        await db.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+    }
+
     [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenDeletedVariantIsNamedOnlyByABlockedJob_DeletesItButAPendingJobStillRefuses()
     {

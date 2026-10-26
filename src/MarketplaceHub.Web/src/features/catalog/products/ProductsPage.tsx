@@ -480,7 +480,7 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
   const isGroup = request.productIds.length > 1
   return <RrModal crumb="Katalog Kaydını Sil" title={isGroup ? 'Ürün Grubunu Sil' : 'Ürünü Sil'} desc="Bu işlem yerel katalog kaydını kalıcı olarak kaldırır. Sipariş geçmişi korunur; pazar yeri ilanı otomatik olarak silinmez." size="sm" locked={deleting} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={deleting}>Vazgeç</button><button type="button" className="rr-btn rr-solid" onClick={onConfirm} disabled={deleting}><RrIcon name="trash" />{deleting ? 'Siliniyor…' : isGroup ? `${request.productIds.length} Kaydı Sil` : 'Kalıcı Olarak Sil'}</button></>}>
     <div className="rr-callout rr-danger"><RrIcon name="alert" /><span><b>{request.title}</b><br />{request.description}</span></div>
-    <p className="rr-lead">Devam ederseniz bu kayıtların varyant, stok, fiyat ve platform eşleşmeleri silinir.</p>
+    <p className="rr-lead">Devam ederseniz bu kayıtların varyant, stok, fiyat ve platform eşleşmeleri ile stok geçmişi (sipariş ve iade stok hareketleri, rezervasyonlar) silinir; siparişler ve iadeler kalır.</p>
   </RrModal>
 }
 const productPageSizes = [20, 50, 100]
@@ -804,7 +804,7 @@ export function ProductsPage() {
   function bulkDeleteProducts() {
     const ids = [...selectedProductIds]
     if (!ids.length) return
-    setDeleteRequest({ productIds: ids, title: `${selectedProductCardCount} ürün kartı`, description: `${ids.length} katalog kaydı seçildi. Sipariş geçmişi korunur; yalnızca yerel katalog verileri silinir.` })
+    setDeleteRequest({ productIds: ids, title: `${selectedProductCardCount} ürün kartı`, description: `${ids.length} katalog kaydı seçildi. Siparişler ve iadeler korunur; ürünlerin katalog ve stok kayıtları silinir.` })
   }
 
   const [selectionMode, setSelectionMode] = useState(false)

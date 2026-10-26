@@ -625,15 +625,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(x => x.TenantId == tenantId && targetIds.Contains(x.ProductId))
             .Select(x => x.Id)
             .ToArrayAsync(cancellationToken);
-        var inventoryIds = await db.InventoryItems.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId))
-            .Select(x => x.Id)
-            .ToArrayAsync(cancellationToken);
-        if (inventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId), cancellationToken))
-            return Conflict<int>("PRODUCT_DELETE_BLOCKED", "Ürün iade stok hareketine bağlı olduğu için silinemiyor. Sipariş ve iade geçmişini korumak için ürünü arşivleyin.");
-        var productDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, targetIds, variantIds, inventoryIds, cancellationToken);
+        // A product is deleted with its whole stock history (the owner's decision, 26 Oct 2026): its order and return
+        // stock movements, reservations and return stock dispositions go with it, while the orders and returns
+        // themselves stay and only lose their link to the variant. Only a publication or price/stock job still to
+        // run refuses it, as that job would write to the product being deleted.
+        var productDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, targetIds, variantIds, [], cancellationToken);
         if (productDeleteBlock is not null)
-            return Conflict<int>("PRODUCT_DELETE_BLOCKED", $"Ürün {productDeleteBlock} bağlı olduğu için silinemiyor. Stok geçmişini korumak için ürünü arşivleyin.");
+            return Conflict<int>("PRODUCT_DELETE_BLOCKED", $"Ürün {productDeleteBlock} bağlı olduğu için şu an silinemiyor; iş bittikten sonra tekrar deneyin.");
 
         await db.Database.ExecuteSqlInterpolatedAsync($$"""
             CREATE TEMP TABLE IF NOT EXISTS purge_product_ids ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
@@ -681,6 +679,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             DELETE FROM inventory.stock_ledger_entries l
             USING inventory.inventory_items i, catalog.product_variants v, purge_product_ids p
             WHERE l."TenantId"={{tenantId}} AND l."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM sales.return_stock_dispositions d
+            USING inventory.inventory_items i, catalog.product_variants v, purge_product_ids p
+            WHERE d."TenantId"={{tenantId}} AND d."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
             DELETE FROM inventory.inventory_items i
             USING catalog.product_variants v, purge_product_ids p
             WHERE i."TenantId"={{tenantId}} AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
