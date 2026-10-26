@@ -947,7 +947,10 @@ public sealed record OperationalDataResetView(
     int Brands = 0,
     int Options = 0,
     int CategoryAttributes = 0,
-    bool ConnectionDeleted = false);
+    bool ConnectionDeleted = false,
+    // A connection reset keeps the issued invoices (fiscal records; deleting them would let the orders be invoiced
+    // again) and the orders and returns they belong to, and says how many it kept.
+    int KeptIssuedInvoices = 0);
 
 public interface IOperationalDataMaintenanceService
 {

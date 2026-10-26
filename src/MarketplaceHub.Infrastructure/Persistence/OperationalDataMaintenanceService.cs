@@ -105,27 +105,29 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Count == 0 || scopes.Any(scope => !supportedScopes.Contains(scope))) return Invalid("Bu bağlantı için geçerli en az bir veri alanı seçin.");
         if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
-        if ((scopes.Contains("ORDERS") || scopes.Contains("INVOICES")) && await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
+        // Issued invoices are fiscal records and the proof that their orders were invoiced: a reset keeps them, with the
+        // orders and returns they belong to, and removes everything else (it used to refuse the whole reset).
+        var keptIssued = scopes.Contains("ORDERS") || scopes.Contains("INVOICES") || scopes.Contains("RETURNS") ? await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) : 0;
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await BeginFilePurgeAsync(cancellationToken);
         if (scopes.Contains("ORDERS"))
         {
-            await DeleteReturnsAsync(tenantId, connectionId, cancellationToken);
-            await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken);
-            await DeleteOrdersAsync(tenantId, connectionId, cancellationToken);
+            await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
+            await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
+            await DeleteOrdersAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
             await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "ORDERS", cancellationToken);
         }
         else
         {
             if (scopes.Contains("RETURNS"))
             {
-                await DeleteReturnsAsync(tenantId, connectionId, cancellationToken);
+                await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
                 await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "RETURNS", cancellationToken);
             }
             if (scopes.Contains("INVOICES"))
             {
-                await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken);
+                await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
                 await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "INVOICES", cancellationToken);
             }
         }
@@ -144,8 +146,13 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
-        return ServiceResult<OperationalDataResetView>.Ok(counts);
+        return ServiceResult<OperationalDataResetView>.Ok(counts with { KeptIssuedInvoices = keptIssued });
     }
+
+    // A connection's list sizes come from its current snapshots' item counts: counting the rows themselves scanned the
+    // whole reference table (13 million rows, 15-18 s a count on 26 Oct 2026).
+    private Task<int> CurrentListSizeAsync(Guid tenantId, Guid connectionId, string[] resourceTypes, CancellationToken cancellationToken) =>
+        db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && resourceTypes.Contains(x.ResourceType) && x.IsCurrent).SumAsync(x => x.ItemCount, cancellationToken);
 
     private async Task<OperationalDataResetView> CountsAsync(Guid tenantId, Guid? connectionId, HashSet<string> scopes, CancellationToken cancellationToken)
     {
@@ -153,10 +160,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         var orders = scopes.Contains("ORDERS") ? await db.Orders.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ConnectionId == connectionId), cancellationToken) : 0;
         var returns = scopes.Contains("RETURNS") || scopes.Contains("ORDERS") ? await db.ReturnClaims.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ConnectionId == connectionId), cancellationToken) : 0;
         var invoices = scopes.Contains("INVOICES") || scopes.Contains("ORDERS") ? await db.Invoices.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ProviderConnectionId == connectionId || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connectionId)), cancellationToken) : 0;
-        var categories = scopes.Contains("CATEGORIES") ? connectionId is null ? await db.Categories.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await db.ReferenceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES", cancellationToken) : 0;
-        var brands = scopes.Contains("BRANDS") ? connectionId is null ? await db.Brands.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await db.ReferenceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS", cancellationToken) : 0;
+        var categories = scopes.Contains("CATEGORIES") ? connectionId is null ? await db.Categories.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await CurrentListSizeAsync(tenantId, connectionId.Value, ["CATEGORIES"], cancellationToken) : 0;
+        var brands = scopes.Contains("BRANDS") ? connectionId is null ? await db.Brands.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await CurrentListSizeAsync(tenantId, connectionId.Value, ["BRANDS"], cancellationToken) : 0;
         var options = scopes.Contains("OPTIONS") ? await db.ProductOptions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
-        var categoryAttributes = scopes.Contains("CATEGORY_ATTRIBUTES") || connectionId is not null && scopes.Contains("CATEGORIES") ? connectionId is null ? await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await db.ReferenceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ResourceType == "CATEGORY_ATTRIBUTES" || x.ResourceType == "ATTRIBUTE_VALUES"), cancellationToken) : 0;
+        var categoryAttributes = scopes.Contains("CATEGORY_ATTRIBUTES") || connectionId is not null && scopes.Contains("CATEGORIES") ? connectionId is null ? await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await CurrentListSizeAsync(tenantId, connectionId.Value, ["CATEGORY_ATTRIBUTES", "ATTRIBUTE_VALUES"], cancellationToken) : 0;
         return new(products, orders, returns, invoices, categories, brands, options, categoryAttributes);
     }
 
@@ -199,19 +206,21 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.external_identifier_aliases WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         """, cancellationToken);
 
-    private Task DeleteReturnsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        INSERT INTO purge_files SELECT e."FileAssetId" FROM sales.return_evidence e JOIN sales.return_claims c ON c."Id"=e."ClaimId" AND c."TenantId"={{tenantId}} WHERE e."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) ON CONFLICT DO NOTHING;
-        DELETE FROM sales.return_evidence e USING sales.return_claims c WHERE e."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND e."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
-        DELETE FROM sales.return_stock_dispositions d USING sales.return_claims c WHERE d."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND d."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
-        DELETE FROM sales.return_decisions d USING sales.return_claims c WHERE d."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND d."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
-        DELETE FROM sales.return_lines l USING sales.return_claims c WHERE l."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND l."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
-        DELETE FROM sales.return_claims WHERE "TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR "ConnectionId"={{connectionId}});
+    // KeepIssued: the returns of an order with an issued invoice stay with it (see ResetConnectionDataAsync).
+    private Task DeleteReturnsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool keepIssued = false) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        INSERT INTO purge_files SELECT e."FileAssetId" FROM sales.return_evidence e JOIN sales.return_claims c ON c."Id"=e."ClaimId" AND c."TenantId"={{tenantId}} WHERE e."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=c."OrderId" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL))) ON CONFLICT DO NOTHING;
+        DELETE FROM sales.return_evidence e USING sales.return_claims c WHERE e."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND e."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=c."OrderId" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
+        DELETE FROM sales.return_stock_dispositions d USING sales.return_claims c WHERE d."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND d."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=c."OrderId" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
+        DELETE FROM sales.return_decisions d USING sales.return_claims c WHERE d."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND d."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=c."OrderId" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
+        DELETE FROM sales.return_lines l USING sales.return_claims c WHERE l."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND l."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=c."OrderId" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
+        DELETE FROM sales.return_claims c WHERE c."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=c."OrderId" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
         """, cancellationToken);
 
-    private Task DeleteInvoicesAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+    // KeepIssued: an issued invoice stays (see ResetConnectionDataAsync); drafts and failed ones go.
+    private Task DeleteInvoicesAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool keepIssued = false) => db.Database.ExecuteSqlInterpolatedAsync($$"""
         CREATE TEMP TABLE IF NOT EXISTS purge_invoices ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_invoices;
-        INSERT INTO purge_invoices SELECT i."Id" FROM billing.invoices i LEFT JOIN sales.orders o ON o."TenantId"=i."TenantId" AND o."Id"=i."OrderId" WHERE i."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR i."ProviderConnectionId"={{connectionId}} OR o."ConnectionId"={{connectionId}});
+        INSERT INTO purge_invoices SELECT i."Id" FROM billing.invoices i LEFT JOIN sales.orders o ON o."TenantId"=i."TenantId" AND o."Id"=i."OrderId" WHERE i."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR i."ProviderConnectionId"={{connectionId}} OR o."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL));
         INSERT INTO purge_files SELECT d."FileAssetId" FROM billing.invoice_documents d JOIN purge_invoices p ON p."Id"=d."InvoiceId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
         DELETE FROM billing.marketplace_delivery_states s USING purge_invoices p WHERE s."TenantId"={{tenantId}} AND s."InvoiceId"=p."Id";
         DELETE FROM billing.marketplace_deliveries d USING purge_invoices p WHERE d."TenantId"={{tenantId}} AND d."InvoiceId"=p."Id";
@@ -223,10 +232,11 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM billing.invoices i USING purge_invoices p WHERE i."TenantId"={{tenantId}} AND i."Id"=p."Id";
         """, cancellationToken);
 
-    private Task DeleteOrdersAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+    // KeepIssued: an order with an issued invoice stays with its packages and lines (see ResetConnectionDataAsync).
+    private Task DeleteOrdersAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool keepIssued = false) => db.Database.ExecuteSqlInterpolatedAsync($$"""
         CREATE TEMP TABLE IF NOT EXISTS purge_orders ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_orders;
-        INSERT INTO purge_orders SELECT "Id" FROM sales.orders WHERE "TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR "ConnectionId"={{connectionId}});
+        INSERT INTO purge_orders SELECT o."Id" FROM sales.orders o WHERE o."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR o."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=o."Id" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
         INSERT INTO purge_files SELECT d."FileAssetId" FROM sales.shipment_documents d JOIN sales.shipment_packages p ON p."Id"=d."PackageId" JOIN purge_orders o ON o."Id"=p."OrderId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
         DELETE FROM sales.shipment_document_attempts a USING sales.shipment_packages p, purge_orders o WHERE a."TenantId"={{tenantId}} AND a."PackageId"=p."Id" AND p."OrderId"=o."Id";
         DELETE FROM sales.shipment_documents d USING sales.shipment_packages p, purge_orders o WHERE d."TenantId"={{tenantId}} AND d."PackageId"=p."Id" AND p."OrderId"=o."Id";

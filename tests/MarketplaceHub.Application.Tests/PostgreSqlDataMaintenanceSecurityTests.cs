@@ -39,6 +39,55 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // A connection's order reset goes ahead around its issued invoices (26 Oct 2026: 10 issued Hepsiburada invoices
+    // refused the whole reset): the issued invoice and its order stay, another order and its draft invoice go.
+    [PostgreSqlFact]
+    public async Task ConnectionReset_KeepsIssuedInvoicesWithTheirOrdersAndRemovesTheRest()
+    {
+        var seed = NewSeed("dm-keep");
+        var other = new Order
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            ConnectionId = seed.Marketplace.Id,
+            ExternalOrderId = "dm-keep-other",
+            OrderNumber = "dm-keep-other",
+            Currency = "TRY",
+            GrossAmount = 50m,
+            NetAmount = 50m,
+            OrderedAt = fixture.Now.AddDays(-2),
+            LastRemoteModifiedAt = fixture.Now.AddDays(-2),
+            CustomerSnapshotJson = "{}",
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = "{}",
+            DerivedStatus = "DELIVERED",
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        var issued = NewInvoice(seed, InvoiceStatus.Completed, issued: true);
+        var draft = NewInvoice(seed, InvoiceStatus.Draft, issued: false);
+        draft.OrderId = other.Id;
+        try
+        {
+            await SeedAsync(seed, db => { db.Orders.Add(other); db.Invoices.AddRange(issued, draft); });
+
+            await using var db = fixture.CreateContext();
+            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS", "RETURNS", "INVOICES"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal(1, result.Value!.KeptIssuedInvoices);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal([seed.Order.Id], await verification.Orders.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync());
+            Assert.Equal([issued.Id], await verification.Invoices.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync());
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // A live e-invoice provider with an issued invoice is kept; a STAGE one's invoices are tests and go with it.
     [PostgreSqlFact]
     public Task ProviderDelete_KeepsALiveProvidersIssuedInvoices() => ProviderDeleteAsync("PRODUCTION", deleted: false);
