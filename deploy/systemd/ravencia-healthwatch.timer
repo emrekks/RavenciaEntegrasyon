@@ -1,12 +1,10 @@
 [Unit]
-Description=Run the Ravencia health watch every five minutes outside the nightly stop window
+Description=Run the Ravencia health watch every five minutes
 
 [Timer]
-# Every 5 minutes from 09:00 to 00:25 Istanbul time; the host is stopped
-# 00:30-09:00. healthwatch.sh re-checks the window and skips the first 10
-# minutes after boot.
-OnCalendar=*-*-* 09..23:00/5:00 Europe/Istanbul
-OnCalendar=*-*-* 00:00,05,10,15,20,25:00 Europe/Istanbul
+# Every 5 minutes, all day: the host runs around the clock (no nightly stop since
+# 27 October 2026). healthwatch.sh skips the first 10 minutes after a boot.
+OnCalendar=*-*-* *:00/5:00
 AccuracySec=30s
 Unit=ravencia-healthwatch.service
 

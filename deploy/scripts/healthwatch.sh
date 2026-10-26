@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Five-minute health watch (ravencia-healthwatch.timer), outside the nightly
-# 00:30-09:00 Istanbul stop window:
+# Five-minute health watch (ravencia-healthwatch.timer), around the clock:
 #   - GET /health/ready and /health/queues through the edge, entered via loopback
 #     (the edge answers them only to private source addresses);
 #   - the Worker container's heartbeat health;
@@ -29,10 +28,6 @@ sudo_cmd=(sudo -n)
 source "$script_dir/lib.sh"
 
 now="$(date -u +%s)"
-istanbul_hhmm="$((10#$(TZ=Europe/Istanbul date +%H%M)))"
-if (( istanbul_hhmm >= 30 && istanbul_hhmm < 900 )); then
-  exit 0
-fi
 uptime_seconds="$(cut -d. -f1 /proc/uptime)"
 if (( uptime_seconds < 600 )); then
   echo "Host booted ${uptime_seconds}s ago; the stack is still starting."
@@ -97,8 +92,8 @@ if [[ -n "$postgres_id" ]]; then
   fi
 fi
 
-# Newest backup set in the staging volume (nightly at 23:30 and before every
-# deploy). 30 hours allows for the nightly stop; after a longer stop the backup
+# Newest backup set in the staging volume (11:59 and 23:59 Istanbul and before
+# every deploy). 30 hours leaves room for one missed run; after a stop the backup
 # timer's Persistent=true catch-up runs within the first minutes after boot.
 backup_max_age_hours="${RAVENCIA_BACKUP_MAX_AGE_HOURS:-30}"
 backup_mountpoint="$("${sudo_cmd[@]}" docker volume inspect --format '{{.Mountpoint}}' marketplacehub_backup_staging 2>/dev/null || true)"

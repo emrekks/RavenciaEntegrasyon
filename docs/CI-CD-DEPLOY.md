@@ -33,7 +33,7 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
 
 `.last-success` henüz yoksa (bu betiğin ilk kurulumu) eski kural geçerlidir: HEAD'in atası olan SHA için 0.
 
-**Gece kapanışı (00:30 TR)**: deploy saate bakılmadan başlatılır (23:45 ertelemesi 26 Ekim 2026'da kaldırıldı). Kapanışın kendisi depoda değil (AWS tarafında durdurma); bunun için
+**Sunucu 7/24 açık** (27 Ekim 2026'dan beri gece 00:30–09:00 kapanışı yok); deploy saate bakılmadan başlatılır (23:45 ertelemesi 26 Ekim 2026'da kaldırıldı). Sunucu elle durdurulursa diye
 `ravencia-deploy-guard.service` kurulur: açılışta bir şey yapmaz, kapanışta `ExecStop`
 (`wait-for-deploy-lock.sh`) `~/deploy-logs/.lock` serbest kalana kadar en çok 23 dk bekler. Docker'dan
 önce durdurulduğu için konteynerler bu sırada çalışır; deploy'un koştuğu SSH oturum kapsamları
@@ -183,7 +183,7 @@ MaxRetentionSec=30day
 | --- | --- | --- |
 | `ravencia-backup.timer` | 20:30 UTC (23:30 TR) ±10 dk, `Persistent=true` | `daily-backup.sh`: api/caddy konteynerlerini 5 dk'ya kadar bekler, taze yedek + doğrulama |
 | `ravencia-restore-drill.timer` | ayın ilk Pazar'ı 19:00 UTC (22:00 TR) | `monthly-restore-drill.sh`: en yeni seti izole konteynerlere geri yükler, migration/API/Worker sağlığını doğrular |
-| `ravencia-healthwatch.timer` | 5 dakikada bir, 09:00–00:25 TR | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
+| `ravencia-healthwatch.timer` | 5 dakikada bir, günün her saati | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
 | `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
 
@@ -217,7 +217,7 @@ Açılıştan sonraki ilk 10 dakika atlanır. Durum: `/var/lib/ravencia-healthwa
 Aynı alarm akışıyla şunlar da denetlenir: kök disk doluluğu ≥ %85 (`RAVENCIA_DISK_ALERT_PERCENT`),
 PostgreSQL istemci bağlantıları ≥ `max_connections`'ın %80'i (`RAVENCIA_DB_CONNECTION_ALERT_PERCENT`;
 `pg_stat_activity`, postgres konteynerinde `psql`) ve `marketplacehub_backup_staging` içindeki en yeni
-yedek setinin yaşı ≥ 30 saat (`RAVENCIA_BACKUP_MAX_AGE_HOURS`; gece kapanışı payı dahil) ya da hiç set
+yedek setinin yaşı ≥ 30 saat (`RAVENCIA_BACKUP_MAX_AGE_HOURS`; kaçan bir yedek payı dahil) ya da hiç set
 olmaması.
 
 > Autoheal sidecar'ı (`willfarrell/autoheal`) bilinçli olarak kullanılmadı: Docker soketini
@@ -226,7 +226,7 @@ olmaması.
 
 **Dış izleme (elle kurulmalı, önerilen, ücretsiz)** — sunucu ya da Docker tamamen çökerse healthwatch da
 çalışmaz; bunu yalnız dışarıdan bir izleyici görür: UptimeRobot/Better Stack ile `https://panel.ravencia.com/health/live`
-5 dakikada bir; bakım penceresi 00:30–09:00 Europe/Istanbul. Ready/queues dışarıya kapalı olduğu için
+5 dakikada bir, günün her saati. Ready/queues dışarıya kapalı olduğu için
 derin kontroller sunucudaki healthwatch'tadır.
 
 **Metrikler**: imaj yalnızca debugger/profiler eklemeyi kapatır

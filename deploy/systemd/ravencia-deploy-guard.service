@@ -1,7 +1,6 @@
 [Unit]
 Description=Hold a host shutdown until a running Ravencia deploy releases its lock
-# Does nothing at boot. When the host stops (the nightly 00:30 Istanbul stop, or by
-# hand), ExecStop waits for ~/deploy-logs/.lock, which ci-entrypoint.sh holds for a
+# Does nothing at boot. When the host stops (by hand), ExecStop waits for ~/deploy-logs/.lock, which ci-entrypoint.sh holds for a
 # whole deploy. After=docker.service makes systemd stop this unit before Docker, so
 # the containers keep running while it waits. The deploy itself runs in the deploy
 # key's SSH session scope; session-.scope.d/ravencia-deploy-guard.conf orders those

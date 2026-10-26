@@ -2,9 +2,9 @@
 Description=Run the verified Ravencia backup twice per day
 
 [Timer]
-# 11:59 and 23:59 Istanbul (UTC+3), the two scheduled sets of each day; the host
-# is stopped at 00:30. Persistent=true catches up a missed run after the next
-# boot; daily-backup.sh then waits for the stack to come up.
+# 11:59 and 23:59 Istanbul (UTC+3), the two scheduled sets of each day.
+# Persistent=true catches up a run missed while the host was stopped after the
+# next boot; daily-backup.sh then waits for the stack to come up.
 OnCalendar=*-*-* 08:59:00 UTC
 OnCalendar=*-*-* 20:59:00 UTC
 Persistent=true

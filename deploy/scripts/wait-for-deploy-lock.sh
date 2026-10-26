@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# ExecStop of ravencia-deploy-guard.service: when the host is being stopped (the
-# nightly 00:30 stop, or by hand) while a deploy runs, hold the shutdown until
+# ExecStop of ravencia-deploy-guard.service: when the host is being stopped (by
+# hand) while a deploy runs, hold the shutdown until
 # the deploy releases ~/deploy-logs/.lock (ci-entrypoint.sh keeps it for the
 # whole deploy), so it is not cut off in the middle of a backup or migration.
 # Bounded: after RAVENCIA_DEPLOY_LOCK_WAIT_SECONDS (default 1380 s = 23 min,
