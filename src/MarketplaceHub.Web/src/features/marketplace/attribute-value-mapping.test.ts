@@ -28,9 +28,18 @@ describe('attribute value reference mappings', () => {
     ])
   })
 
+  // 26 Oct 2026 (live, Hepsiburada Renk): "Beyaz-Mavi" stayed open because "Beyaz - Mavi" and "Mavi - Beyaz" both exist.
+  it('matches the words in their own order first, so a reversed pair does not block it', () => {
+    const plan = planDirectReferenceValues(
+      [{ id: 'l-bm', value: 'Beyaz-Mavi' }, { id: 'l-bp', value: 'Beyaz-Pembe' }],
+      [{ externalId: 'r-bm', name: 'Beyaz - Mavi' }, { externalId: 'r-mb', name: 'Mavi - Beyaz' }, { externalId: 'r-bp', name: 'Beyaz - Pembe' }, { externalId: 'r-pb', name: 'Pembe - Beyaz' }])
+    expect(plan.mappings).toEqual([{ localId: 'l-bm', externalId: 'r-bm' }, { localId: 'l-bp', externalId: 'r-bp' }])
+  })
+
   it('leaves a loose match alone when two values share its key', () => {
-    const plan = planDirectReferenceValues([{ id: 'l1', value: 'Siyah-Beyaz' }], [{ externalId: 'a', name: 'Siyah / Beyaz' }, { externalId: 'b', name: 'Beyaz Siyah' }])
+    const plan = planDirectReferenceValues([{ id: 'l1', value: 'Siyah-Beyaz' }], [{ externalId: 'a', name: 'Siyah / Beyaz' }, { externalId: 'b', name: 'SIYAH BEYAZ' }])
     expect(plan.mappings).toEqual([])
+    expect(planDirectReferenceValues([{ id: 'l1', value: 'Kahve Lacivert' }], [{ externalId: 'a', name: 'Lacivert - Kahverengi' }, { externalId: 'b', name: 'Kahverengi Lacivert Gri' }]).mappings).toEqual([{ localId: 'l1', externalId: 'a' }])
     expect(looseReferenceValueKey('Hardal Rengi')).toBe(looseReferenceValueKey('hardal'))
     expect(looseReferenceValueKey('36')).not.toBe(looseReferenceValueKey('36-38'))
   })

@@ -44,16 +44,21 @@ export function planDirectReferenceValues(
   // Second pass over what the exact names left: the same words once spacing, punctuation and Turkish letters are
   // folded, synonyms read alike and a filler word dropped ("Lacivert-Kahve" = "Lacivert - Kahverengi", "Hardal Rengi" =
   // "Hardal", "SIYAH/BEYAZ" = "Siyah / Beyaz"). Still one to one: a key shared by two values on either side is skipped.
+  // The words in their own order first ("Beyaz-Mavi" = "Beyaz - Mavi" even though "Mavi - Beyaz" exists too), then in
+  // any order for what is still open ("Kahve Lacivert" = "Lacivert - Kahverengi").
   const matchedLocals = new Set(mappings.map(item => item.localId))
   const matchedRemotes = new Set(mappings.map(item => item.externalId))
   const exactRemoteNames = new Set(remoteByName.keys())
-  const looseLocals = groupByLooseKey(localValues.filter(local => !matchedLocals.has(local.id) && !exactRemoteNames.has(normalizeReferenceValueLabel(local.value))), local => local.value)
-  const looseRemotes = groupByLooseKey(remoteValues, remote => remote.name)
-  for (const [key, locals] of looseLocals) {
-    const remotes = looseRemotes.get(key) ?? []
-    if (locals.length === 1 && remotes.length === 1 && !matchedRemotes.has(remotes[0].externalId)) {
-      mappings.push({ localId: locals[0].id, externalId: remotes[0].externalId })
-      matchedRemotes.add(remotes[0].externalId)
+  for (const ordered of [true, false]) {
+    const looseLocals = groupByLooseKey(localValues.filter(local => !matchedLocals.has(local.id) && !exactRemoteNames.has(normalizeReferenceValueLabel(local.value))), local => local.value, ordered)
+    const looseRemotes = groupByLooseKey(remoteValues, remote => remote.name, ordered)
+    for (const [key, locals] of looseLocals) {
+      const remotes = looseRemotes.get(key) ?? []
+      if (locals.length === 1 && remotes.length === 1 && !matchedRemotes.has(remotes[0].externalId)) {
+        mappings.push({ localId: locals[0].id, externalId: remotes[0].externalId })
+        matchedLocals.add(locals[0].id)
+        matchedRemotes.add(remotes[0].externalId)
+      }
     }
   }
 
@@ -63,18 +68,19 @@ export function planDirectReferenceValues(
 // Words that only say what kind of value it is ("Hardal Rengi"); dropped unless the value is nothing else.
 const fillerWords = new Set(['rengi', 'renk'])
 
-// A value's words, folded (matchingKey), each read through the synonym list (kahve → kahverengi), fillers dropped and
-// sorted, so the order of a colour pair does not matter either.
-export function looseReferenceValueKey(value: string) {
+// A value's words, folded (matchingKey), each read through the synonym list (kahve → kahverengi) and fillers dropped;
+// ordered false also sorts them, so the order of a colour pair does not matter.
+export function looseReferenceValueKey(value: string, ordered = false) {
   const words = matchingKey(value).split(' ').filter(Boolean).map(word => canonicalKey(word))
   const kept = words.filter(word => !fillerWords.has(word))
-  return (kept.length ? kept : words).sort().join(' ')
+  const key = kept.length ? kept : words
+  return (ordered ? key : key.sort()).join(' ')
 }
 
-function groupByLooseKey<T>(items: readonly T[], label: (item: T) => string) {
+function groupByLooseKey<T>(items: readonly T[], label: (item: T) => string, ordered: boolean) {
   const groups = new Map<string, T[]>()
   for (const item of items) {
-    const key = looseReferenceValueKey(label(item))
+    const key = looseReferenceValueKey(label(item), ordered)
     if (!key) continue
     groups.set(key, [...(groups.get(key) ?? []), item])
   }
