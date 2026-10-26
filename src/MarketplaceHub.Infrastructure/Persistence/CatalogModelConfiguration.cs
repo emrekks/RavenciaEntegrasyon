@@ -302,7 +302,7 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("connection_attribute_defaults", "catalog"); entity.HasKey(x => x.Id);
             entity.Property(x => x.ExternalAttributeId).HasMaxLength(256); entity.Property(x => x.AttributeName).HasMaxLength(256);
-            entity.Property(x => x.ExternalValueId).HasMaxLength(256); entity.Property(x => x.ValueName).HasMaxLength(320); entity.Property(x => x.CustomValue).HasMaxLength(320);
+            entity.Property(x => x.ExternalValueId).HasMaxLength(256); entity.Property(x => x.ValueName).HasMaxLength(320); entity.Property(x => x.CustomValue).HasMaxLength(320); entity.Property(x => x.SourceField).HasMaxLength(32);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalAttributeId }).IsUnique();
         });

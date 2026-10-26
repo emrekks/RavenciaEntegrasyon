@@ -295,6 +295,8 @@ public sealed class ConnectionAttributeDefault
     public string? ExternalValueId { get; set; }
     public string? ValueName { get; set; }
     public string? CustomValue { get; set; }
+    // Instead of a fixed value, a field of the product itself (ProductFieldSources: MODEL_CODE, SKU, BARCODE, TITLE).
+    public string? SourceField { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
 }

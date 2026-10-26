@@ -357,10 +357,16 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var attributeName = command.AttributeName?.Trim() ?? "";
         var valueId = string.IsNullOrWhiteSpace(command.ExternalValueId) ? null : command.ExternalValueId.Trim();
         var customValue = string.IsNullOrWhiteSpace(command.CustomValue) ? null : command.CustomValue.Trim();
+        var sourceField = string.IsNullOrWhiteSpace(command.SourceField) ? null : command.SourceField.Trim().ToUpperInvariant();
         if (attributeId.Length is 0 or > 256 || attributeName.Length is 0 or > 256)
             return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_INVALID", "Varsayılan için pazaryeri özelliği ve adı gereklidir.", 422);
-        if ((valueId is null) == (customValue is null))
-            return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_VALUE_REQUIRED", "Varsayılan için ya listeden bir değer ya da serbest metin girilmelidir.", 422);
+        if (new[] { valueId, customValue, sourceField }.Count(value => value is not null) != 1)
+            return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_VALUE_REQUIRED", "Varsayılan için listeden bir değer, serbest metin ya da bir ürün bilgisi seçilmelidir.", 422);
+        if (sourceField is not null && !ProductFieldSources.All.Contains(sourceField))
+            return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_SOURCE_INVALID", "Ürün bilgisi olarak Model Kodu, Stok Kodu, Barkod veya Ürün Adı seçilebilir.", 422);
+        // Pazarama and the others send listed value ids only, so a product field could never reach them.
+        if (sourceField is not null && !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && ProductFieldSources.Platforms.Contains(x.PlatformCode), cancellationToken))
+            return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_SOURCE_UNSUPPORTED", "Ürün bilgisi bu pazaryerinde kullanılamaz.", 422);
         if ((valueId?.Length ?? 0) > 256 || (customValue?.Length ?? 0) > 320 || (command.ValueName?.Trim().Length ?? 0) > 320)
             return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_INVALID", "Varsayılan değer çok uzun.", 422);
         var row = await db.ConnectionAttributeDefaults.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalAttributeId == attributeId, cancellationToken);
@@ -374,6 +380,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         row.ExternalValueId = valueId;
         row.ValueName = valueId is null ? null : command.ValueName?.Trim();
         row.CustomValue = customValue;
+        row.SourceField = sourceField;
         row.UpdatedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<ConnectionAttributeDefaultView>.Ok(MapDefault(row));
@@ -387,7 +394,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return removed == 0 ? NotFound<bool>() : ServiceResult<bool>.Ok(true);
     }
 
-    private static ConnectionAttributeDefaultView MapDefault(ConnectionAttributeDefault value) => new(value.ExternalAttributeId, value.AttributeName, value.ExternalValueId, value.ValueName, value.CustomValue, value.UpdatedAt, value.Version);
+    private static ConnectionAttributeDefaultView MapDefault(ConnectionAttributeDefault value) => new(value.ExternalAttributeId, value.AttributeName, value.ExternalValueId, value.ValueName, value.CustomValue, value.UpdatedAt, value.Version, value.SourceField);
 
     public async Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken)
     {

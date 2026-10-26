@@ -256,8 +256,9 @@ public sealed record MappingTemplateFillView(int Attributes, int Values);
 public sealed record MarketplaceNameHintsView(IReadOnlyList<string> AttributeNames, IReadOnlyDictionary<Guid, IReadOnlyList<string>> ValueNames);
 
 // A value sent for a marketplace attribute whenever the product has none (e.g. Menşei = TR).
-public sealed record ConnectionAttributeDefaultView(string ExternalAttributeId, string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, DateTimeOffset UpdatedAt, long Version);
-public sealed record UpsertConnectionAttributeDefaultCommand(string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue);
+// SourceField: instead of a fixed value, a field of the product itself (MODEL_CODE, SKU, BARCODE, TITLE).
+public sealed record ConnectionAttributeDefaultView(string ExternalAttributeId, string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, DateTimeOffset UpdatedAt, long Version, string? SourceField = null);
+public sealed record UpsertConnectionAttributeDefaultCommand(string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, string? SourceField = null);
 
 // Value mappings to review. SameCategory: one panel value mapped to several marketplace values in
 // one category (only one can be sent). CrossCategory: one panel value mapped to different

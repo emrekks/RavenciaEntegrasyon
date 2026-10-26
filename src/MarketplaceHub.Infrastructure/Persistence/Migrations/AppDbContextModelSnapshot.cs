@@ -1166,6 +1166,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("SourceField")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 

@@ -3,13 +3,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { UiIcon } from '../../shared/components'
 import { filterValueCandidates } from '../catalog/value-mapping-suggestions'
+import { productFieldLabel } from './product-field-sources'
 import './attribute-defaults-panel.css'
 
 type RemoteAttribute = { externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }
-type AttributeDefault = { externalAttributeId: string; attributeName: string; externalValueId: string | null; valueName: string | null; customValue: string | null; version: number }
+export type AttributeDefault = { externalAttributeId: string; attributeName: string; externalValueId: string | null; valueName: string | null; customValue: string | null; sourceField?: string | null; version: number }
 type ValueList = { items: Array<{ externalId: string; name: string; isActive: boolean }> }
 
 export function defaultValueLabel(item: AttributeDefault) {
+  if (item.sourceField) return `Ürünün ${productFieldLabel(item.sourceField)} bilgisi`
   return item.customValue ?? item.valueName ?? item.externalValueId ?? ''
 }
 

@@ -78,7 +78,8 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         // Connection defaults fill the attributes a product leaves empty, so a required
         // attribute with a usable default needs no panel attribute mapping.
         var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
-        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId)))
+        var fieldDefaults = (await ProductFieldSources.LoadAsync(db, tenantId, connectionId, remoteAttributes, cancellationToken)).Where(field => field.ExternalAttributeId != BrandAttributeId).ToList();
+        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId) && fieldDefaults.All(field => field.ExternalAttributeId != x.ExternalId)))
             return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu N11 özelliği '{required.Name}' eşlenmemiş.");
 
         var brand = product.BrandId is Guid brandId
@@ -195,6 +196,14 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
             // Defaults only fill attributes the product and its variant options left empty.
             foreach (var (_, defaultAttribute) in attributeDefaults.OrderBy(entry => entry.Key, StringComparer.Ordinal))
                 if (emittedIds.Add(defaultAttribute.Id)) attributes.Add(defaultAttribute);
+            // Product fields (the variant's own model code, stock code, barcode or title) fill what the product left empty.
+            foreach (var field in fieldDefaults)
+            {
+                if (!long.TryParse(field.ExternalAttributeId, NumberStyles.None, CultureInfo.InvariantCulture, out var fieldAttributeId) || emittedIds.Contains(fieldAttributeId)) continue;
+                if (ProductFieldSources.Value(field.Field, variant, title) is not { } fieldValue) return Fail("PRODUCT_FIELD_EMPTY", ProductFieldSources.MissingValueMessage(variant.Sku, field));
+                emittedIds.Add(fieldAttributeId);
+                attributes.Add(new(fieldAttributeId, null, fieldValue));
+            }
 
             var missingRequired = remoteAttributes
                 .Where(x => x.IsRequired == true && (!long.TryParse(x.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredId) || !emittedIds.Contains(requiredId)))

@@ -5935,6 +5935,73 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ProductFieldDefault_SendsEachVariantsOwnModelCode()
+    {
+        var tenant = NewTenant("product-field-default");
+        var connection = NewQuestionConnection(tenant);
+        var pazarama = NewQuestionConnection(tenant);
+        pazarama.PlatformCode = "PAZARAMA";
+        var categoryId = Guid.CreateVersion7();
+        var brandId = Guid.CreateVersion7();
+        var productId = Guid.CreateVersion7();
+        var variantId = Guid.CreateVersion7();
+        var categories = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORIES", "", fixture.Now, "categories");
+        var brands = NewReferenceSnapshot(tenant.Id, connection.Id, "BRANDS", "", fixture.Now, "brands");
+        var attributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "123", fixture.Now, "attributes");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.AddRange(connection, pazarama);
+        db.Categories.Add(new Category { Id = categoryId, TenantId = tenant.Id, Name = "Test kategori", NormalizedName = "TEST KATEGORI", Path = "Test kategori", IsLeaf = true, IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.Brands.Add(new Brand { Id = brandId, TenantId = tenant.Id, Name = "Test marka", NormalizedName = "TEST MARKA", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Test ürün", Description = "Ürün bilgisi testi", CategoryId = categoryId, BrandId = brandId, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.ReferenceSnapshots.AddRange(categories, brands, attributes);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, categories.Id, "CATEGORIES", "123", "Test kategori", isLeaf: true),
+            NewReferenceItem(tenant.Id, connection.Id, brands.Id, "BRANDS", "456", "Test marka"),
+            NewReferenceItem(tenant.Id, connection.Id, attributes.Id, "CATEGORY_ATTRIBUTES", "600", "Kombin Kodu", isRequired: true, allowsCustomValue: true));
+        db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = categories.Id, LocalId = categoryId, ExternalId = "123", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        db.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = brands.Id, LocalId = brandId, ExternalId = "456", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, Enabled = true, DesiredStatus = "ACTIVE", ActualStatus = "DRAFT", Version = 1 });
+        await db.SaveChangesAsync();
+
+        var referenceData = new ReferenceDataService(db, fixture.TimeProvider);
+        var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
+        Assert.Equal("ATTRIBUTE_DEFAULT_SOURCE_INVALID", (await referenceData.UpsertAttributeDefaultAsync(tenant.Id, connection.Id, "600", new UpsertConnectionAttributeDefaultCommand("Kombin Kodu", null, null, null, "COLOUR"), CancellationToken.None)).Error?.Code);
+        Assert.Equal("ATTRIBUTE_DEFAULT_VALUE_REQUIRED", (await referenceData.UpsertAttributeDefaultAsync(tenant.Id, connection.Id, "600", new UpsertConnectionAttributeDefaultCommand("Kombin Kodu", null, null, "K-1", "MODEL_CODE"), CancellationToken.None)).Error?.Code);
+        // Pazarama sends listed value ids only, so a product field is refused there.
+        Assert.Equal("ATTRIBUTE_DEFAULT_SOURCE_UNSUPPORTED", (await referenceData.UpsertAttributeDefaultAsync(tenant.Id, pazarama.Id, "600", new UpsertConnectionAttributeDefaultCommand("Kombin Kodu", null, null, null, "MODEL_CODE"), CancellationToken.None)).Error?.Code);
+        var saved = await referenceData.UpsertAttributeDefaultAsync(tenant.Id, connection.Id, "600", new UpsertConnectionAttributeDefaultCommand("Kombin Kodu", null, null, null, "model_code"), CancellationToken.None);
+        Assert.True(saved.Succeeded, saved.Error?.Message);
+        Assert.Equal("MODEL_CODE", saved.Value!.SourceField);
+
+        // The required attribute no longer blocks: the next check is the missing variant.
+        Assert.Equal("PRODUCT_VARIANT_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+        var summary = await referenceData.ListMappingsAsync(tenant.Id, "categories", connection.Id, "*", CancellationToken.None);
+        Assert.Equal(0, Assert.Single(summary.Value!).MissingRequiredAttributeCount);
+
+        // With a model-coded variant the next check is its price offer, not the attribute.
+        db.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, Sku = "PF-1", SkuNormalized = "PF-1", Barcode = "8690000000017", BarcodeNormalized = "8690000000017", ModelCode = "MC-77", OptionSignature = "", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        await db.SaveChangesAsync();
+        Assert.Equal("CHANNEL_OFFER_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+        Assert.Equal("MODEL_CODE", Assert.Single((await referenceData.ListAttributeDefaultsAsync(tenant.Id, connection.Id, CancellationToken.None)).Value!).SourceField);
+
+        await transaction.RollbackAsync();
+    }
+
+    [Fact]
+    public void ProductFieldSources_ReadTheVariantsOwnFields()
+    {
+        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = Guid.CreateVersion7(), ProductId = Guid.CreateVersion7(), Sku = "SKU-1", SkuNormalized = "SKU-1", Barcode = " 869 ", ModelCode = "  ", OptionSignature = "", CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch, Version = 1 };
+        Assert.Equal("SKU-1", ProductFieldSources.Value(ProductFieldSources.Sku, variant, "Ürün"));
+        Assert.Equal("869", ProductFieldSources.Value(ProductFieldSources.Barcode, variant, "Ürün"));
+        Assert.Equal("Ürün", ProductFieldSources.Value(ProductFieldSources.Title, variant, "Ürün"));
+        // A blank model code is no model code: the publication stops instead of sending spaces.
+        Assert.Null(ProductFieldSources.Value(ProductFieldSources.ModelCode, variant, "Ürün"));
+    }
+
+    [PostgreSqlFact]
     public async Task ConnectionDefault_CoversAHepsiburadaRequiredAttributeOnlyWhileItsValueIsOffered()
     {
         var tenant = NewTenant("hb-attribute-default");

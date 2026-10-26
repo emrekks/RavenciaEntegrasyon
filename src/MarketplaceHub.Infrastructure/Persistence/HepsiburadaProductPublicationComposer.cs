@@ -63,7 +63,8 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         // Connection defaults (e.g. Menşei = Türkiye) fill the attributes a product leaves empty, so a
         // required attribute with a usable default needs no panel attribute mapping.
         var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
-        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId)))
+        var fieldDefaults = await ProductFieldSources.LoadAsync(db, tenantId, connectionId, remoteAttributes, cancellationToken);
+        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId) && fieldDefaults.All(field => field.ExternalAttributeId != x.ExternalId)))
             return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Hepsiburada özelliği '{required.Name}' eşlenmemiş.");
 
         var brand = product.BrandId is Guid brandId
@@ -212,6 +213,15 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             {
                 var defaultKey = AttributeImportKey(attributeId)!;
                 if (emittedKeys.Add(defaultKey)) importAttributes[defaultKey] = defaultValue;
+            }
+            // Product fields (Kombin ID = the variant's own model code) fill what the product left empty, like a default.
+            foreach (var field in fieldDefaults)
+            {
+                var fieldKey = AttributeImportKey(field.ExternalAttributeId);
+                if (fieldKey is null || ReservedAttributeKeys.Contains(fieldKey) || emittedKeys.Contains(fieldKey)) continue;
+                if (ProductFieldSources.Value(field.Field, variant, title) is not { } fieldValue) return Fail("PRODUCT_FIELD_EMPTY", ProductFieldSources.MissingValueMessage(variant.Sku, field));
+                emittedKeys.Add(fieldKey);
+                importAttributes[fieldKey] = fieldValue;
             }
 
             foreach (var required in remoteAttributes.Where(x => x.IsRequired == true))

@@ -78,7 +78,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         // Connection defaults (e.g. Menşei = TR) cover the attributes a product leaves empty, so a
         // required attribute with a usable default needs no panel attribute mapping.
         var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
-        foreach (var remote in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId)))
+        var fieldDefaults = await ProductFieldSources.LoadAsync(db, tenantId, connectionId, remoteAttributes, cancellationToken);
+        foreach (var remote in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId) && fieldDefaults.All(field => field.ExternalAttributeId != x.ExternalId)))
         {
             return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.");
         }
@@ -267,6 +268,14 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             foreach (var (_, defaultAttribute) in attributeDefaults.OrderBy(entry => entry.Key, StringComparer.Ordinal))
             {
                 if (emittedRemoteAttributeIds.Add((long)defaultAttribute["attributeId"]!)) payloadAttributes.Add(new Dictionary<string, object?>(defaultAttribute));
+            }
+            // Product fields (the variant's own model code, stock code, barcode or title) fill what the product left empty.
+            foreach (var field in fieldDefaults)
+            {
+                if (!long.TryParse(field.ExternalAttributeId, NumberStyles.None, CultureInfo.InvariantCulture, out var fieldAttributeId) || emittedRemoteAttributeIds.Contains(fieldAttributeId)) continue;
+                if (ProductFieldSources.Value(field.Field, variant, title) is not { } fieldValue) return Fail("PRODUCT_FIELD_EMPTY", ProductFieldSources.MissingValueMessage(variant.Sku, field));
+                emittedRemoteAttributeIds.Add(fieldAttributeId);
+                payloadAttributes.Add(new Dictionary<string, object?> { ["attributeId"] = fieldAttributeId, ["customAttributeValue"] = fieldValue });
             }
             if (requiredExternalIds.Any(id => !long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId) || !emittedRemoteAttributeIds.Contains(requiredRemoteId)))
             {

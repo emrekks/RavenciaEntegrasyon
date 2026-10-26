@@ -20,7 +20,8 @@ import { useScrollLock } from '../../../shared/hooks/useScrollLock'
 import { appendNotification } from '../../../shared/notifications'
 import { sortByTurkishName } from '../attribute-sorting'
 import { formatPanelColorValue, usesCustomPanelColorValue } from '../color-value-format'
-import { AttributeDefaultsPanel } from '../AttributeDefaultsPanel'
+import { AttributeDefaultsPanel, type AttributeDefault } from '../AttributeDefaultsPanel'
+import { offersProductFields, parseProductFieldOption, productFieldLabel, productFieldOptionValue, productFieldSources } from '../product-field-sources'
 import { MappingConflictsPanel } from '../MappingConflictsPanel'
 import { autoMatchScore, canonicalKey, valueMatchScore } from '../../../shared/value-matching'
 import { attributeValueMappingNeedsSave, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from '../attribute-value-mapping'
@@ -685,7 +686,10 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const [extraPanel, setExtraPanel] = useState<'' | 'defaults' | 'conflicts'>('')
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
   // Same cache entries as the two panels, so the header buttons can show how many items each holds.
-  const attributeDefaultsCount = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<unknown[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && (platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') }).data?.length ?? 0
+  const attributeDefaults = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && (platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA' || platformCode === 'N11') }).data
+  const attributeDefaultsCount = attributeDefaults?.length ?? 0
+  // Fields filled from the product itself (Kombin ID = Model Kodu), connection wide.
+  const fieldDefaultByExternal = new Map((attributeDefaults ?? []).filter(item => item.sourceField).map(item => [item.externalAttributeId, item]))
   const mappingConflictData = useQuery({ queryKey: ['mapping-conflicts', connectionId], queryFn: () => hubApi<{ sameCategory?: unknown[]; crossCategory?: unknown[] }>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 30_000, enabled: !!connectionId }).data
   const mappingConflictCount = (mappingConflictData?.sameCategory?.length ?? 0) + (mappingConflictData?.crossCategory?.length ?? 0)
   // Value progress of every mapped field, read from the same cache entries the value table uses.
@@ -819,6 +823,8 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     }) : []),
     ...productRemoteItems.map(item => {
       const current = productMappingByExternal.get(item.externalId) ?? null
+      const fieldDefault = !current && offersProductFields(platformCode, item.allowsCustomValue) ? fieldDefaultByExternal.get(item.externalId) : undefined
+      if (fieldDefault?.sourceField) return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, state: 'done' as FieldState, meta: `Ürün bilgisi: ${productFieldLabel(fieldDefault.sourceField)}`, remote: item, mapping: null, fieldDefault }
       const local = current ? productAttributes.find(attribute => attribute.id === current.localId) : undefined
       const activeValues = local?.values.filter(value => value.isActive) ?? []
       const needsValues = !!current && activeValues.length > 0 && item.allowsCustomValue !== true && !(platformCode === 'TRENDYOL' && usesCustomPanelColorValue(item.name))
@@ -869,7 +875,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
         </nav>
         <section className="cm-detail" key={activeEntry?.key ?? 'empty'}>
           {!activeEntry ? <p className="cm-empty">Bu kategoride eşlenecek {platformLabel} alanı yok.</p>
-            : activeEntry.remote ? <FieldDetail platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttributes={activeEntry.localAttributes ?? productAttributes} categoryOptionIds={categoryOptionIds} remote={activeEntry.remote} mapping={activeEntry.mapping ?? null} role={activeEntry.role} required={activeEntry.required} footerHint={footerHint} onNext={goToNext} onNotice={onNotice} />
+            : activeEntry.remote ? <FieldDetail platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttributes={activeEntry.localAttributes ?? productAttributes} categoryOptionIds={categoryOptionIds} remote={activeEntry.remote} mapping={activeEntry.mapping ?? null} fieldDefault={activeEntry.fieldDefault} role={activeEntry.role} required={activeEntry.required} footerHint={footerHint} onNext={goToNext} onNotice={onNotice} />
             : <>
               <FieldHeading name={activeEntry.name} required={activeEntry.required} platformLabel={platformLabel} />
               <div className="cm-legacy-card">{activeEntry.node}</div>
@@ -888,7 +894,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     </Modal>
   </article>
 }
-type MappingEntry = { key: string; name: string; required: boolean; state: FieldState; meta: string; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null; localAttributes?: LocalAttribute[]; role?: 'ATTRIBUTE' | 'OPTION' }
+type MappingEntry = { key: string; name: string; required: boolean; state: FieldState; meta: string; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null; localAttributes?: LocalAttribute[]; role?: 'ATTRIBUTE' | 'OPTION'; fieldDefault?: AttributeDefault }
 function FieldHeading({ name, required }: { name: string; required: boolean; platformLabel?: string }) {
   return <>
     <div className="cm-detail-head"><h4>{name}</h4><span className={`cm-tag${required ? ' is-required' : ''}`}>{required ? 'Zorunlu' : 'İsteğe bağlı'}</span></div>
@@ -909,7 +915,7 @@ function FieldFooter({ hint, dirty = false, saving = false, onSave, onNext }: { 
   </div>
 }
 // One marketplace field: which panel attribute feeds it, then a table of the attribute's values.
-function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope, snapshotId, localAttributes, categoryOptionIds, remote, mapping, role: fixedRole, required, footerHint, onNext, onNotice }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; snapshotId: string; localAttributes: LocalAttribute[]; categoryOptionIds: Set<string>; remote: ReferenceItem; mapping: CatalogMapping | null; role?: 'ATTRIBUTE' | 'OPTION'; required: boolean; footerHint: string; onNext?: () => void; onNotice: (value: string) => void }) {
+function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope, snapshotId, localAttributes, categoryOptionIds, remote, mapping, fieldDefault, role: fixedRole, required, footerHint, onNext, onNotice }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; snapshotId: string; localAttributes: LocalAttribute[]; categoryOptionIds: Set<string>; remote: ReferenceItem; mapping: CatalogMapping | null; fieldDefault?: AttributeDefault; role?: 'ATTRIBUTE' | 'OPTION'; required: boolean; footerHint: string; onNext?: () => void; onNotice: (value: string) => void }) {
   const client = useQueryClient()
   const [busy, setBusy] = useState(false)
   const selectable = localAttributes.filter(item => item.isActive !== false)
@@ -918,10 +924,22 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
   const selected = mapping ? localAttributes.find(item => item.id === mapping.localId) : undefined
   const values = selected?.values.filter(value => value.isActive) ?? []
   const customPanelColorValues = platformCode === 'TRENDYOL' && usesCustomPanelColorValue(remote.name)
+  const productFields = offersProductFields(platformCode, remote.allowsCustomValue)
+  const fieldSource = !mapping && fieldDefault?.sourceField ? fieldDefault.sourceField : null
+  const selectedValue = mapping?.localId ?? (fieldSource ? productFieldOptionValue(fieldSource) : '')
   async function choose(localId: string) {
-    if (busy || (mapping?.localId ?? '') === localId) return
+    if (busy || selectedValue === localId) return
+    const source = parseProductFieldOption(localId)
     setBusy(true)
     try {
+      // A product field and a panel attribute exclude each other: choosing one drops the other.
+      if (fieldSource && source === null) await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(remote.externalId)}`, { method: 'DELETE' })
+      if (source) {
+        if (mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
+        await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(remote.externalId)}`, { method: 'PUT', body: JSON.stringify({ attributeName: remote.name, sourceField: source }) })
+        onNotice(`${remote.name} artık her ürünün ${productFieldLabel(source)} bilgisiyle gönderilecek.`)
+        return
+      }
       if (mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
       if (localId) {
         const chosen = localAttributes.find(item => item.id === localId)
@@ -933,6 +951,7 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
       onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.')
     } finally {
       await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
+      await client.invalidateQueries({ queryKey: ['attribute-defaults', connectionId] })
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
       setBusy(false)
     }
@@ -943,15 +962,17 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
       <div className="cm-field"><small>{platformLabel} Alanı</small><span className="cm-readonly">{remote.name}</span></div>
       <span className="cm-link" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.6 9.4 9.4 6.6" /><path d="M7.4 4.6 8.6 3.4a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2" /><path d="M8.6 11.4 7.4 12.6a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2" /></svg></span>
       <div className="cm-field"><small>Panel Özelliği</small><div className="cm-select-row">
-        <select aria-label={`${remote.name} için panel özelliği`} value={mapping?.localId ?? ''} disabled={busy} onChange={event => void choose(event.target.value)}>
+        <select aria-label={`${remote.name} için panel özelliği`} value={selectedValue} disabled={busy} onChange={event => void choose(event.target.value)}>
           <option value="">Seçin…</option>
           {panelOptions.length > 0 && <optgroup label="Panel seçenekleri">{panelOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}
           {panelAttributes.length > 0 && <optgroup label="Panel özellikleri">{panelAttributes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}
+          {productFields && <optgroup label="Ürün Bilgileri">{productFieldSources.map(item => <option key={item.value} value={productFieldOptionValue(item.value)}>{item.label}</option>)}</optgroup>}
         </select>
       </div></div>
-      <button type="button" className="secondary cm-quiet cm-unlink" disabled={!mapping || busy} onClick={() => void choose('')}>Kaldır</button>
+      <button type="button" className="secondary cm-quiet cm-unlink" disabled={(!mapping && !fieldSource) || busy} onClick={() => void choose('')}>Kaldır</button>
     </div>
-    {!mapping || !selected ? <><p className="cm-empty">Bir panel özelliği seçtiğinizde değerleri burada eşlersiniz.</p><FieldFooter hint={footerHint} onNext={onNext} /></>
+    {fieldSource ? <><p className="cm-empty">Gönderimde her varyantın kendi {productFieldLabel(fieldSource)} bilgisi yazılır; boş olan varyantta gönderim durur ve hangi ürün olduğu söylenir. Bu seçim {platformLabel} bağlantısının bütün kategorilerinde geçerlidir.</p><FieldFooter hint={footerHint} onNext={onNext} /></>
+      : !mapping || !selected ? <><p className="cm-empty">Bir panel özelliği seçtiğinizde değerleri burada eşlersiniz.</p><FieldFooter hint={footerHint} onNext={onNext} /></>
       : !values.length ? <><p className="cm-empty">“{selected.name}” özelliğinde henüz değer yok. Değerleri özellik kütüphanesinden ekleyin.</p><FieldFooter hint={footerHint} onNext={onNext} /></>
       : customPanelColorValues || remote.allowsCustomValue === true ? <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={selected} externalAttributeId={remote.externalId} platformLabel={platformLabel} customPanelColorValues={customPanelColorValues} marketplaceAllowsFreeText={remote.allowsCustomValue === true} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
       : <FieldValueTable key={`${categoryScope}/${remote.externalId}/${selected.id}`} platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} attribute={selected} remote={remote} required={required} footerHint={footerHint} onNext={onNext} onNotice={onNotice} />}
