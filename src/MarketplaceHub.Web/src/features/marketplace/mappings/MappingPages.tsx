@@ -25,7 +25,7 @@ import { offersProductFields, parseProductFieldOption, productFieldLabel, produc
 import { MappingConflictsPanel } from '../MappingConflictsPanel'
 import { autoMatchScore, canonicalKey, valueMatchScore } from '../../../shared/value-matching'
 import { attributeValueMappingNeedsSave, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from '../attribute-value-mapping'
-import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues } from '../reference-value-sync'
+import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues, waitForReferenceSyncJobs } from '../reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from '../mapping-platforms'
 import { resolveAttributeMappingRole } from '../mapping-attribute-role'
 import { suggestCategoryMappings } from '../category-suggestions'
@@ -762,6 +762,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     let pairs = 0; let headings = 0; let skipped = 0; let unavailable = 0; let failed = 0
     try {
       const seen = new Set<string>()
+      const targets: Array<{ externalId: string; valueScope: string; remote: ReferenceItem; localValues: LocalAttribute['values'] }> = []
       for (const mapping of allMappings) {
         if (mapping.status !== 'VERIFIED' || seen.has(`${mapping.localId}|${mapping.externalId}`)) continue
         seen.add(`${mapping.localId}|${mapping.externalId}`)
@@ -770,12 +771,36 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
         const localValues = (local?.values ?? []).filter(item => item.isActive)
         if (!local || !remote || !localValues.length) continue
         if (platformCode === 'TRENDYOL' && usesCustomPanelColorValue(remote.name)) continue
-        const valueScope = `${categoryScope}/${mapping.externalId}`
+        targets.push({ externalId: mapping.externalId, valueScope: `${categoryScope}/${mapping.externalId}`, remote, localValues })
+      }
+      // A field's marketplace value list is read from the marketplace the first time its tab opens. Fields never opened
+      // have none yet, so read those lists here first (the same read the tab starts) and match once they have arrived.
+      const valueListUrl = (externalId: string) => `/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalId)}/values?connectionId=${encodeURIComponent(connectionId)}`
+      const isListMissing = (reason: unknown) => reason instanceof ApiRequestError && reason.code === 'REFERENCE_SNAPSHOT_UNAVAILABLE'
+      const lists = new Map<string, ReferenceData>()
+      const missing: typeof targets = []
+      await runInBatches(targets, 4, async target => {
+        try { lists.set(target.externalId, await hubApi<ReferenceData>(valueListUrl(target.externalId))) } catch (reason) { if (isListMissing(reason) && target.remote.allowsCustomValue !== true) missing.push(target) }
+      })
+      if (missing.length) {
+        onNotice(`${missing.length} başlığın değer listesi ${platformLabel} üzerinden alınıyor; bitince değerler eşlenecek…`)
+        const jobs = new Map<string, string>()
+        await runInBatches(missing, 4, async target => {
+          const job = await hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(target.valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
+          jobs.set(target.externalId, job.jobId)
+        })
+        await waitForReferenceSyncJobs([...jobs.values()], async jobId => (await hubApi<{ job: { status: string } }>(`/jobs/${jobId}`, { cache: 'no-store' })).job.status)
+        await runInBatches(missing.filter(target => jobs.has(target.externalId)), 4, async target => {
+          lists.set(target.externalId, await hubApi<ReferenceData>(valueListUrl(target.externalId)))
+        })
+        await client.invalidateQueries({ queryKey: ['reference-attribute-values', connectionId] })
+      }
+      for (const { externalId, valueScope, localValues, remote } of targets) {
+        const valueReferences = lists.get(externalId)
+        // a free-text field without a list has nothing to match
+        if (!valueReferences) { if (remote.allowsCustomValue !== true) unavailable++; continue }
         try {
-          const [valueReferences, existing] = await Promise.all([
-            hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(mapping.externalId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
-            hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`)
-          ])
+          const existing = await hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`)
           const plan = planDirectReferenceValues(localValues, valueReferences.items.filter(item => item.isActive))
           let touched = false
           for (const pair of plan.mappings) {

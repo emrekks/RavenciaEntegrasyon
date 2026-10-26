@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues } from './reference-value-sync'
+import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues, waitForReferenceSyncJobs } from './reference-value-sync'
+
+describe('waiting for value-list syncs', () => {
+  it('polls until every job has ended and leaves a job still running at the deadline out', async () => {
+    const reads: Record<string, string[]> = { a: ['QUEUED', 'RUNNING', 'SUCCEEDED'], b: ['RUNNING'] }
+    const sleep = async () => {}
+    const ended = await waitForReferenceSyncJobs(['a', 'b'], async id => reads[id].length > 1 ? reads[id].shift() : reads[id][0], { intervalMs: 1, timeoutMs: 5, sleep })
+    expect([...ended]).toEqual([['a', 'SUCCEEDED']])
+  })
+
+  it('stops as soon as all have ended', async () => {
+    let sleeps = 0
+    const ended = await waitForReferenceSyncJobs(['a'], async () => 'DEAD', { sleep: async () => { sleeps++ } })
+    expect(ended.get('a')).toBe('DEAD')
+    expect(sleeps).toBe(0)
+  })
+})
 
 describe('Hepsiburada enum value snapshots', () => {
   it('automatically queues a read when an enum property has no current snapshot', () => {
