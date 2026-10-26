@@ -83,8 +83,10 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId)))
             return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Pazarama özelliği '{required.Name}' eşlenmemiş.");
 
-        var assignments = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
-        if (assignments.Any(x => !mappingsByLocalId.ContainsKey(x.AttributeId))) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan her özellik güncel Pazarama kategori snapshot'ına eşlenmelidir.");
+        // A panel attribute the marketplace category has no field for (Cep on Hepsiburada Bluz) is not sent: only mapped
+        // attributes travel. Required marketplace fields are still checked above and per variant.
+        var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
+            .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         if (variants.Count > PazaramaProductPayloadRules.MaxProductsPerRequest) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", $"Tek Pazarama ürün açma isteğinde en fazla {PazaramaProductPayloadRules.MaxProductsPerRequest} varyant gönderilebilir.");

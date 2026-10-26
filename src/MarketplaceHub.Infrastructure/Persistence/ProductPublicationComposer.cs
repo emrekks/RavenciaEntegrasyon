@@ -84,7 +84,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.");
         }
 
-        var assignments = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        // A panel attribute the marketplace category has no field for (Cep on Hepsiburada Bluz) is not sent: only mapped
+        // attributes travel. Required marketplace fields are still checked above and per variant.
+        var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
+            .Where(x => mappingByLocalId.ContainsKey(x.AttributeId)).ToList();
         var mappedLocalAttributes = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && mappingByLocalId.Keys.Contains(x.Id)).ToListAsync(cancellationToken);
         var mappedLocalValues = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && mappingByLocalId.Keys.Contains(x.AttributeId) && x.IsActive).ToListAsync(cancellationToken);
         foreach (var assignment in assignments)

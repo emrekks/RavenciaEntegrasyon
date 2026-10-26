@@ -5981,6 +5981,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var summary = await referenceData.ListMappingsAsync(tenant.Id, "categories", connection.Id, "*", CancellationToken.None);
         Assert.Equal(0, Assert.Single(summary.Value!).MissingRequiredAttributeCount);
 
+        // A panel attribute the category has no field for (Cep) is left out instead of stopping the publication.
+        var pocketId = Guid.CreateVersion7();
+        db.AttributeDefinitions.Add(new AttributeDefinition { Id = pocketId, TenantId = tenant.Id, Code = $"POCKET-{Guid.NewGuid():N}", Name = "Cep", DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = productId, AttributeId = pocketId, TextValue = "Var", Version = 1 });
         // With a model-coded variant the next check is its price offer, not the attribute.
         db.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, Sku = "PF-1", SkuNormalized = "PF-1", Barcode = "8690000000017", BarcodeNormalized = "8690000000017", ModelCode = "MC-77", OptionSignature = "", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
         await db.SaveChangesAsync();

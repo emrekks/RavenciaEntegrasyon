@@ -168,6 +168,26 @@ describe('publication attribute readiness', () => {
     expect(withoutFix(result.requiredIssues)).toEqual([{ attribute: 'Renk', detail: '“Zümrüt” için güncel Trendyol değer eşlemesi yok.' }])
   })
 
+  it('says nothing about a panel attribute the marketplace category has no field for', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      platformName: 'Hepsiburada',
+      selectedAttributes: [...baseInput.selectedAttributes, { attributeId: 'local-pocket', name: 'Cep', isRequired: true, values: [{ id: 'yes', label: 'Var' }], hasCustomValue: false }]
+    })
+    expect(result.requiredIssues).toEqual([])
+    expect(result.optionalWarnings.map(issue => issue.attribute)).not.toContain('Cep')
+  })
+
+  it('warns when the category has a same-named field that is still unmapped', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      remoteAttributes: [...baseInput.remoteAttributes, { externalId: 'remote-pocket', name: 'CEP', isActive: true, isRequired: false, allowsCustomValue: false }],
+      selectedAttributes: [...baseInput.selectedAttributes, { attributeId: 'local-pocket', name: 'Cep', isRequired: true, values: [{ id: 'yes', label: 'Var' }], hasCustomValue: false }]
+    })
+    expect(result.requiredIssues).toEqual([])
+    expect(result.optionalWarnings.find(issue => issue.attribute === 'Cep')?.detail).toContain('eşlenmemiş')
+  })
+
   it('does not warn for an unused optional attribute', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,
