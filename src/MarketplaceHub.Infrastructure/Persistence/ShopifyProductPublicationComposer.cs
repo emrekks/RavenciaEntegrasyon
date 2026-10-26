@@ -106,6 +106,20 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var category = product.CategoryId is Guid categoryId
             ? await db.Categories.AsNoTracking().Where(item => item.TenantId == tenantId && item.Id == categoryId).Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
             : null;
+        // The category mapped for this store is one of its own product types (a flat entry of the current
+        // CATEGORIES snapshot); it is sent exactly as the store holds it. Without a mapping the panel
+        // category name is sent, as before.
+        var mappedProductType = product.CategoryId is Guid mappedCategoryId
+            ? await (from mapping in db.CategoryMappings.AsNoTracking()
+                     join snapshot in db.ReferenceSnapshots.AsNoTracking() on mapping.SnapshotId equals snapshot.Id
+                     join item in db.ReferenceItems.AsNoTracking() on new { mapping.SnapshotId, mapping.ExternalId } equals new { item.SnapshotId, item.ExternalId }
+                     where mapping.TenantId == tenantId && mapping.ConnectionId == connectionId && mapping.LocalId == mappedCategoryId && mapping.Status == "VERIFIED"
+                         && snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "CATEGORIES" && snapshot.IsCurrent
+                         && item.TenantId == tenantId && item.ResourceType == "CATEGORIES" && item.IsActive && item.ParentExternalId == null
+                     select item.ExternalId)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+        var productType = ShopifyProductType(mappedProductType, category);
 
         var optionValuesByVariant = optionRows
             .GroupBy(row => row.VariantId)
@@ -170,7 +184,7 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             ["title"] = title,
             ["descriptionHtml"] = descriptionHtml,
             ["handle"] = $"ravencia-{productId:N}",
-            ["productType"] = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
+            ["productType"] = productType,
             ["vendor"] = string.IsNullOrWhiteSpace(brand) ? "Ravencia" : brand.Trim(),
             ["status"] = "ACTIVE",
             ["metafields"] = new[] { new { @namespace = "marketplacehub", key = "ravencia_product_id", type = "single_line_text_field", value = productId.ToString("D") } },
@@ -182,6 +196,10 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
         return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, string.Empty, string.Empty, payloadHash, payloadJson, draftVariants));
     }
+
+    internal static string? ShopifyProductType(string? mappedProductType, string? panelCategoryName) =>
+        !string.IsNullOrWhiteSpace(mappedProductType) ? mappedProductType
+        : string.IsNullOrWhiteSpace(panelCategoryName) ? null : panelCategoryName.Trim();
 
     private static bool IsCurrencyCode(string? value) => value is { Length: 3 } && value.All(character => character is >= 'A' and <= 'Z');
 
