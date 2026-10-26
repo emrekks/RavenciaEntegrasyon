@@ -3,6 +3,11 @@
 // query does not retry) is not polled again; it used to be re-read every 2.5 s forever.
 const settledJobStatuses: ReadonlySet<string> = new Set(['SUCCEEDED', 'DEAD', 'CANCELLED', 'MANUAL_REVIEW', 'BLOCKED'])
 
+// The same list decides whether the publish card shows a job as running (bar and stop button) or as finished.
+export function isSettledPublicationJob(status: string | undefined) {
+  return settledJobStatuses.has(status?.trim().toUpperCase() ?? '')
+}
+
 export const publicationJobPollMs = 2500
 
 export function publicationJobPollInterval(status: string | undefined, failed: boolean): number | false {

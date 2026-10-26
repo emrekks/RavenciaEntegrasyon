@@ -36,7 +36,7 @@ import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, e
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
-import { publicationJobPollInterval } from '../publication-job-poll'
+import { isSettledPublicationJob, publicationJobPollInterval } from '../publication-job-poll'
 import { productPublicationTargets } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from '../operation-feedback-toast'
@@ -960,7 +960,9 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
 
   const detail = job.data.job
   const status = detail.status.trim().toUpperCase()
-  const terminal = ['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(status)
+  // A blocked job (missing evidence, invalid file) or one waiting on a person does not move on by itself: it shows
+  // as finished, without the running bar or the stop button. Publishing again after the fix starts a new job.
+  const terminal = isSettledPublicationJob(status)
   const retryScheduled = ['RETRY_SCHEDULED', 'RETRYABLE_FAILURE'].includes(status)
   const percent = detail.progressPercent == null ? null : Math.max(0, Math.min(100, detail.progressPercent))
   const progressText = percent !== null

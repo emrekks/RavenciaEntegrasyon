@@ -423,7 +423,9 @@ public sealed class HepsiburadaAdapterTests
         Assert.False(HepsiburadaHttpClient.ValidProductImportPayload(valid.Replace("\"categoryId\":11", "\"categoryId\":\"11\"", StringComparison.Ordinal), "merchant-17"));
         Assert.False(HepsiburadaHttpClient.ValidProductImportPayload(valid.Replace("\"Image1\":\"https://cdn.example.com/item.jpg\"", "\"Image1\":[\"https://cdn.example.com/item.jpg\"]", StringComparison.Ordinal), "merchant-17"));
         Assert.False(HepsiburadaHttpClient.ValidProductImportPayload(valid.Replace("\"Nike Shoe\"", "\"Shoe by Nike\"", StringComparison.Ordinal), "merchant-17"));
-        Assert.False(HepsiburadaHttpClient.ValidProductImportPayload(valid.Replace("4006381333931", "4006381333932", StringComparison.Ordinal), "merchant-17"));
+        // The seller's own barcode is accepted like an EAN-13 (the composer's rule); one with a space is not.
+        Assert.True(HepsiburadaHttpClient.ValidProductImportPayload(valid.Replace("4006381333931", "MZ059YNC-15", StringComparison.Ordinal), "merchant-17"));
+        Assert.False(HepsiburadaHttpClient.ValidProductImportPayload(valid.Replace("4006381333931", "MZ059 YNC", StringComparison.Ordinal), "merchant-17"));
         Assert.False(HepsiburadaHttpClient.ValidProductImportPayload(valid.Replace("https://cdn.example.com/item.jpg", "http://cdn.example.com/item.jpg", StringComparison.Ordinal), "merchant-17"));
     }
 
