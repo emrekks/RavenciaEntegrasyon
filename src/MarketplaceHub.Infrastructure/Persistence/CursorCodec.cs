@@ -35,6 +35,33 @@ public sealed class CursorCodec(IDataProtectionProvider provider, TimeProvider t
         catch (ArgumentOutOfRangeException) { return false; }
     }
 
+    // A product card of a price or stock sorted catalog: the sort, the card's price or stock (or "-"), its date and id.
+    internal string EncodeProductSort(string sort, ProductCatalogSortKey key) =>
+        _protector.Protect($"PRODUCTSORT|{sort}|{key.Metric?.ToString(CultureInfo.InvariantCulture) ?? "-"}|{key.CreatedAt.UtcTicks.ToString(CultureInfo.InvariantCulture)}|{key.Id:D}", TimeSpan.FromHours(1));
+
+    internal bool TryDecodeProductSort(string? cursor, string sort, out ProductCatalogSortKey key)
+    {
+        key = default;
+        if (string.IsNullOrWhiteSpace(cursor)) return false;
+        try
+        {
+            var value = _protector.Unprotect(cursor, out var expiration);
+            var parts = value.Split('|');
+            if (expiration <= timeProvider.GetUtcNow() || parts.Length != 5 || parts[0] != "PRODUCTSORT" || parts[1] != sort) return false;
+            decimal? metric = null;
+            if (parts[2] != "-")
+            {
+                if (!decimal.TryParse(parts[2], NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) return false;
+                metric = parsed;
+            }
+            if (!long.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks) || !Guid.TryParse(parts[4], out var id)) return false;
+            key = new ProductCatalogSortKey(metric, new DateTimeOffset(ticks, TimeSpan.Zero), id);
+            return true;
+        }
+        catch (CryptographicException) { return false; }
+        catch (ArgumentOutOfRangeException) { return false; }
+    }
+
     // A return card: the sort, its sort date (or "-"), the claim and which card of the claim.
     public string EncodeReturn(string sort, DateTimeOffset? sortDate, Guid claimId, int card) =>
         _protector.Protect($"RETURN|{sort}|{sortDate?.UtcTicks.ToString(CultureInfo.InvariantCulture) ?? "-"}|{claimId:D}|{card.ToString(CultureInfo.InvariantCulture)}", TimeSpan.FromHours(1));

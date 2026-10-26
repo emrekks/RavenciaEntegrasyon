@@ -1,18 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { nextProductCatalogSort, productCatalogSortOptions, productCatalogSortScopeNote, productGroupMetric, sortProductGroups } from './product-catalog-sorting'
-
-const groups = [
-  { id: 'medium', products: [{ totalStock: 4, startingPrice: 20 }] },
-  { id: 'high', products: [{ totalStock: 12, startingPrice: 35 }, { totalStock: 3, startingPrice: 30 }] },
-  { id: 'low', products: [{ totalStock: 1, startingPrice: 5 }] },
-  { id: 'no-price', products: [{ totalStock: 2, startingPrice: null }] }
-]
+import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue } from './product-catalog-sorting'
 
 describe('product catalog sorting', () => {
-  it('labels price and stock sorting as current-page only', () => {
-    expect(productCatalogSortOptions.filter(([value]) => value !== 'default').every(([, label]) => label.endsWith('(Bu Sayfada)'))).toBe(true)
-    expect(productCatalogSortScopeNote(null)).toBeNull()
-    expect(productCatalogSortScopeNote({ field: 'stock', direction: 'asc' })).toBe('Stok sıralaması yalnız bu sayfadaki ürünlere uygulanır.')
+  it('labels price and stock sorting as catalog wide, not current-page only', () => {
+    expect(productCatalogSortOptions.some(([, label]) => label.includes('Bu Sayfada'))).toBe(false)
+    expect(productCatalogSortOptions.map(([value]) => value)).toEqual(['default', 'price-desc', 'price-asc', 'stock-desc', 'stock-asc'])
   })
 
   it('cycles a column through ascending, descending, and unsorted', () => {
@@ -24,14 +16,12 @@ describe('product catalog sorting', () => {
     expect(nextProductCatalogSort(stockAscending, 'price')).toEqual({ field: 'price', direction: 'asc' })
   })
 
-  it('sorts by the displayed combined stock in both directions', () => {
-    expect(sortProductGroups(groups, { field: 'stock', direction: 'asc' }).map(group => group.id)).toEqual(['low', 'no-price', 'medium', 'high'])
-    expect(sortProductGroups(groups, { field: 'stock', direction: 'desc' }).map(group => group.id)).toEqual(['high', 'medium', 'no-price', 'low'])
-  })
-
-  it('sorts by the lowest displayed family price and treats a missing price as zero', () => {
-    expect(productGroupMetric(groups[1], 'price')).toBe(30)
-    expect(sortProductGroups(groups, { field: 'price', direction: 'asc' }).map(group => group.id)).toEqual(['no-price', 'low', 'medium', 'high'])
-    expect(sortProductGroups(groups, { field: 'price', direction: 'desc' }).map(group => group.id)).toEqual(['high', 'medium', 'low', 'no-price'])
+  it('sends the sort as the list value the server pages by and reads it back from the address', () => {
+    expect(productCatalogSortValue(null)).toBe('')
+    expect(productCatalogSortValue({ field: 'price', direction: 'desc' })).toBe('price-desc')
+    expect(parseProductCatalogSort('stock-asc')).toEqual({ field: 'stock', direction: 'asc' })
+    expect(parseProductCatalogSort('default')).toBeNull()
+    expect(parseProductCatalogSort('price-up')).toBeNull()
+    expect(parseProductCatalogSort(null)).toBeNull()
   })
 })

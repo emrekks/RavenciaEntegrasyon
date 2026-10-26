@@ -383,17 +383,24 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var current = await db.CategoryAttributeRequirements.Where(x => x.TenantId == tenantId && x.CategoryId == categoryId).ToListAsync(cancellationToken); db.CategoryAttributeRequirements.RemoveRange(current); db.CategoryAttributeRequirements.AddRange(requirements.Select(x => new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = categoryId, AttributeId = x.AttributeId, IsRequired = x.IsRequired, AllowsCustomValue = x.AllowsCustomValue, IsPanelScoped = true, Role = NormalizeRequirementRole(x.Role), DisplayOrder = x.DisplayOrder })); category.Version++; category.UpdatedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return ServiceResult<IReadOnlyList<AttributeRequirementCommand>>.Ok(requirements);
     }
 
-    public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken)
+    public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken)
     {
         var hasPlatformStatusFilter = TryProductPlatformFilter(platform?.Trim() ?? string.Empty, out var platformFilterCode, out var platformFilterState);
         var query = VisibleProducts(tenantId);
         ApplyProductFilters(ref query, tenantId, status, search, platform);
         var countKey = $"catalog:product-family-count:v3:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
         var cachedCount = hasPlatformStatusFilter ? null : countCache.Get(countKey);
+        var catalogSort = ProductCatalogSort.Parse(sort);
         var afterCreatedAt = default(DateTimeOffset);
         var afterId = Guid.Empty;
-        if (!string.IsNullOrWhiteSpace(after) && !cursors.TryDecodeProduct(after, out afterCreatedAt, out afterId))
-            throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
+        ProductCatalogSortKey? afterSortKey = null;
+        if (!string.IsNullOrWhiteSpace(after))
+        {
+            var validCursor = catalogSort is null
+                ? cursors.TryDecodeProduct(after, out afterCreatedAt, out afterId)
+                : cursors.TryDecodeProductSort(after, catalogSort.Value, out var sortKey) && (afterSortKey = sortKey) is not null;
+            if (!validCursor) throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
+        }
         // A platform refresh updates the card content, but must not reshuffle the
         // catalog. Keep the list in its original insertion order instead of the
         // mutable UpdatedAt order.
@@ -460,6 +467,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var totalCount = cachedCount is int count ? count : families.Count;
         if (cachedCount is not int)
             countCache.Set(countKey, totalCount, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(15), Size = 1 });
+        if (catalogSort is not null)
+            return await ListSortedProductFamiliesAsync(tenantId, query, families, variantsByProduct, inventoryByVariant, catalogSort, afterSortKey, limit, totalCount, cancellationToken);
         var pageFamilies = families
             .Where(x => afterId == Guid.Empty || x.Primary.CreatedAt < afterCreatedAt || x.Primary.CreatedAt == afterCreatedAt && x.Primary.Id.CompareTo(afterId) < 0)
             .Take(limit)
@@ -474,13 +483,54 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return new(views, hasMore ? cursors.EncodeProduct(lastFamily!.Primary.CreatedAt, lastFamily.Primary.Id) : null, hasMore, totalCount);
     }
 
+    // Price and stock sorting run over every card of the filtered catalog, by the values the card shows: the lowest
+    // effective sale price of its variants (BuildProductViewsAsync: channel offer, else variant, else product default)
+    // and the total MAIN stock. The cursor carries the last card's value, so page 2 continues where page 1 ended.
+    private async Task<PageResult<ProductView>> ListSortedProductFamiliesAsync(Guid tenantId, IQueryable<Product> query, IReadOnlyList<ProductFamily> families, IReadOnlyDictionary<Guid, List<ProductVariant>> variantsByProduct, IReadOnlyDictionary<Guid, decimal> inventoryByVariant, ProductCatalogSort catalogSort, ProductCatalogSortKey? afterSortKey, int limit, int totalCount, CancellationToken cancellationToken)
+    {
+        var offerPriceByVariant = new Dictionary<Guid, decimal>();
+        if (catalogSort.ByPrice)
+        {
+            // The card takes each variant's first offer, active ones first (BuildProductViewsAsync's order).
+            var offers = await db.ChannelOffers.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && query.Any(product => db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == x.VariantId && variant.ProductId == product.Id)))
+                .OrderByDescending(x => x.Status == "ACTIVE").ThenBy(x => x.Id)
+                .Select(x => new { x.VariantId, x.SalePrice })
+                .ToListAsync(cancellationToken);
+            foreach (var offer in offers) offerPriceByVariant.TryAdd(offer.VariantId, offer.SalePrice);
+        }
+        decimal? FamilyMetric(ProductFamily family)
+        {
+            var familyVariants = family.Products.SelectMany(product => (variantsByProduct.GetValueOrDefault(product.Id) ?? []).Select(variant => (product, variant))).ToList();
+            if (catalogSort.ByPrice)
+                return CatalogPricePolicy.MinimumPositivePrice(familyVariants.Select(item => CatalogPricePolicy.EffectiveSalePrice(offerPriceByVariant.TryGetValue(item.variant.Id, out var salePrice) ? salePrice : null, item.variant.DefaultSalePrice, item.product.DefaultSalePrice)));
+            var stocked = familyVariants.Where(item => inventoryByVariant.ContainsKey(item.variant.Id)).ToList();
+            return stocked.Count == 0 ? null : stocked.Sum(item => inventoryByVariant[item.variant.Id]);
+        }
+        var ordered = families
+            .Select(family => (Family: family, Key: new ProductCatalogSortKey(FamilyMetric(family), family.Primary.CreatedAt, family.Primary.Id)))
+            .OrderBy(item => item.Key, catalogSort)
+            .ToList();
+        var pageItems = ordered
+            .Where(item => afterSortKey is not { } afterKey || catalogSort.Compare(item.Key, afterKey) > 0)
+            .Take(limit)
+            .ToList();
+        var pageProductIds = pageItems.SelectMany(item => item.Family.Products).Select(x => x.Id).ToArray();
+        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
+        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
+        var hasMore = pageItems.Count > 0 && catalogSort.Compare(ordered[^1].Key, pageItems[^1].Key) > 0;
+        return new(views, hasMore ? cursors.EncodeProductSort(catalogSort.Value, pageItems[^1].Key) : null, hasMore, totalCount);
+    }
+
     private sealed record ProductFamily(string Key, Product Primary, IReadOnlyList<Product> Products);
 
     // Narrow rows for catalog-wide grouping and counting; never saved or shown as they are.
-    private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", BrandId = x.BrandId, Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version };
+    private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", BrandId = x.BrandId, Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version, DefaultSalePrice = x.DefaultSalePrice };
     private IQueryable<ProductVariant> VariantShapes(Guid tenantId) => db.ProductVariants.AsNoTracking()
         .Where(x => x.TenantId == tenantId)
-        .Select(x => new ProductVariant { Id = x.Id, TenantId = x.TenantId, ProductId = x.ProductId, Sku = "", SkuNormalized = "", ModelCode = x.ModelCode, OptionSignature = x.OptionSignature, Status = x.Status });
+        .Select(x => new ProductVariant { Id = x.Id, TenantId = x.TenantId, ProductId = x.ProductId, Sku = "", SkuNormalized = "", ModelCode = x.ModelCode, OptionSignature = x.OptionSignature, Status = x.Status, DefaultSalePrice = x.DefaultSalePrice });
 
     private static string ProductFamilyKey(Product product, IReadOnlyList<ProductVariant> variants)
     {

@@ -1,39 +1,27 @@
 export type ProductCatalogSort = { field: 'price' | 'stock'; direction: 'asc' | 'desc' } | null
 
-type ProductGroupMetrics = {
-  products: Array<{ totalStock: number; startingPrice: number | null }>
-}
-
-export function productGroupMetric(group: ProductGroupMetrics, field: 'price' | 'stock') {
-  if (field === 'stock') return group.products.reduce((total, product) => total + product.totalStock, 0)
-  const prices = group.products.map(product => product.startingPrice).filter((price): price is number => price != null)
-  return prices.length ? Math.min(...prices) : 0
-}
-
-// The list is paged on the server in catalog order; price and stock sorting reorders only the cards already on this
-// page, so every label says so instead of suggesting a catalog-wide order.
-export const productCatalogSortScope = 'Bu Sayfada'
+// The server sorts the whole filtered catalog by the shown price (lowest of a card's variants) or the shown total
+// stock and pages that order (`sort` on /products); cards with no price or no stock record come last.
 export const productCatalogSortOptions: Array<[string, string]> = [
   ['default', 'Varsayılan'],
-  ['price-desc', `Satış Fiyatına Göre Azalan (${productCatalogSortScope})`],
-  ['price-asc', `Satış Fiyatına Göre Artan (${productCatalogSortScope})`],
-  ['stock-desc', `Stok Miktarına Göre Azalan (${productCatalogSortScope})`],
-  ['stock-asc', `Stok Miktarına Göre Artan (${productCatalogSortScope})`]
+  ['price-desc', 'Satış Fiyatına Göre Azalan'],
+  ['price-asc', 'Satış Fiyatına Göre Artan'],
+  ['stock-desc', 'Stok Miktarına Göre Azalan'],
+  ['stock-asc', 'Stok Miktarına Göre Artan']
 ]
 
-export function productCatalogSortScopeNote(sort: ProductCatalogSort) {
-  if (!sort) return null
-  return `${sort.field === 'price' ? 'Fiyat' : 'Stok'} sıralaması yalnız bu sayfadaki ürünlere uygulanır.`
+/** The `sort` value of the products list ('' for the default catalog order). */
+export function productCatalogSortValue(sort: ProductCatalogSort) {
+  return sort ? `${sort.field}-${sort.direction}` : ''
+}
+
+export function parseProductCatalogSort(value: string | null | undefined): ProductCatalogSort {
+  const match = /^(price|stock)-(asc|desc)$/.exec(value?.trim() ?? '')
+  return match ? { field: match[1] as 'price' | 'stock', direction: match[2] as 'asc' | 'desc' } : null
 }
 
 export function nextProductCatalogSort(current: ProductCatalogSort, field: 'price' | 'stock'): ProductCatalogSort {
   if (current?.field !== field) return { field, direction: 'asc' }
   if (current.direction === 'asc') return { field, direction: 'desc' }
   return null
-}
-
-export function sortProductGroups<T extends ProductGroupMetrics>(groups: T[], sort: ProductCatalogSort): T[] {
-  if (!sort) return groups
-  const sign = sort.direction === 'asc' ? 1 : -1
-  return [...groups].sort((left, right) => (productGroupMetric(left, sort.field) - productGroupMetric(right, sort.field)) * sign)
 }
