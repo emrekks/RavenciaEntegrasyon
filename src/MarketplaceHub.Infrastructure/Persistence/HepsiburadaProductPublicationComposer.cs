@@ -109,10 +109,8 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, productMedia.SortOrder, asset.Id, asset.Classification, asset.RelativePath, asset.MimeType }).ToListAsync(cancellationToken);
-        var title = (profile.TitleOverride ?? product.Title).Trim();
+        var title = TitleWithBrand((profile.TitleOverride ?? product.Title).Trim(), brandName);
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
-        if (!StartsWithBrand(title, brandName))
-            return Fail("PRODUCT_TITLE_BRAND_PREFIX_REQUIRED", "Hepsiburada ürün başlığı marka adıyla başlamalıdır.", "title");
         if (title.Length is < 1 or > 200) return Fail("PRODUCT_TITLE_INVALID", "Hepsiburada ürün başlığı 1-200 karakter olmalıdır.");
         if (description.Length is < 1 or > 30000) return Fail("PRODUCT_DESCRIPTION_INVALID", "Hepsiburada ürün açıklaması 1-30000 karakter olmalıdır.");
 
@@ -358,6 +356,11 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
 
     // The title must open with the brand as a whole word. Compared on the shared catalog key, so case,
     // Turkish İ/ı/i and accents do not matter ("İpek Şal" starts with brand "ipek").
+    // Hepsiburada wants the product name to start with the brand. The panel title stays as it is (Trendyol and the
+    // others take it unchanged); only the name sent to Hepsiburada gets the brand in front when it lacks it.
+    internal static string TitleWithBrand(string title, string brandName) =>
+        StartsWithBrand(title, brandName) ? title : $"{brandName.Trim()} {title}".Trim();
+
     internal static bool StartsWithBrand(string title, string brandName)
     {
         var titleKey = CatalogKeyNormalizer.Key(title, 1024);

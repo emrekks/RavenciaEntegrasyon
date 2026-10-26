@@ -143,6 +143,13 @@ public sealed class CatalogKeyNormalizerTests
     [InlineData("Şal İpek", "İpek", false)]
     public void HepsiburadaTitle_StartsWithTheBrandOnTheSharedKey(string title, string brand, bool expected) =>
         Assert.Equal(expected, HepsiburadaProductPublicationComposer.StartsWithBrand(title, brand));
+
+    [Theory]
+    [InlineData("Kışlık Yonca Bluz", "Ravencia", "Ravencia Kışlık Yonca Bluz")]
+    [InlineData("RAVENCIA Kışlık Yonca Bluz", "Ravencia", "RAVENCIA Kışlık Yonca Bluz")]
+    [InlineData("Şal İpek", " İpek ", "İpek Şal İpek")]
+    public void HepsiburadaTitle_GetsTheBrandInFrontOnlyWhenItLacksIt(string title, string brand, string expected) =>
+        Assert.Equal(expected, HepsiburadaProductPublicationComposer.TitleWithBrand(title, brand));
 }
 
 // K1 (orders and returns), K23 (catalog search).
