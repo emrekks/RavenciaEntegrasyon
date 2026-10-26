@@ -43,6 +43,8 @@ describe('attribute value reference mappings', () => {
       [{ externalId: 'r-tur-spaced', name: 'Turuncu        ' }, { externalId: 'r-tur', name: 'Turuncu' }, { externalId: 'r-sari-1', name: 'Sarı' }, { externalId: 'r-sari-2', name: 'Sarı' }])
     expect(plan.mappings).toEqual([{ localId: 'l-tur', externalId: 'r-tur' }])
     expect(plan.ambiguousCount).toBe(2)
+    // "Sarı" + U+008D arrives as "Sarı" with the same code once the API client drops the control character: one value.
+    expect(planDirectReferenceValues([{ id: 'l-sari', value: 'Sarı' }], [{ externalId: 'Sarı', name: 'Sarı' }, { externalId: 'Sarı', name: 'Sarı' }]).mappings).toEqual([{ localId: 'l-sari', externalId: 'Sarı' }])
   })
 
   it('leaves a loose match alone when two values share its key', () => {

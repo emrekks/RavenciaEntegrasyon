@@ -69,8 +69,10 @@ export function planDirectReferenceValues(
 // The one marketplace value a name stands for. Hepsiburada lists some names twice, once with stray spaces ("Turuncu" and
 // "Turuncu        ", "Sarı" twice; live 26 Oct 2026): when exactly one of them is written cleanly that one is meant;
 // otherwise the name is ambiguous and left open.
-function soleRemote<T extends { name: string }>(remotes: readonly T[]): T | undefined {
-  if (remotes.length === 1) return remotes[0]
+// The panel's API client drops invisible control characters, so a twin like "Sarı" + U+008D arrives with the very same
+// code as "Sarı": entries sharing one code are one value.
+function soleRemote<T extends { name: string; externalId: string }>(remotes: readonly T[]): T | undefined {
+  if (remotes.length === 1 || new Set(remotes.map(remote => remote.externalId)).size === 1) return remotes[0]
   const clean = remotes.filter(remote => remote.name === remote.name.trim() && !/\s{2,}/.test(remote.name))
   return clean.length === 1 ? clean[0] : undefined
 }

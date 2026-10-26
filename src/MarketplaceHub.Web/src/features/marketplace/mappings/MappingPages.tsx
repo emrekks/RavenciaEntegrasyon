@@ -1024,7 +1024,9 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   const remoteValues = useMemo(() => {
     if (!references.data || !mappings.data) return []
     const mappedExternalIds = new Set(mappings.data.map(item => item.externalId))
-    const listed = references.data.items.filter(item => item.isActive || mappedExternalIds.has(item.externalId))
+    // One entry per code: the API client's control-character clean-up can leave two entries with the same code ("Sarı").
+    const seenCodes = new Set<string>()
+    const listed = references.data.items.filter(item => (item.isActive || mappedExternalIds.has(item.externalId)) && !seenCodes.has(item.externalId) && Boolean(seenCodes.add(item.externalId)))
     // A twin padded with stray spaces (Hepsiburada "Turuncu" + 8 no-break spaces) looks the same as the clean value; it is
     // left out of the list unless it is already mapped.
     const cleanNames = new Set(listed.filter(item => item.name === item.name.trim()).map(item => item.name))
