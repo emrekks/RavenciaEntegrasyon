@@ -1,13 +1,15 @@
 // Eşleştirmeler (/mappings/categories, /mappings/attributes).
 import { useRememberedHeight } from '../../../shared/remembered-height'
 import './mapping-design-system.css'
-import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { createContext, Fragment, useCallback, useContext, useEffect, useEffectEvent, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { Busy, ErrorBox, Modal, Pagination, UiIcon, useConfirmDialog, DialogSurface } from '../../../shared/components'
 import { isStaleMappingError, mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from './mapping-refresh'
+import { ValuePicker, pickerOptions } from './ValuePicker'
+import { groupSavedSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { mappingStatusLabel } from '../../../shared/status-labels'
@@ -679,6 +681,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   // Bulk "same name" matching for the whole category: first the headings (attributes and option groups), then every value of the mapped headings.
   const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES' | 'TEMPLATES'>('')
   const [selectedEntryKey, setSelectedEntryKey] = useState('')
+  const valueDrafts = useValueDraftStore(connectionId, onNotice)
   const [extraPanel, setExtraPanel] = useState<'' | 'defaults' | 'conflicts'>('')
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
   // Same cache entries as the two panels, so the header buttons can show how many items each holds.
@@ -856,11 +859,12 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       </div>}
     </div>
     {dataLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : dataFailed ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili {platformLabel} kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Kategori özelliklerini eşitle'}</button></div> : <>
+      <ValueDraftContext.Provider value={valueDrafts}>
       <div className="cm-layout">
         <nav ref={fieldNavRef} className="cm-nav" aria-label="Kategori özellikleri">
           {entryGroups.map(group => <Fragment key={group.title}>
             <button type="button" className={`cm-section${collapsedGroups.includes(group.title) ? ' is-collapsed' : ''}`} aria-expanded={!collapsedGroups.includes(group.title)} onClick={() => setCollapsedGroups(current => current.includes(group.title) ? current.filter(title => title !== group.title) : [...current, group.title])}><svg className="cm-section-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{group.title}</span><span>{group.items.filter(entry => entry.state === 'done').length} / {group.items.length}</span></button>
-            {!collapsedGroups.includes(group.title) && group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
+            {!collapsedGroups.includes(group.title) && group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}${entry.remote && valueDrafts.drafts.has(`${categoryScope}/${entry.remote.externalId}`) ? ' is-unsaved' : ''}`} title={entry.remote && valueDrafts.drafts.has(`${categoryScope}/${entry.remote.externalId}`) ? 'Kaydedilmemiş değer seçimleri var' : undefined} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
           </Fragment>)}
         </nav>
         <section className="cm-detail" key={activeEntry?.key ?? 'empty'}>
@@ -873,6 +877,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
             </>}
         </section>
       </div>
+      </ValueDraftContext.Provider>
       <div className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri Eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></div>
     </>}
     <Modal open={extraPanel === 'defaults'} title="Platform Varsayılanları" description={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
@@ -890,11 +895,17 @@ function FieldHeading({ name, required }: { name: string; required: boolean; pla
   </>
 }
 function FieldFooter({ hint, dirty = false, saving = false, onSave, onNext }: { hint: string; dirty?: boolean; saving?: boolean; onSave?: () => void; onNext?: () => void }) {
-  return <div className={`cm-foot${dirty ? ' is-dirty' : ''}`}>
-    <span>{dirty ? 'Kaydedilmemiş değişiklikler var' : hint}</span>
+  // Kaydet saves the unsaved value choices of every field of the window (ValueDraftContext).
+  const store = useContext(ValueDraftContext)
+  const pending = store?.drafts.size ?? 0
+  const unsaved = dirty || pending > 0
+  const busy = saving || store?.saving === true
+  const save = onSave ?? (pending ? () => void store?.saveAll() : undefined)
+  return <div className={`cm-foot${unsaved ? ' is-dirty' : ''}`}>
+    <span>{unsaved ? pending > 1 ? `${pending} alanda kaydedilmemiş değişiklik var` : 'Kaydedilmemiş değişiklikler var' : hint}</span>
     <span className="cm-grow" />
     {onNext && <button type="button" className="secondary" onClick={onNext}>Sonraki Eksik</button>}
-    <button type="button" disabled={!onSave || !dirty || saving} onClick={onSave}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button>
+    <button type="button" disabled={!save || !unsaved || busy} onClick={save}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button>
   </div>
 }
 // One marketplace field: which panel attribute feeds it, then a table of the attribute's values.
@@ -946,34 +957,85 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
       : <FieldValueTable key={`${categoryScope}/${remote.externalId}/${selected.id}`} platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} attribute={selected} remote={remote} required={required} footerHint={footerHint} onNext={onNext} onNotice={onNotice} />}
   </>
 }
-function groupValueSelections(items: readonly CatalogMapping[]) {
-  return items.reduce<Record<string, string[]>>((current, item) => ({ ...current, [item.externalId]: [...(current[item.externalId] ?? []), item.localId] }), {})
+// The window's unsaved value choices, one draft per field, kept until Kaydet (which saves every field's) or until
+// the window closes: moving to another field no longer drops them.
+type ValueDraftStore = { drafts: ReadonlyMap<string, ValueDraft>; generation: number; saving: boolean; put: (draft: ValueDraft) => void; drop: (valueScope: string) => void; saveAll: () => Promise<void> }
+const ValueDraftContext = createContext<ValueDraftStore | null>(null)
+function useValueDraftStore(connectionId: string, onNotice: (value: string) => void): ValueDraftStore {
+  const client = useQueryClient()
+  const [drafts, setDrafts] = useState<ReadonlyMap<string, ValueDraft>>(() => new Map())
+  const [generation, setGeneration] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const put = useCallback((draft: ValueDraft) => setDrafts(current => new Map(current).set(draft.valueScope, draft)), [])
+  const drop = useCallback((valueScope: string) => setDrafts(current => { if (!current.has(valueScope)) return current; const next = new Map(current); next.delete(valueScope); return next }), [])
+  const saveAll = useCallback(async () => {
+    if (saving || !drafts.size) return
+    setSaving(true)
+    const pending = [...drafts.values()]
+    try {
+      const operations = pending.flatMap(valueDraftOperations)
+      const send = (operation: ValueDraftOperation) => operation.kind === 'DELETE'
+        ? hubApi<boolean>(`/mappings/attribute-values/${operation.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(operation.valueScope)}&externalId=${encodeURIComponent(operation.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${operation.version}"` } })
+        : hubApi<CatalogMapping>(`/mappings/attribute-values/${operation.localId}`, { method: 'PUT', headers: operation.version !== null ? { 'If-Match': `"v${operation.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: operation.snapshotId, scopeExternalId: operation.valueScope, externalId: operation.externalId, status: 'VERIFIED', updateTemplate: true }) })
+      // Removals first, so a value moved to another marketplace value is free before its new pair is sent.
+      const removed = await runInBatches(operations.filter(item => item.kind === 'DELETE'), 4, send)
+      const added = await runInBatches(operations.filter(item => item.kind === 'PUT'), 4, send)
+      const saved = removed.saved + added.saved
+      const failures = [...removed.failures, ...added.failures]
+      const fields = pending.map(draft => draft.fieldName).join(', ')
+      onNotice(failures.length
+        ? `${fields}: ${saved} değer eşlemesi kaydedildi, ${failures.length} kaydedilemedi. ${mappingSaveErrorMessage(failures[0].error, 'Değer eşlemeleri kaydedilemedi.')}`
+        : saved ? `${pending.length > 1 ? `${pending.length} alanda` : `${fields}:`} ${saved} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
+    } finally {
+      // The lists are always reloaded, so every field shows what the server now holds.
+      await Promise.all(pending.map(draft => client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, draft.valueScope] }).catch(() => undefined)))
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] }).catch(() => undefined)
+      await refreshMappingConflicts(client, connectionId).catch(() => undefined)
+      setDrafts(new Map())
+      setGeneration(value => value + 1)
+      setSaving(false)
+    }
+  }, [client, connectionId, drafts, onNotice, saving])
+  return useMemo(() => ({ drafts, generation, saving, put, drop, saveAll }), [drafts, generation, saving, put, drop, saveAll])
 }
+const valueCollator = new Intl.Collator('tr-TR', { sensitivity: 'base', numeric: true })
 // Panel values down the side, the marketplace value each one is sent as on the right.
 function FieldValueTable({ platformCode, platformLabel, connectionId, categoryScope, attribute, remote, required, footerHint, onNext, onNotice }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; attribute: LocalAttribute; remote: ReferenceItem; required: boolean; footerHint: string; onNext?: () => void; onNotice: (value: string) => void }) {
-  const client = useQueryClient()
+  const store = useContext(ValueDraftContext)
   const valueScope = `${categoryScope}/${remote.externalId}`
-  const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(remote.externalId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false })
+  const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(remote.externalId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 5 * 60_000 })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false })
-  const [selections, setSelections] = useState<Record<string, string[]> | null>(null)
+  const [selections, setSelections] = useState<Record<string, string[]> | null>(() => store?.drafts.get(valueScope)?.selections ?? null)
   const [search, setSearch] = useState('')
   const [onlyMissing, setOnlyMissing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  useEffect(() => { if (mappings.data && selections === null) setSelections(groupValueSelections(mappings.data)) }, [mappings.data, selections])
+  const generation = store?.generation ?? 0
+  const [seenGeneration, setSeenGeneration] = useState(generation)
+  // After Kaydet every field starts again from what the server holds.
+  if (seenGeneration !== generation) { setSeenGeneration(generation); setSelections(null) }
+  useEffect(() => { if (mappings.data && selections === null) setSelections(groupSavedSelections(mappings.data)) }, [mappings.data, selections])
   // A Hepsiburada value may reuse a panel value that already feeds another Hepsiburada value.
   const allowReuse = platformCode === 'HEPSIBURADA'
+  // The marketplace list can be long (Hepsiburada Renk: 17,254 values): sorted A–Z and folded for the search once.
+  const remoteValues = useMemo(() => {
+    if (!references.data || !mappings.data) return []
+    const mappedExternalIds = new Set(mappings.data.map(item => item.externalId))
+    return references.data.items.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).sort((left, right) => valueCollator.compare(left.name, right.name))
+  }, [references.data, mappings.data])
+  const options = useMemo(() => pickerOptions(remoteValues), [remoteValues])
+  const saved = useMemo(() => groupSavedSelections(mappings.data ?? []), [mappings.data])
+  const dirty = selections !== null && selectionsDiffer(selections, saved)
+  const putDraft = store?.put, dropDraft = store?.drop
+  const snapshotId = references.data?.snapshotId ?? ''
+  useEffect(() => {
+    if (!selections || !mappings.data || !snapshotId) return
+    if (dirty) putDraft?.({ valueScope, fieldName: remote.name, selections, saved: mappings.data, snapshotId, knownExternalIds: remoteValues.map(item => item.externalId) })
+    else dropDraft?.(valueScope)
+  }, [dirty, selections, mappings.data, snapshotId, remoteValues, valueScope, remote.name, putDraft, dropDraft])
   if (references.isError) return <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={attribute} externalAttributeId={remote.externalId} platformLabel={platformLabel} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remote.allowsCustomValue === false} allowReusablePanelValues={allowReuse} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
   if (mappings.isError) return <ErrorBox error={mappings.error} onRetry={() => void mappings.refetch()} />
   if (references.isLoading || mappings.isLoading || !selections || !references.data || !mappings.data) return <Busy text="Değerler ve eşlemeler yükleniyor…" />
-  const snapshotId = references.data.snapshotId
-  const saved = groupValueSelections(mappings.data)
-  const localValues = attribute.values.filter(item => item.isActive).slice().sort((left, right) => left.value.localeCompare(right.value, 'tr-TR', { sensitivity: 'base', numeric: true }))
-  const mappedExternalIds = new Set(mappings.data.map(item => item.externalId))
-  const remoteValues = references.data.items.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true }))
-  const knownExternalIds = new Set(remoteValues.map(item => item.externalId))
+  const localValues = attribute.values.filter(item => item.isActive).slice().sort((left, right) => valueCollator.compare(left.value, right.value))
   const targetOf = (current: Record<string, string[]>, localId: string) => Object.keys(current).find(externalId => current[externalId].includes(localId)) ?? ''
-  const sameIds = (left: readonly string[], right: readonly string[]) => left.length === right.length && left.every(id => right.includes(id))
-  const dirty = [...new Set([...Object.keys(saved), ...Object.keys(selections)])].some(externalId => !sameIds(selections[externalId] ?? [], saved[externalId] ?? []))
   const doneCount = localValues.filter(item => targetOf(selections, item.id)).length
   const query = search.trim().toLocaleLowerCase('tr-TR')
   const rows = localValues.filter(item => (!query || item.value.toLocaleLowerCase('tr-TR').includes(query)) && (!onlyMissing || !targetOf(selections, item.id)))
@@ -996,39 +1058,6 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
     if (open.length) setSelections(current => open.reduce((next, item) => ({ ...next, [item.externalId]: [...(next[item.externalId] ?? []).filter(id => id !== item.localId), item.localId] }), current ?? {}))
     onNotice(open.length ? `${open.length} değer aynı adlı ${platformLabel} değeriyle eşlendi; kalıcı olması için Kaydet’e basın.` : 'Yeni birebir eşleşen değer bulunamadı.')
   }
-  async function save() {
-    if (!selections || saving) return
-    setSaving(true)
-    // Every removal and save is attempted; a refused one is reported and the rest still go out, and the lists are
-    // always reloaded so the form shows what the server now holds.
-    try {
-      const operations: Array<() => Promise<unknown>> = []
-      for (const [externalId, ids] of Object.entries(saved)) {
-        const wanted = selections[externalId] ?? []
-        for (const localId of ids) {
-          if (wanted.includes(localId)) continue
-          const existing = mappings.data!.find(item => item.externalId === externalId && item.localId === localId)
-          if (!existing) continue
-          operations.push(() => hubApi<boolean>(`/mappings/attribute-values/${localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}&externalId=${encodeURIComponent(externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } }))
-        }
-      }
-      for (const planned of planReferencePanelMappings(selections)) {
-        if (!knownExternalIds.has(planned.externalId)) continue
-        const existing = mappings.data!.find(item => item.externalId === planned.externalId && item.localId === planned.localId)
-        if (!attributeValueMappingNeedsSave(existing, planned.localId, planned.externalId, snapshotId)) continue
-        operations.push(() => hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED', updateTemplate: true }) }))
-      }
-      const result = await saveAllMappings(operations, operation => operation())
-      if (result.failures.length) onNotice(`${remote.name}: ${result.saved} değer eşlemesi kaydedildi, ${result.failures.length} kaydedilemedi. ${mappingSaveErrorMessage(result.failures[0].error, 'Değer eşlemeleri kaydedilemedi.')}`)
-      else onNotice(result.saved ? `${remote.name}: ${result.saved} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
-    } finally {
-      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] }).catch(() => undefined)
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] }).catch(() => undefined)
-      await refreshMappingConflicts(client, connectionId).catch(() => undefined)
-      setSelections(null)
-      setSaving(false)
-    }
-  }
   return <>
     <div className="cm-vtools">
       <div className="cm-vtools-title"><h5>Değer Eşlemeleri</h5><span>{doneCount} / {localValues.length}</span></div>
@@ -1045,13 +1074,13 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
           const target = targetOf(selections, item.id)
           return <div className={`cm-vrow${target ? '' : ' is-open'}`} role="row" key={item.id}>
             <span className="cm-pv" role="cell">{item.value}</span>
-            <span role="cell"><select aria-label={`${item.value} için ${platformLabel} değeri`} value={target} onChange={event => setTarget(item.id, event.target.value)}><option value="">Seçin…</option>{remoteValues.map(option => <option key={option.externalId} value={option.externalId}>{option.name}</option>)}</select></span>
+            <span role="cell"><ValuePicker value={target} options={options} label={`${item.value} için ${platformLabel} değeri`} onChange={externalId => setTarget(item.id, externalId)} /></span>
             <span className="cm-vstate" role="cell"><MappingStateGlyph state={target ? 'done' : 'none'} /></span>
           </div>
         }) : <p className="cm-empty">{onlyMissing ? 'Eşlenmemiş değer kalmadı.' : 'Aramaya uyan değer yok.'}</p>}
       </div>
     </div>
-    <FieldFooter hint={footerHint} dirty={dirty} saving={saving} onSave={() => void save()} onNext={onNext} />
+    <FieldFooter hint={footerHint} dirty={dirty} onNext={onNext} />
   </>
 }
 function MappingValueModal({ open, title, description, onClose, children }: { open: boolean; title: string; description: string; onClose: () => void; children: ReactNode }) {

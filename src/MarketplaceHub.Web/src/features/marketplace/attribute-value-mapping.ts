@@ -1,3 +1,5 @@
+import { canonicalKey, matchingKey } from '../../shared/value-matching'
+
 export function normalizeReferenceValueLabel(value: string) {
   return value.trim().toLocaleLowerCase('tr-TR').replace(/\s*\/\s*/g, '/')
 }
@@ -39,7 +41,44 @@ export function planDirectReferenceValues(
     else if (locals[0]) mappings.push({ localId: locals[0].id, externalId: remotes[0].externalId })
   }
 
+  // Second pass over what the exact names left: the same words once spacing, punctuation and Turkish letters are
+  // folded, synonyms read alike and a filler word dropped ("Lacivert-Kahve" = "Lacivert - Kahverengi", "Hardal Rengi" =
+  // "Hardal", "SIYAH/BEYAZ" = "Siyah / Beyaz"). Still one to one: a key shared by two values on either side is skipped.
+  const matchedLocals = new Set(mappings.map(item => item.localId))
+  const matchedRemotes = new Set(mappings.map(item => item.externalId))
+  const exactRemoteNames = new Set(remoteByName.keys())
+  const looseLocals = groupByLooseKey(localValues.filter(local => !matchedLocals.has(local.id) && !exactRemoteNames.has(normalizeReferenceValueLabel(local.value))), local => local.value)
+  const looseRemotes = groupByLooseKey(remoteValues, remote => remote.name)
+  for (const [key, locals] of looseLocals) {
+    const remotes = looseRemotes.get(key) ?? []
+    if (locals.length === 1 && remotes.length === 1 && !matchedRemotes.has(remotes[0].externalId)) {
+      mappings.push({ localId: locals[0].id, externalId: remotes[0].externalId })
+      matchedRemotes.add(remotes[0].externalId)
+    }
+  }
+
   return { mappings, ambiguousCount }
+}
+
+// Words that only say what kind of value it is ("Hardal Rengi"); dropped unless the value is nothing else.
+const fillerWords = new Set(['rengi', 'renk'])
+
+// A value's words, folded (matchingKey), each read through the synonym list (kahve → kahverengi), fillers dropped and
+// sorted, so the order of a colour pair does not matter either.
+export function looseReferenceValueKey(value: string) {
+  const words = matchingKey(value).split(' ').filter(Boolean).map(word => canonicalKey(word))
+  const kept = words.filter(word => !fillerWords.has(word))
+  return (kept.length ? kept : words).sort().join(' ')
+}
+
+function groupByLooseKey<T>(items: readonly T[], label: (item: T) => string) {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const key = looseReferenceValueKey(label(item))
+    if (!key) continue
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+  return groups
 }
 
 export function planMissingReferencePanelValues(
