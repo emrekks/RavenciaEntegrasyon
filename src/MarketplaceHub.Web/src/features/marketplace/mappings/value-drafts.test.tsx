@@ -46,6 +46,17 @@ describe('value picker', () => {
     expect(onChange).toHaveBeenCalledWith('b')
   })
 
+  // 26 Oct 2026 (live): Escape in the list also closed the mapping window around it, and its unsaved choices.
+  it('closes only the list on Escape, so the window around it stays open', () => {
+    const windowEscape = vi.fn()
+    document.addEventListener('keydown', windowEscape)
+    render(<ValuePicker value="" options={pickerOptions([{ externalId: 'a', name: 'Siyah' }])} label="Renk" onChange={() => undefined} />)
+    click(document.querySelector<HTMLButtonElement>('.vp-trigger')!)
+    document.querySelector<HTMLInputElement>('.vp-search')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    document.removeEventListener('keydown', windowEscape)
+    expect(windowEscape).not.toHaveBeenCalled()
+  })
+
   it('draws only the first two hundred values of a long list', () => {
     const options = pickerOptions(Array.from({ length: 1500 }, (_, index) => ({ externalId: `v${index}`, name: `Renk ${index}` })))
     render(<ValuePicker value="v3" options={options} label="Renk" onChange={() => undefined} />)

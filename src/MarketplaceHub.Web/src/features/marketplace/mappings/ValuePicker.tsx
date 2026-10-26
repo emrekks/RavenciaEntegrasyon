@@ -39,10 +39,13 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
     if (!open) return
     const outside = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setOpen(false) }
     const scrolled = (event: Event) => { if (!menu.current?.contains(event.target as Node)) setOpen(false) }
+    // Escape closes only the list: caught first (capture) so the mapping window around it stays open.
+    const escape = (event: globalThis.KeyboardEvent) => { if (event.key !== 'Escape') return; event.preventDefault(); event.stopImmediatePropagation(); setOpen(false); trigger.current?.focus() }
+    document.addEventListener('keydown', escape, true)
     document.addEventListener('pointerdown', outside, true)
     window.addEventListener('scroll', scrolled, true)
     window.addEventListener('resize', place)
-    return () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', place) }
+    return () => { document.removeEventListener('keydown', escape, true); document.removeEventListener('pointerdown', outside, true); window.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', place) }
   }, [open])
   useEffect(() => { menu.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [active, open])
 
@@ -52,7 +55,6 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
     if (event.key === 'ArrowDown') { event.preventDefault(); setActive(index => Math.min(index + 1, shown.length - 1)) }
     else if (event.key === 'ArrowUp') { event.preventDefault(); setActive(index => Math.max(index - 1, 0)) }
     else if (event.key === 'Enter') { event.preventDefault(); if (shown[active]) choose(shown[active].value) }
-    else if (event.key === 'Escape') { event.preventDefault(); setOpen(false); trigger.current?.focus() }
   }
 
   return <>

@@ -108,7 +108,7 @@ function CategoryMappingWorkspace() {
   useEffect(() => {
     if (!advancedOpen) return
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       setAdvancedOpen(false)
     }
