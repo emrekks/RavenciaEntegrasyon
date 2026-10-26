@@ -5230,9 +5230,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(x => x.ModelKey)
             .Distinct()
             .CountAsync(cancellationToken);
-        // New products are listed newest first (CreatedAt descending). The marketplace's first product of this import is
-        // stamped newest and each later one a millisecond older, so the import keeps the marketplace's order on top of
-        // the catalog, and a later import lands above it.
+        // New products are listed newest first (CreatedAt descending). A product takes the date the marketplace created
+        // it (CatalogImportOrdering.RemoteCreatedAt); one without such a date is stamped by its place in the import, the
+        // marketplace's first product newest and each later one a millisecond older.
         var catalogOrderStamp = timeProvider.GetUtcNow();
         var catalogOrderPosition = 0;
         foreach (var modelKey in modelKeys)
@@ -5293,7 +5293,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++));
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++));
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)

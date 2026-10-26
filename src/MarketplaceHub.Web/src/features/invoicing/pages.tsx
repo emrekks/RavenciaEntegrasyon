@@ -7,6 +7,7 @@ import { hubApi, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { ValueBadge } from '../../shared/components/ValueBadge'
 import { setManualInvoiceStatus } from './manual-invoice-status'
+import { invoiceDueText } from './invoice-due-text'
 import { Busy, CargoProviderIcon, CountUp, ErrorBox, InvoiceStatusBadge, Modal, UiIcon, DialogSurface } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification } from '../../shared/notifications'
@@ -160,7 +161,7 @@ function orderRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind) {
 }
 function invoiceRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind, failed: boolean) {
   if (failed) return invoiceFailureReason(item.invoiceErrorCode ?? null)
-  if (kind === 'waiting') return item.invoiceDueAt ? `Son Tarih: ${formatDate(item.invoiceDueAt)}` : undefined
+  if (kind === 'waiting') return item.invoiceDueAt ? invoiceDueText(item.invoiceDueAt).text : undefined
   if (kind === 'sending') return 'Yanıt bekleniyor'
   if (kind === 'done') return item.invoiceNumber || item.manualInvoiceNumber || 'Pazaryerinde'
   if (kind === 'cancelled') return 'İptal edildi'
@@ -591,7 +592,7 @@ export function InvoicesPage() {
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment">{(() => { const kind = badgeGlyphKind(item.shipmentStatus, 'neutral'); return <StatusRing kind={kind} progress={orderStatusProgress(kind)} label={statusLabel(item.shipmentStatus)} detail={orderRingDetail(item, kind)} /> })()}</div>
-          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); const failed = ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'FATURA_BELIRSIZ', adjustmentRequiredStatus].includes(invoiceState.value); const due = item.invoiceDueAt ? new Date(item.invoiceDueAt) : null; return <StatusRing kind={invoiceGlyphKind(invoiceState.value)} progress={invoiceStatusProgress(invoiceState.value)} label={invoiceStatusLabel(invoiceState.value)} title={failed ? invoiceFailureReason(item.invoiceErrorCode ?? null) : undefined} detail={invoiceRingDetail(item, invoiceGlyphKind(invoiceState.value), failed)} detailClassName={failed ? 'is-danger' : due && due.getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : undefined} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}</div>
+          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); const failed = ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'FATURA_BELIRSIZ', adjustmentRequiredStatus].includes(invoiceState.value); const dueCritical = invoiceGlyphKind(invoiceState.value) === 'waiting' && item.invoiceDueAt ? invoiceDueText(item.invoiceDueAt).critical : false; return <StatusRing kind={invoiceGlyphKind(invoiceState.value)} progress={invoiceStatusProgress(invoiceState.value)} label={invoiceStatusLabel(invoiceState.value)} title={failed ? invoiceFailureReason(item.invoiceErrorCode ?? null) : undefined} detail={invoiceRingDetail(item, invoiceGlyphKind(invoiceState.value), failed)} detailClassName={failed ? 'is-danger' : dueCritical ? 'deadline critical' : undefined} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}</div>
           <div className="invoice-reference-amount"><strong>{formatMoney(item.amount, item.currency)}</strong><small>{item.isDueSoon ? 'Öncelikli Takip' : 'Sipariş Toplamı'}</small></div>
           <div className="invoice-reference-actions">
             <InvoiceReferenceActionsMenu

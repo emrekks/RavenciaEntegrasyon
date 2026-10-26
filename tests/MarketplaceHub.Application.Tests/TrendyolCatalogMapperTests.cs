@@ -408,6 +408,20 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal(new[] { "content-9" }, groups[1].Select(x => x.ExternalProductId));
     }
 
+    // 26 Oct 2026: a new panel product takes the date Trendyol created it, so the catalog lists the last added first.
+    [Fact]
+    public void CatalogImportOrdering_ReadsTheMarketplaceCreationDate()
+    {
+        static RemoteCatalogProduct Product(string raw) => new("content-1", "model-a", "model-a", "", null, null, null, null, [], [], raw);
+        var now = new DateTimeOffset(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1752750576851), CatalogImportOrdering.RemoteCreatedAt(Product("""{"contentId":957673249,"creationDate":1752750576851}"""), now));
+        Assert.Null(CatalogImportOrdering.RemoteCreatedAt(Product("""{"contentId":957673249}"""), now));
+        Assert.Null(CatalogImportOrdering.RemoteCreatedAt(Product("""{"creationDate":"dün"}"""), now));
+        Assert.Null(CatalogImportOrdering.RemoteCreatedAt(Product("""{"creationDate":4102444800000}"""), now));
+        Assert.Null(CatalogImportOrdering.RemoteCreatedAt(Product("not json"), now));
+    }
+
     [Fact]
     public void ApprovedProductResponse_PreservesParentVariantsPricesStockAndOptions()
     {
