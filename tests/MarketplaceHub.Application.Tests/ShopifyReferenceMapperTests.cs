@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
+using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -80,71 +81,42 @@ public sealed class ShopifyReferenceMapperTests
     }
 
     [Fact]
-    public void TaxonomyCategoryMapsShopifyIdsHierarchyPathAndLifecycle()
+    public void ProductTypesMapToAFlatCategoryListKeyedByTheExactTypeText()
     {
         using var json = JsonDocument.Parse("""
-        {
-          "id": "gid://shopify/TaxonomyCategory/aa-1-2",
-          "name": "Tişörtler",
-          "fullName": "Giyim ve Aksesuarlar > Giyim > Tişörtler",
-          "parentId": "gid://shopify/TaxonomyCategory/aa-1",
-          "level": 2,
-          "isLeaf": true,
-          "isArchived": false
-        }
+        ["Bluz", "Büyük Beden Bluz", "Bluz", "", "  ", "Alt - Üst Takım "]
         """);
 
-        var category = ShopifyHttpClient.MapTaxonomyCategory(json.RootElement);
+        var categories = ShopifyHttpClient.MapProductTypes(json.RootElement);
 
-        Assert.Equal("CATEGORIES", category.ResourceType);
-        Assert.Equal("aa-1-2", category.ExternalId);
-        Assert.Equal("aa-1", category.ParentExternalId);
-        Assert.Equal("Tişörtler", category.Name);
-        Assert.Equal("Giyim ve Aksesuarlar > Giyim > Tişörtler", category.Path);
-        Assert.Equal(2, category.Depth);
-        Assert.True(category.IsLeaf);
-        Assert.True(category.IsActive);
-        Assert.Contains("isArchived", category.RawJson, StringComparison.Ordinal);
+        Assert.Equal(["Bluz", "Büyük Beden Bluz", "Alt - Üst Takım "], categories.Select(category => category.ExternalId));
+        Assert.All(categories, category =>
+        {
+            Assert.Equal("CATEGORIES", category.ResourceType);
+            Assert.Null(category.ParentExternalId);
+            Assert.Equal(0, category.Depth);
+            Assert.True(category.IsLeaf);
+            Assert.True(category.IsActive);
+            Assert.Equal(category.Name, category.Path);
+        });
+        Assert.Equal("Alt - Üst Takım", categories[2].Name);
     }
 
     [Fact]
-    public void TaxonomyCategoryMarksArchivedEntriesInactiveAndKeepsRootParentEmpty()
+    public void ProductTypesRejectANonTextEntry()
     {
-        using var json = JsonDocument.Parse("""
-        {
-          "id": "gid://shopify/TaxonomyCategory/root",
-          "name": "Giyim ve Aksesuarlar",
-          "fullName": "Giyim ve Aksesuarlar",
-          "parentId": null,
-          "level": 0,
-          "isLeaf": false,
-          "isArchived": true
-        }
-        """);
+        using var json = JsonDocument.Parse("""["Bluz", 3]""");
 
-        var category = ShopifyHttpClient.MapTaxonomyCategory(json.RootElement);
-
-        Assert.Equal("root", category.ExternalId);
-        Assert.Null(category.ParentExternalId);
-        Assert.Equal(0, category.Depth);
-        Assert.False(category.IsLeaf);
-        Assert.False(category.IsActive);
+        Assert.Throws<JsonException>(() => ShopifyHttpClient.MapProductTypes(json.RootElement));
     }
 
-    [Fact]
-    public void TaxonomyCategoryMapperPreservesFlattenedHierarchyRows()
+    [Theory]
+    [InlineData("Bluz", "Anne Bluz", "Bluz")]
+    [InlineData("Alt - Üst Takım ", "Takım", "Alt - Üst Takım ")]
+    [InlineData(null, " Anne Bluz ", "Anne Bluz")]
+    [InlineData(null, null, null)]
+    public void PublicationSendsTheMappedProductTypeBeforeThePanelCategoryName(string? mapped, string? panel, string? expected)
     {
-        using var json = JsonDocument.Parse("""
-        [
-          { "id":"gid://shopify/TaxonomyCategory/root", "name":"Giyim", "fullName":"Giyim", "parentId":null, "level":0, "isLeaf":false, "isArchived":false },
-          { "id":"gid://shopify/TaxonomyCategory/root/1", "name":"Üst Giyim", "fullName":"Giyim > Üst Giyim", "parentId":"gid://shopify/TaxonomyCategory/root", "level":1, "isLeaf":true, "isArchived":false }
-        ]
-        """);
-
-        var categories = ShopifyHttpClient.MapTaxonomyCategories(json.RootElement);
-
-        Assert.Equal(2, categories.Count);
-        Assert.Equal("root", categories[1].ParentExternalId);
-        Assert.Equal("Giyim > Üst Giyim", categories[1].Path);
+        Assert.Equal(expected, ShopifyProductPublicationComposer.ShopifyProductType(mapped, panel));
     }
 }

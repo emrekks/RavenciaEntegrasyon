@@ -905,6 +905,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             jobs.Add(new(MarketplaceJobTypes.PazaramaReferenceSync, "brands", JsonSerializer.Serialize(new { connectionId, resourceType = "BRANDS", parentExternalId = (string?)null })));
         }
 
+        // Shopify's categories are the store's own product types, mapped to panel categories.
+        if (platform == "SHOPIFY")
+            jobs.Add(new(MarketplaceJobTypes.ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
+
         // PTT AVM has a category tree only (no brand or attribute service).
         if (platform == "PTTAVM")
             jobs.Add(new(MarketplaceJobTypes.PttAvmReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
