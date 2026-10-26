@@ -7176,3 +7176,40 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 /* Segmented controls (period, filter and step pickers) across the panel: every option keeps its label in its middle,
    whatever width it is given (equal columns, or stretched on a phone). */
 :is(.rr-seg, .ss-seg, .ss-seg2, .ss-seg3, .qi-seg, .reports-segmented) button { justify-content: center; text-align: center; }
+
+/* Opening and closing a collapsed menu on hover: the inside keeps its open layout and only the edge moves. Icons stay
+   put and labels never squeeze (no growing width, no ellipsis): the edge uncovers them, each fading and sliding a few
+   pixels in after the one above, and the active item's highlight grows with the edge from the icon's square. Closing
+   slides the edge back over them. 280 ms in, 200 ms out; without motion when the device asks for less. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside { max-width: var(--rv-sidebar-width); overflow-x: hidden; transition: width 200ms cubic-bezier(.4, 0, .6, 1), box-shadow 200ms ease; }
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside { transition: width 280ms cubic-bezier(.2, .9, .25, 1), box-shadow 280ms ease; }
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link, .sidebar-brand-home, .sidebar-profile) { overflow: hidden; }
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
+    display: block; flex: none; width: auto; max-width: 190px; overflow: visible; visibility: visible; opacity: 0; transform: translateX(-8px);
+    transition: opacity 120ms ease, transform 120ms ease; transition-delay: 0s;
+  }
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside .nav-count.nav-count {
+    display: inline-flex; width: auto; min-width: 0; max-width: none; padding-inline: 7px; overflow: visible; visibility: visible; opacity: 0; transform: none;
+    transition: opacity 120ms ease; transition-delay: 0s;
+  }
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
+    opacity: 1; transform: none;
+    transition: opacity 220ms ease var(--rv-menu-delay, 60ms), transform 260ms cubic-bezier(.2, .9, .25, 1) var(--rv-menu-delay, 60ms);
+  }
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside .nav-count.nav-count { opacity: 1; transition: opacity 220ms ease calc(var(--rv-menu-delay, 60ms) + 80ms); }
+  /* One after another, from the top. */
+  .app-shell.stitch-shell > aside nav a:nth-child(2) { --rv-menu-delay: 78ms; }
+  .app-shell.stitch-shell > aside nav a:nth-child(3) { --rv-menu-delay: 96ms; }
+  .app-shell.stitch-shell > aside nav a:nth-child(4) { --rv-menu-delay: 114ms; }
+  .app-shell.stitch-shell > aside nav a:nth-child(5) { --rv-menu-delay: 132ms; }
+  .app-shell.stitch-shell > aside nav a:nth-child(6) { --rv-menu-delay: 150ms; }
+  .app-shell.stitch-shell > aside nav a:nth-child(7) { --rv-menu-delay: 168ms; }
+  .app-shell.stitch-shell > aside nav a:nth-child(8) { --rv-menu-delay: 186ms; }
+  .app-shell.stitch-shell > aside nav a:nth-child(n + 9) { --rv-menu-delay: 200ms; }
+  .app-shell.stitch-shell > aside :is(.sidebar-side-bottom, .sidebar-profile) { --rv-menu-delay: 200ms; }
+}
+@media (min-width: 701px) and (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside,
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label, .nav-count) { transition: none !important; }
+}
