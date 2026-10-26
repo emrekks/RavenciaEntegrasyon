@@ -165,7 +165,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             }
             for (var imageIndex = 0; imageIndex < imageUrls.Length; imageIndex++) importAttributes[$"Image{imageIndex + 1}"] = imageUrls[imageIndex];
 
-            var effectiveAssignments = assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId);
+            var effectiveAssignments = VariantAttributeAssignments.ForVariant(assignments, variant.Id);
             var emittedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var group in effectiveAssignments)
             {

@@ -152,7 +152,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
 
             var attributes = new List<PazaramaAttributeDraft>();
             var emittedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var group in assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId))
+            foreach (var group in VariantAttributeAssignments.ForVariant(assignments, variant.Id))
             {
                 if (!mappingsByLocalId.TryGetValue(group.Key, out var mappings) || mappings.Count == 0) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan özellik için doğrulanmış Pazarama eşlemesi bulunamadı.");
                 if (mappings.Count != 1) return Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", "Üründe kullanılan panel özelliği birden fazla Pazarama özelliğine eşlenmiş; tek bir özellik seçilmelidir.", status: 409);

@@ -178,7 +178,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             if (imageUrls.Count == 0 && relevantMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel görseller HTTPS üzerinden sunulamıyor. Marketplace:PublicBaseUrl ayarını yapılandırın.");
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir geçerli HTTPS görsel adresi gerekir.");
 
-            var effectiveAssignments = assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId).ToList();
+            var effectiveAssignments = VariantAttributeAssignments.ForVariant(assignments, variant.Id).ToList();
             var payloadAttributes = new List<Dictionary<string, object?>>();
             var emittedRemoteAttributeIds = new HashSet<long>();
             foreach (var group in effectiveAssignments)

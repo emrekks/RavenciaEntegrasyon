@@ -155,7 +155,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
 
             var attributes = new List<N11SkuAttribute> { new(long.Parse(BrandAttributeId, CultureInfo.InvariantCulture), null, brandName) };
             var emittedIds = new HashSet<long> { attributes[0].Id };
-            foreach (var group in assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId))
+            foreach (var group in VariantAttributeAssignments.ForVariant(assignments, variant.Id))
             {
                 if (!mappingsByLocalId.TryGetValue(group.Key, out var mappings) || mappings.Count == 0) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan özellik için doğrulanmış N11 eşlemesi bulunamadı.");
                 if (mappings.Count != 1) return Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", "Üründe kullanılan panel özelliği birden fazla N11 özelliğine eşlenmiş; tek bir özellik seçilmelidir.", status: 409);

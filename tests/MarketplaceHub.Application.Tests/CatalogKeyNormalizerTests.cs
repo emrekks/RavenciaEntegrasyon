@@ -150,6 +150,23 @@ public sealed class CatalogKeyNormalizerTests
     [InlineData("Şal İpek", " İpek ", "İpek Şal İpek")]
     public void HepsiburadaTitle_GetsTheBrandInFrontOnlyWhenItLacksIt(string title, string brand, string expected) =>
         Assert.Equal(expected, HepsiburadaProductPublicationComposer.TitleWithBrand(title, brand));
+
+    [Fact]
+    public void VariantAttributes_UseTheVariantsOwnValueOverTheProductLevelOne()
+    {
+        Guid colour = Guid.NewGuid(), fabric = Guid.NewGuid(), brown = Guid.NewGuid(), viscose = Guid.NewGuid();
+        Guid variantA = Guid.NewGuid(), variantB = Guid.NewGuid();
+        MarketplaceHub.Domain.ProductAttributeAssignment Row(Guid attributeId, Guid? variantId, Guid valueId) => new() { Id = Guid.NewGuid(), AttributeId = attributeId, VariantId = variantId, ValueId = valueId };
+        var assignments = new[] { Row(colour, null, brown), Row(colour, variantA, brown), Row(fabric, null, viscose) };
+
+        // Variant A has its own Renk: one value, not the product's and its own together.
+        var forA = VariantAttributeAssignments.ForVariant(assignments, variantA).ToDictionary(group => group.Key, group => group.ToList());
+        Assert.Equal(variantA, Assert.Single(forA[colour]).VariantId);
+        Assert.Null(Assert.Single(forA[fabric]).VariantId);
+        // Variant B has none of its own: the product-level values stand.
+        var forB = VariantAttributeAssignments.ForVariant(assignments, variantB).ToDictionary(group => group.Key, group => group.ToList());
+        Assert.Null(Assert.Single(forB[colour]).VariantId);
+    }
 }
 
 // K1 (orders and returns), K23 (catalog search).
