@@ -96,7 +96,8 @@ export function classifyPublicationAttributeIssues(input: {
     mapping.status === 'VERIFIED' && mapping.snapshotId === input.attributeSnapshotId && remoteById.has(mapping.externalId)
   )
   const mappedExternalIds = new Set(currentAttributeMappings.map(mapping => mapping.externalId))
-  const unmappedRemoteKeys = new Set([...remoteById.values()].filter(remote => !mappedExternalIds.has(remote.externalId)).map(remote => canonicalKey(remote.name)))
+  // Unmapped marketplace fields by their name read through the synonym list (Kumaş Tipi ≈ Materyal).
+  const unmappedRemoteByKey = new Map([...remoteById.values()].filter(remote => !mappedExternalIds.has(remote.externalId)).map(remote => [canonicalKey(remote.name), remote.name]))
 
   const defaulted = new Set(input.defaultedAttributeIds ?? [])
   for (const remote of remoteById.values()) {
@@ -135,8 +136,9 @@ export function classifyPublicationAttributeIssues(input: {
     if (!mapping || !remote) {
       // An unmapped panel attribute is not sent. Worth a word only when the category has a same-named field still unmapped
       // (a mapping forgotten); one the category does not list at all (Cep on Hepsiburada Bluz) is simply not its business.
-      if (unmappedRemoteKeys.has(canonicalKey(selected.name)))
-        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisinde bu adla bir alan var ama eşlenmemiş; eşlenmezse bu değer gönderilmez.` })
+      const counterpart = unmappedRemoteByKey.get(canonicalKey(selected.name))
+      if (counterpart)
+        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisindeki “${counterpart}” alanı eşlenmemiş; eşlenmezse bu değer gönderilmez.` })
       continue
     }
 

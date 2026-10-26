@@ -185,7 +185,18 @@ describe('publication attribute readiness', () => {
       selectedAttributes: [...baseInput.selectedAttributes, { attributeId: 'local-pocket', name: 'Cep', isRequired: true, values: [{ id: 'yes', label: 'Var' }], hasCustomValue: false }]
     })
     expect(result.requiredIssues).toEqual([])
-    expect(result.optionalWarnings.find(issue => issue.attribute === 'Cep')?.detail).toContain('eşlenmemiş')
+    expect(result.optionalWarnings.find(issue => issue.attribute === 'Cep')?.detail).toContain('“CEP” alanı eşlenmemiş')
+  })
+
+  it('names the synonym field the category offers (Kumaş Tipi ≈ Materyal) and never blocks for it', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      platformName: 'Hepsiburada',
+      remoteAttributes: [...baseInput.remoteAttributes, { externalId: 'materyal', name: 'Materyal', isActive: true, isRequired: false, allowsCustomValue: true }],
+      selectedAttributes: [...baseInput.selectedAttributes, { attributeId: 'local-fabric', name: 'Kumaş Tipi', isRequired: true, values: [{ id: 'cotton', label: 'Pamuk' }], hasCustomValue: false }]
+    })
+    expect(result.requiredIssues).toEqual([])
+    expect(result.optionalWarnings.find(issue => issue.attribute === 'Kumaş Tipi')?.detail).toContain('“Materyal”')
   })
 
   it('does not warn for an unused optional attribute', () => {
