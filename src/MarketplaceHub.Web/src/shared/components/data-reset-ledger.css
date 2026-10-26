@@ -10,7 +10,8 @@
 .drl .drl-group > header > button.drl-all:hover:not(:disabled) { background: var(--rv-color-primary-soft); }
 .drl-row { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; gap: 12px; margin-top: 2px; padding: 11px 10px; border-radius: 7px; cursor: pointer; transition: background-color 140ms ease; }
 .drl-row + .drl-row { box-shadow: 0 -1px 0 var(--rv-color-border); }
-.drl-row:hover { background: var(--rv-color-surface-raised); }
+.drl-row:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); }
+.drl-row.is-on:hover { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
 .drl-row > input { position: absolute; opacity: 0; pointer-events: none; }
 .drl-row > i { display: grid; place-items: center; width: 18px; height: 18px; margin-top: 2px; color: #fff; border: 1.5px solid var(--rv-color-border-strong); border-radius: 5px; font-style: normal; }
 .drl-row.is-on { background: var(--rv-color-primary-soft); box-shadow: none; }
