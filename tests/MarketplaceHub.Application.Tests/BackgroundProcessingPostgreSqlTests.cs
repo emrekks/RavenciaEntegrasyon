@@ -211,6 +211,35 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await transaction.RollbackAsync();
     }
 
+    // An old list snapshot nothing uses goes with its items; the current one and a fresh one still being built stay.
+    [PostgreSqlFact]
+    public async Task OldReferenceSnapshotsGoWithTheirItemsWhileTheCurrentAndAFreshOneStay()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = NewTenant("bg-reference");
+        var connection = NewConnection(tenant);
+        ReferenceSnapshot Snapshot(bool current, DateTimeOffset fetchedAt) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "BRANDS", SourceVersion = "v1", ContentHash = Guid.NewGuid().ToString("N"), FetchedAt = fetchedAt, IsCurrent = current, ItemCount = 3 };
+        IEnumerable<ReferenceItem> Items(ReferenceSnapshot snapshot) => Enumerable.Range(1, 3).Select(index => new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = snapshot.Id, ResourceType = "BRANDS", ExternalId = index.ToString(), Name = $"Marka {index}", NormalizedName = $"MARKA {index}", Path = $"Marka {index}", PayloadHash = "h" });
+        var old = Snapshot(current: false, now.AddDays(-3));
+        var current = Snapshot(current: true, now.AddDays(-2));
+        var staging = Snapshot(current: false, now.AddHours(-1));
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.ReferenceSnapshots.AddRange(old, current, staging);
+        db.ReferenceItems.AddRange(Items(old).Concat(Items(current)).Concat(Items(staging)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var deleted = await new JobRetentionService(db, fixture.TimeProvider).PurgeStaleReferenceSnapshotsAsync(maximumBatches: 10, CancellationToken.None);
+
+        Assert.Equal(3, deleted);
+        Assert.Equal(new[] { current.Id, staging.Id }.Order(), (await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync()).Order());
+        Assert.Equal(6, await db.ReferenceItems.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id));
+        await transaction.RollbackAsync();
+    }
+
     [PostgreSqlFact]
     public async Task AnIssueResolvedForStalenessIsNotDeletedInTheSamePass()
     {

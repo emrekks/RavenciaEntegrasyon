@@ -127,6 +127,55 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
 
     // The quota counters clean up only their own key when a request is counted, so a key no longer used (a
     // changed host or seller id, a removed connection) kept its rows forever. The panel reads the last hour.
+    // A marketplace list (brands, categories, attributes) is kept as a snapshot; a refresh with new content makes a new
+    // current one and leaves the old one behind. Old Trendyol brand lists (~800,000 rows each) piled up to 12 million
+    // rows (26 Oct 2026), and a connection reset that deletes brands then ran for minutes. A snapshot that is not current,
+    // was fetched more than a day ago (a refresh builds its staging snapshot as not current) and no mapping points at
+    // goes, its items in batches first.
+    public static readonly TimeSpan StaleReferenceSnapshotAge = TimeSpan.FromDays(1);
+    public const int ReferenceItemBatchSize = 20_000;
+
+    public async Task<int> PurgeStaleReferenceSnapshotsAsync(int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow() - StaleReferenceSnapshotAge;
+        var deleted = 0;
+        // One stale snapshot at a time, its items read through the (TenantId, SnapshotId, ...) index: a join over all
+        // stale snapshots scans the whole 13-million-row table on every batch.
+        for (var batch = 0; batch < maximumBatches; batch++)
+        {
+            var count = await db.Database.ExecuteSqlInterpolatedAsync($"""
+                WITH target AS (
+                    SELECT s."TenantId", s."Id" FROM integration.reference_snapshots s
+                    WHERE NOT s."IsCurrent" AND s."FetchedAt" < {cutoff}
+                      AND EXISTS (SELECT 1 FROM integration.reference_items i WHERE i."TenantId" = s."TenantId" AND i."SnapshotId" = s."Id")
+                      AND NOT EXISTS (SELECT 1 FROM catalog.category_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+                      AND NOT EXISTS (SELECT 1 FROM catalog.brand_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+                      AND NOT EXISTS (SELECT 1 FROM catalog.attribute_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+                      AND NOT EXISTS (SELECT 1 FROM catalog.attribute_value_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+                    ORDER BY s."FetchedAt"
+                    LIMIT 1),
+                doomed AS (
+                    SELECT i."Id" FROM integration.reference_items i
+                    WHERE i."TenantId" = (SELECT "TenantId" FROM target) AND i."SnapshotId" = (SELECT "Id" FROM target)
+                    LIMIT {ReferenceItemBatchSize})
+                DELETE FROM integration.reference_items item USING doomed WHERE item."Id" = doomed."Id"
+                """, cancellationToken);
+            deleted += count;
+            if (count == 0) break;
+        }
+        // Snapshots left without items go too; one still holding items waits for the next pass.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            DELETE FROM integration.reference_snapshots s
+            WHERE NOT s."IsCurrent" AND s."FetchedAt" < {cutoff}
+              AND NOT EXISTS (SELECT 1 FROM integration.reference_items i WHERE i."TenantId" = s."TenantId" AND i."SnapshotId" = s."Id")
+              AND NOT EXISTS (SELECT 1 FROM catalog.category_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+              AND NOT EXISTS (SELECT 1 FROM catalog.brand_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+              AND NOT EXISTS (SELECT 1 FROM catalog.attribute_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+              AND NOT EXISTS (SELECT 1 FROM catalog.attribute_value_mappings m WHERE m."TenantId" = s."TenantId" AND m."SnapshotId" = s."Id")
+            """, cancellationToken);
+        return deleted;
+    }
+
     public async Task<int> PurgeRateLimitUsageAsync(int maximumBatches, CancellationToken cancellationToken)
     {
         var cutoff = timeProvider.GetUtcNow() - RateLimitUsageRetention;
