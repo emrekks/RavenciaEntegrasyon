@@ -1024,7 +1024,11 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   const remoteValues = useMemo(() => {
     if (!references.data || !mappings.data) return []
     const mappedExternalIds = new Set(mappings.data.map(item => item.externalId))
-    return references.data.items.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).sort((left, right) => valueCollator.compare(left.name, right.name))
+    const listed = references.data.items.filter(item => item.isActive || mappedExternalIds.has(item.externalId))
+    // A twin padded with stray spaces (Hepsiburada "Turuncu" + 8 no-break spaces) looks the same as the clean value; it is
+    // left out of the list unless it is already mapped.
+    const cleanNames = new Set(listed.filter(item => item.name === item.name.trim()).map(item => item.name))
+    return listed.filter(item => item.name === item.name.trim() || !cleanNames.has(item.name.trim()) || mappedExternalIds.has(item.externalId)).sort((left, right) => valueCollator.compare(left.name, right.name))
   }, [references.data, mappings.data])
   const options = useMemo(() => pickerOptions(remoteValues), [remoteValues])
   const saved = useMemo(() => groupSavedSelections(mappings.data ?? []), [mappings.data])

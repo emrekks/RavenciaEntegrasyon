@@ -33,12 +33,13 @@ export function planDirectReferenceValues(
   for (const [normalized, remotes] of remoteByName) {
     const locals = localByName.get(normalized) ?? []
     if (!locals.length) continue
-    if (remotes.length !== 1) {
+    const remote = soleRemote(remotes)
+    if (!remote) {
       ambiguousCount += remotes.length
       continue
     }
     if (locals.length > 1) ambiguousCount++
-    else if (locals[0]) mappings.push({ localId: locals[0].id, externalId: remotes[0].externalId })
+    else if (locals[0]) mappings.push({ localId: locals[0].id, externalId: remote.externalId })
   }
 
   // Second pass over what the exact names left: the same words once spacing, punctuation and Turkish letters are
@@ -53,16 +54,25 @@ export function planDirectReferenceValues(
     const looseLocals = groupByLooseKey(localValues.filter(local => !matchedLocals.has(local.id) && !exactRemoteNames.has(normalizeReferenceValueLabel(local.value))), local => local.value, ordered)
     const looseRemotes = groupByLooseKey(remoteValues, remote => remote.name, ordered)
     for (const [key, locals] of looseLocals) {
-      const remotes = looseRemotes.get(key) ?? []
-      if (locals.length === 1 && remotes.length === 1 && !matchedRemotes.has(remotes[0].externalId)) {
-        mappings.push({ localId: locals[0].id, externalId: remotes[0].externalId })
+      const remote = soleRemote(looseRemotes.get(key) ?? [])
+      if (locals.length === 1 && remote && !matchedRemotes.has(remote.externalId)) {
+        mappings.push({ localId: locals[0].id, externalId: remote.externalId })
         matchedLocals.add(locals[0].id)
-        matchedRemotes.add(remotes[0].externalId)
+        matchedRemotes.add(remote.externalId)
       }
     }
   }
 
   return { mappings, ambiguousCount }
+}
+
+// The one marketplace value a name stands for. Hepsiburada lists some names twice, once with stray spaces ("Turuncu" and
+// "Turuncu        ", "Sarı" twice; live 26 Oct 2026): when exactly one of them is written cleanly that one is meant;
+// otherwise the name is ambiguous and left open.
+function soleRemote<T extends { name: string }>(remotes: readonly T[]): T | undefined {
+  if (remotes.length === 1) return remotes[0]
+  const clean = remotes.filter(remote => remote.name === remote.name.trim() && !/\s{2,}/.test(remote.name))
+  return clean.length === 1 ? clean[0] : undefined
 }
 
 // Words that only say what kind of value it is ("Hardal Rengi"); dropped unless the value is nothing else.

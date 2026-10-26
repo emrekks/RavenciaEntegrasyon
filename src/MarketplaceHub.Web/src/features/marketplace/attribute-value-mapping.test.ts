@@ -36,6 +36,15 @@ describe('attribute value reference mappings', () => {
     expect(plan.mappings).toEqual([{ localId: 'l-bm', externalId: 'r-bm' }, { localId: 'l-bp', externalId: 'r-bp' }])
   })
 
+  // 26 Oct 2026 (live, Hepsiburada Renk): "Turuncu" stayed open; the list has "Turuncu" and "Turuncu        ".
+  it('takes the cleanly written one of two same-named marketplace values', () => {
+    const plan = planDirectReferenceValues(
+      [{ id: 'l-tur', value: 'Turuncu' }, { id: 'l-sari', value: 'Sarı' }],
+      [{ externalId: 'r-tur-spaced', name: 'Turuncu        ' }, { externalId: 'r-tur', name: 'Turuncu' }, { externalId: 'r-sari-1', name: 'Sarı' }, { externalId: 'r-sari-2', name: 'Sarı' }])
+    expect(plan.mappings).toEqual([{ localId: 'l-tur', externalId: 'r-tur' }])
+    expect(plan.ambiguousCount).toBe(2)
+  })
+
   it('leaves a loose match alone when two values share its key', () => {
     const plan = planDirectReferenceValues([{ id: 'l1', value: 'Siyah-Beyaz' }], [{ externalId: 'a', name: 'Siyah / Beyaz' }, { externalId: 'b', name: 'SIYAH BEYAZ' }])
     expect(plan.mappings).toEqual([])
