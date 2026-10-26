@@ -15,7 +15,7 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
-    public async Task OrderReset_KeepsAnIssuedInvoiceWithItsOrder()
+    public async Task SettingsReset_LeavesOrdersReturnsAndInvoicesToTheConnectionReset()
     {
         var seed = NewSeed("dm-iss");
         try
@@ -23,12 +23,14 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await SeedAsync(seed, db => db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)));
 
             await using var db = fixture.CreateContext();
-            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
-                .ResetAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ResetOperationalDataCommand(["ORDERS"], "Verileri sil"), "corr", CancellationToken.None);
-
-            // 26 Oct 2026: the reset used to be refused; it now goes ahead and keeps the fiscal record with its order.
-            Assert.True(result.Succeeded, result.Error?.Message);
-            Assert.Equal(1, result.Value!.KeptIssuedInvoices);
+            // 26 Oct 2026: orders, returns and invoices are reset per platform (Entegrasyonlar › Verileri Sıfırla) only.
+            foreach (var scope in new[] { "ORDERS", "RETURNS", "INVOICES" })
+            {
+                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                    .ResetAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ResetOperationalDataCommand([scope], "Verileri sil"), "corr", CancellationToken.None);
+                Assert.False(result.Succeeded);
+                Assert.Equal(422, result.Error!.Status);
+            }
             await using var verification = fixture.CreateContext();
             Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
             Assert.Equal(1, await verification.Invoices.CountAsync(x => x.TenantId == seed.Tenant.Id));
@@ -158,7 +160,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await using (var db = fixture.CreateContext())
             {
                 var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
-                    .ResetAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ResetOperationalDataCommand(["ORDERS"], "Verileri sil"), "corr", CancellationToken.None);
+                    .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
                 Assert.True(result.Succeeded, result.Error?.Message);
             }
 

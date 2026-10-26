@@ -146,15 +146,11 @@ const resetScopeDetails: Record<string, { label: string; description: string }> 
   CATEGORIES: { label: 'Kategori Listesi', description: 'Panel kategori ağacını ve kategori-pazaryeri eşleştirmelerini kaldırır; ürünlerin kategori bağlantısını boşaltır.' },
   CATEGORY_ATTRIBUTES: { label: 'Kategori Özellikleri', description: 'Kategori özellik başlıklarını, değerlerini, kategori atamalarını, ürün değerlerini ve pazaryeri özellik eşleştirmelerini kaldırır.' },
   BRANDS: { label: 'Marka Listesi', description: 'Marka kayıtlarını ve marka-pazaryeri eşleştirmelerini kaldırır; ürünlerin marka bağlantısını boşaltır.' },
-  OPTIONS: { label: 'Ürün Seçenekleri', description: 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.' },
-  ORDERS: { label: 'Siparişler Listesi', description: 'Siparişleri ve siparişe bağlı kargo, satır, durum geçmişi ve finansal kayıtları temizler; ilişkili iadeleri ve faturaları da kaldırır.' },
-  RETURNS: { label: 'İadeler Listesi', description: 'İade taleplerini, iade satırlarını, kararlarını, kanıtlarını ve stok işlemlerini temizler.' },
-  INVOICES: { label: 'Faturalar Listesi', description: 'Faturaları ve bunlara bağlı belge, satır, teslimat ve gönderim denemelerini temizler.' }
+  OPTIONS: { label: 'Ürün Seçenekleri', description: 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.' }
 }
 const resetScopeGroups: Array<{ label: string; description: string; scopes: string[] }> = [
   { label: 'Katalog', description: 'Ürün kataloğunda kullanılan temel listeleri temizleyin.', scopes: ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS'] },
-  { label: 'Ürün Seçenekleri', description: 'Ürün seçeneklerini ve seçenek değerlerini temizleyin.', scopes: ['OPTIONS'] },
-  { label: 'Operasyon', description: 'İşlem ve satış kayıtlarını temizleyin.', scopes: ['ORDERS', 'RETURNS', 'INVOICES'] }
+  { label: 'Ürün Seçenekleri', description: 'Ürün seçeneklerini ve seçenek değerlerini temizleyin.', scopes: ['OPTIONS'] }
 ]
 const mfaSteps: Array<{ key: 'password' | 'verify' | 'recovery'; label: string; hint: string }> = [
   { key: 'password', label: 'Parola', hint: 'Hesabı doğrula' },
@@ -231,8 +227,8 @@ export function SystemSettingsPage() {
     if (!resetScopes.length || resetConfirmation !== 'Verileri sil') return
     setResetBusy(true); setNotice(null)
     try {
-      const result = await hubApi<{ products: number; orders: number; returns: number; invoices: number; categories: number; categoryAttributes: number; brands: number; options: number; keptIssuedInvoices?: number }>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation }) })
-      succeed(`Temizlik tamamlandı: ${result.products} ürün, ${result.categories} kategori, ${result.categoryAttributes} kategori özelliği, ${result.brands} marka, ${result.options} ürün seçeneği, ${result.orders} sipariş, ${result.returns} iade, ${result.invoices} fatura.${result.keptIssuedInvoices ? ` Kesilmiş ${result.keptIssuedInvoices} fatura ve bağlı oldukları siparişler mali kayıt olduğu için korundu.` : ''}`)
+      const result = await hubApi<{ products: number; orders: number; returns: number; invoices: number; categories: number; categoryAttributes: number; brands: number; options: number }>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation }) })
+      succeed(`Temizlik tamamlandı: ${result.products} ürün, ${result.categories} kategori, ${result.categoryAttributes} kategori özelliği, ${result.brands} marka, ${result.options} ürün seçeneği.`)
       setResetScopes([]); setResetConfirmation(''); setResetDialogOpen(false)
       await client.invalidateQueries()
     } catch (reason) { fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }
@@ -378,7 +374,8 @@ export function SystemSettingsPage() {
         {section === 'database' && <>
           <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." />
           <div className="ss-body is-flush">
-            <div className="ss-pad is-divided"><div className="ss-callout is-danger"><SettingsIcon name="lock" /><span><b>Yetkili işlemi.</b> Bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></div></div>
+            <div className="ss-pad is-divided"><div className="ss-callout is-danger"><SettingsIcon name="lock" /><span><b>Yetkili işlemi.</b> Bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></div>
+              <div className="ss-callout"><SettingsIcon name="alert" /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></div></div>
             <div className="ss-scopes">{resetScopeGroups.map(group => <section key={group.label} className="ss-sg"><div><h3>{group.label}</h3><p>{group.description}</p><label className="ss-sel-all"><input type="checkbox" className="ss-cb" checked={group.scopes.every(scope => resetScopes.includes(scope))} onChange={event => toggleResetScopes(group.scopes, event.target.checked)} />Tümünü Seç</label></div><div className="ss-sg-list">{group.scopes.map(resetScopeOption)}</div></section>)}</div>
           </div>
           {resetScopes.length > 0 && <SettingsBar title="Seçili Listeleri Kalıcı Olarak Temizle" copy={<>{resetScopes.length ? <><b>{resetScopes.length} liste seçildi</b> · </> : null}Bu işlem seçtiğiniz kayıtları geri alınamayacak şekilde kaldırır.</>}>{resetScopes.length ? <button type="button" className="ss-btn is-quiet is-icon" aria-label="Seçimi Temizle" title="Seçimi Temizle" onClick={() => setResetScopes([])}><SettingsIcon name="reset" /></button> : null}<button type="button" className="ss-btn is-danger is-solid" disabled={!resetScopes.length} onClick={() => { setResetConfirmation(''); setResetDialogOpen(true) }}><SettingsIcon name="trash" />Seçili Listeleri Kalıcı Sil</button></SettingsBar>}
@@ -407,7 +404,6 @@ export function SystemSettingsPage() {
 
     <Modal open={resetDialogOpen} title="Seçili Listeleri Kalıcı Sil" description="Seçtiğiniz kayıtlar bu hesabın yerel veritabanından geri alınamayacak şekilde silinir." className="ss-modal is-md" onClose={() => { if (!resetBusy) setResetDialogOpen(false) }} footer={<><span className="ss-modal-note">{resetScopes.length} liste silinecek</span><button type="button" className="ss-btn" disabled={resetBusy} onClick={() => setResetDialogOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-danger is-solid" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}><SettingsIcon name="trash" />{resetBusy ? 'Temizleniyor…' : 'Seçili Listeleri Kalıcı Sil'}</button></>}>
       <div className="ss-sum">{resetScopes.map(scope => <div key={scope}><SettingsGlyph state="bad" /><span>{resetScopeDetails[scope].label}<small>{resetScopeDetails[scope].description}</small></span><span /></div>)}</div>
-      {resetScopes.includes('ORDERS') && !resetScopes.includes('RETURNS') && <div className="ss-callout is-warn"><SettingsIcon name="alert" /><span><b>Siparişler Listesi</b> seçili olduğu için ilişkili iadeler ve faturalar da kaldırılır.</span></div>}
       <label className="ss-typed"><small>Onay için <b>Verileri sil</b> yazın</small><input className={`ss-in${resetConfirmation === 'Verileri sil' ? ' is-match' : ''}`} value={resetConfirmation} placeholder="Verileri sil" autoComplete="off" onChange={event => setResetConfirmation(event.target.value)} /></label>
     </Modal>
   </section>

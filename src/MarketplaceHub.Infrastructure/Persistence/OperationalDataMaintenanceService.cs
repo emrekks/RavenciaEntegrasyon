@@ -6,7 +6,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard) : IOperationalDataMaintenanceService
 {
-    private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "OPTIONS", "ORDERS", "RETURNS", "INVOICES" };
+    // Orders, returns and invoices are reset per connection only (ResetConnectionDataAsync, Entegrasyonlar › Verileri
+    // Sıfırla); the settings-wide reset covers the catalog lists.
+    private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "OPTIONS" };
     private static readonly HashSet<string> ConnectionDeleteScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
 
     public async Task<ServiceResult<OperationalDataResetView>> ResetAsync(Guid tenantId, Guid actorUserId, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken)
@@ -15,22 +17,9 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Count == 0 || scopes.Any(scope => !AllowedScopes.Contains(scope))) return Invalid("Geçerli en az bir veri alanı seçin.");
         if (command.Confirmation?.Trim() is not ("Verileri sil" or "VERİLERİ SİL")) return Invalid("Onay alanına tam olarak Verileri sil yazın.");
 
-        // Issued invoices stay with their orders and returns, as in a connection reset; everything else goes.
-        var keptIssued = scopes.Contains("ORDERS") || scopes.Contains("INVOICES") || scopes.Contains("RETURNS") ? await IssuedInvoicesAsync(tenantId, null, cancellationToken) : 0;
         var counts = await CountsAsync(tenantId, null, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await BeginFilePurgeAsync(cancellationToken);
-        if (scopes.Contains("ORDERS"))
-        {
-            await DeleteReturnsAsync(tenantId, null, cancellationToken, keepIssued: true);
-            await DeleteInvoicesAsync(tenantId, null, cancellationToken, keepIssued: true);
-            await DeleteOrdersAsync(tenantId, null, cancellationToken, keepIssued: true);
-        }
-        else
-        {
-            if (scopes.Contains("RETURNS")) await DeleteReturnsAsync(tenantId, null, cancellationToken, keepIssued: true);
-            if (scopes.Contains("INVOICES")) await DeleteInvoicesAsync(tenantId, null, cancellationToken, keepIssued: true);
-        }
         if (scopes.Contains("CATEGORIES")) await DeleteCategoriesAsync(tenantId, cancellationToken);
         if (scopes.Contains("CATEGORY_ATTRIBUTES")) await DeleteCategoryAttributesAsync(tenantId, cancellationToken);
         if (scopes.Contains("BRANDS")) await DeleteBrandsAsync(tenantId, cancellationToken);
@@ -41,7 +30,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
-        return ServiceResult<OperationalDataResetView>.Ok(counts with { KeptIssuedInvoices = keptIssued });
+        return ServiceResult<OperationalDataResetView>.Ok(counts);
     }
 
     public async Task<ServiceResult<bool>> SetDataVisibilityAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, bool hidden, string correlationId, CancellationToken cancellationToken)
