@@ -15,7 +15,7 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
-    public async Task OrderReset_IsRefusedWhileAnIssuedInvoiceWouldGoWithIt()
+    public async Task OrderReset_KeepsAnIssuedInvoiceWithItsOrder()
     {
         var seed = NewSeed("dm-iss");
         try
@@ -26,9 +26,9 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
                 .ResetAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ResetOperationalDataCommand(["ORDERS"], "Verileri sil"), "corr", CancellationToken.None);
 
-            Assert.False(result.Succeeded);
-            Assert.Equal(409, result.Error!.Status);
-            Assert.Equal("ISSUED_INVOICES_KEPT", result.Error.Code);
+            // 26 Oct 2026: the reset used to be refused; it now goes ahead and keeps the fiscal record with its order.
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal(1, result.Value!.KeptIssuedInvoices);
             await using var verification = fixture.CreateContext();
             Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
             Assert.Equal(1, await verification.Invoices.CountAsync(x => x.TenantId == seed.Tenant.Id));
