@@ -80,7 +80,7 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
     <DialogSurface as="section" onClose={() => { if (!saving) onClose() }} className="missing-value-mapping" aria-labelledby="missing-value-mapping-title">
       <header>
         <div>
-          <strong id="missing-value-mapping-title">Eksik değer eşlemeleri</strong>
+          <strong id="missing-value-mapping-title">Eksik Değer Eşlemeleri</strong>
           <small>{platformName} değerini seçin; seçiminiz bu özelliği kullanan diğer kategorilere de uygulanır.</small>
         </div>
         <button type="button" aria-label="Kapat" onClick={onClose} disabled={saving}><UiIcon name="close" /></button>
@@ -94,11 +94,12 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
           const candidates = search.trim() ? filterValueCandidates(search, items) : rankValueCandidates(fix.valueLabel, items)
           const chosen = choices[key]
           const chosenName = items.find(item => item.externalId === chosen)?.name
-          return <div className="missing-value-mapping-item" key={key}>
+          return <div className={`missing-value-mapping-item${chosenName ? ' is-chosen' : ''}`} key={key}>
             <div className="missing-value-mapping-target">
               <span>{fix.attributeName}</span>
               <strong>{fix.valueLabel || 'Seçili değer'}</strong>
-              {chosenName && <em>→ {chosenName}</em>}
+              <span className="missing-value-mapping-arrow" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h10M9 4l4 4-4 4" /></svg></span>
+              {chosenName ? <em>{chosenName}</em> : <span className="missing-value-mapping-pending">{platformName} değeri seçilmedi</span>}
             </div>
             {list?.isLoading ? <p className="missing-value-mapping-state">{platformName} değer listesi yükleniyor…</p>
               : list?.isError ? <p className="missing-value-mapping-state is-error">{platformName} değer listesi henüz alınmamış. Eşleştirme Ayarları’ndan bu özelliğin değerlerini eşitleyin.</p>
@@ -115,7 +116,7 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
       {error && <p role="alert" className="missing-value-mapping-state is-error">{error}</p>}
       <footer>
         <button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button>
-        <button type="button" onClick={() => void save()} disabled={saving || chosenCount === 0}>{saving ? 'Kaydediliyor…' : `Eşlemeleri kaydet (${chosenCount})`}</button>
+        <button type="button" onClick={() => void save()} disabled={saving || chosenCount === 0}>{saving ? 'Kaydediliyor…' : `Eşlemeleri Kaydet (${chosenCount})`}</button>
       </footer>
     </DialogSurface>
   </div>, document.body)
