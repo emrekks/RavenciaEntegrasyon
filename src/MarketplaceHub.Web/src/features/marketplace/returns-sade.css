@@ -504,6 +504,9 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small { line-height: 1.55; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small b { font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-hf > .rr-anchor { z-index: 70; }
+/* A menu opened from the sticky selection bar (Toplu İşlemler) lives in the bar's stacking context (30); while it is
+   open the bar rises above the header filter anchors (70), so their icons no longer show through the menu. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk:has(.rr-menu) { z-index: 80; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td { vertical-align: middle; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-wordmark { max-width: none; object-fit: contain; object-position: left center; margin-bottom: 6px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img { width: auto; max-width: calc(100vw - 32px); }
