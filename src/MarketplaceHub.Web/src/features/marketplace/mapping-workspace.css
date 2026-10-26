@@ -427,7 +427,8 @@
 .app-shell.stitch-shell main section.mapping-page .panel-value-token-entry { display: flex; gap: 6px; }
 .app-shell.stitch-shell main section.mapping-page .panel-value-token-entry > input { flex: 1; min-width: 0; }
 .app-shell.stitch-shell main section.mapping-page .panel-value-token-entry > button { color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); box-shadow: none; }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-records { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/* As many columns as the width allows; a card is one button that opens its window (values, Kategoriler, Sil). */
+.app-shell.stitch-shell main section.mapping-page .panel-attribute-records { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 8px 8px 8px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 10px; box-shadow: none; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article.selected { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
@@ -686,3 +687,12 @@
   .app-shell.stitch-shell main section.mapping-page .brand-reference-action .brand-reference-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions:not(:has(.mam)) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
+
+/* The attribute window's header actions (they used to be buttons on each card). */
+.app-shell.stitch-shell main .panel-attribute-modal-card > header > .panel-attribute-modal-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+.app-shell.stitch-shell main .panel-attribute-modal-actions > button { height: 32px; min-height: 0; padding: 0 12px; font-size: 13px; font-weight: 600; text-transform: none; border-radius: 7px; }
+.app-shell.stitch-shell main .panel-attribute-modal-actions > button.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border)); }
+.app-shell.stitch-shell main .panel-attribute-modal-actions > button.is-danger:hover { background: var(--rv-color-danger-soft); }
+.app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article { cursor: pointer; }
+.app-shell.stitch-shell main section.mapping-page .panel-attribute-records > article > .panel-attribute-record-main { align-self: stretch; align-content: center; }
+@media (max-width: 560px) { .app-shell.stitch-shell main .panel-attribute-modal-card > header { flex-wrap: wrap; } .app-shell.stitch-shell main .panel-attribute-modal-card > header > .panel-attribute-modal-actions { order: 3; width: 100%; } }
