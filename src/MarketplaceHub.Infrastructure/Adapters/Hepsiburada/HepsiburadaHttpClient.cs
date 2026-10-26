@@ -1466,7 +1466,7 @@ public sealed partial class HepsiburadaHttpClient(
                 if (!attributes.TryGetProperty("VaryantGroupID", out var groupValue) || groupValue.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(groupValue.GetString())) return false;
                 variantGroupId ??= groupValue.GetString();
                 if (!string.Equals(groupValue.GetString(), variantGroupId, StringComparison.Ordinal)) return false;
-                if (!attributes.TryGetProperty("Barcode", out var barcodeValue) || barcodeValue.ValueKind != JsonValueKind.String || !ValidEan13(barcodeValue.GetString()) || !barcodes.Add(barcodeValue.GetString()!)) return false;
+                if (!attributes.TryGetProperty("Barcode", out var barcodeValue) || barcodeValue.ValueKind != JsonValueKind.String || !MarketplaceHub.Infrastructure.Persistence.HepsiburadaProductPublicationComposer.IsValidBarcode(barcodeValue.GetString()) || !barcodes.Add(barcodeValue.GetString()!)) return false;
                 if (!attributes.TryGetProperty("UrunAdi", out var titleValue) || titleValue.ValueKind != JsonValueKind.String || !attributes.TryGetProperty("Marka", out var brandValue) || brandValue.ValueKind != JsonValueKind.String || !StartsWithBrand(titleValue.GetString(), brandValue.GetString())) return false;
                 if (!attributes.TryGetProperty("UrunAciklamasi", out var descriptionValue) || descriptionValue.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(descriptionValue.GetString())) return false;
                 if (!attributes.TryGetProperty("tax_vat_rate", out var vatValue) || vatValue.ValueKind != JsonValueKind.String || !int.TryParse(vatValue.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var vatRate) || vatRate is < 0 or > 100) return false;
@@ -1483,14 +1483,6 @@ public sealed partial class HepsiburadaHttpClient(
             return true;
         }
         catch (JsonException) { return false; }
-    }
-
-    private static bool ValidEan13(string? value)
-    {
-        if (value is null || value.Length != 13 || value.Any(character => !char.IsAsciiDigit(character))) return false;
-        var sum = 0;
-        for (var index = 0; index < 12; index++) sum += (value[index] - '0') * (index % 2 == 0 ? 1 : 3);
-        return (10 - sum % 10) % 10 == value[12] - '0';
     }
 
     private static bool IsPublicHttpsUri(string? value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
