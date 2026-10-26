@@ -637,7 +637,11 @@ public sealed record ReturnPollWindow(
     string? Status = null,
     DateTimeOffset? StatusModifiedAfter = null,
     DateTimeOffset? StatusModifiedBefore = null);
-public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null, string? RawStatus = null);
+// AcceptDetail, Note, Resolved and AcceptedBySeller: how Trendyol settled the line (getClaims claimItems); null when the
+// marketplace does not say (unknown stays unknown).
+public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null, string? RawStatus = null, string? AcceptDetail = null, string? Note = null, bool? Resolved = null, bool? AcceptedBySeller = null);
+// One status change of a return line as the marketplace keeps it (Trendyol getClaimItemAudits).
+public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
@@ -728,6 +732,12 @@ public interface IOrderPackageReadPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteOrderPackage>>> PollPackagesAsync(AdapterContext context, PackagePollWindow window, AdapterPageRequest page, CancellationToken cancellationToken);
     Task<AdapterResult<PackageTrackingStatusSnapshot>> GetPackageTrackingInfoAsync(AdapterContext context, string packageNumber, CancellationToken cancellationToken);
+}
+
+// Reads a return line's status history from the marketplace (Trendyol only); nothing is written.
+public interface IReturnAuditPort
+{
+    Task<AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>> ReturnLineAuditsAsync(AdapterContext context, string externalLineId, CancellationToken cancellationToken);
 }
 
 public interface IReturnPort
@@ -1156,7 +1166,20 @@ public sealed record ReturnLineView(
     string? ModelCode = null,
     string? Status = null,
     // Quantity × the order line's paid unit price; null without an order line.
-    decimal? RefundAmount = null);
+    decimal? RefundAmount = null,
+    // Trendyol's settlement of the line (RemoteReturnLine); null when the marketplace has not said.
+    string? AcceptDetail = null,
+    string? MarketplaceNote = null,
+    bool? Resolved = null,
+    bool? AcceptedBySeller = null);
+public sealed record ReturnAuditEntryView(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
+// A return line's status history read live from the marketplace; Error when that read failed for this line.
+public sealed record ReturnLineAuditView(Guid ReturnLineId, string Title, IReadOnlyList<ReturnAuditEntryView> Entries, string? Error);
+
+public interface IReturnAuditReader
+{
+    Task<ServiceResult<IReadOnlyList<ReturnLineAuditView>>> ReturnAuditsAsync(Guid tenantId, Guid returnId, string correlationId, CancellationToken cancellationToken);
+}
 public sealed record ReturnListView(
     Guid Id,
     string ExternalClaimId,

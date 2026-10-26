@@ -15,7 +15,7 @@ using Microsoft.Extensions.Options;
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthenticationHandler authentication, IConfiguration configuration, IOptions<TrendyolOptions> trendyolOptions, TimeProvider timeProvider, ILogger<TrendyolHttpClient> logger)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort, IInvoiceMarketplacePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort, IReturnAuditPort, IInvoiceMarketplacePort
 {
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
 
@@ -140,6 +140,15 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 response.RateLimit);
         }
         catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
+    public async Task<AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>> ReturnLineAuditsAsync(AdapterContext context, string externalLineId, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>.Failure(TrendyolErrorMapper.Configuration());
+        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.ClaimItemAudit(authorized.Connection.ExternalStoreId, externalLineId.Trim()), null, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>.Failure(response.Error!, response.RateLimit);
+        try { return AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>.Success(TrendyolJsonMapper.ReturnLineAudits(response.Value!), response.RateLimit); }
+        catch (JsonException) { return AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
     public async Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)

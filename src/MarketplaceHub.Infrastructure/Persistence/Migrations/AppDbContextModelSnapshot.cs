@@ -5372,6 +5372,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AcceptDetail")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<bool?>("AcceptedBySeller")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("ClaimId")
                         .HasColumnType("uuid");
 
@@ -5379,6 +5386,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<string>("MarketplaceNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<Guid>("OrderLineId")
                         .HasColumnType("uuid");
@@ -5390,6 +5401,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("RawStatus")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<bool?>("Resolved")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");

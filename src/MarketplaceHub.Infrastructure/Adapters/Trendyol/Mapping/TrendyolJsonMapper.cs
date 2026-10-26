@@ -696,6 +696,26 @@ public static class TrendyolJsonMapper
         return ReturnLines(document.RootElement);
     }
 
+    // getClaimItemAudits: an array of status changes (previousStatus, newStatus, userInfoDocument.executorApp and
+    // executorUser, date in epoch milliseconds), oldest first. An entry without a new status or a date is left out.
+    public static IReadOnlyList<RemoteReturnLineAudit> ReturnLineAudits(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var items = root.ValueKind == JsonValueKind.Array ? root : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array ? content : default;
+        if (items.ValueKind != JsonValueKind.Array) return [];
+        var audits = new List<RemoteReturnLineAudit>();
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var newStatus = NullText(item, "newStatus");
+            if (string.IsNullOrWhiteSpace(newStatus) || !item.TryGetProperty("date", out var date) || !date.TryGetInt64(out var milliseconds)) continue;
+            var user = item.TryGetProperty("userInfoDocument", out var info) && info.ValueKind == JsonValueKind.Object ? info : default;
+            audits.Add(new(Clip(NullText(item, "previousStatus"), 64), newStatus.Trim(), user.ValueKind == JsonValueKind.Object ? Clip(NullText(user, "executorApp"), 64) : null, user.ValueKind == JsonValueKind.Object ? Clip(NullText(user, "executorUser"), 128) : null, DateTimeOffset.FromUnixTimeMilliseconds(milliseconds)));
+        }
+        return audits.OrderBy(x => x.At).ToList();
+    }
+
     private static IReadOnlyList<RemoteReturnLine> ReturnLines(JsonElement claim)
     {
         var lines = new List<RemoteReturnLine>();
@@ -705,7 +725,7 @@ public static class TrendyolJsonMapper
             var quantity = Decimal(entry.Item, "quantity", "returnedQuantity");
             if (quantity <= 0) quantity = 1;
             if (lineId.Length > 0 && entry.ExternalOrderLineId.Length > 0)
-                lines.Add(new(lineId, entry.ExternalOrderLineId, quantity, entry.AlternateExternalOrderLineIds, ItemStatus(entry.Item)));
+                lines.Add(new(lineId, entry.ExternalOrderLineId, quantity, entry.AlternateExternalOrderLineIds, ItemStatus(entry.Item), Clip(NullText(entry.Item, "acceptDetail"), 32), Clip(NullText(entry.Item, "note"), 1000), Flag(entry.Item, "resolved"), Flag(entry.Item, "acceptedBySeller")));
         }
         return lines
             .GroupBy(x => $"{x.ExternalLineId}:{x.ExternalOrderLineId}", StringComparer.Ordinal)
@@ -922,6 +942,9 @@ public static class TrendyolJsonMapper
                 WalkClaimLineEntries(property.Value, currentOrderLine, rows);
         }
     }
+    // A claim item's true/false field; null when Trendyol leaves it out, so an unknown outcome is not read as "no".
+    private static bool? Flag(JsonElement item, string name) => item.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
+    private static string? Clip(string? value, int length) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(value.Trim().Length, length)];
     private static string? ItemStatus(JsonElement item)
     {
         if (!item.TryGetProperty("claimItemStatus", out var status)) return null;

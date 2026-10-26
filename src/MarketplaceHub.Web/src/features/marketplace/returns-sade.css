@@ -1070,3 +1070,23 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-psize .rr-psize-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 86px; height: 36px; padding: 0 10px 0 12px; color: var(--rr-ink); font: inherit; font-size: 13px; cursor: pointer; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-psize-anchor > .rr-pop.rr-psize-pop.rr-static { position: absolute; top: calc(100% + 4px); right: 0; z-index: 951; display: grid; gap: 2px; width: 100%; min-width: 86px; padding: 4px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / 35%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-psize-pop .rr-opt { justify-content: center; min-height: 34px; border-radius: 7px; }
+
+/* Trendyol Kararı ve Durum Geçmişi (ReturnMarketplaceHistory): how Trendyol settled the lines and, on request, the
+   status history read live from Trendyol. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist { display: grid; grid-auto-rows: max-content; gap: 10px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist > .rr-btn { justify-self: start; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-line { display: grid; gap: 6px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-line > b { color: var(--rr-ink); font-size: 13px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-none,
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-note { margin: 0; color: var(--rr-muted); font-size: 12.5px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-note { color: var(--rr-subtle); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps li { position: relative; display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 2px 12px; padding: 8px 0 8px 16px; border-left: 2px solid var(--rr-line-strong); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps li::before { content: ""; position: absolute; top: 13px; left: -5px; width: 8px; height: 8px; background: var(--rr-primary); border-radius: 50%; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps li > span { color: var(--rr-muted); font-size: 12.5px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps li > b { color: var(--rr-ink); font-size: 13px; font-weight: 600; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps li > small { grid-column: 2; color: var(--rr-subtle); font-size: 12px; }
+@media (max-width: 560px) {
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps li { grid-template-columns: minmax(0, 1fr); }
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-mhist-steps li > small { grid-column: 1; }
+}

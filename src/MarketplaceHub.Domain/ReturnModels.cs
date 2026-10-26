@@ -149,6 +149,12 @@ public sealed class ReturnLine
     // The marketplace's own per-line status (Trendyol claimItemStatus). One claim can mix lines that
     // are already accepted with lines that still wait for the seller.
     public string? RawStatus { get; set; }
+    // How Trendyol settled the line (claimItems acceptDetail: SUPPLIER, DISPUTE or SYSTEM; note; resolved;
+    // acceptedBySeller), read only. Null while the marketplace has not said.
+    public string? AcceptDetail { get; set; }
+    public string? MarketplaceNote { get; set; }
+    public bool? Resolved { get; set; }
+    public bool? AcceptedBySeller { get; set; }
 }
 
 public sealed class ReturnDecision

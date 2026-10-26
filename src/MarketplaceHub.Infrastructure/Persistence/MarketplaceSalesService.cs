@@ -2192,7 +2192,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 variant?.OptionSignature ?? sourceSnapshot?.OptionSignature,
                 variant?.ModelCode ?? sourceSnapshot?.ModelCode,
                 string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
-                source is null ? null : ReturnRefundAmounts.LineRefund(line.Quantity, source.UnitPrice, refundRatio));
+                source is null ? null : ReturnRefundAmounts.LineRefund(line.Quantity, source.UnitPrice, refundRatio),
+                line.AcceptDetail, line.MarketplaceNote, line.Resolved, line.AcceptedBySeller);
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);

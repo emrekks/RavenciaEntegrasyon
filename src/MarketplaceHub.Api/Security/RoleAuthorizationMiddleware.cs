@@ -64,7 +64,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "connections" when last is "n11-shipment-templates" or "instant-notifications" or "product-matches" => WorkingRoles,
             "orders" when last is "finance" or "product-image" => WorkingRoles,
             "shipments" when last == "changeable-cargo-companies" => WorkingRoles,
-            "returns" when last == "rejection-reasons" => WorkingRoles,
+            "returns" when last is "rejection-reasons" or "audits" => WorkingRoles,
             _ => null
         };
     }

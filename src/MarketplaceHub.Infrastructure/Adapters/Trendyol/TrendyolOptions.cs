@@ -60,6 +60,8 @@ internal static class TrendyolEndpoints
     public static string Webhooks(string sellerId) => $"webhook/sellers/{Uri.EscapeDataString(sellerId)}/webhooks";
     public static string Webhook(string sellerId, string webhookId) => $"{Webhooks(sellerId)}/{Uri.EscapeDataString(webhookId)}";
     public static string Claims(string sellerId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims";
+    // getClaimItemAudits: a claim item's status history (a read; nothing changes on Trendyol).
+    public static string ClaimItemAudit(string sellerId, string claimItemId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims/items/{Uri.EscapeDataString(claimItemId)}/audit";
     public static string ApproveClaim(string sellerId, string claimId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims/{Uri.EscapeDataString(claimId)}/items/approve";
     public const string ClaimIssueReasons = "order/claim-issue-reasons";
     public static string RejectClaim(string sellerId, string claimId, string reasonId, IReadOnlyList<string> lineIds, string description) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims/{Uri.EscapeDataString(claimId)}/issue?claimIssueReasonId={Uri.EscapeDataString(reasonId)}&claimItemIdList={Uri.EscapeDataString(string.Join(',', lineIds))}&description={Uri.EscapeDataString(description)}";

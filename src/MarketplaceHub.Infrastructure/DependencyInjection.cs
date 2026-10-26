@@ -141,6 +141,8 @@ public static class DependencyInjection
         services.AddScoped<IProductPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IHepsiburadaProductMatchPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IProductVisualLookupPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IReturnAuditPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IReturnAuditReader, ReturnAuditReader>();
         services.AddScoped<IInventoryPricePort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IOrderPackageReadPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
