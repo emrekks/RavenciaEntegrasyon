@@ -28,11 +28,11 @@ public sealed class HepsiburadaStageCertificationPolicyTests
     }
 
     [Fact]
-    public void ProductionHepsiburadaPublicationKeepsAllThreeEvidenceRequirements()
+    public void ProductionHepsiburadaPublicationRestsOnThePriceAndStockEvidenceTheConnectionCheckRecords()
     {
         var required = HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(Connection("PRODUCTION"));
 
-        Assert.Equal(new[] { MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite }, required);
+        Assert.Equal(new[] { MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite }, required);
     }
 
     [Theory]

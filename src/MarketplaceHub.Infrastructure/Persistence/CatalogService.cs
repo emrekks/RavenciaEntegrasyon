@@ -1549,7 +1549,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (connection.PlatformCode == "HEPSIBURADA")
         {
             if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün yayını kuyruğa alınamaz.", 422);
-            if (!await HasHepsiburadaPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Ürün aktarımı fiyat ve stok da içerdiğinden PRODUCT_WRITE, PRICE_WRITE ve INVENTORY_WRITE için aynı bağlantı/ortam SIT kanıtı gerekir.", 422);
+            if (!await HasHepsiburadaPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada bağlantısında bu mağaza ve ortam için doğrulanmış fiyat ve stok yazma kanıtı yok; Entegrasyonlar'dan bağlantıyı test edin.", 422);
         }
         // n11 has no sandbox, so write evidence can only follow a first live write; the
         // global and connection write switches are the gate for product create.

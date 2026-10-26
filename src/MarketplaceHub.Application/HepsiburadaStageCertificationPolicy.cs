@@ -19,14 +19,14 @@ public static class HepsiburadaStageCertificationPolicy
         string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
         && IntegrationRuntimePolicy.IsStage(connection);
 
-    // PRODUCT_WRITE evidence can only come from a product import made on the SIT account itself
-    // (the connection test never writes), so a STAGE connection cannot demand it before that
-    // import: SIT is where the evidence is produced. PRICE_WRITE and INVENTORY_WRITE are recorded
-    // by the connection test and stay required; PRODUCTION keeps all three.
+    // The evidence a Hepsiburada product import, update or match decision needs: PRICE_WRITE and
+    // INVENTORY_WRITE for this store, environment and API version, which every successful connection
+    // check records (the import carries price and stock and goes through the same integrator
+    // credentials). A separate PRODUCT_WRITE row is not demanded: no check can produce it without
+    // writing, so a live store waited on a button that never cleared it (owner decision, 27 Oct 2026).
+    // The external write switches still decide whether anything is sent.
     public static string[] PublicationEvidenceCapabilities(PlatformConnection connection) =>
-        IsStageHepsiburada(connection)
-            ? new[] { MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite }
-            : new[] { MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite };
+        new[] { MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite };
 
     // A Hepsiburada catalogue SKU (hbSku) starts with "HB", for example HBV0000KSJL98. Imported
     // links that carry the merchant SKU instead do not, and cannot be ordered or uploaded by hbSku.

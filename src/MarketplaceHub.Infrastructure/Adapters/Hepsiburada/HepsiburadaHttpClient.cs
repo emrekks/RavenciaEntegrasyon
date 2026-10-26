@@ -243,8 +243,8 @@ public sealed partial class HepsiburadaHttpClient(
         if (account is null) return Failure<bool>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (account.CatalogBaseAddress is null) return await Unsupported<bool>("Hepsiburada katalog base URL'si yapılandırılmamış.");
         if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
-            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ProductWrite))
-            return await Unsupported<bool>("Ürün eşleşmesi kararı yalnız mevcut dış yazma kapıları ve mağaza/ortam kapsamlı PRODUCT_WRITE SIT fixture kanıtı sağlandığında kullanılabilir.");
+            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(account.Connection)))
+            return await Unsupported<bool>("Ürün eşleşmesi kararı yalnız mevcut dış yazma kapıları ve mağaza/ortam kapsamlı fiyat ve stok yazma kanıtı sağlandığında kullanılabilir.");
         if (!ValidMatchDecisionSkus(merchantSkus))
             return Failure<bool>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_MATCH_SKUS_INVALID", "Eşleşme kararı için 1-100 benzersiz, boşluksuz büyük harf merchantSku gerekir.", HttpStatusCode.BadRequest);
 
@@ -392,8 +392,8 @@ public sealed partial class HepsiburadaHttpClient(
         if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (account.CatalogBaseAddress is null) return await Unsupported<RemoteOperationRef>("Hepsiburada ürün güncelleme için doğrulanmış katalog base URL'si yok.");
         if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
-            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ProductWrite))
-            return await Unsupported<RemoteOperationRef>("Hepsiburada ürün güncellemesi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı PRODUCT_WRITE SIT fixture kanıtı sağlandığında kullanılabilir.");
+            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(account.Connection)))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada ürün güncellemesi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı fiyat ve stok yazma kanıtı sağlandığında kullanılabilir.");
         if (publication.ProductId == Guid.Empty || string.IsNullOrWhiteSpace(publication.PayloadHash) || !ValidProductUpdatePayload(payloadJson, account.Connection.ExternalStoreId))
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_UPDATE_PAYLOAD_INVALID", "Hepsiburada ürün güncelleme dosyası merchantId/hbSku/merchantSku sözleşmesini sağlamıyor.", HttpStatusCode.BadRequest);
 
