@@ -479,9 +479,9 @@ public sealed partial class HepsiburadaHttpClient(
                 if (totalCount is { } expected && allLines.Count >= expected) break;
                 if (mapped.Lines.Count < 100) break;
             }
-            catch (JsonException)
+            catch (JsonException exception)
             {
-                return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_STATUS_CONTRACT_INVALID", "Hepsiburada ürün import durum yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway);
+                return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_STATUS_CONTRACT_INVALID", $"Hepsiburada ürün import durum yanıtı beklenen sözleşmeyle eşleşmiyor: {exception.Message} ({HepsiburadaJsonMapper.ProductImportStatusShape(response.Value!.RootElement)})", HttpStatusCode.BadGateway);
             }
         }
         if (totalCount is { } expectedCount && allLines.Count != expectedCount)

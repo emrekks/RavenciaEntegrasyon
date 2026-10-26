@@ -433,13 +433,16 @@ internal static class HepsiburadaJsonMapper
     public static RemoteOperationStatus ProductImportStatus(JsonElement root, string trackingId)
     {
         var data = Unwrap(root);
-        var importStatus = First(Text(root, "importStatus", "status"), Text(data, "importStatus", "status"));
+        // The documented answer carries importStatus on every line of data, not at the top (live 27 Oct 2026): a line
+        // still PROCESSING keeps the whole file in progress; otherwise the lines' common state stands.
+        var importStatus = First(Text(root, "importStatus"), data.ValueKind == JsonValueKind.Object ? Text(data, "importStatus", "status") : null)
+            ?? LineImportStatus(data.ValueKind == JsonValueKind.Array ? data : Find(data, "items", "products", "productStatuses", "productList", "results"));
         if (string.IsNullOrWhiteSpace(importStatus)) throw new JsonException("Hepsiburada ürün aktarım durumu eksik.");
         var normalizedStatus = importStatus.Trim().ToUpperInvariant();
         var status = normalizedStatus switch
         {
             "PROCESSING" or "IN_PROGRESS" or "PENDING" => "IN_PROGRESS",
-            "SUCCESS" or "COMPLETED" or "FAILED" or "PARTIAL_SUCCESS" => "COMPLETED",
+            "SUCCESS" or "COMPLETED" or "DONE" or "FAILED" or "PARTIAL_SUCCESS" => "COMPLETED",
             _ => throw new JsonException("Hepsiburada ürün aktarım durumu tanınmıyor.")
         };
 
@@ -468,6 +471,41 @@ internal static class HepsiburadaJsonMapper
         if (status == "COMPLETED" && lines.Count > 0 && lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
             throw new JsonException("Hepsiburada ürün aktarım yanıtında merchantSku yineleniyor.");
         return new(trackingId, status, lines);
+    }
+
+    // What an unrecognised import status answer looks like, for the job's error text: its top-level field names, the
+    // line count and the status values met (import and product statuses only, product data, no customer data). The
+    // answer is not logged anywhere else, so without this a mismatch (live 27 Oct 2026) could not be told apart.
+    private static string? LineImportStatus(JsonElement items)
+    {
+        if (items.ValueKind != JsonValueKind.Array) return null;
+        var statuses = items.EnumerateArray()
+            .Select(item => item.ValueKind == JsonValueKind.Object ? Text(item, "importStatus") : null)
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => status!.Trim().ToUpperInvariant())
+            .ToList();
+        if (statuses.Count == 0) return null;
+        return statuses.FirstOrDefault(status => status is "PROCESSING" or "IN_PROGRESS" or "PENDING") ?? statuses[0];
+    }
+
+    public static string ProductImportStatusShape(JsonElement root)
+    {
+        static string Safe(string? value) => new((value ?? "").Trim().Take(40).Select(character => char.IsLetterOrDigit(character) || character is '_' or '-' or ' ' ? character : '?').ToArray());
+        var parts = new List<string>();
+        if (root.ValueKind == JsonValueKind.Object)
+            parts.Add("alanlar: " + string.Join(",", root.EnumerateObject().Select(property => Safe(property.Name)).Take(12)));
+        else parts.Add("kök: " + root.ValueKind);
+        var data = Unwrap(root);
+        var items = data.ValueKind == JsonValueKind.Array ? data : Find(data, "items", "products", "productStatuses", "productList", "results");
+        if (items.ValueKind == JsonValueKind.Array) parts.Add($"satır: {items.GetArrayLength()}");
+        var statuses = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var source in new[] { root, data })
+            if (source.ValueKind == JsonValueKind.Object && Text(source, "importStatus", "status") is { } value) statuses.Add("aktarım=" + Safe(value));
+        if (items.ValueKind == JsonValueKind.Array)
+            foreach (var item in items.EnumerateArray().Take(20))
+                if (item.ValueKind == JsonValueKind.Object && Text(item, "productStatus", "status", "Status") is { } value) statuses.Add("ürün=" + Safe(value));
+        if (statuses.Count > 0) parts.Add("durumlar: " + string.Join(",", statuses.Take(6)));
+        return string.Join("; ", parts);
     }
 
     public static int? ProductImportTotalCount(JsonElement root)

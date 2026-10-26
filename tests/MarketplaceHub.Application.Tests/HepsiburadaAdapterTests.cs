@@ -413,6 +413,38 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ProductImportStatus_ReadsTheImportStatusEachDocumentedLineCarries()
+    {
+        using var lines = JsonDocument.Parse("""
+        { "success": true, "code": 0, "totalElements": 2, "data": [
+          { "itemOrderID": 1, "merchantSku": "SKU-ONE", "productStatus": "İncelenecek", "importStatus": "SUCCESS", "hbSku": "HB-1" },
+          { "itemOrderID": 2, "merchantSku": "SKU-TWO", "productStatus": "Ürün bilgileri eksik", "importStatus": "SUCCESS", "validationResults": [{ "attributeName": "Renk", "message": "Renk değeri geçersiz" }] }
+        ] }
+        """);
+        var mapped = HepsiburadaJsonMapper.ProductImportStatus(lines.RootElement, "trace-lines");
+        Assert.Equal("COMPLETED", mapped.Status);
+        Assert.True(mapped.Lines[0].Succeeded);
+        Assert.Equal("Renk değeri geçersiz", mapped.Lines[1].ErrorCode);
+
+        using var processing = JsonDocument.Parse("""{ "data": [ { "merchantSku": "SKU-ONE", "productStatus": "İncelenecek", "importStatus": "SUCCESS" }, { "merchantSku": "SKU-TWO", "productStatus": "İncelenecek", "importStatus": "PROCESSING" } ] }""");
+        Assert.Equal("IN_PROGRESS", HepsiburadaJsonMapper.ProductImportStatus(processing.RootElement, "trace-processing").Status);
+    }
+
+    [Fact]
+    public void ProductImportStatus_ReadsDoneAndDescribesAnAnswerItCannotRead()
+    {
+        using var done = JsonDocument.Parse("""{"importStatus":"DONE","data":[{"merchantSku":"SKU-ONE","productStatus":"WAITING"}]}""");
+        Assert.Equal("COMPLETED", HepsiburadaJsonMapper.ProductImportStatus(done.RootElement, "trace-done").Status);
+
+        using var unknown = JsonDocument.Parse("""{"success":true,"totalElements":1,"data":[{"merchantSku":"SKU-ONE","productStatus":"Yeni Durum"}]}""");
+        Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.ProductImportStatus(unknown.RootElement, "trace-unknown"));
+        var shape = HepsiburadaJsonMapper.ProductImportStatusShape(unknown.RootElement);
+        Assert.Contains("alanlar: success,totalElements,data", shape, StringComparison.Ordinal);
+        Assert.Contains("satır: 1", shape, StringComparison.Ordinal);
+        Assert.Contains("ürün=Yeni Durum", shape, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProductImportPayload_RequiresExactMerchantAndSafePriceStockAndImageValues()
     {
         const string valid = """[{"categoryId":11,"merchant":"merchant-17","attributes":{"merchantSku":"SKU-ONE","VaryantGroupID":"MODEL-1","Barcode":"4006381333931","UrunAdi":"Nike Shoe","UrunAciklamasi":"Shoe description","Marka":"Nike","tax_vat_rate":"20","price":"14,50","stock":"2","Image1":"https://cdn.example.com/item.jpg"}}]""";
