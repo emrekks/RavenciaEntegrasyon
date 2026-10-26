@@ -1910,14 +1910,12 @@ public sealed class HepsiburadaAdapterTests
             Assert.True(shopifyOrders.RootElement.GetProperty("full").GetBoolean());
 
         var hepsiburada = MarketplaceConnectionService.CreateInitialDataSyncPlan("HEPSIBURADA", connectionId, includeHepsiburadaCatalog: true);
+        // No product import: products come in from the product import page only.
         Assert.Equal(
-            [MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.HepsiburadaReturnSync],
+            [MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.HepsiburadaReturnSync],
             hepsiburada.Select(item => item.JobType));
         using (var hepsiburadaOrders = JsonDocument.Parse(hepsiburada.Single(item => item.KeySuffix == "orders").PayloadJson))
             Assert.True(hepsiburadaOrders.RootElement.GetProperty("full").GetBoolean());
-        using var productPayload = JsonDocument.Parse(hepsiburada.Single(item => item.KeySuffix == "products").PayloadJson);
-        Assert.True(productPayload.RootElement.GetProperty("full").GetBoolean());
-        Assert.False(productPayload.RootElement.GetProperty("updateExistingProducts").GetBoolean());
         using (var hepsiburadaReturns = JsonDocument.Parse(hepsiburada.Single(item => item.KeySuffix == "returns").PayloadJson))
             Assert.True(hepsiburadaReturns.RootElement.GetProperty("forceFull").GetBoolean());
 

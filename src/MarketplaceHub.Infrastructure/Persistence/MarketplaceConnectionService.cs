@@ -913,12 +913,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var orderType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderRecoverySync);
         jobs.Add(new(orderType, "orders", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null, full = true })));
 
-        if (platform == "HEPSIBURADA")
-        {
-            if (includeHepsiburadaCatalog)
-                jobs.Add(new(MarketplaceJobTypes.HepsiburadaReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
-            jobs.Add(new(MarketplaceJobTypes.HepsiburadaProductSync, "products", JsonSerializer.Serialize(new { connectionId, full = true, updateExistingProducts = false })));
-        }
+        // A product import is never part of this plan: Verileri Çek and an activation started a full Hepsiburada catalog
+        // scan nobody asked for (26 Oct 2026). Products come in from the product import page, with its own options.
+        if (platform == "HEPSIBURADA" && includeHepsiburadaCatalog)
+            jobs.Add(new(MarketplaceJobTypes.HepsiburadaReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
 
         if (CreateReturnActivationBootstrap(platform, connectionId) is { } initialReturns)
             jobs.Add(new(initialReturns.JobType, "returns", initialReturns.PayloadJson));
