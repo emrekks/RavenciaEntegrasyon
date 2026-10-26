@@ -7213,3 +7213,20 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside,
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label, .nav-count) { transition: none !important; }
 }
+
+/* The menu's brand row ends exactly where the top bar does, so their two rules meet in one line at every width and
+   height, collapsed, opened or pinned (short screens used to shrink the row and leave its rule 20-37 px higher). */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell.stitch-shell > aside { padding-top: 0; }
+  .app-shell.stitch-shell.stitch-shell > aside .sidebar-brand-row.sidebar-brand-row {
+    box-sizing: border-box; flex: none; height: var(--rv-topbar-height); min-height: var(--rv-topbar-height); margin-top: 0; margin-bottom: 0;
+    padding-top: 0; padding-bottom: 0; align-items: center; border-bottom: 1px solid var(--rv-color-border);
+  }
+  /* The row now takes the aside's top padding into itself; the menu below starts 8 px under its rule, so the list
+     does not move further down than before and a short screen keeps its room. */
+  .app-shell.stitch-shell.stitch-shell > aside nav { margin-top: var(--rv-space-2); padding-top: 0; }
+  .app-shell.stitch-shell.stitch-shell > aside { padding-bottom: var(--rv-space-3); }
+}
+@media (min-width: 701px) and (max-height: 800px) {
+  .app-shell.stitch-shell.stitch-shell > aside :is(nav, nav .nav-group) { row-gap: 6px; }
+}
