@@ -9,8 +9,18 @@ public sealed class ConnectionDataResetPolicyTests
     public void TrendyolSupportsOrderAndReferenceDataReset()
     {
         Assert.Equal(
-            new[] { "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS" }.Order(StringComparer.Ordinal),
+            new[] { "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "COMMISSION_TARIFFS", "PROMOTION_OFFERS" }.Order(StringComparer.Ordinal),
             ConnectionDataResetPolicy.ScopesFor("TRENDYOL").Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void OnlyTrendyolOffersThePromotionFiles()
+    {
+        foreach (var platform in new[] { "PAZARAMA", "PTTAVM", "HEPSIBURADA", "N11", "SHOPIFY" })
+        {
+            Assert.DoesNotContain("COMMISSION_TARIFFS", ConnectionDataResetPolicy.ScopesFor(platform));
+            Assert.DoesNotContain("PROMOTION_OFFERS", ConnectionDataResetPolicy.ScopesFor(platform));
+        }
     }
 
     [Fact]

@@ -25,6 +25,7 @@ vi.mock('../../shared/api', async importOriginal => {
     if (path === '/mfa/confirm') return { recoveryCodes: ['ABCD-EFGH-JKMN', 'PQRS-TVWX-YZ01'] }
     if (path === '/settings/shipping-label') return { settings: method === 'PUT' ? JSON.parse(body ?? 'null') : null, version: method === 'PUT' ? 4 : 3 }
     if (path === '/settings/appearance') return { settings: null, version: 0 }
+    if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }
@@ -130,16 +131,18 @@ describe('SystemSettingsPage', () => {
 
   it('deletes the chosen lists only after the confirmation text is typed', async () => {
     await renderPage('/settings?tab=database')
-    const products = Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-sc')).find(item => item.textContent?.includes('Ürünler Listesi'))!
+    await settle()
+    const products = Array.from(container.querySelectorAll<HTMLLabelElement>('.drl-row')).find(item => item.textContent?.includes('Ürünler Listesi'))!
+    expect(products.textContent).toContain('944')
     click(products.querySelector('input')!)
-    click(button('Seçili Listeleri Kalıcı Sil'))
-    const confirm = Array.from(document.querySelectorAll<HTMLButtonElement>('.ss-modal footer button')).find(item => item.textContent?.includes('Kalıcı Sil'))!
+    expect(container.querySelector('.drl-lines')?.textContent).toContain('Ürünler Listesi944 ürün')
+    const confirm = container.querySelector<HTMLButtonElement>('.drl-go')!
     expect(confirm.disabled).toBe(true)
-    input(document.querySelector<HTMLInputElement>('.ss-typed input')!, 'Verileri sil')
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
     expect(confirm.disabled).toBe(false)
     click(confirm)
     await settle()
-    const request = apiState.calls.find(call => call.path === '/settings/data-reset')
+    const request = apiState.calls.find(call => call.path === '/settings/data-reset' && call.method === 'POST')
     expect(JSON.parse(request?.body ?? '{}')).toEqual({ scopes: ['PRODUCTS'], confirmation: 'Verileri sil' })
   })
 

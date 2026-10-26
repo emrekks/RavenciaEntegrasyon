@@ -950,10 +950,18 @@ public sealed record OperationalDataResetView(
     bool ConnectionDeleted = false,
     // A connection reset keeps the issued invoices (fiscal records; deleting them would let the orders be invoiced
     // again) and the orders and returns they belong to, and says how many it kept.
-    int KeptIssuedInvoices = 0);
+    int KeptIssuedInvoices = 0,
+    int CommissionTariffs = 0,
+    int PromotionOffers = 0);
+
+// What a reset would remove, scope by scope, shown before it runs; KeptIssuedInvoices is what an order, return or
+// invoice reset of the connection keeps.
+public sealed record DataResetCountView(string Scope, int Count);
+public sealed record DataResetCountsView(IReadOnlyList<DataResetCountView> Items, int KeptIssuedInvoices);
 
 public interface IOperationalDataMaintenanceService
 {
+    Task<ServiceResult<DataResetCountsView>> ResetCountsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<OperationalDataResetView>> ResetConnectionDataAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> SetDataVisibilityAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, bool hidden, string correlationId, CancellationToken cancellationToken);

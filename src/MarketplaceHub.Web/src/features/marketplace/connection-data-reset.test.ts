@@ -4,7 +4,7 @@ import { connectionDataResetGroups, connectionDataResetOptions } from './connect
 describe('connection data reset options', () => {
   it('offers marketplace data only for the selected connection type', () => {
     expect(connectionDataResetOptions('TRENDYOL').map(option => option.scope)).toEqual([
-      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS'
+      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS', 'COMMISSION_TARIFFS', 'PROMOTION_OFFERS'
     ])
     expect(connectionDataResetOptions('HEPSIBURADA').map(option => option.scope)).toEqual([
       'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES'
@@ -23,8 +23,8 @@ describe('connection data reset options', () => {
       label: group.label,
       scopes: group.options.map(option => option.scope)
     }))).toEqual([
-      { label: 'Sipariş ve finans', scopes: ['ORDERS', 'RETURNS', 'INVOICES'] },
-      { label: 'Ürün kataloğu', scopes: ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES'] }
+      { label: 'Sipariş ve Finans', scopes: ['ORDERS', 'RETURNS', 'INVOICES'] },
+      { label: 'Ürün Kataloğu', scopes: ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES'] }
     ])
   })
 })

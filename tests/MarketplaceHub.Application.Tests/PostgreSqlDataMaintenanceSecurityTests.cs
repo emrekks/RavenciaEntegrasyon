@@ -90,6 +90,44 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // 26 Oct 2026: the Promotions page's files are reset per connection; the counts shown before the reset are the
+    // ones it removes, and the issued invoice an order reset would keep is counted too.
+    [PostgreSqlFact]
+    public async Task ConnectionReset_CountsAndRemovesThePromotionFiles()
+    {
+        var seed = NewSeed("dm-promo");
+        var tariff = new CommissionTariff { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, PlatformCode = "TRENDYOL", PeriodStart = fixture.Now, PeriodEnd = fixture.Now.AddDays(7), PeriodText = "1-7", FileName = "tarife.xlsx", FileHash = "h1", UploadedAt = fixture.Now, RowCount = 1 };
+        var row = new CommissionTariffRow { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, TariffId = tariff.Id, Barcode = "B1" };
+        var offer = new PromotionOfferFile { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, PlatformCode = "TRENDYOL", Kind = PromotionOfferKinds.Advantage, FileName = "avantaj.xlsx", FileHash = "h2", UploadedAt = fixture.Now, RowCount = 0, RowsJson = "[]" };
+        try
+        {
+            await SeedAsync(seed, db => { db.CommissionTariffs.Add(tariff); db.CommissionTariffRows.Add(row); db.PromotionOfferFiles.Add(offer); db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)); });
+
+            await using var db = fixture.CreateContext();
+            var service = new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard());
+            var counts = await service.ResetCountsAsync(seed.Tenant.Id, seed.Marketplace.Id, CancellationToken.None);
+            Assert.True(counts.Succeeded, counts.Error?.Message);
+            Assert.Equal(1, counts.Value!.Items.Single(x => x.Scope == "COMMISSION_TARIFFS").Count);
+            Assert.Equal(1, counts.Value.Items.Single(x => x.Scope == "PROMOTION_OFFERS").Count);
+            Assert.Equal(1, counts.Value.Items.Single(x => x.Scope == "ORDERS").Count);
+            Assert.Equal(1, counts.Value.KeptIssuedInvoices);
+
+            var result = await service.ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["COMMISSION_TARIFFS", "PROMOTION_OFFERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal((1, 1), (result.Value!.CommissionTariffs, result.Value.PromotionOffers));
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.CommissionTariffs.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.CommissionTariffRows.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.PromotionOfferFiles.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // A live e-invoice provider with an issued invoice is kept; a STAGE one's invoices are tests and go with it.
     [PostgreSqlFact]
     public Task ProviderDelete_KeepsALiveProvidersIssuedInvoices() => ProviderDeleteAsync("PRODUCTION", deleted: false);

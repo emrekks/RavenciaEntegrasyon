@@ -124,6 +124,8 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Contains("CATEGORIES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: true, cancellationToken);
         else if (scopes.Contains("CATEGORY_ATTRIBUTES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: false, cancellationToken);
         if (scopes.Contains("BRANDS")) await DeleteConnectionBrandDataAsync(tenantId, connectionId, cancellationToken);
+        if (scopes.Contains("COMMISSION_TARIFFS")) await DeleteCommissionTariffsAsync(tenantId, connectionId, cancellationToken);
+        if (scopes.Contains("PROMOTION_OFFERS")) await DeletePromotionOffersAsync(tenantId, connectionId, cancellationToken);
         if (scopes.Contains("PRODUCTS"))
         {
             await DeleteProductsAsync(tenantId, connectionId, cancellationToken);
@@ -154,8 +156,47 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         var brands = scopes.Contains("BRANDS") ? connectionId is null ? await db.Brands.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await CurrentListSizeAsync(tenantId, connectionId.Value, ["BRANDS"], cancellationToken) : 0;
         var options = scopes.Contains("OPTIONS") ? await db.ProductOptions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
         var categoryAttributes = scopes.Contains("CATEGORY_ATTRIBUTES") || connectionId is not null && scopes.Contains("CATEGORIES") ? connectionId is null ? await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await CurrentListSizeAsync(tenantId, connectionId.Value, ["CATEGORY_ATTRIBUTES", "ATTRIBUTE_VALUES"], cancellationToken) : 0;
-        return new(products, orders, returns, invoices, categories, brands, options, categoryAttributes);
+        var commissionTariffs = connectionId is not null && scopes.Contains("COMMISSION_TARIFFS") ? await db.CommissionTariffs.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken) : 0;
+        var promotionOffers = connectionId is not null && scopes.Contains("PROMOTION_OFFERS") ? await db.PromotionOfferFiles.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken) : 0;
+        return new(products, orders, returns, invoices, categories, brands, options, categoryAttributes, CommissionTariffs: commissionTariffs, PromotionOffers: promotionOffers);
     }
+
+    // The counts the reset screens show before anything runs: the same counts a reset reports when it is done.
+    public async Task<ServiceResult<DataResetCountsView>> ResetCountsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken)
+    {
+        IReadOnlySet<string> scopes = AllowedScopes;
+        if (connectionId is { } id)
+        {
+            var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED").Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+            if (platformCode is null) return ServiceResult<DataResetCountsView>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
+            scopes = ConnectionDataResetPolicy.ScopesFor(platformCode);
+        }
+        var counts = await CountsAsync(tenantId, connectionId, scopes.ToHashSet(StringComparer.Ordinal), cancellationToken);
+        var byScope = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["ORDERS"] = counts.Orders,
+            ["RETURNS"] = counts.Returns,
+            ["INVOICES"] = counts.Invoices,
+            ["PRODUCTS"] = counts.Products,
+            ["CATEGORIES"] = counts.Categories,
+            ["CATEGORY_ATTRIBUTES"] = counts.CategoryAttributes,
+            ["BRANDS"] = counts.Brands,
+            ["OPTIONS"] = counts.Options,
+            ["COMMISSION_TARIFFS"] = counts.CommissionTariffs,
+            ["PROMOTION_OFFERS"] = counts.PromotionOffers,
+        };
+        var kept = connectionId is not null && (scopes.Contains("ORDERS") || scopes.Contains("RETURNS") || scopes.Contains("INVOICES")) ? await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) : 0;
+        return ServiceResult<DataResetCountsView>.Ok(new(scopes.Order(StringComparer.Ordinal).Select(scope => new DataResetCountView(scope, byScope[scope])).ToList(), kept));
+    }
+
+    private Task DeleteCommissionTariffsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM catalog.commission_tariff_rows r USING catalog.commission_tariffs t WHERE r."TenantId"={{tenantId}} AND r."TariffId"=t."Id" AND t."TenantId"={{tenantId}} AND t."ConnectionId"={{connectionId}};
+        DELETE FROM catalog.commission_tariffs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        """, cancellationToken);
+
+    private Task DeletePromotionOffersAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM catalog.promotion_offer_files WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        """, cancellationToken);
 
     private Task DeleteConnectionSyncCursorsAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
         DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType"={{resourceType}};

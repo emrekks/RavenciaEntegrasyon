@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../shared/api'
 import { LoadingState, Modal } from '../../shared/components'
+import { DataResetLedger, type DataResetGroup } from '../../shared/components/DataResetLedger'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../shipping'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearancePalette, type AppearanceSettings } from './appearance-settings'
@@ -141,16 +142,16 @@ function NotificationSamples() {
   </>
 }
 
-const resetScopeDetails: Record<string, { label: string; description: string }> = {
-  PRODUCTS: { label: 'Ürünler Listesi', description: 'Ürünleri, varyantları ve bu ürünlere bağlı görsel, stok ve kanal kayıtlarını temizler.' },
-  CATEGORIES: { label: 'Kategori Listesi', description: 'Panel kategori ağacını ve kategori-pazaryeri eşleştirmelerini kaldırır; ürünlerin kategori bağlantısını boşaltır.' },
-  CATEGORY_ATTRIBUTES: { label: 'Kategori Özellikleri', description: 'Kategori özellik başlıklarını, değerlerini, kategori atamalarını, ürün değerlerini ve pazaryeri özellik eşleştirmelerini kaldırır.' },
-  BRANDS: { label: 'Marka Listesi', description: 'Marka kayıtlarını ve marka-pazaryeri eşleştirmelerini kaldırır; ürünlerin marka bağlantısını boşaltır.' },
-  OPTIONS: { label: 'Ürün Seçenekleri', description: 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.' }
-}
-const resetScopeGroups: Array<{ label: string; description: string; scopes: string[] }> = [
-  { label: 'Katalog', description: 'Ürün kataloğunda kullanılan temel listeleri temizleyin.', scopes: ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS'] },
-  { label: 'Ürün Seçenekleri', description: 'Ürün seçeneklerini ve seçenek değerlerini temizleyin.', scopes: ['OPTIONS'] }
+const resetScopeGroups: DataResetGroup[] = [
+  { label: 'Katalog', description: 'Ürün kataloğunda kullanılan temel listeler.', options: [
+    { scope: 'PRODUCTS', label: 'Ürünler Listesi', description: 'Ürünleri, varyantları ve bu ürünlere bağlı görsel, stok ve kanal kayıtlarını temizler.', unit: 'ürün' },
+    { scope: 'CATEGORIES', label: 'Kategori Listesi', description: 'Panel kategori ağacını ve kategori-pazaryeri eşleştirmelerini kaldırır; ürünlerin kategori bağlantısını boşaltır.', unit: 'kategori' },
+    { scope: 'CATEGORY_ATTRIBUTES', label: 'Kategori Özellikleri', description: 'Kategori özellik başlıklarını, değerlerini, kategori atamalarını, ürün değerlerini ve pazaryeri özellik eşleştirmelerini kaldırır.', unit: 'özellik' },
+    { scope: 'BRANDS', label: 'Marka Listesi', description: 'Marka kayıtlarını ve marka-pazaryeri eşleştirmelerini kaldırır; ürünlerin marka bağlantısını boşaltır.', unit: 'marka' }
+  ] },
+  { label: 'Ürün Seçenekleri', description: 'Seçenek grupları ve değerleri.', options: [
+    { scope: 'OPTIONS', label: 'Ürün Seçenekleri', description: 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.', unit: 'seçenek' }
+  ] }
 ]
 const mfaSteps: Array<{ key: 'password' | 'verify' | 'recovery'; label: string; hint: string }> = [
   { key: 'password', label: 'Parola', hint: 'Hesabı doğrula' },
@@ -193,8 +194,9 @@ export function SystemSettingsPage() {
   const [appearanceStatus, setAppearanceStatus] = useState({ dirty: false, themeCount: 0 })
   const [resetScopes, setResetScopes] = useState<string[]>([])
   const [resetConfirmation, setResetConfirmation] = useState('')
-  const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetBusy, setResetBusy] = useState(false)
+  // What each list holds now, the counts the reset reports when it is done.
+  const resetCounts = useQuery({ queryKey: ['data-reset-counts', 'settings'], queryFn: () => hubApi<{ items: Array<{ scope: string; count: number }> }>('/settings/data-reset'), enabled: section === 'database', staleTime: 0 })
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
   const status = useQuery({ queryKey: ['security'], queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
@@ -229,7 +231,7 @@ export function SystemSettingsPage() {
     try {
       const result = await hubApi<{ products: number; orders: number; returns: number; invoices: number; categories: number; categoryAttributes: number; brands: number; options: number }>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation }) })
       succeed(`Temizlik tamamlandı: ${result.products} ürün, ${result.categories} kategori, ${result.categoryAttributes} kategori özelliği, ${result.brands} marka, ${result.options} ürün seçeneği.`)
-      setResetScopes([]); setResetConfirmation(''); setResetDialogOpen(false)
+      setResetScopes([]); setResetConfirmation('')
       await client.invalidateQueries()
     } catch (reason) { fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }
   }
@@ -314,11 +316,6 @@ export function SystemSettingsPage() {
     if (key === 'palette') return appearanceStatus.dirty ? <SettingsGlyph state="pending" /> : null
     return null
   }
-  function resetScopeOption(scope: string) {
-    const detail = resetScopeDetails[scope]
-    const checked = resetScopes.includes(scope)
-    return <label key={scope} className={`ss-sc${checked ? ' is-on' : ''}`}><input type="checkbox" className="ss-cb" checked={checked} onChange={event => toggleResetScopes([scope], event.target.checked)} /><span><b>{detail.label}</b><small>{detail.description}</small></span></label>
-  }
   function sessionRow(session: SecuritySession) {
     return <div key={session.id} className={`ss-ses${session.current ? ' is-current' : ''}`}>
       <span className="ss-tile"><SettingsIcon name={session.current ? 'device' : 'phone'} /></span>
@@ -373,12 +370,13 @@ export function SystemSettingsPage() {
         </>}
         {section === 'database' && <>
           <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." />
-          <div className="ss-body is-flush">
-            <div className="ss-pad is-divided"><div className="ss-callout is-danger"><SettingsIcon name="lock" /><span><b>Yetkili işlemi.</b> Bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></div>
-              <div className="ss-callout"><SettingsIcon name="alert" /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></div></div>
-            <div className="ss-scopes">{resetScopeGroups.map(group => <section key={group.label} className="ss-sg"><div><h3>{group.label}</h3><p>{group.description}</p><label className="ss-sel-all"><input type="checkbox" className="ss-cb" checked={group.scopes.every(scope => resetScopes.includes(scope))} onChange={event => toggleResetScopes(group.scopes, event.target.checked)} />Tümünü Seç</label></div><div className="ss-sg-list">{group.scopes.map(resetScopeOption)}</div></section>)}</div>
+          <div className="ss-body is-flush ss-reset">
+            <DataResetLedger idPrefix="settings-reset" groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} confirmWord="Verileri sil" confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()}
+              notes={[
+                { tone: 'warn', text: 'Yetkili işlemi: bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.' },
+                { tone: 'ok', text: <>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</> }
+              ]} />
           </div>
-          {resetScopes.length > 0 && <SettingsBar title="Seçili Listeleri Kalıcı Olarak Temizle" copy={<>{resetScopes.length ? <><b>{resetScopes.length} liste seçildi</b> · </> : null}Bu işlem seçtiğiniz kayıtları geri alınamayacak şekilde kaldırır.</>}>{resetScopes.length ? <button type="button" className="ss-btn is-quiet is-icon" aria-label="Seçimi Temizle" title="Seçimi Temizle" onClick={() => setResetScopes([])}><SettingsIcon name="reset" /></button> : null}<button type="button" className="ss-btn is-danger is-solid" disabled={!resetScopes.length} onClick={() => { setResetConfirmation(''); setResetDialogOpen(true) }}><SettingsIcon name="trash" />Seçili Listeleri Kalıcı Sil</button></SettingsBar>}
         </>}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
@@ -402,10 +400,6 @@ export function SystemSettingsPage() {
       {affectedSessions.length ? <div className="ss-sum">{affectedSessions.map(session => <div key={session.id}><SettingsGlyph state={session.state === 'ACTIVE' ? 'done' : 'none'} /><span>Diğer Oturum<small>Son etkinlik {formatSettingsDate(session.lastSeenAt)}</small></span><span className="ss-sum-r">Bitiş {formatSettingsDate(session.expiresAt)}</span></div>)}</div> : null}
     </Modal>}
 
-    <Modal open={resetDialogOpen} title="Seçili Listeleri Kalıcı Sil" description="Seçtiğiniz kayıtlar bu hesabın yerel veritabanından geri alınamayacak şekilde silinir." className="ss-modal is-md" onClose={() => { if (!resetBusy) setResetDialogOpen(false) }} footer={<><span className="ss-modal-note">{resetScopes.length} liste silinecek</span><button type="button" className="ss-btn" disabled={resetBusy} onClick={() => setResetDialogOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-danger is-solid" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}><SettingsIcon name="trash" />{resetBusy ? 'Temizleniyor…' : 'Seçili Listeleri Kalıcı Sil'}</button></>}>
-      <div className="ss-sum">{resetScopes.map(scope => <div key={scope}><SettingsGlyph state="bad" /><span>{resetScopeDetails[scope].label}<small>{resetScopeDetails[scope].description}</small></span><span /></div>)}</div>
-      <label className="ss-typed"><small>Onay için <b>Verileri sil</b> yazın</small><input className={`ss-in${resetConfirmation === 'Verileri sil' ? ' is-match' : ''}`} value={resetConfirmation} placeholder="Verileri sil" autoComplete="off" onChange={event => setResetConfirmation(event.target.value)} /></label>
-    </Modal>
   </section>
 }
 
