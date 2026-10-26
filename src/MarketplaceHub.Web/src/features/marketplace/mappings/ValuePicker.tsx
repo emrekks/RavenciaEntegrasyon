@@ -13,6 +13,16 @@ export function pickerOptions(items: readonly { externalId: string; name: string
   return items.map(item => ({ value: item.externalId, label: item.name, key: matchingKey(item.name) }))
 }
 
+// The search hits, most fitting first: the value itself ("Sarı"), then values starting with it ("Sarı - Beyaz"), then
+// values with it as a word ("Açık Mavi - Sarı"), then the rest that only contain it ("01S-Sarı"); A–Z inside each.
+// Plain A–Z left the exact value behind hundreds of codes that contain it (26 Oct 2026, Hepsiburada Renk).
+export function rankPickerMatches(options: readonly PickerOption[], folded: string) {
+  const rank = (key: string) => key === folded ? 0 : key.startsWith(folded) ? 1 : ` ${key}`.includes(` ${folded}`) ? 2 : 3
+  return options.flatMap((option, index) => option.key.includes(folded) ? [{ option, index, rank: rank(option.key) }] : [])
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .map(entry => entry.option)
+}
+
 // A value cell of the mapping table. Closed it is only a button, so a table of hundreds of rows over a list of
 // thousands of marketplace values (Hepsiburada Renk: 17,254) stays light; open it searches the list (Turkish letters
 // and punctuation folded) and shows the first matches in the list's A–Z order.
@@ -25,7 +35,7 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
   const menu = useRef<HTMLDivElement>(null)
   const selected = value ? options.find(option => option.value === value) : undefined
   const folded = matchingKey(query)
-  const matches = folded ? options.filter(option => option.key.includes(folded)) : options
+  const matches = folded ? rankPickerMatches(options, folded) : options
   const shown = matches.slice(0, shownLimit)
 
   function place() {
@@ -68,7 +78,7 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
         {value && <button type="button" className="vp-clear" onClick={() => choose('')}>Seçimi Kaldır</button>}
         {shown.length ? shown.map((option, index) => <button type="button" role="option" key={option.value} aria-selected={option.value === value} data-active={index === active} className={index === active ? 'is-active' : undefined} onMouseEnter={() => setActive(index)} onClick={() => choose(option.value)}>{option.label}</button>)
           : <p className="vp-none">Aramaya uyan değer yok.</p>}
-        {matches.length > shownLimit && <p className="vp-none">{(matches.length - shownLimit).toLocaleString('tr-TR')} değer daha var; aramayı daraltın.</p>}
+        {matches.length > shownLimit && <p className="vp-none">{(matches.length - shownLimit).toLocaleString('tr-TR')} değer daha var; daha fazla harf yazın.</p>}
       </div>
     </div>, document.body)}
   </>

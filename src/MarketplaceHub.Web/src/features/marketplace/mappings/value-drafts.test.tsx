@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, click, render, type } from '../../../test/render'
 import { groupSavedSelections, runInBatches, selectionsDiffer, valueDraftOperations } from './value-drafts'
-import { ValuePicker, pickerOptions } from './ValuePicker'
+import { ValuePicker, pickerOptions, rankPickerMatches } from './ValuePicker'
 
 afterEach(cleanup)
 
@@ -55,6 +55,14 @@ describe('value picker', () => {
     document.querySelector<HTMLInputElement>('.vp-search')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     document.removeEventListener('keydown', windowEscape)
     expect(windowEscape).not.toHaveBeenCalled()
+  })
+
+  // 26 Oct 2026 (live): "sarı" listed 682 values A–Z and "Sarı" itself was past the first two hundred.
+  it('lists the searched value first, then values starting with it, then values with it as a word', () => {
+    const options = pickerOptions([...Array.from({ length: 300 }, (_, index) => ({ externalId: `c${index}`, name: `${String(index).padStart(3, '0')}S-Sarı` })),
+      { externalId: 'mavi-sari', name: 'Açık Mavi - Sarı' }, { externalId: 'sari-beyaz', name: 'Sarı - Beyaz' }, { externalId: 'sari', name: 'Sarı' }, { externalId: 'sarimsi', name: 'Sarımsı' }])
+    expect(rankPickerMatches(options, 'sari').slice(0, 4).map(option => option.label)).toEqual(['Sarı', 'Sarı - Beyaz', 'Sarımsı', '000S-Sarı'])
+    expect(rankPickerMatches(options, 'sari')).toHaveLength(304)
   })
 
   it('draws only the first two hundred values of a long list', () => {
