@@ -139,7 +139,8 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const connected = item.status === 'ACTIVE' || item.status === 'VERIFIED'
   const hidden = item.status === 'HIDDEN'
-  const supportsInitialDataSync = item.platformCode === 'TRENDYOL' || item.platformCode === 'SHOPIFY' || item.platformCode === 'HEPSIBURADA' || item.platformCode === 'N11'
+  // The platforms the server plans a first import for (MarketplaceConnectionService.CreateInitialDataSyncPlan).
+  const supportsInitialDataSync = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM'].includes(item.platformCode)
   useEffect(() => {
     if (!settingsOpen) return
     const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setSettingsOpen(false) }
