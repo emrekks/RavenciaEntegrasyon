@@ -9,6 +9,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
+import { PlatformSquareMark } from '../../../shared/platform-square-mark'
 import { webhookSetupText, type WebhookSetup } from '../webhook-setup'
 import { RrModal } from '../returns-ui'
 import { externalWriteEvidenceState, externalWriteGroupState } from '../external-write-group-state'
@@ -83,18 +84,40 @@ function ReferenceActionDialog({ id, title, description, confirmLabel, confirmDi
 }
 function ConnectionDataResetDialog({ item, scopes, confirmation, busy, onToggleScope, onChangeConfirmation, onClose, onConfirm }: { item: Connection; scopes: ConnectionDataResetScope[]; confirmation: string; busy: boolean; onToggleScope: (scope: ConnectionDataResetScope, checked: boolean) => void; onChangeConfirmation: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
   const groups = connectionDataResetGroups(item.platformCode)
+  const confirmed = confirmation === item.displayName
+  // Verileri Sıfırla: on the left the connection, what goes and what stays and the typed confirmation; on the right
+  // every group side by side, each data type a card picked with a click, so nothing hides behind a scroll.
   return <div className="workspace-modal-backdrop reference-action-backdrop" role="presentation" onMouseDown={() => { if (!busy) onClose() }}>
-    <DialogSurface as="section" onClose={() => { if (!busy) onClose() }} className="workspace-modal reference-action-modal connection-data-reset-modal" role="alertdialog" aria-labelledby={`reset-data-${item.id}-title`} onMouseDown={event => event.stopPropagation()}>
-      <header><div><p className="eyebrow">BAĞLANTI VERİLERİ</p><h2 id={`reset-data-${item.id}-title`}>Verileri Sıfırla</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat" disabled={busy}><UiIcon name="close" /></button></header>
-      <div className="reference-action-body">
-        <p><strong>{item.displayName}</strong> bağlantısında temizlenecek veri türlerini seçin. İşlem yalnız bu bağlantının yerel kayıtlarını etkiler; pazaryerine yazma yapmaz.</p>
-        <fieldset className="connection-data-reset-options">
-          <legend>Sıfırlanacak verileri seçin</legend>
-          {groups.map(group => <section className="connection-data-reset-group" key={group.label}><div className="connection-data-reset-group-heading"><strong>{group.label}</strong><small>{group.description}</small></div>{group.options.map(option => <label key={option.scope} className="connection-data-reset-option"><input type="checkbox" checked={scopes.includes(option.scope)} onChange={event => onToggleScope(option.scope, event.target.checked)} disabled={busy} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}</section>)}
-        </fieldset>
-        <label className="reference-action-confirmation"><span>Onay için <b>{item.displayName}</b> yazın</span><input value={confirmation} onChange={event => onChangeConfirmation(event.target.value)} disabled={busy} autoComplete="off" /></label>
+    <DialogSurface as="section" onClose={() => { if (!busy) onClose() }} className="workspace-modal data-reset-dialog" role="alertdialog" aria-labelledby={`reset-data-${item.id}-title`} onMouseDown={event => event.stopPropagation()}>
+      <header><div><p className="eyebrow">Bağlantı Verileri</p><h2 id={`reset-data-${item.id}-title`}>Verileri Sıfırla</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat" disabled={busy}><UiIcon name="close" /></button></header>
+      <div className="data-reset-body">
+        <aside className="data-reset-side">
+          <div className="data-reset-connection"><PlatformSquareMark code={item.platformCode} name={item.displayName} /><span><strong>{item.displayName}</strong><small>{connectionEnvironmentLabel(item.platformCode, item.environment)}</small></span></div>
+          <div className="data-reset-note is-warn"><UiIcon name="alert" size={18} /><p>Seçilen kayıtlar bu panelden kalıcı olarak silinir ve geri alınamaz.</p></div>
+          <div className="data-reset-note"><UiIcon name="check" size={18} /><p>Pazaryerine hiçbir şey yazılmaz; {item.displayName} hesabındaki siparişler ve ürünler olduğu gibi kalır. Silinen kayıtlar sonraki eşitlemede yeniden alınabilir.</p></div>
+          <label className="data-reset-confirm"><span>Onaylamak için <b>{item.displayName}</b> yazın</span>
+            <span className={`data-reset-confirm-field${confirmed ? ' is-ok' : ''}`}><input value={confirmation} onChange={event => onChangeConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={item.displayName} />{confirmed && <UiIcon name="check" size={16} />}</span>
+          </label>
+        </aside>
+        <div className="data-reset-groups" role="group" aria-label="Sıfırlanacak veriler">
+          {groups.map(group => {
+            const all = group.options.every(option => scopes.includes(option.scope))
+            return <section className="data-reset-group" key={group.label}>
+              <header><span><strong>{group.label}</strong><small>{group.description}</small></span>
+                <button type="button" className="data-reset-all" disabled={busy} onClick={() => group.options.forEach(option => onToggleScope(option.scope, !all))}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></header>
+              <div className="data-reset-options">{group.options.map(option => {
+                const checked = scopes.includes(option.scope)
+                return <label key={option.scope} className={`data-reset-option${checked ? ' is-checked' : ''}`}>
+                  <input type="checkbox" checked={checked} onChange={event => onToggleScope(option.scope, event.target.checked)} disabled={busy} />
+                  <i aria-hidden="true">{checked && <UiIcon name="check" size={14} />}</i>
+                  <span><strong>{option.label}</strong><small>{option.description}</small></span>
+                </label>
+              })}</div>
+            </section>
+          })}
+        </div>
       </div>
-      <footer><button type="button" className="secondary" onClick={onClose} disabled={busy}>Vazgeç</button><button type="button" className="destructive" onClick={onConfirm} disabled={!scopes.length || confirmation !== item.displayName || busy}>{busy ? 'Sıfırlanıyor…' : 'Seçilen Verileri Sıfırla'}</button></footer>
+      <footer><span className="data-reset-count" role="status">{scopes.length ? `${scopes.length} veri türü seçildi` : 'Silinecek veri türünü seçin'}</span><button type="button" className="secondary" onClick={onClose} disabled={busy}>Vazgeç</button><button type="button" className="destructive" onClick={onConfirm} disabled={!scopes.length || !confirmed || busy}>{busy ? 'Sıfırlanıyor…' : 'Seçilen Verileri Sıfırla'}</button></footer>
     </DialogSurface>
   </div>
 }

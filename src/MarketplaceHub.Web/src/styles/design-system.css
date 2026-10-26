@@ -7230,3 +7230,56 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 @media (min-width: 701px) and (max-height: 800px) {
   .app-shell.stitch-shell.stitch-shell > aside :is(nav, nav .nav-group) { row-gap: 6px; }
 }
+
+/* Verileri Sıfırla: a wide two-column window. The left column holds the connection, what goes and what stays and the
+   typed confirmation; the right one every data group side by side, each data type a card picked with a click. The
+   window is as tall as its content; only a short screen scrolls its body. */
+.data-reset-dialog.workspace-modal { width: min(1040px, calc(100vw - 32px)); }
+.data-reset-dialog > header .eyebrow { margin: 0 0 4px; color: var(--rv-color-danger); font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.data-reset-body { display: grid; grid-template-columns: minmax(250px, 300px) minmax(0, 1fr); min-height: 0; overflow-y: auto; }
+.data-reset-side { display: flex; flex-direction: column; gap: 12px; padding: 20px; background: var(--rv-color-surface-soft); border-right: 1px solid var(--rv-color-border); }
+.data-reset-connection { display: flex; align-items: center; gap: 12px; }
+.data-reset-connection .platform-square-mark { width: 44px; height: 44px; border-radius: 12px; }
+.data-reset-connection > span { display: grid; gap: 2px; min-width: 0; }
+.data-reset-connection strong { color: var(--rv-color-ink); font-size: 16px; font-weight: 700; }
+.data-reset-connection small { color: var(--rv-color-muted); font-size: 12px; }
+.data-reset-note { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 12px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.data-reset-note > .ui-icon { margin-top: 1px; color: var(--rv-color-accent); }
+.data-reset-note p { margin: 0; font-size: 13px; line-height: 1.5; }
+.data-reset-note.is-warn { background: color-mix(in srgb, var(--rv-color-danger) 8%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-danger) 35%, var(--rv-color-border)); }
+.data-reset-note.is-warn > .ui-icon { color: var(--rv-color-danger); }
+.data-reset-confirm { display: grid; gap: 8px; margin-top: auto; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.data-reset-confirm-field { position: relative; display: block; }
+.data-reset-confirm-field input { box-sizing: border-box; width: 100%; height: 36px; min-height: 36px; padding: 0 34px 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 14px; }
+.data-reset-confirm-field.is-ok input { border-color: var(--rv-color-accent); }
+.data-reset-confirm-field > .ui-icon { position: absolute; top: 50%; right: 10px; color: var(--rv-color-accent); transform: translateY(-50%); }
+.data-reset-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-content: start; gap: 16px; padding: 20px; }
+.data-reset-group { display: grid; align-content: start; gap: 10px; min-width: 0; }
+.data-reset-group > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.data-reset-group > header > span { display: grid; gap: 2px; min-width: 0; }
+.data-reset-group > header strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 700; }
+.data-reset-group > header small { color: var(--rv-color-muted); font-size: 12px; }
+.data-reset-dialog.data-reset-dialog .data-reset-group > header > button.data-reset-all { flex: none; min-height: 0; height: 28px; padding: 0 10px; color: var(--rv-color-primary); font-size: 12px; font-weight: 600; text-transform: none; background: var(--rv-color-primary-soft); border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+.data-reset-options { display: grid; gap: 8px; }
+.data-reset-option { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; padding: 12px 14px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
+.data-reset-option:hover { border-color: var(--rv-color-border-strong); }
+.data-reset-option > input { position: absolute; opacity: 0; pointer-events: none; }
+.data-reset-option > i { display: grid; place-items: center; width: 20px; height: 20px; margin-top: 1px; color: #fff; border: 1.5px solid var(--rv-color-border-strong); border-radius: 6px; font-style: normal; }
+.data-reset-option > span { display: grid; gap: 3px; min-width: 0; }
+.data-reset-option strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.data-reset-option small { color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.45; }
+.data-reset-option.is-checked { background: color-mix(in srgb, var(--rv-color-danger) 7%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-danger) 55%, var(--rv-color-border)); }
+.data-reset-option.is-checked > i { background: var(--rv-color-danger); border-color: var(--rv-color-danger); }
+.data-reset-option:has(input:focus-visible) { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+.data-reset-option:has(input:disabled) { cursor: default; opacity: .7; }
+.data-reset-dialog > footer { align-items: center; }
+.data-reset-count { margin-right: auto; color: var(--rv-color-muted); font-size: 13px; }
+@media (max-width: 760px) {
+  .data-reset-body { grid-template-columns: minmax(0, 1fr); }
+  .data-reset-side { border-right: 0; border-bottom: 1px solid var(--rv-color-border); }
+  .data-reset-groups { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .data-reset-dialog > footer { flex-wrap: wrap; }
+  .data-reset-count { flex-basis: 100%; }
+  .data-reset-dialog > footer > button { flex: 1 1 0; }
+}
+@media (prefers-reduced-motion: reduce) { .data-reset-option { transition: none; } }
