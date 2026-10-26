@@ -528,7 +528,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(799m, reloadedView.Value?.Variants.Single().DefaultSalePrice);
         Assert.Equal(valueId, Assert.Single(reloadedView.Value!.Variants.Single().Attributes!).ValueId);
 
-        var listedProducts = await service.ListProductsAsync(tenant.Id, 20, null, null, null, null, null, CancellationToken.None);
+        var listedProducts = await service.ListProductsAsync(tenant.Id, 20, null, null, null, null, null, null, CancellationToken.None);
         Assert.Equal(799m, Assert.Single(listedProducts.Items).StartingPrice);
 
         db.ChangeTracker.Clear();

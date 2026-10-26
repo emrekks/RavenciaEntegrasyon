@@ -335,4 +335,3 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small.rr-field-error { color: var(--rr-bad); max-width: 140px; }
 /* why a price field is locked (no offer version, no channel chosen yet) */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small.rr-field-hint { color: var(--rr-subtle); max-width: 140px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-panel-h .rr-sort-scope { color: var(--rr-subtle); font-size: 12px; }

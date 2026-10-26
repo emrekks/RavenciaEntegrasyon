@@ -13,7 +13,7 @@ import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIc
 import { appendNotification } from '../../../shared/notifications'
 import { updateVariantGroupSelection, variantGroupSelectionState } from '../variant-bulk-edit'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from '../product-platform-status'
-import { nextProductCatalogSort, productCatalogSortOptions, productCatalogSortScopeNote, sortProductGroups, type ProductCatalogSort } from '../product-catalog-sorting'
+import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockErrorMessage, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFinished, productSyncJobsPath } from '../product-sync-tracking'
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
@@ -33,7 +33,7 @@ function compareVariantItemsAlphabetically(left: { variant: { optionSignature?: 
   return compareVariantOptionSignatures(leftLabel, rightLabel)
     || compareLabelsAlphabetically(left.variant.sku, right.variant.sku)
 }
-type ProductListFilters = { search: string; status: string; platform: string; stock: string }
+type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
 const isProductImportConnection = productImportConnection
@@ -74,6 +74,7 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   if (filters.status) params.set('status', filters.status)
   if (filters.platform) params.set('platform', filters.platform)
   if (filters.stock) params.set('stock', filters.stock)
+  if (filters.sort) params.set('sort', filters.sort)
   return hubApi<CursorPage<Product>>(`/products?${params.toString()}`)
 }
 type VariantDisplayValue = { label: string; quantity: number }
@@ -486,7 +487,7 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
 const productPageSizes = [20, 50, 100]
 // The list state a products address carries (W16); the page's cursor goes with it, so page 3 opens as page 3.
 function productListFromUrl(params: URLSearchParams) {
-  const filters: ProductListFilters = { search: readUrlText(params, 'q'), status: readUrlText(params, 'status'), platform: readUrlText(params, 'platform'), stock: readUrlText(params, 'stock') }
+  const filters: ProductListFilters = { search: readUrlText(params, 'q'), status: readUrlText(params, 'status'), platform: readUrlText(params, 'platform'), stock: readUrlText(params, 'stock'), sort: productCatalogSortValue(parseProductCatalogSort(readUrlText(params, 'sort'))) }
   const pageSize = readUrlNumber(params, 'size', 20, productPageSizes)
   const after = readUrlText(params, 'after')
   const pageNumber = after ? readUrlNumber(params, 'page', 1) : 1
@@ -521,10 +522,10 @@ export function ProductsPage() {
   const [trackedProductImportJobIds, setTrackedProductImportJobIds] = useState<string[]>([])
   const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(initialList.filters.search); const [searchFilter, setSearchFilter] = useState(initialList.filters.search); const [status, setStatus] = useState(initialList.filters.status); const [platform, setPlatform] = useState(initialList.filters.platform); const [stock, setStock] = useState(initialList.filters.stock); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' } | null>(null); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED' } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(true); const [productImportUpdateExistingPricesAndStock, setProductImportUpdateExistingPricesAndStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [lowStockOpen, setLowStockOpen] = useState(() => searchParams.get('details') === 'low-stock'); const [transferOpen, setTransferOpen] = useState(false); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>(initialList.pageCursors)
   const [pageJumping, setPageJumping] = useState(false)
-  const [catalogSort, setCatalogSort] = useState<ProductCatalogSort>(null)
+  const [catalogSort, setCatalogSort] = useState<ProductCatalogSort>(() => parseProductCatalogSort(initialList.filters.sort))
   const [productImportIncludePendingApproval, setProductImportIncludePendingApproval] = useState(false)
   const [expandedPlatformGroup, setExpandedPlatformGroup] = useState<string | null>(null)
-  const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock }), [searchFilter, status, platform, stock])
+  const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock, sort: productCatalogSortValue(catalogSort) }), [searchFilter, status, platform, stock, catalogSort])
   const productFilterKey = JSON.stringify(productFilters)
   const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
   const query = useQuery({
@@ -538,8 +539,8 @@ export function ProductsPage() {
   })
   const summaryQuery = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   // The summary has no draft or archived counts; a one-item page carries the total.
-  const draftCountQuery = useQuery({ queryKey: ['products', 'count', 'DRAFT'], queryFn: () => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '' }, null), staleTime: 60_000 })
-  const archivedCountQuery = useQuery({ queryKey: ['products', 'count', 'ARCHIVED'], queryFn: () => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '' }, null), staleTime: 60_000 })
+  const draftCountQuery = useQuery({ queryKey: ['products', 'count', 'DRAFT'], queryFn: () => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
+  const archivedCountQuery = useQuery({ queryKey: ['products', 'count', 'ARCHIVED'], queryFn: () => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
   const lowStockQuery = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
   const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store' }), enabled: productImportOpen, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
@@ -550,7 +551,7 @@ export function ProductsPage() {
   useEffect(() => { if (selectedImportOnlyHepsiburada && productImportMode === 'EXISTING_ONLY') setProductImportMode('MAPPING_ONLY') }, [selectedImportOnlyHepsiburada, productImportMode])
   const selectedPlatformFilter = productPlatformFilterGroups.flatMap(group => group.options.map(option => ({ ...option, group: group.label }))).find(option => option.value === platform)
   const selectedPlatformLabel = selectedPlatformFilter ? `${selectedPlatformFilter.group} · ${selectedPlatformFilter.label}` : platform || 'Tüm Platformlar'
-  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = useMemo(() => currentPage === pageNumber ? products : [], [currentPage, pageNumber, products]); const pageProductGroups = useMemo(() => sortProductGroups(productRowsAsCards(pageProducts), catalogSort), [pageProducts, catalogSort])
+  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = useMemo(() => currentPage === pageNumber ? products : [], [currentPage, pageNumber, products]); const pageProductGroups = useMemo(() => productRowsAsCards(pageProducts), [pageProducts])
   const activeProductSyncJobs = useMemo(() => filterActiveProductSyncJobs(productSyncJobsQuery.data ?? []), [productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
   const quickEditProducts = quickEdit
@@ -573,7 +574,7 @@ export function ProductsPage() {
   }, [client, productImportOpen, productSyncJobsQuery.data, trackedProductImportJobIds])
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
   useChangeEffect(`${productFilterKey}|${pageSize}`, () => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) })
-  useListUrlSync({ q: searchFilter, status, platform, stock, size: pageSize, page: pageNumber, after: pageNumber > 1 ? pageCursor : null, details: lowStockOpen ? 'low-stock' : null }, { size: 20, page: 1 })
+  useListUrlSync({ q: searchFilter, status, platform, stock, sort: productFilters.sort, size: pageSize, page: pageNumber, after: pageNumber > 1 ? pageCursor : null, details: lowStockOpen ? 'low-stock' : null }, { size: 20, page: 1 })
   useEffect(() => {
     if (query.data?.totalCount == null) return
     const nextTotalPages = Math.max(1, Math.ceil(query.data.totalCount / pageSize))
@@ -819,9 +820,8 @@ export function ProductsPage() {
   const stockOptions = [{ value: 'ALL', label: 'Tüm Stoklar' }, { value: 'OUT', label: 'Stoksuz' }, { value: 'LOW', label: 'Düşük Stok' }, { value: 'OK', label: 'Yeterli Stok' }]
   const statusOptions = statusTabs.map(([value, label]) => ({ value: value || 'ALL', label }))
   const sortOptions = productCatalogSortOptions
-  const sortScopeNote = productCatalogSortScopeNote(catalogSort)
-  const sortValue = catalogSort ? `${catalogSort.field}-${catalogSort.direction}` : 'default'
-  const setSortValue = (value: string) => { if (value === 'default') setCatalogSort(null); else { const [field, direction] = value.split('-') as ['price' | 'stock', 'asc' | 'desc']; setCatalogSort({ field, direction }) } }
+  const sortValue = productCatalogSortValue(catalogSort) || 'default'
+  const setSortValue = (value: string) => setCatalogSort(parseProductCatalogSort(value))
   const platformPop = (close: () => void) => <div className="rr-pop" role="dialog" style={{ minWidth: 290 }}><div className="rr-ph"><span>Platform Durumu<small className="rr-ph-sub">Ürün eşleşmelerini platforma göre filtrele</small></span>{platform && <button type="button" className="rr-btn rr-link" onClick={() => { setPlatform(''); close() }}>Temizle</button>}</div><button type="button" className={`rr-opt${platform ? '' : ' rr-on'}`} onClick={() => { setPlatform(''); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">Tüm Platformlar<small className="rr-opt-sub">Platform ayrımı olmadan göster</small></span></button><div className="rr-sep" />{productPlatformFilterGroups.map(group => { const open = expandedPlatformGroup === group.label; const selectedOption = group.options.find(option => option.value === platform); return <div key={group.label} className={`rr-acc${open ? ' rr-open' : ''}`}><button type="button" className="rr-opt" aria-expanded={open} onClick={() => setExpandedPlatformGroup(value => value === group.label ? null : group.label)}><RrLogo code={group.label.toLocaleUpperCase('tr-TR').replace('İ', 'I')} /><span className="rr-grow">{group.label}<small className="rr-opt-sub">{selectedOption ? `${selectedOption.label} · Seçili` : 'Durum Seçin'}</small></span><RrIcon name="chev" /></button>{open && <div className="rr-acc-b">{group.options.map(option => { const on = platform === option.value; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => { setPlatform(option.value); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}<small className="rr-opt-sub">{option.label === 'Aktif' ? 'Tüm varyantlar eşleşti' : option.label === 'Kısmi' ? 'Bazı varyantlar eşleşti' : 'Eşleşme bulunamadı'}</small></span></button> })}</div>}</div> })}{platforms.filter(item => !productPlatformFilterGroups.some(group => group.label.localeCompare(item, 'tr-TR', { sensitivity: 'base' }) === 0)).map(item => <button key={item} type="button" className={`rr-opt${platform === item ? ' rr-on' : ''}`} onClick={() => { setPlatform(item); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{item}<small className="rr-opt-sub">Platform eşleşmelerini göster</small></span></button>)}</div>
   const columnPop = (label: string, options: Array<{ value: string; label: string }>, current: string, pick: (value: string) => void, right?: boolean) => (close: () => void) => <RrColumnPop label={label} options={options} value={current || 'ALL'} right={right} onPick={value => { pick(value === 'ALL' ? '' : value); close() }} />
   const bulkItems: Array<['price' | 'on' | 'off' | 'trash', string, string, () => void, string?] | 'hr'> = [['price', 'Toplu Fiyat ve Stok Düzenle', 'Seçili ürünlerin varyantları', () => setQuickEdit({ productIds: selectedProductIds, mode: 'both' })], ['price', 'Toplu Fiyat Düzenle', 'Fiyatları tek seferde güncelle', () => setQuickEdit({ productIds: selectedProductIds, mode: 'price' })], ['price', 'Toplu Stok Düzenle', 'Stokları artır, azalt veya eşitle', () => setQuickEdit({ productIds: selectedProductIds, mode: 'stock' })], 'hr', ['on', 'Toplu Satışa Aç', 'Seçili ürünleri satışa aç', () => requestBulkStatus('ACTIVE')], ['off', 'Toplu Satışa Kapat', 'Seçili ürünleri arşive al', () => requestBulkStatus('ARCHIVED'), 'rr-danger'], ['trash', 'Seçili Ürünleri Sil', 'Yerel katalogdan kalıcı olarak kaldır', () => bulkDeleteProducts(), 'rr-danger']]
@@ -843,15 +843,15 @@ export function ProductsPage() {
     </div>
     {selectionMode && <div className="rr-selbar" role="region" aria-label="Seçim modu"><button type="button" className="rr-btn rr-quiet" onClick={exitSelectionMode}>İptal</button><span className="rr-grow">{selectedProductCardCount} ürün kartı seçildi</span><button type="button" className="rr-btn" onClick={toggleAllVisible}>{allVisibleSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></div>}
     {(query.error ?? summaryQuery.error ?? connectionsQuery.error) && <RrError error={query.error ?? summaryQuery.error ?? connectionsQuery.error} onRetry={() => { void query.refetch(); void summaryQuery.refetch() }} />}
-    <div className="rr-panel"><div className="rr-panel-h"><div><h2>Ürün Kataloğu</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} ürün{sortScopeNote && <span className="rr-sort-scope" role="note"> · {sortScopeNote}</span>}</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100]} onChange={setPageSize} /></div>
+    <div className="rr-panel"><div className="rr-panel-h"><div><h2>Ürün Kataloğu</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} ürün</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100]} onChange={setPageSize} /></div>
       {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className="rr-xsel" role="status"><span><b>{allProductsSelected ? 'Tüm ürün kartları seçildi.' : `${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.`}</b> {allProductsSelected ? `${selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı toplu işlemlere dahil.` : 'Diğer sayfalardaki kartlar seçime dahil değil.'}</span>{allProductsSelected ? <button type="button" className="rr-btn rr-link" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi Temizle</button> : <button type="button" className="rr-btn rr-link" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Tüm sayfalar seçiliyor…' : `Tüm ${totalCount.toLocaleString('tr-TR')} Kaydı Seç`}</button>}</div>}
       <div className="rr-tblwrap">{query.isLoading && !pageProducts.length ? <RrLoading text="Ürünler yükleniyor…" /> : <table className="rr-tbl rr-ptbl">
         <colgroup><col className="rr-c-pd" /><col className="rr-c-var" /><col className="rr-c-pr" /><col className="rr-c-st" /><col className="rr-c-pl" /><col className="rr-c-status" /><col className="rr-c-act" /></colgroup>
         <thead><tr>
           <RrHeadCell label="Ürün Detayı" extra={<input type="checkbox" className="rr-cb" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label={`${pageProductGroups.length} ürün kartının tümünü seç`} style={{ marginRight: 8 }} />} />
           <RrHeadCell label="Varyant" />
-          <RrHeadCell label={catalogSort?.field === 'price' ? 'Fiyat (Bu Sayfada)' : 'Fiyat'} sort={catalogSort?.field === 'price' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('price')} />
-          <RrHeadCell label={catalogSort?.field === 'stock' ? 'Stok (Bu Sayfada)' : 'Stok'} sort={catalogSort?.field === 'stock' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('stock')} active={Boolean(stock)} pop={columnPop('Stok Durumu', stockOptions, stock, setStock)} />
+          <RrHeadCell label="Fiyat" sort={catalogSort?.field === 'price' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('price')} />
+          <RrHeadCell label="Stok" sort={catalogSort?.field === 'stock' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('stock')} active={Boolean(stock)} pop={columnPop('Stok Durumu', stockOptions, stock, setStock)} />
           <RrHeadCell label="Platform Durumu" active={Boolean(platform)} pop={platformPop} />
           <RrHeadCell label="Durum" active={Boolean(status)} pop={columnPop('Ürün Durumu', statusOptions, status, setStatus, true)} />
           <RrHeadCell label="İşlemler" />

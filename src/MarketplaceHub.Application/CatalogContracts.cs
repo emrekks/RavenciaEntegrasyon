@@ -168,7 +168,7 @@ public interface ICatalogService
     Task<ServiceResult<IReadOnlyList<Guid>>> UsedAttributeValueIdsAsync(Guid tenantId, Guid attributeId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<AttributeRequirementCommand>>> ReplaceRequirementsAsync(Guid tenantId, Guid categoryId, long expectedVersion, IReadOnlyList<AttributeRequirementCommand> requirements, CancellationToken cancellationToken);
-    Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken);
+    Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken);
     Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
