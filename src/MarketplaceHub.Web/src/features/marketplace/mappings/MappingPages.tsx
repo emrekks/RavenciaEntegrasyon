@@ -1008,6 +1008,11 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   const [selections, setSelections] = useState<Record<string, string[]> | null>(() => store?.drafts.get(valueScope)?.selections ?? null)
   const [search, setSearch] = useState('')
   const [onlyMissing, setOnlyMissing] = useState(false)
+  // Once the value list is missing (422) the field stays on the editor that asks the marketplace for it. Flipping back to
+  // the spinner while that editor refetched the same query unmounted it, and its remount refetched again: an endless
+  // loop of requests that froze the page (26 Oct 2026, Hepsiburada Ek Özellik).
+  const [valuesUnavailable, setValuesUnavailable] = useState(false)
+  if (references.isError && !valuesUnavailable) setValuesUnavailable(true)
   const generation = store?.generation ?? 0
   const [seenGeneration, setSeenGeneration] = useState(generation)
   // After Kaydet every field starts again from what the server holds.
@@ -1031,7 +1036,7 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
     if (dirty) putDraft?.({ valueScope, fieldName: remote.name, selections, saved: mappings.data, snapshotId, knownExternalIds: remoteValues.map(item => item.externalId) })
     else dropDraft?.(valueScope)
   }, [dirty, selections, mappings.data, snapshotId, remoteValues, valueScope, remote.name, putDraft, dropDraft])
-  if (references.isError) return <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={attribute} externalAttributeId={remote.externalId} platformLabel={platformLabel} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remote.allowsCustomValue === false} allowReusablePanelValues={allowReuse} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
+  if (valuesUnavailable || references.isError) return <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={attribute} externalAttributeId={remote.externalId} platformLabel={platformLabel} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remote.allowsCustomValue === false} allowReusablePanelValues={allowReuse} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
   if (mappings.isError) return <ErrorBox error={mappings.error} onRetry={() => void mappings.refetch()} />
   if (references.isLoading || mappings.isLoading || !selections || !references.data || !mappings.data) return <Busy text="Değerler ve eşlemeler yükleniyor…" />
   const localValues = attribute.values.filter(item => item.isActive).slice().sort((left, right) => valueCollator.compare(left.value, right.value))
@@ -1313,7 +1318,7 @@ const autoQueuedHepsiburadaValueSyncs = new Set<string>()
 function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, platformLabel = 'Trendyol', customPanelColorValues = false, marketplaceAllowsFreeText = false, autoSyncMissingValues = false, allowReusablePanelValues = false, required = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; platformLabel?: string; customPanelColorValues?: boolean; marketplaceAllowsFreeText?: boolean; autoSyncMissingValues?: boolean; allowReusablePanelValues?: boolean; required?: boolean }) {
   const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string[]>>({}); const [unmatchedOpen, setUnmatchedOpen] = useState(false); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const [shareWithOtherCategories, setShareWithOtherCategories] = useState(true); const [showUnusedValues, setShowUnusedValues] = useState(false); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
   const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
-  const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
+  const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, retryOnMount: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const [suggestionReview, setSuggestionReview] = useState<ValueMappingSuggestion[]>([])
   // Names the panel values carry on the other marketplaces: extra hints for the suggestions.
