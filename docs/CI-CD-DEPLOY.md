@@ -7,12 +7,10 @@ Geri alma: [RUNBOOK-GERI-ALMA.md](RUNBOOK-GERI-ALMA.md).
 ## Akış
 
 1. `.github/workflows/ci.yml` (`Validate`) derleme, test, format, imaj derlemesi ve güvenlik denetimlerini çalıştırır.
-2. Deploy üç yoldan tetiklenir:
+2. Deploy iki yoldan tetiklenir (sabah 09:20 zamanlanmış çalıştırma 27 Ekim 2026'da kaldırıldı):
    - `main` üzerindeki başarılı bir push'un Validate'i bittiğinde (`workflow_run`), o commit;
-   - her sabah **06:20 UTC (09:20 TR)** `schedule` ile — sunucu 00:30–09:00 kapalıyken gelen push'lar
-     sabah yakalanır;
    - elle: Actions → Deploy → Run workflow (yalnızca `main`; isteğe bağlı `redeploy` kutusu).
-   Zamanlanmış ve elle çalıştırmalar **son yeşil Validate SHA'sını** (`main`'e push, `success`) çözer
+   Elle çalıştırma **son yeşil Validate SHA'sını** (`main`'e push, `success`) çözer
    (`permissions: actions: read`).
 3. Deploy işi sunucuya SSH ile bağlanır ve 40 karakterlik SHA'yı (gerekirse `"<sha> redeploy"`) gönderir.
 4. Sunucuda `/usr/local/bin/ravencia-ci-deploy` (`deploy/scripts/ci-entrypoint.sh`) çalışır:

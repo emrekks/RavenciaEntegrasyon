@@ -5,11 +5,6 @@ on:
     workflows: [Validate]
     types: [completed]
     branches: [main]
-  # 06:20 UTC = 09:20 Istanbul, after the host starts at 09:00: a push validated
-  # while the host was stopped (00:30-09:00) is deployed the next morning. When
-  # production already runs it, ci-entrypoint.sh answers "already live" and exits 0.
-  schedule:
-    - cron: '20 6 * * *'
   workflow_dispatch:
     inputs:
       redeploy:
@@ -28,11 +23,10 @@ concurrency:
 
 jobs:
   deploy:
-    # Only a green Validate run of a main push, the morning catch-up, or a manual
-    # run on main reaches production; the last two deploy the latest green revision.
+    # Only a green Validate run of a main push or a manual run on main reaches
+    # production; a manual run deploys the latest green revision.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      github.event_name == 'schedule' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     # Build + backup + up to 30 min of migration wait (fast-deploy.sh) + verification.

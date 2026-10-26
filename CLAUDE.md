@@ -20,7 +20,8 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - Push to `codex/<topic>`, wait for Validate, then push the same sha to `main` only when
   `git merge-base --is-ancestor origin/main <sha>`. Never force-push; when `main` moved, merge `origin/main` first.
 - Watch the live images (`docker inspect`) reach the sha before calling it live.
-- The host stops at 00:30 Istanbul time and starts at 09:00; a push validated while it is stopped is shipped by the 09:20 scheduled run.
+- There is no scheduled morning deploy: a push validated while the host is stopped is shipped by running Deploy by hand
+  (`gh workflow run deploy.yml --ref main`) once the host is up.
 - Several sessions commit in this checkout and on `main` at once. Work in a worktree under `.claude/worktrees/` and
   never commit, revert or stash another session's uncommitted files.
 
