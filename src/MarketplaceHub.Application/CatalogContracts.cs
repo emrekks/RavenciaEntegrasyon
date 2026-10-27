@@ -67,7 +67,10 @@ public sealed record ProductVariantPlatformStatusView(
     string? VatInclusion = null,
     string? RoundingMode = null,
     decimal? SafetyStock = null,
-    long? OfferVersion = null);
+    long? OfferVersion = null,
+    // Matched to a listing the marketplace holds (a variant link). IsLinked also counts a variant only queued for
+    // publication there, which may never have arrived.
+    bool IsMatched = false);
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,
