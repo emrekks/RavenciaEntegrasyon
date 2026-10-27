@@ -43,6 +43,16 @@ describe('suggestCategoryMappings', () => {
     expect(suggestCategoryMappings({ name: 'Tesettür Gömlek', path: 'Tesettür Gömlek' }, modest.slice(1)).map(item => item.externalId)).toEqual(['11', '12'])
   })
 
+  it('offers the women’s category for a plain panel name before baby and maternity ones (Pazarama Bluz)', () => {
+    const pazarama = [
+      { externalId: '20', name: 'Bebek Gömlek, Bluz', path: 'Anne Bebek / Bebek Giyim / Bebek Üst Giyim / Bebek Gömlek, Bluz' },
+      { externalId: '21', name: 'Hamile Gömlek, Bluz, Tunik', path: 'Anne Bebek / Hamile Giyim / Hamile Dış Giyim / Hamile Gömlek, Bluz, Tunik' },
+      { externalId: '22', name: 'Kadın Bluz', path: 'Moda / Kadın Giyim / Kadın Bluz' }
+    ]
+    expect(suggestCategoryMappings({ name: 'Bluz', path: 'Bluz' }, pazarama)[0]?.externalId).toBe('22')
+    expect(suggestCategoryMappings({ name: 'Bebek Bluz', path: 'Bebek / Bluz' }, pazarama)[0]?.externalId).toBe('20')
+  })
+
   it('keeps at most the requested number of candidates', () => {
     expect(suggestCategoryMappings({ name: 'Tişört', path: 'Tişört' }, remotes, 2)).toHaveLength(2)
   })

@@ -9,6 +9,10 @@ const categorySynonyms: string[][] = [
 ]
 const categoryCanonical = new Map<string, string>()
 for (const group of categorySynonyms) for (const name of group) categoryCanonical.set(matchingKey(name), matchingKey(group[0]))
+// Words that only say who wears it: "Kadın Bluz" is still a Bluz, not a narrower kind of it.
+const audienceWords = new Set(['kadin', 'erkek', 'bayan', 'unisex'].map(word => canonicalKey(word)))
+// Words of a narrower audience: a panel "Bluz" is not a baby or maternity blouse unless its own path says so.
+const specialAudienceWords = new Set(['bebek', 'hamile', 'cocuk'].map(word => canonicalKey(word)))
 
 function segments(path: string) {
   return path.replace(/\[TDG\]|\(\s*TDG\s*\)/gi, '').split(/\s*(?:\/|>|›)\s*/).map(item => item.trim()).filter(Boolean)
@@ -35,6 +39,8 @@ function nameScore(local: string, remote: string) {
   if (!left.length || !right.size) return 0
   const shared = left.filter(word => right.has(word)).length
   if (shared === left.length && shared === right.size) return 92
+  // the extra words only name who wears it ("Kadın Bluz" for "Bluz"): nearly the same category
+  if (shared === left.length && [...right].every(word => left.includes(word) || audienceWords.has(word))) return 90
   // the remote name is the panel name plus extra words: "Pantolon" can be listed under "Pantolon Takım"
   if (shared === left.length) return 60
   // the remote name is only part of the panel name: "Tesettür Gömlek" is not a plain "Gömlek"; the missing
@@ -64,6 +70,7 @@ export function suggestCategoryMappings(
   const localSegments = segments(local.path)
   const localLeaf = localSegments.at(-1) ?? local.name
   const localParents = new Set(localSegments.slice(0, -1).flatMap(words))
+  const localWords = new Set(localSegments.flatMap(words))
   const scored: Array<CategorySuggestion & { leaf: number }> = []
   for (const remote of remotes) {
     const remoteSegments = segments(remote.path)
@@ -72,7 +79,9 @@ export function suggestCategoryMappings(
     const remoteParents = new Set(remoteSegments.slice(0, -1).flatMap(words))
     const shared = [...localParents].filter(word => remoteParents.has(word)).length
     const parent = localParents.size ? shared / localParents.size : 0
-    scored.push({ externalId: remote.externalId, path: remote.path, score: Math.round(leaf * 0.7 + parent * 30), leaf })
+    // a baby, maternity or children's category the panel path does not ask for goes behind the general ones
+    const narrower = remoteSegments.flatMap(words).some(word => specialAudienceWords.has(word) && !localWords.has(word)) ? 25 : 0
+    scored.push({ externalId: remote.externalId, path: remote.path, score: Math.round(leaf * 0.7 + parent * 30) - narrower, leaf })
   }
   // When one category matches the panel name almost exactly, weaker leaf matches ("Gömlek" for "Tesettür Gömlek")
   // would only be noise next to it.
