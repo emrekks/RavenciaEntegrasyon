@@ -235,23 +235,28 @@ public sealed partial class ShopifyHttpClient(
         if (requestedSkus.Any(string.IsNullOrWhiteSpace) || requestedSkus.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedSkus.Length)
             return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_SKUS_INVALID", "Shopify ürün yayınındaki varyant SKU değerleri boş veya yinelenen olamaz.", HttpStatusCode.BadRequest);
 
+        // A model family's product is owned by its family key, a single product by its product id.
+        var requestedFamilyKey = RequestedMetafield(input, "ravencia_family_key");
+        var ownerKey = requestedFamilyKey is null ? "ravencia_product_id" : "ravencia_family_key";
+        var requestedOwner = requestedFamilyKey ?? RequestedMetafield(input, "ravencia_product_id");
+        var requestedPayloadHash = RequestedMetafield(input, "payload_hash");
         var existingProductResult = await QueryAsync(shop,
-            "query($handle:String!){productByIdentifier(identifier:{handle:$handle}){id metafield(namespace:\"marketplacehub\",key:\"ravencia_product_id\"){value}}}",
-            new { handle }, cancellationToken);
+            "query($handle:String!,$ownerKey:String!){productByIdentifier(identifier:{handle:$handle}){id status owner:metafield(namespace:\"marketplacehub\",key:$ownerKey){value} payloadHash:metafield(namespace:\"marketplacehub\",key:\"payload_hash\"){value} variants(first:250){nodes{id sku}}}}",
+            new { handle, ownerKey }, cancellationToken);
         if (!existingProductResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(existingProductResult.Error!, existingProductResult.RateLimit);
         try
         {
             var existingProduct = existingProductResult.Value!.RootElement.GetProperty("productByIdentifier");
             if (existingProduct.ValueKind == JsonValueKind.Object)
             {
-                var ownerId = existingProduct.TryGetProperty("metafield", out var owner) && owner.ValueKind == JsonValueKind.Object
+                var ownerId = existingProduct.TryGetProperty("owner", out var owner) && owner.ValueKind == JsonValueKind.Object
                     ? TextValue(owner, "value")
                     : null;
-                var requestedOwnerId = input["metafields"] is JsonArray metafields
-                    ? metafields.Select(item => item?["value"]?.GetValue<string>()).SingleOrDefault()
-                    : null;
-                if (string.IsNullOrWhiteSpace(ownerId) || !string.Equals(ownerId, requestedOwnerId, StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrWhiteSpace(ownerId) || !string.Equals(ownerId, requestedOwner, StringComparison.OrdinalIgnoreCase))
                     return Fail<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "SHOPIFY_PRODUCT_HANDLE_CONFLICT", "Bu Shopify ürün adresi başka bir kayıt tarafından kullanılıyor; mevcut ürün değiştirilmedi.", HttpStatusCode.Conflict);
+                // Another card of the family already wrote this exact content: nothing is written again.
+                if (UnchangedPublicationLines(existingProduct, requestedPayloadHash, requestedSkus!) is { } unchangedLines)
+                    return AdapterResult<RemoteOperationRef>.Success(new(EncodeCompletedOperation(unchangedLines), "SHOPIFY_PRODUCT_CREATE", timeProvider.GetUtcNow()), existingProductResult.RateLimit);
             }
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
@@ -360,8 +365,8 @@ public sealed partial class ShopifyHttpClient(
         try
         {
             var publishPayload = publish.Value!.RootElement.GetProperty("publishablePublish");
-            if (HasUserErrors(publishPayload, out _))
-                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Shopify ürünü oluşturdu ancak Online Store kanalına yayınlayamadı. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
+            if (HasUserErrors(publishPayload, out var publishError))
+                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", $"Shopify ürünü oluşturdu ancak Online Store kanalına yayınlayamadı: {publishError ?? "Shopify neden bildirmedi"}. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
             var publishedResourceId = TextValue(publishPayload.GetProperty("publishable"), "id");
             if (!string.Equals(publishedResourceId, productId, StringComparison.Ordinal))
                 return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_PUBLISH_CONTRACT_INVALID", "Shopify ürün oluşturuldu ancak Online Store yayın sonucu ürün kimliğiyle eşleşmedi.", HttpStatusCode.BadGateway);
@@ -931,6 +936,31 @@ public sealed partial class ShopifyHttpClient(
 
     internal static string IdempotencyKey(string value) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     private static string EncodeCompletedOperation(IReadOnlyList<RemoteOperationLine> lines) => "shopify-completed:" + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(lines));
+
+    internal static string? RequestedMetafield(JsonObject input, string key) => input["metafields"] is JsonArray metafields
+        ? metafields.Where(item => string.Equals(item?["key"]?.GetValue<string>(), key, StringComparison.Ordinal))
+            .Select(item => item?["value"]?.GetValue<string>())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+        : null;
+
+    // The existing product already holds this payload (same hash, active, the same SKUs): its variants are the
+    // result, and nothing is written. Null when anything differs, so the product is written as usual.
+    internal static IReadOnlyList<RemoteOperationLine>? UnchangedPublicationLines(JsonElement existingProduct, string? requestedPayloadHash, IReadOnlyList<string> requestedSkus)
+    {
+        if (string.IsNullOrWhiteSpace(requestedPayloadHash)
+            || !existingProduct.TryGetProperty("payloadHash", out var hash) || hash.ValueKind != JsonValueKind.Object
+            || !string.Equals(TextValue(hash, "value"), requestedPayloadHash, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(TextValue(existingProduct, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var remoteVariants = existingProduct.GetProperty("variants").GetProperty("nodes").EnumerateArray()
+            .Select(variant => (Id: TextValue(variant, "id"), Sku: TextValue(variant, "sku")?.Trim()))
+            .ToArray();
+        if (remoteVariants.Length != requestedSkus.Count
+            || remoteVariants.Any(variant => string.IsNullOrWhiteSpace(variant.Id) || string.IsNullOrWhiteSpace(variant.Sku))
+            || !requestedSkus.All(sku => remoteVariants.Count(variant => string.Equals(variant.Sku, sku, StringComparison.OrdinalIgnoreCase)) == 1))
+            return null;
+        return remoteVariants.Select(variant => new RemoteOperationLine(variant.Sku!, true, variant.Id, null, false, "COMPLETED")).ToArray();
+    }
 
     private static CapabilityEvidence ScopeEvidence(string code, ConnectionIdentity identity, string source, AdapterResult<JsonDocument> scopeResult, IReadOnlySet<string> scopes, string[] requiredScopes, DateTimeOffset verified)
     {

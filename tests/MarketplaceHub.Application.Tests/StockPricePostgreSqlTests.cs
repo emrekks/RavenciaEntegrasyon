@@ -802,6 +802,73 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(["INV-0"], all.Value.MissingInventorySkus);
     }
 
+    // A model family is one Shopify product: publishing the brown card sends the black card's variants too, under
+    // one handle with Renk and Beden, each colour's variants showing its card's first image; the brown card's job
+    // records only its own variants.
+    [PostgreSqlFact]
+    public async Task ShopifyPublication_SendsTheWholeModelFamilyAsOneProduct()
+    {
+        var tenant = NewTenant("shopify-family");
+        var shopify = NewConnection(tenant, "SHOPIFY", writesEnabled: true);
+        var (black, blackL) = NewVariant(tenant, "FAM-S-L", "8690000000301");
+        var blackXl = NewVariant(tenant, "FAM-S-XL", "8690000000302", black.Id).Variant;
+        var (brown, brownL) = NewVariant(tenant, "FAM-K-L", "8690000000303");
+        var brownXl = NewVariant(tenant, "FAM-K-XL", "8690000000304", brown.Id).Variant;
+        black.Title = brown.Title = "Yonca Bluz";
+        var variants = new[] { blackL, blackXl, brownL, brownXl };
+        var now = DateTimeOffset.UtcNow;
+        var rows = new List<object>();
+        foreach (var (product, colour, cardVariants) in new[] { (black, "Siyah", new[] { blackL, blackXl }), (brown, "Kahverengi", new[] { brownL, brownXl }) })
+        {
+            var size = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Label = "Beden", NormalizedKey = "BEDEN", SortOrder = 0 };
+            var colourOption = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Label = "Renk", NormalizedKey = "RENK", SortOrder = 1 };
+            var colourValue = new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OptionId = colourOption.Id, Label = colour, NormalizedKey = colour.ToUpperInvariant(), SortOrder = 0 };
+            rows.AddRange([size, colourOption, colourValue]);
+            for (var index = 0; index < cardVariants.Length; index++)
+            {
+                var sizeLabel = index == 0 ? "L" : "XL";
+                var sizeValue = new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OptionId = size.Id, Label = sizeLabel, NormalizedKey = sizeLabel, SortOrder = index };
+                rows.AddRange([sizeValue,
+                    new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = cardVariants[index].Id, OptionId = size.Id, OptionValueId = sizeValue.Id },
+                    new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = cardVariants[index].Id, OptionId = colourOption.Id, OptionValueId = colourValue.Id }]);
+            }
+            var asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = $"https://cdn.example.com/{colour}.jpg", MimeType = "image/jpeg", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = now };
+            rows.AddRange([asset, new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, FileAssetId = asset.Id, MediaRole = "GALLERY", SortOrder = 0, Status = "ACTIVE" }]);
+        }
+        var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, ProductId = brown.Id, Enabled = true, DesiredStatus = "DRAFT", ActualStatus = "DRAFT" };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.AddRange(black, brown);
+            seed.ProductVariants.AddRange(variants);
+            seed.AddRange(rows);
+            seed.InventoryItems.AddRange(variants.Select(variant => NewInventory(tenant, variant, 3m)));
+            seed.ChannelOffers.AddRange(variants.Select(variant => NewOffer(tenant, shopify, variant)));
+            seed.ChannelListingProfiles.Add(profile);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var draft = await new ShopifyProductPublicationComposer(db, new ConfigurationBuilder().Build()).BuildAsync(tenant.Id, brown.Id, shopify.Id, CancellationToken.None);
+
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        Assert.Equal([brownL.Id, brownXl.Id], draft.Value!.Variants.Select(variant => variant.VariantId));
+        using var payload = System.Text.Json.JsonDocument.Parse(draft.Value.PayloadJson);
+        var root = payload.RootElement;
+        Assert.StartsWith("ravencia-model-", root.GetProperty("handle").GetString(), StringComparison.Ordinal);
+        Assert.Equal(["FAM-S-L", "FAM-S-XL", "FAM-K-L", "FAM-K-XL"], root.GetProperty("variants").EnumerateArray().Select(variant => variant.GetProperty("sku").GetString()));
+        var options = root.GetProperty("productOptions").EnumerateArray().ToArray();
+        Assert.Equal(["Beden", "Renk"], options.Select(option => option.GetProperty("name").GetString()));
+        Assert.Equal(["Siyah", "Kahverengi"], options[1].GetProperty("values").EnumerateArray().Select(value => value.GetProperty("name").GetString()));
+        Assert.Equal("https://cdn.example.com/Kahverengi.jpg", root.GetProperty("variants")[2].GetProperty("file").GetProperty("originalSource").GetString());
+        Assert.Equal(2, root.GetProperty("files").GetArrayLength());
+        var metafields = root.GetProperty("metafields").EnumerateArray().ToDictionary(item => item.GetProperty("key").GetString()!, item => item.GetProperty("value").GetString());
+        Assert.Equal(black.Id.ToString("D"), metafields["ravencia_product_id"]);
+        Assert.StartsWith("model:", metafields["ravencia_family_key"], StringComparison.Ordinal);
+        Assert.Equal(draft.Value.PayloadHash, metafields["payload_hash"]);
+    }
+
     private static IConfiguration WritesOnConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
 
