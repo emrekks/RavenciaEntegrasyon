@@ -13,6 +13,8 @@ public sealed class Product
     public Guid? CategoryId { get; set; }
     public decimal? DefaultListPrice { get; set; }
     public decimal? DefaultSalePrice { get; set; }
+    // Warranty in months, sent to the marketplaces that take one (Hepsiburada GarantiSuresi); null when none is given.
+    public int? WarrantyMonths { get; set; }
     public ProductStatus Status { get; set; } = ProductStatus.Active;
     public long SourcePolicyVersion { get; set; } = 1;
     public DateTimeOffset? ArchivedAt { get; set; }

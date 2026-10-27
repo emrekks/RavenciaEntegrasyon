@@ -12,6 +12,13 @@ export const productFieldSources: ReadonlyArray<{ value: ProductFieldSource; lab
 // Only these send free text for a field; Pazarama sends listed value ids only.
 const productFieldPlatforms = new Set(['HEPSIBURADA', 'TRENDYOL', 'N11'])
 
+// Whether the field list shows the Ürün Bilgileri group at all: on every field of a marketplace that sends free text.
+export function showsProductFields(platformCode: string) {
+  return productFieldPlatforms.has(platformCode)
+}
+
+// Whether a product field can be chosen for this field: only where the marketplace takes free text; a list-only field
+// (Renk, Materyal) would refuse a model code it does not list.
 export function offersProductFields(platformCode: string, allowsCustomValue: boolean | null | undefined) {
   return productFieldPlatforms.has(platformCode) && allowsCustomValue === true
 }

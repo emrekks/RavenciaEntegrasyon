@@ -166,6 +166,27 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         db.AttributeDefinitions.Add(attribute); db.AttributeValues.AddRange(values); await db.SaveChangesAsync(cancellationToken); return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
     }
 
+    public async Task<ServiceResult<AttributeView>> RenameAttributeAsync(Guid tenantId, Guid attributeId, long expectedVersion, RenameAttributeCommand command, CancellationToken cancellationToken)
+    {
+        var name = command.Name?.Trim() ?? "";
+        if (name.Length is < 1 or > 160) return Invalid<AttributeView>("name", "Özellik adı 1-160 karakter olmalıdır.");
+        var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
+        if (attribute is null) return NotFound<AttributeView>();
+        if (attribute.Version != expectedVersion) return Precondition<AttributeView>(attribute.Version);
+        var key = Normalize(name);
+        var others = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.Id != attributeId).Select(x => x.Name).ToListAsync(cancellationToken);
+        if (others.Any(other => Normalize(other) == key)) return Conflict<AttributeView>("ATTRIBUTE_NAME_DUPLICATE", "Bu adda başka bir özellik var.");
+        if (attribute.Name != name)
+        {
+            attribute.Name = name;
+            attribute.Version++;
+            attribute.UpdatedAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        var values = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
+        return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
+    }
+
     public async Task<ServiceResult<AttributeView>> DeactivateAttributeAsync(Guid tenantId, Guid attributeId, long expectedVersion, CancellationToken cancellationToken)
     {
         var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
@@ -783,6 +804,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)
     {
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
+        if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
         if (command.DefaultListPrice is decimal listPrice && command.DefaultSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
         if (command.Variants.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0)) return Invalid<ProductView>("variants", "Varyant fiyatı negatif olamaz.");
         if (command.Variants.Any(variant => variant.DefaultListPrice is decimal variantList && variant.DefaultSalePrice is decimal variantSale && variantList < variantSale)) return Invalid<ProductView>("variants", "Varyant liste fiyatı satış fiyatından küçük olamaz.");
@@ -825,7 +847,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
 
         var now = timeProvider.GetUtcNow();
-        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, Status = productStatus, CreatedAt = now, UpdatedAt = now };
+        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths is > 0 ? command.WarrantyMonths : null, Status = productStatus, CreatedAt = now, UpdatedAt = now };
         if (command.Variants.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
         var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
         db.Products.Add(product);
@@ -1221,6 +1243,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var effectiveListPrice = command.DefaultListPrice ?? product.DefaultListPrice;
         var effectiveSalePrice = command.DefaultSalePrice ?? product.DefaultSalePrice;
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
+        if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
         if (effectiveListPrice is decimal listPrice && effectiveSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
         var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken); if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         if (command.Attributes is not null)
@@ -1474,6 +1497,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId;
         if (command.DefaultListPrice is decimal defaultListPrice) product.DefaultListPrice = defaultListPrice;
         if (command.DefaultSalePrice is decimal defaultSalePrice) product.DefaultSalePrice = defaultSalePrice;
+        // Sent only by the editor: 0 clears the warranty; a caller that leaves it out keeps it.
+        if (command.WarrantyMonths is int warrantyMonths) product.WarrantyMonths = warrantyMonths > 0 ? warrantyMonths : null;
         product.Version++; product.UpdatedAt = timeProvider.GetUtcNow();
         if (command.Status != null)
         {
@@ -1722,8 +1747,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode != "TRENDYOL" || !IntegrationRuntimePolicy.AllowsManualRead(connection))
-            return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın durumunu sorgulamak için etkin Trendyol bağlantısı gerekir.", 422);
+        // Trendyol and Hepsiburada read the publication state back; Hepsiburada by the tracking id of its last import.
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA") || !IntegrationRuntimePolicy.AllowsManualRead(connection))
+            return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın durumunu sorgulamak için etkin Trendyol veya Hepsiburada bağlantısı gerekir.", 422);
+        var platformName = connection.PlatformCode == "HEPSIBURADA" ? "Hepsiburada" : "Trendyol";
 
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.Products.AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken))
@@ -1734,14 +1761,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Select(x => x.VariantId)
             .ToListAsync(cancellationToken);
         if (listingVariants.Count == 0)
-            return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", "Güncellenecek Trendyol yayın kaydı bulunamadı.", 409);
+            return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", $"Güncellenecek {platformName} yayın kaydı bulunamadı.", 409);
 
         var states = await db.MarketplaceListingStates
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && listingVariants.Contains(x.VariantId))
             .ToListAsync(cancellationToken);
         var payloadHashes = states.Select(x => x.PayloadHash).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToArray();
         if (states.Count != listingVariants.Count || payloadHashes.Length != 1)
-            return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", "Yayın durumu eşitlenemedi; önce ürünü Trendyol’a gönderin.", 409);
+            return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", $"Yayın durumu eşitlenemedi; önce ürünü {platformName} pazaryerine gönderin.", 409);
 
         var productJobs = await db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
             && (x.JobType == MarketplaceJobTypes.ProductCreate || x.JobType == MarketplaceJobTypes.ProductUpdate || x.JobType == MarketplaceJobTypes.ProductArchive)
@@ -1751,6 +1778,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToListAsync(cancellationToken);
         if (productJobs.Any(x => x.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled))
             return ServiceResult<Guid>.Fail("PUBLICATION_WRITE_IN_PROGRESS", "Ürün için devam eden bir yayın veya güncelleme var. İşlem tamamlandıktan sonra durumu yenileyin.", 409);
+
+        // Hepsiburada answers the state of a product import by its tracking id, kept on the last create or update job.
+        string? trackingId = null;
+        if (connection.PlatformCode == "HEPSIBURADA")
+        {
+            trackingId = productJobs.OrderByDescending(x => x.CreatedAt).Select(x => ExternalOperationIdOf(x.PayloadJson)).FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+            if (trackingId is null)
+                return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", "Hepsiburada takip kodu bulunamadı; ürünü Hepsiburada'ya yeniden gönderin.", 409);
+        }
 
         var payloadHash = payloadHashes[0]!;
         var approvalDedup = $"product-approval:{connectionId:N}:{profile.Id:N}:{payloadHash}";
@@ -1793,7 +1829,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         profile.Version++;
         var jobId = Guid.CreateVersion7();
         var dedup = existing is null ? approvalDedup : $"{manualPrefix}{profile.Version}";
-        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profile.Id, payloadHash, now, now.AddDays(7)));
+        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profile.Id, payloadHash, now, now.AddDays(7), trackingId));
         db.IntegrationJobs.Add(new IntegrationJob
         {
             Id = jobId,
@@ -1861,6 +1897,16 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
         try { using var document = JsonDocument.Parse(settingsJson); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True; }
         catch (JsonException) { return false; }
+    }
+
+    private static string? ExternalOperationIdOf(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("ExternalOperationId", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        }
+        catch (JsonException) { return null; }
     }
 
     private async Task<bool> HasHepsiburadaPublicationEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken)
@@ -2110,7 +2156,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths);
         }).ToList();
 
     }

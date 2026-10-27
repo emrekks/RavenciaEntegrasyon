@@ -30,7 +30,7 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
-  const [box, setBox] = useState<{ left: number; top: number; width: number; up: boolean } | null>(null)
+  const [box, setBox] = useState<{ left: number; top: number; width: number; up: boolean; maxHeight: number } | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const selected = value ? options.find(option => option.value === value) : undefined
@@ -41,8 +41,13 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
   function place() {
     const rect = trigger.current?.getBoundingClientRect()
     if (!rect) return
-    const up = window.innerHeight - rect.bottom < 320 && rect.top > window.innerHeight - rect.bottom
-    setBox({ left: rect.left, top: up ? rect.top - 4 : rect.bottom + 4, width: Math.max(rect.width, 280), up })
+    // The list opens where it fits whole (up to 360 px); otherwise toward the larger space, cut to that space so its
+    // bottom edge never falls below the window (it did when 320-360 px were left below).
+    const below = window.innerHeight - rect.bottom - 12
+    const above = rect.top - 12
+    const up = below < 360 && above > below
+    const maxHeight = Math.max(160, Math.min(360, up ? above : below))
+    setBox({ left: rect.left, top: up ? rect.top - 4 : rect.bottom + 4, width: Math.max(rect.width, 280), up, maxHeight })
   }
   useLayoutEffect(() => { if (open) place() }, [open])
   useEffect(() => {
@@ -72,7 +77,7 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
       <span>{selected?.label ?? (value ? 'Listede olmayan değer' : 'Seçin…')}</span>
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
     </button>
-    {open && box && createPortal(<div ref={menu} className={`vp-menu${box.up ? ' is-up' : ''}`} style={{ left: box.left, top: box.top, width: box.width }}>
+    {open && box && createPortal(<div ref={menu} className={`vp-menu${box.up ? ' is-up' : ''}`} style={{ left: box.left, top: box.top, width: box.width, maxHeight: box.maxHeight }}>
       <input ref={focusOnMount} className="vp-search" type="search" value={query} placeholder={`${options.length.toLocaleString('tr-TR')} değer içinde ara`} aria-label={`${label}: ara`} onChange={event => { setQuery(event.target.value); setActive(0) }} onKeyDown={keyDown} />
       <div className="vp-list" role="listbox" aria-label={label}>
         {value && <button type="button" className="vp-clear" onClick={() => choose('')}>Seçimi Kaldır</button>}
