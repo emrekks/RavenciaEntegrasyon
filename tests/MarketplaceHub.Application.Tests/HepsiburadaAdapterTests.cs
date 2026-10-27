@@ -488,8 +488,9 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(expected, HepsiburadaProductPublicationComposer.IsValidBarcode(value));
 
     [Theory]
-    [InlineData("12345", "attribute-12345")]
-    [InlineData("color-size", "attribute-color-size")]
+    [InlineData("12345", "12345")]
+    [InlineData("renk_variant_property", "renk_variant_property")]
+    [InlineData("color-size", "color-size")]
     [InlineData("", null)]
     [InlineData("bad/id", null)]
     public void AttributeImportKey_UsesTheRemoteAttributeIdentifier(string attributeId, string? expected) =>

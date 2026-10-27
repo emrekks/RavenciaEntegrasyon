@@ -55,7 +55,7 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
                 ["productName"] = String(attributes, "UrunAdi"),
                 ["productDescription"] = String(attributes, "UrunAciklamasi"),
                 ["barcode"] = String(attributes, "Barcode"),
-                ["attributes"] = attributes.Where(pair => pair.Key.StartsWith("attribute-", StringComparison.OrdinalIgnoreCase))
+                ["attributes"] = attributes.Where(pair => !HepsiburadaProductPublicationComposer.ReservedAttributeKeys.Contains(pair.Key) && !pair.Key.StartsWith("Image", StringComparison.Ordinal))
                     .ToDictionary(pair => pair.Key, pair => (object?)pair.Value.Clone(), StringComparer.Ordinal),
                 ["kdv"] = String(attributes, "tax_vat_rate"),
                 ["warrantyPeriod"] = String(attributes, "GarantiSuresi"),

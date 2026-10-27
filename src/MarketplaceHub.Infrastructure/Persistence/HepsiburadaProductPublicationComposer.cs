@@ -11,7 +11,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, IConfiguration configuration)
 {
-    private static readonly HashSet<string> ReservedAttributeKeys = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> ReservedAttributeKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "merchantSku", "VaryantGroupID", "Barcode", "UrunAdi", "UrunAciklamasi", "Marka",
         "GarantiSuresi", "kg", "tax_vat_rate", "price", "stock", "Video1", "Image1", "Image2", "Image3", "Image4", "Image5"
@@ -335,7 +335,9 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
     internal static string? AttributeImportKey(string attributeId)
     {
         if (string.IsNullOrWhiteSpace(attributeId) || attributeId.Length > 64 || attributeId.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_'))) return null;
-        return $"attribute-{attributeId}";
+        // The import file names a category attribute by its own id (renk_variant_property, 00000Z9). With an
+        // "attribute-" prefix Hepsiburada read none of them: products arrived with Renk and Beden empty (live 27 Oct 2026).
+        return attributeId;
     }
 
     internal static bool IsValidBarcode(string? value)
