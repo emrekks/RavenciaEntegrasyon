@@ -11,6 +11,19 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class ShopifyFamilyPublicationTests
 {
     [Fact]
+    public void RichTextDescriptionGoesAsHtmlAndPlainTextAsAParagraph()
+    {
+        var html = ShopifyProductPublicationComposer.DescriptionHtml("<div><h2>Bluz</h2><p>Kalın <strong>viskon</strong></p><script>alert(1)</script></div>");
+        Assert.Contains("<h2>Bluz</h2>", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>viskon</strong>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("&lt;", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("script", html, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal("<p>Kalın &amp; tok<br />İkinci satır</p>", ShopifyProductPublicationComposer.DescriptionHtml("Kalın & tok\r\nİkinci satır"));
+        Assert.Equal("<p>5 &lt; 6</p>", ShopifyProductPublicationComposer.DescriptionHtml("5 < 6"));
+    }
+
+    [Fact]
     public void ColourCardsMergeIntoOneProductWithColourAndSizeOptions()
     {
         var black = Card(0, "Siyah", ("MZ-S-L", "L"), ("MZ-S-XL", "XL"));

@@ -3,8 +3,10 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Imports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -184,7 +186,7 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             if (variant.ProductId == productId) draftVariants.Add(new(variant.Id, sku, barcode ?? string.Empty));
         }
 
-        var descriptionHtml = "<p>" + WebUtility.HtmlEncode(description).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "<br />", StringComparison.Ordinal) + "</p>";
+        var descriptionHtml = DescriptionHtml(description);
         var metafields = new List<ShopifyMetafieldInput> { Metafield(ProductIdMetafieldKey, lead.Id.ToString("D")) };
         if (IsModelFamily(familyKey)) metafields.Add(Metafield(FamilyMetafieldKey, familyKey));
         var input = new Dictionary<string, object?>
@@ -243,6 +245,12 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
     }
 
     internal static bool IsModelFamily(string familyKey) => familyKey.StartsWith("model:", StringComparison.Ordinal);
+
+    // The panel keeps descriptions as rich-text HTML: that goes to Shopify as HTML, through the import allowlist. A
+    // description without tags is plain text, written as one paragraph with its line breaks.
+    internal static string DescriptionHtml(string description) => Regex.IsMatch(description, "<[a-zA-Z/!]")
+        ? ImportedHtmlSanitizer.Sanitize(description)
+        : "<p>" + WebUtility.HtmlEncode(description).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "<br />", StringComparison.Ordinal) + "</p>";
 
     // A product without a model code keeps its own handle; a model family has one handle for all its cards.
     internal static string ShopifyHandle(Guid productId, string familyKey) => IsModelFamily(familyKey)
