@@ -186,8 +186,9 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
                 if (localValue is not null)
                 {
                     var valueId = await ResolveMappedValueIdAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, localValue.Value, cancellationToken);
-                    if (!valueId.Succeeded) return ServiceResult<ProductPublicationDraft>.Fail(valueId.Error!.Code, valueId.Error.Message, valueId.Error.Status, valueId.Error.FieldErrors);
-                    optionAttribute = new(optionAttributeId, valueId.Value, null);
+                    if (valueId.Succeeded) optionAttribute = new(optionAttributeId, valueId.Value, null);
+                    else if (UnmappedFreeText(valueId, optionRemote, localValue.Value) is { } freeText) optionAttribute = new(optionAttributeId, null, freeText);
+                    else return ServiceResult<ProductPublicationDraft>.Fail(valueId.Error!.Code, valueId.Error.Message, valueId.Error.Status, valueId.Error.FieldErrors);
                 }
                 else if (optionRemote.AllowsCustomValue == true) optionAttribute = new(optionAttributeId, null, option.ValueLabel.Trim());
                 else return Fail("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için güncel N11 değer eşlemesi gerekir.");
@@ -299,9 +300,10 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
             var localValue = localValues.FirstOrDefault(value => value.AttributeId == assignment.AttributeId && value.Id == valueId);
             if (localValue is null) return ServiceResult<N11SkuAttribute>.Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için seçilen yerel değer bulunamadı.", 422);
             var mapped = await ResolveMappedValueIdAsync(tenantId, connectionId, categoryId, attributeId, valueId, localValue.Value, cancellationToken);
-            return mapped.Succeeded
-                ? ServiceResult<N11SkuAttribute>.Ok(new(remoteAttributeId, mapped.Value, null))
-                : ServiceResult<N11SkuAttribute>.Fail(mapped.Error!.Code, mapped.Error.Message, mapped.Error.Status, mapped.Error.FieldErrors);
+            if (mapped.Succeeded) return ServiceResult<N11SkuAttribute>.Ok(new(remoteAttributeId, mapped.Value, null));
+            // A free-text n11 field (Boy) takes the panel value's own text when no n11 value is mapped to it.
+            if (UnmappedFreeText(mapped, remote, localValue.Value) is { } freeText) return ServiceResult<N11SkuAttribute>.Ok(new(remoteAttributeId, null, freeText));
+            return ServiceResult<N11SkuAttribute>.Fail(mapped.Error!.Code, mapped.Error.Message, mapped.Error.Status, mapped.Error.FieldErrors);
         }
         var custom = assignment.TextValue?.Trim()
             ?? assignment.NumberValue?.ToString(CultureInfo.InvariantCulture)
@@ -309,6 +311,13 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         if (string.IsNullOrWhiteSpace(custom) || remote.AllowsCustomValue != true) return ServiceResult<N11SkuAttribute>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' serbest değer kabul etmiyor; doğrulanmış N11 değer eşlemesi gerekir.", 422);
         return ServiceResult<N11SkuAttribute>.Ok(new(remoteAttributeId, null, custom));
     }
+
+    // The panel value's text for a field n11 takes as free text, when the value has no n11 value mapped. An ambiguous
+    // mapping (several n11 values) still stops: the operator chose values and the choice has to be made single.
+    internal static string? UnmappedFreeText(ServiceResult<long> mapped, ReferenceItem remote, string localValue) =>
+        !mapped.Succeeded && mapped.Error?.Code == "ATTRIBUTE_VALUE_MAPPING_REQUIRED" && remote.AllowsCustomValue == true && !string.IsNullOrWhiteSpace(localValue)
+            ? localValue.Trim()
+            : null;
 
     private async Task<ServiceResult<long>> ResolveMappedValueIdAsync(Guid tenantId, Guid connectionId, string categoryId, string attributeId, Guid localValueId, string localValue, CancellationToken cancellationToken)
     {

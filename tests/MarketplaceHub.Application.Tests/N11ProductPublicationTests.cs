@@ -70,6 +70,20 @@ public sealed class N11ProductPublicationTests
         Assert.Null(N11ProductPublicationComposer.VatRate((decimal)rate));
 
     [Fact]
+    public void AnUnmappedPanelValueGoesAsFreeTextOnlyWhereN11TakesFreeText()
+    {
+        static MarketplaceHub.Domain.ReferenceItem Remote(bool? allowsCustomValue) => new() { ResourceType = "CATEGORY_ATTRIBUTES", ExternalId = "1332", Name = "Boy", NormalizedName = "boy", Path = "Boy", PayloadHash = "h", AllowsCustomValue = allowsCustomValue };
+        var unmapped = MarketplaceHub.Application.ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "eşlenmemiş", 422);
+        var ambiguous = MarketplaceHub.Application.ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_AMBIGUOUS", "birden fazla", 422);
+
+        Assert.Equal("Uzun", N11ProductPublicationComposer.UnmappedFreeText(unmapped, Remote(true), " Uzun "));
+        Assert.Null(N11ProductPublicationComposer.UnmappedFreeText(unmapped, Remote(false), "26"));
+        Assert.Null(N11ProductPublicationComposer.UnmappedFreeText(unmapped, Remote(null), "Uzun"));
+        Assert.Null(N11ProductPublicationComposer.UnmappedFreeText(ambiguous, Remote(true), "Uzun"));
+        Assert.Null(N11ProductPublicationComposer.UnmappedFreeText(unmapped, Remote(true), " "));
+    }
+
+    [Fact]
     public void ValueChoicePrefersTheNameMatchAndRefusesAmbiguity()
     {
         Assert.Equal(11, N11ProductPublicationComposer.SelectValueId("Siyah", [("11", "Siyah")]));

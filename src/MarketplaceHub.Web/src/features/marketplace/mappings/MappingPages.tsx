@@ -864,6 +864,8 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       return { key: `option-${item.id}`, name: item.name, required: false, state: (mapped ? 'done' : 'none') as FieldState, meta: mapped ? 'Seçenek' : 'Eşlenmedi', node: <OptionMappingCard connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={item} remoteAttributes={optionRemoteItems} existingMapping={optionMappings.find(mapping => mapping.localId === item.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId)) ?? null} onNotice={onNotice} /> }
     }) : []),
     ...productRemoteItems.map(item => {
+      // n11's Marka (attribute 1) is always sent as the product's own brand; a panel attribute mapped to it is not sent.
+      if (platformCode === 'N11' && item.externalId === n11BrandAttributeId) return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, state: 'done' as FieldState, meta: 'Ürün bilgisi: Marka', remote: item, mapping: null, productBrand: true }
       const current = productMappingByExternal.get(item.externalId) ?? null
       const fieldDefault = !current && offersProductFields(platformCode, item.allowsCustomValue) ? fieldDefaultByExternal.get(item.externalId) : undefined
       if (fieldDefault?.sourceField) return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, state: 'done' as FieldState, meta: `Ürün bilgisi: ${productFieldLabel(fieldDefault.sourceField)}`, remote: item, mapping: null, fieldDefault }
@@ -917,6 +919,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
         </nav>
         <section className="cm-detail" key={activeEntry?.key ?? 'empty'}>
           {!activeEntry ? <p className="cm-empty">Bu kategoride eşlenecek {platformLabel} alanı yok.</p>
+            : activeEntry.remote && activeEntry.productBrand ? <ProductBrandField remote={activeEntry.remote} required={activeEntry.required} platformLabel={platformLabel} footerHint={footerHint} onNext={goToNext} />
             : activeEntry.remote ? <FieldDetail platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttributes={activeEntry.localAttributes ?? productAttributes} categoryOptionIds={categoryOptionIds} remote={activeEntry.remote} mapping={activeEntry.mapping ?? null} fieldDefault={activeEntry.fieldDefault} role={activeEntry.role} required={activeEntry.required} footerHint={footerHint} onNext={goToNext} onNotice={onNotice} />
             : <>
               <FieldHeading name={activeEntry.name} required={activeEntry.required} platformLabel={platformLabel} />
@@ -936,7 +939,20 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     </Modal>
   </article>
 }
-type MappingEntry = { key: string; name: string; required: boolean; state: FieldState; meta: string; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null; localAttributes?: LocalAttribute[]; role?: 'ATTRIBUTE' | 'OPTION'; fieldDefault?: AttributeDefault }
+type MappingEntry = { key: string; name: string; required: boolean; state: FieldState; meta: string; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null; localAttributes?: LocalAttribute[]; role?: 'ATTRIBUTE' | 'OPTION'; fieldDefault?: AttributeDefault; productBrand?: boolean }
+const n11BrandAttributeId = '1'
+function ProductBrandField({ remote, required, platformLabel, footerHint, onNext }: { remote: ReferenceItem; required: boolean; platformLabel: string; footerHint: string; onNext?: () => void }) {
+  return <>
+    <FieldHeading name={remote.name} required={required} platformLabel={platformLabel} />
+    <div className="cm-form">
+      <div className="cm-field"><small>{platformLabel} Alanı</small><span className="cm-readonly">{remote.name}</span></div>
+      <span className="cm-link" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.6 9.4 9.4 6.6" /><path d="M7.4 4.6 8.6 3.4a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2" /><path d="M8.6 11.4 7.4 12.6a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2" /></svg></span>
+      <div className="cm-field"><small>Panel Özelliği</small><span className="cm-readonly">Marka (Ürün Bilgisi)</span></div>
+    </div>
+    <p className="cm-empty">Gönderimde her ürünün kendi markası yazılır; markası seçilmemiş üründe gönderim durur. Bu alan için eşleme gerekmez.</p>
+    <FieldFooter hint={footerHint} onNext={onNext} />
+  </>
+}
 function FieldHeading({ name, required }: { name: string; required: boolean; platformLabel?: string }) {
   return <>
     <div className="cm-detail-head"><h4>{name}</h4><span className={`cm-tag${required ? ' is-required' : ''}`}>{required ? 'Zorunlu' : 'İsteğe bağlı'}</span></div>
@@ -1105,7 +1121,7 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
     if (dirty) putDraft?.({ valueScope, fieldName: remote.name, selections, saved: mappings.data, snapshotId, knownExternalIds: remoteValues.map(item => item.externalId) })
     else dropDraft?.(valueScope)
   }, [dirty, selections, mappings.data, snapshotId, remoteValues, valueScope, remote.name, putDraft, dropDraft])
-  if (valuesUnavailable || references.isError) return <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={attribute} externalAttributeId={remote.externalId} platformLabel={platformLabel} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remote.allowsCustomValue === false} allowReusablePanelValues={allowReuse} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
+  if (valuesUnavailable || references.isError) return <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={attribute} externalAttributeId={remote.externalId} platformLabel={platformLabel} autoSyncMissingValues={(platformCode === 'HEPSIBURADA' || platformCode === 'N11') && remote.allowsCustomValue === false} allowReusablePanelValues={allowReuse} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
   if (mappings.isError) return <ErrorBox error={mappings.error} onRetry={() => void mappings.refetch()} />
   if (references.isLoading || mappings.isLoading || !selections || !references.data || !mappings.data) return <Busy text="Değerler ve eşlemeler yükleniyor…" />
   const localValues = attribute.values.filter(item => item.isActive).slice().sort((left, right) => valueCollator.compare(left.value, right.value))
