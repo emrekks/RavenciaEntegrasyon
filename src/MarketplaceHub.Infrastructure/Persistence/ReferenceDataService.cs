@@ -49,6 +49,12 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
             .Select(x => x.ExternalAttributeId)
             .ToListAsync(cancellationToken);
+        // n11's Marka is always sent from the product brand (N11ProductPublicationComposer), so it needs no mapping either.
+        var platformCode = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleAsync(cancellationToken);
+        if (platformCode == "N11") defaultedAttributeIds.Add(N11ProductPublicationComposer.BrandAttributeId);
         var verifiedMappings = mappedAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId))
             .Concat(attributeSnapshots.SelectMany(snapshot => defaultedAttributeIds.Select(attributeId => new RequiredAttributeMappingReference(snapshot.Id, attributeId))))
             .ToArray();
