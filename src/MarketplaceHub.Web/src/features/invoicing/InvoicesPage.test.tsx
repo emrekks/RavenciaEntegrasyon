@@ -10,7 +10,7 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true, marketplaceConnectionId: 'trendyol-connection', externalOrderId: 'external-ty-1003', externalPackageNumber: 'package-ty-3' },
 ]
 
-const apiState = vi.hoisted(() => ({ deliveryKeys: [] as string[], uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }> }))
+const apiState = vi.hoisted(() => ({ deliveryKeys: [] as string[], uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, reconcileRequests: [] as string[], hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }> }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
@@ -32,6 +32,11 @@ vi.mock('../../shared/api', () => ({
       apiState.orderSyncRequests.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null })
       return { jobId: 'order-sync-job' }
     }
+    if (path.endsWith('/reconcile-jobs')) {
+      apiState.reconcileRequests.push(path)
+      return { jobId: 'invoice-check-job' }
+    }
+    if (path === '/jobs/invoice-check-job') return { job: { status: 'SUCCEEDED' } }
     if (path === '/invoice-workspace/manual-documents/manual-doc-2/delivery-jobs') {
       apiState.deliveryKeys.push((init?.headers as Record<string, string>)['Idempotency-Key'])
       return { jobIds: ['manual-delivery-job'], queuedPackageCount: 1, inspectionOnlyPackageCount: 0 }
@@ -62,6 +67,7 @@ beforeEach(async () => {
   apiState.statusUpdates = []
   apiState.pageRequests = []
   apiState.orderSyncRequests = []
+  apiState.reconcileRequests = []
   apiState.hiddenRequests = []
   container = document.createElement('div')
   document.body.append(container)
@@ -168,6 +174,30 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(manual?.disabled).toBe(false)
     expect(send?.disabled).toBe(true)
     expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('refreshes the invoice status of one order from its row menu and reloads the rows once the check has ended', async () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('TY-1003'))!
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+    const refresh = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      .find(item => item.textContent?.includes('Fatura Durumu Güncelle'))
+    expect(refresh?.disabled).toBe(false)
+    const pageReads = apiState.pageRequests.length
+    act(() => refresh!.click())
+    await settle()
+    expect(apiState.reconcileRequests).toEqual(['/invoice-workspace/orders/order-3/reconcile-jobs'])
+    expect(apiState.orderSyncRequests).toEqual([])
+    expect(apiState.pageRequests.length).toBeGreaterThan(pageReads)
+  })
+
+  it('locks the invoice status refresh when the row offers no marketplace check', async () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('SH-1001'))!
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+    const refresh = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      .find(item => item.textContent?.includes('Fatura Durumu Güncelle'))
+    expect(refresh?.disabled).toBe(true)
   })
 
   it('lets a Shopify order be hidden from its row menu instead of offering a status update', async () => {
