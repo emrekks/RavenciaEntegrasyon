@@ -990,6 +990,8 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
 
   const detail = job.data.job
   const status = detail.status.trim().toUpperCase()
+  // A finished job says nothing the card's publication status does not already say.
+  if (status === 'SUCCEEDED') return null
   // A blocked job (missing evidence, invalid file) or one waiting on a person does not move on by itself: it shows
   // as finished, without the running bar or the stop button. Publishing again after the fix starts a new job.
   const terminal = isSettledPublicationJob(status)
