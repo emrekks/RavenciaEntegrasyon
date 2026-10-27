@@ -1233,7 +1233,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             Options = allOptions,
             FamilyMediaUrls = familyMediaUrls,
             FamilyMediaItems = familyMediaItems,
-            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? familyOrderedMediaUrls : null
+            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? familyOrderedMediaUrls : null,
+            FamilyProductIds = familyViews.Select(view => view.Id).ToList()
         });
     }
 

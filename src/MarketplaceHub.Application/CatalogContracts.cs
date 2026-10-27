@@ -102,6 +102,8 @@ public sealed record ProductView(
     int? WarrantyMonths = null)
 {
     public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
+    // Every product card of the family (same brand and model code: one per colour), the opened one first.
+    public IReadOnlyList<Guid>? FamilyProductIds { get; init; }
 }
 public sealed record ProductFamilyMediaView(string Url, IReadOnlyList<Guid> MediaIds, IReadOnlyList<string> SourceProductTitles);
 public sealed record ProductSummaryView(

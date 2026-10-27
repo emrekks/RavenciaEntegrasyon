@@ -5972,10 +5972,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .app-shell.stitch-shell main .category-attribute-select-trigger.is-empty.is-optional {
   color: var(--rv-color-muted);
-  border-color: color-mix(in srgb, #facc15 26%, var(--rv-color-border-strong));
+  border-color: color-mix(in srgb, #eab308 72%, var(--rv-color-border-strong));
 }
 .app-shell.stitch-shell main .category-attribute-select-trigger.is-empty.is-optional:hover {
-  border-color: color-mix(in srgb, #facc15 38%, var(--rv-color-border-strong));
+  border-color: color-mix(in srgb, #eab308 88%, var(--rv-color-border-strong));
 }
 .app-shell.stitch-shell main .category-attribute-select-trigger.is-empty.is-required {
   color: var(--rv-color-ink);
