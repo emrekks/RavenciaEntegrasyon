@@ -47,7 +47,9 @@ public sealed record ProductVariantView(
     IReadOnlyList<ProductVariantPlatformStatusView>? PlatformStatuses = null,
     decimal? DefaultListPrice = null,
     decimal? DefaultSalePrice = null,
-    IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null);
+    IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null,
+    // The product card the variant belongs to (a family view lists every colour card's variants).
+    Guid? ProductId = null);
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductOptionValueView(Guid Id, string Label);
 public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);

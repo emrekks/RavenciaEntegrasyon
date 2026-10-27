@@ -27,6 +27,7 @@ export type Variant = Versioned & {
   weight: number | null; width: number | null; height: number | null; length: number | null; desi: number | null; costPrice: number | null
   defaultListPrice?: number | null; defaultSalePrice?: number | null
   onHand: number; available: number; inventoryVersion: number | null
+  productId?: string | null
   offerId: string | null; listPrice: number | null; salePrice: number | null; currency: string | null; offerStatus: string | null
   priceVersion: number | null; offerVersion: number | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null
   mediaUrls?: string[]; options?: Record<string, string>; platformStatuses?: VariantPlatformStatus[]; attributes?: ProductAttributeAssignment[]

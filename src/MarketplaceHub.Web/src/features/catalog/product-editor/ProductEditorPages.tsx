@@ -745,8 +745,10 @@ function placePublishIssueTooltip(event: { currentTarget: HTMLElement }) {
   const fitsBelow = window.innerHeight - rect.bottom >= height + 16
   tooltip.dataset.placement = !fitsBelow && rect.top >= height + 16 ? 'top' : 'bottom'
 }
-function PublishPlatformCard({ card, selected, productId, familyProductIds, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect }: {
+function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect }: {
   familyProductIds?: string[] | null
+  // How many of the family's variants are already matched to a listing on this marketplace (imported or published).
+  variantLinks?: { linked: number; total: number }
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
   selected: boolean
   productId?: string
@@ -808,9 +810,16 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, cate
   const ownLive = isPublicationLive(publication.data?.actualStatus)
   const familyLiveCount = (ownLive ? 1 : 0) + familyStatuses.filter(status => isPublicationLive(status.data?.actualStatus)).length
   const familyTotal = otherFamilyIds.length + 1
-  const familyPartial = ownLive && otherFamilyIds.length > 0 && familyLiveCount < familyTotal && familyStatuses.every(status => !status.isPending)
-  const alreadyPublished = ownLive && !familyPartial
-  const selectionStatus = familyPartial ? null : publication.data?.actualStatus
+  // Matched variants are the truth when they exist: every variant matched = live and not selectable; some = partly
+  // live and selectable (Yayınla then sends only the cards none of whose variants is matched here).
+  const linkedTotal = variantLinks?.total ?? 0
+  const linkedCount = variantLinks?.linked ?? 0
+  const allLinked = linkedTotal > 0 && linkedCount === linkedTotal
+  const someLinked = linkedCount > 0 && linkedCount < linkedTotal
+  const familyPartial = someLinked || (!allLinked && ownLive && otherFamilyIds.length > 0 && familyLiveCount < familyTotal && familyStatuses.every(status => !status.isPending))
+  const alreadyPublished = allLinked || (ownLive && !familyPartial)
+  const selectionStatus = familyPartial ? null : allLinked ? 'LIVE' : publication.data?.actualStatus
+  const partialLabel = someLinked ? `Kısmen yayında (${linkedCount}/${linkedTotal} varyant)` : `Kısmen yayında (${familyLiveCount}/${familyTotal} renk)`
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   const shopifyWriteCapabilities = useQuery<Array<{ code: string; supportLevel: string; verifiedForConnection: boolean }>>({
@@ -917,8 +926,8 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, cate
   ].filter(Boolean).join(' ') || undefined
   const hasRequiredPublicationBlock = blockedIssues.length > 0 && !alreadyPublished
   // A product that is not saved yet has no platform record: it shows what keeps it from publishing, or that it is not out yet.
-  const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : familyPartial ? `Kısmen yayında (${familyLiveCount}/${familyTotal} renk)` : productId ? publicationLabel : 'Henüz yayınlanmadı'
-  const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : familyPartial ? 'info' : productId ? publicationTone : 'neutral'
+  const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : familyPartial ? partialLabel : allLinked ? 'Yayında' : productId ? publicationLabel : 'Henüz yayınlanmadı'
+  const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : productId ? publicationTone : 'neutral'
   const readOnlyIsN11 = card.connection.platformCode.trim().toUpperCase() === 'N11'
   const readOnlyTitle = readOnlyIsN11 ? 'N11 ürün açma için Entegrasyonlar bölümünde N11 bağlantısının dış yazma anahtarını açın.' : 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.'
   return <article className={`publish-platform-card${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
@@ -2358,6 +2367,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           const familyIds = [product.id, ...(productToEdit.data?.familyProductIds ?? []).filter(id => id !== product.id)]
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
+              if (product.variants.some(variant => (variant.productId ?? product.id) === familyProductId && rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isLinked))) continue
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               if (status && (isPublicationLive(status.actualStatus) || isPublicationStatusPending(status.actualStatus, status.lastJobStatus))) continue
               let listingProfileVersion: number | undefined
@@ -2886,6 +2896,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               key={card.connection.id}
               productId={editProductId}
               familyProductIds={productToEdit.data?.familyProductIds}
+              variantLinks={{ total: variantRows.length, linked: variantRows.filter(row => row.platformStatuses?.some(status => status.connectionId === card.connection.id && status.isLinked)).length }}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
               productChecks={productChecks}
