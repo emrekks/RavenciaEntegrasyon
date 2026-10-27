@@ -639,9 +639,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var approvedVariantIds = approvedStatuses.Select(x => x.ExternalVariantId!).ToList();
         if (approvedVariantIds.Distinct(StringComparer.Ordinal).Count() != approvedVariantIds.Count)
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", $"{marketplaceName} onay yanıtı birden fazla {keyLabel} için aynı variantId değerini döndürdü."), cancellationToken);
+        // n11 groups a model's colour cards under one product (productMainId is the model code), so its id is held by the
+        // family's first approved card; a sibling card is then not a conflict and goes live without a product link.
+        var contentHeldByFamily = false;
         if (approvedContentIds.Count > 0)
         {
-            if (await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedContentIds.Contains(x.ExternalId) && x.ProductId != payload.ProductId, cancellationToken))
+            var holders = await db.MarketplaceProductLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedContentIds.Contains(x.ExternalId) && x.ProductId != payload.ProductId)
+                .Select(x => x.ProductId)
+                .ToListAsync(cancellationToken);
+            if (holders.Count > 0 && isN11)
+            {
+                var family = await FamilyProductIdsAsync(tenantId, payload.ProductId, cancellationToken);
+                contentHeldByFamily = holders.All(family.Contains);
+            }
+            if (holders.Count > 0 && !contentHeldByFamily)
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", $"{marketplaceName} ürün kimliği başka bir yerel ürünle eşleşiyor."), cancellationToken);
             var localProductLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId, cancellationToken);
             if (localProductLink is not null && !approvedContentIds.Contains(localProductLink.ExternalId, StringComparer.Ordinal))
@@ -663,7 +675,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         string? firstCode = listings.Where(x => string.Equals(x.ActualStatus, "CREATE_REJECTED", StringComparison.Ordinal) || string.Equals(x.ActualStatus, "UPDATE_REJECTED", StringComparison.Ordinal)).Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        if (approvedContentIds.Count == 1)
+        if (approvedContentIds.Count == 1 && !contentHeldByFamily)
             await UpsertMarketplaceProductLink(tenantId, connectionId, payload.ProductId, approvedContentIds[0], cancellationToken);
         foreach (var listing in candidates)
         {
@@ -1056,6 +1068,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             CreatedAt = now,
             Version = 1
         });
+    }
+
+    // The colour cards of the product's model family (same brand and model code), the product itself included.
+    private async Task<List<Guid>> FamilyProductIdsAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
+    {
+        var brandId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.BrandId).SingleOrDefaultAsync(cancellationToken);
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ModelCode != null)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .Select(x => x.ModelCode)
+            .FirstOrDefaultAsync(cancellationToken);
+        var ids = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        if (!ids.Contains(productId)) ids.Add(productId);
+        return ids;
     }
 
     private async Task UpsertMarketplaceProductLink(Guid tenantId, Guid connectionId, Guid productId, string externalProductId, CancellationToken cancellationToken)

@@ -1002,11 +1002,16 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
   const progressText = percent !== null
     ? `${percent}%${detail.progressTotal == null ? '' : ` · ${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`}`
     : detail.progressTotal == null ? null : `${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`
-  return <div className={`publish-platform-job ${terminal ? `is-${status.toLowerCase()}` : 'is-active'}`} role="status" aria-live="polite">
-    <div className="publish-platform-job-heading"><strong>{detail.progressLabel || 'Yayın işlemi'}</strong>{!retryScheduled && <span>{statusLabel(status)}</span>}</div>
+  // One row that never grows the card: the message is cut to the row (whole text on hover), the bar is a hairline.
+  const message = detail.lastErrorSummary || progressText
+  return <div className={`publish-platform-job is-compact ${terminal ? `is-${status.toLowerCase()}` : 'is-active'}`} role="status" aria-live="polite">
+    <div className="publish-platform-job-heading">
+      <strong>{detail.progressLabel || 'Yayın işlemi'}</strong>
+      {message && <small className="publish-platform-job-message" title={message}>{message}</small>}
+      {!retryScheduled && <span>{statusLabel(status)}</span>}
+      {!terminal && <button type="button" className="secondary publish-platform-job-stop" title="Durdurma, platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? 'Durduruluyor…' : 'Durdur'}</button>}
+    </div>
     {!terminal && <div className={`publish-platform-job-progress${percent === null ? ' is-indeterminate' : ''}`} role="progressbar" aria-label="Yayın işlemi ilerlemesi" aria-valuemin={0} aria-valuemax={100} {...(percent === null ? {} : { 'aria-valuenow': percent })}><span style={percent === null ? undefined : { width: `${percent}%` }} /></div>}
-    {(progressText || detail.lastErrorSummary) && <small>{detail.lastErrorSummary || progressText}</small>}
-    {!terminal && <div className="publish-platform-job-actions"><small>Durdurma, platforma gönderilmiş bir isteği geri alamayabilir.</small><button type="button" className="secondary" disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? 'Durduruluyor…' : 'İşlemi durdur'}</button></div>}
   </div>
 }
 // Variant option helpers: pure functions of a draft row, shared by the variant media and filter memos.
