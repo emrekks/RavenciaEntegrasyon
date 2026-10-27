@@ -419,6 +419,41 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task BulkPublication_SkipsCardsAlreadyOnTheMarketplaceAndReportsCardsWithoutAPrice()
+    {
+        var tenant = NewTenant("bulk-publication");
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Bulk publication test", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", Version = 1 };
+        ProductVariant NewVariant(Product product)
+        {
+            var sku = $"BULK-{Guid.NewGuid():N}";
+            return new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, SortOrder = 0, Sku = sku, SkuNormalized = sku, OptionSignature = "Renk=Test", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        }
+        var linkedProduct = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "A linked card", Description = "Bulk publication test", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var unpricedProduct = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "B unpriced card", Description = "Bulk publication test", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var linkedVariant = NewVariant(linkedProduct);
+        var unpricedVariant = NewVariant(unpricedProduct);
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Products.AddRange(linkedProduct, unpricedProduct);
+        db.ProductVariants.AddRange(linkedVariant, unpricedVariant);
+        db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = linkedVariant.Id, ExternalId = "external-1" });
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+        var result = await service.EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([linkedProduct.Id, unpricedProduct.Id], [connection.Id]), "bulk-test", "trace", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(0, result.Value!.Queued);
+        Assert.Equal(1, result.Value.Skipped);
+        var failure = Assert.Single(result.Value.Failed);
+        Assert.Equal(unpricedProduct.Id, failure.ProductId);
+        Assert.Equal("CHANNEL_OFFER_REQUIRED", failure.Code);
+        Assert.False(await db.ChannelOffers.AnyAsync(offer => offer.TenantId == tenant.Id));
+    }
+
+    [PostgreSqlFact]
     public async Task ProductVariantAttributesAndDefaultPrices_RoundTripThroughProductUpdateAndReload()
     {
         var tenant = NewTenant("product-price-defaults");
