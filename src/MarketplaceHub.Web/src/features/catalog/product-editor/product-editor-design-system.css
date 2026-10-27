@@ -218,9 +218,9 @@
   .variant-marketplace-codes-button { margin-left: auto; }
   .marketplace-codes-modal { width: min(760px, 100%); }
   /* Variant option text: read only, changed through the pencil (Varyant Düzenleme). */
-  .variant-option-cell { position: relative; display: flex; align-items: center; min-width: 0; }
-  .variant-option-cell > input { width: 100%; padding-right: 40px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); cursor: default; text-overflow: ellipsis; }
-  .variant-option-cell > .variant-option-edit-button { position: absolute; right: 5px; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 24%, transparent); border-radius: 7px; cursor: pointer; }
+  .variant-option-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .variant-option-cell > .variant-option-text { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
+  .variant-option-cell > .variant-option-edit-button { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 12%, var(--rv-color-surface)); border: 0; border-radius: 999px; cursor: pointer; }
   .variant-option-cell > .variant-option-edit-button:hover { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
   .variant-option-cell > .variant-option-edit-button:disabled { opacity: .4; cursor: not-allowed; }
   .variant-option-edit-modal { width: min(560px, 100%); }
@@ -940,6 +940,6 @@
 .app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: help; }
 
 /* Unlayered: the global button and select rules sit outside the layers and would win over the ones above. */
-.app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; }
+.app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; box-shadow: none; }
 .app-shell.stitch-shell main .variant-option-edit-pair select, .app-shell.stitch-shell main .variant-option-edit-pair input { height: 36px; min-height: 0; padding-block: 0; }
 .app-shell.stitch-shell main .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
