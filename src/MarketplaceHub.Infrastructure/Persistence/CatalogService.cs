@@ -1815,6 +1815,28 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<ServiceResult<Guid>> RequestPublicationStatusRefreshAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
+        var result = await RequestCardPublicationStatusRefreshAsync(tenantId, productId, connectionId, cancellationToken);
+        if (!result.Succeeded) return result;
+        // A Shopify model family is one store product holding every colour card, so one refresh reads all the cards:
+        // each sibling with a publication on this connection gets its own read-only check (one that cannot is skipped).
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleAsync(cancellationToken);
+        if (platformCode != "SHOPIFY") return result;
+        var product = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var familyIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
+        var siblings = await db.ChannelListingProfiles.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && familyIds.Contains(x.ProductId) && x.ProductId != productId)
+            .Select(x => x.ProductId)
+            .ToListAsync(cancellationToken);
+        foreach (var siblingId in siblings)
+        {
+            db.ChangeTracker.Clear();
+            await RequestCardPublicationStatusRefreshAsync(tenantId, siblingId, connectionId, cancellationToken);
+        }
+        return result;
+    }
+
+    private async Task<ServiceResult<Guid>> RequestCardPublicationStatusRefreshAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         // Trendyol, Hepsiburada and Shopify read the publication state back; Hepsiburada by the tracking id of its

@@ -2420,6 +2420,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           // Every colour card of the family (same model code) goes with the opened one; a card already live or still
           // being published on this marketplace is left as it is. One card's failure does not stop the others.
           const familyIds = [product.id, ...(productToEdit.data?.familyProductIds ?? []).filter(id => id !== product.id)]
+          // The same reason on several cards (a connection setting missing) is said once, with how many cards it stopped.
+          const familyFailures = new Map<string, number[]>()
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
               if (product.variants.some(variant => (variant.productId ?? product.id) === familyProductId && rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched))) continue
@@ -2438,9 +2440,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
               completed.push(`yayın işi ${accepted.jobId}`)
             } catch (reason) {
-              const which = familyIndex === 0 ? '' : `${familyIndex + 1}. renk kartı: `
-              warnings.push(`${which}${reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'}`)
+              const failure = reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'
+              familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), familyIndex])
             }
+          }
+          for (const [failure, indexes] of familyFailures) {
+            warnings.push(indexes.length > 1 ? `${failure} (${indexes.length} renk kartında)` : `${indexes[0] === 0 ? '' : `${indexes[0] + 1}. renk kartı: `}${failure}`)
           }
           continue
         } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
