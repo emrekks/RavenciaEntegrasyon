@@ -26,6 +26,7 @@ import { classifyPublicationAttributeIssues, fixableValueMappings, type Publicat
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
+import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { productMediaUrlIssue } from '../product-media-url'
@@ -1198,6 +1199,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const bulkSyncOptionRequirements = useMemo(() => optionRequirements.filter(item => isColorOptionName(item.attribute.name) || isSizeOptionName(item.attribute.name)), [optionRequirements])
   const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
   const [manualWebColorValueId, setManualWebColorValueId] = useState('')
+  const [optionEditRowKey, setOptionEditRowKey] = useState<string | null>(null)
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
     setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
@@ -1317,6 +1319,53 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     })
   }
 
+  function rowOptionEntries(row: VariantDraft) {
+    const saved = Object.entries(row.options).filter(([, value]) => value.trim()).map(([name, value]) => ({ name, value }))
+    return saved.length ? saved : parseVariantOptionSignature(row.optionSignature)
+  }
+  function optionAttributeFor(name: string) {
+    const key = normalizeVariantOptionName(name)
+    return mappedRequirements.find(item => isOptionRequirement(item) && !isWebColorOptionName(item.attribute.name) && normalizeVariantOptionName(item.attribute.name) === key)
+  }
+  function rowHasOptionValue(row: VariantDraft, name: string, value: string) {
+    const key = normalizeVariantOptionName(name)
+    return rowOptionEntries(row).some(entry => normalizeVariantOptionName(entry.name) === key && normalizeVariantOptionValue(entry.value) === normalizeVariantOptionValue(value))
+  }
+  // A changed option value goes to the row (or, with the switch on, every row holding the same value), with its
+  // attribute value id so the saved variant attributes follow; the new value joins the option group's selection.
+  function applyVariantOptionChanges(rowKey: string, changes: VariantOptionEditChange[], applyToAll: boolean) {
+    const nextRows = variantRows.map(row => {
+      const applying = changes.filter(change => row.key === rowKey || (applyToAll && rowHasOptionValue(row, change.name, change.from)))
+      if (!applying.length) return row
+      const options = Object.fromEntries(rowOptionEntries(row).map(entry => [entry.name, entry.value]))
+      const attributeValueIds = { ...row.attributeValueIds }
+      for (const change of applying) {
+        const key = Object.keys(options).find(name => normalizeVariantOptionName(name) === normalizeVariantOptionName(change.name)) ?? change.name
+        options[key] = change.to
+        const attribute = optionAttributeFor(change.name)
+        if (attribute) {
+          if (change.valueId) attributeValueIds[attribute.attributeId] = change.valueId
+          else delete attributeValueIds[attribute.attributeId]
+        }
+      }
+      return { ...row, options, attributeValueIds, optionSignature: optionSignatureFromOptions(options) || row.optionSignature }
+    })
+    setVariantRows(nextRows)
+    setAttributeSelections(current => {
+      const next = { ...current }
+      for (const change of changes) {
+        const attribute = optionAttributeFor(change.name)
+        if (!attribute) continue
+        // The old value leaves the selection once no row holds it, so regenerating variants does not bring it back.
+        const oldValueId = attribute.attribute.values.find(value => normalizeVariantOptionValue(value.value) === normalizeVariantOptionValue(change.from))?.id
+        const oldStillUsed = nextRows.some(row => oldValueId && row.attributeValueIds[attribute.attributeId] === oldValueId)
+        next[attribute.attributeId] = [...new Set([...(current[attribute.attributeId] ?? []), ...(change.valueId ? [change.valueId] : [])])]
+          .filter(valueId => valueId !== oldValueId || oldStillUsed)
+      }
+      return next
+    })
+    setOptionEditRowKey(null)
+  }
   function toggleWebColorAuto(enabled: boolean) {
     setWebColorAutoEnabled(enabled)
     if (enabled) {
@@ -2700,6 +2749,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       onToggleWebColorAuto={toggleWebColorAuto}
       onManualWebColorValueChange={setManualWebColorValueId}
     />}
+    {(() => {
+      const row = optionEditRowKey ? variantRows.find(item => item.key === optionEditRowKey) : null
+      if (!row) return null
+      return <VariantOptionEditDialog
+        label={displayVariantOptionSignature(row.optionSignature, row.options)}
+        fields={rowOptionEntries(row).map(entry => ({ ...entry, values: optionAttributeFor(entry.name)?.attribute.values.map(value => ({ id: value.id, value: cleanOptionValue(value.value) })) ?? null }))}
+        sameValueCount={(name, value) => variantRows.filter(item => rowHasOptionValue(item, name, value)).length}
+        onClose={() => setOptionEditRowKey(null)}
+        onSave={(changes, applyToAll) => applyVariantOptionChanges(row.key, changes, applyToAll)} />
+    })()}
     {(marketplaceCodesOpen || marketplaceCodesVariant) && editProductId && <MarketplaceCodesDialog productId={editProductId} rows={variantRows.filter(row => !marketplaceCodesVariant || row.key === marketplaceCodesVariant).map(row => ({ variantId: row.key, label: displayVariantOptionSignature(row.optionSignature, row.options) }))} onClose={() => { setMarketplaceCodesOpen(false); setMarketplaceCodesVariant(null) }} />}
     {bulkOptionSyncOpen && <div className="workspace-modal-backdrop bulk-option-sync-backdrop" role="presentation" onMouseDown={() => setBulkOptionSyncOpen(false)}><DialogSurface as="section" onClose={() => setBulkOptionSyncOpen(false)} className="workspace-modal bulk-option-sync-modal" aria-labelledby="bulk-option-sync-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">ÜRÜN SEÇENEKLERİ</p><h2 id="bulk-option-sync-title">Toplu eşitleme</h2><p>Seçenek gruplarındaki işaretli değerleri varyant satırlarına ekleyin.</p></div><button type="button" className="modal-close" onClick={() => setBulkOptionSyncOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="bulk-option-sync-body"><fieldset><legend>Eşitlenecek gruplar</legend><div className="bulk-option-sync-options">{bulkSyncOptionRequirements.map(item => { const selectedCount = attributeSelections[item.attributeId]?.length ?? 0; const checked = bulkOptionSyncSelection.includes(item.attributeId); const label = isColorOptionName(item.attribute.name) ? 'Renkler' : 'Bedenler'; return <label className={`bulk-option-sync-option${checked ? ' is-selected' : ''}`} key={item.attributeId}><input type="checkbox" checked={checked} disabled={!selectedCount} onChange={() => setBulkOptionSyncSelection(current => checked ? current.filter(id => id !== item.attributeId) : [...current, item.attributeId])} /><span><strong>{label}</strong><small>{selectedCount} seçili değer · {item.attribute.name}</small></span></label> })}</div></fieldset><p className="bulk-option-sync-note">Hiçbir grup seçmezseniz listelenen tüm gruplar birlikte eşitlenir. Tek grup seçildiğinde diğer etkin seçenek ekseni korunur; mevcut varyant satırlarındaki stok, fiyat, barkod ve görseller değiştirilmez.</p></div><footer><button type="button" className="secondary" onClick={() => setBulkOptionSyncOpen(false)}>Vazgeç</button><button type="button" onClick={syncOptionGroups} disabled={!bulkSyncOptionRequirements.length}>{bulkOptionSyncSelection.length ? 'Seçilenleri eşitle' : 'Tümünü eşitle'}</button></footer></DialogSurface></div>}
     {desiCalculatorOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setDesiCalculatorOpen(false)}><DialogSurface as="section" onClose={() => setDesiCalculatorOpen(false)} className="workspace-modal desi-calculator-modal" aria-labelledby="desi-calculator-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="desi-calculator-title">Desi hesapla</h2><p>En × Boy × Yükseklik / 3000 formülü kullanılır.</p></div><button type="button" className="modal-close" onClick={() => setDesiCalculatorOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="desi-calculator-body"><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label></div><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : 'Ölçüleri girin'}</strong></div></div><footer><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(false)}>İptal</button><button type="button" disabled={!desi} onClick={() => { updateField('desi', String(Number(desi.toFixed(2)))); setCalculateDesi(true); setDesiCalculatorOpen(false) }}>Uygula</button></footer></DialogSurface></div>}
@@ -2869,7 +2928,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku')
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
-                  <input aria-label={`${index + 1}. varyant seçenekleri`} value={displayVariantOptionSignature(row.optionSignature, row.options)} readOnly />
+                  <div className="variant-option-cell"><input aria-label={`${index + 1}. varyant seçenekleri`} value={displayVariantOptionSignature(row.optionSignature, row.options)} title={displayVariantOptionSignature(row.optionSignature, row.options)} readOnly tabIndex={-1} /><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>
                   <input aria-label={`${row.optionSignature} barkod`} className={`technical-field barcode-value${barcodeIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={barcodeIssueText ? true : undefined} title={barcodeIssueText || undefined} value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
                   <input aria-label={`${row.optionSignature} stok kodu`} className={`technical-field sku-value${skuIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={skuIssueText ? true : undefined} title={skuIssueText || undefined} value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
                   <input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" />
