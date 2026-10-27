@@ -145,12 +145,15 @@ export function invoiceStatusTone(value: string | null | undefined): InvoiceStat
   return 'neutral'
 }
 
+// A code without a Turkish label is an English enum (IMPORT_SUBMITTED): cased in English it reads "Import Submitted";
+// Turkish casing turned its I into ı ("Submıtted"). Text with Turkish letters keeps Turkish casing.
 function readableFallback(value: string) {
+  const locale = /^[\x20-\x7e]*$/.test(value) ? 'en-US' : 'tr-TR'
   return value
     .trim()
     .replace(/[_-]+/g, ' ')
-    .toLocaleLowerCase('tr-TR')
-    .replace(/(^|\s)\S/g, character => character.toLocaleUpperCase('tr-TR'))
+    .toLocaleLowerCase(locale)
+    .replace(/(^|\s)\S/g, character => character.toLocaleUpperCase(locale))
 }
 
 // Some views send a server enum name as is (READYTOSHIP, ONHOLD); it reads the same as its underscored code.

@@ -52,4 +52,9 @@ describe('invoice status labels', () => {
     expect(statusLabel('REMOTE_PRESENT_UNMATCHED')).toBe('Pazaryerinde mevcut, eşleşmedi')
     expect(statusLabel('Delivered')).toBe('Teslim Edildi')
   })
+
+  it('cases an English code without a label in English, so its I stays an I', () => {
+    expect(statusLabel('SOME_IMPORT_SUBMITTED')).toBe('Some Import Submitted')
+    expect(statusLabel('ÜRÜN_BİLGİLERİ_EKSİK_YENİ')).toBe('Ürün Bilgileri Eksik Yeni')
+  })
 })
