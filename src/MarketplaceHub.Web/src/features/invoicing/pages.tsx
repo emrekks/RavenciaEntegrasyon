@@ -24,6 +24,7 @@ import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './Invoi
 import { invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable, safeInvoiceReferenceUrl } from './invoice-reference-document-link'
 import { marketplacePlatformOptions } from '../marketplace/marketplace-platform-support'
 import { RrAnchor } from '../marketplace/returns-ui'
+import { waitForReferenceSyncJobs } from '../marketplace/reference-value-sync'
 import { ReturnPlatformPop } from '../marketplace/shared'
 import './invoice-detail-ui.css'
 import './manual-invoice-document.css'
@@ -239,14 +240,17 @@ function InvoiceDetailLineImage({ url, title }: { url: string; title: string }) 
   </>
 }
 
-function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, hidden, onCreateInvoice, onSyncOrder, onToggleHidden, onConfirmNoRemoteInvoice, onReplaceCancelledInvoice, onConfirmDelivered, onAddManualInvoice, onSendManualInvoice }: {
+function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, canRefreshInvoiceStatus, invoiceStatusRefreshing, deliveryPending, hidden, onCreateInvoice, onSyncOrder, onRefreshInvoiceStatus, onToggleHidden, onConfirmNoRemoteInvoice, onReplaceCancelledInvoice, onConfirmDelivered, onAddManualInvoice, onSendManualInvoice }: {
   item: InvoiceWorkspace
   canCreateInvoice: boolean
   canSyncOrder: boolean
+  canRefreshInvoiceStatus: boolean
+  invoiceStatusRefreshing: boolean
   deliveryPending: boolean
   hidden: boolean
   onCreateInvoice: () => void
   onSyncOrder: () => void
+  onRefreshInvoiceStatus: () => void
   onToggleHidden: () => void
   onConfirmNoRemoteInvoice: () => void
   onReplaceCancelledInvoice: () => void
@@ -316,6 +320,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
       {item.platformCode === 'SHOPIFY'
         ? <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleHidden() }}><UiIcon name={hidden ? 'eye' : 'eyeOff'} size={16} />{hidden ? 'Gizlemeden Çıkar' : 'Siparişi Gizle'}</button>
         : item.platformCode !== 'TRENDYOL' && <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}><UiIcon name="refresh" size={16} />Sipariş Durumunu Güncelle</button>}
+      <button type="button" role="menuitem" disabled={!canRefreshInvoiceStatus || invoiceStatusRefreshing} title={canRefreshInvoiceStatus ? 'Fatura durumunu pazaryerinden yeniden okur; hiçbir şey göndermez.' : 'Pazaryeri bağlantısı etkin değil veya sipariş bilgileri eksik.'} onClick={() => { setOpen(false); onRefreshInvoiceStatus() }}><UiIcon name="sync" size={16} />{invoiceStatusRefreshing ? 'Fatura Durumu Güncelleniyor…' : 'Fatura Durumu Güncelle'}</button>
       {item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI', 'FATURA_BELIRSIZ'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}><UiIcon name="sync" size={16} />Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
       {item.platformCode !== 'SHOPIFY' && item.invoiceId && item.invoiceNumber && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_REDDEDILDI', 'FATURA_PLATFORMA_BEKLIYOR'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı pazaryerinin satıcı panelinde gördüyseniz tamamlandı olarak işaretler." onClick={() => { setOpen(false); onConfirmDelivered() }}><UiIcon name="circleCheck" size={16} />Pazaryerinde Gördüm, Tamamla</button>}
       {item.platformCode !== 'SHOPIFY' && item.invoiceId && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı E-Faturam portalında iptal ettiyseniz bu kaydı kapatır ve yeni fatura kesmenize izin verir." onClick={() => { setOpen(false); onReplaceCancelledInvoice() }}><UiIcon name="undo" size={16} />Portalda İptal Ettim, Yeni Fatura Kes</button>}
@@ -441,10 +446,18 @@ export function InvoicesPage() {
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş durumu pazaryerinden yenilenemedi.', 'error')
   })
+  const canSyncOrder = (item: InvoiceWorkspace) => Boolean(item.marketplaceConnectionId && item.externalOrderId?.trim() && connections.data?.items.some(connection => connection.id === item.marketplaceConnectionId && ['ACTIVE', 'VERIFIED'].includes(connection.status)))
   const invoiceReconcile = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } }),
-    onSuccess: async () => {
-      setMessage('Pazaryerindeki güncel fatura bilgisi salt okunur kontrol kuyruğuna alındı.', 'success')
+    // Waits for the read-only check to end, so the row is reloaded with what the job read rather than right after queueing it.
+    mutationFn: async (item: InvoiceWorkspace) => {
+      const { jobId } = await hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } })
+      const ended = await waitForReferenceSyncJobs([jobId], async id => (await hubApi<{ job: { status: string } }>(`/jobs/${id}`, { cache: 'no-store' })).job.status, { intervalMs: 1_500, timeoutMs: 90_000 })
+      return ended.get(jobId)
+    },
+    onSuccess: async status => {
+      if (status === 'SUCCEEDED') setMessage('Fatura durumu pazaryerinden yeniden okundu.', 'success')
+      else if (status) setMessage('Fatura durumu pazaryerinden okunamadı; ayrıntı İşler sayfasında.', 'error')
+      else setMessage('Fatura durumu kontrolü sürüyor; sayfayı biraz sonra yenileyin.', 'info')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Pazaryeri fatura kontrolü kuyruğa alınamadı.', 'error')
@@ -600,11 +613,14 @@ export function InvoicesPage() {
               canCreateInvoice={!item.manualInvoiceDocumentId && (item.platformCode === 'SHOPIFY'
                 ? isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)) && (!item.invoiceId || item.canCreateInvoice)
                 : !item.invoiceId && isInvoiceCreationActionVisible(item))}
-              canSyncOrder={Boolean(item.marketplaceConnectionId && item.externalOrderId?.trim() && connections.data?.items.some(connection => connection.id === item.marketplaceConnectionId && ['ACTIVE', 'VERIFIED'].includes(connection.status)))}
+              canSyncOrder={canSyncOrder(item)}
+              canRefreshInvoiceStatus={canSyncOrder(item) && Boolean(item.allowedActions?.includes('CHECK_PLATFORM'))}
+              invoiceStatusRefreshing={invoiceReconcile.isPending && invoiceReconcile.variables?.orderId === item.orderId}
               deliveryPending={manualInvoiceDelivery.isPending || manualDeliveryQueued(item)}
               hidden={tab === 'HIDDEN'}
               onCreateInvoice={() => openInvoicePreview([item])}
               onSyncOrder={() => orderStatusSync.mutate(item)}
+              onRefreshInvoiceStatus={() => invoiceReconcile.mutate(item)}
               onToggleHidden={() => visibility.mutate({ packageIds: [item.packageId], hidden: tab !== 'HIDDEN' })}
               onConfirmDelivered={() => setManualConfirmation({ kind: 'delivered', item })}
               onReplaceCancelledInvoice={() => setManualConfirmation({ kind: 'replace', item })}
