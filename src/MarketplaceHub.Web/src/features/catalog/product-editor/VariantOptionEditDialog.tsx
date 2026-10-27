@@ -28,8 +28,9 @@ export function VariantOptionEditDialog({ label, fields, sameValueCount, onClose
 
   return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}>
     <DialogSurface as="section" onClose={onClose} className="workspace-modal variant-option-edit-modal" aria-labelledby="variant-option-edit-title" onMouseDown={event => event.stopPropagation()}>
-      <header><div><p className="eyebrow">Varyant Düzenleme</p><h2 id="variant-option-edit-title">{label}</h2><p>Varyantın seçenek değerlerini değiştirin. Değerler kategori özelliğinin listesinden seçilir.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
-      <form className="variant-option-edit-body" onSubmit={event => { event.preventDefault(); if (changes.length) onSave(changes, applyToAll) }}>
+      <header><div><p className="eyebrow">Varyant Düzenleme</p><h2 id="variant-option-edit-title">{label}</h2><p>Değerler kategori özelliğinin listesinden seçilir. Değişiklik ürünü kaydettiğinizde kalıcı olur.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
+      {/* No <form>: the dialog sits inside the editor form, and a nested form would submit the page. */}
+      <div className="variant-option-edit-body">
         <div className="variant-option-edit-grid">
           {fields.map(field => <div className="variant-option-edit-pair" key={field.name}>
             <label>Seçenek Adı<input value={field.name} readOnly disabled /></label>
@@ -45,8 +46,8 @@ export function VariantOptionEditDialog({ label, fields, sameValueCount, onClose
           <span><strong>Tüm Aynı Varyantlarda Düzelt</strong><small>{applyToAll ? (affected > 1 ? `Aynı değeri taşıyan ${affected} varyantın tümü değişir.` : 'Aynı değeri taşıyan tüm varyantlar değişir.') : 'Yalnız bu varyant değişir.'}</small></span>
           <input type="checkbox" role="switch" checked={applyToAll} onChange={event => setApplyToAll(event.target.checked)} aria-label="Tüm aynı varyantlarda düzelt" />
         </label>
-        <footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="submit" disabled={!changes.length}>Kaydet</button></footer>
-      </form>
+        <footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={!changes.length} onClick={() => onSave(changes, applyToAll)}>Uygula</button></footer>
+      </div>
     </DialogSurface>
   </div>
 }

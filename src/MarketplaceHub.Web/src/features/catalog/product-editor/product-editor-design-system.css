@@ -938,3 +938,8 @@
 /* Stock code and barcode of a variant product are written on the variant rows: the field is grey and not clickable. */
 .app-shell.stitch-shell main .product-identifiers-grid input:disabled { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); cursor: not-allowed; opacity: 1; }
 .app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: help; }
+
+/* Unlayered: the global button and select rules sit outside the layers and would win over the ones above. */
+.app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; }
+.app-shell.stitch-shell main .variant-option-edit-pair select, .app-shell.stitch-shell main .variant-option-edit-pair input { height: 36px; min-height: 0; padding-block: 0; }
+.app-shell.stitch-shell main .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
