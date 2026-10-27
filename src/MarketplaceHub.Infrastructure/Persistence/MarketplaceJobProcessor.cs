@@ -410,6 +410,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", JobExecutionResult.Blocked("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi doğrulanmadı; ürün aktarımı gönderilmedi."), cancellationToken);
                 if (!await HasHepsiburadaPublicationEvidenceAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", JobExecutionResult.Blocked("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Bu mağaza/ortamda doğrulanmış fiyat ve stok yazma kanıtı bulunamadı; bağlantıyı test edin. Ürün aktarımı gönderilmedi."), cancellationToken);
             }
+            // A Shopify product carries the whole model family and productSet deletes the variants it is not sent, so a
+            // job composed before the family's variants changed must not write its older variant list.
+            if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
+            {
+                var current = await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, payload.ProductId, connectionId, cancellationToken);
+                if (!current.Succeeded || !ShopifyProductPublicationComposer.SameVariantSkus(payload.PayloadJson, current.Value!.PayloadJson))
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste Shopify'a gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken);
+            }
             var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
             if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken);
 
@@ -424,7 +432,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 TrackResultFailure(submit.Error);
                 var error = submit.Error!;
                 if (error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug)
-                    return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", AmbiguousCreateSummary(error), error.RemoteRequestId), cancellationToken);
                 db.ExternalEffectRecords.Remove(effect);
                 await db.SaveChangesAsync(cancellationToken);
                 var adapterResult = JobExecutionResult.FromAdapterError(error);
@@ -504,6 +512,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken);
         var resultKeyByListing = listings.ToDictionary(x => keyedBySku ? x.ExternalSku! : x.ExternalBarcode!, x => x, StringComparer.OrdinalIgnoreCase);
         var resultByKey = lines.ToDictionary(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase);
+        // A Shopify product carries the whole model family; this card's job records only this card's SKUs.
+        if (isShopify) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         if (resultKeyByListing.Keys.Any(key => !resultByKey.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
         if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken);
 
@@ -552,9 +562,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var isN11 = string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
         var isPazarama = string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase);
         var isPttAvm = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
-        var marketplaceName = isN11 ? "N11" : isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : "Trendyol";
-        var keyLabel = isN11 ? "stok kodu" : "barkod";
-        Func<ChannelListingVariant, string?> approvalKey = item => isN11 ? item.ExternalSku : item.ExternalBarcode;
+        var isShopify = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase);
+        var marketplaceName = isN11 ? "N11" : isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : isShopify ? "Shopify" : "Trendyol";
+        var keyLabel = isN11 || isShopify ? "stok kodu" : "barkod";
+        Func<ChannelListingVariant, string?> approvalKey = item => isN11 || isShopify ? item.ExternalSku : item.ExternalBarcode;
 
         var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var allVariantIds = listings.Select(x => x.VariantId).ToArray();
@@ -574,6 +585,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             return await ReconcileHepsiburadaProductApproval(tenantId, connectionId, payload, profile, listings, states, correlationId, cancellationToken);
+        if (isShopify)
+            return await ReconcileShopifyPublication(tenantId, connectionId, payload, profile, listings, candidates, states, correlationId, cancellationToken);
 
         // Variants an earlier check of this publication already approved keep their recorded identity instead of being
         // read again; the adapter reads one barcode per request, so this is what keeps a long wait cheap.
@@ -867,6 +880,63 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         await db.SaveChangesAsync(cancellationToken);
         return result;
+    }
+
+    // Shopify answers each SKU at once. Every SKU missing from the store resets the card to unpublished; every SKU on
+    // an active product makes it live. Anything else (a read that fails, a draft product, some SKUs missing) leaves
+    // the state for a person to look at instead of guessing. A model family shares one Shopify product, so no product
+    // link is written here: the store's product is not this card's alone.
+    private async Task<JobExecutionResult> ReconcileShopifyPublication(
+        Guid tenantId,
+        Guid connectionId,
+        ProductApprovalReconciliationJobPayload payload,
+        ChannelListingProfile profile,
+        IReadOnlyList<ChannelListingVariant> listings,
+        IReadOnlyList<ChannelListingVariant> candidates,
+        IReadOnlyDictionary<Guid, MarketplaceListingState> states,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        var remote = new List<RemotePublicationStatus>(candidates.Count);
+        foreach (var listing in candidates)
+        {
+            var sku = listing.ExternalSku!;
+            TrackRequest();
+            var result = await products.GetPublicationStatusAsync(Context(tenantId, connectionId, correlationId, $"product-approval:{profile.Id:N}:{sku}"), sku, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                TrackResultFailure(result.Error);
+                var adapterResult = JobExecutionResult.FromAdapterError(result.Error!);
+                if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
+                return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", result.Error!.Code, JobExecutionResult.ManualReview(result.Error.Code, result.Error.SafeMessage, result.Error.RemoteRequestId), cancellationToken);
+            }
+            remote.Add(result.Value!);
+        }
+
+        if (candidates.Count == listings.Count && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remote))
+            return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
+        if (remote.Count != candidates.Count || remote.Any(status => !string.Equals(status.Status, "APPROVED", StringComparison.Ordinal)))
+        {
+            var missing = remote.Where(status => !string.Equals(status.Status, "APPROVED", StringComparison.Ordinal)).Select(status => $"{status.Barcode} ({status.Status})");
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "SHOPIFY_PUBLICATION_PARTIAL", JobExecutionResult.ManualReview("SHOPIFY_PUBLICATION_PARTIAL", $"Shopify'da bu kartın varyantlarının hepsi etkin bir üründe değil: {string.Join(", ", missing)}."), cancellationToken);
+        }
+
+        foreach (var listing in candidates)
+        {
+            listing.ActualStatus = "LIVE";
+            listing.RejectionCode = null;
+            if (states.TryGetValue(listing.VariantId, out var state))
+            {
+                state.ActualStatus = "LIVE";
+                state.LastRejectionCode = null;
+                state.Version++;
+            }
+        }
+        profile.ActualStatus = candidates.Count == listings.Count ? "LIVE" : "PARTIAL_FAILURE";
+        profile.LastRejectionCode = null;
+        profile.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return JobExecutionResult.Success();
     }
 
     private async Task<JobExecutionResult> ResetMissingPublication(
@@ -1867,6 +1937,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
 
+    // The adapter's own code and message stay in the summary, so the cause of an uncertain create can be read.
+    internal static string AmbiguousCreateSummary(AdapterError error) =>
+        $"Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi. Pazaryeri yanıtı: {error.Code}: {error.SafeMessage}";
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static bool HasItems(string payloadJson) { try { using var doc = JsonDocument.Parse(payloadJson); var root = doc.RootElement; return root.ValueKind == JsonValueKind.Array ? root.GetArrayLength() > 0 : root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > 0; } catch (JsonException) { return false; } }
     private static string UpdatePayload(ProductUpdateJobPayload payload, string phase) => phase switch { "SUBMIT_UNAPPROVED" or "POLL_UNAPPROVED" => payload.UnapprovedPayloadJson, "SUBMIT_CONTENT" or "POLL_CONTENT" => payload.ApprovedContentPayloadJson, "SUBMIT_VARIANTS" or "POLL_VARIANTS" => payload.ApprovedVariantPayloadJson, "SUBMIT_DELIVERY" or "POLL_DELIVERY" => payload.ApprovedDeliveryPayloadJson, _ => "{}" };

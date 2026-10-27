@@ -2420,7 +2420,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           const familyIds = [product.id, ...(productToEdit.data?.familyProductIds ?? []).filter(id => id !== product.id)]
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
-              if (product.variants.some(variant => (variant.productId ?? product.id) === familyProductId && rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isLinked))) continue
+              if (product.variants.some(variant => (variant.productId ?? product.id) === familyProductId && rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched))) continue
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               if (status && (isPublicationLive(status.actualStatus) || isPublicationStatusPending(status.actualStatus, status.lastJobStatus))) continue
               let listingProfileVersion: number | undefined
@@ -2959,7 +2959,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               key={card.connection.id}
               productId={editProductId}
               familyProductIds={productToEdit.data?.familyProductIds}
-              variantLinks={{ total: variantRows.length, linked: variantRows.filter(row => row.platformStatuses?.some(status => status.connectionId === card.connection.id && status.isLinked)).length }}
+              variantLinks={{ total: variantRows.length, linked: variantRows.filter(row => row.platformStatuses?.some(status => status.connectionId === card.connection.id && status.isMatched)).length }}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
               productChecks={productChecks}

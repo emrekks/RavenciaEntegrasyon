@@ -35,6 +35,8 @@ export type Variant = Versioned & {
 export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean }
 export type VariantPlatformStatus = {
   platform: string; platformCode: string; isLinked: boolean; status?: string
+  // Matched to a listing the marketplace holds; isLinked also counts a variant only queued for publication there.
+  isMatched?: boolean
   connectionId?: string | null; offerId?: string | null; listPrice?: number | null; salePrice?: number | null
   currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null
   safetyStock?: number | null; offerVersion?: number | null
