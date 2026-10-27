@@ -240,6 +240,8 @@ public sealed partial class ShopifyHttpClient(
         var ownerKey = requestedFamilyKey is null ? "ravencia_product_id" : "ravencia_family_key";
         var requestedOwner = requestedFamilyKey ?? RequestedMetafield(input, "ravencia_product_id");
         var requestedPayloadHash = RequestedMetafield(input, "payload_hash");
+        IReadOnlyList<RemoteOperationLine>? unchangedLines = null;
+        string? unchangedProductId = null;
         var existingProductResult = await QueryAsync(shop,
             "query($handle:String!,$ownerKey:String!){productByIdentifier(identifier:{handle:$handle}){id status owner:metafield(namespace:\"marketplacehub\",key:$ownerKey){value} payloadHash:metafield(namespace:\"marketplacehub\",key:\"payload_hash\"){value} variants(first:250){nodes{id sku}}}}",
             new { handle, ownerKey }, cancellationToken);
@@ -254,9 +256,11 @@ public sealed partial class ShopifyHttpClient(
                     : null;
                 if (string.IsNullOrWhiteSpace(ownerId) || !string.Equals(ownerId, requestedOwner, StringComparison.OrdinalIgnoreCase))
                     return Fail<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "SHOPIFY_PRODUCT_HANDLE_CONFLICT", "Bu Shopify ürün adresi başka bir kayıt tarafından kullanılıyor; mevcut ürün değiştirilmedi.", HttpStatusCode.Conflict);
-                // Another card of the family already wrote this exact content: nothing is written again.
-                if (UnchangedPublicationLines(existingProduct, requestedPayloadHash, requestedSkus!) is { } unchangedLines)
-                    return AdapterResult<RemoteOperationRef>.Success(new(EncodeCompletedOperation(unchangedLines), "SHOPIFY_PRODUCT_CREATE", timeProvider.GetUtcNow()), existingProductResult.RateLimit);
+                // Another card of the family already wrote this exact content: the product is not written again,
+                // but its Online Store publication below still runs, since that earlier write may have stopped there.
+                unchangedLines = UnchangedPublicationLines(existingProduct, requestedPayloadHash, requestedSkus!);
+                unchangedProductId = unchangedLines is null ? null : TextValue(existingProduct, "id");
+                if (string.IsNullOrWhiteSpace(unchangedProductId)) unchangedLines = null;
             }
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
@@ -327,34 +331,43 @@ public sealed partial class ShopifyHttpClient(
             });
         }
 
-        var productSet = await QueryAsync(shop,
-            "mutation($identifier:ProductSetIdentifiers!,$input:ProductSetInput!){productSet(identifier:$identifier,input:$input,synchronous:true){product{id status variants(first:250){nodes{id sku}}}userErrors{field message}}}",
-            new { identifier = new { handle }, input }, cancellationToken);
-        if (!productSet.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(productSet.Error!, productSet.RateLimit);
         string productId;
         IReadOnlyList<RemoteOperationLine> lines;
-        try
+        AdapterResult<JsonDocument>? productSet = null;
+        if (unchangedLines is not null)
         {
-            var productSetPayload = productSet.Value!.RootElement.GetProperty("productSet");
-            if (HasUserErrors(productSetPayload, out var productError))
-                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_CREATE_REJECTED", productError ?? "Shopify ürünü oluşturmayı reddetti.", HttpStatusCode.UnprocessableEntity);
-            var product = productSetPayload.GetProperty("product");
-            productId = TextValue(product, "id") ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(productId) || !string.Equals(TextValue(product, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase))
-                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATE_CONTRACT_INVALID", "Shopify ürün yanıtında etkin ürün kimliği bulunamadı.", HttpStatusCode.BadGateway);
-            var remoteVariants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray()
-                .Select(variant => new { Id = TextValue(variant, "id"), Sku = TextValue(variant, "sku")?.Trim() })
-                .ToArray();
-            if (remoteVariants.Length != requestedSkus.Length
-                || remoteVariants.Any(variant => string.IsNullOrWhiteSpace(variant.Id) || string.IsNullOrWhiteSpace(variant.Sku))
-                || remoteVariants.Select(variant => variant.Sku).Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedSkus.Length
-                || requestedSkus.Any(sku => !remoteVariants.Any(variant => string.Equals(variant.Sku, sku, StringComparison.OrdinalIgnoreCase))))
-                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_VARIANT_CONTRACT_INVALID", "Shopify yanıtındaki varyant SKU listesi gönderilen ürünle eşleşmiyor.", HttpStatusCode.BadGateway);
-            lines = remoteVariants.Select(variant => new RemoteOperationLine(variant.Sku!, true, variant.Id, null, false, "COMPLETED")).ToArray();
+            productId = unchangedProductId!;
+            lines = unchangedLines;
         }
-        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        else
         {
-            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATE_CONTRACT_INVALID", "Shopify ürün oluşturma yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+            productSet = await QueryAsync(shop,
+                "mutation($identifier:ProductSetIdentifiers!,$input:ProductSetInput!){productSet(identifier:$identifier,input:$input,synchronous:true){product{id status variants(first:250){nodes{id sku}}}userErrors{field message}}}",
+                new { identifier = new { handle }, input }, cancellationToken);
+            if (!productSet.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(productSet.Error!, productSet.RateLimit);
+            try
+            {
+                var productSetPayload = productSet.Value!.RootElement.GetProperty("productSet");
+                if (HasUserErrors(productSetPayload, out var productError))
+                    return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_CREATE_REJECTED", productError ?? "Shopify ürünü oluşturmayı reddetti.", HttpStatusCode.UnprocessableEntity);
+                var product = productSetPayload.GetProperty("product");
+                productId = TextValue(product, "id") ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(productId) || !string.Equals(TextValue(product, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                    return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATE_CONTRACT_INVALID", "Shopify ürün yanıtında etkin ürün kimliği bulunamadı.", HttpStatusCode.BadGateway);
+                var remoteVariants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray()
+                    .Select(variant => new { Id = TextValue(variant, "id"), Sku = TextValue(variant, "sku")?.Trim() })
+                    .ToArray();
+                if (remoteVariants.Length != requestedSkus.Length
+                    || remoteVariants.Any(variant => string.IsNullOrWhiteSpace(variant.Id) || string.IsNullOrWhiteSpace(variant.Sku))
+                    || remoteVariants.Select(variant => variant.Sku).Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedSkus.Length
+                    || requestedSkus.Any(sku => !remoteVariants.Any(variant => string.Equals(variant.Sku, sku, StringComparison.OrdinalIgnoreCase))))
+                    return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_VARIANT_CONTRACT_INVALID", "Shopify yanıtındaki varyant SKU listesi gönderilen ürünle eşleşmiyor.", HttpStatusCode.BadGateway);
+                lines = remoteVariants.Select(variant => new RemoteOperationLine(variant.Sku!, true, variant.Id, null, false, "COMPLETED")).ToArray();
+            }
+            catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+            {
+                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATE_CONTRACT_INVALID", "Shopify ürün oluşturma yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+            }
         }
 
         var publish = await QueryAsync(shop,
@@ -377,7 +390,7 @@ public sealed partial class ShopifyHttpClient(
         }
 
         var operationId = EncodeCompletedOperation(lines);
-        return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRODUCT_CREATE", timeProvider.GetUtcNow()), publish.RateLimit ?? productSet.RateLimit ?? publicationsResult.RateLimit ?? locationsResult.RateLimit);
+        return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRODUCT_CREATE", timeProvider.GetUtcNow()), publish.RateLimit ?? productSet?.RateLimit ?? publicationsResult.RateLimit ?? locationsResult.RateLimit);
     }
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
@@ -394,7 +407,41 @@ public sealed partial class ShopifyHttpClient(
         }
         catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException) { return Unsupported<RemoteOperationStatus>("Shopify operation sonucu geçersiz."); }
     }
-    public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Unsupported<RemotePublicationStatus>("Shopify ürün yazma ilk sürümde kapalıdır.");
+    // The publication state of one SKU: NOT_FOUND when no variant of the store carries it, APPROVED when an
+    // active product does, PENDING when its product is a draft or archived.
+    public async Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
+    {
+        var sku = barcode.Trim();
+        if (sku.Length == 0) return Fail<RemotePublicationStatus>(AdapterErrorClass.Validation, "SHOPIFY_SKU_REQUIRED", "Shopify yayın durumu için stok kodu gerekir.", HttpStatusCode.BadRequest);
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return CredentialFailure(Fail<RemotePublicationStatus>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
+        var result = await QueryAsync(shop,
+            "query($query:String!){productVariants(first:10,query:$query){nodes{id sku product{id status}}}}",
+            new { query = $"sku:\"{sku.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\"" }, cancellationToken);
+        if (!result.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(result.Error!, result.RateLimit);
+        try
+        {
+            var raw = result.Value!.RootElement.GetProperty("productVariants");
+            return AdapterResult<RemotePublicationStatus>.Success(MapSkuPublicationStatus(sku, raw), result.RateLimit);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<RemotePublicationStatus>(AdapterErrorClass.ContractViolation, "SHOPIFY_PUBLICATION_STATUS_CONTRACT_INVALID", "Shopify varyant arama yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+        }
+    }
+
+    internal static RemotePublicationStatus MapSkuPublicationStatus(string sku, JsonElement productVariants)
+    {
+        // The search is a prefix-tolerant index lookup; only an exact SKU counts.
+        var matches = productVariants.GetProperty("nodes").EnumerateArray()
+            .Where(variant => string.Equals(TextValue(variant, "sku")?.Trim(), sku, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (matches.Length == 0) return new(sku, "NOT_FOUND", null, null, null, productVariants.GetRawText());
+        if (matches.Length > 1) throw new JsonException("Several Shopify variants carry the same SKU.");
+        var product = matches[0].GetProperty("product");
+        var status = string.Equals(TextValue(product, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase) ? "APPROVED" : "PENDING";
+        return new(sku, status, TextValue(product, "id"), TextValue(matches[0], "id"), null, matches[0].GetRawText());
+    }
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     private const string PriceInventoryVariantFields = "id product{id} inventoryItem{id tracked inventoryLevels(first:250){nodes{location{id isActive} quantities(names:[\"available\"]){name quantity}} pageInfo{hasNextPage}}}";
 

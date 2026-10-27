@@ -120,6 +120,30 @@ public sealed class ShopifyFamilyPublicationTests
     }
 
     [Fact]
+    public void AQueuedFamilyPublicationIsStaleOnlyWhenItsVariantListOrHandleChanged()
+    {
+        const string queued = """{"handle":"ravencia-model-a","variants":[{"sku":"MZ-S-L","price":"100.00"},{"sku":"MZ-K-L","price":"100.00"}]}""";
+
+        Assert.True(ShopifyProductPublicationComposer.SameVariantSkus(queued, """{"handle":"ravencia-model-a","variants":[{"sku":"mz-k-l","price":"90.00"},{"sku":"MZ-S-L","price":"95.00"}]}"""));
+        Assert.False(ShopifyProductPublicationComposer.SameVariantSkus(queued, """{"handle":"ravencia-model-a","variants":[{"sku":"MZ-S-L"},{"sku":"MZ-K-L"},{"sku":"MZ-B-L"}]}"""));
+        Assert.False(ShopifyProductPublicationComposer.SameVariantSkus(queued, """{"handle":"ravencia-model-b","variants":[{"sku":"MZ-S-L"},{"sku":"MZ-K-L"}]}"""));
+        Assert.False(ShopifyProductPublicationComposer.SameVariantSkus(queued, "not json"));
+    }
+
+    [Fact]
+    public void ASkuReadsAsMissingLiveOrPendingOnlyByAnExactMatch()
+    {
+        using var none = JsonDocument.Parse("""{ "nodes": [ { "id": "v-9", "sku": "MZ-S-L2", "product": { "id": "p-9", "status": "ACTIVE" } } ] }""");
+        using var live = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "mz-s-l", "product": { "id": "p-1", "status": "ACTIVE" } } ] }""");
+        using var draft = JsonDocument.Parse("""{ "nodes": [ { "id": "v-2", "sku": "MZ-S-L", "product": { "id": "p-2", "status": "DRAFT" } } ] }""");
+
+        Assert.Equal("NOT_FOUND", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", none.RootElement).Status);
+        var approved = ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", live.RootElement);
+        Assert.Equal(("APPROVED", "p-1", "v-1"), (approved.Status, approved.ExternalProductId, approved.ExternalVariantId));
+        Assert.Equal("PENDING", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", draft.RootElement).Status);
+    }
+
+    [Fact]
     public void AnUncertainCreateKeepsTheMarketplacesOwnCodeAndMessage()
     {
         var summary = MarketplaceJobProcessor.AmbiguousCreateSummary(new(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Online Store kanalına yayınlayamadı: erişim yok", 502, null, null));

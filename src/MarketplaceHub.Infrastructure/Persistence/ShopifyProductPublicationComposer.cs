@@ -217,6 +217,31 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         !string.IsNullOrWhiteSpace(mappedProductType) ? mappedProductType
         : string.IsNullOrWhiteSpace(panelCategoryName) ? null : panelCategoryName.Trim();
 
+    // The same handle and the same variant SKUs: prices and stock may have moved since, the variant list has not.
+    internal static bool SameVariantSkus(string queuedPayloadJson, string currentPayloadJson)
+    {
+        static (string? Handle, string[] Skus) Read(string json)
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var handle = root.TryGetProperty("handle", out var value) ? value.GetString() : null;
+            var skus = root.TryGetProperty("variants", out var variants) && variants.ValueKind == JsonValueKind.Array
+                ? variants.EnumerateArray().Select(variant => variant.TryGetProperty("sku", out var sku) ? sku.GetString()?.Trim().ToUpperInvariant() ?? "" : "").Order(StringComparer.Ordinal).ToArray()
+                : [];
+            return (handle, skus);
+        }
+        try
+        {
+            var queued = Read(queuedPayloadJson);
+            var current = Read(currentPayloadJson);
+            return string.Equals(queued.Handle, current.Handle, StringComparison.Ordinal) && queued.Skus.SequenceEqual(current.Skus, StringComparer.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     internal static bool IsModelFamily(string familyKey) => familyKey.StartsWith("model:", StringComparison.Ordinal);
 
     // A product without a model code keeps its own handle; a model family has one handle for all its cards.
