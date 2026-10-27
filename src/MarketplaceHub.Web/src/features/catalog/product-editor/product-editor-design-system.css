@@ -217,6 +217,25 @@
 @layer features {
   .variant-marketplace-codes-button { margin-left: auto; }
   .marketplace-codes-modal { width: min(760px, 100%); }
+  /* Variant option text: read only, changed through the pencil (Varyant Düzenleme). */
+  .variant-option-cell { position: relative; display: flex; align-items: center; min-width: 0; }
+  .variant-option-cell > input { width: 100%; padding-right: 40px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); cursor: default; text-overflow: ellipsis; }
+  .variant-option-cell > .variant-option-edit-button { position: absolute; right: 5px; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 24%, transparent); border-radius: 7px; cursor: pointer; }
+  .variant-option-cell > .variant-option-edit-button:hover { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
+  .variant-option-cell > .variant-option-edit-button:disabled { opacity: .4; cursor: not-allowed; }
+  .variant-option-edit-modal { width: min(560px, 100%); }
+  .variant-option-edit-body { display: grid; gap: 16px; padding: 20px 24px 0; overflow: auto; }
+  .variant-option-edit-grid { display: grid; gap: 12px; }
+  .variant-option-edit-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .variant-option-edit-pair label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--rv-color-muted); }
+  .variant-option-edit-pair input, .variant-option-edit-pair select { height: 36px; min-height: 0; }
+  .variant-option-edit-pair input:disabled { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
+  .variant-option-edit-switch { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; cursor: pointer; }
+  .variant-option-edit-switch > span { display: grid; gap: 2px; flex: 1; }
+  .variant-option-edit-switch small { color: var(--rv-color-muted); font-size: 12px; }
+  .variant-option-edit-body > footer { display: flex; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
+  .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
+  @media (max-width: 560px) { .variant-option-edit-pair { grid-template-columns: 1fr; } }
   .marketplace-codes-body { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4) var(--rv-space-5); min-width: 0; }
   .marketplace-codes-table-wrap { max-height: min(60vh, 520px); overflow: auto; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .marketplace-codes-table { width: 100%; border-collapse: collapse; font-size: var(--rv-font-size-sm); }
