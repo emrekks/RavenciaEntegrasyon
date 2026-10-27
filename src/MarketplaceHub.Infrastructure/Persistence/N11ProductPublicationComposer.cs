@@ -36,7 +36,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "N11", cancellationToken);
         if (connection is null) return NotFound();
         var (shipmentTemplate, preparingDay) = PublishSettings(connection.SettingsJson);
-        if (shipmentTemplate is null) return Fail("N11_SHIPMENT_TEMPLATE_REQUIRED", "N11'de ürün açmak için Entegrasyonlar bölümündeki N11 bağlantısına kargo şablonu adı girilmelidir. Ad, N11 satıcı panelindeki kargo şablonuyla birebir aynı olmalıdır.");
+        if (shipmentTemplate is null) return Fail("N11_SHIPMENT_TEMPLATE_REQUIRED", "N11'de ürün açmak için kargo şablonu seçilmemiş. Entegrasyonlar → N11 → Araçlar → N11 Ürün Açma Ayarları'nda N11'den okunan şablonlardan birini seçip Ayarları Kaydet'e basın.");
         if (preparingDay is < 1 or > MaxPreparingDay) return Fail("N11_PREPARING_DAY_INVALID", $"N11 bağlantısındaki hazırlık süresi 1-{MaxPreparingDay} gün arasında olmalıdır.");
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi N11 bağlantısına ait listing profile oluşturulmalıdır.");
