@@ -47,10 +47,10 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var familyKey = ProductFamilyKeyPolicy.FamilyKey(productId, product.BrandId, modelCode);
         var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
         if (!familyIds.Contains(productId)) familyIds.Add(productId);
-        // Card order is creation order (version 7 ids), so the colours keep one order on every publication.
+        // Card order is creation order (the id breaks a tie), so the colours keep one order on every publication.
         var members = await db.Products.AsNoTracking()
             .Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status != ProductStatus.Archived)
-            .OrderBy(x => x.Id)
+            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
         var lead = members[0];
         var memberIds = members.Select(x => x.Id).ToArray();

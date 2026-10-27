@@ -815,8 +815,11 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var (brown, brownL) = NewVariant(tenant, "FAM-K-L", "8690000000303");
         var brownXl = NewVariant(tenant, "FAM-K-XL", "8690000000304", brown.Id).Variant;
         black.Title = brown.Title = "Yonca Bluz";
-        var variants = new[] { blackL, blackXl, brownL, brownXl };
         var now = DateTimeOffset.UtcNow;
+        black.CreatedAt = now.AddMinutes(-5);
+        brown.CreatedAt = now;
+        blackXl.SortOrder = brownXl.SortOrder = 1;
+        var variants = new[] { blackL, blackXl, brownL, brownXl };
         var rows = new List<object>();
         foreach (var (product, colour, cardVariants) in new[] { (black, "Siyah", new[] { blackL, blackXl }), (brown, "Kahverengi", new[] { brownL, brownXl }) })
         {
