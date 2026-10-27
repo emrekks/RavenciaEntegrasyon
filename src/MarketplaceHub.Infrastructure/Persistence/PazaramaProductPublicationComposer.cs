@@ -180,7 +180,9 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
                 if (localValue is null) return Fail("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için güncel Pazarama değer eşlemesi gerekir.");
                 var mapped = await ResolveMappedValueIdAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, localValue.Value, cancellationToken);
                 if (!mapped.Succeeded) return ServiceResult<ProductPublicationDraft>.Fail(mapped.Error!.Code, mapped.Error.Message, mapped.Error.Status, mapped.Error.FieldErrors);
-                if (!emittedIds.Add(optionMapping.ExternalId)) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{option.Label}' için atama ile varyant seçeneği aynı anda tanımlanmış.");
+                // The variant option is the field's truth: an attribute assignment of the same field (Beden held on each
+                // variant as well, live 27 Oct 2026) is replaced by it instead of stopping the publication.
+                if (!emittedIds.Add(optionMapping.ExternalId)) attributes.RemoveAll(attribute => string.Equals(attribute.AttributeId, optionMapping.ExternalId, StringComparison.OrdinalIgnoreCase));
                 attributes.Add(new(optionMapping.ExternalId, mapped.Value!));
             }
 

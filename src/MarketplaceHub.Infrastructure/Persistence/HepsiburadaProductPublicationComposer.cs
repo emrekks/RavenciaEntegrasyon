@@ -207,7 +207,9 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                 else if (optionRemote.AllowsCustomValue == true) optionValue = option.ValueLabel.Trim();
                 else return Fail("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için güncel Hepsiburada değer eşlemesi gerekir.");
                 var optionImportKey = AttributeImportKey(optionRemote.ExternalId)!;
-                if (!emittedKeys.Add(optionImportKey)) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{optionRemote.Name}' için atama ile varyant seçeneği aynı anda tanımlanmış.");
+                // The variant option is the field's truth: an attribute assignment of the same field (Beden held on each
+                // variant as well, live 27 Oct 2026) is replaced by it instead of stopping the publication.
+                emittedKeys.Add(optionImportKey);
                 importAttributes[optionImportKey] = optionValue;
             }
 
