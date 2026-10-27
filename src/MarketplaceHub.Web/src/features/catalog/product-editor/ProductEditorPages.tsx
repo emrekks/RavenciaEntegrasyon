@@ -823,16 +823,18 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const partialLabel = someLinked ? `Kısmen yayında (${linkedCount}/${linkedTotal} varyant)` : `Kısmen yayında (${familyLiveCount}/${familyTotal} renk)`
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
+  // card.code is lower case (it also names the logo tone); the platform code decides the Shopify-only checks.
+  const isShopifyCard = card.connection.platformCode.trim().toUpperCase() === 'SHOPIFY'
   const shopifyWriteCapabilities = useQuery<Array<{ code: string; supportLevel: string; verifiedForConnection: boolean }>>({
     queryKey: ['capabilities', card.connection.id],
     queryFn: () => hubApi(`/connections/${card.connection.id}/capabilities`),
-    enabled: card.mode === 'PUBLISH' && card.code === 'SHOPIFY',
+    enabled: card.mode === 'PUBLISH' && isShopifyCard,
     staleTime: 15_000,
     retry: false
   })
-  const shopifyCapabilityCheckPending = card.mode === 'PUBLISH' && card.code === 'SHOPIFY' && shopifyWriteCapabilities.isPending
+  const shopifyCapabilityCheckPending = card.mode === 'PUBLISH' && isShopifyCard && shopifyWriteCapabilities.isPending
   const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE']
-  const missingShopifyCapabilities = card.code === 'SHOPIFY' && shopifyWriteCapabilities.data
+  const missingShopifyCapabilities = isShopifyCard && shopifyWriteCapabilities.data
     ? requiredShopifyCapabilities.filter(code => !shopifyWriteCapabilities.data?.some(capability => capability.code === code && capability.supportLevel.toUpperCase() === 'SUPPORTED' && capability.verifiedForConnection))
     : []
   useEffect(() => {
@@ -840,9 +842,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   }, [alreadyPublished, onDeselect, selected])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
   const missingChecks = card.mode === 'PUBLISH' ? productChecks
-    .filter(check => !(card.code === 'SHOPIFY' ? check.shopifyOk ?? check.ok : check.ok))
-    .map(check => ({ ...check, detail: card.code === 'SHOPIFY' ? check.shopifyDetail ?? check.detail : check.detail })) : []
-  const mappingReadinessEnabled = card.mode === 'PUBLISH' && card.code !== 'SHOPIFY' && (!productId || !publication.isPending)
+    .filter(check => !(isShopifyCard ? check.shopifyOk ?? check.ok : check.ok))
+    .map(check => ({ ...check, detail: isShopifyCard ? check.shopifyDetail ?? check.detail : check.detail })) : []
+  const mappingReadinessEnabled = card.mode === 'PUBLISH' && !isShopifyCard && (!productId || !publication.isPending)
     && shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus)
   const mappingReadiness = useQuery({
     queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
@@ -913,7 +915,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const blockedIssues = [
     ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
     ...(missingShopifyCapabilities.length ? [{ attribute: 'Shopify API izinleri', detail: `Ürün göndermeden önce Entegrasyonlar bölümünde Shopify erişimini yeniden yetkilendirin ve ${missingShopifyCapabilities.join(', ')} izinlerini doğrulayın.` }] : []),
-    ...(card.code === 'SHOPIFY' && shopifyWriteCapabilities.isError ? [{ attribute: 'Shopify API izin kontrolü', detail: 'Shopify bağlantı izinleri okunamadı. Entegrasyonlar bölümünde bağlantıyı test edip izin kanıtlarını yenileyin.' }] : []),
+    ...(isShopifyCard && shopifyWriteCapabilities.isError ? [{ attribute: 'Shopify API izin kontrolü', detail: 'Shopify bağlantı izinleri okunamadı. Entegrasyonlar bölümünde bağlantıyı test edip izin kanıtlarını yenileyin.' }] : []),
     ...requiredMappingIssues,
     ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: publicationReadinessFailureDetail(card.name, mappingReadiness.error) }] : [])
   ]
