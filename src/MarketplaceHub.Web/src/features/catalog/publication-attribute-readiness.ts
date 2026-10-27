@@ -83,6 +83,8 @@ export function classifyPublicationAttributeIssues(input: {
   valueReferencesByAttribute: Record<string, PublicationValueReferenceSet>
   // Marketplace attributes the connection fills with a default when the product has no value.
   defaultedAttributeIds?: readonly string[]
+  // The marketplace sends a value with no mapped marketplace value as its own text where the field takes free text (n11).
+  sendsUnmappedValuesAsFreeText?: boolean
 }): PublicationAttributeIssues {
   const requiredIssues: PublicationAttributeIssue[] = []
   const optionalWarnings: PublicationAttributeIssue[] = []
@@ -164,6 +166,7 @@ export function classifyPublicationAttributeIssues(input: {
     }
 
     if (isCustomPanelColorName(remote.name)) continue
+    if (input.sendsUnmappedValuesAsFreeText && remote.allowsCustomValue === true) continue
     const references = input.valueReferencesByAttribute[remote.externalId]
     for (const value of selected.values) {
       const valueMapping = references?.mappings.find(candidate =>

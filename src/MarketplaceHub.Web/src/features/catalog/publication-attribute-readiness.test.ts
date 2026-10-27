@@ -28,6 +28,20 @@ describe('publication attribute readiness', () => {
     expect(withoutFix(result.optionalWarnings)).toEqual([{ attribute: 'Ek Özellik', detail: '“Extra Soft” için güncel Trendyol değer eşlemesi yok.' }])
   })
 
+  it('lets an unmapped value through where the marketplace sends it as free text, and only there', () => {
+    const unmapped = { ...baseInput.valueReferencesByAttribute['remote-extra'], snapshotId: '', items: [], mappings: [] }
+    const freeTextField = [{ ...baseInput.remoteAttributes[0], allowsCustomValue: true }]
+    const n11 = classifyPublicationAttributeIssues({ ...baseInput, platformName: 'n11', remoteAttributes: freeTextField, valueReferencesByAttribute: { 'remote-extra': unmapped }, sendsUnmappedValuesAsFreeText: true })
+    expect(n11.requiredIssues).toEqual([])
+    expect(n11.optionalWarnings).toEqual([])
+
+    const listOnly = classifyPublicationAttributeIssues({ ...baseInput, platformName: 'n11', valueReferencesByAttribute: { 'remote-extra': unmapped }, sendsUnmappedValuesAsFreeText: true })
+    expect(withoutFix(listOnly.optionalWarnings)).toEqual([{ attribute: 'Ek Özellik', detail: '“Extra Soft” için güncel n11 değer eşlemesi yok.' }])
+
+    const otherMarketplace = classifyPublicationAttributeIssues({ ...baseInput, remoteAttributes: freeTextField, valueReferencesByAttribute: { 'remote-extra': unmapped } })
+    expect(withoutFix(otherMarketplace.optionalWarnings)).toEqual([{ attribute: 'Ek Özellik', detail: '“Extra Soft” için güncel Trendyol değer eşlemesi yok.' }])
+  })
+
   it('blocks a required attribute whose selected value has no current verified mapping', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,

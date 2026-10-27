@@ -891,6 +891,8 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       const brandAttributeIds = card.connection.platformCode.trim().toUpperCase() === 'N11' ? ['1'] : []
       const result = classifyPublicationAttributeIssues({
         defaultedAttributeIds: [...attributeDefaults.map(item => item.externalAttributeId), ...brandAttributeIds],
+        // n11 sends an unmapped value of a free-text field (Boy: Regular) as its own text (N11ProductPublicationComposer).
+        sendsUnmappedValuesAsFreeText: card.connection.platformCode.trim().toUpperCase() === 'N11',
         selectedAttributes,
         remoteAttributes: attributeReferences.items,
         attributeSnapshotId: attributeReferences.snapshotId,
