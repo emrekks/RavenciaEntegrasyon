@@ -442,6 +442,10 @@ public sealed class HepsiburadaAdapterTests
         Assert.Contains("alanlar: success,totalElements,data", shape, StringComparison.Ordinal);
         Assert.Contains("satır: 1", shape, StringComparison.Ordinal);
         Assert.Contains("ürün=Yeni Durum", shape, StringComparison.Ordinal);
+        Assert.Contains("satır alanları: merchantSku,productStatus", shape, StringComparison.Ordinal);
+
+        using var bare = JsonDocument.Parse("""{"data":[{"itemOrderID":1,"merchantSku":null,"sku":"SKU-ONE"}]}""");
+        Assert.Contains("satır alanları: itemOrderID,merchantSku(boş),sku", HepsiburadaJsonMapper.ProductImportStatusShape(bare.RootElement), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -498,6 +498,11 @@ internal static class HepsiburadaJsonMapper
         var data = Unwrap(root);
         var items = data.ValueKind == JsonValueKind.Array ? data : Find(data, "items", "products", "productStatuses", "productList", "results");
         if (items.ValueKind == JsonValueKind.Array) parts.Add($"satır: {items.GetArrayLength()}");
+        // The first line's field names, a null or empty one marked, so a line that lacks merchantSku or productStatus
+        // shows what it carries instead (live 27 Oct 2026: three lines, neither field found).
+        if (items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > 0 && items[0].ValueKind == JsonValueKind.Object)
+            parts.Add("satır alanları: " + string.Join(",", items[0].EnumerateObject().Take(20).Select(property =>
+                Safe(property.Name) + (property.Value.ValueKind is JsonValueKind.Null || (property.Value.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(property.Value.GetString())) ? "(boş)" : ""))));
         var statuses = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var source in new[] { root, data })
             if (source.ValueKind == JsonValueKind.Object && Text(source, "importStatus", "status") is { } value) statuses.Add("aktarım=" + Safe(value));
