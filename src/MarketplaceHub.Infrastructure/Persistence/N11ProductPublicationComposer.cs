@@ -94,6 +94,15 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
             .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
+        // A variant already live on n11 (live state and an n11 variant link) is not sent again: publishing a partly refused
+        // card sends only its other variants, under the same productMainId so n11 keeps them in one product.
+        var cardVariantIds = variants.Select(x => x.Id).ToArray();
+        var liveVariantIds = await (from state in db.MarketplaceListingStates.AsNoTracking()
+                                    join link in db.MarketplaceVariantLinks.AsNoTracking() on new { state.TenantId, state.ConnectionId, state.VariantId } equals new { link.TenantId, link.ConnectionId, link.VariantId }
+                                    where state.TenantId == tenantId && state.ConnectionId == connectionId && cardVariantIds.Contains(state.VariantId) && state.ActualStatus == "LIVE"
+                                    select state.VariantId).ToListAsync(cancellationToken);
+        variants = variants.Where(x => !liveVariantIds.Contains(x.Id)).ToList();
+        if (variants.Count == 0) return Fail("PRODUCT_ALREADY_LIVE", "Kartın bütün varyantları N11'de zaten yayında.", status: 409);
         if (variants.Count > N11PriceInventoryRules.MaxSkusPerRequest) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", $"Tek N11 ürün açma isteğinde en fazla {N11PriceInventoryRules.MaxSkusPerRequest} varyant gönderilebilir.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Sku) || x.Sku.Trim().Length > MaxStockCodeLength)) return Fail("STOCK_CODE_INVALID", $"N11 stok kodu olarak kullanılan SKU boş olmamalı ve en fazla {MaxStockCodeLength} karakter olmalıdır.");
         if (variants.Select(x => x.Sku.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("STOCK_CODE_DUPLICATE", "N11 ürün açma isteğindeki stok kodları (SKU) benzersiz olmalıdır.");

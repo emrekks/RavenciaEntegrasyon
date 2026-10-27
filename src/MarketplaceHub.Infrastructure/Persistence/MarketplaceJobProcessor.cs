@@ -404,11 +404,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         if (string.Equals(payload.Phase, "SUBMIT", StringComparison.OrdinalIgnoreCase))
         {
-            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; pazar yeri isteği gönderilmedi."), cancellationToken);
+            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; pazar yeri isteği gönderilmedi."), cancellationToken, payload.PayloadHash);
             if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             {
-                if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", JobExecutionResult.Blocked("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi doğrulanmadı; ürün aktarımı gönderilmedi."), cancellationToken);
-                if (!await HasHepsiburadaPublicationEvidenceAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", JobExecutionResult.Blocked("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Bu mağaza/ortamda doğrulanmış fiyat ve stok yazma kanıtı bulunamadı; bağlantıyı test edin. Ürün aktarımı gönderilmedi."), cancellationToken);
+                if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", JobExecutionResult.Blocked("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi doğrulanmadı; ürün aktarımı gönderilmedi."), cancellationToken, payload.PayloadHash);
+                if (!await HasHepsiburadaPublicationEvidenceAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", JobExecutionResult.Blocked("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Bu mağaza/ortamda doğrulanmış fiyat ve stok yazma kanıtı bulunamadı; bağlantıyı test edin. Ürün aktarımı gönderilmedi."), cancellationToken, payload.PayloadHash);
             }
             // A Shopify product carries the whole model family and productSet deletes the variants it is not sent, so a
             // job composed before the family's variants changed must not write its older variant list.
@@ -416,10 +416,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 var current = await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, payload.ProductId, connectionId, cancellationToken);
                 if (!current.Succeeded || !ShopifyProductPublicationComposer.SameVariantSkus(payload.PayloadJson, current.Value!.PayloadJson))
-                    return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste Shopify'a gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken);
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste Shopify'a gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
             }
             var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
-            if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken);
+            if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken, payload.PayloadHash);
 
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ProductCreate, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
             db.ExternalEffectRecords.Add(effect);
@@ -432,12 +432,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 TrackResultFailure(submit.Error);
                 var error = submit.Error!;
                 if (error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug)
-                    return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", AmbiguousCreateSummary(error), error.RemoteRequestId), cancellationToken);
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", AmbiguousCreateSummary(error), error.RemoteRequestId), cancellationToken, payload.PayloadHash);
                 db.ExternalEffectRecords.Remove(effect);
                 await db.SaveChangesAsync(cancellationToken);
                 var adapterResult = JobExecutionResult.FromAdapterError(error);
                 var status = adapterResult.Kind == JobCompletionKind.Retry ? "RETRY_SCHEDULED" : adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
-                return await MarkPublicationResult(tenantId, connectionId, profile, status, error.Code, adapterResult, cancellationToken);
+                return await MarkPublicationResult(tenantId, connectionId, profile, status, error.Code, adapterResult, cancellationToken, payload.PayloadHash);
             }
 
             var operation = submit.Value!;
@@ -450,7 +450,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "SHOPIFY_SUBMITTED" : "BATCH_SUBMITTED";
             profile.LastRejectionCode = null;
             profile.Version++;
-            await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken);
+            await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken, payload.PayloadHash);
             await db.SaveChangesAsync(cancellationToken);
             var waitingMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import sonucu bekleniyor."
@@ -460,7 +460,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         if (!string.Equals(payload.Phase, "POLL", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_PHASE_INVALID", "Yayın işi bilinmeyen bir fazda.");
-        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_RESULT_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_BATCH_RESULT_EXPIRED", "Batch sonucu dört saatlik sorgulama penceresinde tamamlanamadı.", payload.ExternalOperationId), cancellationToken);
+        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_RESULT_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_BATCH_RESULT_EXPIRED", "Batch sonucu dört saatlik sorgulama penceresinde tamamlanamadı.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
 
         TrackRequest();
         var operationResult = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
@@ -470,7 +470,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var adapterResult = JobExecutionResult.FromAdapterError(operationResult.Error!);
             if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
             var status = adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
-            return await MarkPublicationResult(tenantId, connectionId, profile, status, operationResult.Error!.Code, adapterResult, cancellationToken);
+            return await MarkPublicationResult(tenantId, connectionId, profile, status, operationResult.Error!.Code, adapterResult, cancellationToken, payload.PayloadHash);
         }
 
         var operationStatus = operationResult.Value!;
@@ -480,7 +480,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ? "IMPORT_IN_PROGRESS"
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "SHOPIFY_IN_PROGRESS" : "BATCH_IN_PROGRESS";
             profile.Version++;
-            await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken);
+            await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken, payload.PayloadHash);
             await db.SaveChangesAsync(cancellationToken);
             var runningMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import işlemi sürüyor."
@@ -490,15 +490,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         // n11 drops a whole task without per-SKU lines when it rejects it; nothing was created.
         if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
-            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "N11_TASK_REJECTED", JobExecutionResult.Blocked("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir.", payload.ExternalOperationId), cancellationToken);
+            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "N11_TASK_REJECTED", JobExecutionResult.Blocked("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         // PTT AVM cancelled the whole send without a per-product answer.
         if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
-            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "PTTAVM_PRODUCT_REJECTED", JobExecutionResult.Blocked("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir.", payload.ExternalOperationId), cancellationToken);
-        if (!string.Equals(operationStatus.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_BATCH_STATUS_UNKNOWN", "Batch servisi tanınmayan bir durum döndürdü.", payload.ExternalOperationId), cancellationToken);
+            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "PTTAVM_PRODUCT_REJECTED", JobExecutionResult.Blocked("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        if (!string.Equals(operationStatus.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_BATCH_STATUS_UNKNOWN", "Batch servisi tanınmayan bir durum döndürdü.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
 
         var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
         var listingVariantIds = listings.Select(x => x.VariantId).ToArray();
         var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && listingVariantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        // Only this job's variants answer: a resend of a card's refused variants leaves its live ones out of the result.
+        listings = listings.Where(listing => !states.TryGetValue(listing.VariantId, out var sent) || string.Equals(sent.PayloadHash, payload.PayloadHash, StringComparison.Ordinal)).ToList();
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isShopify = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase);
         // n11 task lines carry the stock code (the listing SKU) as their key.
@@ -507,15 +509,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
         var remoteKeyLabel = isN11 ? "stok kodu" : isShopify || isHepsiburada ? "merchantSku" : "barkod";
         var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM" : "Trendyol";
-        if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken);
+        if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         var resultKeys = listings.Select(x => keyedBySku ? x.ExternalSku ?? "" : x.ExternalBarcode ?? "").ToList();
-        if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken);
+        if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         var resultKeyByListing = listings.ToDictionary(x => keyedBySku ? x.ExternalSku! : x.ExternalBarcode!, x => x, StringComparer.OrdinalIgnoreCase);
         var resultByKey = lines.ToDictionary(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase);
         // A Shopify product carries the whole model family; this card's job records only this card's SKUs.
         if (isShopify) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-        if (resultKeyByListing.Keys.Any(key => !resultByKey.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
-        if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken);
+        if (resultKeyByListing.Keys.Any(key => !resultByKey.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
 
         var succeeded = 0;
         foreach (var listing in listings)
@@ -574,7 +576,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var states = allVariantIds.Length == 0
             ? new Dictionary<Guid, MarketplaceListingState>()
             : await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && allVariantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
-        if (states.Values.Any(x => !string.Equals(x.PayloadHash, payload.PayloadHash, StringComparison.Ordinal)))
+        // A variant already live from an earlier publication keeps that payload's hash when only its refused siblings were
+        // sent again; it does not make this check stale.
+        if (states.Values.Any(x => !string.Equals(x.PayloadHash, payload.PayloadHash, StringComparison.Ordinal) && !string.Equals(x.ActualStatus, "LIVE", StringComparison.Ordinal)))
             return JobExecutionResult.Blocked("PRODUCT_APPROVAL_SUPERSEDED", "Daha yeni bir ürün yayınlama payload'ı bulundu; eski onay işi güncel listing durumunu değiştirmedi.");
         if (timeProvider.GetUtcNow() > payload.DeadlineAt)
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_DEADLINE_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_DEADLINE_EXPIRED", $"{marketplaceName} ürün onayı belirlenen uzlaştırma penceresinde terminal duruma ulaşmadı."), cancellationToken);
@@ -1296,21 +1300,25 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
     }
 
-    private async Task<JobExecutionResult> MarkPublicationResult(Guid tenantId, Guid connectionId, ChannelListingProfile profile, string status, string? rejectionCode, JobExecutionResult result, CancellationToken cancellationToken)
+    // onlyPayloadHash: a create job writes only the variants it sent (those carrying its payload hash); a variant already
+    // live from an earlier publication of the card keeps its state when only its refused siblings are sent again.
+    private async Task<JobExecutionResult> MarkPublicationResult(Guid tenantId, Guid connectionId, ChannelListingProfile profile, string status, string? rejectionCode, JobExecutionResult result, CancellationToken cancellationToken, string? onlyPayloadHash = null)
     {
         profile.ActualStatus = status;
         profile.LastRejectionCode = SafeCode(rejectionCode);
         profile.Version++;
-        await SetListingStatus(tenantId, connectionId, profile.Id, status, rejectionCode, cancellationToken);
+        await SetListingStatus(tenantId, connectionId, profile.Id, status, rejectionCode, cancellationToken, onlyPayloadHash);
         await db.SaveChangesAsync(cancellationToken);
         return result;
     }
 
-    private async Task SetListingStatus(Guid tenantId, Guid connectionId, Guid profileId, string status, string? rejectionCode, CancellationToken cancellationToken)
+    private async Task SetListingStatus(Guid tenantId, Guid connectionId, Guid profileId, string status, string? rejectionCode, CancellationToken cancellationToken, string? onlyPayloadHash = null)
     {
         var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profileId).ToListAsync(cancellationToken);
         var variantIds = listings.Select(x => x.VariantId).ToArray();
         var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        if (onlyPayloadHash is not null)
+            listings = listings.Where(listing => !states.TryGetValue(listing.VariantId, out var sent) || string.Equals(sent.PayloadHash, onlyPayloadHash, StringComparison.Ordinal)).ToList();
         foreach (var listing in listings)
         {
             listing.ActualStatus = status;

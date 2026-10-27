@@ -1859,7 +1859,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var states = await db.MarketplaceListingStates
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && listingVariants.Contains(x.VariantId))
             .ToListAsync(cancellationToken);
-        var payloadHashes = states.Select(x => x.PayloadHash).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToArray();
+        // A variant live from an earlier publication keeps that payload's hash when only refused siblings were sent again;
+        // the check follows the newer payload the other variants carry.
+        var pendingStates = states.Where(x => !string.Equals(x.ActualStatus, "LIVE", StringComparison.Ordinal)).ToList();
+        var payloadHashes = (pendingStates.Count > 0 ? pendingStates : states).Select(x => x.PayloadHash).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToArray();
         if (states.Count != listingVariants.Count || payloadHashes.Length != 1)
             return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", $"Yayın durumu eşitlenemedi; önce ürünü {platformName} pazaryerine gönderin.", 409);
 

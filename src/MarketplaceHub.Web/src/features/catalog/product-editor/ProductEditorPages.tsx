@@ -2429,7 +2429,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           const familyFailures = new Map<string, number[]>()
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
-              if (product.variants.some(variant => (variant.productId ?? product.id) === familyProductId && rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched))) continue
+              // n11 sends only a card's variants not yet live there, so a partly refused n11 card goes again; elsewhere a
+              // card with a matched variant is left as it is (its publication would send the whole card).
+              const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
+              const matchedCount = cardVariants.filter(variant => rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched)).length
+              const resendsRefused = connections.data?.items.find(item => item.id === connectionId)?.platformCode === 'N11'
+              if (matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) continue
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               if (status && (isPublicationLive(status.actualStatus) || isPublicationStatusPending(status.actualStatus, status.lastJobStatus))) continue
               let listingProfileVersion: number | undefined
