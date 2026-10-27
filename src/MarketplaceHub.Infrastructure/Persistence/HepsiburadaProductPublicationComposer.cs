@@ -158,8 +158,9 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                     return Fail("WARRANTY_INVALID", "Garanti süresi ay cinsinden tam sayı olmalıdır.");
                 importAttributes["GarantiSuresi"] = warrantyMonths;
             }
-            // The product's own warranty (editor "Garanti Süresi") when the connection gives none of its own.
-            else if (product.WarrantyMonths is int productWarranty) importAttributes["GarantiSuresi"] = productWarranty;
+            // The product's own warranty (editor "Garanti Süresi") when the connection gives none of its own; the editor
+            // stores its 0 default as empty, and that 0 is what the seller chose, so it is sent as 0.
+            else importAttributes["GarantiSuresi"] = product.WarrantyMonths ?? 0;
             if (variant.Desi is > 0)
             {
                 if (variant.Desi.Value != decimal.Round(variant.Desi.Value, 2)) return Fail("DESI_PRECISION_INVALID", $"'{variant.Sku}' desi değeri en fazla iki ondalık basamak içermelidir.");
