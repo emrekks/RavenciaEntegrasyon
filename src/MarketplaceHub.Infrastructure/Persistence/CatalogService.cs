@@ -1564,6 +1564,71 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         profile.TitleOverride = NullTrim(command.TitleOverride); profile.DescriptionOverride = NullTrim(command.DescriptionOverride); profile.ExternalCategoryId = NullTrim(command.ExternalCategoryId); profile.ExternalBrandId = NullTrim(command.ExternalBrandId); profile.DeliveryTimeDays = command.DeliveryTimeDays; profile.Enabled = command.Enabled; if (expectedVersion is not null) profile.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<ListingProfileView>.Ok(MapProfile(profile));
     }
 
+    public async Task<ServiceResult<BulkPublicationResult>> EnqueueBulkPublicationAsync(Guid tenantId, Guid userId, BulkPublicationCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var productIds = (command.ProductIds ?? []).Distinct().ToList();
+        var connectionIds = (command.ConnectionIds ?? []).Distinct().ToList();
+        if (productIds.Count == 0 || connectionIds.Count == 0) return Invalid<BulkPublicationResult>("productIds", "En az bir ürün ve bir platform seçin.");
+        if (productIds.Count > 1000) return Invalid<BulkPublicationResult>("productIds", "Tek seferde en fazla 1000 ürün kartı yayınlanabilir.");
+        var products = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        var connectionCount = await db.PlatformConnections.AsNoTracking().CountAsync(x => x.TenantId == tenantId && connectionIds.Contains(x.Id), cancellationToken);
+        if (products.Count != productIds.Count || connectionCount != connectionIds.Count) return Invalid<BulkPublicationResult>("productIds", "Seçilen ürün veya platform bulunamadı.");
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
+        var variantIds = variants.Select(x => x.Id).ToList();
+        var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
+        var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).Select(x => new { x.ConnectionId, x.VariantId }).ToListAsync(cancellationToken);
+        var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && connectionIds.Contains(x.ConnectionId)).ToListAsync(cancellationToken);
+        var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>();
+        foreach (var product in products.OrderBy(x => x.Title, StringComparer.OrdinalIgnoreCase))
+        {
+            var productVariants = variants.Where(x => x.ProductId == product.Id).ToList();
+            foreach (var connectionId in connectionIds)
+            {
+                // A card already on this marketplace (a variant matched there, live, or still being published) is left as it is.
+                var profile = profiles.FirstOrDefault(x => x.ProductId == product.Id && x.ConnectionId == connectionId);
+                if (productVariants.Any(variant => links.Any(link => link.VariantId == variant.Id && link.ConnectionId == connectionId))
+                    || profile?.ActualStatus?.Trim().ToUpperInvariant() is "LIVE" or "ACTIVE" or "ON_SALE" || IsPlatformUpdateInProgress(profile?.ActualStatus))
+                {
+                    skipped++;
+                    continue;
+                }
+                // The marketplace price follows the general price, as in the editor; VAT and its policy come from the
+                // variant's offer on another marketplace, since the product holds none of its own.
+                string? priceError = null;
+                var newOffers = new List<ChannelOffer>();
+                foreach (var variant in productVariants.Where(variant => !offers.Any(offer => offer.VariantId == variant.Id && offer.ConnectionId == connectionId)))
+                {
+                    var template = offers.FirstOrDefault(offer => offer.VariantId == variant.Id) ?? offers.FirstOrDefault(offer => productVariants.Any(item => item.Id == offer.VariantId));
+                    var salePrice = variant.DefaultSalePrice ?? product.DefaultSalePrice ?? template?.SalePrice;
+                    var listPrice = variant.DefaultListPrice ?? product.DefaultListPrice ?? template?.ListPrice ?? salePrice;
+                    if (template is null || salePrice is not > 0 || listPrice is null || listPrice < salePrice) { priceError = $"'{variant.Sku}' için genel fiyat veya KDV bilgisi yok; ürünü editörde açıp fiyatını kaydedin."; break; }
+                    newOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ListPrice = listPrice.Value, SalePrice = salePrice.Value, Currency = template.Currency, VatRate = template.VatRate, VatInclusion = template.VatInclusion, RoundingMode = template.RoundingMode, SafetyStock = template.SafetyStock, Status = "ACTIVE", PriceVersion = 1, Version = 1 });
+                }
+                if (priceError is not null)
+                {
+                    failed.Add(new(product.Id, product.Title, connectionId, "CHANNEL_OFFER_REQUIRED", priceError));
+                    continue;
+                }
+                foreach (var offer in newOffers)
+                {
+                    db.ChannelOffers.Add(offer);
+                    db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OfferId = offer.Id, PriceVersion = 1, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = "Toplu yayın fiyatı", ActorSource = $"USER:{userId:D}", EffectiveAt = timeProvider.GetUtcNow() });
+                }
+                offers.AddRange(newOffers);
+                var trackedProfile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.ConnectionId == connectionId, cancellationToken);
+                if (trackedProfile is null) db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, ConnectionId = connectionId, DesiredStatus = "DRAFT", ActualStatus = "UNKNOWN", Enabled = true });
+                else if (!trackedProfile.Enabled) { trackedProfile.Enabled = true; trackedProfile.Version++; }
+                await db.SaveChangesAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+                var enqueued = await EnqueuePublicationAsync(tenantId, product.Id, connectionId, $"{idempotencyKey}:{product.Id:N}:{connectionId:N}", correlationId, cancellationToken);
+                db.ChangeTracker.Clear();
+                if (enqueued.Succeeded) queued++;
+                else failed.Add(new(product.Id, product.Title, connectionId, enqueued.Error!.Code, enqueued.Error.Message));
+            }
+        }
+        return ServiceResult<BulkPublicationResult>.Ok(new(queued, skipped, failed));
+    }
+
     public async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);

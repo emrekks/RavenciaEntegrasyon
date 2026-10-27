@@ -116,6 +116,12 @@ public static class CatalogEndpoints
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.EnqueuePublicationAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
         });
+        api.MapPost("/products/bulk-publication-jobs", async (BulkPublicationCommand command, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Result(await service.EnqueueBulkPublicationAsync(tenant.TenantId, tenant.UserId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), Results.Ok);
+        });
         api.MapPost("/products/{id:guid}/update-jobs", async (Guid id, PublicationRequest command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
