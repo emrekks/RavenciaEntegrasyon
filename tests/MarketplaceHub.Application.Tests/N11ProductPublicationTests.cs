@@ -70,6 +70,21 @@ public sealed class N11ProductPublicationTests
         Assert.Null(N11ProductPublicationComposer.VatRate((decimal)rate));
 
     [Fact]
+    public void RefusedLinesCarryN11sOwnReasonIntoTheJobSummary()
+    {
+        var reasons = MarketplaceJobProcessor.RejectionReasons([
+            new("MZ-01", true, "11", null, false, "SUCCESS"),
+            new("MZ-03", false, null, "N11_SKU_REJECTED", false, "Barkod başka bir üründe kullanılıyor"),
+            new("MZ-04", false, null, "N11_SKU_REJECTED", false, null)
+        ]);
+        Assert.Equal(" Reddedilen: MZ-03 (Barkod başka bir üründe kullanılıyor)", reasons);
+        Assert.Equal(string.Empty, MarketplaceJobProcessor.RejectionReasons([new("MZ-01", true, "11", null, false, "SUCCESS")]));
+        var crowded = MarketplaceJobProcessor.RejectionReasons(Enumerable.Range(1, 80).Select(i => new MarketplaceHub.Application.RemoteOperationLine($"MZ-{i:00}", false, null, "N11_SKU_REJECTED", false, "Uzun bir ret nedeni metni")));
+        Assert.Equal(898, crowded.Length);
+        Assert.EndsWith("…", crowded, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AnUnmappedPanelValueGoesAsFreeTextOnlyWhereN11TakesFreeText()
     {
         static MarketplaceHub.Domain.ReferenceItem Remote(bool? allowsCustomValue) => new() { ResourceType = "CATEGORY_ATTRIBUTES", ExternalId = "1332", Name = "Boy", NormalizedName = "boy", Path = "Boy", PayloadHash = "h", AllowsCustomValue = allowsCustomValue };

@@ -540,9 +540,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
         await db.SaveChangesAsync(cancellationToken);
         if (succeeded == listings.Count) return JobExecutionResult.Success();
+        // The marketplace's own reason per refused SKU (n11 sends it with each task line), so it shows on the card.
+        var reasons = RejectionReasons(listings.Select(listing => resultByKey[keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!]));
         return succeeded == 0
-            ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", $"{marketplaceName} ürün yayınındaki tüm varyantlar reddedildi.", payload.ExternalOperationId)
-            : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", $"{marketplaceName} ürün yayını kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
+            ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", $"{marketplaceName} ürün yayınındaki tüm varyantlar reddedildi.{reasons}", payload.ExternalOperationId)
+            : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", $"{marketplaceName} ürün yayını kısmi başarısızlıkla tamamlandı.{reasons}", payload.ExternalOperationId);
     }
 
     private async Task<JobExecutionResult> ReconcileProductApproval(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -1068,6 +1070,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             CreatedAt = now,
             Version = 1
         });
+    }
+
+    // " Reddedilen: SKU (reason); …" for the refused lines that carry a reason, cut to stay readable; empty without one.
+    internal static string RejectionReasons(IEnumerable<RemoteOperationLine> lines)
+    {
+        var parts = lines
+            .Where(line => !line.Succeeded && !string.IsNullOrWhiteSpace(line.Status))
+            .Select(line => $"{line.ExternalKey} ({line.Status!.Trim()})")
+            .ToList();
+        if (parts.Count == 0) return string.Empty;
+        var text = " Reddedilen: " + string.Join("; ", parts);
+        return text.Length <= 900 ? text : text[..897] + "…";
     }
 
     // The colour cards of the product's model family (same brand and model code), the product itself included.
