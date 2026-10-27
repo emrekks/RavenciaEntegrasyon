@@ -20,7 +20,7 @@ export function VariantOptionEditDialog({ label, fields, sameValueCount, onClose
   onSave: (changes: VariantOptionEditChange[], applyToAll: boolean) => void
 }) {
   const [draft, setDraft] = useState(() => Object.fromEntries(fields.map(field => [field.name, field.value])))
-  const [applyToAll, setApplyToAll] = useState(true)
+  const [applyToAll, setApplyToAll] = useState(false)
   const changes = fields
     .filter(field => (draft[field.name] ?? '').trim() && draft[field.name].trim() !== field.value.trim())
     .map(field => ({ name: field.name, from: field.value, to: draft[field.name].trim(), valueId: field.values?.find(value => value.value === draft[field.name])?.id ?? null }))

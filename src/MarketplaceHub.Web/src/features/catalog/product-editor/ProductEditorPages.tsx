@@ -2418,7 +2418,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           const familyIds = [product.id, ...(productToEdit.data?.familyProductIds ?? []).filter(id => id !== product.id)]
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
-              if (product.variants.some(variant => (variant.productId ?? product.id) === familyProductId && rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isLinked))) continue
+              if (product.variants.some(variant => (variant.productId ?? product.id) === familyProductId && rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched))) continue
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               if (status && (isPublicationLive(status.actualStatus) || isPublicationStatusPending(status.actualStatus, status.lastJobStatus))) continue
               let listingProfileVersion: number | undefined
@@ -2928,7 +2928,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku')
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
-                  <div className="variant-option-cell"><input aria-label={`${index + 1}. varyant seçenekleri`} value={displayVariantOptionSignature(row.optionSignature, row.options)} title={displayVariantOptionSignature(row.optionSignature, row.options)} readOnly tabIndex={-1} /><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>
+                  <div className="variant-option-cell"><span className="variant-option-text" aria-label={`${index + 1}. varyant seçenekleri`} title={displayVariantOptionSignature(row.optionSignature, row.options)}>{displayVariantOptionSignature(row.optionSignature, row.options)}</span><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>
                   <input aria-label={`${row.optionSignature} barkod`} className={`technical-field barcode-value${barcodeIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={barcodeIssueText ? true : undefined} title={barcodeIssueText || undefined} value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
                   <input aria-label={`${row.optionSignature} stok kodu`} className={`technical-field sku-value${skuIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={skuIssueText ? true : undefined} title={skuIssueText || undefined} value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
                   <input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" />
@@ -2957,7 +2957,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               key={card.connection.id}
               productId={editProductId}
               familyProductIds={productToEdit.data?.familyProductIds}
-              variantLinks={{ total: variantRows.length, linked: variantRows.filter(row => row.platformStatuses?.some(status => status.connectionId === card.connection.id && status.isLinked)).length }}
+              variantLinks={{ total: variantRows.length, linked: variantRows.filter(row => row.platformStatuses?.some(status => status.connectionId === card.connection.id && status.isMatched)).length }}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
               productChecks={productChecks}
