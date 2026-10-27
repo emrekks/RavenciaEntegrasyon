@@ -684,13 +684,13 @@ function CategoryAttributeMappingPanel({
           <div className="category-attribute-field-head">
             <div>
               <strong>Web Color <b className="required-marker" aria-hidden="true">*</b></strong>
-              <small>Varyant renk aktarımı · Zorunlu</small>
+              <small>Yalnız Trendyol · Zorunlu</small>
             </div>
           </div>
           <div className={`attribute-builder-web-color-mode${webColorAutoEnabled ? ' is-auto' : ' is-manual'}`}>
             <label className="attribute-builder-web-color-toggle">
               <input type="checkbox" checked={webColorAutoEnabled} onChange={event => onToggleWebColorAuto(event.target.checked)} />
-              <span><strong>Varyant renklerini otomatik aktar</strong><small>{webColorAutoEnabled ? 'Açık · Renk eşleşmelerinden dönüştürülmüş Web Color gönderilir.' : 'Kapalı · Web Color panel değeri aşağıdan seçilir.'}</small></span>
+              <span><strong>Varyant renklerini otomatik aktar</strong><small>{webColorAutoEnabled ? 'Açık · Her varyant kendi rengiyle Trendyol Web Color olarak gider.' : 'Kapalı · Seçilen renk tüm varyantlara Trendyol Web Color olarak gider; diğer pazaryerleri etkilenmez.'}</small></span>
             </label>
             {webColorAutoEnabled ? null : (
               <label className="attribute-builder-web-color-manual">Trendyol Katalog Rengi<select aria-label="Manuel Trendyol katalog rengi" value={manualWebColorValueId} onChange={event => onManualWebColorValueChange(event.target.value)}><option value="">Trendyol katalog rengi seçin</option>{sortOptionValues('Renk', webColorRequirement.attribute.values).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
@@ -1263,9 +1263,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version)
     if (initializedEditProductKey.current !== productKey || initializedEditWebColorKey.current === productKey) return
     initializedEditWebColorKey.current = productKey
-    const savedManualColor = product.attributes?.find(item => item.attributeId === webColorRequirement.attributeId && item.valueId)
+    const savedManualColor = product.trendyolWebColorValueId ?? ''
     setWebColorAutoEnabled(!savedManualColor)
-    setManualWebColorValueId(savedManualColor?.valueId ?? '')
+    setManualWebColorValueId(savedManualColor)
   }, [duplicateProductId, editProductId, requirements.isLoading, seedProduct, webColorRequirement])
 
   useEffect(() => {
@@ -2210,9 +2210,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const regularGlobalAttributes = requirementList
         .filter(item => !isOptionRequirement(item) && item.attributeId !== webColorRequirement?.attributeId && !variantAttributeIds.includes(item.attributeId))
         .flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
-      const colorGlobalAttributes = webColorRequirement && !webColorAutoEnabled && manualWebColorValueId
-        ? [{ attributeId: webColorRequirement.attributeId, valueId: manualWebColorValueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: regularGlobalAttributes.length }]
-        : webColorRequirement && !variantAttributeIds.includes(webColorRequirement.attributeId)
+      // The manual Web Color is sent apart (trendyolWebColorValueId) so it never becomes the product's Renk on other marketplaces.
+      const colorGlobalAttributes = webColorRequirement && !variantAttributeIds.includes(webColorRequirement.attributeId)
           ? productAttributePayload(webColorRequirement, attributeSelections[webColorRequirement.attributeId] ?? [], attributeTextValues[webColorRequirement.attributeId] ?? '', regularGlobalAttributes.length)
           : []
       const globalAttributes = [...regularGlobalAttributes, ...colorGlobalAttributes]
@@ -2247,6 +2246,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           defaultListPrice: Number(form.listPrice || 0),
           defaultSalePrice: Number(form.salePrice || 0),
           warrantyMonths: Number(form.warrantyMonths || 0),
+          trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
           variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
           variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload),
@@ -2290,7 +2290,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           }
         }
       } else {
-        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
+        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed = ['ürün']; const warnings: string[] = []
       // The steps after the product (media, stock, channel prices, publication) can take a while; the progress toast names them.

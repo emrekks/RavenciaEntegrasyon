@@ -42,6 +42,8 @@ export type VariantPlatformStatus = {
 export type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   defaultListPrice?: number | null; defaultSalePrice?: number | null; warrantyMonths?: number | null
+  // Trendyol Web Color chosen by hand (panel colour value id); null = automatic from each variant's Renk.
+  trendyolWebColorValueId?: string | null
   familyProductIds?: string[] | null
   categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
   familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; familyOrderedMediaUrls?: string[]; hasCustomMediaOrder?: boolean

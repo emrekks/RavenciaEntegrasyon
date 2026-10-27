@@ -181,6 +181,19 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             var effectiveAssignments = VariantAttributeAssignments.ForVariant(assignments, variant.Id).ToList();
             var payloadAttributes = new List<Dictionary<string, object?>>();
             var emittedRemoteAttributeIds = new HashSet<long>();
+            // A Web Color chosen in the editor (manual) goes to every variant instead of the one each variant's Renk gives.
+            if (product.TrendyolWebColorValueId is Guid manualWebColorId)
+            {
+                var manualWebColor = mappedLocalValues.FirstOrDefault(value => value.Id == manualWebColorId);
+                var manualWebColorMapping = manualWebColor is null ? null : mappingByLocalId[manualWebColor.AttributeId]
+                    .FirstOrDefault(item => IsWebColorOptionName(remoteAttributes.SingleOrDefault(remoteItem => remoteItem.ExternalId == item.ExternalId)?.Name));
+                if (manualWebColor is null || manualWebColorMapping is null || !long.TryParse(manualWebColorMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var manualWebColorRemoteId))
+                    return Fail("WEB_COLOR_MAPPING_REQUIRED", "Seçilen Web Color için Trendyol Web Color eşlemesi bulunamadı.");
+                var manualWebColorValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, manualWebColorMapping.ExternalId, manualWebColor.Id, $"Web Color: {manualWebColor.Value}", cancellationToken);
+                if (manualWebColorValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(manualWebColorValue.Error.Code, manualWebColorValue.Error.Message, manualWebColorValue.Error.Status, manualWebColorValue.Error.FieldErrors);
+                payloadAttributes.Add(new Dictionary<string, object?> { ["attributeId"] = manualWebColorRemoteId, ["attributeValueId"] = manualWebColorValue.Value });
+                emittedRemoteAttributeIds.Add(manualWebColorRemoteId);
+            }
             foreach (var group in effectiveAssignments)
             {
                 var localMappings = mappingByLocalId[group.Key];
