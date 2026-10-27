@@ -3,7 +3,7 @@ import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRe
 import './product-editor-design-system.css'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard } from '../../../shared/components'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
@@ -745,7 +745,8 @@ function placePublishIssueTooltip(event: { currentTarget: HTMLElement }) {
   const fitsBelow = window.innerHeight - rect.bottom >= height + 16
   tooltip.dataset.placement = !fitsBelow && rect.top >= height + 16 ? 'top' : 'bottom'
 }
-function PublishPlatformCard({ card, selected, productId, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect }: {
+function PublishPlatformCard({ card, selected, productId, familyProductIds, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect }: {
+  familyProductIds?: string[] | null
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
   selected: boolean
   productId?: string
@@ -792,7 +793,24 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       ? 'Yayın durumu alınamadı'
       : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
-  const alreadyPublished = isPublicationLive(publication.data?.actualStatus)
+  // The other colour cards of the family (same model code): the card stays selectable while any of them is not live
+  // here, and Yayınla then sends only those (live or in-progress cards are skipped).
+  const otherFamilyIds = (familyProductIds ?? []).filter(id => id !== productId)
+  const familyStatuses = useQueries({
+    queries: otherFamilyIds.map(id => ({
+      queryKey: ['publication-status', id, card.connection.id],
+      queryFn: () => hubApi<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
+      enabled: card.mode === 'PUBLISH',
+      retry: false,
+      staleTime: 0
+    }))
+  })
+  const ownLive = isPublicationLive(publication.data?.actualStatus)
+  const familyLiveCount = (ownLive ? 1 : 0) + familyStatuses.filter(status => isPublicationLive(status.data?.actualStatus)).length
+  const familyTotal = otherFamilyIds.length + 1
+  const familyPartial = ownLive && otherFamilyIds.length > 0 && familyLiveCount < familyTotal && familyStatuses.every(status => !status.isPending)
+  const alreadyPublished = ownLive && !familyPartial
+  const selectionStatus = familyPartial ? null : publication.data?.actualStatus
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   const shopifyWriteCapabilities = useQuery<Array<{ code: string; supportLevel: string; verifiedForConnection: boolean }>>({
@@ -815,7 +833,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
     .filter(check => !(card.code === 'SHOPIFY' ? check.shopifyOk ?? check.ok : check.ok))
     .map(check => ({ ...check, detail: card.code === 'SHOPIFY' ? check.shopifyDetail ?? check.detail : check.detail })) : []
   const mappingReadinessEnabled = card.mode === 'PUBLISH' && card.code !== 'SHOPIFY' && (!productId || !publication.isPending)
-    && shouldCheckPublicationAttributes(categoryId, publication.data?.actualStatus, publication.data?.lastJobStatus)
+    && shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus)
   const mappingReadiness = useQuery({
     queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
     queryFn: async (): Promise<PublicationAttributeIssues> => {
@@ -899,12 +917,12 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   ].filter(Boolean).join(' ') || undefined
   const hasRequiredPublicationBlock = blockedIssues.length > 0 && !alreadyPublished
   // A product that is not saved yet has no platform record: it shows what keeps it from publishing, or that it is not out yet.
-  const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : productId ? publicationLabel : 'Henüz yayınlanmadı'
-  const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : productId ? publicationTone : 'neutral'
+  const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : familyPartial ? `Kısmen yayında (${familyLiveCount}/${familyTotal} renk)` : productId ? publicationLabel : 'Henüz yayınlanmadı'
+  const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : familyPartial ? 'info' : productId ? publicationTone : 'neutral'
   const readOnlyIsN11 = card.connection.platformCode.trim().toUpperCase() === 'N11'
   const readOnlyTitle = readOnlyIsN11 ? 'N11 ürün açma için Entegrasyonlar bölümünde N11 bağlantısının dış yazma anahtarını açın.' : 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.'
   return <article className={`publish-platform-card${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
+    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(selectionStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /></span>
       <span><strong>{card.name}</strong><small>{card.mode === 'READ_ONLY' ? 'Dış yazma kapalı · yayın kuyruğu devre dışı' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : shopifyCapabilityCheckPending ? 'Shopify yazma izinleri kontrol ediliyor…' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
       <i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i>
@@ -2340,10 +2358,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           const familyIds = [product.id, ...(productToEdit.data?.familyProductIds ?? []).filter(id => id !== product.id)]
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
-              if (familyIndex > 0) {
-                const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
-                if (status && (isPublicationLive(status.actualStatus) || isPublicationStatusPending(status.actualStatus, status.lastJobStatus))) continue
-              }
+              const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
+              if (status && (isPublicationLive(status.actualStatus) || isPublicationStatusPending(status.actualStatus, status.lastJobStatus))) continue
               let listingProfileVersion: number | undefined
               try {
                 const listingProfile = await hubApi<{ version: number }>(`/products/${familyProductId}/listing-profiles/${connectionId}`)
@@ -2869,6 +2885,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               card={card}
               key={card.connection.id}
               productId={editProductId}
+              familyProductIds={productToEdit.data?.familyProductIds}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
               productChecks={productChecks}
