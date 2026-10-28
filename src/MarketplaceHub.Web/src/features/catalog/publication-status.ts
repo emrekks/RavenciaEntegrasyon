@@ -92,9 +92,23 @@ export function isPublicationSelectionDisabled(
     || (!selected && (statusPending || statusUnavailable || readinessBlocked))
 }
 
-export function publicationStatusLabel(actualStatus?: string | null, lastJobStatus?: string | null) {
+// The shared submit/check labels name Trendyol; another marketplace's card says its own name.
+const platformNames: Record<string, { name: string; dative: string }> = {
+  HEPSIBURADA: { name: 'Hepsiburada', dative: "Hepsiburada'ya" },
+  N11: { name: 'n11', dative: "n11'e" },
+  PAZARAMA: { name: 'Pazarama', dative: "Pazarama'ya" },
+  PTTAVM: { name: 'PttAVM', dative: "PttAVM'ye" },
+  SHOPIFY: { name: 'Shopify', dative: "Shopify'a" }
+}
+
+function forPlatform(label: string, platformCode?: string | null) {
+  const platform = platformNames[platformCode?.trim().toUpperCase() ?? '']
+  return platform ? label.replaceAll("Trendyol'a", platform.dative).replaceAll('Trendyol', platform.name) : label
+}
+
+export function publicationStatusLabel(actualStatus?: string | null, lastJobStatus?: string | null, platformCode?: string | null) {
   const status = actualStatus?.trim().toUpperCase() ?? ''
-  if (status && status !== 'UNKNOWN') return publicationLabels[status] ?? statusLabel(status)
+  if (status && status !== 'UNKNOWN') return forPlatform(publicationLabels[status] ?? statusLabel(status), platformCode)
 
   const jobStatus = lastJobStatus?.trim().toUpperCase() ?? ''
   if (runningJobStatuses.has(jobStatus)) return 'Yayın işi işleniyor'

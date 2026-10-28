@@ -794,7 +794,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     ? 'Yayın durumu yükleniyor…'
     : publication.isError
       ? 'Yayın durumu alınamadı'
-      : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus)
+      : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus, card.connection.platformCode)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
   // The other colour cards of the family (same model code): the card stays selectable while any of them is not live
   // here, and Yayınla then sends only those (live or in-progress cards are skipped).

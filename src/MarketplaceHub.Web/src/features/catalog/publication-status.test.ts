@@ -5,6 +5,9 @@ describe('product publication status', () => {
   it('describes the marketplace result rather than the connection state', () => {
     expect(publicationStatusLabel('LIVE')).toBe('Yayında')
     expect(publicationStatusLabel('UPDATE_IN_PROGRESS')).toBe('Trendyol güncellemeyi kontrol ediyor')
+    expect(publicationStatusLabel('BATCH_SUBMITTED', null, 'PTTAVM')).toBe("PttAVM'ye gönderildi")
+    expect(publicationStatusLabel('BATCH_IN_PROGRESS', null, 'PAZARAMA')).toBe('Pazarama kontrol ediyor')
+    expect(publicationStatusLabel('BATCH_SUBMITTED', null, 'TRENDYOL')).toBe("Trendyol'a gönderildi")
     expect(publicationStatusLabel('IMPORT_SUBMITTED')).toBe("Hepsiburada'ya gönderildi")
     expect(isPublicationStatusPending('IMPORT_SUBMITTED')).toBe(true)
     expect(publicationStatusLabel('UNKNOWN')).toBe('Henüz yayınlanmadı')
