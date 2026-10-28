@@ -68,4 +68,10 @@ describe('product publication status', () => {
     expect(publicationStatusNote('PRODUCT_APPROVAL_CONTENT_SPLIT')).toBeNull()
     expect(publicationStatusNote('PRODUCT_CREATE_REJECTED')).toBe('Red kodu: PRODUCT_CREATE_REJECTED')
   })
+
+  it('shows a PTT AVM dry run as prepared and not sent, without a rejection code', () => {
+    expect(publicationStatusLabel('DRY_RUN', 'BLOCKED')).toBe('Kuru çalıştırma, gönderilmedi')
+    expect(publicationStatusTone('DRY_RUN', 'BLOCKED')).toBe('info')
+    expect(publicationStatusNote('PTTAVM_VARIANT_SEND_DRY_RUN')).toBeNull()
+  })
 })

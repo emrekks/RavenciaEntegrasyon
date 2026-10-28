@@ -1254,6 +1254,171 @@ public sealed class PttAvmAdapterTests
     public void NoProductIsSentWhileExternalWritesAreOff() =>
         Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", Client(new CapturingHandler(_ => throw new InvalidOperationException())).WriteBlocked<RemoteOperationRef>(Account(status: "ACTIVE", connectionWrites: false), "ürün")!.Error!.Code);
 
+    // A model family of two colours in three sizes, as the composer builds it.
+    private static PttAvmProductPayloadRules.ProductDraft FamilyDraft() =>
+        ProductDraft() with
+        {
+            Barcode = "MZDB003",
+            ProductCode = "MZDB003",
+            Quantity = 21,
+            Variants =
+            [
+                new("mzdb003lacvertkahves", "Lacivert-Kahve", "S", 1), new("mzdb003lacvertkahvem", "Lacivert-Kahve", "M", 2), new("mzdb003lacvertkahvel", "Lacivert-Kahve", "L", 3),
+                new("mzdb003yesls", "Yeşil", "S", 4), new("mzdb003yeslm", "Yeşil", "M", 5), new("mzdb003yesll", "Yeşil", "L", 6)
+            ]
+        };
+
+    [Fact]
+    public void AModelFamilyIsSentWithEveryVariantByBarcodeColourAndSize()
+    {
+        var draft = PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(FamilyDraft()), out var error);
+
+        Assert.Null(error);
+        Assert.Equal(FamilyDraft().Variants, draft!.Variants);
+        Assert.True(PttAvmProductPayloadRules.IsVariantPayload(PttAvmProductPayloadRules.Payload(FamilyDraft())));
+        Assert.False(PttAvmProductPayloadRules.IsVariantPayload(PttAvmProductPayloadRules.Payload(ProductDraft())));
+        var envelope = PttAvmHttpClient.SoapEnvelope(PttAvmHttpClient.ProductUpsert, Account(), Now, [new("items", PttAvmProductPayloadRules.ItemsXml(draft), Raw: true)]);
+        XNamespace ept = PttAvmHttpClient.RequestsNamespace;
+        var request = XDocument.Parse(envelope).Descendants(ept + "ProductV3Request").Single();
+        // Variants follows VATRate in ordinal (data-contract) order; the product is keyed by the model code.
+        Assert.Equal(["Active", "Barcode", "CategoryId", "Desi", "Images", "LongDescription", "Name", "NoShippingProduct", "PriceWithVat", "ProductCode", "Quantity", "VATRate", "Variants"], request.Elements().Select(x => x.Name.LocalName));
+        Assert.Equal("MZDB003", request.Element(ept + "Barcode")!.Value);
+        Assert.Equal("21", request.Element(ept + "Quantity")!.Value);
+        var variants = request.Element(ept + "Variants")!.Elements(ept + "Variant").ToList();
+        Assert.Equal(6, variants.Count);
+        Assert.All(variants, variant => Assert.Equal(["Attributes", "Miktar", "VariantBarkod"], variant.Elements().Select(x => x.Name.LocalName)));
+        Assert.Equal(["mzdb003lacvertkahves", "mzdb003lacvertkahvem", "mzdb003lacvertkahvel", "mzdb003yesls", "mzdb003yeslm", "mzdb003yesll"], variants.Select(x => x.Element(ept + "VariantBarkod")!.Value));
+        Assert.Equal(["1", "2", "3", "4", "5", "6"], variants.Select(x => x.Element(ept + "Miktar")!.Value));
+        var attributes = variants[3].Element(ept + "Attributes")!.Elements(ept + "VariantAttr").ToList();
+        Assert.Equal([("Renk", "Yeşil"), ("Beden", "S")], attributes.Select(x => (x.Element(ept + "Tanim")!.Value, x.Element(ept + "Deger")!.Value)));
+        Assert.Equal(["Deger", "Tanim"], attributes[0].Elements().Select(x => x.Name.LocalName));
+    }
+
+    [Theory]
+    [InlineData("""[{"barcode":"a1","color":"Mavi","size":"S","quantity":1},{"barcode":"A1","color":"Mavi","size":"M","quantity":1}]""")]
+    [InlineData("""[{"barcode":"a1","color":"Mavi","size":"S","quantity":1},{"barcode":"a2","color":"mavi","size":"s","quantity":1}]""")]
+    [InlineData("""[{"barcode":"a1","color":"","size":"S","quantity":1}]""")]
+    [InlineData("""[{"barcode":"a1","color":"Mavi","size":"S","quantity":10000}]""")]
+    [InlineData("""[{"barcode":"8690000000017","color":"Mavi","size":"S","quantity":1}]""")]
+    public void AVariantListBreakingPttAvmRulesIsNotSent(string variants)
+    {
+        var payload = System.Text.Json.Nodes.JsonNode.Parse(PttAvmProductPayloadRules.Payload(ProductDraft()))!.AsObject();
+        payload["variants"] = System.Text.Json.Nodes.JsonNode.Parse(variants);
+
+        Assert.Null(PttAvmProductPayloadRules.Read(payload.ToJsonString(), out var error));
+        Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void TheRemoteSetGuardListsTheVariantsPttAvmWouldDelete()
+    {
+        var draft = FamilyDraft().Variants!;
+        PttAvmProductPayloadRules.RemoteVariant[] remote =
+        [
+            new("MZDB003LACVERTKAHVES", "Lacivert-Kahve", "S", null),
+            new("mzdb003yesl2xl", "Yeşil", "2XL", null),
+            new(null, null, null, "Lacivert - Kahve / M"),
+            new(null, null, null, "Kırmızı / L"),
+            new("mzdb003siyahs", null, null, null)
+        ];
+
+        var missing = PttAvmProductPayloadRules.RemoteVariantsMissing(draft, remote);
+
+        // The barcode matches without regard to case; a variant PTT AVM names only matches by colour and size.
+        Assert.Equal([remote[1], remote[3], remote[4]], missing);
+        var message = PttAvmProductPayloadRules.RemoteVariantMissingMessage(missing);
+        Assert.StartsWith("PTT AVM'de olup panelde olmayan varyantlar var; gönderilirse PTT AVM bunları siler: mzdb003yesl2xl (Yeşil / 2XL), Kırmızı / L, mzdb003siyahs", message);
+        Assert.Empty(PttAvmProductPayloadRules.RemoteVariantsMissing(draft, []));
+        Assert.Empty(PttAvmProductPayloadRules.RemoteVariantsMissing(draft, [new("MZDB003YESLL", null, null, null)]));
+        // A name that does not say both colour and size cannot be matched: unknown is missing, not covered.
+        Assert.Single(PttAvmProductPayloadRules.RemoteVariantsMissing(draft, [new(null, null, null, "S")]));
+    }
+
+    [Fact]
+    public void TheRemoteSetGuardKeepsItsMessageShort()
+    {
+        var missing = Enumerable.Range(1, 30).Select(index => new PttAvmProductPayloadRules.RemoteVariant($"mzdb003x{index}", null, null, null)).ToList();
+
+        var message = PttAvmProductPayloadRules.RemoteVariantMissingMessage(missing);
+
+        Assert.Contains("ve 22 varyant daha", message);
+        Assert.True(message.Length <= 512);
+    }
+
+    [Fact]
+    public void TheVariantsPttAvmHoldsAreReadUnderTheParentBarcodeOnly()
+    {
+        RemoteCatalogVariant Variant(string? barcode, Dictionary<string, string> options) => new(barcode ?? "MZDB003/7101", "sku", barcode, "MZDB003", options, false, null, null, null, null, "TRY", "{}");
+        RemoteCatalogProduct Product(string barcode, params RemoteCatalogVariant[] variants) => new("1", barcode, "Ürün", "", null, null, null, null, [], variants, "{}");
+        RemoteCatalogProduct[] listed =
+        [
+            Product("MZDB003", Variant("mzdb003yesl2xl", new() { ["Varyant 1"] = "Yeşil", ["Varyant 2"] = "2XL" }), Variant(null, new() { [PttAvmVariantMapper.VariantNameOption] = "Lacivert / L" })),
+            Product("MZDB0031", Variant("mzdb0031s", new() { ["Renk"] = "Mavi", ["Beden"] = "S" }))
+        ];
+
+        var remote = PttAvmProductPayloadRules.RemoteVariants("mzdb003", listed);
+
+        Assert.Equal([new PttAvmProductPayloadRules.RemoteVariant("mzdb003yesl2xl", "Yeşil", "2XL", null), new PttAvmProductPayloadRules.RemoteVariant(null, null, null, "Lacivert / L")], remote);
+        // The parent sold as a product without variants holds none.
+        Assert.Empty(PttAvmProductPayloadRules.RemoteVariants("MZDB003", [Product("MZDB003", Variant("MZDB003", []))]));
+    }
+
+    [Fact]
+    public async Task AModelFamilySendIsADryRunThatLogsTheRequestAndWritesNothing()
+    {
+        var logger = new CapturingLogger();
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer),
+            _ => throw new InvalidOperationException("No write may leave the panel.")
+        });
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Variants = [new("fk453001", "Bordo", "S", 3), new("FK453002", "Bordo", "M", 6)] };
+
+        var result = await Client(handler, globalWrites: true, logger).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(PttAvmProductPayloadRules.DryRunCode, result.Error!.Code);
+        Assert.Equal("Kuru çalıştırma: 2 varyantlı PTT AVM isteği hazırlandı, gönderilmedi. İstek çalışan (worker) günlüğünde 'FK4530' barkoduyla kayıtlı.", result.Error.SafeMessage);
+        Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, message => message.Contains("dry run", StringComparison.Ordinal) && message.Contains("<ept:VariantBarkod>FK453002</ept:VariantBarkod>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AModelFamilyMissingAVariantPttAvmHoldsIsNotSent()
+    {
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer),
+            _ => throw new InvalidOperationException("No write may leave the panel.")
+        });
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Variants = [new("FK453001", "Bordo", "S", 3), new("FK453003", "Bordo", "L", 6)] };
+
+        var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
+
+        Assert.Equal(PttAvmProductPayloadRules.RemoteVariantMissingCode, result.Error!.Code);
+        Assert.Contains("FK453002 (Bordo / M)", result.Error.SafeMessage);
+        Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AModelFamilyWhoseVariantsCannotAllBeReadIsNotSent()
+    {
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer),
+            _ => throw new InvalidOperationException("No write may leave the panel.")
+        });
+        // RVNC015 carries an entry nothing can be read from.
+        var draft = ProductDraft() with { Barcode = "RVNC015", ProductCode = "RVNC015", Variants = [new("RVNC01501", "Beyaz", "S", 2), new("RVNC01502", "Beyaz", "M", 0)] };
+
+        var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
+
+        Assert.Equal("PTTAVM_REMOTE_VARIANT_UNREADABLE", result.Error!.Code);
+    }
+
     // A model product (barcode = model code) answered without VariantListesi, and its variants from
     // GetProductsWithVariants: one entry in the StokKontrolListesi variant shape, one carrying combinations.
     private const string ModelProductAnswer = """

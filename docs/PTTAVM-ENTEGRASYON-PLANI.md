@@ -196,12 +196,39 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   doğrulanır. Geri okuma: canlı satırların hepsinde `IsInvoice=true`. Bağlantıda fatura oluşturma kapalı başlar.
 - **7. aşama (ürün gönderimi, yazma kapısı arkasında):** `UpdateProductsV3` barkoda göre ürünü açar veya günceller. Sonuç
   `GetProductsTrackingResult` ile, yayın durumu `StokKontrolListesi` + `SearchBarkod` ile okunur (aktif → LIVE, pasif → bekliyor).
-  Varyantsız gönderim PTT AVM'deki varyantları sildiği için yalnız **tek varyantlı** ürün gönderilir. Bu da iki koşula bağlıdır:
+  Varyantsız gönderim PTT AVM'deki varyantları sildiği için **tek varyantlı** ürün (model ailesinde başka varyant yoksa) varyantsız
+  gönderilir. Bu da iki koşula bağlıdır:
   1. Panel bağı: ürünün bu bağlantıdaki bütün bağları gönderilen barkod olmalıdır.
   2. PTT AVM okuması: gönderimden hemen önce barkod okunur; PTT AVM o barkodu varyantlı bir ürün altında göstermemelidir.
 
-  Kategori yaprak olmalıdır; marka ve özellik eşlemesi istenmez. Varyantlı ürünler, üst barkod saklanıp canlıda doğrulanana kadar
-  PTT AVM panelinden yönetilir.
+  Kategori yaprak olmalıdır; marka ve özellik eşlemesi istenmez.
+- **7. aşama, varyantlı ürün (28 Ekim 2026, KURU ÇALIŞTIRMA):** Varyantlı ürünün PTT AVM karşılığı panelin **model ailesidir**
+  (aynı marka ve model kodlu bütün renk kartları). Kart yayınlanınca ailenin bütün etkin varyantları tek `UpdateProductsV3`
+  isteğinde hazırlanır (`PttAvmProductPublicationComposer.PlanFamily`):
+  - Üst barkod: ailenin bu bağlantıdaki `MarketplaceProductLink.ExternalCode`'u, yoksa model kodu; ikisi farklıysa
+    `PTTAVM_PARENT_BARCODE_MISMATCH`. Ailede tek model kodu olmalıdır (`PTTAVM_MODEL_CODE_REQUIRED` / `PTTAVM_MODEL_CODE_MISMATCH`).
+    Ailenin kartları aynı kategoride olmalıdır; ad ve açıklama ailenin ilk kartından, görseller her renkten birer tane önce olmak
+    üzere en çok 8 adet.
+  - Her varyant barkod, `Renk`, `Beden`, MAIN stok ve etkin teklif taşır; biri eksikse **bütün gönderim** durur (varyant atlanmaz,
+    atlanan varyantı PTT AVM silerdi). Fiyat farkı 0: ailenin satış fiyatı ve KDV oranı tek olmalıdır. En çok 100 varyant; ürün
+    düzeyi stok varyantların toplamıdır (en çok 9999).
+  - Uzak set koruması (kullanıcı kuralı): gönderimden hemen önce `GetProductsWithVariants` önbelleksiz, ardından üst barkod
+    `StokKontrolListesi` ile okunur. PTT AVM'nin üst barkod altında tuttuğu ve istekte olmayan her varyant (barkodla, harf
+    duyarsız; barkodsuz kayıtta "Renk / Beden" adıyla) gönderimi `PTTAVM_REMOTE_VARIANT_MISSING` ile durdurur ve kartta
+    listelenir: "PTT AVM'de olup panelde olmayan varyantlar var; gönderilirse PTT AVM bunları siler: mzdb003yesl2xl (Yeşil / 2XL), …".
+    Okunamayan varyant kaydı da durdurur (`PTTAVM_REMOTE_VARIANT_UNREADABLE`). Karşılaştırma saf fonksiyondur
+    (`PttAvmProductPayloadRules.RemoteVariantsMissing`).
+  - Kuru çalıştırma: tek anahtar `PttAvmProductPayloadRules.VariantSendDryRun` (varsayılan `true`). İstek hazırlanır, korumalardan
+    geçer, worker günlüğüne `PTT AVM variant product dry run` satırıyla XML olarak yazılır ve **gönderilmez**. Kart `DRY_RUN`
+    ("Kuru çalıştırma, gönderilmedi") olur, iş özeti "Kuru çalıştırma: N varyantlı PTT AVM isteği hazırlandı, gönderilmedi." der.
+    Tek varyantlı ürünün gerçek gönderimi değişmedi.
+  - İş işleyici: kuyruktaki aile isteği, ailenin varyant barkodları sonradan değiştiyse gönderilmez (`PRODUCT_PUBLICATION_SUPERSEDED`);
+    sonuç satırları yalnız kartın kendi barkodlarıyla eşlenir (Shopify gibi).
+  - **Canlıda doğrulanacak (anahtar kapatılmadan önce):** `ProductV3Request` içindeki varyant öğe adları ve sırası
+    (`Variants/Variant{Attributes/VariantAttr{Deger, Tanim}, Miktar, VariantBarkod}`; `Combination` ve fiyat farkı gönderilmiyor;
+    repoda örnek yok, şema notlarından türetildi); varyant barkodunun büyük/küçük harf duyarlılığı (dışa aktarımda küçük harf);
+    ürün düzeyi `Quantity`'nin kabulü; takip sonucunun varyant barkoduyla mı üst barkodla mı satır döndüğü (üst barkodla dönerse
+    yayın işi `MANUAL_REVIEW`'e düşer); `GetProductsWithVariants`'in barkodsuz kayıtlarında `VariantName`'in "Renk / Beden" biçimi.
 - **8. aşama (iade görünümü, salt okunur):** Satırı `iade` olan her sipariş, yalnız o satırlarla tamamlanmış bir iade kaydıdır (`iade:{sipariş no}`).
   Kaydedilmesi stoğu değiştirmez; iade kararları PTT AVM paneline bırakılır ve panelden gönderilmez.
 - **Varyantlar (22 Ekim 2026, canlı mağazadan):** İlk eşleştirmede 198 üründen 25'i eşleşti; eşleşmeyen 172 barkod panelin
@@ -222,7 +249,7 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     satır `VariantBarkod` ile panel varyantına bağlanır.
   - Fiyat/stok gönderimi `FK4530/7101` gibi kimlikle bağlı varyantta panel barkodunu, barkodu olmayan varyantta stok kodunu
     gönderir (PTT AVM barkod alanında barkod yoksa stok kodu kullanır; siparişlerdeki `VariantBarkod` da böyle). PTT AVM barkodu kabul etmezse takip sonucunda satır hatası görünür.
-  - Ürün gönderimi bu varyantlara gitmez (tek varyant + barkod bağı koşulu).
+  - Ürün gönderimi bu varyantlara model ailesi olarak gider; şimdilik kuru çalıştırmadır (7. aşama, varyantlı ürün).
 - **Canlıda doğrulanacak:**
   - Varyant eşleştirmesinin yeniden çalıştırılmış sonucu (25/198'den ne kadar yükseldiği).
   - Model varyantında panel barkoduyla fiyat/stok gönderiminin kabul edildiği (tek ürünle).

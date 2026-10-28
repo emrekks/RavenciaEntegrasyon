@@ -418,6 +418,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (!current.Succeeded || !ShopifyProductPublicationComposer.SameVariantSkus(payload.PayloadJson, current.Value!.PayloadJson))
                     return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste Shopify'a gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
             }
+            // A PTT AVM model product carries the whole family too, and UpdateProductsV3 deletes the variants it is not sent.
+            var isPttAvmFamily = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && PttAvmProductPayloadRules.IsVariantPayload(payload.PayloadJson);
+            if (isPttAvmFamily)
+            {
+                var current = await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, payload.ProductId, connectionId, cancellationToken);
+                if (!current.Succeeded || !PttAvmProductPayloadRules.SameVariantBarcodes(payload.PayloadJson, current.Value!.PayloadJson))
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste PTT AVM'ye gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
+            }
             var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
             if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken, payload.PayloadHash);
 
@@ -435,6 +443,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", AmbiguousCreateSummary(error), error.RemoteRequestId), cancellationToken, payload.PayloadHash);
                 db.ExternalEffectRecords.Remove(effect);
                 await db.SaveChangesAsync(cancellationToken);
+                // The variant send's dry run: the request was built and checked, nothing was written.
+                if (isPttAvmFamily && error.Code == PttAvmProductPayloadRules.DryRunCode)
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "DRY_RUN", error.Code, JobExecutionResult.Blocked(error.Code, error.SafeMessage), cancellationToken, payload.PayloadHash);
                 var adapterResult = JobExecutionResult.FromAdapterError(error);
                 var status = adapterResult.Kind == JobCompletionKind.Retry ? "RETRY_SCHEDULED" : adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
                 return await MarkPublicationResult(tenantId, connectionId, profile, status, error.Code, adapterResult, cancellationToken, payload.PayloadHash);
@@ -514,8 +525,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         var resultKeyByListing = listings.ToDictionary(x => keyedBySku ? x.ExternalSku! : x.ExternalBarcode!, x => x, StringComparer.OrdinalIgnoreCase);
         var resultByKey = lines.ToDictionary(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase);
-        // A Shopify product carries the whole model family; this card's job records only this card's SKUs.
-        if (isShopify) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+        // A Shopify product, and a PTT AVM model product, carries the whole model family; this card's job records only
+        // this card's SKUs/barcodes.
+        if (isShopify || string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && PttAvmProductPayloadRules.IsVariantPayload(payload.PayloadJson)) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         if (resultKeyByListing.Keys.Any(key => !resultByKey.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
 

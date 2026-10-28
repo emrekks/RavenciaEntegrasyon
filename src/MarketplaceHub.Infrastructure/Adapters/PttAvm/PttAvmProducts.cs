@@ -8,7 +8,7 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // SearchAktifPasif=0) and names the total in RowCount; it has no modification filter, so a scan walks every page.
 // A single product is found by its barcode (SearchBarkod). The page cursor is "{page}:{firstBarcode}": the first
 // barcode of page zero guards against a server that ignores SearchPage and keeps answering the first page.
-// Product send (create or update, single-variant products) is in PttAvmProductWrites.cs; the other write calls stay closed.
+// Product send (create or update; a model family with its variants as a dry run) is in PttAvmProductWrites.cs; the other write calls stay closed.
 public sealed partial class PttAvmHttpClient : IProductPort
 {
     // An answer that never runs dry still ends: PTT AVM's documented page cap.

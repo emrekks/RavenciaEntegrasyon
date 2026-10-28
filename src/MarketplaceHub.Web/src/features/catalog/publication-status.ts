@@ -54,6 +54,8 @@ const publicationLabels: Record<string, string> = {
   UNARCHIVE_QUEUED: 'Yayına alma kuyruğunda',
   UNARCHIVE_ACCEPTED: 'Trendyol yayına almayı kabul etti',
   BLOCKED: 'İşlem engellendi',
+  // PTT AVM's variant product send is a dry run for now: the request was prepared and checked, not sent.
+  DRY_RUN: 'Kuru çalıştırma, gönderilmedi',
   MANUAL_REVIEW: 'Elle kontrol gerekli'
 }
 
@@ -105,12 +107,14 @@ export function missingPublicationChecks<T extends { ok: boolean }>(checks: read
 export function publicationStatusTone(actualStatus?: string | null, lastJobStatus?: string | null) {
   const status = actualStatus?.trim().toUpperCase() ?? ''
   if (['LIVE', 'PARTIAL_LIVE', 'APPROVED'].includes(status)) return 'success' as const
+  if (status === 'DRY_RUN') return 'info' as const
   if (status.includes('REJECT') || status.includes('FAIL') || ['FAILED', 'BLOCKED', 'MANUAL_REVIEW'].includes(lastJobStatus?.trim().toUpperCase() ?? '')) return 'danger' as const
   if (isPublicationStatusPending(actualStatus, lastJobStatus)) return 'info' as const
   return 'neutral' as const
 }
 
 export function publicationStatusNote(statusCode?: string | null) {
-  if (statusCode?.trim().toUpperCase() === 'PRODUCT_APPROVAL_CONTENT_SPLIT') return null
+  // The dry run's job message on the card says what happened; its code is no rejection.
+  if (['PRODUCT_APPROVAL_CONTENT_SPLIT', 'PTTAVM_VARIANT_SEND_DRY_RUN'].includes(statusCode?.trim().toUpperCase() ?? '')) return null
   return statusCode ? `Red kodu: ${statusCode}` : null
 }

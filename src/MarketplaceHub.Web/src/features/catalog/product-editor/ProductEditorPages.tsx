@@ -821,6 +821,10 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const alreadyPublished = allLinked || (ownLive && !familyPartial)
   const selectionStatus = familyPartial ? null : allLinked ? 'LIVE' : publication.data?.actualStatus
   const partialLabel = someLinked ? `Kısmen yayında · ${linkedCount}/${linkedTotal}` : `Kısmen yayında · ${familyLiveCount}/${familyTotal} renk`
+  // PTT AVM keeps a product with variants as the whole model family under its model code: every colour card goes in
+  // one request. The variant count is this card's when the family is this card alone.
+  const isPttAvmFamily = card.mode === 'PUBLISH' && card.connection.platformCode.trim().toUpperCase() === 'PTTAVM' && (familyTotal > 1 || linkedTotal > 1)
+  const pttAvmFamilyNote = isPttAvmFamily ? `Model ailesi (${familyTotal} renk${familyTotal === 1 ? `, ${linkedTotal} varyant` : ''}) PTT AVM'ye birlikte gönderilir.` : null
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   // card.code is lower case (it also names the logo tone); the platform code decides the Shopify-only checks.
@@ -957,6 +961,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     {blockedIssues.length > 0 && <span id={`${issueListId}-required`} className="sr-only">{blockedIssues.map(issue => `${issue.attribute}: ${issue.detail}`).join('. ')}</span>}
     {mappingCheckPending && <span id={`${issueListId}-pending`} className="sr-only">Yayın gereksinimleri kontrol ediliyor. Güncel zorunlu özellik eşlemeleri doğrulanıyor.</span>}
     {optionalMappingWarnings.length > 0 && <div id={`${issueListId}-optional`} className="publish-platform-warning" role="status" aria-label={`${card.name} isteğe bağlı özellik uyarıları`}><UiIcon name="alert" /><div><strong>{optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`}</strong><ul>{optionalMappingWarnings.map((issue, index) => <li key={`${issue.attribute}-${index}`}><b>{issue.attribute}:</b> {issue.detail}</li>)}</ul></div></div>}
+    {pttAvmFamilyNote && <div className="publish-platform-warning is-info" role="note" aria-label={`${card.name} model ailesi bilgisi`}><UiIcon name="layers" /><div><strong>Model Ailesi Birlikte Gönderilir</strong><p>{pttAvmFamilyNote} PTT AVM'de olup panelde olmayan bir varyant varsa gönderim durdurulur.</p></div></div>}
     {variantMediaWarning && <div className="publish-platform-warning" role="status" aria-label={`${card.name} varyant görsel uyarısı`}><UiIcon name="alert" /><div><strong>Varyant görselleri seçilmedi</strong><p>{variantMediaWarning}</p></div></div>}
   </article>
 }
