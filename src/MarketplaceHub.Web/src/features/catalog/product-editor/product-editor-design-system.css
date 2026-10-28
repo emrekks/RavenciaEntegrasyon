@@ -892,15 +892,18 @@
 .publish-platform-fact-publication dd { display: flex; min-width: 0; align-items: center; gap: 5px; }
 .publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 28px; padding-inline: 8px; font-size: 11px; white-space: normal; line-height: 1.25; padding-block: 4px; text-align: left; }
 .publish-platform-fact-publication .publish-tracking-action { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; }
-.publish-platform-job-heading > strong { min-width: 0; overflow-wrap: anywhere; }
-.publish-platform-job.is-compact { gap: 6px; padding-bottom: 12px; }
-.publish-platform-job.is-compact .publish-platform-job-heading { justify-content: flex-start; min-width: 0; height: 28px; gap: 8px; }
-.publish-platform-job.is-compact .publish-platform-job-heading > strong { flex: 0 0 auto; overflow-wrap: normal; white-space: nowrap; font-size: var(--rv-font-size-sm); }
-.publish-platform-job.is-compact .publish-platform-job-message { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
-.publish-platform-job.is-compact .publish-platform-job-heading > span { flex: 0 0 auto; margin-left: auto; }
-.publish-platform-job.is-compact .publish-platform-job-stop { flex: 0 0 auto; min-height: 0; height: 28px; padding: 0 10px; border-radius: 7px; font-size: var(--rv-font-size-xs); }
-.publish-platform-job.is-compact .publish-platform-job-progress { height: 3px; }
-.publish-platform-job-progress.is-indeterminate > span { width: 38%; animation: rv-publish-job-progress 1.6s ease-in-out infinite; will-change: transform; }
+/* A running publication job shows inside the status row, so the card keeps its height: the badge dot turns into a
+   spinner (job message on hover), the stop control sits beside refresh, a stopped job leaves one cut-off line. */
+.publish-platform-fact-publication .publish-platform-status.is-working > i { box-sizing: border-box; width: 10px; height: 10px; flex: 0 0 10px; background: transparent; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rv-publish-status-spin .8s linear infinite; }
+.publish-platform-fact-publication .publish-tracking-stop > i { display: block; width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-stop:hover:not(:disabled),
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-stop:focus-visible { color: var(--rv-color-danger); }
+.publish-platform-fact-publication > small.publish-platform-job-note { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.publish-platform-fact-publication > small.publish-platform-job-note.is-muted { color: var(--rv-color-muted); }
+@keyframes rv-publish-status-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .publish-platform-fact-publication .publish-platform-status.is-working > i { border-style: dotted; border-right-color: currentColor; animation: none; }
+}
 .app-shell.stitch-shell main .variant-row-actions > .variant-platform-status.variant-row-action::after {
   border-color: var(--rv-color-surface);
 }
