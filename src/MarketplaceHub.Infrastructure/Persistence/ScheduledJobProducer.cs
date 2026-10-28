@@ -19,6 +19,12 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         if (includeDefaults) await EnsureDefaultPoliciesAsync(cancellationToken);
         await DisableExternalWriteAutomationAsync(cancellationToken);
         db.ChangeTracker.Clear();
+        // Marketplace lists a connection supports but has never read (at startup and hourly; once a day per gap).
+        if (includeDefaults)
+        {
+            await ReferenceSnapshotBackfill.QueueMissingAsync(db, timeProvider, configuration, cancellationToken);
+            db.ChangeTracker.Clear();
+        }
     }
 
     public async Task<int> EnqueueDueAsync(CancellationToken cancellationToken)

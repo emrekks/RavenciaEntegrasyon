@@ -889,38 +889,24 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     {
         var platform = platformCode.Trim().ToUpperInvariant();
         var jobs = new List<InitialDataSyncJobPlanItem>();
-        if (platform == "TRENDYOL")
-        {
-            jobs.Add(new(MarketplaceJobTypes.ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
-            jobs.Add(new(MarketplaceJobTypes.ReferenceSync, "brands", JsonSerializer.Serialize(new { connectionId, resourceType = "BRANDS", parentExternalId = (string?)null })));
-        }
-
-        if (platform == "N11")
-            jobs.Add(new(MarketplaceJobTypes.N11ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
-
-        if (platform == "PAZARAMA")
-        {
-            jobs.Add(new(MarketplaceJobTypes.PazaramaReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
-            // Product create needs the brand list for the brand mapping.
-            jobs.Add(new(MarketplaceJobTypes.PazaramaReferenceSync, "brands", JsonSerializer.Serialize(new { connectionId, resourceType = "BRANDS", parentExternalId = (string?)null })));
-        }
-
-        // Shopify's categories are the store's own product types, mapped to panel categories.
-        if (platform == "SHOPIFY")
-            jobs.Add(new(MarketplaceJobTypes.ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
-
-        // PTT AVM has a category tree only (no brand or attribute service).
-        if (platform == "PTTAVM")
-            jobs.Add(new(MarketplaceJobTypes.PttAvmReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
-
         if (platform is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM")) return jobs;
+        // The marketplace lists the panel needs before mapping and publishing (ConnectionReferencePlan): the category
+        // tree everywhere (Shopify: the store's own product types; PTT AVM: a tree only), the brand list on Trendyol and
+        // Pazarama (product create needs the brand mapping). The tree read then queues the field and value lists of the
+        // categories already mapped on this connection, so a re-activated connection has them again too.
+        // Hepsiburada's catalog comes after its orders, as before.
+        var referenceType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ReferenceSync);
+        var references = ConnectionReferencePlan.RootResources(platform, includeHepsiburadaCatalog)
+            .Select(resource => new InitialDataSyncJobPlanItem(referenceType, resource.ToLowerInvariant(),
+                ConnectionReferencePlan.RootPayload(connectionId, resource, resource == "CATEGORIES" && ConnectionReferencePlan.SupportsCategoryAttributes(platform))))
+            .ToList();
+        if (platform != "HEPSIBURADA") jobs.AddRange(references);
         var orderType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderRecoverySync);
         jobs.Add(new(orderType, "orders", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null, full = true })));
 
         // A product import is never part of this plan: Verileri Çek and an activation started a full Hepsiburada catalog
         // scan nobody asked for (26 Oct 2026). Products come in from the product import page, with its own options.
-        if (platform == "HEPSIBURADA" && includeHepsiburadaCatalog)
-            jobs.Add(new(MarketplaceJobTypes.HepsiburadaReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
+        if (platform == "HEPSIBURADA") jobs.AddRange(references);
 
         if (CreateReturnActivationBootstrap(platform, connectionId) is { } initialReturns)
             jobs.Add(new(initialReturns.JobType, "returns", initialReturns.PayloadJson));

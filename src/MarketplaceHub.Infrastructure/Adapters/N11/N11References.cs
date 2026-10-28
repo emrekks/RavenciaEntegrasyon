@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
@@ -27,18 +28,40 @@ public sealed partial class N11HttpClient : IReferenceDataPort
 
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<AdapterPageResult<RemoteReferenceItem>>();
+        var detailKey = (context.ConnectionId, categoryId?.Trim() ?? "");
+        var now = timeProvider.GetUtcNow();
+        if (type != "CATEGORIES" && CategoryDetails.TryGetValue(detailKey, out var cached) && now - cached.At < CategoryDetailLifetime)
+        {
+            using var cachedDocument = JsonDocument.Parse(cached.Json);
+            return Map(type, cachedDocument.RootElement, categoryId, attributeId, null);
+        }
         var result = await SendAsync(account, HttpMethod.Get, type == "CATEGORIES" ? CategoryTree : CategoryAttributes(categoryId!.Trim()), cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
+        if (type != "CATEGORIES")
+        {
+            if (CategoryDetails.Count > 200) CategoryDetails.Clear();
+            CategoryDetails[detailKey] = (now, document.RootElement.GetRawText());
+        }
+        return Map(type, document.RootElement, categoryId, attributeId, result.RateLimit);
+    }
+
+    // A category's field list and every value list come from the same n11 call; keeping the last answer for a short
+    // while turns the field read and the value reads that follow it (ConnectionReferencePlan) into one request.
+    private static readonly ConcurrentDictionary<(Guid ConnectionId, string CategoryId), (DateTimeOffset At, string Json)> CategoryDetails = new();
+    private static readonly TimeSpan CategoryDetailLifetime = TimeSpan.FromMinutes(2);
+
+    private static AdapterResult<AdapterPageResult<RemoteReferenceItem>> Map(string type, JsonElement root, string? categoryId, string? attributeId, RateLimitMetadata? rateLimit)
+    {
         try
         {
             IReadOnlyList<RemoteReferenceItem> items = type switch
             {
-                "CATEGORIES" => N11ReferenceMapper.Categories(document.RootElement),
-                "CATEGORY_ATTRIBUTES" => N11ReferenceMapper.Attributes(document.RootElement, categoryId!.Trim()),
-                _ => N11ReferenceMapper.Values(document.RootElement, categoryId!.Trim(), attributeId!.Trim())
+                "CATEGORIES" => N11ReferenceMapper.Categories(root),
+                "CATEGORY_ATTRIBUTES" => N11ReferenceMapper.Attributes(root, categoryId!.Trim()),
+                _ => N11ReferenceMapper.Values(root, categoryId!.Trim(), attributeId!.Trim())
             };
-            return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, null, false, items.Count), result.RateLimit);
+            return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, null, false, items.Count), rateLimit);
         }
         catch (JsonException)
         {
