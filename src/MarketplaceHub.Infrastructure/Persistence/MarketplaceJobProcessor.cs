@@ -427,7 +427,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste PTT AVM'ye gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
                 // Every colour card's job carries the whole family: the family goes out once, and a card whose family a
                 // sibling's job already sent follows that send's tracking result instead of sending it again.
-                if (await PttAvmFamilySend.CoveringSendAsync(db, tenantId, connectionId, job.Id, payload.PayloadJson, timeProvider.GetUtcNow(), cancellationToken) is { } familySend)
+                if (await PttAvmFamilySend.CoveringSendAsync(db, tenantId, connectionId, job.Id, job.CreatedAt, payload.PayloadJson, timeProvider.GetUtcNow(), cancellationToken) is { } familySend)
                 {
                     job.PayloadJson = JsonSerializer.Serialize(payload with { Phase = "POLL", ExternalOperationId = familySend.ExternalOperationId, SubmittedAt = familySend.SubmittedAt });
                     job.PayloadHash = Hash(job.PayloadJson);

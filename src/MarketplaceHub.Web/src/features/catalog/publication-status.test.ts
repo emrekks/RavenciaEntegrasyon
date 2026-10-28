@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
+import { isApprovalWaitJob, isPttAvmFamilyResendable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 
 describe('product publication status', () => {
   it('describes the marketplace result rather than the connection state', () => {
@@ -82,5 +82,34 @@ describe('product publication status', () => {
     expect(publicationStatusLabel('ALREADY_PRESENT', 'SUCCEEDED')).toBe("PTT AVM'de zaten var, gönderilmedi")
     expect(publicationStatusTone('ALREADY_PRESENT', 'SUCCEEDED')).toBe('info')
     expect(publicationStatusNote('PTTAVM_VARIANTS_ALREADY_PRESENT')).toBeNull()
+  })
+})
+
+describe('PTT AVM family resend', () => {
+  it('lets a family card waiting for an approval that may never come, or a stopped one, go again', () => {
+    expect(isPttAvmFamilyResendable('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(true)
+    expect(isPttAvmFamilyResendable(' pttavm ', 'MANUAL_REVIEW', 'MANUAL_REVIEW')).toBe(true)
+    expect(isPttAvmFamilyResendable('PTTAVM', 'BLOCKED', null)).toBe(true)
+  })
+
+  it('keeps live, in-flight and other marketplaces cards as they are', () => {
+    expect(isPttAvmFamilyResendable('PTTAVM', 'LIVE', null)).toBe(false)
+    expect(isPttAvmFamilyResendable('PTTAVM', 'BATCH_SUBMITTED', 'RETRY_SCHEDULED')).toBe(false)
+    expect(isPttAvmFamilyResendable('PTTAVM', 'APPROVAL_PENDING', 'LEASED')).toBe(false)
+    expect(isPttAvmFamilyResendable('TRENDYOL', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(false)
+  })
+})
+
+describe('approval wait job', () => {
+  it('is an approval check only waiting for the marketplace', () => {
+    expect(isApprovalWaitJob({ jobType: 'PRODUCT_APPROVAL_RECONCILE', status: 'RETRY_SCHEDULED', lastErrorCode: 'PRODUCT_APPROVAL_PENDING' })).toBe(true)
+    expect(isApprovalWaitJob({ jobType: 'PRODUCT_APPROVAL_RECONCILE', status: 'PENDING', lastErrorCode: 'HEPSIBURADA_PRODUCT_APPROVAL_PENDING' })).toBe(true)
+  })
+
+  it('is not a send, a failed or stopped check, or a check with another reason', () => {
+    expect(isApprovalWaitJob({ jobType: 'PRODUCT_CREATE', status: 'RETRY_SCHEDULED', lastErrorCode: 'PRODUCT_BATCH_PENDING' })).toBe(false)
+    expect(isApprovalWaitJob({ jobType: 'PRODUCT_APPROVAL_RECONCILE', status: 'MANUAL_REVIEW', lastErrorCode: 'PRODUCT_APPROVAL_PENDING' })).toBe(false)
+    expect(isApprovalWaitJob({ jobType: 'PRODUCT_APPROVAL_RECONCILE', status: 'RETRY_SCHEDULED', lastErrorCode: 'PRODUCT_WRITE_IN_PROGRESS' })).toBe(false)
+    expect(isApprovalWaitJob(null)).toBe(false)
   })
 })

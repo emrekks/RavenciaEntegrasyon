@@ -42,11 +42,21 @@ internal static class PttAvmFamilySend
         return variants.All(x => sentBarcodes.Contains(x.Barcode));
     }
 
-    // The family sends of this connection's other product jobs that may still be followed: waiting for their tracking
-    // result or done. A refused, blocked or failed send is not followed: this job then sends the family itself.
-    internal static async Task<ProductPublicationJobPayload?> CoveringSendAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid jobId, string ownPayloadJson, DateTimeOffset now, CancellationToken cancellationToken)
+    // The jobs of one publication round (the colour cards of one Yayınla or Yeniden Gönder) are queued within seconds
+    // of each other. A job queued more than this before this one belongs to an earlier round: a resend is asked for
+    // because that earlier send did not do what it should (live 2026-10-28: MZ059YNC went out with a variant XML PTT
+    // AVM ignored), so it must not answer for the resend. PTT AVM refuses an identical repeat within five minutes anyway.
+    internal static readonly TimeSpan RoundWindow = TimeSpan.FromMinutes(5);
+
+    // The earliest queue time of a sibling job in this job's round.
+    internal static DateTimeOffset RoundStart(DateTimeOffset ownCreatedAt) => ownCreatedAt - RoundWindow;
+
+    // The family sends of this connection's other product jobs of the same round that may still be followed: waiting
+    // for their tracking result or done. A refused, blocked or failed send, or one of an earlier round, is not
+    // followed: this job then sends the family itself.
+    internal static async Task<ProductPublicationJobPayload?> CoveringSendAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid jobId, DateTimeOffset jobCreatedAt, string ownPayloadJson, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var since = now - TrackingWindow - TimeSpan.FromDays(1);
+        var since = RoundStart(jobCreatedAt);
         var payloads = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductCreate && x.Id != jobId
                 && x.CreatedAt >= since

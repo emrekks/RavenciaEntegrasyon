@@ -134,3 +134,25 @@ export function publicationStatusNote(statusCode?: string | null) {
   if (['PRODUCT_APPROVAL_CONTENT_SPLIT', 'PTTAVM_VARIANT_SEND_DRY_RUN', 'PTTAVM_VARIANTS_ALREADY_PRESENT'].includes(statusCode?.trim().toUpperCase() ?? '')) return null
   return statusCode ? `Red kodu: ${statusCode}` : null
 }
+
+// PTT AVM can accept a model family send and still not add its variants (live 2026-10-28: MZ059YNC opened with no
+// variants), so the cards wait for an approval that never comes. Such a card, or one whose send stopped, may go
+// again: the send reads PTT AVM first, adds only the variants it lacks and sends nothing when it holds them all. A card
+// whose check is being read right now waits for that read.
+const pttAvmResendableStatuses = new Set(['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING', 'MANUAL_REVIEW', 'BLOCKED', 'CREATE_REJECTED', 'PARTIAL_FAILURE'])
+
+export function isPttAvmFamilyResendable(platformCode?: string | null, actualStatus?: string | null, lastJobStatus?: string | null) {
+  return platformCode?.trim().toUpperCase() === 'PTTAVM'
+    && pttAvmResendableStatuses.has(actualStatus?.trim().toUpperCase() ?? '')
+    && !['LEASED', 'RUNNING'].includes(lastJobStatus?.trim().toUpperCase() ?? '')
+}
+
+// An approval check that is only waiting for the marketplace to approve: the card's status already says "Onay
+// bekliyor", so it needs no job panel of its own. A check that failed or stopped still shows.
+const approvalWaitCodes = new Set(['PRODUCT_APPROVAL_PENDING', 'HEPSIBURADA_PRODUCT_APPROVAL_PENDING'])
+
+export function isApprovalWaitJob(job?: { jobType?: string | null; status?: string | null; lastErrorCode?: string | null } | null) {
+  return job?.jobType?.trim().toUpperCase() === 'PRODUCT_APPROVAL_RECONCILE'
+    && ['PENDING', 'RETRY_SCHEDULED'].includes(job.status?.trim().toUpperCase() ?? '')
+    && approvalWaitCodes.has(job.lastErrorCode?.trim().toUpperCase() ?? '')
+}

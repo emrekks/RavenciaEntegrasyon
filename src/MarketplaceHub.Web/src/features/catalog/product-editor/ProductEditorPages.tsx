@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
-import { UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard } from '../../../shared/components'
+import { UiIcon, useConfirmDialog, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard } from '../../../shared/components'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
@@ -35,7 +35,7 @@ import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
-import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from '../publication-status'
+import { isApprovalWaitJob, isPttAvmFamilyResendable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { isSettledPublicationJob, publicationJobPollInterval } from '../publication-job-poll'
 import { productPublicationTargets } from '../product-publication-submit'
@@ -101,7 +101,7 @@ function sortVariantsAlphabetically<T extends { optionSignature?: string | null;
 type ChannelPricingDraft = { listPrice: string; salePrice: string }
 type ProductUpdateRequest = { connectionIds: string[]; includeProductInformation: boolean }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
-type PublicationJobDetail = { job: { id: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
+type PublicationJobDetail = { job: { id: string; jobType?: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
 const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
 const isProductPublicationChannel = (item: MarketplaceConnection) => productPublicationMode(item) !== null
 const productUpdateCapabilities = (platformCode: string) => {
@@ -825,6 +825,47 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   // one request. The variant count is this card's when the family is this card alone.
   const isPttAvmFamily = card.mode === 'PUBLISH' && card.connection.platformCode.trim().toUpperCase() === 'PTTAVM' && (familyTotal > 1 || linkedTotal > 1)
   const pttAvmFamilyNote = isPttAvmFamily ? `Model ailesi (${familyTotal} renk${familyTotal === 1 ? `, ${linkedTotal} varyant` : ''}) PTT AVM'ye birlikte gönderilir.` : null
+  // Yayınla leaves a card waiting for approval as it is; a PTT AVM family whose variants never appeared there is sent
+  // again on purpose. Every colour card not live and not being sent goes, and its waiting approval check is closed.
+  const [confirmResend, confirmResendDialog] = useConfirmDialog()
+  const canResendFamily = isPttAvmFamily && Boolean(productId) && isPttAvmFamilyResendable(card.connection.platformCode, publication.data?.actualStatus, publication.data?.lastJobStatus)
+  const resendFamily = useMutation({
+    mutationFn: async () => {
+      if (!productId) throw new Error('Ürün kaydı bulunamadı.')
+      const familyIds = [productId, ...otherFamilyIds]
+      let queued = 0
+      const failures: string[] = []
+      for (const id of familyIds) {
+        try {
+          const status = await hubApi<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store' })
+          if (!status.profileId) continue
+          const resendable = isPttAvmFamilyResendable(card.connection.platformCode, status.actualStatus, status.lastJobStatus)
+          if (!resendable && (isPublicationLive(status.actualStatus) || isPublicationStatusPending(status.actualStatus, status.lastJobStatus))) continue
+          await hubApi<AcceptedJob>(`/products/${id}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: card.connection.id }) })
+          queued++
+        } catch (reason) {
+          failures.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.')
+        }
+      }
+      if (!queued && failures.length) throw new Error(failures[0])
+      return { familyIds, queued, failures }
+    },
+    onSuccess: async ({ familyIds, queued, failures }) => {
+      await Promise.all(familyIds.map(id => client.invalidateQueries({ queryKey: ['publication-status', id, card.connection.id] })))
+      appendNotification(queued
+        ? `${queued} renk kartı PTT AVM'ye yeniden gönderilmek üzere kuyruğa alındı.${failures.length ? ` ${failures.length} kart gönderilemedi: ${failures[0]}` : ''}`
+        : 'Yeniden gönderilecek renk kartı bulunamadı.', queued ? 'success' : 'info')
+    },
+    onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Model ailesi yeniden gönderilemedi.', 'error')
+  })
+  async function startFamilyResend() {
+    const confirmed = await confirmResend({
+      title: 'Model Ailesi Yeniden Gönderilsin mi?',
+      message: `Model ailesinin ${familyTotal} renk kartı PTT AVM'ye yeniden gönderilir. Önce PTT AVM'deki ürün okunur: orada olmayan varyantlar eklenir, var olanlar olduğu gibi kalır; hepsi zaten varsa istek gönderilmez. Bekleyen onay kontrolleri kapatılır, gönderimden sonra yenisi başlar.`,
+      confirmLabel: 'Yeniden Gönder'
+    })
+    if (confirmed) resendFamily.mutate()
+  }
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   // card.code is lower case (it also names the logo tone); the platform code decides the Shopify-only checks.
@@ -961,7 +1002,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     {blockedIssues.length > 0 && <span id={`${issueListId}-required`} className="sr-only">{blockedIssues.map(issue => `${issue.attribute}: ${issue.detail}`).join('. ')}</span>}
     {mappingCheckPending && <span id={`${issueListId}-pending`} className="sr-only">Yayın gereksinimleri kontrol ediliyor. Güncel zorunlu özellik eşlemeleri doğrulanıyor.</span>}
     {optionalMappingWarnings.length > 0 && <div id={`${issueListId}-optional`} className="publish-platform-warning" role="status" aria-label={`${card.name} isteğe bağlı özellik uyarıları`}><UiIcon name="alert" /><div><strong>{optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`}</strong><ul>{optionalMappingWarnings.map((issue, index) => <li key={`${issue.attribute}-${index}`}><b>{issue.attribute}:</b> {issue.detail}</li>)}</ul></div></div>}
-    {pttAvmFamilyNote && <div className="publish-platform-warning is-info" role="note" aria-label={`${card.name} model ailesi bilgisi`}><UiIcon name="layers" /><div><strong>Model Ailesi Birlikte Gönderilir</strong><p>{pttAvmFamilyNote} PTT AVM'deki varyantlar korunur, panelde olup orada olmayanlar eklenir; hepsi zaten varsa gönderim yapılmaz.</p></div></div>}
+    {pttAvmFamilyNote && <div className="publish-platform-warning is-info" role="note" aria-label={`${card.name} model ailesi bilgisi`}><UiIcon name="layers" /><div><strong>Model Ailesi Birlikte Gönderilir</strong><p>{pttAvmFamilyNote} PTT AVM'deki varyantlar korunur, panelde olup orada olmayanlar eklenir; hepsi zaten varsa gönderim yapılmaz.</p>{canResendFamily && <p>Varyantlar PTT AVM'de görünmüyorsa aileyi yeniden gönderin; Yayınla onay bekleyen kartları atlar.</p>}</div></div>}
+    {canResendFamily && <button type="button" className="publish-platform-fix-mappings" disabled={resendFamily.isPending} onClick={() => void startFamilyResend()}><UiIcon name="refresh" />{resendFamily.isPending ? 'Gönderiliyor…' : 'Yeniden Gönder'}</button>}
+    {confirmResendDialog}
     {variantMediaWarning && <div className="publish-platform-warning" role="status" aria-label={`${card.name} varyant görsel uyarısı`}><UiIcon name="alert" /><div><strong>Varyant görselleri seçilmedi</strong><p>{variantMediaWarning}</p></div></div>}
   </article>
 }
@@ -999,6 +1042,8 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
   const status = detail.status.trim().toUpperCase()
   // A finished job says nothing the card's publication status does not already say.
   if (status === 'SUCCEEDED') return null
+  // An approval check only waiting for the marketplace: the card's status already says "Onay bekliyor".
+  if (isApprovalWaitJob(detail)) return null
   // A blocked job (missing evidence, invalid file) or one waiting on a person does not move on by itself: it shows
   // as finished, without the running bar or the stop button. Publishing again after the fix starts a new job.
   const terminal = isSettledPublicationJob(status)

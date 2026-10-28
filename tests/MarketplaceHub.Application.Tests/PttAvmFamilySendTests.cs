@@ -70,6 +70,18 @@ public sealed class PttAvmFamilySendTests
     }
 
     [Fact]
+    public void ASendOfAnEarlierRoundDoesNotAnswerForAResend()
+    {
+        // The jobs of one Yayınla are queued seconds apart; a resend asked for later must go out itself instead of
+        // following the earlier send PTT AVM did not apply.
+        var resendQueuedAt = Now;
+
+        Assert.Equal(Now - TimeSpan.FromMinutes(5), PttAvmFamilySend.RoundStart(resendQueuedAt));
+        Assert.True(Now - TimeSpan.FromSeconds(3) >= PttAvmFamilySend.RoundStart(resendQueuedAt));
+        Assert.False(Now - TimeSpan.FromMinutes(40) >= PttAvmFamilySend.RoundStart(resendQueuedAt));
+    }
+
+    [Fact]
     public void TheLatestCoveringSendWins()
     {
         var older = Sent(Payload(variants: Family), TimeSpan.FromHours(2), operation: "t:old");

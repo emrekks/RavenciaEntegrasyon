@@ -1658,6 +1658,30 @@ public sealed class PttAvmAdapterTests
         """;
 
     [Fact]
+    public void AModelProductPttAvmHoldsWithoutVariantsGetsTheWholeFamilyAdded()
+    {
+        // Live 2026-10-28: MZ059YNC went out with a variant XML PTT AVM ignored, and PTT AVM opened the model with no
+        // variants and the parent's stock (12). The resend reads that product, finds nothing to carry and adds every
+        // panel variant; the parent's own stock is not a variant and does not stop the send.
+        XNamespace a = "http://schemas.datacontract.org/2004/07/ePttAVMService";
+        var row = new XElement(a + "StokKontrolDetay", new XElement(a + "Aktif", "true"), new XElement(a + "Barkod", "MZDB003"), new XElement(a + "KDVli", "1099"),
+            new XElement(a + "Miktar", "12"), new XElement(a + "UrunAdi", "Kazak"), new XElement(a + "UrunId", "900002"));
+        var issues = new List<AdapterPageIssue>();
+        var product = PttAvmProductMapper.Product(row, issues, new Dictionary<string, IReadOnlyList<XElement>>())!;
+
+        var remote = PttAvmProductPayloadRules.RemoteVariants("MZDB003", [product]);
+        var merge = PttAvmProductPayloadRules.MergeVariants(FamilyDraft().Variants!, remote);
+
+        Assert.Empty(issues);
+        Assert.Empty(remote);
+        Assert.Empty(merge.Unreadable);
+        Assert.Empty(merge.NotCarriable);
+        Assert.Equal(FamilyDraft().Variants, merge.Added);
+        Assert.Equal(FamilyDraft().Variants, merge.Variants);
+        Assert.Null(PttAvmProductPayloadRules.MergeRefusal(merge.Variants));
+    }
+
+    [Fact]
     public void ModelVariantsKnownByIdAndNameAreReadUnderTheModel()
     {
         // The live GetProductsWithVariants shape: Variant[Limit, PriceDifference, Quantity, VariantId, VariantName], no barcode.

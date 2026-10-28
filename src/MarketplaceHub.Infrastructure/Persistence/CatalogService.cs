@@ -1658,13 +1658,18 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var draft = draftResult.Value!;
         var dedup = $"product-create:{connectionId:N}:{productId:N}:{draft.PayloadHash}";
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: true, cancellationToken))
+        // A PTT AVM family send that finished may still not have done what it should (PTT AVM ignored the variants of an
+        // earlier request): a resend goes out again. The adapter reads PTT AVM first and adds only the variants it lacks,
+        // and sends nothing when it holds them all.
+        var isPttAvm = connection.PlatformCode == "PTTAVM";
+        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: !isPttAvm, cancellationToken))
         {
             await transaction.CommitAsync(cancellationToken);
             return ServiceResult<Guid>.Ok(existing.Id);
         }
 
         var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId && x.ConnectionId == connectionId, cancellationToken);
+        if (isPttAvm) await RetireWaitingApprovalChecksAsync(tenantId, connectionId, profile.Id, cancellationToken);
         profile.ExternalCategoryId = draft.ExternalCategoryId;
         profile.ExternalBrandId = draft.ExternalBrandId;
         profile.DesiredStatus = "LIVE";
@@ -2047,6 +2052,28 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(x => x.TenantId == job.TenantId && x.Id == job.Id && x.JobDedupKey == dedup)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.JobDedupKey, retiredKey), cancellationToken);
         return false;
+    }
+
+    // A card sent again stops its waiting approval checks: they follow the earlier send (a family whose variants PTT AVM
+    // never added waits seven days for nothing) and would mark the card while the new send is out. Their dedup key is
+    // freed so the new send's own check can be queued under it.
+    private async Task RetireWaitingApprovalChecksAsync(Guid tenantId, Guid connectionId, Guid profileId, CancellationToken cancellationToken)
+    {
+        var prefix = $"product-approval:{connectionId:N}:{profileId:N}:";
+        var waiting = await db.IntegrationJobs
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile
+                && x.JobDedupKey.StartsWith(prefix) && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
+            .ToListAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        foreach (var check in waiting)
+        {
+            check.Status = JobStatus.Cancelled;
+            check.CompletedAt = now;
+            check.LastErrorCode = "PRODUCT_APPROVAL_SUPERSEDED";
+            check.LastErrorSummary = "Ürün yeniden gönderildi; eski onay kontrolü kapatıldı.";
+            check.JobDedupKey = $"{check.JobDedupKey}:resent:{check.Id:N}";
+            check.Version++;
+        }
     }
 
     // A concurrent request that queued the same payload first wins; its job is returned instead of a 500.
