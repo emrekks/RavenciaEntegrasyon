@@ -11,7 +11,6 @@ import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
-import { statusLabel } from '../../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { appendNotification } from '../../../shared/notifications'
 import { toggleProductAttributeValue } from '../attribute-selection'
@@ -35,9 +34,10 @@ import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
-import { isApprovalWaitJob, isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
+import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
-import { isSettledPublicationJob, publicationJobPollInterval } from '../publication-job-poll'
+import { publicationJobPollInterval } from '../publication-job-poll'
+import { publicationJobInline } from '../publication-job-inline'
 import { productPublicationTargets } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from '../operation-feedback-toast'
@@ -847,6 +847,8 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     if (alreadyPublished && selected) onDeselect()
   }, [alreadyPublished, onDeselect, selected])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
+  const { view: jobView, cancel: cancelJob } = usePublicationJobInline(publication.data?.lastJobId, productId, card.connection.id)
+  const jobRunning = jobView.state === 'running'
   const missingChecks = card.mode === 'PUBLISH' ? productChecks
     .filter(check => !(isShopifyCard ? check.shopifyOk ?? check.ok : check.ok))
     .map(check => ({ ...check, detail: isShopifyCard ? check.shopifyDetail ?? check.detail : check.detail })) : []
@@ -952,26 +954,28 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif bağlantı</span></dd></div>
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can open the publication issues */}
-      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${displayedPublicationTone}`} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}</div>}
+      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning && !hasRequiredPublicationBlock ? jobView.message : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}{jobRunning && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
     {valueMappingFixes.length > 0 && readinessCategoryScope && <button type="button" className="publish-platform-fix-mappings" onClick={() => setValueFixOpen(true)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${valueMappingFixes.length} değer`}>{valueMappingFixes.length}</span></button>}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification(message, 'success') }} />}
     {valueFixNotice && <NoticeToast kind="success" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify dış yazması kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}
     {shopifyCapabilityCheckPending && <span id={`${issueListId}-shopify-pending`} className="sr-only">Shopify izinleri kontrol ediliyor.</span>}
-    {productId && publication.data?.lastJobId && <PublicationJobProgress jobId={publication.data.lastJobId} productId={productId} connectionId={card.connection.id} />}
     {blockedIssues.length > 0 && <span id={`${issueListId}-required`} className="sr-only">{blockedIssues.map(issue => `${issue.attribute}: ${issue.detail}`).join('. ')}</span>}
     {mappingCheckPending && <span id={`${issueListId}-pending`} className="sr-only">Yayın gereksinimleri kontrol ediliyor. Güncel zorunlu özellik eşlemeleri doğrulanıyor.</span>}
     {optionalMappingWarnings.length > 0 && <div id={`${issueListId}-optional`} className="publish-platform-warning" role="status" aria-label={`${card.name} isteğe bağlı özellik uyarıları`}><UiIcon name="alert" /><div><strong>{optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`}</strong><ul>{optionalMappingWarnings.map((issue, index) => <li key={`${issue.attribute}-${index}`}><b>{issue.attribute}:</b> {issue.detail}</li>)}</ul></div></div>}
     {variantMediaWarning && <div className="publish-platform-warning" role="status" aria-label={`${card.name} varyant görsel uyarısı`}><UiIcon name="alert" /><div><strong>Varyant görselleri seçilmedi</strong><p>{variantMediaWarning}</p></div></div>}
   </article>
 }
-function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: string; productId: string; connectionId: string }) {
+// The card's last publication job, read while it runs; the card shows it inline so its height never changes.
+function usePublicationJobInline(jobId: string | null | undefined, productId: string | undefined, connectionId: string) {
   const client = useQueryClient()
-  const queryKey = ['publication-job', jobId] as const
+  const queryKey = ['publication-job', jobId ?? ''] as const
+  const enabled = Boolean(productId && jobId)
   const job = useQuery({
     queryKey,
     queryFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    enabled,
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
@@ -993,34 +997,7 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
     },
     onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Yayın işlemi durdurulamadı.', 'error')
   })
-  if (job.isPending) return <div className="publish-platform-job" role="status">Yayın işlemi bilgisi yükleniyor…</div>
-  if (job.isError || !job.data?.job) return <div className="publish-platform-job" role="status">Yayın işlemi ilerlemesi alınamadı.</div>
-
-  const detail = job.data.job
-  const status = detail.status.trim().toUpperCase()
-  // A finished job says nothing the card's publication status does not already say.
-  if (status === 'SUCCEEDED') return null
-  // An approval check only waiting for the marketplace: the card's status already says "Onay bekliyor".
-  if (isApprovalWaitJob(detail)) return null
-  // A blocked job (missing evidence, invalid file) or one waiting on a person does not move on by itself: it shows
-  // as finished, without the running bar or the stop button. Publishing again after the fix starts a new job.
-  const terminal = isSettledPublicationJob(status)
-  const retryScheduled = ['RETRY_SCHEDULED', 'RETRYABLE_FAILURE'].includes(status)
-  const percent = detail.progressPercent == null ? null : Math.max(0, Math.min(100, detail.progressPercent))
-  const progressText = percent !== null
-    ? `${percent}%${detail.progressTotal == null ? '' : ` · ${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`}`
-    : detail.progressTotal == null ? null : `${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`
-  // One row that never grows the card: the message is cut to the row (whole text on hover), the bar is a hairline.
-  const message = detail.lastErrorSummary || progressText
-  return <div className={`publish-platform-job is-compact ${terminal ? `is-${status.toLowerCase()}` : 'is-active'}`} role="status" aria-live="polite">
-    <div className="publish-platform-job-heading">
-      <strong>{detail.progressLabel || 'Yayın işlemi'}</strong>
-      {message && <small className="publish-platform-job-message" title={message}>{message}</small>}
-      {!retryScheduled && <span>{statusLabel(status)}</span>}
-      {!terminal && <button type="button" className="secondary publish-platform-job-stop" title="Durdurma, platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? 'Durduruluyor…' : 'Durdur'}</button>}
-    </div>
-    {!terminal && <div className={`publish-platform-job-progress${percent === null ? ' is-indeterminate' : ''}`} role="progressbar" aria-label="Yayın işlemi ilerlemesi" aria-valuemin={0} aria-valuemax={100} {...(percent === null ? {} : { 'aria-valuenow': percent })}><span style={percent === null ? undefined : { width: `${percent}%` }} /></div>}
-  </div>
+  return { view: enabled ? publicationJobInline(job.data?.job) : { state: 'hidden' as const }, cancel }
 }
 // Variant option helpers: pure functions of a draft row, shared by the variant media and filter memos.
 function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
