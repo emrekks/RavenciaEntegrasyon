@@ -127,7 +127,7 @@
 
 /* Sticky apply bar */
 /* The save bar floats 16px above the screen edge while the page scrolls under it, with a light shadow. */
-.ss-page .ss-bar { position: sticky; bottom: 16px; margin-top: auto; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 20px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 4px 14px rgb(0 0 0 / 10%); }
+.ss-page .ss-bar { position: sticky; bottom: 16px; margin-top: auto; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 20px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 1px 3px rgb(0 0 0 / 6%); }
 .ss-page .ss-bar-copy { flex: 1 1 260px; display: grid; min-width: 0; }
 .ss-page .ss-bar-copy strong { font-size: 14px; font-weight: 600; }
 .ss-page .ss-bar-copy span { color: var(--rv-color-muted); font-size: 13px; }
@@ -204,7 +204,7 @@
 .ss-page .ss-dz-sbar b { color: var(--rv-color-ink); font-size: 13px; font-weight: 500; }
 .ss-page .ss-dz-sbar span { font-variant-numeric: tabular-nums; }
 .ss-page .ss-dz-canvas { flex: 1; display: grid; place-items: center; padding: 24px 16px; background-image: radial-gradient(var(--rv-color-border) 1px, transparent 1px); background-size: 14px 14px; }
-.app-shell.stitch-shell main .ss-page .ss-dz-canvas .shipping-designer-paper { width: min(100%, 560px); margin: 0; border: 0; border-radius: 4px; box-shadow: 0 0 0 1px rgb(0 0 0 / 30%), 0 12px 30px rgb(0 0 0 / 40%); }
+.app-shell.stitch-shell main .ss-page .ss-dz-canvas .shipping-designer-paper { width: min(100%, 560px); margin: 0; border: 0; border-radius: 4px; box-shadow: 0 0 0 1px rgb(0 0 0 / 18%), 0 4px 12px rgb(0 0 0 / 14%); }
 .app-shell.stitch-shell main .ss-page .ss-dz-canvas .shipping-designer-paper.is-sticker { width: min(100%, 420px); }
 .ss-page .ss-dz-help { padding: 10px 16px; color: var(--rv-color-subtle); background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border); font-size: 12px; }
 .ss-page .ss-itabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--rv-color-border); }
@@ -241,7 +241,7 @@
 .ss-page .ss-pick-btn small { color: var(--rv-color-muted); font-size: 12px; }
 .ss-page .ss-pick-btn > .ss-icon { color: var(--rv-color-muted); transition: transform .15s; }
 .ss-page .ss-pick-btn.is-on > .ss-icon { transform: rotate(180deg); }
-.ss-page .ss-pick-menu { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; min-width: 280px; display: grid; gap: 2px; padding: 6px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+.ss-page .ss-pick-menu { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; min-width: 280px; display: grid; gap: 2px; padding: 6px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 8px 20px rgb(0 0 0 / 16%); }
 .app-shell.stitch-shell main .ss-page .ss-pick-opt { display: grid; grid-template-columns: auto minmax(0, 1fr) 16px; align-items: center; gap: 10px; width: 100%; height: auto; min-height: 0; padding: 7px 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; font-weight: 400 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-pick-opt:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .ss-page .ss-pick-opt.is-on { background: var(--rv-color-primary-soft); }
@@ -291,7 +291,7 @@
 .ss-page .ss-pv-line span:last-child { color: var(--p-muted); font-variant-numeric: tabular-nums; }
 
 /* Popups */
-.app-shell.stitch-shell main .ss-page .ss-modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100vh - 48px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 30px 80px rgb(0 0 0 / 45%); }
+.app-shell.stitch-shell main .ss-page .ss-modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100vh - 48px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 12px 32px rgb(0 0 0 / 22%); }
 .app-shell.stitch-shell main .ss-page .ss-modal.is-sm { width: min(460px, 100%); }
 .app-shell.stitch-shell main .ss-page .ss-modal.is-md { width: min(640px, 100%); }
 .app-shell.stitch-shell main .ss-page .ss-modal.is-lg { width: min(880px, 100%); }
