@@ -259,6 +259,9 @@ public interface IImportJobProcessor
 
 public sealed record ReferenceItemView(string ExternalId, string? ParentExternalId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, bool? IsRequired, bool? AllowsCustomValue, bool? AllowsMultipleValues);
 public sealed record ReferenceDataView(Guid SnapshotId, string ResourceType, DateTimeOffset FetchedAt, IReadOnlyList<ReferenceItemView> Items);
+// A slice of a current reference snapshot (a search, a lookup by id or no items at all) with the snapshot's id, age
+// and size, so a large list such as Trendyol's 800k brands is never sent whole.
+public sealed record ReferenceSliceView(Guid SnapshotId, string ResourceType, DateTimeOffset FetchedAt, int ItemCount, IReadOnlyList<ReferenceItemView> Items);
 // Source: MANUAL or TEMPLATE for attribute and value mappings (filled from another category's
 // decision), null for category and brand mappings.
 public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid SnapshotId, Guid LocalId, string ScopeExternalId, string ExternalId, string Status, DateTimeOffset? VerifiedAt, long Version, int? MissingRequiredAttributeCount = null, string? Source = null);
@@ -296,6 +299,12 @@ public interface IReferenceDataService
     // Fills a mapped marketplace category from the decisions made for the connection's other categories.
     Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken);
+    // The connection's current brand snapshot: its id, age and size, without items.
+    Task<ServiceResult<ReferenceSliceView>> BrandSummaryAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    // Brands of the current snapshot whose id is the query or whose name starts with or contains it.
+    Task<ServiceResult<ReferenceSliceView>> SearchBrandsAsync(Guid tenantId, Guid connectionId, string? query, int? limit, CancellationToken cancellationToken);
+    // Brands of the current snapshot with the given ids; an id it does not hold is left out.
+    Task<ServiceResult<ReferenceSliceView>> LookupBrandsAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<string> externalIds, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken);

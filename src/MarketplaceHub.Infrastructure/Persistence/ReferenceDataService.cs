@@ -18,6 +18,131 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<ReferenceDataView>.Ok(new(snapshot.Id, snapshot.ResourceType, snapshot.FetchedAt, rows));
     }
 
+    internal const int DefaultBrandSearchLimit = 50;
+    internal const int MaximumBrandSearchLimit = 100;
+    internal const int MaximumBrandLookupIds = 500;
+    // A contains search needs three characters: the trigram index has nothing to narrow a shorter one with.
+    internal const int MinimumContainsSearchLength = 3;
+    private const string Brands = "BRANDS";
+
+    public async Task<ServiceResult<ReferenceSliceView>> BrandSummaryAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var snapshot = await CurrentBrandSnapshotAsync(tenantId, connectionId, cancellationToken);
+        return snapshot.Succeeded ? ServiceResult<ReferenceSliceView>.Ok(snapshot.Value!.Slice([])) : new ServiceResult<ReferenceSliceView>(null, snapshot.Error);
+    }
+
+    // Prefix matches come from the (TenantId, SnapshotId, NormalizedName COLLATE "C") index in name order, contains
+    // matches from the trigram index (both partial on BRANDS, migration AddBrandReferenceSearchIndexes), an id from
+    // the unique (TenantId, SnapshotId, ResourceType, ExternalId) index. No query reads the whole snapshot.
+    public async Task<ServiceResult<ReferenceSliceView>> SearchBrandsAsync(Guid tenantId, Guid connectionId, string? query, int? limit, CancellationToken cancellationToken)
+    {
+        var take = limit is null ? DefaultBrandSearchLimit : Math.Clamp(limit.Value, 1, MaximumBrandSearchLimit);
+        var snapshotResult = await CurrentBrandSnapshotAsync(tenantId, connectionId, cancellationToken);
+        if (!snapshotResult.Succeeded) return new ServiceResult<ReferenceSliceView>(null, snapshotResult.Error);
+        var snapshot = snapshotResult.Value!;
+        var text = (query ?? "").Trim();
+        if (text.Length > 160) text = text[..160];
+        var items = BrandItems(tenantId, snapshot.Id).Where(x => x.IsActive);
+        if (text.Length == 0)
+        {
+            var first = await items.OrderBy(x => EF.Functions.Collate(x.NormalizedName, "C")).Take(take).Select(BrandRow).ToListAsync(cancellationToken);
+            return ServiceResult<ReferenceSliceView>.Ok(snapshot.Slice(first.Select(x => x.View).ToList()));
+        }
+
+        var keys = BrandSearchKeys(text);
+        var found = new Dictionary<string, BrandSearchRow>(StringComparer.Ordinal);
+        void Add(IEnumerable<BrandSearchRow> rows) { foreach (var row in rows) found.TryAdd(row.View.ExternalId, row); }
+        Add(await items.Where(x => x.ExternalId == text).Select(BrandRow).ToListAsync(cancellationToken));
+        // One ordered index range per spelling; an OR of them would sort every prefix match before the limit.
+        foreach (var key in keys)
+        {
+            var prefix = EscapeLike(key) + "%";
+            Add(await items.Where(x => EF.Functions.Like(EF.Functions.Collate(x.NormalizedName, "C"), prefix, LikeEscape))
+                .OrderBy(x => EF.Functions.Collate(x.NormalizedName, "C")).Take(take).Select(BrandRow).ToListAsync(cancellationToken));
+        }
+        if (found.Count < take && text.Length >= MinimumContainsSearchLength)
+            foreach (var key in keys)
+            {
+                var fragment = "%" + EscapeLike(key) + "%";
+                // No ORDER BY: the matches are ranked below, and an ordered read would fetch every match first.
+                Add(await items.Where(x => EF.Functions.Like(x.NormalizedName, fragment, LikeEscape)).Take(MaximumBrandSearchLimit * 2).Select(BrandRow).ToListAsync(cancellationToken));
+            }
+        var ranked = found.Values
+            .OrderBy(row => BrandSearchRank(row, text, keys))
+            .ThenBy(row => row.NormalizedName.Length)
+            .ThenBy(row => row.NormalizedName, StringComparer.Ordinal)
+            .ThenBy(row => row.View.ExternalId, StringComparer.Ordinal)
+            .Take(take)
+            .Select(row => row.View)
+            .ToList();
+        return ServiceResult<ReferenceSliceView>.Ok(snapshot.Slice(ranked));
+    }
+
+    public async Task<ServiceResult<ReferenceSliceView>> LookupBrandsAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<string> externalIds, CancellationToken cancellationToken)
+    {
+        var ids = externalIds.Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+        if (ids.Length > MaximumBrandLookupIds) return ServiceResult<ReferenceSliceView>.Fail("VALIDATION_FAILED", $"En fazla {MaximumBrandLookupIds} marka kimliği sorgulanabilir.", 422);
+        if (ids.Any(x => x.Length > 256)) return ServiceResult<ReferenceSliceView>.Fail("VALIDATION_FAILED", "Marka kimliği en fazla 256 karakterdir.", 422);
+        var snapshotResult = await CurrentBrandSnapshotAsync(tenantId, connectionId, cancellationToken);
+        if (!snapshotResult.Succeeded) return new ServiceResult<ReferenceSliceView>(null, snapshotResult.Error);
+        var snapshot = snapshotResult.Value!;
+        if (ids.Length == 0) return ServiceResult<ReferenceSliceView>.Ok(snapshot.Slice([]));
+        var rows = await BrandItems(tenantId, snapshot.Id).Where(x => ids.Contains(x.ExternalId)).Select(BrandRow).ToListAsync(cancellationToken);
+        return ServiceResult<ReferenceSliceView>.Ok(snapshot.Slice(rows.OrderBy(x => x.NormalizedName, StringComparer.Ordinal).Select(x => x.View).ToList()));
+    }
+
+    // The spellings a typed brand can be stored under. Names are stored as Name.Trim().ToUpperInvariant(), which keeps
+    // "ı" and "İ" as they are: an "i" may be stored as "I" (written on a Latin layout) or "İ", an "ı" as "ı" or "I".
+    internal static IReadOnlyList<string> BrandSearchKeys(string query)
+    {
+        var turkishCulture = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+        var text = query.Trim();
+        var invariant = text.ToUpperInvariant();
+        return new[] { invariant, text.ToUpper(turkishCulture), invariant.Replace('İ', 'I'), text.ToLower(turkishCulture).ToUpperInvariant() }
+            .Where(x => x.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+    }
+
+    // EF writes ESCAPE '' (none) unless one is given; the patterns escape with a backslash.
+    private const string LikeEscape = "\\";
+    internal static string EscapeLike(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
+
+    // 0 the id itself, 1 the whole name, 2 the name's start, 3 a word's start, 4 anywhere in the name.
+    internal static int BrandSearchRank(BrandSearchRow row, string query, IReadOnlyList<string> keys)
+    {
+        if (string.Equals(row.View.ExternalId, query, StringComparison.Ordinal)) return 0;
+        if (keys.Any(key => string.Equals(row.NormalizedName, key, StringComparison.Ordinal))) return 1;
+        if (keys.Any(key => row.NormalizedName.StartsWith(key, StringComparison.Ordinal))) return 2;
+        if (keys.Any(key => row.NormalizedName.Contains(" " + key, StringComparison.Ordinal))) return 3;
+        return 4;
+    }
+
+    internal sealed record BrandSearchRow(string NormalizedName, ReferenceItemView View);
+
+    internal sealed record BrandSnapshot(Guid Id, DateTimeOffset FetchedAt, int ItemCount)
+    {
+        public ReferenceSliceView Slice(IReadOnlyList<ReferenceItemView> items) => new(Id, Brands, FetchedAt, ItemCount, items);
+    }
+
+    private static readonly System.Linq.Expressions.Expression<Func<ReferenceItem, BrandSearchRow>> BrandRow = x =>
+        new BrandSearchRow(x.NormalizedName, new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues));
+
+    // "BRANDS" stays a literal in the SQL, so the partial brand indexes apply.
+    private IQueryable<ReferenceItem> BrandItems(Guid tenantId, Guid snapshotId) =>
+        db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == snapshotId && x.ResourceType == "BRANDS");
+
+    private async Task<ServiceResult<BrandSnapshot>> CurrentBrandSnapshotAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<BrandSnapshot>();
+        var snapshot = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == Brands && x.ScopeExternalId == "" && x.IsCurrent)
+            .OrderByDescending(x => x.FetchedAt)
+            .Select(x => new BrandSnapshot(x.Id, x.FetchedAt, x.ItemCount))
+            .FirstOrDefaultAsync(cancellationToken);
+        return snapshot is null
+            ? ServiceResult<BrandSnapshot>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Doğrulanmış güncel reference snapshot yok; canlı platform çağrısı yapılmadı.", 422)
+            : ServiceResult<BrandSnapshot>.Ok(snapshot);
+    }
+
     public async Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyList<CatalogMappingView>>();

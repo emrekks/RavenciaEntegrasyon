@@ -20,6 +20,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 .HasAnnotation("ProductVersion", "10.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("MarketplaceHub.Domain.ApiIdempotencyRecord", b =>
@@ -5132,6 +5133,17 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "SnapshotId", "ResourceType", "ExternalId")
                         .IsUnique();
+
+                    b.HasIndex(new[] { "TenantId", "SnapshotId", "NormalizedName" }, "IX_reference_items_brand_name_prefix")
+                        .HasFilter("\"ResourceType\" = 'BRANDS'");
+
+                    NpgsqlIndexBuilderExtensions.UseCollation(b.HasIndex(new[] { "TenantId", "SnapshotId", "NormalizedName" }, "IX_reference_items_brand_name_prefix"), new[] { null, null, "C" });
+
+                    b.HasIndex(new[] { "NormalizedName" }, "IX_reference_items_brand_name_trigram")
+                        .HasFilter("\"ResourceType\" = 'BRANDS'");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex(new[] { "NormalizedName" }, "IX_reference_items_brand_name_trigram"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex(new[] { "NormalizedName" }, "IX_reference_items_brand_name_trigram"), new[] { "gin_trgm_ops" });
 
                     b.ToTable("reference_items", "integration");
                 });

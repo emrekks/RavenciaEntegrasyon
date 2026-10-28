@@ -130,6 +130,10 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("reference_items", "integration"); entity.HasKey(x => x.Id); entity.Property(x => x.ResourceType).HasMaxLength(64); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.NormalizedName).HasMaxLength(320); entity.Property(x => x.Path).HasMaxLength(1024); entity.Property(x => x.PayloadHash).HasMaxLength(128);
             entity.HasIndex(x => new { x.TenantId, x.SnapshotId, x.ResourceType, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.SnapshotId, x.ParentExternalId });
+            // Brand search (ReferenceDataService.SearchBrandsAsync): name prefixes in byte order, and name fragments
+            // through trigrams. Both are built CONCURRENTLY by migration AddBrandReferenceSearchIndexes.
+            entity.HasIndex(x => new { x.TenantId, x.SnapshotId, x.NormalizedName }, "IX_reference_items_brand_name_prefix").UseCollation(null!, null!, "C").HasFilter("\"ResourceType\" = 'BRANDS'");
+            entity.HasIndex(x => x.NormalizedName, "IX_reference_items_brand_name_trigram").HasMethod("gin").HasOperators("gin_trgm_ops").HasFilter("\"ResourceType\" = 'BRANDS'");
             entity.HasOne<ReferenceSnapshot>().WithMany().HasForeignKey(x => new { x.TenantId, x.SnapshotId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<CatalogMapping>().UseTpcMappingStrategy();

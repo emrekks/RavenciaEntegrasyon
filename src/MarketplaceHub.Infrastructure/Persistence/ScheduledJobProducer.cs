@@ -139,22 +139,40 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
             if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
-            if (row.Policy.ResourceType == "REFERENCE_DATA"
-                && await db.ReferenceSnapshots.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId
-                    && x.ConnectionId == row.Connection.Id && x.ResourceType == "CATEGORIES" && x.ScopeExternalId == ""
-                    && x.IsCurrent && x.FetchedAt > now.AddSeconds(-(interval + jitterSeconds)), cancellationToken)) continue;
             // A hot order read of a connection without any order yet runs at once, whatever its interval.
             if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
                 && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) continue;
 
             var bucket = now.ToUnixTimeSeconds() / interval;
-            var dedup = $"{definition.Value.DedupPrefix}:{bucket}";
-            if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.JobType == definition.Value.JobType && x.JobDedupKey == dedup, cancellationToken)) continue;
+            var jobs = new List<(string Dedup, string PayloadJson)>();
+            if (row.Policy.ResourceType == "REFERENCE_DATA")
+            {
+                // The daily reference read refreshes the category tree and, where the marketplace keeps a brand list,
+                // the brand list; a list fetched within the day (by hand or at activation) is not read again.
+                var resources = ScheduledReferenceResources(row.Connection.PlatformCode);
+                var fetched = await db.ReferenceSnapshots.AsNoTracking()
+                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && resources.Contains(x.ResourceType) && x.ScopeExternalId == "" && x.IsCurrent)
+                    .GroupBy(x => x.ResourceType)
+                    .Select(group => new { ResourceType = group.Key, FetchedAt = group.Max(x => x.FetchedAt) })
+                    .ToDictionaryAsync(x => x.ResourceType, x => x.FetchedAt, cancellationToken);
+                foreach (var resource in StaleReferenceResources(resources, fetched, interval, jitterSeconds, now))
+                    jobs.Add(resource == "CATEGORIES"
+                        ? ($"{definition.Value.DedupPrefix}:{bucket}", definition.Value.PayloadJson)
+                        : ($"{definition.Value.DedupPrefix}:{resource.ToLowerInvariant()}:{bucket}", JsonSerializer.Serialize(new { connectionId = row.Connection.Id, resourceType = resource, parentExternalId = (string?)null })));
+            }
+            else jobs.Add(($"{definition.Value.DedupPrefix}:{bucket}", definition.Value.PayloadJson));
+            var queuedAny = false;
+            foreach (var (dedup, payloadJson) in jobs)
+            {
+                if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.JobType == definition.Value.JobType && x.JobDedupKey == dedup, cancellationToken)) continue;
+                db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, payloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
+                queuedAny = true;
+                added++;
+            }
+            if (!queuedAny) continue;
             reservedExecutionGroups.Add(reservationKey);
             if (canQueueOrderBackgroundBehindOrderLane) backgroundOrderReservations.Add(row.Connection.Id);
-            db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, definition.Value.PayloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
             scheduledPolicyIds.Add(row.Policy.Id);
-            added++;
         }
 
         // Tenants that have invoices (an EXISTS per tenant instead of a DISTINCT over every invoice).
@@ -658,6 +676,22 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // policies exist (and stay off) for the later phases.
     internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
+
+    // The reference lists the REFERENCE_DATA policy keeps fresh. Trendyol and Pazarama products name a brand from
+    // the marketplace's own list (808k and 104k brands); the other marketplaces take the brand by its name.
+    internal static string[] ScheduledReferenceResources(string platformCode) =>
+        platformCode is "TRENDYOL" or "PAZARAMA" ? ["CATEGORIES", "BRANDS"] : ["CATEGORIES"];
+
+    // The lists to read again: those never fetched and those fetched too long ago. The category tree keeps its rule
+    // (fresh for the interval and jitter). A brand list counts as fresh for the interval less the daily window, so a
+    // read that ends a little later every day cannot slide out of the window and skip a day.
+    internal static IReadOnlyList<string> StaleReferenceResources(IReadOnlyList<string> resources, IReadOnlyDictionary<string, DateTimeOffset> fetchedAt, int intervalSeconds, int jitterSeconds, DateTimeOffset now)
+    {
+        var interval = TimeSpan.FromSeconds(intervalSeconds);
+        var brandFreshFor = DailyScheduleWindowPolicy.Applies(intervalSeconds) ? interval - (DailyScheduleWindowPolicy.WindowEnd - DailyScheduleWindowPolicy.WindowStart) : interval;
+        return resources.Where(resource => !fetchedAt.TryGetValue(resource, out var at)
+            || at <= now - (resource == "CATEGORIES" ? interval + TimeSpan.FromSeconds(jitterSeconds) : brandFreshFor)).ToArray();
+    }
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == "ORDER_CARGO_INFO"
