@@ -159,7 +159,7 @@ describe('ReportsPage', () => {
     expect(card.querySelector('.reports-donut-centre')?.textContent).toBe('İade Edilen Tutar₺100masrafların %44,8 kadarı')
     expect(card.querySelector('.reports-donut.has-active .reports-donut-part.is-active')).not.toBeNull()
     await act(async () => { card.querySelector<HTMLButtonElement>('.reports-costlines li:first-child button')!.blur() })
-    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('Toplam masraf')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('Toplam Masraf')
     // Kâr Köprüsü: each deduction taken from where the one before ended, down to the same 127.
     expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Pazaryeri Masrafları − ₺43,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Net Kâr ₺127,00'])
     // A row's explanation is there for the pointer, not printed under it.
@@ -308,7 +308,7 @@ describe('ReportsPage', () => {
     await act(async () => { first.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body })) })
     const tip = page.querySelector('.reports-columns-tip')!
     expect(tip.textContent).toContain('01.10.2026')
-    expect(tip.textContent).toContain('Bu dönem')
+    expect(tip.textContent).toContain('Bu Dönem')
     expect(tip.textContent).toContain('150,00')
     expect(tip.textContent).toContain('100,00')
     expect(first.classList.contains('is-hover')).toBe(true)

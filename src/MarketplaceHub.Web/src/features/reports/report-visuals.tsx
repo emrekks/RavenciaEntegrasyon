@@ -77,7 +77,7 @@ export function Columns({ points, format, axisFormat, shown, label }: { points: 
         style={{ left: `${(hover + 0.5) / points.length * 100}%`, bottom: `calc(24px + (100% - 24px) * ${Math.min(0.82, point.value / top)})`,
           transform: (hover + 0.5) / points.length > 0.7 ? 'translateX(calc(-100% + 12px))' : (hover + 0.5) / points.length < 0.3 ? 'translateX(-12px)' : undefined } as CSSProperties}>
         <b>{point.title}</b>
-        <span><i className="is-now" />Bu dönem<strong>{format(point.value)}</strong></span>
+        <span><i className="is-now" />Bu Dönem<strong>{format(point.value)}</strong></span>
         {point.previous !== null && <span><i />Önceki<strong>{format(point.previous)}</strong></span>}
       </div>}
     </div>

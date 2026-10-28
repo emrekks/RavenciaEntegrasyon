@@ -220,7 +220,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     await settle()
     act(() => Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(item => item.textContent?.includes('Manuel Fatura Ekle'))!.click())
     await settle()
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Siparişe manuel fatura belgesi ekle')
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Siparişe Manuel Fatura Belgesi Ekle')
     expect(apiState.orderSyncRequests).toEqual([])
     act(() => button('Vazgeç').click())
   })

@@ -593,7 +593,7 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
           <strong>{formatTlWhole(picked.value)}</strong>
           <span>masrafların {formatPercent(total > 0 ? picked.value / total : null)} kadarı</span>
         </> : <>
-          <small>Toplam masraf</small>
+          <small>Toplam Masraf</small>
           <strong>{formatTlWhole(total)}</strong>
           <span>satışın {formatPercent(money.total > 0 ? total / money.total : null)} kadarı</span>
         </>}</div>
@@ -698,7 +698,7 @@ function SalesDetail({ data }: { data: ReportSales }) {
   const rows = data.platforms.filter(group => group.ordersWithAmount > 0 && group.grossSales > 0).sort((a, b) => b.grossSales - a.grossSales)
   const total = rows.reduce((sum, group) => sum + group.grossSales, 0)
   return <div className="reports-journey-pane">
-    <h3>Platformlara göre satış</h3>
+    <h3>Platformlara Göre Satış</h3>
     {rows.length === 0 ? <p className="reports-empty">Bu dönemde tutarı olan satış yok.</p> : <ul className="reports-platform-list is-columns">{rows.map(group => <li key={group.key}>
       <PlatformSquareMark code={group.key} name={platformName(group.label)} />
       <span>{platformName(group.label)}<small>{formatPercent(group.grossSales / total)} · {formatCount(group.orders)} sipariş</small></span>
@@ -1450,8 +1450,8 @@ function Customers({ data }: { data: ReportSales }) {
         <StackedBar shown={shown} total={customers.uniqueCustomers} label={`Bir kez alan ${formatCount(customers.uniqueCustomers - customers.repeatCustomers)}, tekrar alan ${formatCount(customers.repeatCustomers)}`}
           parts={[{ key: 'repeat', label: 'Tekrar alan', value: customers.repeatCustomers, tone: 'left' }, { key: 'once', label: 'Bir kez alan', value: customers.uniqueCustomers - customers.repeatCustomers, tone: 'fees' }]} />
         <ul className="reports-legend-row">
-          <li><i className="is-left" aria-hidden="true" />Tekrar alan<b>{formatCount(customers.repeatCustomers)}</b></li>
-          <li><i className="is-fees" aria-hidden="true" />Bir kez alan<b>{formatCount(customers.uniqueCustomers - customers.repeatCustomers)}</b></li>
+          <li><i className="is-left" aria-hidden="true" />Tekrar Alan<b>{formatCount(customers.repeatCustomers)}</b></li>
+          <li><i className="is-fees" aria-hidden="true" />Bir Kez Alan<b>{formatCount(customers.uniqueCustomers - customers.repeatCustomers)}</b></li>
         </ul>
       </> : <p className="reports-empty">Kimliği okunan müşteri yok.</p>}
     </RevealPanel>

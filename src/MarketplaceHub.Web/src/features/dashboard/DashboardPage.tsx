@@ -141,7 +141,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
 
 // Option A of genel-bakis-platform-sekmeleri.html: one metric of the performance card. The cells that can be drawn
 // pick the chart's metric; the bar shows where the latest day sits between the weakest and the strongest one.
-function KpiCell({ label, value, delta, note, avgLabel = 'Günlük ortalama', avg, min, max, position, on, onPick, loading }: { loading?: boolean; label: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
+function KpiCell({ label, value, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading }: { loading?: boolean; label: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <small>{label}</small><strong className="rr-num">{value}</strong>
     {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span> : <span className="rr-trend"><em>{note}</em></span>}
@@ -270,9 +270,9 @@ export function DashboardPage() {
       </div></div>
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell loading={loading} label="Ciro" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
-        <KpiCell loading={loading} label="Toplam Sipariş" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
-        <KpiCell loading={loading} label="Ortalama Sepet" avgLabel={hourly ? 'Saatlik ortalama' : 'Günlük ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
+        <KpiCell loading={loading} label="Ciro" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell loading={loading} label="Toplam Sipariş" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell loading={loading} label="Ortalama Sepet" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
       {!loading && foreign.length > 0 && <p className="rr-pf-note">
