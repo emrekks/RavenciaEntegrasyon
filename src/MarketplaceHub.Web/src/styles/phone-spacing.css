@@ -1,11 +1,11 @@
 /* Phones: one spacing scale for every page and window, so blocks line up and the screen keeps its room.
-     --m-gutter  screen edge to blocks, the top bar and windows   12px
+     --m-gutter  screen edge to blocks, the top bar and windows   16px
      --m-gap     between blocks, and between the cards of a list   8px
      --m-pad     inside a framed block, or each of its sections    12px
    This is the last word on phone spacing: it is linked for phones only (see main.tsx), and every rule starts at :root
    so it outranks the page sheets that load after it. */
 @media (max-width: 760px) {
-  :root { --m-gutter: 12px; --m-gap: 8px; --m-pad: 12px; --m-safe-top: env(safe-area-inset-top, 0px); --m-safe-bottom: env(safe-area-inset-bottom, 0px); }
+  :root { --m-gutter: 16px; --m-gap: 8px; --m-pad: 12px; --m-safe-top: env(safe-area-inset-top, 0px); --m-safe-bottom: env(safe-area-inset-bottom, 0px); }
 
   /* Page frame */
   :root .app-shell.stitch-shell main section.content { padding: 12px var(--m-gutter) calc(16px + var(--m-safe-bottom)) !important; row-gap: var(--m-gap) !important; }

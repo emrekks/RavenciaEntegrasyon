@@ -39,7 +39,7 @@
 .rv-notification-icon .rv-tone-icon, .rv-notification-icon .ui-icon { width: 18px; height: 18px; }
 .rv-notification-history-item.is-read .rv-notification-icon { opacity: .7; }
 
-.rv-notification-card { min-width: 0; padding: 10px 12px; background: var(--rv-color-bg); border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.rv-notification-card { min-width: 0; padding: 10px 12px; background: var(--rv-color-bg); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .rv-notification-history-item.is-unread .rv-notification-card { border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
 .rv-notification-history-item:hover .rv-notification-card { border-color: var(--rv-color-border-strong); }
 .rv-notification-history-item.is-unread:hover .rv-notification-card { border-color: color-mix(in srgb, var(--rv-color-primary) 75%, transparent); }
@@ -62,7 +62,7 @@
 .rv-notification-mark-read .ui-icon { width: 14px; height: 14px; }
 @media (prefers-reduced-motion: reduce) { .rv-notification-go .ui-icon, .rv-notification-more .ui-icon { transition: none; } }
 
-.rv-notification-detail { display: grid; gap: 6px; margin: 10px 0 0; padding: 10px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.rv-notification-detail { display: grid; gap: 6px; margin: 10px 0 0; padding: 10px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
 .rv-notification-detail > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; align-items: baseline; }
 .rv-notification-detail dt { color: var(--rv-color-subtle); font-size: 12px; }
 .rv-notification-detail dd { margin: 0; font-size: 12.5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }

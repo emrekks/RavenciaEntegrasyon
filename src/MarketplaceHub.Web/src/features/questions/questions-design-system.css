@@ -1,8 +1,6 @@
 /* Rules of the design system that only QuestionsPage.tsx uses, loaded with it (moved out of the main CSS). */
 
 .rv-questions-page { display: grid; gap: var(--rv-space-4); min-width: 0; }
-.rv-questions-page > .rv-page-header { align-items: flex-start; }
-.rv-questions-page .rv-page-actions .rv-button { display: inline-flex; align-items: center; gap: 8px; }
 .rv-questions-sync { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); background: var(--rv-color-surface); color: var(--rv-color-muted); font-size: 13px; box-shadow: var(--rv-shadow-sm); }
 .rv-questions-sync-item { position: relative; display: grid; gap: 4px; min-width: 0; padding: 11px 12px 11px 48px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); }
 .rv-questions-tabs { min-width: 0; overflow-x: auto; margin-bottom: 0; }
@@ -26,7 +24,7 @@
 .rv-question-templates { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr); gap: 14px; min-width: 0; }
 .rv-question-template-editor { display: grid; align-content: start; gap: 14px; }
 .rv-question-template-list { display: grid; align-content: start; gap: 10px; }
-.rv-question-template-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px; border: 1px solid var(--rv-color-border); border-radius: 10px; background: var(--rv-color-surface-raised); }
+.rv-question-template-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px; border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface-raised); }
 .rv-question-template-card > div:first-child { min-width: 0; }
 .rv-questions-sync { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; padding: 8px; }
 .rv-question-platform-logo { grid-column: 1; grid-row: 1 / span 3; width: 28px; height: 28px; align-self: center; object-fit: contain; }
@@ -34,7 +32,7 @@
 .rv-question-card { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 11px; padding: 14px; }
 .rv-question-product { align-items: center; flex: 1 1 auto; }
 .rv-question-content { grid-column: 1; }
-.rv-question-content { gap: 9px; padding: 11px 12px; border: 1px solid var(--rv-color-border); border-radius: 10px; background: var(--rv-color-surface-soft); }
+.rv-question-content { gap: 9px; padding: 11px 12px; border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface-soft); }
 .rv-question-meta { gap: 6px 9px; }
 .rv-question-meta time { font-variant-numeric: tabular-nums; }
 .rv-question-platform-context { display: grid; justify-items: end; gap: 4px; }
@@ -42,7 +40,7 @@
 .rv-question-platform-context > .order-platform-fallback { max-width: 88px; overflow-wrap: anywhere; }
 .rv-question-platform-context .rv-question-age, .rv-question-platform-context .rv-question-deadline { margin: 0; white-space: nowrap; }
 .rv-question-conversation { max-height: none; overflow: visible; gap: 7px; padding: 0; }
-.rv-question-thread-message { max-width: min(92%, 850px); min-width: 0; padding: 9px 11px; border: 1px solid var(--rv-color-border); border-radius: 10px; background: var(--rv-color-surface-raised); }
+.rv-question-thread-message { max-width: min(92%, 850px); min-width: 0; padding: 9px 11px; border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface-raised); }
 .rv-question-thread-message.is-customer { justify-self: start; }
 .rv-question-thread-message.is-seller { justify-self: end; border-color: color-mix(in srgb, var(--rv-color-primary) 44%, var(--rv-color-border)); background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface-raised)); }
 .rv-question-thread-message.is-question { max-width: none; }

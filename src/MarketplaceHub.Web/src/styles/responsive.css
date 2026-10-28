@@ -169,8 +169,8 @@
 }
 
 /* Sort action sheet (bottom sheet, like the marketplace app). */
-html body .mfs-sort-backdrop { position: fixed; inset: 0; z-index: calc(var(--rv-z-modal, 1000) + 8); display: flex; align-items: flex-end; background: rgb(5 16 29 / 62%); }
-html body .mfs-sort-sheet { width: 100%; max-height: 80dvh; overflow: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+html body .mfs-sort-backdrop { position: fixed; inset: 0; z-index: calc(var(--rv-z-modal, 1000) + 8); display: flex; align-items: flex-end; background: var(--rv-color-backdrop); }
+html body .mfs-sort-sheet { width: 100%; max-height: 80dvh; overflow: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom); }
 html body .mfs-sort-sheet > header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--rv-color-border); }
 html body .mfs-sort-sheet > header > button { justify-self: start; min-height: 44px; padding: 0 12px; color: var(--rv-color-danger); background: transparent; border: 0; font-weight: 600; }
 html body .mfs-sort-sheet > header > strong { font-size: 15px; }
@@ -224,7 +224,7 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .mam > .mam-primary { display: contents; }
   html body .mam .mam-primary > * { order: var(--mam-primary-order, 0); display: inline-flex; box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: none; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; text-decoration: none; }
   html body .mam > .mam-trigger { order: 9; display: inline-grid; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
-  html body .mam > .mam-more { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(280px, 82vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  html body .mam > .mam-more { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--rv-z-dropdown); width: min(280px, 82vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
   html body .mam.is-open > .mam-more { display: grid; }
   html body .mam > .mam-more > * { order: 0; display: flex; box-sizing: border-box; width: 100%; min-height: 46px; align-items: center; justify-content: flex-start; gap: 10px; margin: 0; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: 14px; font-weight: 600; text-align: left; text-decoration: none; }
   html body .mam > .mam-more > :is(button, a):hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
@@ -300,7 +300,7 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .mam .mam-primary > * > svg { flex: 0 0 18px; }
   html body .mam .mam-primary > button { white-space: nowrap; }
   /* The heading stacks (title above, actions below) on every page that uses the menu. */
-  html body .app-shell.stitch-shell main .content > .page-heading, html body .app-shell.stitch-shell main .content > .mapping-reference-heading, html body .app-shell.stitch-shell main .content > .rv-page-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+  html body .app-shell.stitch-shell main .content > .page-heading, html body .app-shell.stitch-shell main .content > .mapping-reference-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
 }
 
 /* The action row has no side padding: buttons start at the title's left edge and end at its right edge. */

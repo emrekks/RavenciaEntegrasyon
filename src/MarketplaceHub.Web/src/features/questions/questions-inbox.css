@@ -52,7 +52,7 @@
 .qi-page .qi-status-btn b { flex: 1; overflow: hidden; font-weight: 500; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .qi-page .qi-status-btn > .ui-icon { color: var(--rv-color-muted); transition: transform .15s; }
 .qi-page .qi-status-btn.is-on > .ui-icon { transform: rotate(180deg); }
-.qi-page :is(.qi-status-menu, .qi-popover) { position: absolute; z-index: 30; top: calc(100% + 6px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+.qi-page :is(.qi-status-menu, .qi-popover) { position: absolute; z-index: var(--rv-z-dropdown); top: calc(100% + 6px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); }
 .qi-page .qi-status-menu { right: 0; left: 0; display: grid; gap: 2px; padding: 6px; }
 .app-shell.stitch-shell main .qi-page .qi-status-menu > button { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; min-height: 34px; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-align: left; text-transform: none; }
 .qi-page .qi-status-menu > button > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
@@ -100,7 +100,7 @@
 .app-shell.stitch-shell main .qi-page .qi-back { display: none; justify-self: start; align-items: center; gap: 6px; height: 30px; min-height: 30px; padding: 0 8px 0 4px; color: var(--rv-color-muted); background: none; border: 0; box-shadow: none; font-size: 13px; }
 .qi-page .qi-dcard { overflow: hidden; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .app-shell.stitch-shell main .qi-page .qi-product { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; }
-.app-shell.stitch-shell main .qi-page .qi-product > img, .qi-page .qi-product > .rv-question-product-placeholder { box-sizing: border-box; display: grid; width: 40px; height: 60px; place-items: center; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.app-shell.stitch-shell main .qi-page .qi-product > img, .qi-page .qi-product > .rv-question-product-placeholder { box-sizing: border-box; display: grid; width: 40px; height: 60px; place-items: center; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; }
 .qi-page .qi-product > div:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
 .qi-page .qi-product strong { overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .qi-page .qi-product strong a { color: var(--rv-color-ink); text-decoration: none; }
@@ -278,7 +278,7 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync { overflow: visible; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item { position: relative; cursor: pointer; outline: none; }
-  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div > small:not(.qi-sync-time) { position: absolute; top: calc(100% - 4px); left: 8px; z-index: 20; display: none; width: max-content; max-width: none; overflow: visible; text-overflow: clip; white-space: nowrap; padding: 6px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div > small:not(.qi-sync-time) { position: absolute; top: calc(100% - 4px); left: 8px; z-index: var(--rv-z-tooltip); display: none; width: max-content; max-width: none; overflow: visible; text-overflow: clip; white-space: nowrap; padding: 6px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:is(:hover, :focus, :focus-within) > div > small:not(.qi-sync-time) { display: flex; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:nth-child(even) > div > small:not(.qi-sync-time) { left: auto; right: 8px; }
 }
@@ -312,7 +312,7 @@
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-state.is-done > span,
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-unit,
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-time { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item[data-detail]:is(:hover, :focus-visible)::after { content: attr(data-detail); position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; padding: 6px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item[data-detail]:is(:hover, :focus-visible)::after { content: attr(data-detail); position: absolute; top: calc(100% + 6px); left: 0; z-index: var(--rv-z-tooltip); padding: 6px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); font-size: 12px; white-space: nowrap; pointer-events: none; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item.is-placeholder { width: 150px; }
   .qi-page .qi-detail-head { padding: 12px 16px; }
   .qi-page .qi-facts > div { min-height: 48px; padding: 6px 12px; }
@@ -321,10 +321,10 @@
 }
 
 /* The product thumbnail is a button that opens the large picture; the header is kept compact around it. */
-.app-shell.stitch-shell main .qi-page .qi-product > .qi-product-zoom { display: block; width: 40px; height: 56px; padding: 0; overflow: hidden; background: none; border: 0; border-radius: 8px; cursor: zoom-in; }
-.app-shell.stitch-shell main .qi-page .qi-product > .qi-product-zoom > img { box-sizing: border-box; display: block; width: 100%; height: 100%; object-fit: cover; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.app-shell.stitch-shell main .qi-page .qi-product > .qi-product-zoom { display: block; width: 40px; height: 56px; padding: 0; overflow: hidden; background: none; border: 0; border-radius: 7px; cursor: zoom-in; }
+.app-shell.stitch-shell main .qi-page .qi-product > .qi-product-zoom > img { box-sizing: border-box; display: block; width: 100%; height: 100%; object-fit: cover; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; }
 .app-shell.stitch-shell main .qi-page .qi-product > .qi-product-zoom:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
-.qi-image-modal .qi-image-large { display: block; max-width: min(560px, 80vw); max-height: 70vh; margin: 0 auto; object-fit: contain; border-radius: 10px; }
+.qi-image-modal .qi-image-large { display: block; max-width: min(560px, 80vw); max-height: 70vh; margin: 0 auto; object-fit: contain; border-radius: 12px; }
 
 /* A transfer under way turns; it stands still for reduced motion. */
 .qi-page .qi-glyph.is-running { color: var(--rv-color-primary); animation: qi-glyph-turn 900ms linear infinite; }

@@ -34,17 +34,6 @@
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(6) { grid-area: action; align-self: start; }
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td[colspan] { grid-column: 1 / -1; }
   .app-shell.stitch-shell main .jobs-page .jobs-reference-time { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-  .app-shell.stitch-shell main .jobs-page .jobs-reference-row-action { width: 40px; height: 40px; }
   /* The type tooltip needs hover; touch screens show the card instead. */
   .app-shell.stitch-shell main .jobs-page .jobs-reference-type-tooltip { display: none; }
-}
-
-/* Readability pass: the per-job detail button is quiet (outline) so the job name and status lead. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .jobs-page .jobs-reference-row-action {
-    color: var(--rv-color-ink);
-    background: transparent;
-    border: 1px solid var(--rv-color-border-strong);
-    box-shadow: none;
-  }
 }

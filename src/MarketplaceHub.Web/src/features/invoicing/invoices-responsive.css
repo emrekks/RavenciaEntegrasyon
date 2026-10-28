@@ -251,7 +251,7 @@
     position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 20px rgb(0 0 0 / 16%);
   }
   .app-shell.stitch-shell main .invoices-page .invoice-selection-bar > strong { text-align: center; font-size: 13px; font-weight: 600; }
   .app-shell.stitch-shell main .invoices-page .invoice-selection-bar > button { min-height: 40px; padding: 0 12px; font-size: 14px; font-weight: 600; background: transparent; border: 0; }
@@ -328,7 +328,7 @@
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-shipment { justify-content: flex-end !important; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-actions { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-actions > * { width: 100%; min-width: 0; }
-  .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-actions :is(button, a) { width: 100%; min-height: 40px; height: 40px; justify-content: center; border: 1px solid var(--rv-color-border-strong); border-radius: 10px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-actions :is(button, a) { width: 100%; min-height: 40px; height: 40px; justify-content: center; border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > :is(.invoice-reference-products, .invoice-reference-status, .invoice-reference-shipment) { justify-self: stretch !important; width: auto !important; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > :is(.invoice-reference-products, .invoice-reference-status, .invoice-reference-shipment) > * { margin: 0 !important; }
 }
