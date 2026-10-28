@@ -132,12 +132,12 @@ describe('SystemSettingsPage', () => {
   it('deletes the chosen lists only after the confirmation text is typed', async () => {
     await renderPage('/settings?tab=database')
     await settle()
-    const products = Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-cf.is-pick')).find(item => item.textContent?.includes('Ürünler Listesi'))!
+    const products = Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.textContent?.includes('Ürünler Listesi'))!
     expect(products.textContent).toContain('944')
     click(products.querySelector('input')!)
-    const summary = container.querySelector('.ss-bar-copy')?.textContent
+    const summary = container.querySelector('.ss-dr-sum')?.textContent
     expect(summary).toContain('Toplam 944 kayıt')
-    expect(summary).toContain('Ürünler Listesi 944')
+    expect(summary).toContain('Ürünler Listesi944')
     const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
     expect(confirm.disabled).toBe(true)
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')

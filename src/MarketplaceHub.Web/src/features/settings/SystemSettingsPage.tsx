@@ -156,48 +156,57 @@ const resetScopeGroups: DataResetGroup[] = [
 const resetConfirmWord = 'Verileri sil'
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
 
-// Database cleanup laid out like the colour palette: each list is a line with its count, the summary, the typed
-// confirmation and the reset button sit in the section's sticky bar (design option B, 28 Oct 2026).
+// Database cleanup: each group has one header with its own select-all and a selected/total count; each data type is
+// a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
+// what goes as chips, the total, the typed confirmation and the reset button.
 function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, confirmation, onConfirmation, busy, onConfirm }: { groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
   const options = groups.flatMap(group => group.options)
   const going = options.filter(option => picked.includes(option.scope))
   const known = going.every(option => counts?.[option.scope] !== undefined)
   const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0)
   const confirmed = confirmation.trim() === resetConfirmWord
-  const allPicked = options.every(option => picked.includes(option.scope))
   const countText = (scope: string, unit: string) => {
     const value = counts?.[scope]
-    if (value !== undefined) return <><strong>{resetNumber(value)}</strong> {unit}</>
-    return countsFailed ? 'Sayı alınamadı' : counts ? '' : 'Sayılıyor…'
+    if (value !== undefined) return `${resetNumber(value)} ${unit}`
+    return countsFailed ? 'Sayı alınamadı' : counts ? null : 'Sayılıyor…'
   }
   return <>
-    <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." actions={<button type="button" className="ss-btn" disabled={busy} onClick={() => onToggle(options.map(option => option.scope), !allPicked)}>{allPicked ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>} />
+    <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." />
     <div className="ss-body ss-dr" role="group" aria-label="Sıfırlanacak veriler">
       {groups.map(group => {
-        const all = group.options.every(option => picked.includes(option.scope))
+        const chosen = group.options.filter(option => picked.includes(option.scope)).length
+        const all = chosen === group.options.length
         return <section className="ss-dr-group" key={group.label} aria-label={group.label}>
-          <header className="ss-dr-sub"><span title={group.description}>{group.label}</span><span className="ss-count">{group.options.length}</span><span className="ss-grow" /><button type="button" className="ss-btn is-quiet is-xs" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></header>
-          <div className="ss-cgrid">{group.options.map(option => {
+          <header className="ss-dr-gh">
+            <div><h3>{group.label}</h3><p>{group.description}</p></div>
+            <span className={`ss-tag${chosen ? ' is-ink' : ''}`}>{chosen}/{group.options.length} Seçili</span>
+            <button type="button" className="ss-btn is-xs" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>
+          </header>
+          <div className="ss-dr-list">{group.options.map(option => {
             const on = picked.includes(option.scope)
-            return <label key={option.scope} className={`ss-cf is-pick${on ? ' is-on' : ''}`}>
+            const count = countText(option.scope, option.unit)
+            return <label key={option.scope} className={`ss-dr-opt${on ? ' is-on' : ''}`}>
               <input type="checkbox" className="ss-cb" checked={on} disabled={busy} onChange={event => onToggle([option.scope], event.target.checked)} />
-              <span><b>{option.label}</b><small>{option.description}</small></span>
-              <span className="ss-dr-count">{countText(option.scope, option.unit)}</span>
+              <span className="ss-dr-text"><b>{option.label}</b><small>{option.description}</small></span>
+              {count ? <span className="ss-tag ss-dr-count">{count}</span> : null}
             </label>
           })}</div>
         </section>
       })}
-      <div className="ss-dr-notes">
-        <p className="ss-dr-help is-warn"><SettingsIcon name="alert" size={14} /><span><b>Yetkili işlemi:</b> bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></p>
-        <p className="ss-dr-help"><SettingsIcon name="info" size={14} /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></p>
+      <div className="ss-callout ss-dr-note">
+        <p className="is-warn"><SettingsIcon name="alert" /><span><b>Geri alınamaz.</b> Yetkili işlemi: bağlı alt kayıtlar güvenli sırayla temizlenir.</span></p>
+        <p><SettingsIcon name="info" /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></p>
       </div>
     </div>
-    <div className="ss-bar">
-      <div className="ss-bar-copy" role="status"><strong>Silinecekler · Toplam {going.length && !known ? '…' : `${resetNumber(total)} kayıt`}</strong><span className={going.length ? 'is-dirty' : undefined}>{going.length
-        ? going.map((option, index) => <Fragment key={option.scope}>{index ? ' · ' : ''}{option.label}{counts?.[option.scope] !== undefined ? <> <b>{resetNumber(counts[option.scope])}</b></> : null}</Fragment>)
-        : <>Silinecek veri türünü seçin; onaylamak için <b>{resetConfirmWord}</b> yazın.</>}</span></div>
+    <div className="ss-bar ss-dr-bar">
+      <div className="ss-dr-sum" role="status">
+        <div className="ss-dr-sum-head"><strong>Silinecekler</strong><span className="ss-dr-total">Toplam <b>{going.length && !known ? '…' : `${resetNumber(total)} kayıt`}</b></span></div>
+        <div className="ss-dr-chips">{going.length
+          ? going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)
+          : <span className="ss-dr-empty">Henüz seçim yok; yukarıdan silinecek veri türünü işaretleyin.</span>}</div>
+      </div>
       <div className="ss-bar-actions">
-        <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={resetConfirmWord} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
+        <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
         <button type="button" className="ss-btn is-danger is-solid ss-dr-go" disabled={!going.length || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
       </div>
     </div>
