@@ -25,7 +25,7 @@ type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'de
 type SettingsSectionKey = 'auth' | 'sessions' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
 type ShippingSection = 'sender' | 'dims' | 'designer'
 type AppearanceSection = 'read' | 'palette' | 'themes' | 'notify'
-type SettingsIconName = 'shield' | 'truck' | 'device' | 'phone' | 'db' | 'user' | 'ruler' | 'layout' | 'type' | 'palette' | 'save' | 'bell' | 'lock' | 'info' | 'alert' | 'logout' | 'trash' | 'reset' | 'plus' | 'barcode' | 'sparkle' | 'copy' | 'back' | 'chev'
+type SettingsIconName = 'shield' | 'truck' | 'device' | 'phone' | 'db' | 'user' | 'ruler' | 'layout' | 'type' | 'palette' | 'save' | 'bell' | 'lock' | 'info' | 'alert' | 'logout' | 'trash' | 'reset' | 'plus' | 'barcode' | 'sparkle' | 'copy' | 'back' | 'chev' | 'tag'
 type SettingsGlyphState = 'done' | 'pending' | 'none' | 'bad'
 
 const settingsSectionGroups: Array<{ label: string; icon: SettingsIconName; items: Array<{ key: SettingsSectionKey; label: string; short?: string; icon: SettingsIconName }> }> = [
@@ -73,7 +73,8 @@ const settingsIconPaths: Record<SettingsIconName, ReactNode> = {
   sparkle: <path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8l4.2-1.3z" />,
   copy: <><rect x="5" y="5" width="8.5" height="8.5" rx="1.5" /><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5" /></>,
   back: <path d="M10 3.5 5.5 8l4.5 4.5" />,
-  chev: <path d="m4.5 6 3.5 3.5L11.5 6" />
+  chev: <path d="m4.5 6 3.5 3.5L11.5 6" />,
+  tag: <><path d="M2.5 8.2V3.2a.7.7 0 0 1 .7-.7h5l5.3 5.3a1 1 0 0 1 0 1.4l-4.3 4.3a1 1 0 0 1-1.4 0z" /><circle cx="5.5" cy="5.5" r=".9" /></>
 }
 
 function SettingsIcon({ name, size = 16 }: { name: SettingsIconName; size?: number }) {
@@ -155,6 +156,7 @@ const resetScopeGroups: DataResetGroup[] = [
 ]
 const resetConfirmWord = 'Verileri sil'
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
+const resetGroupIcons: Record<string, SettingsIconName> = { Katalog: 'db', 'Ürün Seçenekleri': 'tag' }
 
 // Database cleanup: each group has one header with its own select-all and a selected/total count; each data type is
 // a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
@@ -178,8 +180,9 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
         const all = chosen === group.options.length
         return <section className="ss-dr-group" key={group.label} aria-label={group.label}>
           <header className="ss-dr-gh">
+            <span className="ss-tile is-sm ss-dr-ico"><SettingsIcon name={resetGroupIcons[group.label] ?? 'db'} /></span>
             <div><h3>{group.label}</h3><p>{group.description}</p></div>
-            <span className={`ss-tag${chosen ? ' is-ink' : ''}`}>{chosen}/{group.options.length} Seçili</span>
+            <span className={`ss-tag ss-dr-sel${chosen ? ' is-on' : ''}`}>{chosen}/{group.options.length} Seçili</span>
             <button type="button" className="ss-btn is-xs" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>
           </header>
           <div className="ss-dr-list">{group.options.map(option => {
