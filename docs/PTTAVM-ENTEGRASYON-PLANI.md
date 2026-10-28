@@ -225,6 +225,10 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     - Birleşik set yine en çok 100 varyant (`PTTAVM_VARIANT_LIMIT_EXCEEDED`), toplam stok en çok 9999
       (`PTTAVM_STOCK_TOTAL_TOO_HIGH`); aynı Renk/Beden iki farklı barkodla olamaz (`PTTAVM_VARIANT_OPTION_CONFLICT`). Ürün düzeyi
       stok birleşik varyantların toplamıdır.
+    - Yazma tarafındaki `Variant`'ta fiyat ve aktiflik alanı yok: PTT AVM'de sıfırdan farklı fiyatı (`Fiyat`/`FiyatFarki`;
+      `FiyatFarkiMi` false ise kendi fiyatı) olan ya da `Aktif = false` olan bir varyant varsa gönderim durur
+      (`PTTAVM_REMOTE_VARIANT_NOT_CARRIABLE`, ör. "FK453001: 25 TL fiyat farkı"). Alan hiç gelmediyse durdurmaz (bilinmeyen
+      bilinmeyen kalır). Eklenecek varyant yoksa önce "zaten var" sonucu döner (hiçbir şey gönderilmez).
     - Eski `PTTAVM_REMOTE_VARIANT_MISSING` reddi kaldırıldı (PTT AVM'deki fazla varyantlar artık taşınır).
   - Kuru çalıştırma anahtarı `PttAvmProductPayloadRules.VariantSendDryRun` **`false`** (birleştirmeyle silme olmadığı için gerçek
     gönderim açık). Birleşik istek her durumda gönderimden önce worker günlüğüne `PTT AVM variant product request` satırıyla
@@ -237,7 +241,7 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     repoda örnek yok, şema notlarından türetildi); varyant barkodunun büyük/küçük harf duyarlılığı (dışa aktarımda küçük harf);
     ürün düzeyi `Quantity`'nin kabulü; takip sonucunun varyant barkoduyla mı üst barkodla mı satır döndüğü (üst barkodla dönerse
     yayın işi `MANUAL_REVIEW`'e düşer); `GetProductsWithVariants`'in barkodsuz kayıtlarında `VariantName`'in "Renk / Beden" biçimi; taşınan bir PTT AVM varyantının
-    fiyat farkı ve pasif durumu istekte yokken korunuyor mu (istek yalnız barkod, Renk/Beden ve stok taşır).
+    fiyat farkı ve pasif durumu istekte yokken korunuyor mu (şimdilik böyle varyantlar gönderimi durdurur).
 - **8. aşama (iade görünümü, salt okunur):** Satırı `iade` olan her sipariş, yalnız o satırlarla tamamlanmış bir iade kaydıdır (`iade:{sipariş no}`).
   Kaydedilmesi stoğu değiştirmez; iade kararları PTT AVM paneline bırakılır ve panelden gönderilmez.
 - **Varyantlar (22 Ekim 2026, canlı mağazadan):** İlk eşleştirmede 198 üründen 25'i eşleşti; eşleşmeyen 172 barkod panelin

@@ -1412,7 +1412,8 @@ public sealed class PttAvmAdapterTests
         var handler = new CapturingHandler(request => Operation(request) switch
         {
             "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
-            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer),
+            // Without FK453001's price difference; FK453002 says no Aktif at all, which is no reason to stop.
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer.Replace("<a:Fiyat>25</a:Fiyat>", "<a:Fiyat>0</a:Fiyat>", StringComparison.Ordinal)),
             PttAvmHttpClient.ProductUpsert => Respond(HttpStatusCode.OK, ProductUpsertAnswer),
             _ => throw new InvalidOperationException("Unexpected operation.")
         });
@@ -1451,6 +1452,59 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(PttAvmProductPayloadRules.VariantsAlreadyPresentCode, result.Error!.Code);
         Assert.Equal("PTT AVM'de bu modelin bütün varyantları zaten var; gönderim yapılmadı.", result.Error.SafeMessage);
         Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AModelFamilyWhosePttAvmVariantHasAPriceDifferenceIsNotSent()
+    {
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer),
+            _ => throw new InvalidOperationException("No write may leave the panel.")
+        });
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Variants = [new("FK453003", "Bordo", "L", 4)] };
+
+        var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
+
+        Assert.Equal(PttAvmProductPayloadRules.RemoteVariantNotCarriableCode, result.Error!.Code);
+        Assert.Contains("FK453001: 25 TL fiyat farkı", result.Error.SafeMessage);
+        Assert.DoesNotContain("FK453002", result.Error.SafeMessage);
+        Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void APttAvmVariantPricedApartOrPassiveCannotBeCarriedButUnknownFieldsPass()
+    {
+        PttAvmProductPayloadRules.RemoteVariant[] remote =
+        [
+            new("mzdb003a", "Gri", "S", null, 1, Price: 25m, PriceIsDifference: true),
+            new("mzdb003b", "Gri", "M", null, 1, Price: 300m, PriceIsDifference: false),
+            new("mzdb003c", "Gri", "L", null, 1, Active: false),
+            new("mzdb003d", "Gri", "XL", null, 1, Price: -10m, Active: false),
+            new("mzdb003e", "Gri", "2XL", null, 1),
+            new("mzdb003f", "Gri", "3XL", null, 1, Price: 0m, PriceIsDifference: true, Active: true)
+        ];
+
+        var merge = PttAvmProductPayloadRules.MergeVariants(FamilyDraft().Variants!, remote);
+
+        Assert.Empty(merge.Unreadable);
+        Assert.Equal(["mzdb003a: 25 TL fiyat farkı", "mzdb003b: kendi fiyatı 300 TL", "mzdb003c: pasif", "mzdb003d: -10 TL fiyat farkı, pasif"], merge.NotCarriable.Select(x => $"{x.Variant.Barcode}: {x.Reason}"));
+        Assert.Contains("mzdb003a: 25 TL fiyat farkı; mzdb003b", PttAvmProductPayloadRules.RemoteVariantNotCarriableMessage(merge.NotCarriable));
+    }
+
+    [Fact]
+    public void TheVariantsPriceAndActiveFlagAreReadFromPttAvm()
+    {
+        RemoteCatalogVariant Variant(string barcode, string rawJson) => new(barcode, "sku", barcode, "FK4530", new Dictionary<string, string> { ["Varyant 1"] = "Bordo", ["Varyant 2"] = "S" }, false, null, null, null, 3, "TRY", rawJson);
+        RemoteCatalogProduct[] listed = [new("1", "FK4530", "Ürün", "", null, null, null, null, [], [
+            Variant("FK453001", """{"Fiyat":"25","FiyatFarkiMi":"true","Aktif":"false"}"""),
+            Variant("FK453002", "{}")], "{}")];
+
+        var remote = PttAvmProductPayloadRules.RemoteVariants("FK4530", listed);
+
+        Assert.Equal(new PttAvmProductPayloadRules.RemoteVariant("FK453001", "Bordo", "S", null, 3, 25m, true, false), remote[0]);
+        Assert.Equal(new PttAvmProductPayloadRules.RemoteVariant("FK453002", "Bordo", "S", null, 3), remote[1]);
     }
 
     [Fact]

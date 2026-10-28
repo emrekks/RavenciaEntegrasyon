@@ -60,6 +60,9 @@ public sealed partial class PttAvmHttpClient
             return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, PttAvmProductPayloadRules.RemoteVariantUnreadableMessage(merge.Unreadable), HttpStatusCode.Conflict);
         if (merge.Added.Count == 0)
             return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.VariantsAlreadyPresentCode, PttAvmProductPayloadRules.VariantsAlreadyPresentMessage, HttpStatusCode.Conflict);
+        // Checked after "nothing to add": with nothing to send, nothing on PTT AVM can be changed either.
+        if (merge.NotCarriable.Count > 0)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantNotCarriableCode, PttAvmProductPayloadRules.RemoteVariantNotCarriableMessage(merge.NotCarriable), HttpStatusCode.Conflict);
         if (PttAvmProductPayloadRules.MergeRefusal(merge.Variants) is { } refusal)
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, refusal.Code, refusal.Message, HttpStatusCode.UnprocessableEntity);
         var request = draft with { Variants = merge.Variants, Quantity = merge.Variants.Sum(x => x.Quantity) };
@@ -119,12 +122,18 @@ public static class PttAvmProductPayloadRules
     public sealed record VariantDraft(string Barcode, string Color, string Size, int Quantity);
 
     // A variant PTT AVM holds: its barcode, or else only its name ("Lacivert / L") with GetProductsWithVariants, and
-    // its stock as PTT AVM reports it.
-    public sealed record RemoteVariant(string? Barcode, string? Color, string? Size, string? Name, decimal? Quantity = null);
+    // its stock as PTT AVM reports it. Price is its price field (a difference to the product price unless
+    // PriceIsDifference is false) and Active its own active flag; null when PTT AVM did not say.
+    public sealed record RemoteVariant(string? Barcode, string? Color, string? Size, string? Name, decimal? Quantity = null, decimal? Price = null, bool? PriceIsDifference = null, bool? Active = null);
 
-    // The request's variants (PTT AVM's own first, then the panel's it lacks), the panel variants added, and the
-    // PTT AVM variants that cannot be carried unchanged.
-    public sealed record VariantMerge(IReadOnlyList<VariantDraft> Variants, IReadOnlyList<VariantDraft> Added, IReadOnlyList<RemoteVariant> Unreadable);
+    // A PTT AVM variant that reads fine but carries something the request cannot repeat, with the reason.
+    public sealed record NotCarriableVariant(RemoteVariant Variant, string Reason);
+
+    // The request's variants (PTT AVM's own first, then the panel's it lacks), the panel variants added, the PTT AVM
+    // variants that cannot be read and those whose price or passive state the request would lose.
+    public sealed record VariantMerge(IReadOnlyList<VariantDraft> Variants, IReadOnlyList<VariantDraft> Added, IReadOnlyList<RemoteVariant> Unreadable, IReadOnlyList<NotCarriableVariant> NotCarriable);
+
+    public const string RemoteVariantNotCarriableCode = "PTTAVM_REMOTE_VARIANT_NOT_CARRIABLE";
 
     public static string Payload(ProductDraft draft)
     {
@@ -280,9 +289,29 @@ public static class PttAvmProductPayloadRules
             {
                 if (variant.Options.Count == 0 && string.Equals(variant.Barcode, parentBarcode, StringComparison.OrdinalIgnoreCase)) continue;
                 string? Option(params string[] names) => names.Select(name => variant.Options.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null).FirstOrDefault(x => x is not null);
-                variants.Add(new(string.IsNullOrWhiteSpace(variant.Barcode) ? null : variant.Barcode.Trim(), Option("Renk", "Varyant 1"), Option("Beden", "Varyant 2"), Option(PttAvmVariantMapper.VariantNameOption), variant.StockQuantity));
+                var (price, priceIsDifference, active) = PriceAndActive(variant.RawJson);
+                variants.Add(new(string.IsNullOrWhiteSpace(variant.Barcode) ? null : variant.Barcode.Trim(), Option("Renk", "Varyant 1"), Option("Beden", "Varyant 2"), Option(PttAvmVariantMapper.VariantNameOption), variant.StockQuantity,
+                    price, priceIsDifference, active));
             }
         return variants;
+    }
+
+    // The variant's own fields from its snapshot (PttAvmProductMapper.Snapshot of the PTT AVM element): Fiyat or
+    // FiyatFarki, FiyatFarkiMi and Aktif. A field PTT AVM did not send stays null.
+    private static (decimal? Price, bool? PriceIsDifference, bool? Active) PriceAndActive(string rawJson)
+    {
+        try
+        {
+            if (JsonNode.Parse(rawJson) is not JsonObject snapshot) return (null, null, null);
+            string? Text(params string[] names) => names.Select(name => snapshot[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text.Trim() : null).FirstOrDefault(x => !string.IsNullOrEmpty(x));
+            decimal? price = decimal.TryParse(Text("Fiyat", "FiyatFarki", "PriceDifference", "Price"), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : null;
+            bool? Flag(string name) => bool.TryParse(Text(name), out var flag) ? flag : null;
+            return (price, Flag("FiyatFarkiMi"), Flag("Aktif"));
+        }
+        catch (JsonException)
+        {
+            return (null, null, null);
+        }
     }
 
     // The merge of the variant send (pure, so it can be tested). PTT AVM's upsert deletes the variants a request leaves
@@ -294,6 +323,7 @@ public static class PttAvmProductPayloadRules
     {
         var carried = new List<VariantDraft>();
         var unreadable = new List<RemoteVariant>();
+        var notCarriable = new List<NotCarriableVariant>();
         var held = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var variant in remote)
         {
@@ -305,9 +335,26 @@ public static class PttAvmProductPayloadRules
                 continue;
             }
             carried.Add(new(barcode, color, size, (int)quantity));
+            // The write-side Variant has no price and no active flag: a variant priced apart or passive on PTT AVM would
+            // not stay as it is. A field PTT AVM did not send is unknown, not a reason to stop.
+            var reasons = new List<string>();
+            if (variant.Price is { } price && price != 0)
+                reasons.Add(variant.PriceIsDifference == false
+                    ? $"kendi fiyatı {price.ToString("0.##", CultureInfo.InvariantCulture)} TL"
+                    : $"{price.ToString("0.##", CultureInfo.InvariantCulture)} TL fiyat farkı");
+            if (variant.Active == false) reasons.Add("pasif");
+            if (reasons.Count > 0) notCarriable.Add(new(variant, string.Join(", ", reasons)));
         }
         var added = panel.Where(x => !held.Contains(x.Barcode)).ToList();
-        return new([.. carried, .. added], added, unreadable);
+        return new([.. carried, .. added], added, unreadable, notCarriable);
+    }
+
+    public static string RemoteVariantNotCarriableMessage(IReadOnlyList<NotCarriableVariant> variants)
+    {
+        const int shown = 8;
+        var names = variants.Take(shown).Select(x => $"{x.Variant.Barcode}: {x.Reason}");
+        var more = variants.Count > shown ? $" ve {variants.Count - shown} varyant daha" : "";
+        return $"PTT AVM'deki bazı varyantlar olduğu gibi taşınamaz; gönderim fiyat farklarını veya pasif durumlarını silebilir: {string.Join("; ", names)}{more}. İstek gönderilmedi.";
     }
 
     // The merged request against PTT AVM's limits; null when it may go.
