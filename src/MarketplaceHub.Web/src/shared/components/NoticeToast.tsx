@@ -15,9 +15,11 @@ const defaultTitles: Record<NoticeToastKind, string> = {
 
 // The single top-right notification of the panel. Tone shows only in the icon tile and the countdown bar,
 // the card itself always follows the active theme.
-export function NoticeToast({ kind, message, title, onClose, durationMs, className }: {
+export function NoticeToast({ kind, message, lines, title, onClose, durationMs, className }: {
   kind: NoticeToastKind
   message: string
+  /** Several outcomes (one per marketplace) shown as a list instead of one run-on paragraph. */
+  lines?: readonly string[]
   title?: string
   onClose?: () => void
   durationMs?: number
@@ -38,7 +40,9 @@ export function NoticeToast({ kind, message, title, onClose, durationMs, classNa
     </span>
     <div className="app-toast-content">
       <strong>{title ?? defaultTitles[kind]}</strong>
-      <p>{message}</p>
+      {lines && lines.length > 1
+        ? <ul className="app-toast-lines">{lines.map((line, index) => <li key={index}>{line}</li>)}</ul>
+        : <p>{lines?.[0] ?? message}</p>}
     </div>
     {onClose && <button type="button" className="app-toast-close" onClick={onClose} aria-label="Bildirimi kapat"><UiIcon name="close" size={16} /></button>}
     {(durationMs || kind === 'pending') && <span className="app-toast-track" aria-hidden="true"><span className="app-toast-progress" /></span>}

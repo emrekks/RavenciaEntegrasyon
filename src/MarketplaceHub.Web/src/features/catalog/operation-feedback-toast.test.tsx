@@ -57,4 +57,28 @@ describe('operation feedback toast lifecycle', () => {
     expect(onClose).not.toHaveBeenCalled()
     expect(host.textContent).toContain('Shopify için yayın işi açılamadı.')
   })
+
+  it('shows a structured result with its own title, one list item per line and its own reading time', () => {
+    vi.useFakeTimers()
+    const onClose = vi.fn()
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+
+    const started: OperationFeedback = {
+      title: 'Yayın Başlatıldı',
+      message: 'Ürün bilgileri kaydedildi. Trendyol: ürün (3 varyant) gönderim kuyruğuna alındı.',
+      lines: ['Ürün bilgileri kaydedildi.', 'Trendyol: ürün (3 varyant) gönderim kuyruğuna alındı.'],
+      kind: 'success',
+      durationMs: 6000
+    }
+    act(() => root?.render(<OperationFeedbackToast feedback={started} onClose={onClose} />))
+
+    expect(host.querySelector('.app-toast-success strong')?.textContent).toBe('Yayın Başlatıldı')
+    expect([...host.querySelectorAll('.app-toast-lines li')].map(item => item.textContent)).toEqual(started.lines)
+    act(() => { vi.advanceTimersByTime(5999) })
+    expect(onClose).not.toHaveBeenCalled()
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })

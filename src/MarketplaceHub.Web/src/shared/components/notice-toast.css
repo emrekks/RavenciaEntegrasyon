@@ -20,6 +20,8 @@
 .app-toast-content { display: grid; min-width: 0; gap: 2px; padding-top: 1px; }
 .app-toast-content strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; line-height: 1.35; }
 .app-toast-content p { margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 400; line-height: 1.45; overflow-wrap: anywhere; }
+.app-toast-lines { display: grid; gap: 4px; max-height: min(46vh, 320px); margin: 2px 0 0; padding: 0 4px 0 16px; overflow-y: auto; color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.app-toast-lines li::marker { color: var(--app-toast-tone); }
 .app-shell.stitch-shell main .app-toast .app-toast-close {
   display: grid; width: 28px; height: 28px; min-height: 28px; padding: 0; place-items: center;
   color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 8px; box-shadow: none;
@@ -37,8 +39,8 @@
 .app-toast-spinner circle, .app-toast-spinner path { stroke-dasharray: none; stroke-dashoffset: 0; animation: none; }
 .app-toast-success .app-toast-icon { animation: app-toast-pop .5s cubic-bezier(.34, 1.56, .64, 1) .08s backwards, app-toast-ripple .9s ease-out .55s; }
 .app-toast-error .app-toast-icon { animation: app-toast-pop .5s cubic-bezier(.34, 1.56, .64, 1) .08s backwards, app-toast-shake .45s ease-in-out .55s; }
-.app-toast-content strong, .app-toast-content p { animation: app-toast-text .35s ease-out .18s backwards; }
-.app-toast-content p { animation-delay: .26s; }
+.app-toast-content strong, .app-toast-content p, .app-toast-lines { animation: app-toast-text .35s ease-out .18s backwards; }
+.app-toast-content p, .app-toast-lines { animation-delay: .26s; }
 @keyframes app-toast-in { from { opacity: 0; transform: translate(24px, -10px) scale(.96); } }
 @keyframes app-toast-pop { from { opacity: 0; transform: scale(.4) rotate(-12deg); } }
 @keyframes app-toast-draw { to { stroke-dashoffset: 0; } }

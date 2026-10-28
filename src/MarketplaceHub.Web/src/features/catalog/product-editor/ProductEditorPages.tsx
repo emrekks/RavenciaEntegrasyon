@@ -38,7 +38,7 @@ import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublica
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { publicationJobPollInterval } from '../publication-job-poll'
 import { publicationJobInline } from '../publication-job-inline'
-import { familyPublicationWarnings, productPublicationTargets } from '../product-publication-submit'
+import { productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
@@ -746,7 +746,7 @@ function placePublishIssueTooltip(event: { currentTarget: HTMLElement }) {
   const fitsBelow = window.innerHeight - rect.bottom >= height + 16
   tooltip.dataset.placement = !fitsBelow && rect.top >= height + 16 ? 'top' : 'bottom'
 }
-function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect }: {
+function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback }: {
   familyProductIds?: string[] | null
   // How many of the family's variants are already matched to a listing on this marketplace (imported or published).
   variantLinks?: { linked: number; total: number }
@@ -759,8 +759,11 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   variantMediaWarning?: string
   onSelect: () => void
   onDeselect: () => void
+  /** The page's toast: the refresh and stop controls say on screen what they started, naming the marketplace. */
+  onFeedback: (feedback: OperationFeedback) => void
 }) {
   const client = useQueryClient()
+  const platformName = publishPlatformName(card.connection.platformCode)
   const statusKey = ['publication-status', productId, card.connection.id]
   const publication = useQuery({
     queryKey: statusKey,
@@ -783,9 +786,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     },
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: statusKey })
-      appendNotification(`${card.name} yayın durumu güncelleniyor.`, 'success')
+      onFeedback({ title: 'Durum Sorgulanıyor', message: publicationRefreshMessage(platformName, card.connection.platformCode, (familyProductIds ?? []).filter(id => id !== productId).length + 1), kind: 'info' })
     },
-    onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Yayın durumu güncellenemedi.', 'error')
+    onError: reason => onFeedback({ title: 'Durum Sorgulanamadı', message: `${platformName}: yayın durumu sorgulanamadı — ${reason instanceof Error ? reason.message : 'bilinmeyen hata.'}`, kind: 'error', persistent: true })
   })
 
   const publicationLabel = card.mode === 'READ_ONLY'
@@ -847,7 +850,10 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     if (alreadyPublished && selected) onDeselect()
   }, [alreadyPublished, onDeselect, selected])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
-  const { view: jobView, cancel: cancelJob } = usePublicationJobInline(publication.data?.lastJobId, productId, card.connection.id)
+  const { view: jobView, cancel: cancelJob } = usePublicationJobInline(publication.data?.lastJobId, productId, card.connection.id, {
+    onCancelled: status => onFeedback({ title: status?.trim().toUpperCase() === 'CANCELLED' ? 'Yayın İşi Durduruldu' : 'Durdurma İstendi', message: publicationCancelMessage(platformName, status), kind: 'info' }),
+    onCancelFailed: message => onFeedback({ title: 'Yayın İşi Durdurulamadı', message: `${platformName}: yayın işi durdurulamadı — ${message}`, kind: 'error', persistent: true })
+  })
   const jobRunning = jobView.state === 'running'
   const missingChecks = card.mode === 'PUBLISH' ? productChecks
     .filter(check => !(isShopifyCard ? check.shopifyOk ?? check.ok : check.ok))
@@ -968,7 +974,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   </article>
 }
 // The card's last publication job, read while it runs; the card shows it inline so its height never changes.
-function usePublicationJobInline(jobId: string | null | undefined, productId: string | undefined, connectionId: string) {
+function usePublicationJobInline(jobId: string | null | undefined, productId: string | undefined, connectionId: string, notify: { onCancelled: (status: string | null | undefined) => void; onCancelFailed: (message: string) => void }) {
   const client = useQueryClient()
   const queryKey = ['publication-job', jobId ?? ''] as const
   const enabled = Boolean(productId && jobId)
@@ -990,12 +996,13 @@ function usePublicationJobInline(jobId: string | null | undefined, productId: st
     }),
     onSuccess: async result => {
       client.setQueryData(queryKey, result)
+      notify.onCancelled(result?.job?.status)
       await Promise.all([
         client.invalidateQueries({ queryKey: ['publication-status', productId, connectionId] }),
         client.invalidateQueries({ queryKey })
       ])
     },
-    onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Yayın işlemi durdurulamadı.', 'error')
+    onError: reason => notify.onCancelFailed(reason instanceof Error ? reason.message : 'bilinmeyen hata.')
   })
   return { view: enabled ? publicationJobInline(job.data?.job) : { state: 'hidden' as const }, cancel }
 }
@@ -1659,8 +1666,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function updateChannel(id: string) {
     const selected = selectedChannelIds.includes(id)
+    const platformCode = connections.data?.items.find(item => item.id === id)?.platformCode
+    const name = platformCode ? publishPlatformName(platformCode) : 'Pazaryeri'
     setSelectedChannelIds(current => selected ? current.filter(item => item !== id) : [...current, id])
-    showFeedback(selected ? 'Yayın kanalı seçimden çıkarıldı.' : 'Yayın kanalı seçildi.', 'info')
+    showFeedback(selected ? `${name} yayın seçiminden çıkarıldı; Yayınla ona gönderim yapmaz.` : `${name} yayın için seçildi; Yayınla ile gönderim kuyruğuna alınır.`, 'info')
   }
   function updateableProductConnectionIds() {
     return (connections.data?.items ?? []).filter(item => isProductPublicationConnection(item) && productUpdateCapabilities(item.platformCode).writable && item.status.trim().toUpperCase() === 'ACTIVE').map(item => item.id)
@@ -2241,6 +2250,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setWizardStep(2)
       return
     }
+    // Whether the product itself had edits to write: the result says "Ürün bilgileri kaydedildi" only then.
+    const productChangedAtSubmit = editorDirty
     setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
     try {
       let submitRequirements = requirements.data ?? []
@@ -2337,7 +2348,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       } else {
         product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
-      productCreated = product; const completed = ['ürün']; const warnings: string[] = []
+      productCreated = product; const completed: string[] = []; const warnings: string[] = []
+      const publications: MarketplacePublishOutcome[] = []
+      const publicationErrors: Array<{ platformName: string; message: string }> = []
+      const updates: MarketplaceUpdateOutcome[] = []
       // The steps after the product (media, stock, channel prices, publication) can take a while; the progress toast names them.
       if (!editProductId) showFeedback('Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true })
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
@@ -2369,7 +2383,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         familyMediaChanged = result.changedProductCount > 0
         setFamilyMediaOrderDirty(false)
       }
-      if (mediaUrls.length || mediaFiles.length) completed.push('görseller')
+      if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
       const targetConnectionIds = createOnly ? [] : platformUpdate?.connectionIds ?? selectedChannelIds
       // Only rows whose stock the user changed are sent, as absolute values against the stock loaded into the form;
@@ -2392,18 +2406,25 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           }
         }
       }
-      if (rows.some(row => row.stock > 0)) completed.push('stok'); if (targetConnectionIds.length) completed.push('kanal fiyatları')
+      // An edit names the stock only when a changed stock was written; a new product names the stock it opened with.
+      if (editProductId ? stockResult.saved.length > 0 : rows.some(row => row.stock > 0)) completed.push('stok')
+      if (!editProductId && targetConnectionIds.length) completed.push('kanal fiyatları')
       const publicationConnectionIds = productPublicationTargets(saveAndStay, targetConnectionIds)
-      if (publicationConnectionIds.length && !platformUpdate) showFeedback(`Yayın işleri kuyruğa alınıyor (${publicationConnectionIds.length} kanal)…`, 'info', { persistent: true })
-      for (const connectionId of publicationConnectionIds) {
+      const connectionPlatformName = (connectionId: string) => publishPlatformName(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? 'Pazaryeri')
+      for (const [connectionIndex, connectionId] of publicationConnectionIds.entries()) {
+        const platformName = connectionPlatformName(connectionId)
+        const progress = publicationConnectionIds.length > 1 ? ` (${connectionIndex + 1}/${publicationConnectionIds.length})` : ''
+        showFeedback(platformUpdate ? `${platformName}: güncelleme işleri kuyruğa alınıyor${progress}…` : `${platformName}: yayın işleri kuyruğa alınıyor${progress}…`, 'info', { persistent: true })
+        const update: MarketplaceUpdateOutcome = { platformName, queued: { productInformation: false, priceInventory: false } }
         try {
           if (platformUpdate) {
+            updates.push(update)
             if (platformUpdate.includeProductInformation) {
-              const acceptedUpdate = await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
-              completed.push(`ürün bilgisi güncelleme işi ${acceptedUpdate.jobId}`)
+              await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
+              update.queued.productInformation = true
             }
-            const acceptedPrices = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
-            completed.push(`fiyat-stok güncelleme işi ${acceptedPrices.jobId}`)
+            await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
+            update.queued.priceInventory = true
             await client.invalidateQueries({ queryKey: ['publication-status', product.id, connectionId] })
             continue
           }
@@ -2413,8 +2434,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           // The same reason on several cards (a connection setting missing) is said once, with how many cards it stopped.
           const familyFailures = new Map<string, number[]>()
           const platformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
-          let enqueuedCards = 0
-          let skippedCards = 0
+          const outcome: MarketplacePublishOutcome = { platformName, platformCode: platformCode ?? '', familyCards: familyIds.length, enqueuedCards: 0, enqueuedVariants: 0, skipped: { live: 0, running: 0, matched: 0 }, failures: familyFailures }
+          publications.push(outcome)
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
               // n11 sends only a card's variants not yet live there, so a partly refused n11 card goes again; elsewhere a
@@ -2422,11 +2443,15 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
               const matchedCount = cardVariants.filter(variant => rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched)).length
               const resendsRefused = platformCode === 'N11'
-              if (matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) { skippedCards++; continue }
+              if (matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) { outcome.skipped.matched++; continue }
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               // A PTT AVM family card shown as "Tekrar Deneyin" goes again; the API closes its waiting approval checks.
               const pttAvmFamily = familyIds.length > 1 || cardVariants.length > 1
-              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily)) { skippedCards++; continue }
+              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily)) {
+                if (isPublicationLive(status.actualStatus)) outcome.skipped.live++
+                else outcome.skipped.running++
+                continue
+              }
               let listingProfileVersion: number | undefined
               try {
                 const listingProfile = await hubApi<{ version: number }>(`/products/${familyProductId}/listing-profiles/${connectionId}`)
@@ -2436,25 +2461,34 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               }
               await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfileVersion == null ? {} : { 'If-Match': `"v${listingProfileVersion}"` }, body: JSON.stringify({ titleOverride: null, descriptionOverride: null, externalCategoryId: null, externalBrandId: null, deliveryTimeDays: null, enabled: true }) })
               await client.invalidateQueries({ queryKey: ['listing-profile', familyProductId, connectionId] })
-              const accepted = await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
+              await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
-              completed.push(`yayın işi ${accepted.jobId}`)
-              enqueuedCards++
+              outcome.enqueuedCards++
+              outcome.enqueuedVariants += resendsRefused ? cardVariants.length - matchedCount : cardVariants.length
             } catch (reason) {
               const failure = reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'
               familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), familyIndex])
             }
           }
-          warnings.push(...familyPublicationWarnings(publishPlatformName(platformCode ?? 'Pazaryeri'), { enqueued: enqueuedCards, skipped: skippedCards, failures: familyFailures }))
           continue
         } catch (reason) {
-          const platformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
-          warnings.push(`${publishPlatformName(platformCode ?? 'Pazaryeri')}: ${reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'}`)
+          const failure = reason instanceof Error ? reason.message : platformUpdate ? 'Güncelleme işi oluşturulamadı.' : 'Yayın işi oluşturulamadı.'
+          if (platformUpdate) update.error = failure
+          else publicationErrors.push({ platformName, message: failure })
         }
       }
-      const updateSummary = platformUpdate ? ` Seçilen ${platformUpdate.connectionIds.length} platform için ${platformUpdate.includeProductInformation ? 'ürün bilgisi ve fiyat-stok' : 'fiyat-stok'} güncelleme işi kuyruğa alındı.` : ''
-      const versionRetrySummary = productVersionRetryUsed ? ' Daha güncel kayıt sürümüyle güvenli şekilde tekrar denendi.' : ''
-      const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${versionRetrySummary}${updateSummary}${warnings.length ? ` Uyarı: ${warnings.join(' ')}` : ''}`
+      const result = productSaveFeedback({
+        created: !editProductId,
+        productChanged: productChangedAtSubmit,
+        savedParts: completed,
+        versionRetried: productVersionRetryUsed,
+        saveWarnings: warnings,
+        publishRequested: !saveAndStay && !createOnly,
+        publications,
+        publicationErrors,
+        updates: platformUpdate ? updates : undefined
+      })
+      const message = result.lines.join(' ')
       setRemovedVariantIds([])
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
       // The saved form is the new clean state; the refetch below may refill it from the server.
@@ -2465,19 +2499,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
       }
-      // A refused or skipped marketplace stays on screen until it is closed, so it is not lost among later toasts.
-      if (!createOnly) showFeedback(message, warnings.length ? 'error' : 'success', { persistent: warnings.length > 0 })
+      // One line per marketplace; a refused marketplace stays on screen until it is closed, so it is not lost among
+      // later toasts.
+      if (!createOnly) setFeedback({ message, kind: result.kind, persistent: result.persistent, title: result.title, lines: result.lines, durationMs: result.durationMs })
       // A new product or a copy opens on its own page once created, whichever button saved it: there it saves as an
       // edit and its publication progress shows. A publish opens the publication step; the copy source is dropped.
       if (productCreated && !editProductId) {
-        appendNotification(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : `${message} Ürün sayfası açılıyor; yayın ilerlemesi orada görünür.`, warnings.length ? 'info' : 'success')
+        appendNotification(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : `${result.title}: ${message} Ürün sayfası açılıyor; yayın ilerlemesi orada görünür.`, result.kind === 'error' ? 'error' : 'success')
         leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly ? null : { wizardStep: 2 } })
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
-      setError(reason); setNotice(feedbackMessage); showFeedback(feedbackMessage, 'error')
+      setError(reason); setNotice(feedbackMessage)
+      setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı' })
       if (!productCreated) setFieldErrors(editorFieldErrors(reason))
       if (productCreated && !editProductId) {
         appendNotification(`${feedbackMessage} Ürün sayfası açılıyor; kaldığınız yerden düzenleyebilirsiniz.`, 'error')
@@ -2977,6 +3013,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               variantMediaWarning={variantsWithoutMediaCount > 0 ? `${variantRows.length} varyanttan ${variantsWithoutMediaCount} tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.` : undefined}
               onSelect={() => updateChannel(card.connection.id)}
               onDeselect={() => setSelectedChannelIds(current => current.filter(id => id !== card.connection.id))}
+              onFeedback={setFeedback}
             />) : <div className="publish-connections-empty"><strong>Aktif bağlantı bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <UiIcon name="arrowRight" /></Link></div>}
           </div>
           <div className="publish-selection-footer">
