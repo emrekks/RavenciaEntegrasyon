@@ -11,10 +11,13 @@ namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 // category's attributes together with their values, so those are single pages. Brands are paged
 // by number; the cursor carries the page number and the first brand id of page one so a server
 // that ignores the page number (and keeps answering page one) cannot loop the scan forever.
+// BRAND_SEARCH (scope = a brand name) reads the same list filtered by name, so a panel brand the
+// paged scan never reached still lands in the brand snapshot; its rows come back as BRANDS rows.
 public sealed partial class PazaramaHttpClient : IReferenceDataPort
 {
     internal const string CategoryTree = "category/getCategoryTree";
     internal const int BrandPageSize = 500;
+    internal const int BrandSearchSize = 100;
 
     // The attribute list and every attribute value list of a category come from the same Pazarama call;
     // keeping the last answer for a short while turns the repeated reads of one import into one request.
@@ -25,15 +28,19 @@ public sealed partial class PazaramaHttpClient : IReferenceDataPort
 
     internal static string BrandPage(int page, int size) => $"{Brands}?Page={page.ToString(CultureInfo.InvariantCulture)}&Size={size.ToString(CultureInfo.InvariantCulture)}";
 
+    internal static string BrandSearch(string name, int size) => $"{Brands}?name={Uri.EscapeDataString(name.Trim())}&Page=1&Size={size.ToString(CultureInfo.InvariantCulture)}";
+
     public async Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         var type = resource.ResourceType.Trim().ToUpperInvariant();
-        if (type is not ("CATEGORIES" or "CATEGORY_ATTRIBUTES" or "ATTRIBUTE_VALUES" or "BRANDS"))
+        if (type is not ("CATEGORIES" or "CATEGORY_ATTRIBUTES" or "ATTRIBUTE_VALUES" or "BRANDS" or "BRAND_SEARCH"))
             return NotSupported<AdapterPageResult<RemoteReferenceItem>>("PAZARAMA_REFERENCE_UNSUPPORTED", $"Pazarama için {resource.ResourceType} referansı desteklenmiyor.");
         var categoryId = type == "ATTRIBUTE_VALUES" ? resource.ParentExternalId?.Split('/')[0] : resource.ParentExternalId;
         var attributeId = type == "ATTRIBUTE_VALUES" ? resource.ParentExternalId?.Split('/').ElementAtOrDefault(1) : null;
         if (type is "CATEGORY_ATTRIBUTES" or "ATTRIBUTE_VALUES" && (string.IsNullOrWhiteSpace(categoryId) || type == "ATTRIBUTE_VALUES" && string.IsNullOrWhiteSpace(attributeId)))
             return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.Validation, "PAZARAMA_REFERENCE_SCOPE_INVALID", "Pazarama kategori özellikleri için kategori, değerler için kategori/özellik kapsamı gerekir.", HttpStatusCode.UnprocessableEntity);
+        if (type == "BRAND_SEARCH" && string.IsNullOrWhiteSpace(resource.ParentExternalId))
+            return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.Validation, "PAZARAMA_REFERENCE_SCOPE_INVALID", "Pazarama marka araması için marka adı gerekir.", HttpStatusCode.UnprocessableEntity);
 
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<AdapterPageResult<RemoteReferenceItem>>();
@@ -42,6 +49,7 @@ public sealed partial class PazaramaHttpClient : IReferenceDataPort
         {
             "CATEGORIES" => CategoryTree,
             "BRANDS" => BrandPage(brandPage, BrandPageSize),
+            "BRAND_SEARCH" => BrandSearch(resource.ParentExternalId!, BrandSearchSize),
             _ => CategoryAttributes(categoryId!.Trim())
         };
         var detailKey = (context.ConnectionId, categoryId?.Trim().ToLowerInvariant() ?? "");
@@ -75,6 +83,11 @@ public sealed partial class PazaramaHttpClient : IReferenceDataPort
     {
         try
         {
+            if (type == "BRAND_SEARCH")
+            {
+                var found = PazaramaReferenceMapper.BrandMatches(data);
+                return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(found, null, false, found.Count), rateLimit);
+            }
             if (type == "BRANDS")
             {
                 var (items, next) = PazaramaReferenceMapper.Brands(data, brandPage, firstBrandId, BrandPageSize);
@@ -98,6 +111,10 @@ public sealed partial class PazaramaHttpClient : IReferenceDataPort
 public static class PazaramaReferenceMapper
 {
     private const string EmptyGuid = "00000000-0000-0000-0000-000000000000";
+
+    // Appended to a BRANDS snapshot's source version when every active panel brand was looked up by
+    // name and every answer was name-filtered; see MarketplaceJobProcessor.SyncBrandReferences.
+    public const string BrandNameLookupMarker = "+name-lookup";
 
     // The tree is a flat list with parentId. A category whose parent is missing, empty or not in
     // the list becomes a root, so the stored tree never points at a parent that does not exist.
@@ -184,6 +201,32 @@ public static class PazaramaReferenceMapper
         var next = items.Count < size ? null : $"{(page + 1).ToString(CultureInfo.InvariantCulture)}:{firstId}";
         return (mapped, next);
     }
+
+    // One answer of the name-filtered brand list, read as BRANDS rows so they merge into the brand snapshot.
+    public static IReadOnlyList<RemoteReferenceItem> BrandMatches(JsonElement data) =>
+        Rows(data, "brands", "items", "data")
+            .Select(brand => (brand, id: Text(brand, "id"), name: Text(brand, "name")))
+            .Where(x => x.id is not null && x.name is not null && x.id != EmptyGuid)
+            .GroupBy(x => x.id!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Select(x => new RemoteReferenceItem("BRANDS", x.id!, null, x.name!, x.name!, 0, true, true, x.brand.GetRawText()))
+            .ToList();
+
+    // Pazarama answers a name lookup with the brands whose name contains the text. The lookup only
+    // proves a brand is missing when every row really carries the text: a server that ignored the
+    // filter answers page one of the whole list, and that proves nothing about the name.
+    public static bool BrandSearchHonoured(string name, IReadOnlyList<RemoteReferenceItem> rows)
+    {
+        var text = FoldBrandName(name);
+        return rows.All(row => FoldBrandName(row.Name).Contains(text, StringComparison.Ordinal));
+    }
+
+    // Brand names compared the Turkish way and loosely on the dotted/dotless i, since one side often
+    // writes "AKMAVI" for "AKMAVİ": a loose match can only keep a "not found on Pazarama" note away.
+    public static string FoldBrandName(string name) =>
+        string.Join(' ', name.Trim().ToUpper(CultureInfo.GetCultureInfo("tr-TR")).Replace('İ', 'I').Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    public static bool SameBrandName(string left, string right) => string.Equals(FoldBrandName(left), FoldBrandName(right), StringComparison.Ordinal);
 
     private static IEnumerable<JsonElement> AttributeRows(JsonElement data)
     {

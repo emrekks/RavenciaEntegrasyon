@@ -152,6 +152,43 @@ public sealed class PazaramaCatalogTests
         Assert.Null(next);
     }
 
+    [Fact]
+    public void Brand_name_lookup_asks_the_filtered_list_with_an_escaped_name()
+    {
+        Assert.Equal("brand/getBrands?name=Ravencia&Page=1&Size=100", PazaramaHttpClient.BrandSearch(" Ravencia ", 100));
+        Assert.Equal("brand/getBrands?name=Moda%20Zeyn%20%26%20Co&Page=1&Size=100", PazaramaHttpClient.BrandSearch("Moda Zeyn & Co", 100));
+        Assert.Equal("brand/getBrands?name=AKMAV%C4%B0&Page=1&Size=100", PazaramaHttpClient.BrandSearch("AKMAVİ", 100));
+    }
+
+    [Fact]
+    public void Brand_name_lookup_rows_are_brand_rows_deduplicated_by_id()
+    {
+        var rows = PazaramaReferenceMapper.BrandMatches(Data("""{"data":[{"id":"r1","name":"Ravencia"},{"id":"R1","name":"Ravencia"},{"id":"r2","name":"Ravencia Home"},{"id":"x","name":null},{"id":"00000000-0000-0000-0000-000000000000","name":"Ravencia"}]}"""));
+
+        Assert.Equal(["r1", "r2"], rows.Select(x => x.ExternalId));
+        Assert.All(rows, row => { Assert.Equal("BRANDS", row.ResourceType); Assert.Null(row.ParentExternalId); });
+        Assert.Empty(PazaramaReferenceMapper.BrandMatches(Data("""{"data":[]}""")));
+    }
+
+    [Fact]
+    public void Brand_name_lookup_counts_only_when_every_row_carries_the_name()
+    {
+        RemoteReferenceItem Row(string name) => new("BRANDS", name, null, name, name, 0, true, true, "{}");
+
+        Assert.True(PazaramaReferenceMapper.BrandSearchHonoured("Ravencia", []));
+        Assert.True(PazaramaReferenceMapper.BrandSearchHonoured("akmavi", [Row("AKMAVİ"), Row("Akmavi Kids")]));
+        // A server that ignored the filter answers page one of the whole list: that proves nothing.
+        Assert.False(PazaramaReferenceMapper.BrandSearchHonoured("Ravencia", [Row("Ravencia"), Row("Başka Marka")]));
+    }
+
+    [Theory]
+    [InlineData("AKMAVİ", "Akmavi", true)]
+    [InlineData("AKMAVI", "akmavi", true)]
+    [InlineData("Moda  Zeyn", "MODA ZEYN", true)]
+    [InlineData("Nacar Moda", "Nacar", false)]
+    public void Brand_names_compare_the_turkish_way(string left, string right, bool same) =>
+        Assert.Equal(same, PazaramaReferenceMapper.SameBrandName(left, right));
+
     // ---- products ----
 
     private const string ApprovedPage = $$"""

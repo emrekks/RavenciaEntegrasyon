@@ -56,6 +56,8 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
                 .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping)
                 .SingleOrDefaultAsync(cancellationToken)
             : null;
+        if (brandMapping is null && product.BrandId is Guid missingBrandId && await BrandNotOnPazaramaAsync(tenantId, connectionId, missingBrandId, cancellationToken) is { } missingName)
+            return Fail("BRAND_NOT_ON_PAZARAMA", $"Ürünün markası ({missingName}) Pazarama'nın marka listesinde bulunamadı: son marka senkronizasyonunda bu adla arandı ve Pazarama böyle bir marka döndürmedi. Markanın Pazarama satıcı panelinden (isortagim.pazarama.com) açılmasını talep edin; marka açıldıktan sonra Eşleştirmeler > Markalar'da Pazarama markalarını yeniden senkronize edip panel markasını eşleyin ve ürünü yeniden yayınlayın. Marka Pazarama'da başka bir adla kayıtlıysa doğrudan o markayla eşleyebilirsiniz.", "brandId");
         if (brandMapping is null) return Fail("BRAND_MAPPING_REQUIRED", "Ürünün markası Pazarama'daki bir markayla eşlenmemiş. Sol menüden Eşleştirmeler sayfasını açın, Markalar sekmesinde Pazarama bağlantısını seçin; marka listesi boşsa önce Pazarama markalarını senkronize edin, sonra panel markasını Pazarama'daki karşılığıyla eşleyip Eşleştirmeyi Kaydet'e basın ve ürünü yeniden yayınlayın.", "brandId");
         if (!Guid.TryParse(brandMapping.ExternalId, out var remoteBrandId) || remoteBrandId == Guid.Empty)
             return Fail("MAPPING_IDENTIFIER_INVALID", "Pazarama marka kimliği bir GUID olmalıdır.", "brandId");
@@ -302,5 +304,24 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
 
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
     private static ServiceResult<ProductPublicationDraft> NotFound() => ServiceResult<ProductPublicationDraft>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
+    // The brand's name when the current brand snapshot proves Pazarama has no brand of that name: the
+    // sync looked every active panel brand up by name (marker), this brand already had its present
+    // name then, and no row of the snapshot carries it. Anything short of that proves nothing.
+    private async Task<string?> BrandNotOnPazaramaAsync(Guid tenantId, Guid connectionId, Guid brandId, CancellationToken cancellationToken)
+    {
+        var snapshot = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.ScopeExternalId == "" && x.IsCurrent)
+            .Select(x => new { x.Id, x.SourceVersion, x.FetchedAt })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (snapshot is null || !snapshot.SourceVersion.EndsWith(PazaramaReferenceMapper.BrandNameLookupMarker, StringComparison.Ordinal)) return null;
+        var brand = await db.Brands.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == brandId, cancellationToken);
+        if (brand is null || !brand.IsActive || string.IsNullOrWhiteSpace(brand.Name) || brand.CreatedAt > snapshot.FetchedAt || brand.UpdatedAt > snapshot.FetchedAt) return null;
+        var names = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == "BRANDS")
+            .Select(x => x.Name)
+            .ToListAsync(cancellationToken);
+        return names.Any(name => PazaramaReferenceMapper.SameBrandName(name, brand.Name)) ? null : brand.Name.Trim();
+    }
+
     private static ServiceResult<ProductPublicationDraft> Fail(string code, string message, string? field = null, int status = 422) => ServiceResult<ProductPublicationDraft>.Fail(code, message, status, field is null ? null : new Dictionary<string, string[]> { [field] = [message] });
 }

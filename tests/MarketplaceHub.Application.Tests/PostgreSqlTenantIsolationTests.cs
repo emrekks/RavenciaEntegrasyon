@@ -7030,6 +7030,41 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     private static RemoteMarketplaceQuestion NewRemoteQuestion(string status, IReadOnlyList<RemoteQuestionConversation> conversations, DateTimeOffset modifiedAt) =>
         new("external-question", "PRODUCT", status, "Ürün sorusu", null, null, null, null, null, "Müşteri", null, modifiedAt.AddHours(-1), null, modifiedAt, conversations);
 
+    [PostgreSqlFact]
+    public async Task PazaramaBrandSync_MergesPanelBrandNameLookupsIntoTheSnapshot()
+    {
+        var tenant = NewTenant("pazarama-brand-lookup");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "PAZARAMA";
+        Brand PanelBrand(string name, bool active = true) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = name, NormalizedName = name.ToUpperInvariant(), IsActive = active, CreatedAt = fixture.Now.AddDays(-1), UpdatedAt = fixture.Now.AddDays(-1) };
+        RemoteReferenceItem Remote(string id, string name) => new("BRANDS", id, null, name, name, 0, true, true, $"{{\"id\":\"{id}\"}}");
+        var referencePort = new ScriptedReferenceDataTestPort();
+        referencePort.Enqueue(new("BRANDS", null), [Remote("b1", "Başka Marka"), Remote("rv", "Ravencia Home")]);
+        // The lookup repeats a row the paged scan already had: it is kept once.
+        referencePort.Enqueue(new("BRAND_SEARCH", "Ravencia"), [Remote("rv", "Ravencia Home"), Remote("r2", "RAVENCIA")]);
+        referencePort.Enqueue(new("BRAND_SEARCH", "Lavian"), []);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Brands.AddRange(PanelBrand("Ravencia"), PanelBrand("Lavian"), PanelBrand("Eski Marka", active: false));
+        await db.SaveChangesAsync();
+
+        var processor = new MarketplaceJobProcessor(
+            db, null!, referencePort, null!, null!, null!, null!, null!, null!, null!, null!,
+            new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var sync = await processor.ProcessAsync(
+            tenant.Id, connection.Id, MarketplaceJobTypes.PazaramaReferenceSync, "{\"resourceType\":\"BRANDS\"}", "pazarama-brand-lookup", CancellationToken.None);
+
+        Assert.True(sync.Succeeded, sync.ErrorSummary);
+        var snapshot = await db.ReferenceSnapshots.SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "BRANDS" && x.IsCurrent);
+        var ids = await db.ReferenceItems.Where(x => x.TenantId == tenant.Id && x.SnapshotId == snapshot.Id).Select(x => x.ExternalId).OrderBy(x => x).ToListAsync();
+        Assert.Equal(["b1", "r2", "rv"], ids);
+        Assert.Equal(3, snapshot.ItemCount);
+        Assert.EndsWith(MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaReferenceMapper.BrandNameLookupMarker, snapshot.SourceVersion, StringComparison.Ordinal);
+    }
+
     private sealed class ScriptedReferenceDataTestPort : IReferenceDataPort
     {
         private readonly Dictionary<(string ResourceType, string ParentExternalId), Queue<IReadOnlyList<RemoteReferenceItem>>> responses = [];
