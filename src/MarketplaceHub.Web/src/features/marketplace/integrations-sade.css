@@ -42,13 +42,6 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-data-point > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-data-point > strong { overflow: hidden; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Hidden or passive data: one muted note with a quiet icon. */
-.app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 16px 20px; background: none; border: 0; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { display: block; width: 16px; height: 16px; margin-top: 2px; padding: 0; color: var(--rv-color-subtle); background: none; border: 0; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-private-icon .ui-icon { width: 16px; height: 16px; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state strong { display: block; margin-bottom: 2px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; text-transform: none; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state p { margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
-
 /* Footer: the type on the left, a secondary "Yönet" on the right. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 20px; background: none; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
@@ -63,7 +56,6 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { box-sizing: border-box; flex: none; width: 48px; min-width: 48px; height: 48px; margin-top: 2px; align-self: flex-start; object-fit: contain; }
 
 /* Hidden details: the power-off mark (passive) beside the note (its frameless shape is set in the second pass below). */
-.app-shell.stitch-shell main .integrations-reference-page .reference-private-icon svg { width: 18px; height: 18px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { border-radius: 5px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { border-color: var(--rv-color-border); border-radius: 7px; }
 .app-shell.stitch-shell main .integrations-reference-page :is(button, [role="tab"]) { text-transform: none; }
@@ -77,8 +69,6 @@
    - the passive mark sits on its own like the reference status shapes: no frame, no grey tile. */
 .app-shell.stitch-shell main .integrations-reference-page { --sade-control: 36px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: var(--rv-color-muted); }
-.app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 12px; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { display: block; width: 18px; height: 18px; margin-top: 2px; color: var(--rv-color-subtle); background: none; border: 0; border-radius: 0; }
 
 /* Lighter secondary text: labels move from subtle to muted, muted notes move halfway to ink. */
 .app-shell.stitch-shell main .integrations-reference-page { --sade-text-2: color-mix(in srgb, var(--rv-color-ink) 55%, var(--rv-color-muted)); }
@@ -89,7 +79,6 @@
 
 /* Passive card: the same four fields as an active card, hidden values in the muted tone, one short note below. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-body.is-passive .reference-data-point > strong { color: var(--rv-color-muted); font-weight: 500; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-passive-note { grid-column: 1 / -1; margin: 2px 0 0; color: var(--sade-text-2, var(--rv-color-muted)); font-size: 13px; line-height: 1.5; }
 
 /* Status tag: written in Title Case ("ve" stays small, so no capitalize); as wide as its text, not stretched to the
    card title above it; an active connection reads in ink. */
@@ -137,7 +126,6 @@
   .app-shell.stitch-shell main .im-sade .im-fields { grid-template-columns: minmax(0, 1fr); padding: 16px; }
   .app-shell.stitch-shell main .im-sade :is(.integration-modal-header, .im-foot) { padding-inline: 16px; }
 }
-
 
 /* Refused connection chip (connection-auth-alert.tsx): only the dot and the word take the state colour. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connection-auth-badge.is-danger { color: var(--rv-color-danger); }

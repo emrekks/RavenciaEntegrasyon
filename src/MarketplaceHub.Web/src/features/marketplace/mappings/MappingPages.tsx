@@ -37,7 +37,6 @@ import { Badge, Connection, FieldState, MappingStateGlyph, Page, notificationKin
 import '../value-mapping-modal.css'
 import '../mapping-workspace.css'
 import '../category-workbench.css'
-import '../mapping-polish.css'
 
 function MappingDeleteIcon() {
   return <UiIcon name="close" className="mapping-delete-icon" />

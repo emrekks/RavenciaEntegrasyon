@@ -64,18 +64,6 @@
   border-radius: 999px;
   vertical-align: middle;
 }
-
-.value-mapping-editor .value-mapping-share {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--rv-color-muted);
-  font-size: var(--rv-font-size-sm);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.value-mapping-editor .value-mapping-share input { margin: 0; accent-color: var(--rv-color-primary); }
 .value-mapping-editor .value-mapping-used-filter {
   display: flex;
   flex-wrap: wrap;

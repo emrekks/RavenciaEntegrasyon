@@ -1,28 +1,2 @@
-/* Order list invoice state: a quiet row with a coloured edge instead of a tinted pill. */
-.app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-actions > .invoice-status-label {
-  --invoice-tone: var(--rv-color-muted);
-  justify-content: flex-start;
-  height: 34px;
-  min-height: 34px;
-  padding: 0 10px 0 12px;
-  color: var(--rv-color-ink);
-  background: var(--rv-color-surface-raised);
-  border: 1px solid var(--rv-color-border);
-  border-left: 3px solid var(--invoice-tone);
-  border-radius: 6px;
-  font-size: var(--rv-font-size-sm);
-  font-weight: 600;
-  text-align: left;
-}
-.app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-actions > .invoice-status-label > i { display: none; }
-.app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-actions > .invoice-status-label.rv-badge-warning { --invoice-tone: var(--rv-color-warning); }
-.app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-actions > .invoice-status-label.rv-badge-info { --invoice-tone: var(--rv-color-info); }
-.app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-actions > .invoice-status-label.rv-badge-success { --invoice-tone: var(--rv-color-accent); }
-.app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-actions > .invoice-status-label.rv-badge-danger { --invoice-tone: var(--rv-color-danger); }
-
 /* Integration cards: the extra height of a short card goes to its middle section, not to the header. */
 .app-shell.stitch-shell main .integration-card.reference-integration-card { grid-template-rows: auto auto minmax(0, 1fr) auto; align-content: stretch; }
-.app-shell.stitch-shell main .reference-integration-card > .reference-integration-private-state { align-self: stretch; }
-
-/* Order list invoice state: an outlined label in the state's colour. */
-.app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-actions > .invoice-status-label { justify-content: center; color: var(--invoice-tone); background: color-mix(in srgb, var(--invoice-tone) 8%, transparent); border: 1px dashed color-mix(in srgb, var(--invoice-tone) 60%, transparent); border-radius: 8px; text-align: center; }

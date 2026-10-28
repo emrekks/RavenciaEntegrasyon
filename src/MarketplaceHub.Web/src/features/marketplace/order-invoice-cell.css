@@ -1,4 +1,0 @@
-/* In an order row the invoice status label and the invoice actions button below it are the same width. */
-.order-reference-invoice .order-invoice-actions { display: grid; justify-items: stretch; gap: 8px; }
-.order-reference-invoice .order-invoice-actions > .invoice-status-label { width: 100%; max-width: none; box-sizing: border-box; }
-.order-reference-invoice .order-invoice-actions > .row-menu, .order-reference-invoice .order-invoice-actions > .row-menu > button { width: 100%; box-sizing: border-box; }

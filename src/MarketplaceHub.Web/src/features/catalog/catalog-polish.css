@@ -49,7 +49,6 @@
   box-shadow: 0 4px 14px rgb(0 0 0 / 10%);
 }
 
-
 /* Variant table toolbar: both actions stay on one line. */
 .app-shell.stitch-shell main .variant-table-toolbar { flex-wrap: wrap; }
 .app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: nowrap; margin-left: auto; }
@@ -71,17 +70,8 @@
 .app-shell.stitch-shell main .marketplace-pricing-inline .marketplace-pricing-bar-heading { flex-wrap: wrap; }
 .app-shell.stitch-shell main .marketplace-pricing-inline .marketplace-pricing-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-
 /* Quick edit variants: option values as labelled pairs, the stock code underneath. */
 .app-shell.stitch-shell .quick-edit-variant-label { display: grid; min-width: 0; gap: 4px; }
-.app-shell.stitch-shell .quick-edit-variant-options { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.app-shell.stitch-shell .quick-edit-variant-option { display: inline-flex; align-items: baseline; gap: 6px; }
-.app-shell.stitch-shell .quick-edit-variant-option small { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
-.app-shell.stitch-shell .quick-edit-variant-option strong { color: var(--rv-color-ink); font-size: 15px; font-weight: 700; }
-.app-shell.stitch-shell .quick-edit-variant-sku { color: var(--rv-color-muted); font-family: var(--rv-font-mono, ui-monospace, monospace); font-size: 12px; }
-
-/* 16px block rhythm: the workspace sits right under the toolbar, the page grid supplies the gap. */
-.app-shell.stitch-shell main .products-page > .product-catalog-workspace { margin-top: 0; }
 
 /* The back link has no frame: the arrow sits bare and the hover is the same quiet fill the other icon buttons use */
 .app-shell.stitch-shell main .product-heading-back .ui-icon { border-color: transparent; }

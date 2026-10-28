@@ -1,6 +1,5 @@
 /* Rules of the design system that only MappingPages.tsx uses, loaded with it (moved out of the main CSS). */
 
-
 @layer components {
   .mapping-transfer-modal { display: block; overflow: auto; }
 }
@@ -203,19 +202,7 @@
 }
 
 @layer features {
-  .panel-attribute-record-main small, .panel-attribute-record-actions { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
-}
-
-@layer features {
-  .panel-attribute-record-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-1); }
-}
-
-@layer features {
-  .panel-attribute-record-actions > .panel-attribute-category-button { order: -1; }
-}
-
-@layer features {
-  .panel-attribute-record-actions > button:not(.panel-attribute-category-button)[aria-label*="düzenle"], .panel-attribute-record-actions > button:not(.panel-attribute-category-button)[aria-label*="sil"] { width: 34px; min-width: 34px; padding: 0; }
+  .panel-attribute-record-main small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
 }
 
 @layer features {
@@ -520,10 +507,6 @@
 
 @layer features {
   .panel-library-section .panel-attribute-record-main { width: 100%; min-height: 44px; align-content: center; justify-content: start; }
-}
-
-@layer features {
-  .panel-library-section .panel-attribute-record-actions { justify-content: flex-end; }
 }
 
 @layer features {

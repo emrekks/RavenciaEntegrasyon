@@ -1,132 +1,3 @@
-/* Category attribute workspace (step 4) and the value mapping editor header.
-   One context bar says which panel category maps to which marketplace category; the actions
-   below it are grouped by what they do, so the screen reads top-down: where, what to run, review. */
-
-.mapping-step .mapping-workspace-context {
-  display: grid;
-  grid-template-columns: minmax(200px, 320px) auto minmax(0, 1fr) auto;
-  align-items: end;
-  gap: var(--rv-space-3) var(--rv-space-4);
-  margin-bottom: var(--rv-space-3);
-  padding: var(--rv-space-4);
-  background: var(--rv-color-surface-raised);
-  border: 1px solid var(--rv-color-border);
-  border-radius: var(--rv-radius-lg);
-}
-
-.mapping-step .mapping-workspace-field { display: grid; min-width: 0; gap: 6px; margin: 0; }
-.mapping-step .mapping-workspace-field > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 500; }
-.mapping-step .mapping-workspace-field > select { width: 100%; min-width: 0; }
-.mapping-step .mapping-workspace-field > strong {
-  display: flex;
-  align-items: center;
-  min-height: var(--rv-control-height-md);
-  overflow: hidden;
-  color: var(--rv-color-ink);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mapping-step .mapping-workspace-arrow {
-  width: var(--rv-icon-size-md);
-  height: var(--rv-icon-size-md);
-  margin-bottom: 12px;
-  color: var(--rv-color-subtle);
-}
-
-.mapping-step .mapping-workspace-context > .mapping-table-status { align-self: center; margin-top: 22px; white-space: nowrap; }
-
-.mapping-step .mapping-workspace-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: var(--rv-space-3) 0;
-  margin-bottom: var(--rv-space-3);
-  padding: var(--rv-space-3) 0;
-  border-block: 1px solid var(--rv-color-border);
-}
-
-.mapping-step .mapping-workspace-action-group {
-  display: grid;
-  align-content: start;
-  gap: 6px;
-  padding-inline: var(--rv-space-4);
-  border-inline-start: 1px solid var(--rv-color-border);
-}
-
-.mapping-step .mapping-workspace-action-group:first-child { padding-inline-start: 0; border-inline-start: 0; }
-
-.mapping-step .mapping-workspace-action-group > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
-
-.mapping-step .mapping-workspace-action-group > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-
-.mapping-step .mapping-workspace-action-group button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: var(--rv-font-size-sm);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.mapping-step .mapping-workspace-action-group button svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); flex: 0 0 auto; }
-
-/* Closed panels sit side by side as wide as the page allows; an open panel takes the full row so
-   its content stays readable. */
-.mapping-step .mapping-workspace-panels {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
-  align-items: start;
-  gap: var(--rv-space-3);
-  margin-bottom: var(--rv-space-4);
-}
-.mapping-step .mapping-workspace-panels > details { min-width: 0; margin: 0; border-radius: var(--rv-radius-md); }
-.mapping-step .mapping-workspace-panels > details[open] { grid-column: 1 / -1; }
-
-/* Panel heading: title, count badge, one short line, chevron on the right. */
-.mapping-step .mapping-workspace-panels > details > summary {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) 16px;
-  align-items: center;
-  gap: 4px 10px;
-  min-height: 52px;
-  padding: 10px 16px;
-  list-style: none;
-  cursor: pointer;
-}
-.mapping-step .mapping-workspace-panels > details > summary::-webkit-details-marker { display: none; }
-.mapping-step .mapping-workspace-panels > details > summary::after {
-  width: 8px;
-  height: 8px;
-  margin-inline: auto;
-  content: "";
-  border-right: 2px solid var(--rv-color-subtle);
-  border-bottom: 2px solid var(--rv-color-subtle);
-  transform: translateY(-2px) rotate(45deg);
-  transition: transform var(--rv-duration-fast) var(--rv-ease-standard);
-}
-.mapping-step .mapping-workspace-panels > details[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
-.mapping-step .mapping-workspace-panels .panel-summary-title { color: var(--rv-color-ink); font-weight: 600; white-space: nowrap; }
-.mapping-step .mapping-workspace-panels .panel-summary-count {
-  min-width: 24px;
-  padding: 1px 8px;
-  color: var(--rv-color-muted);
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-  background: var(--rv-color-surface-soft);
-  border-radius: 999px;
-}
-.mapping-step .mapping-workspace-panels .panel-summary-count.is-warning { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
-.mapping-step .mapping-workspace-panels > details > summary small { overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
-
-@media (max-width: 760px) {
-  .mapping-step .mapping-workspace-panels > details > summary small { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
-}
-
 /* Value mapping editor: one command bar. Groups are split by thin dividers, every control (the
    share switch included) is the same 34px ghost button, and the bar wraps on narrow dialogs. */
 .value-mapping-editor .value-mapping-commandbar {
@@ -252,15 +123,10 @@
 .value-mapping-editor .value-mapping-suggestions li > button { min-height: 30px; padding: 0 12px; font-size: var(--rv-font-size-sm); }
 
 @media (max-width: 760px) {
-  .mapping-step .mapping-workspace-context { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
-  .mapping-step .mapping-workspace-arrow { display: none; }
-  .mapping-step .mapping-workspace-context > .mapping-table-status { justify-self: start; margin-top: 0; }
-  .mapping-step .mapping-workspace-action-group { flex: 1 1 100%; padding-inline: 0; border-inline-start: 0; }
 
   .value-mapping-editor .value-mapping-suggestions li { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); }
   .value-mapping-editor .value-mapping-suggestions li > small { grid-column: 1; }
 }
-
 
 /* Saved category mappings on phones: each row is a card (panel category and status on top, the
    marketplace path below, platform and actions at the bottom) instead of a 760px table. */
@@ -314,11 +180,6 @@
 @media (max-width: 760px) {
   .mapping-advanced-modal .mapping-advanced-modal-body { padding: 12px; }
   .mapping-advanced-modal .mapping-popup-content > .mapping-step { padding: 12px; }
-  .mapping-step .mapping-workspace-context { gap: 10px; padding: 12px; }
-  .mapping-step .mapping-workspace-field > strong { min-height: 0; white-space: normal; }
-  .mapping-step .mapping-workspace-actions { gap: 12px 0; }
-  .mapping-step .mapping-workspace-action-group > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mapping-step .mapping-workspace-action-group button { justify-content: center; min-height: 40px; padding: 4px 8px; white-space: normal; text-align: center; }
 }
 /* Value mapping window on phones: the window title already names the attribute, so the inner
    heading goes; the commands become a two-column button grid (switch across the full row); the
@@ -440,11 +301,6 @@
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-main { display: grid; flex: 1; gap: 2px; min-width: 0; height: auto; min-height: 0; padding: 0; text-align: left; background: none; border: 0; box-shadow: none; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-main strong { overflow: hidden; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-record-main small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; text-transform: none; }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions { display: flex; flex: none; align-items: center; gap: 2px; }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions > button { display: grid; width: 30px; min-width: 30px; height: 30px !important; min-height: 30px !important; place-items: center; padding: 0 !important; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions > .panel-attribute-category-button { order: -1; width: auto; margin-right: 4px; padding: 0 10px !important; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); font-size: 13px; }
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-record-actions .ui-icon { width: 15px; height: 15px; }
 /* "Henüz panel seçeneği/özelliği oluşturulmadı": a quiet line like the saved-mappings empty row, not a 16px ink caption. */
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records > .mapping-empty-row { padding: 4px 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 400; }
 
@@ -654,9 +510,6 @@
   .app-shell.stitch-shell main .panel-attribute-records > article { gap: 8px; }
   .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-record-main { flex: 1 1 auto; min-width: 0; }
   .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-record-main > :is(strong, small) { overflow-wrap: anywhere; }
-  .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-record-actions { flex: none; gap: 2px; }
-  .app-shell.stitch-shell main section.mapping-page .panel-attribute-records .panel-attribute-record-actions > .panel-attribute-category-button { display: flex; width: 34px; min-width: 34px; padding: 0; align-items: center; justify-content: center; gap: 0; font-size: 0 !important; }
-  .app-shell.stitch-shell main section.mapping-page .panel-attribute-records .panel-attribute-record-actions > .panel-attribute-category-button::before { content: ""; width: 16px; height: 16px; background: currentColor; -webkit-mask: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5h12M2 8h12M2 11.5h8'/%3E%3C/svg%3E"); mask: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5h12M2 8h12M2 11.5h8'/%3E%3C/svg%3E"); }
   .app-shell.stitch-shell main .category-library-search-control { position: relative; }
   .app-shell.stitch-shell main .category-library-search-control > input { padding-right: 36px; }
   .app-shell.stitch-shell main .category-library-search-control > .category-library-search-toggle { top: 0; right: 0; transform: none; width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; }
@@ -695,9 +548,6 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-card { padding: 12px; row-gap: 12px; }
 }
-
-/* The attribute record's values button: its list icon keeps a full 18px instead of being squeezed. */
-.app-shell.stitch-shell main section.mapping-page .panel-attribute-records .panel-attribute-record-actions > .panel-attribute-category-button::before { flex: none; width: 18px; height: 18px; }
 
 /* Brand mapping: Senkronize Et sits beside Eşleştirmeyi Kaydet at the foot of the card (side by side, half and half on
    phones, under the brand count). The import and export buttons of the page head share one row on phones. */

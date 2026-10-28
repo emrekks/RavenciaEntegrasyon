@@ -49,7 +49,6 @@
 .cm-card .cm-detail-head h4 { margin: 0; font-size: 18px; font-weight: 600; }
 .cm-card .cm-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 6px; font-size: 12px; font-weight: 500; }
 .cm-card .cm-tag.is-required { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border)); }
-.cm-card .cm-lead { margin: 4px 0 20px; color: var(--rv-color-muted); font-size: 14px; }
 .cm-card .cm-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 24px; padding-bottom: 20px; border-bottom: 1px solid var(--rv-color-border); }
 .cm-card .cm-readonly { display: flex; align-items: center; min-height: 38px; font-weight: 600; }
 .cm-card .cm-select-row { display: flex; align-items: center; gap: 8px; }
@@ -85,7 +84,6 @@
 
 .cm-card .cm-legend { display: flex; flex-wrap: wrap; gap: 18px; padding: 12px 24px; color: var(--rv-color-muted); font-size: 12px; border-top: 1px solid var(--rv-color-border); }
 .cm-card .cm-legend > span { display: inline-flex; align-items: center; gap: 6px; }
-.cm-card .cm-extra-panels:not(:empty) { padding: 16px 24px 20px; border-top: 1px solid var(--rv-color-border); }
 
 @media (max-width: 900px) {
   .cm-card .cm-layout { grid-template-columns: minmax(0, 1fr); }
@@ -295,9 +293,6 @@
 .app-shell.stitch-shell main .cm-webcolor .value-mapping-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .app-shell.stitch-shell main .cm-webcolor .value-mapping-heading p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .cm-webcolor .value-mapping-heading button { flex: none; height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
-.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-picker { display: block; padding: 0; background: none; border: 0; }
-.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-picker > label { display: grid; gap: 6px; max-width: 360px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
-.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-picker select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 .app-shell.stitch-shell main .cm-webcolor :is(.web-color-panel-value-picker, .web-color-assignment-groups) { display: grid; gap: 10px; padding: 14px 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-panel-value-picker-head { display: flex; align-items: center; justify-content: space-between; }
 .app-shell.stitch-shell main .cm-webcolor :is(.web-color-panel-value-picker-head, .web-color-assignment-groups) > strong, .app-shell.stitch-shell main .cm-webcolor .web-color-panel-value-picker-head strong { font-size: 14px; font-weight: 600; }
