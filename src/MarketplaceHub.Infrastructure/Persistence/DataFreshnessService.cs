@@ -53,7 +53,7 @@ public sealed class DataFreshnessService(AppDbContext db, TimeProvider timeProvi
         // First-import jobs carry the initial-sync priority; slices of a long read keep it.
         var openImports = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Priority == MarketplaceConnectionService.InitialDataSyncPriority && OpenStatuses.Contains(x.Status))
-            .Select(x => new { x.ResourceType, x.Status })
+            .Select(x => new { x.ResourceType, x.JobType, x.Status })
             .ToListAsync(cancellationToken);
         var recovery = await db.SyncCursors.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS_RECOVERY")
@@ -74,6 +74,10 @@ public sealed class DataFreshnessService(AppDbContext db, TimeProvider timeProvi
         if (connection.PlatformCode != "SHOPIFY") parts.Add(Part("RETURNS", "returns"));
         if (connection.PlatformCode != "SHOPIFY" && question is not null)
             parts.Add(new("QUESTIONS", question.HistoryImported ? "DONE" : question.ProgressStatus == "RUNNING" ? "RUNNING" : "QUEUED", null));
+        // Category tree, brand list and the field and value lists of the mapped categories (ConnectionReferencePlan).
+        var openReferences = openImports.Where(x => x.JobType is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync
+            or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync or MarketplaceJobTypes.PttAvmReferenceSync).ToArray();
+        parts.Add(new("REFERENCES", openReferences.Length == 0 ? "DONE" : openReferences.Any(x => x.Status == JobStatus.Leased) ? "RUNNING" : "QUEUED", null));
         return ServiceResult<InitialImportView>.Ok(new(connectionId, parts.Any(x => x.State != "DONE"), parts));
     }
 

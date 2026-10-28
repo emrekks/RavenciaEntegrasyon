@@ -185,6 +185,9 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (mappingType == "categories")
         {
             await MappingTemplateFiller.FillCategoryAsync(db, tenantId, command.ConnectionId, externalId, timeProvider.GetUtcNow(), cancellationToken);
+            // The category's marketplace fields and their value lists are read in the background, so the attribute
+            // mapping and the product form have them without a button (skipped when a copy younger than a day is there).
+            await ConnectionReferencePlan.QueueForSavedCategoryMappingAsync(db, tenantId, command.ConnectionId, externalId, $"mapping-reference:{command.ConnectionId:N}:{externalId}", timeProvider.GetUtcNow(), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
