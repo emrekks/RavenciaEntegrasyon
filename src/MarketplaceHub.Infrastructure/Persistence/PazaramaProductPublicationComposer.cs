@@ -56,7 +56,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
                 .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping)
                 .SingleOrDefaultAsync(cancellationToken)
             : null;
-        if (brandMapping is null) return Fail("BRAND_MAPPING_REQUIRED", "Yayın öncesi güncel Pazarama marka eşlemesi gerekir (Eşleştirme sayfasında marka eşlemesi).", "brandId");
+        if (brandMapping is null) return Fail("BRAND_MAPPING_REQUIRED", "Ürünün markası Pazarama'daki bir markayla eşlenmemiş. Sol menüden Eşleştirmeler sayfasını açın, Markalar sekmesinde Pazarama bağlantısını seçin; marka listesi boşsa önce Pazarama markalarını senkronize edin, sonra panel markasını Pazarama'daki karşılığıyla eşleyip Eşleştirmeyi Kaydet'e basın ve ürünü yeniden yayınlayın.", "brandId");
         if (!Guid.TryParse(brandMapping.ExternalId, out var remoteBrandId) || remoteBrandId == Guid.Empty)
             return Fail("MAPPING_IDENTIFIER_INVALID", "Pazarama marka kimliği bir GUID olmalıdır.", "brandId");
         if (!string.IsNullOrWhiteSpace(profile.ExternalBrandId) && profile.ExternalBrandId != brandMapping.ExternalId)
