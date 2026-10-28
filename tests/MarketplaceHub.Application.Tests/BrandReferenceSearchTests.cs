@@ -251,7 +251,8 @@ public sealed class BrandReferenceSearchPostgreSqlTests(PostgreSqlTenantIsolatio
         ResourceType = resourceType,
         SourceVersion = "V1",
         ContentHash = $"hash-{Guid.NewGuid():N}",
-        FetchedAt = fetchedAt.ToUniversalTime(),
+        // PostgreSQL keeps microseconds; the seeded time is cut to them so it reads back equal.
+        FetchedAt = new DateTimeOffset(fetchedAt.UtcTicks - fetchedAt.UtcTicks % 10, TimeSpan.Zero),
         IsCurrent = isCurrent,
         ItemCount = itemCount
     };
