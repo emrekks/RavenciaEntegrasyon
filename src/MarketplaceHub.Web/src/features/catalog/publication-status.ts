@@ -136,15 +136,25 @@ export function publicationStatusNote(statusCode?: string | null) {
 }
 
 // PTT AVM can accept a model family send and still not add its variants (live 2026-10-28: MZ059YNC opened with no
-// variants), so the cards wait for an approval that never comes. Such a card, or one whose send stopped, may go
-// again: the send reads PTT AVM first, adds only the variants it lacks and sends nothing when it holds them all. A card
-// whose check is being read right now waits for that read.
-const pttAvmResendableStatuses = new Set(['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING', 'MANUAL_REVIEW', 'BLOCKED', 'CREATE_REJECTED', 'PARTIAL_FAILURE'])
+// variants), so the cards wait for an approval that never comes. Such a family card, or one whose send stopped, says
+// "Tekrar Deneyin", stays selectable and Yayınla sends it again: the send reads PTT AVM first, adds only the variants
+// it lacks and sends nothing when it holds them all; the card's waiting approval checks are closed. A card whose job is
+// being worked on right now waits for that job.
+const pttAvmRetryableStatuses = new Set(['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING', 'MANUAL_REVIEW', 'BLOCKED', 'CREATE_REJECTED', 'PARTIAL_FAILURE'])
 
-export function isPttAvmFamilyResendable(platformCode?: string | null, actualStatus?: string | null, lastJobStatus?: string | null) {
+export const pttAvmRetryLabel = 'Tekrar Deneyin'
+
+export function isPttAvmFamilyRetryable(platformCode?: string | null, actualStatus?: string | null, lastJobStatus?: string | null) {
   return platformCode?.trim().toUpperCase() === 'PTTAVM'
-    && pttAvmResendableStatuses.has(actualStatus?.trim().toUpperCase() ?? '')
+    && pttAvmRetryableStatuses.has(actualStatus?.trim().toUpperCase() ?? '')
     && !['LEASED', 'RUNNING'].includes(lastJobStatus?.trim().toUpperCase() ?? '')
+}
+
+// Yayınla leaves a live card, and one still being published, as it is; a PTT AVM family card to try again goes.
+export function isSkippedByPublish(platformCode: string | null | undefined, actualStatus: string | null | undefined, lastJobStatus: string | null | undefined, pttAvmFamily: boolean) {
+  if (isPublicationLive(actualStatus)) return true
+  if (pttAvmFamily && isPttAvmFamilyRetryable(platformCode, actualStatus, lastJobStatus)) return false
+  return isPublicationStatusPending(actualStatus, lastJobStatus)
 }
 
 // An approval check that is only waiting for the marketplace to approve: the card's status already says "Onay

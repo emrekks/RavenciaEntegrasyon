@@ -9,7 +9,6 @@
   border-radius: 10px;
 }
 .publish-platform-card .publish-platform-warning[aria-label$="yayın öncesi eksikler"] { --issue-tone: var(--rv-color-danger); }
-.publish-platform-card .publish-platform-warning.is-info { --issue-tone: var(--rv-color-info); }
 .publish-platform-card .publish-platform-warning > svg { box-sizing: content-box; width: 16px; height: 16px; flex: none; margin: 0; padding: 8px; color: var(--issue-tone); background: color-mix(in srgb, var(--issue-tone) 16%, transparent); border-radius: 8px; }
 .publish-platform-card .publish-platform-warning strong { display: block; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; line-height: 1.35; }
 .publish-platform-card .publish-platform-warning p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }

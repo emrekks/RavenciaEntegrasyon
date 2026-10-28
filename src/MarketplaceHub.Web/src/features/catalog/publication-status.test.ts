@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isApprovalWaitJob, isPttAvmFamilyResendable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
+import { isApprovalWaitJob, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, isSkippedByPublish, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 
 describe('product publication status', () => {
   it('describes the marketplace result rather than the connection state', () => {
@@ -85,18 +85,35 @@ describe('product publication status', () => {
   })
 })
 
-describe('PTT AVM family resend', () => {
+describe('PTT AVM family retry', () => {
   it('lets a family card waiting for an approval that may never come, or a stopped one, go again', () => {
-    expect(isPttAvmFamilyResendable('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(true)
-    expect(isPttAvmFamilyResendable(' pttavm ', 'MANUAL_REVIEW', 'MANUAL_REVIEW')).toBe(true)
-    expect(isPttAvmFamilyResendable('PTTAVM', 'BLOCKED', null)).toBe(true)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(true)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'APPROVAL_PARTIAL_PENDING', 'PENDING')).toBe(true)
+    expect(isPttAvmFamilyRetryable(' pttavm ', 'MANUAL_REVIEW', 'MANUAL_REVIEW')).toBe(true)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'BLOCKED', null)).toBe(true)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'CREATE_REJECTED', 'FAILED')).toBe(true)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'PARTIAL_FAILURE', 'SUCCEEDED')).toBe(true)
   })
 
   it('keeps live, in-flight and other marketplaces cards as they are', () => {
-    expect(isPttAvmFamilyResendable('PTTAVM', 'LIVE', null)).toBe(false)
-    expect(isPttAvmFamilyResendable('PTTAVM', 'BATCH_SUBMITTED', 'RETRY_SCHEDULED')).toBe(false)
-    expect(isPttAvmFamilyResendable('PTTAVM', 'APPROVAL_PENDING', 'LEASED')).toBe(false)
-    expect(isPttAvmFamilyResendable('TRENDYOL', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(false)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'LIVE', null)).toBe(false)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'BATCH_SUBMITTED', 'RETRY_SCHEDULED')).toBe(false)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'APPROVAL_PENDING', 'LEASED')).toBe(false)
+    expect(isPttAvmFamilyRetryable('PTTAVM', 'APPROVAL_PENDING', 'RUNNING')).toBe(false)
+    expect(isPttAvmFamilyRetryable('TRENDYOL', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(false)
+    expect(isPttAvmFamilyRetryable(null, 'APPROVAL_PENDING', null)).toBe(false)
+  })
+
+  it('makes Yayınla send a PTT AVM family card to try again and still skip live or in-flight cards', () => {
+    expect(isSkippedByPublish('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED', true)).toBe(false)
+    expect(isSkippedByPublish('PTTAVM', 'MANUAL_REVIEW', 'MANUAL_REVIEW', true)).toBe(false)
+    expect(isSkippedByPublish('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED', false)).toBe(true)
+    expect(isSkippedByPublish('PTTAVM', 'APPROVAL_PENDING', 'LEASED', true)).toBe(true)
+    expect(isSkippedByPublish('PTTAVM', 'LIVE', null, true)).toBe(true)
+    expect(isSkippedByPublish('PTTAVM', 'QUEUED', 'PENDING', true)).toBe(true)
+    expect(isSkippedByPublish('TRENDYOL', 'APPROVAL_PENDING', null, true)).toBe(true)
+    expect(isSkippedByPublish('TRENDYOL', 'CREATE_REJECTED', 'FAILED', false)).toBe(false)
+    expect(isSkippedByPublish('PTTAVM', 'UNKNOWN', null, true)).toBe(false)
   })
 })
 
