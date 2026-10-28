@@ -306,12 +306,6 @@ internal static class CatalogModelConfiguration
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalAttributeId }).IsUnique();
         });
-        builder.Entity<BrandNameMapping>(entity =>
-        {
-            entity.ToTable("brand_name_mappings", "catalog"); entity.HasKey(x => x.Id);
-            entity.Property(x => x.Name).HasMaxLength(BrandNameMapping.NameMaxLength); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.LocalId }).IsUnique();
-        });
         builder.Entity<MappingTemplateDismissal>(entity =>
         {
             entity.ToTable("mapping_template_dismissals", "catalog"); entity.HasKey(x => x.Id);

@@ -57,7 +57,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<AttributeValueMappingTemplate> AttributeValueMappingTemplates => Set<AttributeValueMappingTemplate>();
     public DbSet<MappingTemplateDismissal> MappingTemplateDismissals => Set<MappingTemplateDismissal>();
     public DbSet<ConnectionAttributeDefault> ConnectionAttributeDefaults => Set<ConnectionAttributeDefault>();
-    public DbSet<BrandNameMapping> BrandNameMappings => Set<BrandNameMapping>();
     public DbSet<MarketplaceProductLink> MarketplaceProductLinks => Set<MarketplaceProductLink>();
     public DbSet<MarketplaceVariantLink> MarketplaceVariantLinks => Set<MarketplaceVariantLink>();
     public DbSet<CommissionTariff> CommissionTariffs => Set<CommissionTariff>();

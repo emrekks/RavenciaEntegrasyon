@@ -71,8 +71,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             ? await db.Brands.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == brandId && x.IsActive, cancellationToken)
             : null;
         if (brand is null || string.IsNullOrWhiteSpace(brand.Name)) return Fail("BRAND_REQUIRED", "Hepsiburada ürün aktarımı için etkin bir yerel marka seçilmelidir.", "brandId");
-        // The name typed for this connection on the brand page wins over the panel name (Marka and the title prefix).
-        var brandName = await BrandNameMappings.ResolveAsync(db, tenantId, connectionId, brand.Id, brand.Name, cancellationToken);
+        var brandName = brand.Name.Trim();
 
         // A panel attribute the marketplace category has no field for (Cep on Hepsiburada Bluz) is not sent: only mapped
         // attributes travel. Required marketplace fields are still checked above and per variant.

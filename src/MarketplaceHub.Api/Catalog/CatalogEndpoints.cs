@@ -280,16 +280,6 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapDelete("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        // Brand names typed for Hepsiburada, n11 and Shopify, which take the brand as free text.
-        api.MapGet("/connections/{connectionId:guid}/brand-names", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListBrandNameMappingsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPut("/connections/{connectionId:guid}/brand-names/{localId:guid}", async (Guid connectionId, Guid localId, UpsertBrandNameMappingCommand command, HttpContext http, IReferenceDataService service) =>
-        {
-            if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
-            return WithEtag(http, await service.UpsertBrandNameMappingAsync(tenant.TenantId, connectionId, localId, expected, command, http.RequestAborted), x => x.Version);
-        });
-        api.MapDelete("/connections/{connectionId:guid}/brand-names/{localId:guid}", async (Guid connectionId, Guid localId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteBrandNameMappingAsync(tenant.TenantId, connectionId, localId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
         api.MapGet("/mappings/name-hints", async (Guid attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.MarketplaceNameHintsAsync(tenant.TenantId, attributeId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/mappings/attribute-name-hints", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>

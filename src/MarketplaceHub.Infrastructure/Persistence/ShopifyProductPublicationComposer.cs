@@ -111,9 +111,6 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var brand = lead.BrandId is Guid brandId
             ? await db.Brands.AsNoTracking().Where(item => item.TenantId == tenantId && item.Id == brandId).Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
             : null;
-        // The vendor name typed for this connection on the brand page wins over the panel name.
-        if (lead.BrandId is Guid mappedBrandId && !string.IsNullOrWhiteSpace(brand))
-            brand = await BrandNameMappings.ResolveAsync(db, tenantId, connectionId, mappedBrandId, brand, cancellationToken);
         var category = lead.CategoryId is Guid categoryId
             ? await db.Categories.AsNoTracking().Where(item => item.TenantId == tenantId && item.Id == categoryId).Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
             : null;

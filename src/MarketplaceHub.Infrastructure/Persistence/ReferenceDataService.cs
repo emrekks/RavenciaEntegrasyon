@@ -402,65 +402,6 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
 
     private static ConnectionAttributeDefaultView MapDefault(ConnectionAttributeDefault value) => new(value.ExternalAttributeId, value.AttributeName, value.ExternalValueId, value.ValueName, value.CustomValue, value.UpdatedAt, value.Version, value.SourceField);
 
-    public async Task<ServiceResult<IReadOnlyList<BrandNameMappingView>>> ListBrandNameMappingsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
-    {
-        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyList<BrandNameMappingView>>();
-        var rows = await (from mapping in db.BrandNameMappings.AsNoTracking()
-                          join brand in db.Brands.AsNoTracking() on new { mapping.TenantId, Id = mapping.LocalId } equals new { brand.TenantId, brand.Id }
-                          where mapping.TenantId == tenantId && mapping.ConnectionId == connectionId
-                          orderby brand.Name, mapping.Id
-                          select new BrandNameMappingView(mapping.LocalId, brand.Name, mapping.Name, mapping.UpdatedAt, mapping.Version)).ToListAsync(cancellationToken);
-        return ServiceResult<IReadOnlyList<BrandNameMappingView>>.Ok(rows);
-    }
-
-    // Only marketplaces that take the brand as free text: Trendyol and Pazarama map to their brand list, PTT AVM sends no brand.
-    public async Task<ServiceResult<BrandNameMappingView>> UpsertBrandNameMappingAsync(Guid tenantId, Guid connectionId, Guid localId, long? expectedVersion, UpsertBrandNameMappingCommand command, CancellationToken cancellationToken)
-    {
-        var platformCode = await VisibleConnectionPlatformAsync(tenantId, connectionId, cancellationToken);
-        if (platformCode is null) return NotFound<BrandNameMappingView>();
-        if (!BrandNameMappings.Platforms.Contains(platformCode))
-            return ServiceResult<BrandNameMappingView>.Fail("BRAND_NAME_MAPPING_UNSUPPORTED", "Elle marka adı yalnız Hepsiburada, n11 ve Shopify bağlantılarında kullanılabilir.", 422);
-        var name = command.Name?.Trim() ?? "";
-        if (name.Length == 0) return ServiceResult<BrandNameMappingView>.Fail("BRAND_NAME_REQUIRED", "Pazaryeri marka adı boş olamaz.", 422);
-        if (name.Length > BrandNameMapping.NameMaxLength) return ServiceResult<BrandNameMappingView>.Fail("BRAND_NAME_TOO_LONG", $"Pazaryeri marka adı en fazla {BrandNameMapping.NameMaxLength} karakter olabilir.", 422);
-        var brandName = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == localId && x.IsActive).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
-        if (brandName is null) return NotFound<BrandNameMappingView>();
-        var now = timeProvider.GetUtcNow().ToUniversalTime();
-        var row = await db.BrandNameMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localId, cancellationToken);
-        if (row is null)
-        {
-            row = new BrandNameMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, LocalId = localId, Name = name, CreatedAt = now, Version = 1 };
-            db.BrandNameMappings.Add(row);
-        }
-        else
-        {
-            if (expectedVersion is null) return ServiceResult<BrandNameMappingView>.Fail("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428);
-            if (row.Version != expectedVersion) return ServiceResult<BrandNameMappingView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{row.Version}.", 412);
-            row.Version++;
-            row.Name = name;
-        }
-        row.UpdatedAt = now;
-        await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<BrandNameMappingView>.Ok(new(row.LocalId, brandName, row.Name, row.UpdatedAt, row.Version));
-    }
-
-    public async Task<ServiceResult<bool>> DeleteBrandNameMappingAsync(Guid tenantId, Guid connectionId, Guid localId, long expectedVersion, CancellationToken cancellationToken)
-    {
-        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<bool>();
-        var row = await db.BrandNameMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localId, cancellationToken);
-        if (row is null) return NotFound<bool>();
-        if (row.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{row.Version}.", 412);
-        db.BrandNameMappings.Remove(row);
-        await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<bool>.Ok(true);
-    }
-
-    private Task<string?> VisibleConnectionPlatformAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
-        db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
-
     public async Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<MappingTemplateFillView>();

@@ -306,21 +306,6 @@ public sealed class ConnectionAttributeDefault
     public long Version { get; set; } = 1;
 }
 
-// The brand name a connection sends for a panel brand on a marketplace without a brand list (Hepsiburada "Marka"
-// and title prefix, n11 attribute 1, Shopify vendor). Typed by the user; without one the panel brand name is sent.
-public sealed class BrandNameMapping
-{
-    public const int NameMaxLength = 200;
-    public Guid Id { get; set; }
-    public Guid TenantId { get; set; }
-    public Guid ConnectionId { get; set; }
-    public Guid LocalId { get; set; }
-    public required string Name { get; set; }
-    public DateTimeOffset CreatedAt { get; set; }
-    public DateTimeOffset UpdatedAt { get; set; }
-    public long Version { get; set; } = 1;
-}
-
 // A mapping the user removed from one category: the template fill must not bring it back there.
 // Kind is ATTRIBUTE (scope = category, LocalId = panel attribute) or VALUE (scope =
 // "{category}/{attribute}", LocalId = panel value). Saving that mapping again clears it.

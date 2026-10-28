@@ -380,44 +380,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("brands", "catalog");
                 });
 
-            modelBuilder.Entity("MarketplaceHub.Domain.BrandNameMapping", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ConnectionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("LocalId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "ConnectionId", "LocalId")
-                        .IsUnique();
-
-                    b.ToTable("brand_name_mappings", "catalog");
-                });
-
             modelBuilder.Entity("MarketplaceHub.Domain.CargoProviderMapping", b =>
                 {
                     b.Property<Guid>("Id")
