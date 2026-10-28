@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { appendNotification, normalizeNotificationKind } from '../notifications'
 import { ToneIcon } from './ToneIcon'
+import { ToastViewportContext } from './toast-stack-context'
 import { UiIcon } from './UiIcon'
 import './notice-toast.css'
 
@@ -13,8 +15,8 @@ const defaultTitles: Record<NoticeToastKind, string> = {
   pending: 'İşlem Sürüyor'
 }
 
-// The single top-right notification of the panel. Tone shows only in the icon tile and the countdown bar,
-// the card itself always follows the active theme.
+// A top-right notification of the panel. Inside the shell it is drawn into the shared toast column, below the toasts
+// already shown. Tone shows only in the icon tile and the countdown bar, the card itself always follows the theme.
 export function NoticeToast({ kind, message, lines, title, onClose, durationMs, className }: {
   kind: NoticeToastKind
   message: string
@@ -26,7 +28,8 @@ export function NoticeToast({ kind, message, lines, title, onClose, durationMs, 
   className?: string
 }) {
   const failed = kind === 'error'
-  return <div
+  const viewport = useContext(ToastViewportContext)
+  const toast = <div
     className={['app-toast', `app-toast-${kind}`, className].filter(Boolean).join(' ')}
     role={failed ? 'alert' : 'status'}
     aria-live={failed ? 'assertive' : 'polite'}
@@ -47,6 +50,7 @@ export function NoticeToast({ kind, message, lines, title, onClose, durationMs, 
     {onClose && <button type="button" className="app-toast-close" onClick={onClose} aria-label="Bildirimi kapat"><UiIcon name="close" size={16} /></button>}
     {(durationMs || kind === 'pending') && <span className="app-toast-track" aria-hidden="true"><span className="app-toast-progress" /></span>}
   </div>
+  return viewport ? createPortal(toast, viewport) : toast
 }
 
 // A plain message: the tone is the one the caller names, or else comes from its wording the way the notification

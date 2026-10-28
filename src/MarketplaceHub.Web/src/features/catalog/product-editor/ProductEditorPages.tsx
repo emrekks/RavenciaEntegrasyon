@@ -40,9 +40,12 @@ import { publicationJobPollInterval } from '../publication-job-poll'
 import { publicationJobInline } from '../publication-job-inline'
 import { productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
-import { OperationFeedbackToast, type OperationFeedback } from '../operation-feedback-toast'
+import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
 import { AcceptedJob, Attribute, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
+
+// The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
+const productSaveToastKey = 'product-editor-save'
 
 function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null, hasCustomMediaOrder = false) {
   if (hasCustomMediaOrder) return [...productMediaUrls]
@@ -1039,7 +1042,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const navigate = useNavigate()
   const routeState = location.state as { duplicateProductId?: unknown; wizardStep?: unknown } | null
   const duplicateProductId = typeof routeState?.duplicateProductId === 'string' ? routeState.duplicateProductId : undefined
-  const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
+  const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts(); const setFeedback = operationToasts.show; const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', listPrice: '699.90', salePrice: '549.90', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
@@ -1157,7 +1160,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     document.addEventListener('keydown', closeCodeGenerationOnEscape)
     return () => document.removeEventListener('keydown', closeCodeGenerationOnEscape)
   }, [pendingVariantCodeGeneration])
-  function showFeedback(title: string, message: string, kind: OperationFeedback['kind'], options: { persistent?: boolean } = {}) {
+  function showFeedback(title: string, message: string, kind: OperationFeedback['kind'], options: { persistent?: boolean; key?: string } = {}) {
     setFeedback({ title, message, kind, ...options })
   }
   function handleMediaFiles(files: File[]) {
@@ -2234,10 +2237,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     showFeedback('Zorunlu Alan Eksik', message, 'error')
   }
 
+  // Editing the form takes back the error it was showing.
   function dismissProductError() {
     setError(undefined)
     setNotice('')
-    setFeedback(current => current?.kind === 'error' ? null : current)
+    operationToasts.dismissErrors()
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -2258,7 +2262,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     // Whether the product itself had edits to write: the result says "Ürün bilgileri kaydedildi" only then.
     const productChangedAtSubmit = editorDirty
-    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(editProductId ? 'Ürün Kaydediliyor' : 'Ürün Oluşturuluyor', editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(editProductId ? 'Ürün Kaydediliyor' : 'Ürün Oluşturuluyor', editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
     try {
       let submitRequirements = requirements.data ?? []
       if (form.categoryId && !requirements.data) {
@@ -2507,7 +2511,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
       // One line per marketplace; a refused marketplace stays on screen until it is closed, so it is not lost among
       // later toasts.
-      if (!createOnly) setFeedback({ message, kind: result.kind, persistent: result.persistent, title: result.title, lines: result.lines, durationMs: result.durationMs })
+      if (createOnly) operationToasts.dismiss(productSaveToastKey)
+      else setFeedback({ message, kind: result.kind, persistent: result.persistent, title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey })
       // A new product or a copy opens on its own page once created, whichever button saved it: there it saves as an
       // edit and its publication progress shows. A publish opens the publication step; the copy source is dropped.
       if (productCreated && !editProductId) {
@@ -2519,7 +2524,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage)
-      setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı' })
+      setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey })
       if (!productCreated) setFieldErrors(editorFieldErrors(reason))
       if (productCreated && !editProductId) {
         appendNotification(`${feedbackMessage} Ürün sayfası açılıyor; kaldığınız yerden düzenleyebilirsiniz.`, 'error')
@@ -3032,8 +3037,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     </section>
 
     <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}><span className="submit-label-long">Yayınlamaya devam et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></section>
-    <ErrorToast title={error ? (editProductId ? 'Ürün İşlemi Başarısız' : 'Ürün Oluşturulamadı') : 'Ürün Bilgileri Yüklenemedi'} error={error ?? categories.error ?? brands.error ?? connections.error} onDismiss={dismissProductError} />
-    <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
+    {/* A save or validation error is already a feedback toast in the column; this one is only for what failed to load. */}
+    {!error && <ErrorToast title="Ürün Bilgileri Yüklenemedi" error={categories.error ?? brands.error ?? connections.error} />}
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
         <p className="variant-header-action-menu-title">Model koduyla üret</p>

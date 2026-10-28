@@ -51,6 +51,16 @@
 @keyframes app-toast-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 @keyframes app-toast-spin { to { transform: rotate(360deg); } }
 @media (max-width: 600px) { .app-toast { top: 10px; right: 10px; width: calc(100vw - 20px); } }
+
+/* The shell's toast column: a new toast lands below the ones already shown; the column itself takes no clicks. */
+.app-toast-stack {
+  position: fixed; top: 14px; right: 14px; z-index: var(--rv-z-toast);
+  display: flex; flex-direction: column; gap: 8px;
+  box-sizing: border-box; width: min(400px, calc(100vw - 32px)); pointer-events: none;
+}
+.app-toast-stack:empty { display: none; }
+.app-toast-stack > .app-toast { position: relative; top: auto; right: auto; flex: none; width: 100%; pointer-events: auto; }
+@media (max-width: 600px) { .app-toast-stack { top: 16px; right: 16px; left: 16px; width: auto; } }
 @media (prefers-reduced-motion: reduce) {
   .app-toast, .app-toast *, .app-toast-icon { animation: none !important; }
   .app-toast-icon circle, .app-toast-icon .rv-tone-icon path { stroke-dashoffset: 0; }
