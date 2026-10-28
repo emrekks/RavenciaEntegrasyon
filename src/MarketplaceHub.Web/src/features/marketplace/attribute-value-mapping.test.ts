@@ -47,6 +47,12 @@ describe('attribute value reference mappings', () => {
     expect(planDirectReferenceValues([{ id: 'l-sari', value: 'Sarı' }], [{ externalId: 'Sarı', name: 'Sarı' }, { externalId: 'Sarı', name: 'Sarı' }]).mappings).toEqual([{ localId: 'l-sari', externalId: 'Sarı' }])
   })
 
+  it('matches a name spaced differently around a dash exactly, even when a synonym shares its loose key (Pazarama)', () => {
+    const remotes = [{ externalId: 'kahve', name: 'Lacivert - Kahve' }, { externalId: 'kahverengi', name: 'Lacivert - Kahverengi' }]
+    expect(planDirectReferenceValues([{ id: 'l1', value: 'Lacivert-Kahve' }], remotes).mappings).toEqual([{ localId: 'l1', externalId: 'kahve' }])
+    expect(planDirectReferenceValues([{ id: 'l2', value: 'Krem  -  Lacivert' }], [{ externalId: 'kl', name: 'Krem-Lacivert' }]).mappings).toEqual([{ localId: 'l2', externalId: 'kl' }])
+  })
+
   it('leaves a loose match alone when two values share its key', () => {
     const plan = planDirectReferenceValues([{ id: 'l1', value: 'Siyah-Beyaz' }], [{ externalId: 'a', name: 'Siyah / Beyaz' }, { externalId: 'b', name: 'SIYAH BEYAZ' }])
     expect(plan.mappings).toEqual([])

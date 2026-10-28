@@ -1,7 +1,8 @@
 import { canonicalKey, matchingKey } from '../../shared/value-matching'
 
+// The same name however its separators are spaced: "S / M" is "S/M", "Lacivert - Kahve" is "Lacivert-Kahve".
 export function normalizeReferenceValueLabel(value: string) {
-  return value.trim().toLocaleLowerCase('tr-TR').replace(/\s*\/\s*/g, '/')
+  return value.trim().toLocaleLowerCase('tr-TR').replace(/\s*([/-])\s*/g, '$1').replace(/\s+/g, ' ')
 }
 
 export function hasDirectReferenceValue(localValue: string, remoteValues: readonly string[]) {
