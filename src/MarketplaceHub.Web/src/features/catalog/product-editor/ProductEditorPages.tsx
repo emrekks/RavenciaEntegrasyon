@@ -38,7 +38,7 @@ import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublica
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { publicationJobPollInterval } from '../publication-job-poll'
 import { publicationJobInline } from '../publication-job-inline'
-import { productPublicationTargets } from '../product-publication-submit'
+import { familyPublicationWarnings, productPublicationTargets } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
@@ -2412,19 +2412,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           const familyIds = [product.id, ...(productToEdit.data?.familyProductIds ?? []).filter(id => id !== product.id)]
           // The same reason on several cards (a connection setting missing) is said once, with how many cards it stopped.
           const familyFailures = new Map<string, number[]>()
+          const platformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
+          let enqueuedCards = 0
+          let skippedCards = 0
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
               // n11 sends only a card's variants not yet live there, so a partly refused n11 card goes again; elsewhere a
               // card with a matched variant is left as it is (its publication would send the whole card).
               const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
               const matchedCount = cardVariants.filter(variant => rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched)).length
-              const platformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
               const resendsRefused = platformCode === 'N11'
-              if (matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) continue
+              if (matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) { skippedCards++; continue }
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               // A PTT AVM family card shown as "Tekrar Deneyin" goes again; the API closes its waiting approval checks.
               const pttAvmFamily = familyIds.length > 1 || cardVariants.length > 1
-              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily)) continue
+              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily)) { skippedCards++; continue }
               let listingProfileVersion: number | undefined
               try {
                 const listingProfile = await hubApi<{ version: number }>(`/products/${familyProductId}/listing-profiles/${connectionId}`)
@@ -2437,16 +2439,18 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               const accepted = await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
               completed.push(`yayın işi ${accepted.jobId}`)
+              enqueuedCards++
             } catch (reason) {
               const failure = reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'
               familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), familyIndex])
             }
           }
-          for (const [failure, indexes] of familyFailures) {
-            warnings.push(indexes.length > 1 ? `${failure} (${indexes.length} renk kartında)` : `${indexes[0] === 0 ? '' : `${indexes[0] + 1}. renk kartı: `}${failure}`)
-          }
+          warnings.push(...familyPublicationWarnings(publishPlatformName(platformCode ?? 'Pazaryeri'), { enqueued: enqueuedCards, skipped: skippedCards, failures: familyFailures }))
           continue
-        } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
+        } catch (reason) {
+          const platformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
+          warnings.push(`${publishPlatformName(platformCode ?? 'Pazaryeri')}: ${reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'}`)
+        }
       }
       const updateSummary = platformUpdate ? ` Seçilen ${platformUpdate.connectionIds.length} platform için ${platformUpdate.includeProductInformation ? 'ürün bilgisi ve fiyat-stok' : 'fiyat-stok'} güncelleme işi kuyruğa alındı.` : ''
       const versionRetrySummary = productVersionRetryUsed ? ' Daha güncel kayıt sürümüyle güvenli şekilde tekrar denendi.' : ''
@@ -2461,7 +2465,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
       }
-      if (!createOnly) showFeedback(message, warnings.length ? 'info' : 'success')
+      // A refused or skipped marketplace stays on screen until it is closed, so it is not lost among later toasts.
+      if (!createOnly) showFeedback(message, warnings.length ? 'error' : 'success', { persistent: warnings.length > 0 })
       // A new product or a copy opens on its own page once created, whichever button saved it: there it saves as an
       // edit and its publication progress shows. A publish opens the publication step; the copy source is dropped.
       if (productCreated && !editProductId) {

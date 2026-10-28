@@ -40,6 +40,29 @@ public sealed class ShopifyFamilyPublicationTests
     }
 
     [Fact]
+    public void ColourCardsWithOnlyAnOptionSignatureStillMergeIntoColourAndSizeOptions()
+    {
+        // Live 2026-10-28 MZ054YNC: imported cards had no option value rows, only "Renk: Bordo | Beden: L".
+        var rows = new[]
+        {
+            ("MZ054YNC-04", 0, "Renk: Bordo | Beden: L", 0),
+            ("MZ054YNC-05", 0, "Renk: Bordo | Beden: XL", 1),
+            ("MZ054YNC-06", 0, "Renk: Bordo | Beden: 2XL", 2),
+            ("MZ054YNC-01", 1, "Renk: Açık Kahverengi | Beden: L | Web Color: Kahverengi", 0),
+            ("MZ054YNC-02", 1, "Renk: Açık Kahverengi | Beden: XL", 1)
+        }.Select(row => new ShopifyVariantOptionRow(Guid.NewGuid(), row.Item1, row.Item2, ShopifyProductPublicationComposer.SignatureOptionValues(row.Item3, row.Item4))).ToArray();
+
+        var result = ShopifyProductPublicationComposer.PlanOptions(rows);
+
+        Assert.Null(result.Error);
+        var plan = result.Plan!;
+        Assert.Equal(["Renk", "Beden"], plan.Options.Select(option => option.Name));
+        Assert.Equal(["Bordo", "Açık Kahverengi"], plan.Options[0].Values);
+        Assert.Equal(["L", "XL", "2XL"], plan.Options[1].Values);
+        Assert.Equal([("Renk", "Açık Kahverengi"), ("Beden", "L")], plan.VariantValues[rows[3].VariantId]);
+    }
+
+    [Fact]
     public void ACardWithoutTheFamilysColourOptionStopsThePublication()
     {
         var black = Card(0, "Siyah", ("MZ-S-L", "L"));

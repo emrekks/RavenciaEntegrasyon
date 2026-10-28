@@ -28,7 +28,8 @@ export function OperationFeedbackToast({ feedback, onClose }: { feedback: Operat
   const kind = normalizeNotificationKind(feedback.message, feedback.kind)
   return <NoticeToast
     key={`${kind}:${feedback.message}`}
-    kind={feedback.persistent ? 'pending' : kind}
+    // A persistent info toast is work in progress; a persistent error (a refused publication) stays until closed.
+    kind={feedback.persistent && feedback.kind !== 'error' ? 'pending' : kind}
     title={/yayın uyarısı/iu.test(feedback.message) ? 'Yayın Uyarısı' : undefined}
     message={feedback.message}
     onClose={onClose}

@@ -41,4 +41,20 @@ describe('operation feedback toast lifecycle', () => {
     act(() => { vi.advanceTimersByTime(1) })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps a refused publication on screen as an error until it is closed', () => {
+    vi.useFakeTimers()
+    const onClose = vi.fn()
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+
+    const refused: OperationFeedback = { message: 'Ürün güncellendi. Uyarı: Shopify için yayın işi açılamadı.', kind: 'error', persistent: true }
+    act(() => root?.render(<OperationFeedbackToast feedback={refused} onClose={onClose} />))
+
+    expect(host.querySelector('.app-toast-pending')).toBeNull()
+    act(() => { vi.advanceTimersByTime(OPERATION_FEEDBACK_TOAST_DURATION_MS * 3) })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('Shopify için yayın işi açılamadı.')
+  })
 })

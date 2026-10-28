@@ -87,13 +87,17 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
                                 where variantOption.TenantId == tenantId && variantIds.Contains(variantOption.VariantId) && memberIds.Contains(option.ProductId)
                                 select new { variantOption.VariantId, option.ProductId, option.Label, OptionSort = option.SortOrder, ValueLabel = optionValue.Label, ValueSort = optionValue.SortOrder })
             .ToListAsync(cancellationToken);
-        var optionPlan = PlanOptions(variants.Select(variant => new ShopifyVariantOptionRow(
-            variant.Id,
-            variant.Sku.Trim(),
-            memberIndex[variant.ProductId],
-            optionRows.Where(row => row.VariantId == variant.Id && row.ProductId == variant.ProductId)
+        var optionPlan = PlanOptions(variants.Select(variant =>
+        {
+            var values = optionRows.Where(row => row.VariantId == variant.Id && row.ProductId == variant.ProductId)
                 .Select(row => new ShopifyOptionValue(row.Label, row.OptionSort, row.ValueLabel, row.ValueSort))
-                .ToList())).ToList());
+                .ToList();
+            return new ShopifyVariantOptionRow(
+                variant.Id,
+                variant.Sku.Trim(),
+                memberIndex[variant.ProductId],
+                values.Count > 0 ? values : SignatureOptionValues(variant.OptionSignature, variant.SortOrder));
+        }).ToList());
         if (optionPlan.Error is { } optionError) return Fail(optionError.Code, optionError.Message, field: "variants");
         var plan = optionPlan.Plan!;
 
@@ -256,6 +260,15 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
     internal static string ShopifyHandle(Guid productId, string familyKey) => IsModelFamily(familyKey)
         ? $"ravencia-model-{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(familyKey)))[..20].ToLowerInvariant()}"
         : $"ravencia-{productId:N}";
+
+    // Some imported colour cards (live 2026-10-28: MZ054YNC, MZ053TCD, MZ035YNC) hold their colour and size only in
+    // the variant's option signature ("Renk: Bordo | Beden: L"), with no option value rows; every other marketplace
+    // reads that signature, so Shopify reads it too instead of refusing the family. Web Color is no Shopify option.
+    internal static IReadOnlyList<ShopifyOptionValue> SignatureOptionValues(string? signature, int variantSortOrder) =>
+        VariantOptionSignature.Parse(signature)
+            .Where(option => !VariantOptionSignature.IsWebColorName(option.Key))
+            .Select((option, index) => new ShopifyOptionValue(option.Key, index, option.Value, variantSortOrder))
+            .ToList();
 
     internal static ShopifyOptionPlanResult PlanOptions(IReadOnlyList<ShopifyVariantOptionRow> rows)
     {
