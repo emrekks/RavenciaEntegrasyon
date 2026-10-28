@@ -54,7 +54,8 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm .rr-logo { width: 26px; height: 26px; border-radius: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm i { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; border: 2px solid var(--rr-surface); border-radius: 50%; background: var(--rr-subtle); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-on i { background: var(--rr-ok); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-part i { background: var(--rr-warn); }
+/* A light yellow reads as "partly live" on the small dot; the dark warn tone looked brown. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-part i { background: #facc15; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-link i { background: var(--rr-info); }
 /* An update on its way: the dot cycles red, green and blue until the marketplace answers. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { background: var(--rr-info); animation: rr-pm-rgb 1.8s linear infinite; }
