@@ -141,7 +141,7 @@
 }
 
 @layer features {
-  .product-media-clear-all-button { min-height: 40px; white-space: nowrap; }
+  .product-media-clear-all-button { white-space: nowrap; }
 }
 
 @layer features {
@@ -939,9 +939,9 @@
 .platform-update-modal-body .platform-update-scope { display: block; font-size: 13px; line-height: 1.5; }
 /* Server field errors under their inputs and the newer-version banner (W19, W6). */
 .product-field-error { display: block; margin-top: 4px; color: var(--rv-color-danger); font-size: 12px; font-weight: 500; }
-.product-field-error-list { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--rv-color-danger-soft); color: var(--rv-color-danger); font-size: 13px; }
+.product-field-error-list { margin: 0 0 12px; padding: 10px 12px; border-radius: 7px; background: var(--rv-color-danger-soft); color: var(--rv-color-danger); font-size: 13px; }
 .product-field-error-list p { margin: 0; }
-.product-stale-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--rv-color-danger); border-radius: 10px; background: var(--rv-color-danger-soft); }
+.product-stale-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--rv-color-danger); border-radius: 12px; background: var(--rv-color-danger-soft); }
 
 /* Stock code and barcode of a variant product are written on the variant rows: the field is grey and not clickable. */
 .app-shell.stitch-shell main .product-identifiers-grid input:disabled { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); cursor: not-allowed; opacity: 1; }
@@ -951,3 +951,18 @@
 .app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; box-shadow: none; }
 .app-shell.stitch-shell main .variant-option-edit-pair select, .app-shell.stitch-shell main .variant-option-edit-pair input { height: 36px; min-height: 0; padding-block: 0; }
 .app-shell.stitch-shell main .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
+
+/* Spec sizes outside phones (controls 36px high): the global button rule's 44px min-height and the 10px field padding
+   made the editor's fields 43px and its plain buttons 44px. Cards that are buttons (step tabs, attribute and filter
+   disclosures, the marketplace price card) keep their own sizes; phones keep their own field height (products-responsive.css). */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .product-add-page :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]):not([type="range"]), select) { box-sizing: border-box; height: 36px; min-height: 36px; padding-top: 0; padding-bottom: 0; }
+  .app-shell.stitch-shell main .product-add-page :is(button.secondary, .product-submit-actions > button, .publish-selection-footer button) { height: 36px; min-height: 36px; padding-block: 0; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split { box-sizing: border-box; height: 36px; min-height: 36px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { height: 34px; min-height: 34px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > .platform-update-settings { flex-basis: 36px; width: 36px; }
+  /* Variant table head: Title Case captions like the product list's table head, not capitals (phones already do this). */
+  .app-shell.stitch-shell main .product-add-page .variant-table-head, .app-shell.stitch-shell main .product-add-page .variant-table-head > * { font-weight: 600; letter-spacing: 0; text-transform: none; }
+  /* The remove mark on a picture tile is a compact icon button, not a 44px-tall bar (the global min-height stretched it). */
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn { width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 7px; }
+}

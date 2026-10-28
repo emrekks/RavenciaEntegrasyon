@@ -40,7 +40,7 @@ export function ImportsPage() {
       await client.invalidateQueries({ queryKey: ['imports'] })
     })
   }
-  return <Page title="İçe Aktarımlar" eyebrow="Katalog" action={<div className="actions"><button type="button" disabled={pending.isPending} onClick={() => create('CSV')}>CSV Başlat</button><button type="button" disabled={pending.isPending} onClick={() => create('XLSX')}>XLSX Başlat</button></div>}>
+  return <Page title="İçe Aktarımlar" eyebrow="Katalog" className="catalog-list-page" action={<div className="actions"><button type="button" disabled={pending.isPending} onClick={() => create('CSV')}>CSV Başlat</button><button type="button" disabled={pending.isPending} onClick={() => create('XLSX')}>XLSX Başlat</button></div>}>
     <ErrorToast title="İçe Aktarım Hatası" error={error ?? query.error} />
     {!query.data?.items.length ? <div className="empty">Henüz içe aktarım oturumu yok.</div> : <div className="table-wrap"><table><thead><tr><th>Kaynak</th><th>Durum</th><th>Satır</th><th></th></tr></thead><tbody>{query.data.items.map(item => <tr key={item.id}><td>{item.sourceType}</td><td><Tag>{statusLabel(item.status)}</Tag></td><td>{item.validRows}/{item.totalRows}</td><td><Link to={`/imports/${item.id}`}>İncele</Link></td></tr>)}</tbody></table></div>}
   </Page>
@@ -96,9 +96,9 @@ export function ImportDetailPage() {
       await client.invalidateQueries({ queryKey: ['import', id] })
     })
   }
-  if (!session.data) return <Page title="İçe Aktarım" eyebrow="Katalog"><ErrorToast title="İçe Aktarım Yüklenemedi" error={session.error} /><p>Yükleniyor…</p></Page>
+  if (!session.data) return <Page title="İçe Aktarım" eyebrow="Katalog" className="catalog-list-page"><ErrorToast title="İçe Aktarım Yüklenemedi" error={session.error} /><p>Yükleniyor…</p></Page>
   const metrics: Array<[string, string | number]> = [['Durum', statusLabel(session.data.status)], ['Toplam', session.data.totalRows], ['Geçerli', session.data.validRows], ['Hatalı', session.data.errorRows]]
-  return <Page title={`İçe Aktarım ${session.data.id.slice(0, 8)}`} eyebrow="Katalog">
+  return <Page title={`İçe Aktarım ${session.data.id.slice(0, 8)}`} eyebrow="Katalog" className="catalog-list-page">
     <div className="metrics">{metrics.map(([label, value]) => <article key={label}><small>{label}</small><strong>{value}</strong></article>)}</div>
     <ErrorToast title="İçe Aktarım İşlemi Başarısız" error={error} />
     {session.data.status === 'CREATED' && <div className="detail-grid">

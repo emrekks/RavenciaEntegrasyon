@@ -22,7 +22,7 @@
   background: var(--rv-color-surface);
   border: 1px solid var(--rv-color-border-strong);
   border-radius: 14px;
-  box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
+  box-shadow: var(--rv-shadow-modal, 0 16px 40px rgb(0 0 0 / 24%));
 }
 
 .missing-value-mapping > header {
