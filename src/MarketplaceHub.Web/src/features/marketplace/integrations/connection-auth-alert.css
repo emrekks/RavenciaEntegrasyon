@@ -19,8 +19,8 @@
    and the reason in the same pop-up as the returns and invoices "why" tips (rr-reason-pop). */
 /* As wide as its text, like the Pasif chip, not stretched to the card title above it. */
 .integrations-reference-page .reference-connection-state.connection-auth-badge { position: relative; align-self: flex-start; width: fit-content; cursor: help; outline: none; }
-.integrations-reference-page .connection-auth-badge:focus-visible { box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
-.integrations-reference-page .connection-auth-tip { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: none; width: 280px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12.5px; font-weight: 400; line-height: 1.45; text-align: left; text-transform: none; white-space: normal; cursor: default; }
+.integrations-reference-page .connection-auth-badge:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+.integrations-reference-page .connection-auth-tip { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: none; width: 280px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12.5px; font-weight: 400; line-height: 1.45; text-align: left; text-transform: none; white-space: normal; cursor: default; }
 .integrations-reference-page .connection-auth-tip b { display: block; margin-bottom: 2px; color: var(--rv-color-danger); font-size: 13px; font-weight: 600; }
 .integrations-reference-page .connection-auth-badge.is-warning .connection-auth-tip b { color: var(--rv-color-warning); }
 .integrations-reference-page .connection-auth-badge.is-info .connection-auth-tip b { color: var(--rv-color-ink); }
