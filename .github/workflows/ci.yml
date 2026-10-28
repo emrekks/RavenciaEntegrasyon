@@ -22,12 +22,15 @@ jobs:
   # backend and an earlier failing backend commit can never be skipped.
   plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
     outputs:
       backend_hash: ${{ steps.hash.outputs.backend }}
       frontend_hash: ${{ steps.hash.outputs.frontend }}
-      backend_needed: ${{ steps.backend-marker.outputs.cache-hit != 'true' }}
-      frontend_needed: ${{ steps.frontend-marker.outputs.cache-hit != 'true' }}
+      backend_needed: ${{ steps.prior-run.outputs.validated != 'true' && steps.backend-marker.outputs.cache-hit != 'true' }}
+      frontend_needed: ${{ steps.prior-run.outputs.validated != 'true' && steps.frontend-marker.outputs.cache-hit != 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,9 +63,28 @@ jobs:
           key: validated-frontend-${{ steps.hash.outputs.frontend }}
           lookup-only: true
 
+      # The same-sha-to-main rule means a main push usually carries a commit that
+      # already passed Validate on its codex/** branch; the heavy jobs then skip
+      # (gate counts skipped as passed) and Deploy still follows a green run. A
+      # failed lookup counts as "not validated", so the checks run.
+      - name: Look up an earlier green run of this commit
+        id: prior-run
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          n="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&status=success" --jq '.total_count')" || n=0
+          if [[ "$n" =~ ^[0-9]+$ ]] && ((n > 0)); then
+            echo "Commit $GITHUB_SHA already passed Validate in $n run(s); the heavy jobs skip."
+            echo "validated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "validated=false" >> "$GITHUB_OUTPUT"
+          fi
+
   ops:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -135,7 +157,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -144,6 +166,8 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
 
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln --locked-mode
@@ -155,7 +179,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     services:
       postgres:
         # Same digest as deploy/compose/compose.yaml.
@@ -179,6 +203,8 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
 
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln --locked-mode
@@ -209,7 +235,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -229,7 +255,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.frontend_needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -242,7 +268,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.frontend_needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -288,7 +314,7 @@ jobs:
     needs: [plan, ops, backend-format, backend, image-app, image-edge, frontend]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - name: Prepare markers
         run: |
