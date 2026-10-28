@@ -28,7 +28,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-muted-note { color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ring small.rr-bad { color: var(--rr-bad); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-srcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 10px; cursor: pointer; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src.rr-on { border-color: var(--rr-line-strong); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-src > span { display: grid; min-width: 0; }
@@ -37,7 +37,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-seg { justify-self: start; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-seg button.rr-on { color: var(--rr-ink); background: var(--rr-raised); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard { position: relative; display: grid; justify-items: center; gap: 6px; padding: 14px 10px 12px; text-align: center; border: 1px solid var(--rr-line); border-radius: 10px; cursor: pointer; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard { position: relative; display: grid; justify-items: center; gap: 6px; padding: 14px 10px 12px; text-align: center; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard:hover { background: var(--rv-hover, var(--rr-hover)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard.rr-on { border-color: var(--rr-violet-line); box-shadow: inset 0 0 0 1px var(--rr-violet-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard input { position: absolute; top: 8px; left: 8px; margin: 0; accent-color: var(--rr-primary); }
@@ -46,7 +46,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard .rr-cmono { display: grid; place-items: center; width: 30px; height: 30px; color: var(--rr-muted); background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 8px; font-size: 11px; font-weight: 600; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard b { font-size: 12.5px; font-weight: 500; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ccard small { color: var(--rr-subtle); font-size: 11.5px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--rr-line); border-radius: 10px; overflow: hidden; font-size: 13px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; font-size: 13px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl th { padding: 8px 12px; color: var(--rr-muted); font-size: 12px; font-weight: 500; text-align: right; background: var(--rr-raised); border-bottom: 1px solid var(--rr-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl td { padding: 9px 12px; text-align: right; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl tr:first-child td { border-top: 0; }
@@ -179,11 +179,11 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small.rr-due.is-late { display: block; grid-column: 1 / -1; margin-top: 2px; font-size: 12.5px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b { color: var(--rr-ink); font-size: 12.5px; font-weight: 500; text-align: left; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b::before { content: "Alıcı: "; color: var(--rr-muted); font-weight: 400; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell.rr-cargocell { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 10px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell.rr-cargocell { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell img { width: auto; height: 16px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small { display: inline; color: var(--rr-muted); font-size: 12px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell > :is(a, .rr-link) { margin-left: auto; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring { display: flex !important; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--rr-violet) 12%, transparent); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring { display: flex !important; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--rr-violet) 12%, transparent); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring > span { display: flex !important; flex: 1; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring small { font-size: 12px; font-weight: 600; text-align: right; color: inherit; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring.rr-tone-wait { color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 12%, transparent); }

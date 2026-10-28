@@ -135,12 +135,12 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; background: var(--rr-raised); border-top: 1px solid var(--rr-line); border-radius: 0 0 14px 14px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot .rr-note { flex: 1 1 0; min-width: 0; color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot .rr-note b { color: var(--rr-ink); font-weight: 600; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--rr-line); border-radius: 10px; overflow: hidden; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts > div { display: grid; gap: 4px; align-content: start; justify-items: start; min-width: 0; padding: 12px 14px; border-left: 1px solid var(--rr-line); box-shadow: 0 -1px 0 var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts small { color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts b { font-weight: 600; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts em { color: var(--rr-muted); font-size: 12px; font-style: normal; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-kv { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 0; border: 1px solid var(--rr-line); border-radius: 10px; overflow: hidden; font-size: 13px; margin: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-kv { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 0; border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; font-size: 13px; margin: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv > * { padding: 9px 12px; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv > :nth-child(-n+2) { border-top: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv dt { color: var(--rr-muted); }
@@ -156,10 +156,10 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ocard > section { display: grid; gap: 12px; padding: 14px 16px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; background: var(--rr-raised); border: 1px solid var(--rr-line-strong); border-radius: 6px; font-size: 12px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-drop { display: grid; justify-items: center; gap: 6px; padding: 20px; text-align: center; border: 1px dashed var(--rr-line-strong); border-radius: 10px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-drop { display: grid; justify-items: center; gap: 6px; padding: 20px; text-align: center; border: 1px dashed var(--rr-line-strong); border-radius: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-drop small { color: var(--rr-muted); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cklabel { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--rr-muted); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-sum { display: grid; border: 1px solid var(--rr-line); border-radius: 10px; overflow: hidden; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-sum { display: grid; border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-sum > div { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; border-top: 1px solid var(--rr-line); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-sum > div:first-child { border-top: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-sum small { display: block; color: var(--rr-muted); font-size: 12px; }
@@ -168,7 +168,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-toast strong { display: block; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-toast p { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-tip { position: relative; display: inline-flex; cursor: help; outline: none; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: none; width: 260px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 10px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12px; line-height: 1.5; white-space: normal; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: none; width: 260px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12px; line-height: 1.5; white-space: normal; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop b { display: block; margin-bottom: 2px; color: var(--rr-bad); font-size: 13px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop.rr-neutral b { color: var(--rr-ink); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop small { display: block; margin-top: 6px; color: var(--rr-subtle); }
@@ -286,7 +286,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk { position: sticky; bottom: 16px; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; background: var(--rr-raised); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk .rr-grow { flex: 1; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-empty { display: grid; justify-items: center; gap: 6px; padding: 40px 24px; text-align: center; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-empty .rr-ei { display: grid; place-items: center; width: 44px; height: 44px; color: var(--rr-violet); background: var(--rr-primary-soft); border: 1px solid var(--rr-violet-line); border-radius: 10px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-empty .rr-ei { display: grid; place-items: center; width: 44px; height: 44px; color: var(--rr-violet); background: var(--rr-primary-soft); border: 1px solid var(--rr-violet-line); border-radius: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-switch { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 6px; color: var(--rr-ink); white-space: nowrap; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; cursor: pointer; font-size: 12.5px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-switch i { position: relative; flex: none; width: 28px; height: 16px; background: var(--rr-line-strong); border-radius: 999px; transition: background .15s; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; background: var(--rr-ink); border-radius: 50%; transition: left .15s; }
@@ -539,7 +539,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-link { font-size: 12.5px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-menu { right: 0; left: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-id { display: flex; align-items: center; gap: 12px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-m-id img { width: 44px; height: 44px; flex: none; object-fit: contain; padding: 6px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 10px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-m-id img { width: 44px; height: 44px; flex: none; object-fit: contain; padding: 6px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-id h2 { display: flex; align-items: center; gap: 4px; font-size: 20px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-id .rr-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-id .rr-meta span { display: inline-flex; align-items: center; gap: 6px; }
@@ -916,7 +916,7 @@ main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12p
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Kargo"] { grid-area: c; align-self: stretch; justify-self: stretch; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Bilgiler"] { grid-area: p; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Birim Fiyat"] { display: none !important; }
-.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="İade Sebebi"] { grid-area: r; padding: 8px 10px !important; background: var(--rr-bg) !important; border: 1px solid var(--rr-line) !important; border-radius: 10px; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="İade Sebebi"] { grid-area: r; padding: 8px 10px !important; background: var(--rr-bg) !important; border: 1px solid var(--rr-line) !important; border-radius: 12px; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Fatura"] { grid-area: i; padding-top: 10px !important; border-top: 1px solid var(--rr-line) !important; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="İşlemler"] { grid-area: a; }
 .rr.rr-returns .rr-ordercell { align-items: center; }
@@ -927,11 +927,11 @@ main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12p
 .rr.rr-returns .rr-ordercell > div > small:not(:first-of-type) { display: none; }
 .rr.rr-returns .rr-cust b { color: var(--rr-ink); font-size: 12.5px; font-weight: 500; text-align: left; }
 .rr.rr-returns .rr-cust b::before { content: "Alıcı: "; color: var(--rr-muted); font-weight: 400; }
-.rr.rr-returns .rr-cargocell.rr-cargocell { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 10px; }
+.rr.rr-returns .rr-cargocell.rr-cargocell { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 12px; }
 .rr.rr-returns .rr-cargocell img { width: auto; height: 16px; }
 .rr.rr-returns .rr-cargocell small { display: inline; color: var(--rr-muted); font-size: 12px; }
 .rr.rr-returns .rr-cargocell > :is(a, .rr-link) { margin-left: auto; }
-.rr.rr-returns td[data-l="Durum"] .rr-ring { display: flex !important; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--rr-violet) 12%, transparent); }
+.rr.rr-returns td[data-l="Durum"] .rr-ring { display: flex !important; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--rr-violet) 12%, transparent); }
 .rr.rr-returns td[data-l="Durum"] .rr-ring > span { display: flex !important; flex: 1; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .rr.rr-returns td[data-l="Durum"] .rr-ring small { font-size: 12px; font-weight: 600; text-align: right; color: inherit; }
 .rr.rr-returns td[data-l="Durum"] .rr-ring.rr-tone-wait { color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 12%, transparent); }
@@ -1071,7 +1071,7 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 /* "Sayfa Başına": its own small list opening right under the box, above the dimmed page on phones */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-psize-anchor { position: relative; display: inline-flex; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-psize .rr-psize-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 86px; height: 36px; padding: 0 10px 0 12px; color: var(--rr-ink); font: inherit; font-size: 13px; cursor: pointer; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-psize-anchor > .rr-pop.rr-psize-pop.rr-static { position: absolute; top: calc(100% + 4px); right: 0; z-index: 951; display: grid; gap: 2px; width: 100%; min-width: 86px; padding: 4px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / 35%); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-psize-anchor > .rr-pop.rr-psize-pop.rr-static { position: absolute; top: calc(100% + 4px); right: 0; z-index: 951; display: grid; gap: 2px; width: 100%; min-width: 86px; padding: 4px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / 35%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-psize-pop .rr-opt { justify-content: center; min-height: 34px; border-radius: 7px; }
 
 /* Trendyol Kararı ve Durum Geçmişi (ReturnMarketplaceHistory): how Trendyol settled the lines and, on request, the
