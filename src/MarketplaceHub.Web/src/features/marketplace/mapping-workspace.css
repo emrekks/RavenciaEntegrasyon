@@ -559,6 +559,9 @@
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card > header { display: flex; align-items: center; justify-content: flex-start; text-align: left; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card > header h2 { margin: 0 auto 0 0; justify-content: flex-start; text-align: left; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card > header > div.mapping-platform-tabs { display: flex; }
+.app-shell.stitch-shell main section.mapping-page .brand-mapping-console > header.mapping-builder-head { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.app-shell.stitch-shell main section.mapping-page .brand-mapping-console > header.mapping-builder-head > h2 { width: auto; white-space: nowrap; }
+.app-shell.stitch-shell main section.mapping-page .brand-mapping-console > header.mapping-builder-head > .mapping-platform-tabs { justify-content: flex-start; width: 100%; box-sizing: border-box; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card .mapping-record-count { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card .mapping-icon-button { display: grid; width: 30px !important; min-width: 30px; height: 30px !important; min-height: 30px !important; place-items: center; padding: 0 !important; color: var(--rv-color-muted); background: none; border: 0; box-shadow: none; }
 @media (max-width: 760px) { .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid { grid-template-columns: minmax(0, 1fr); row-gap: 12px; } .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-link-rail { display: none; } }
