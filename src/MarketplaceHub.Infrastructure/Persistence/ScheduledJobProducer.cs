@@ -686,7 +686,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // The reference lists the REFERENCE_DATA policy keeps fresh. Trendyol and Pazarama products name a brand from
     // the marketplace's own list (808k and 104k brands); the other marketplaces take the brand by its name.
     internal static string[] ScheduledReferenceResources(string platformCode) =>
-        platformCode is "TRENDYOL" or "PAZARAMA" ? ["CATEGORIES", "BRANDS"] : ["CATEGORIES"];
+        ConnectionReferencePlan.SupportsBrands(platformCode) ? ["CATEGORIES", "BRANDS"] : ["CATEGORIES"];
 
     // The lists to read again: those never fetched and those fetched too long ago. The category tree keeps its rule
     // (fresh for the interval and jitter). A brand list counts as fresh for the interval less the daily window, so a
