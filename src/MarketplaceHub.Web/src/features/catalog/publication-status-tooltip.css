@@ -19,8 +19,8 @@
   color: var(--rv-color-ink);
   background: var(--rv-color-surface-raised);
   border: 1px solid var(--rv-color-border-strong);
-  border-radius: var(--rv-radius-md);
-  box-shadow: var(--rv-shadow-lg);
+  border-radius: 12px;
+  box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%));
   content: attr(data-tooltip);
   font-size: var(--rv-font-size-sm);
   font-weight: 600;

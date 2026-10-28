@@ -68,7 +68,7 @@
 .cm-card .cm-search { flex: 1; min-width: 0; height: 36px; min-height: 36px; }
 .cm-card .cm-vtools-actions > button { flex: none; min-height: 36px; height: 36px; }
 .cm-card button.cm-toggle.is-on { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
-.cm-card .cm-vtable { overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.cm-card .cm-vtable { overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .cm-card .cm-vscroll { max-height: 380px; overflow-y: auto; }
 .cm-card .cm-vrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 28px; align-items: center; gap: 16px; min-height: 44px; padding: 5px 16px; border-top: 1px solid var(--rv-color-border); }
 .cm-card .cm-vscroll > .cm-vrow:first-child { border-top: 0; }
@@ -115,7 +115,7 @@
 .panel.mapping-step.cm-card .cm-glyph { color: var(--rv-color-subtle); }
 .panel.mapping-step.cm-card .cm-glyph.is-done { color: var(--rv-color-ink); }
 .panel.mapping-step.cm-card .cm-glyph.is-partial, .panel.mapping-step.cm-card .cm-glyph.is-required { color: var(--rv-color-subtle); }
-.panel.mapping-step.cm-card .cm-section { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.panel.mapping-step.cm-card .cm-section { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .panel.mapping-step.cm-card .cm-item { font-weight: 400; }
 .panel.mapping-step.cm-card .cm-item.is-selected .cm-name { font-weight: 400; }
 .panel.mapping-step.cm-card .cm-item .cm-meta { color: var(--rv-color-subtle); }
@@ -272,7 +272,7 @@
 /* Platform defaults popup: two flat columns, a saved list as rows, quiet value chips. */
 .cm-extra-modal .attribute-defaults-body { gap: 0; padding: 0; }
 .cm-extra-modal .attribute-defaults-section > h4 { margin: 0 0 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
-.cm-extra-modal .attribute-defaults-list { gap: 0; overflow: hidden; background: none; border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.cm-extra-modal .attribute-defaults-list { gap: 0; overflow: hidden; background: none; border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .cm-extra-modal .attribute-defaults-list li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 8px 0 14px; background: none; border: 0; border-radius: 0; }
 .cm-extra-modal .attribute-defaults-list li + li { border-top: 1px solid var(--rv-color-border); }
 .cm-extra-modal .attribute-defaults-list li > span { flex: 1; font-size: 14px; }
@@ -382,7 +382,7 @@
 .app-shell.stitch-shell main .mapping-reference-heading .mapping-transfer-actions .ui-icon { width: 16px; height: 16px; flex: none; }
 
 /* Backup popups: plain head, one card of option rows, quiet notice, 34px footer actions. */
-.app-shell.stitch-shell main .mapping-transfer-modal { width: min(640px, calc(100vw - 32px)); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 24px 64px rgb(0 0 0 / 50%); }
+.app-shell.stitch-shell main .mapping-transfer-modal { width: min(640px, calc(100vw - 32px)); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: var(--rv-shadow-modal, 0 16px 40px rgb(0 0 0 / 24%)); }
 .app-shell.stitch-shell main .mapping-transfer-modal > header { display: flex; align-items: flex-start; gap: 12px; padding: 20px 24px 16px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .mapping-transfer-modal > header > div { flex: 1; min-width: 0; }
 .app-shell.stitch-shell main .mapping-transfer-modal > header h2 { margin: 0; font-size: 18px; font-weight: 600; text-transform: none; }
@@ -400,7 +400,7 @@
 .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
 .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options small { color: var(--rv-color-muted); font-size: 12px; }
 .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-all-option em { color: var(--rv-color-muted); font-size: 12px; font-style: normal; font-weight: 500; }
-.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-warning { margin: 0 24px 20px; padding: 10px 14px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 10px; font-size: 13px; line-height: 1.5; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-warning { margin: 0 24px 20px; padding: 10px 14px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 13px; line-height: 1.5; }
 .app-shell.stitch-shell main .mapping-transfer-modal > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .mapping-transfer-modal > footer .mapping-export-footer-hint { flex: 1; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .mapping-transfer-modal > footer > button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }

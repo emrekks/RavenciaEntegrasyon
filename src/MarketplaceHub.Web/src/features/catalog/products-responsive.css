@@ -291,7 +291,7 @@
   }
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button > strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button > span { display: inline-grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center; font-size: 12px; font-weight: 700; color: inherit; background: color-mix(in srgb, var(--rv-color-ink) 10%, transparent); border-radius: 50%; }
-  .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active { color: #fff; background: var(--rv-color-primary-fill); box-shadow: 0 2px 8px color-mix(in srgb, var(--rv-color-primary) 40%, transparent); }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active { color: #fff; background: var(--rv-color-primary-fill); box-shadow: none; }
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active > span { background: rgb(255 255 255 / 22%); }
 }
 
@@ -313,7 +313,7 @@
     position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -6px 18px rgb(0 0 0 / 16%);
   }
   .app-shell.stitch-shell main .products-page .product-selection-bar > strong { text-align: center; font-size: 13px; font-weight: 600; }
   .app-shell.stitch-shell main .products-page .product-selection-bar > button { min-height: 40px; padding: 0 12px; font-size: 14px; font-weight: 600; background: transparent; border: 0; }
@@ -481,7 +481,7 @@
 /* Phones: the variant stock table opened from a product card is a full-width popover over the card: colour names on the
    left, one even column per size, rows divided by thin lines and a shadow to lift it off the buttons under it. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip:not(.rr-vtip-empty) { right: 12px; left: 12px; max-height: 280px; padding: 6px 12px 8px; border-radius: 12px; box-shadow: 0 14px 36px rgb(0 0 0 / 38%); }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip:not(.rr-vtip-empty) { right: 12px; left: 12px; max-height: 280px; padding: 6px 12px 8px; border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab { width: 100% !important; table-layout: auto; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab :is(th, td) { padding: 7px 4px !important; font-size: 13px; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab thead th { padding-block: 4px 7px !important; color: var(--rv-color-subtle); font-size: 12px; font-weight: 600; }
