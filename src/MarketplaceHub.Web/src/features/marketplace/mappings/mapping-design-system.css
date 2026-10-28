@@ -786,7 +786,11 @@
 .mapping-category-builder .mapping-target-controls { gap: var(--rv-space-2); }
 .brand-library-list .category-chip-remove:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
 .brand-mapping-pair-grid > .mapping-side.local .mapping-side-head { margin-bottom: 0; }
-.brand-mapping-pair-grid > .mapping-side.local .searchable-select-trigger { min-height: var(--rv-control-height-md); border-color: var(--rv-color-border-strong); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); }
+/* The panel brand trigger also carries .panel-category-picker-trigger, so it takes the platform picker's look; only the
+   searchable-select's own taller padding, line height and bold label are reset here. */
+.app-shell.stitch-shell main .brand-mapping-pair-grid > .mapping-side.local .searchable-select-trigger { min-height: var(--rv-control-height-md); padding-block: 0; line-height: 1.2; }
+.app-shell.stitch-shell main .brand-mapping-pair-grid > .mapping-side.local .searchable-select > span { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .brand-mapping-pair-grid > .mapping-side.local .searchable-select { gap: 6px; }
 .panel-library-section .panel-attribute-create { grid-template-columns: minmax(190px, .9fr) minmax(260px, 1.25fr) auto; gap: var(--rv-space-3); }
 .mapping-local-category-builder .mapping-section-heading { margin-bottom: 0; }
 .mapping-local-category-builder .mapping-local-manager-dialog-standalone { margin-top: 0; padding: 0; background: transparent; border: 0; }
