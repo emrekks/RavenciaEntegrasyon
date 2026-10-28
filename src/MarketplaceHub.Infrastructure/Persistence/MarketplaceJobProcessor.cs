@@ -545,7 +545,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var resultByKey = lines.ToDictionary(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase);
         // A Shopify product, and a PTT AVM model product, carries the whole model family; this card's job records only
         // this card's SKUs/barcodes.
-        if (isShopify || string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && PttAvmProductPayloadRules.IsVariantPayload(payload.PayloadJson)) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+        var pttAvmParentBarcode = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? PttAvmProductPayloadRules.VariantParentBarcode(payload.PayloadJson) : null;
+        if (pttAvmParentBarcode is not null) resultByKey = PttAvmProductPayloadRules.FamilyResultLines(pttAvmParentBarcode, resultByKey, resultKeyByListing.Keys);
+        else if (isShopify) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         if (resultKeyByListing.Keys.Any(key => !resultByKey.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
 

@@ -225,7 +225,7 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     - Birleşik set yine en çok 100 varyant (`PTTAVM_VARIANT_LIMIT_EXCEEDED`), toplam stok en çok 9999
       (`PTTAVM_STOCK_TOTAL_TOO_HIGH`); aynı Renk/Beden iki farklı barkodla olamaz (`PTTAVM_VARIANT_OPTION_CONFLICT`). Ürün düzeyi
       stok birleşik varyantların toplamıdır.
-    - Yazma tarafındaki `Variant`'ta fiyat ve aktiflik alanı yok: PTT AVM'de sıfırdan farklı fiyatı (`Fiyat`/`FiyatFarki`;
+    - Yazma tarafındaki `VariantV3`'te aktiflik alanı yok, `Price`'ın anlamı doğrulanmadı (gönderilmiyor, 0 okunur): PTT AVM'de sıfırdan farklı fiyatı (`Fiyat`/`FiyatFarki`;
       `FiyatFarkiMi` false ise kendi fiyatı) olan ya da `Aktif = false` olan bir varyant varsa gönderim durur
       (`PTTAVM_REMOTE_VARIANT_NOT_CARRIABLE`, ör. "FK453001: 25 TL fiyat farkı"). Alan hiç gelmediyse durdurmaz (bilinmeyen
       bilinmeyen kalır). Eklenecek varyant yoksa önce "zaten var" sonucu döner (hiçbir şey gönderilmez).
@@ -236,11 +236,26 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     olur. Tek varyantlı ürünün gönderimi değişmedi.
   - İş işleyici: kuyruktaki aile isteği, ailenin varyant barkodları sonradan değiştiyse gönderilmez (`PRODUCT_PUBLICATION_SUPERSEDED`);
     sonuç satırları yalnız kartın kendi barkodlarıyla eşlenir (Shopify gibi); taşınan PTT AVM varyantlarının satırları sayılmaz.
-  - **Canlıda doğrulanacak (ilk gerçek gönderimde):** `ProductV3Request` içindeki varyant öğe adları ve sırası
-    (`Variants/Variant{Attributes/VariantAttr{Deger, Tanim}, Miktar, VariantBarkod}`; `Combination` ve fiyat farkı gönderilmiyor;
-    repoda örnek yok, şema notlarından türetildi); varyant barkodunun büyük/küçük harf duyarlılığı (dışa aktarımda küçük harf);
-    ürün düzeyi `Quantity`'nin kabulü; takip sonucunun varyant barkoduyla mı üst barkodla mı satır döndüğü (üst barkodla dönerse
-    yayın işi `MANUAL_REVIEW`'e düşer); `GetProductsWithVariants`'in barkodsuz kayıtlarında `VariantName`'in "Renk / Beden" biçimi; taşınan bir PTT AVM varyantının
+  - **İlk canlı gönderim (28 Ekim 2026 13:48 UTC, MZ059YNC, 8 renk / 24 varyant):** PTT AVM isteği kabul etti ama ürünü
+    **tek varyantlı** açtı; iş `PRODUCT_BATCH_CONTRACT_INVALID` ile `MANUAL_REVIEW`'e düştü. Neden: varyant kısmı
+    `ePttAVMService` ad alanındaki eski `Variant` tipinin adlarıyla (`Variant{Attributes/VariantAttr{Deger, Tanim}, Miktar,
+    VariantBarkod}`) gönderilmişti; DataContract okuyucusu tanımadığı öğeleri sessizce atlar.
+  - **WSDL ile doğrulandı** (`https://ws.pttavm.com:93/service.svc?singleWsdl`, 28 Ekim 2026): `UpdateProductsV3(items:
+    ArrayOfProductV3Request)`, bütün öğeler `http://schemas.datacontract.org/2004/07/ePttAVMService.Model.Requests` ad alanında,
+    üyeler alfabetik sırada. `ProductV3Request`: Active, Barcode, BasketMaxQuantity, Brand, CargoProfileId, CatalogBarcode,
+    CategoryId, Desi, Discount, Ean, EstimatedCourierDelivery, Gtin, Images, IsCargoFromSupplier, LongDescription, Name,
+    NoShippingProduct, Parts, PriceWithVat, PriceWithoutVat, ProductCode, Quantity, ShortDescription, SingleBox, VATRate,
+    **Variants (ArrayOfVariantV3)**, WarrantyDuration, WarrantySupplier (hepsi isteğe bağlı). Varyant:
+    `Variants/VariantV3{Attributes/VariantAttrV3{Definition, Value}, CatalogBarcode, Price, Quantity, VariantBarcode}`;
+    `Price` ve `Quantity` boş geçilemeyen sayı (gönderilmezse 0 okunur). Artık bu biçim gönderiliyor (`Definition` = Renk/Beden);
+    `CatalogBarcode` ve `Price` gönderilmiyor (fiyat farkı 0). `Combination`/aktiflik alanı V3'te yok.
+  - **Takip sonucu (WSDL):** `ProductsTrackingResult{…, ProductsSubTrackingResult{Count…, ProductBasedInfos/ProductBasedInfo
+    {FailureReasons, Message, Status, Barcode, ProductId}}}`; satır **ürün başına** tek `Barcode` taşır, varyant kısmı yoktur.
+    Aile gönderiminde üst barkod satırı, kendi satırı olmayan her kart varyantının sonucu sayılır
+    (`PttAvmProductPayloadRules.FamilyResultLines`); varyant barkoduyla satır gelirse o kullanılır. Hiçbiri yoksa yine `MANUAL_REVIEW`.
+  - **Hâlâ canlıda doğrulanacak:** `VariantV3.Price`'ın fiyat farkı mı mutlak fiyat mı olduğu (gönderilmiyor, 0 okunur); varyant barkodunun
+    büyük/küçük harf duyarlılığı; ürün düzeyi `Quantity`'nin kabulü; takip sonucunun gerçekte hangi barkodla döndüğü;
+    `GetProductsWithVariants`'in barkodsuz kayıtlarında `VariantName`'in "Renk / Beden" biçimi; taşınan bir PTT AVM varyantının
     fiyat farkı ve pasif durumu istekte yokken korunuyor mu (şimdilik böyle varyantlar gönderimi durdurur).
 - **8. aşama (iade görünümü, salt okunur):** Satırı `iade` olan her sipariş, yalnız o satırlarla tamamlanmış bir iade kaydıdır (`iade:{sipariş no}`).
   Kaydedilmesi stoğu değiştirmez; iade kararları PTT AVM paneline bırakılır ve panelden gönderilmez.

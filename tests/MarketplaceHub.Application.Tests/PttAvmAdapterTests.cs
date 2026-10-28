@@ -1284,14 +1284,46 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(["Active", "Barcode", "CategoryId", "Desi", "Images", "LongDescription", "Name", "NoShippingProduct", "PriceWithVat", "ProductCode", "Quantity", "VATRate", "Variants"], request.Elements().Select(x => x.Name.LocalName));
         Assert.Equal("MZDB003", request.Element(ept + "Barcode")!.Value);
         Assert.Equal("21", request.Element(ept + "Quantity")!.Value);
-        var variants = request.Element(ept + "Variants")!.Elements(ept + "Variant").ToList();
+        // The service WSDL: Variants is ArrayOfVariantV3 {VariantV3 {Attributes {VariantAttrV3 {Definition, Value}},
+        // CatalogBarcode, Price, Quantity, VariantBarcode}}, every element in the Requests namespace, members in
+        // alphabetical (data-contract) order. CatalogBarcode and Price are not sent.
+        var variantList = request.Element(ept + "Variants")!;
+        Assert.All(variantList.Elements(), element => Assert.Equal(ept + "VariantV3", element.Name));
+        var variants = variantList.Elements(ept + "VariantV3").ToList();
         Assert.Equal(6, variants.Count);
-        Assert.All(variants, variant => Assert.Equal(["Attributes", "Miktar", "VariantBarkod"], variant.Elements().Select(x => x.Name.LocalName)));
-        Assert.Equal(["mzdb003lacvertkahves", "mzdb003lacvertkahvem", "mzdb003lacvertkahvel", "mzdb003yesls", "mzdb003yeslm", "mzdb003yesll"], variants.Select(x => x.Element(ept + "VariantBarkod")!.Value));
-        Assert.Equal(["1", "2", "3", "4", "5", "6"], variants.Select(x => x.Element(ept + "Miktar")!.Value));
-        var attributes = variants[3].Element(ept + "Attributes")!.Elements(ept + "VariantAttr").ToList();
-        Assert.Equal([("Renk", "Yeşil"), ("Beden", "S")], attributes.Select(x => (x.Element(ept + "Tanim")!.Value, x.Element(ept + "Deger")!.Value)));
-        Assert.Equal(["Deger", "Tanim"], attributes[0].Elements().Select(x => x.Name.LocalName));
+        Assert.All(variants, variant => Assert.Equal([ept + "Attributes", ept + "Quantity", ept + "VariantBarcode"], variant.Elements().Select(x => x.Name)));
+        Assert.Equal(["mzdb003lacvertkahves", "mzdb003lacvertkahvem", "mzdb003lacvertkahvel", "mzdb003yesls", "mzdb003yeslm", "mzdb003yesll"], variants.Select(x => x.Element(ept + "VariantBarcode")!.Value));
+        Assert.Equal(["1", "2", "3", "4", "5", "6"], variants.Select(x => x.Element(ept + "Quantity")!.Value));
+        Assert.All(variants, variant => Assert.All(variant.Element(ept + "Attributes")!.Elements(), element => Assert.Equal(ept + "VariantAttrV3", element.Name)));
+        var attributes = variants[3].Element(ept + "Attributes")!.Elements(ept + "VariantAttrV3").ToList();
+        Assert.Equal([("Renk", "Yeşil"), ("Beden", "S")], attributes.Select(x => (x.Element(ept + "Definition")!.Value, x.Element(ept + "Value")!.Value)));
+        Assert.All(attributes, attribute => Assert.Equal([ept + "Definition", ept + "Value"], attribute.Elements().Select(x => x.Name)));
+        // The exact XML of one variant as it goes.
+        Assert.Contains("""<ept:VariantV3><ept:Attributes><ept:VariantAttrV3><ept:Definition>Renk</ept:Definition><ept:Value>Yeşil</ept:Value></ept:VariantAttrV3><ept:VariantAttrV3><ept:Definition>Beden</ept:Definition><ept:Value>S</ept:Value></ept:VariantAttrV3></ept:Attributes><ept:Quantity>4</ept:Quantity><ept:VariantBarcode>mzdb003yesls</ept:VariantBarcode></ept:VariantV3>""",
+            PttAvmProductPayloadRules.ItemsXml(draft), StringComparison.Ordinal);
+        // The ePttAVMService namespace's Variant names of the first send (skipped by PTT AVM) are gone.
+        Assert.DoesNotContain(request.Descendants(), element => element.Name.LocalName is "Variant" or "VariantAttr" or "Miktar" or "VariantBarkod" or "Tanim" or "Deger");
+    }
+
+    [Fact]
+    public void AFamilySendAnsweredUnderTheParentBarcodeAnswersForEveryCardVariant()
+    {
+        var parent = new RemoteOperationLine("MZ059YNC", true, "9001", null, false, "Completed");
+        var refused = new RemoteOperationLine("mz059ync-02", false, "9001", "PTTAVM_PRODUCT_UPDATE_PARTIAL", false, "Beden geçersiz");
+        var sibling = refused with { ExternalKey = "MZ059YNC-09" };
+        var lines = new Dictionary<string, RemoteOperationLine>(StringComparer.OrdinalIgnoreCase) { ["MZ059YNC"] = parent, ["mz059ync-02"] = refused, ["MZ059YNC-09"] = sibling };
+
+        var mapped = PttAvmProductPayloadRules.FamilyResultLines("mz059ync", lines, ["MZ059YNC-01", "MZ059YNC-02", "MZ059YNC-03"]);
+
+        // A card variant's own row wins (case-insensitive), the others take the parent row; a sibling card's row is not this card's.
+        Assert.Equal(["MZ059YNC-01", "MZ059YNC-02", "MZ059YNC-03"], mapped.Keys.Order(StringComparer.Ordinal));
+        Assert.Same(parent, mapped["MZ059YNC-01"]);
+        Assert.Same(refused, mapped["MZ059YNC-02"]);
+        Assert.Same(parent, mapped["MZ059YNC-03"]);
+        // Without a parent row a variant without its own row stays unanswered (the job goes to manual review).
+        Assert.Equal(["MZ059YNC-02"], PttAvmProductPayloadRules.FamilyResultLines("MZ059YNC", new Dictionary<string, RemoteOperationLine> { ["MZ059YNC-02"] = refused }, ["MZ059YNC-01", "MZ059YNC-02"]).Keys);
+        Assert.Equal("MZ059YNC", PttAvmProductPayloadRules.VariantParentBarcode(PttAvmProductPayloadRules.Payload(FamilyDraft() with { Barcode = "MZ059YNC" })));
+        Assert.Null(PttAvmProductPayloadRules.VariantParentBarcode(PttAvmProductPayloadRules.Payload(ProductDraft())));
     }
 
     [Theory]
@@ -1427,12 +1459,12 @@ public sealed class PttAvmAdapterTests
         var sent = Assert.Single(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
         XNamespace ept = PttAvmHttpClient.RequestsNamespace;
         var request = XDocument.Parse(sent.Body!).Descendants(ept + "ProductV3Request").Single();
-        var variants = request.Element(ept + "Variants")!.Elements(ept + "Variant").ToList();
-        Assert.Equal(["FK453001", "FK453002", "FK453003"], variants.Select(x => x.Element(ept + "VariantBarkod")!.Value));
-        Assert.Equal(["3", "6", "4"], variants.Select(x => x.Element(ept + "Miktar")!.Value));
-        Assert.Equal([("Renk", "Bordo"), ("Beden", "M")], variants[1].Element(ept + "Attributes")!.Elements(ept + "VariantAttr").Select(x => (x.Element(ept + "Tanim")!.Value, x.Element(ept + "Deger")!.Value)));
+        var variants = request.Element(ept + "Variants")!.Elements(ept + "VariantV3").ToList();
+        Assert.Equal(["FK453001", "FK453002", "FK453003"], variants.Select(x => x.Element(ept + "VariantBarcode")!.Value));
+        Assert.Equal(["3", "6", "4"], variants.Select(x => x.Element(ept + "Quantity")!.Value));
+        Assert.Equal([("Renk", "Bordo"), ("Beden", "M")], variants[1].Element(ept + "Attributes")!.Elements(ept + "VariantAttrV3").Select(x => (x.Element(ept + "Definition")!.Value, x.Element(ept + "Value")!.Value)));
         Assert.Equal("13", request.Element(ept + "Quantity")!.Value);
-        Assert.Contains(logger.Messages, message => message.Contains("variant product request", StringComparison.Ordinal) && message.Contains("<ept:VariantBarkod>FK453002</ept:VariantBarkod>", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, message => message.Contains("variant product request", StringComparison.Ordinal) && message.Contains("<ept:VariantBarcode>FK453002</ept:VariantBarcode>", StringComparison.Ordinal));
     }
 
     [Fact]

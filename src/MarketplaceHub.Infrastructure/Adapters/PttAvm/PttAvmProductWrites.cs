@@ -184,6 +184,25 @@ public static class PttAvmProductPayloadRules
 
     public static bool IsVariantPayload(string payloadJson) => Read(payloadJson, out _)?.Variants is { Count: > 0 };
 
+    // The parent (model) barcode of a model family send; null for a product without variants. The tracking result's
+    // ProductBasedInfo has one Barcode and no variant part (service WSDL), so a family send may answer with a single
+    // line under this barcode: that line is the answer for every variant of the request.
+    public static string? VariantParentBarcode(string payloadJson) => Read(payloadJson, out _) is { Variants.Count: > 0 } draft ? draft.Barcode : null;
+
+    // The result rows of a family send for one card: its own variants' rows (rows of carried PTT AVM variants and of
+    // sibling cards are not this card's), and the parent barcode's row for each of its variants without a row of its own.
+    public static Dictionary<string, RemoteOperationLine> FamilyResultLines(string parentBarcode, IReadOnlyDictionary<string, RemoteOperationLine> lines, IEnumerable<string> cardBarcodes)
+    {
+        var parent = lines.FirstOrDefault(x => string.Equals(x.Key, parentBarcode, StringComparison.OrdinalIgnoreCase)).Value;
+        var result = new Dictionary<string, RemoteOperationLine>(StringComparer.OrdinalIgnoreCase);
+        foreach (var barcode in cardBarcodes)
+        {
+            var own = lines.FirstOrDefault(x => string.Equals(x.Key, barcode, StringComparison.OrdinalIgnoreCase)).Value;
+            if ((own ?? parent) is { } line) result[barcode] = line;
+        }
+        return result;
+    }
+
     // The same parent barcode and the same variant barcodes: prices and stock may have moved since, the variant set has not.
     public static bool SameVariantBarcodes(string queuedPayloadJson, string currentPayloadJson)
     {
@@ -257,13 +276,16 @@ public static class PttAvmProductPayloadRules
             : null;
     }
 
-    // ProductV3Request in the data-contract (alphabetical) order of the documented sample. A product without variants
+    // ProductV3Request in the data-contract (alphabetical) order of the service schema. A product without variants
     // has no Variants element: the composer and the read before the send have made sure PTT AVM holds no variants
     // under its barcode. A model family's Variants follow VATRate (ordinal order puts "VATRate" before "Variants").
-    // UNVERIFIED: the repo holds no ProductV3Request sample with variants. The shape follows the service schema's
-    // write-side Variant (VariantBarkod, Miktar, Attributes{VariantAttr{Tanim, Deger}}), members in alphabetical
-    // order, without Combination and without a price difference (the schema's Variant has no price; the family's
-    // variants share the product price). The first real send is the check; VariantSendDryRun stops it again.
+    // The variant shape is the service WSDL's (?singleWsdl, read 28 October 2026), all in the Requests namespace:
+    // ProductV3Request.Variants is ArrayOfVariantV3 {VariantV3 {Attributes: ArrayOfVariantAttrV3 {VariantAttrV3
+    // {Definition, Value}}, CatalogBarcode, Price, Quantity, VariantBarcode}}. The first family send used the
+    // ePttAVMService namespace's Variant names (Variant, VariantAttr{Deger, Tanim}, Miktar, VariantBarkod); the
+    // data-contract reader skipped them as unknown elements and PTT AVM opened the product without variants.
+    // CatalogBarcode is not sent; Price is left out (a non-nillable decimal, so the service reads 0 either way):
+    // the family's variants share the product price.
     internal static string ItemsXml(ProductDraft draft)
     {
         var xml = new StringBuilder($"""<ept:ProductV3Request xmlns:ept="{PttAvmHttpClient.RequestsNamespace}">""");
@@ -287,13 +309,13 @@ public static class PttAvmProductPayloadRules
             xml.Append("<ept:Variants>");
             foreach (var variant in variants)
             {
-                xml.Append("<ept:Variant><ept:Attributes>");
+                xml.Append("<ept:VariantV3><ept:Attributes>");
                 foreach (var (definition, value) in new[] { ("Renk", variant.Color), ("Beden", variant.Size) })
-                    xml.Append("<ept:VariantAttr><ept:Deger>").Append(SecurityElement.Escape(value)).Append("</ept:Deger><ept:Tanim>").Append(definition).Append("</ept:Tanim></ept:VariantAttr>");
+                    xml.Append("<ept:VariantAttrV3><ept:Definition>").Append(definition).Append("</ept:Definition><ept:Value>").Append(SecurityElement.Escape(value)).Append("</ept:Value></ept:VariantAttrV3>");
                 xml.Append("</ept:Attributes>");
-                Field("Miktar", variant.Quantity.ToString(CultureInfo.InvariantCulture));
-                Field("VariantBarkod", variant.Barcode);
-                xml.Append("</ept:Variant>");
+                Field("Quantity", variant.Quantity.ToString(CultureInfo.InvariantCulture));
+                Field("VariantBarcode", variant.Barcode);
+                xml.Append("</ept:VariantV3>");
             }
             xml.Append("</ept:Variants>");
         }
