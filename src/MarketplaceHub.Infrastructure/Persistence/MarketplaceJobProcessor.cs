@@ -1015,6 +1015,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 TrackResultFailure(result.Error);
                 var adapterResult = JobExecutionResult.FromAdapterError(result.Error!);
                 if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
+                // The product is in Shopify but Shopify refused its Online Store publication: a known outcome with
+                // Shopify's own reason, not something to guess about.
+                if (ShopifyFamilySend.IsPublishOnlyFailure(result.Error!.Code))
+                    return await MarkApprovalResult(tenantId, connectionId, profile, "BLOCKED", result.Error.Code, JobExecutionResult.Blocked(result.Error.Code, result.Error.SafeMessage, result.Error.RemoteRequestId), cancellationToken);
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", result.Error!.Code, JobExecutionResult.ManualReview(result.Error.Code, result.Error.SafeMessage, result.Error.RemoteRequestId), cancellationToken);
             }
             remote.Add(result.Value!);

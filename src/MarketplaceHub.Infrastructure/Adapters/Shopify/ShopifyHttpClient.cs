@@ -291,31 +291,9 @@ public sealed partial class ShopifyHttpClient(
         if (string.IsNullOrWhiteSpace(locationId))
             return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_LOCATION_CONTRACT_INVALID", "Shopify etkin depo kimliği boş döndü.", HttpStatusCode.BadGateway);
 
-        var publicationsResult = await QueryAsync(shop, "query { publications(first:100) { nodes { id channels(first:20) { nodes { name handle } } } pageInfo { hasNextPage } } }", cancellationToken: cancellationToken);
+        var publicationsResult = await OnlineStorePublicationIdAsync(shop, cancellationToken);
         if (!publicationsResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(publicationsResult.Error!, publicationsResult.RateLimit);
-        string publicationId;
-        try
-        {
-            var publications = publicationsResult.Value!.RootElement.GetProperty("publications");
-            if (publications.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean())
-                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PUBLICATION_LIST_INCOMPLETE", "Shopify satış kanalı listesi tamamlanamadı; ürün oluşturulmadı.", HttpStatusCode.UnprocessableEntity);
-            var onlineStorePublications = publications.GetProperty("nodes").EnumerateArray()
-                .Where(publication => publication.GetProperty("channels").GetProperty("nodes").EnumerateArray()
-                    .Any(channel => string.Equals(TextValue(channel, "name"), "Online Store", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(TextValue(channel, "handle"), "online-store", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(TextValue(channel, "handle"), "online_store", StringComparison.OrdinalIgnoreCase)))
-                .Select(publication => TextValue(publication, "id"))
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-            if (onlineStorePublications.Length != 1)
-                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_ONLINE_STORE_PUBLICATION_REQUIRED", "Shopify mağazasında tek bir Online Store yayın kanalı bulunamadı; ürün oluşturulmadı.", HttpStatusCode.UnprocessableEntity);
-            publicationId = onlineStorePublications[0]!;
-        }
-        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
-        {
-            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PUBLICATION_CONTRACT_INVALID", "Shopify yayın kanalı yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
-        }
+        var publicationId = publicationsResult.Value!;
 
         foreach (var variant in variants)
         {
@@ -443,10 +421,15 @@ public sealed partial class ShopifyHttpClient(
         if (sku.Length == 0) return Fail<RemotePublicationStatus>(AdapterErrorClass.Validation, "SHOPIFY_SKU_REQUIRED", "Shopify yayın durumu için stok kodu gerekir.", HttpStatusCode.BadRequest);
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return CredentialFailure(Fail<RemotePublicationStatus>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
-        var result = await QueryAsync(shop,
-            "query($query:String!){productVariants(first:10,query:$query){nodes{id sku product{id status handle}}}}",
-            new { query = $"sku:\"{sku.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\"" }, cancellationToken);
+        var publication = await OnlineStorePublicationIdAsync(shop, cancellationToken);
+        if (!publication.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(publication.Error!, publication.RateLimit);
+        var publicationId = publication.Value!;
+        var result = await QueryAsync(shop, SkuStatusQuery,
+            new { query = $"sku:\"{sku.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\"", publicationId }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(result.Error!, result.RateLimit);
+        RemotePublicationStatus status;
+        string? unpublishedProductId;
+        string? unpublishedHandle;
         try
         {
             var raw = result.Value!.RootElement.GetProperty("productVariants");
@@ -454,11 +437,79 @@ public sealed partial class ShopifyHttpClient(
                 return Fail<RemotePublicationStatus>(AdapterErrorClass.Validation, DuplicateSkuCode,
                     $"'{sku}' stok kodu Shopify'da birden çok üründe var: {string.Join(", ", holders.Select(holder => $"{holder.Id} (handle {holder.Handle ?? "?"})"))}. Ravencia model ailesinin ürünü ravencia-model- ile başlayan handle'dır; fazlalığı Shopify yönetim panelinden silip durumu yeniden sorgulayın.",
                     HttpStatusCode.Conflict);
-            return AdapterResult<RemotePublicationStatus>.Success(MapSkuPublicationStatus(sku, raw), result.RateLimit);
+            status = MapSkuPublicationStatus(sku, raw);
+            (unpublishedProductId, unpublishedHandle) = OnlineStoreUnpublishedProduct(sku, raw);
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
         {
             return Fail<RemotePublicationStatus>(AdapterErrorClass.ContractViolation, "SHOPIFY_PUBLICATION_STATUS_CONTRACT_INVALID", "Shopify varyant arama yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+        }
+        if (unpublishedProductId is null || RecentlyPublished($"{shop.Shop}|{unpublishedProductId}"))
+            return AdapterResult<RemotePublicationStatus>.Success(status, result.RateLimit);
+
+        // An active product the Online Store does not show (live 2026-10-28: every Shopify product written before the
+        // publish was fixed): it is published here, the same idempotent step a publication runs. Nothing is created.
+        if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.PublicationWrite, cancellationToken))
+            return Fail<RemotePublicationStatus>(AdapterErrorClass.Validation, PublishFailedCode,
+                $"Shopify ürünü {unpublishedProductId} (handle {unpublishedHandle ?? "?"}) etkin ama Online Store kanalında yayında değil; Shopify dış yazması veya write_publications izni kapalı olduğu için yayınlanamadı.",
+                HttpStatusCode.Forbidden);
+        var publish = await QueryAsync(shop, PublishMutation, new { id = unpublishedProductId, input = new[] { new { publicationId } } }, cancellationToken);
+        if (PublishFailure(publish, unpublishedProductId, unpublishedHandle ?? "?") is { } publishFailure)
+            return AdapterResult<RemotePublicationStatus>.Failure(publishFailure, publish.RateLimit);
+        PublishedOnlineStoreProducts[$"{shop.Shop}|{unpublishedProductId}"] = timeProvider.GetUtcNow();
+        logger.LogInformation("Shopify product {ProductId} ({Handle}) published to the Online Store by a status check of {Sku}", unpublishedProductId, unpublishedHandle, sku);
+        return AdapterResult<RemotePublicationStatus>.Success(status, publish.RateLimit ?? result.RateLimit);
+    }
+
+    internal const string SkuStatusQuery = "query($query:String!,$publicationId:ID!){productVariants(first:10,query:$query){nodes{id sku product{id status handle publishedOnPublication(publicationId:$publicationId)}}}}";
+
+    // Products this process published to the Online Store in the last minutes: the family's other SKUs, checked right
+    // after, do not publish them again (Shopify may still answer from before the publication).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> PublishedOnlineStoreProducts = new(StringComparer.Ordinal);
+    private bool RecentlyPublished(string key) => PublishedOnlineStoreProducts.TryGetValue(key, out var at) && timeProvider.GetUtcNow() - at < TimeSpan.FromMinutes(10);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> OnlineStorePublicationIds = new(StringComparer.Ordinal);
+
+    // The active product holding this SKU when the Online Store publication does not show it; null otherwise. The
+    // field is asked for, so its absence is a broken answer, never "unpublished".
+    internal static (string? ProductId, string? Handle) OnlineStoreUnpublishedProduct(string sku, JsonElement productVariants)
+    {
+        var matches = ExactSkuMatches(sku, productVariants);
+        if (matches.Length != 1) return (null, null);
+        var product = matches[0].GetProperty("product");
+        if (!string.Equals(TextValue(product, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase)) return (null, null);
+        var published = product.GetProperty("publishedOnPublication");
+        if (published.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw new JsonException("publishedOnPublication is not a boolean.");
+        return published.GetBoolean() ? (null, null) : (TextValue(product, "id"), TextValue(product, "handle"));
+    }
+
+    // The store's single Online Store publication; kept per shop for the process.
+    private async Task<AdapterResult<string>> OnlineStorePublicationIdAsync(ShopifyRequestContext shop, CancellationToken cancellationToken)
+    {
+        if (OnlineStorePublicationIds.TryGetValue(shop.Shop, out var known)) return AdapterResult<string>.Success(known);
+        var publicationsResult = await QueryAsync(shop, "query { publications(first:100) { nodes { id channels(first:20) { nodes { name handle } } } pageInfo { hasNextPage } } }", cancellationToken: cancellationToken);
+        if (!publicationsResult.IsSuccess) return AdapterResult<string>.Failure(publicationsResult.Error!, publicationsResult.RateLimit);
+        try
+        {
+            var publications = publicationsResult.Value!.RootElement.GetProperty("publications");
+            if (publications.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean())
+                return Fail<string>(AdapterErrorClass.Validation, "SHOPIFY_PUBLICATION_LIST_INCOMPLETE", "Shopify satış kanalı listesi tamamlanamadı; Online Store yayın kanalı bulunamadı.", HttpStatusCode.UnprocessableEntity);
+            var onlineStorePublications = publications.GetProperty("nodes").EnumerateArray()
+                .Where(publication => publication.GetProperty("channels").GetProperty("nodes").EnumerateArray()
+                    .Any(channel => string.Equals(TextValue(channel, "name"), "Online Store", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(TextValue(channel, "handle"), "online-store", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(TextValue(channel, "handle"), "online_store", StringComparison.OrdinalIgnoreCase)))
+                .Select(publication => TextValue(publication, "id"))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (onlineStorePublications.Length != 1)
+                return Fail<string>(AdapterErrorClass.Validation, "SHOPIFY_ONLINE_STORE_PUBLICATION_REQUIRED", "Shopify mağazasında tek bir Online Store yayın kanalı bulunamadı; ürün yayınlanmadı.", HttpStatusCode.UnprocessableEntity);
+            OnlineStorePublicationIds[shop.Shop] = onlineStorePublications[0]!;
+            return AdapterResult<string>.Success(onlineStorePublications[0]!, publicationsResult.RateLimit);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<string>(AdapterErrorClass.ContractViolation, "SHOPIFY_PUBLICATION_CONTRACT_INVALID", "Shopify yayın kanalı yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
         }
     }
 
