@@ -1100,8 +1100,11 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   // Once the value list is missing (422) the field stays on the editor that asks the marketplace for it. Flipping back to
   // the spinner while that editor refetched the same query unmounted it, and its remount refetched again: an endless
   // loop of requests that froze the page (26 Oct 2026, Hepsiburada Ek Özellik).
+  // Once the list has arrived and nothing is fetching (the editor's sync brought it), the field returns to the value
+  // table: the table reads the same fresh cache entry, so the switch asks for nothing and cannot loop.
   const [valuesUnavailable, setValuesUnavailable] = useState(false)
   if (references.isError && !valuesUnavailable) setValuesUnavailable(true)
+  if (valuesUnavailable && references.isSuccess && !references.isFetching && references.data) setValuesUnavailable(false)
   const generation = store?.generation ?? 0
   const [seenGeneration, setSeenGeneration] = useState(generation)
   // After Kaydet every field starts again from what the server holds.
