@@ -82,7 +82,13 @@ public sealed partial class PttAvmHttpClient
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
         var trackingId = ContractValue(result.Value!, "TrackingId");
         if (!string.Equals(ContractValue(result.Value!, "Success"), "true", StringComparison.OrdinalIgnoreCase) || trackingId is null)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_REJECTED", $"PTT AVM ürünü kabul etmedi: {ContractValue(result.Value!, "Message") ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity);
+        {
+            var message = ContractValue(result.Value!, "Message");
+            // "Aynı isteği ancak 5 dakika sonra tekrardan gönderebilirsiniz": a wait, not a refusal of the product.
+            if (PttAvmProductPayloadRules.IsRepeatRequestRefusal(message))
+                return AdapterResult<RemoteOperationRef>.Failure(PttAvmProductPayloadRules.RepeatRequestError((int)HttpStatusCode.TooManyRequests), new RateLimitMetadata(null, null, PttAvmProductPayloadRules.RepeatRequestWait));
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_REJECTED", $"PTT AVM ürünü kabul etmedi: {message ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity);
+        }
         return AdapterResult<RemoteOperationRef>.Success(new(TrackingOperationPrefix + trackingId, "PRODUCT_UPSERT", timeProvider.GetUtcNow()), result.RateLimit);
     }
 
@@ -134,6 +140,21 @@ public static class PttAvmProductPayloadRules
     public sealed record VariantMerge(IReadOnlyList<VariantDraft> Variants, IReadOnlyList<VariantDraft> Added, IReadOnlyList<RemoteVariant> Unreadable, IReadOnlyList<NotCarriableVariant> NotCarriable);
 
     public const string RemoteVariantNotCarriableCode = "PTTAVM_REMOTE_VARIANT_NOT_CARRIABLE";
+
+    // PTT AVM takes one request only once in five minutes and answers a repeat with "Aynı isteği ancak 5 dakika sonra
+    // tekrardan gönderebilirsiniz" (as Success=false or as a fault). Nothing was refused: the request did not run, and
+    // it may go again once the five minutes are over (six, so the clocks need not agree to the second).
+    public const string RepeatRequestWaitCode = "PTTAVM_REPEAT_REQUEST_WAIT";
+    public static readonly TimeSpan RepeatRequestWait = TimeSpan.FromMinutes(6);
+
+    public static bool IsRepeatRequestRefusal(string? message)
+    {
+        var folded = PttAvmOrderMapper.Fold(message?.Replace('İ', 'I'));
+        return folded.Contains("ayni iste", StringComparison.Ordinal) && folded.Contains("dakika", StringComparison.Ordinal);
+    }
+
+    public static AdapterError RepeatRequestError(int? status) => new(AdapterErrorClass.RateLimit, RepeatRequestWaitCode,
+        "PTT AVM aynı isteği beş dakika dolmadan yeniden almıyor; istek işlenmedi ve 6 dakika sonra yeniden denenecek.", status, RepeatRequestWait, null);
 
     public static string Payload(ProductDraft draft)
     {

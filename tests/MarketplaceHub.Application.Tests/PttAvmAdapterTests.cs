@@ -1510,6 +1510,59 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void TheVariantSendGoesForReal() => Assert.False(PttAvmProductPayloadRules.VariantSendDryRun);
 
+    // PTT AVM's answer to a request repeated within five minutes (live 2026-10-28, the family's second colour card).
+    private const string RepeatRequestSentence = "Aynı isteği ancak 5 dakika sonra tekrardan gönderebilirsiniz.";
+
+    [Fact]
+    public async Task ARepeatedFamilyRequestWaitsInsteadOfBeingRejected()
+    {
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer.Replace("<a:Fiyat>25</a:Fiyat>", "<a:Fiyat>0</a:Fiyat>", StringComparison.Ordinal)),
+            PttAvmHttpClient.ProductUpsert => Respond(HttpStatusCode.OK, ProductUpsertAnswer
+                .Replace("""<a:Message i:nil="true"/>""", $"<a:Message>{RepeatRequestSentence}</a:Message>", StringComparison.Ordinal)
+                .Replace("<a:Success>true</a:Success><a:TrackingId>trk-fk4530</a:TrackingId>", """<a:Success>false</a:Success><a:TrackingId i:nil="true"/>""", StringComparison.Ordinal)),
+            _ => throw new InvalidOperationException("Unexpected operation.")
+        });
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Quantity = 4, Variants = [new("FK453003", "Bordo", "L", 4)] };
+
+        var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(AdapterErrorClass.RateLimit, result.Error!.Class);
+        Assert.Equal(PttAvmProductPayloadRules.RepeatRequestWaitCode, result.Error.Code);
+        Assert.Equal(TimeSpan.FromMinutes(6), result.Error.RetryAfter);
+        // The job waits and keeps its attempt; it is never blocked as a refused product.
+        var job = JobExecutionResult.FromAdapterError(result.Error);
+        Assert.Equal(JobCompletionKind.Retry, job.Kind);
+        Assert.True(job.RefundAttempt);
+        Assert.Equal(TimeSpan.FromMinutes(6), job.RetryAfter);
+    }
+
+    [Fact]
+    public void ARepeatedRequestAnsweredWithAFaultWaitsToo()
+    {
+        var (result, error) = PttAvmHttpClient.SoapResponse(HttpStatusCode.InternalServerError,
+            $"""<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Client</faultcode><faultstring>{RepeatRequestSentence}</faultstring></s:Fault></s:Body></s:Envelope>""",
+            PttAvmHttpClient.ProductUpsert);
+
+        Assert.Null(result);
+        Assert.Equal(AdapterErrorClass.RateLimit, error!.Class);
+        Assert.Equal(PttAvmProductPayloadRules.RepeatRequestWaitCode, error.Code);
+        Assert.Equal(TimeSpan.FromMinutes(6), error.RetryAfter);
+    }
+
+    [Theory]
+    [InlineData(RepeatRequestSentence, true)]
+    [InlineData("AYNI İSTEĞİ ANCAK 5 DAKİKA SONRA TEKRARDAN GÖNDEREBİLİRSİNİZ", true)]
+    [InlineData("Ayni istegi ancak 5 dakika sonra tekrardan gonderebilirsiniz", true)]
+    [InlineData("Kategori bulunamadı.", false)]
+    [InlineData("Aynı barkod başka bir üründe kullanılıyor.", false)]
+    [InlineData(null, false)]
+    public void OnlyTheRepeatSentenceIsAWait(string? message, bool expected) =>
+        Assert.Equal(expected, PttAvmProductPayloadRules.IsRepeatRequestRefusal(message));
+
     private const string ProductUpsertAnswer = """
         <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><UpdateProductsV3Response xmlns="http://tempuri.org/">
            <UpdateProductsV3Result xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">

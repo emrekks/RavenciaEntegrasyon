@@ -1817,11 +1817,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var result = await RequestCardPublicationStatusRefreshAsync(tenantId, productId, connectionId, cancellationToken);
         if (!result.Succeeded) return result;
-        // Shopify, n11 and Pazarama (one groupCode) hold a model family's colour cards in one marketplace product, so one
-        // refresh reads all the cards: each sibling with a publication on this connection gets its own read-only check
-        // (one that cannot is skipped).
+        // Shopify, n11, Pazarama (one groupCode) and PTT AVM (one product under the parent barcode) hold a model family's
+        // colour cards in one marketplace product, so one refresh reads all the cards: each sibling with a publication on
+        // this connection gets its own read-only check (one that cannot is skipped).
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleAsync(cancellationToken);
-        if (platformCode is not ("SHOPIFY" or "N11" or "PAZARAMA")) return result;
+        if (platformCode is not ("SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM")) return result;
         var product = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         var familyIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
         var siblings = await db.ChannelListingProfiles.AsNoTracking()
@@ -1840,11 +1840,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        // Trendyol, Hepsiburada, Shopify, n11 and Pazarama read the publication state back; Hepsiburada by the tracking id
-        // of its last import, Shopify and n11 by each variant's stock code, Trendyol and Pazarama by barcode.
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA") || !IntegrationRuntimePolicy.AllowsManualRead(connection))
-            return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın durumunu sorgulamak için etkin Trendyol, Hepsiburada, Shopify, N11 veya Pazarama bağlantısı gerekir.", 422);
-        var platformName = connection.PlatformCode switch { "HEPSIBURADA" => "Hepsiburada", "SHOPIFY" => "Shopify", "N11" => "N11", "PAZARAMA" => "Pazarama", _ => "Trendyol" };
+        // Trendyol, Hepsiburada, Shopify, n11, Pazarama and PTT AVM read the publication state back; Hepsiburada by the
+        // tracking id of its last import, Shopify and n11 by each variant's stock code, Trendyol, Pazarama and PTT AVM by
+        // barcode.
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.AllowsManualRead(connection))
+            return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın durumunu sorgulamak için etkin Trendyol, Hepsiburada, Shopify, N11, Pazarama veya PTT AVM bağlantısı gerekir.", 422);
+        var platformName = connection.PlatformCode switch { "HEPSIBURADA" => "Hepsiburada", "SHOPIFY" => "Shopify", "N11" => "N11", "PAZARAMA" => "Pazarama", "PTTAVM" => "PTT AVM", _ => "Trendyol" };
 
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.Products.AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken))

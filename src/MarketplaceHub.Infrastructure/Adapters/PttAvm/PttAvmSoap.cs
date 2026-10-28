@@ -137,6 +137,7 @@ public sealed partial class PttAvmHttpClient
         var reason = fault.Descendants().FirstOrDefault(x => x.Name.LocalName is "faultstring" or "Text")?.Value.Trim();
         if (IsSecurityFault(codes, reason))
             return new(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIALS_REJECTED", PttAvmErrorAdvice.CredentialsRejected, status, null, null);
+        if (PttAvmProductPayloadRules.IsRepeatRequestRefusal(reason)) return PttAvmProductPayloadRules.RepeatRequestError(status);
         var message = Clip(reason);
         return new(AdapterErrorClass.Validation, "PTTAVM_REQUEST_REJECTED",
             message is null ? "PTT AVM isteği reddetti (SOAP hatası)." : $"PTT AVM isteği reddetti: {PttAvmErrorAdvice.WithAdvice(message)}", status, null, null);
