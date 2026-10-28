@@ -23,7 +23,6 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
     public static readonly TimeSpan DefaultGuardRetention = TimeSpan.FromDays(90);
     public static readonly TimeSpan DefaultInboxRetention = TimeSpan.FromDays(90);
     public static readonly TimeSpan RateLimitUsageRetention = TimeSpan.FromDays(2);
-    public static readonly TimeSpan DefaultEffectRecordRetention = TimeSpan.FromDays(90);
 
     private static readonly string[] KeptJobTypes =
     [

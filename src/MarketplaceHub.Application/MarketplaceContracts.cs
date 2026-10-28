@@ -347,15 +347,6 @@ public static class MarketplaceExternalWritePolicies
 
     public static bool IsPolicy(string? resourceType) => resourceType?.Trim().ToUpperInvariant() is
         Price or Stock or Shipment or Return;
-
-    public static string? ForJobType(string? jobType) => jobType switch
-    {
-        MarketplaceJobTypes.PriceInventorySync => Price,
-        MarketplaceJobTypes.StockProjectionDispatch or MarketplaceJobTypes.StockReconciliation => Stock,
-        MarketplaceJobTypes.ShipmentAction => Shipment,
-        MarketplaceJobTypes.ReturnAction => Return,
-        _ => null
-    };
 }
 
 public static class MarketplaceCapabilities
@@ -432,7 +423,6 @@ public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid Pr
 // Pazarama sale open/close by barcode; it travels in a PRODUCT_ARCHIVE job and is told apart by SaleStatusBarcodes.
 public sealed record PazaramaSaleStatusJobPayload(Guid JobId, IReadOnlyList<string> SaleStatusBarcodes, bool Close, DateTimeOffset StartedAt);
 public sealed record ProductArchiveJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, bool Archived, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
-public sealed record ExternalProductIdentity(string ExternalProductId, string? ExternalVariantId);
 public sealed record RemoteProduct(string ExternalProductId, string? ExternalVariantId, string? Barcode, string? Sku, string RawJson);
 public sealed record RemoteCatalogProduct(
     string ExternalProductId,
@@ -507,11 +497,8 @@ public static class ImportedDesi
 }
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false, bool CatalogStructure = false);
-public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);
-public sealed record PricePushLine(Guid VariantId, string Barcode, decimal ListPrice, decimal SalePrice, string Currency, long PriceVersion);
 public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash, string? MerchantSku = null, string? HepsiburadaSku = null, string? ExternalVariantId = null);
 public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false);
-public sealed record BatchLineResult(Guid LocalId, bool Succeeded, string? ErrorCode, bool Retryable);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);

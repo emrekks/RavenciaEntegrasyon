@@ -41,3 +41,7 @@ Ravencia_Entegrasyon_v*_Nihai_Uygulama_Surumu.pdf
 # Claude Code: agent worktrees and per-machine settings stay local
 .claude/worktrees/
 .claude/settings.local.json
+
+# Browser automation snapshots (Playwright MCP) and TypeScript incremental build info
+.playwright-mcp/
+*.tsbuildinfo
