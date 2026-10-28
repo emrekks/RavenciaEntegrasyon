@@ -57,8 +57,6 @@ public static class InvoiceDeliveryRetryPolicy
         TimeSpan.FromMinutes(30)
     ];
 
-    public static IReadOnlyList<TimeSpan> Schedule => RetryDelays;
-
     public static TimeSpan DelayAfterAttempt(int attemptCount, TimeSpan? providerRetryAfter = null)
     {
         if (attemptCount <= 0) throw new ArgumentOutOfRangeException(nameof(attemptCount));

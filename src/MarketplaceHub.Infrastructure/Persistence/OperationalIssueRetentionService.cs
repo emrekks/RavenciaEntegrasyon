@@ -11,8 +11,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // pass resolves today is therefore kept for the retention period instead of being deleted in the same pass.
 public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvider timeProvider)
 {
-    public static readonly TimeSpan DefaultStaleAfter = TimeSpan.FromDays(30);
-
     public async Task<int> ResolveStaleAsync(TimeSpan staleAfter, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
