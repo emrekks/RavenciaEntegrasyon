@@ -96,8 +96,6 @@ export function platformName(code: string) { return platformNames[code.toUpperCa
 const salesChannelOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PTTAVM', 'PAZARAMA', 'SHOPIFY']
 export const isSalesChannel = (code: string) => salesChannelOrder.includes(code.toUpperCase())
 export const bySalesChannel = (a: string, b: string) => salesChannelOrder.indexOf(a.toUpperCase()) - salesChannelOrder.indexOf(b.toUpperCase())
-// The marketplaces among them (a store's own shop such as Shopify charges no marketplace commission).
-export const isMarketplace = (code: string) => isSalesChannel(code) && code.toUpperCase() !== 'SHOPIFY'
 
 // A variant's colour and size out of all its catalogue attributes (fabric, collar, maker's address… stay out).
 const colourNames = /^(renk|color|colour)$/i

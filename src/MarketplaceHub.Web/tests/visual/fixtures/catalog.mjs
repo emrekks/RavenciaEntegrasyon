@@ -262,18 +262,6 @@ function capabilities({ match }) {
   }))
 }
 
-// The first import still runs for n11 (orders and returns), every other connection is done with it.
-function initialImport({ match }) {
-  const connectionId = decodeURIComponent(match[1])
-  const running = platformOf(connectionId) === 'N11'
-  return {
-    connectionId, running,
-    parts: running
-      ? [{ kind: 'ORDERS', state: 'RUNNING', percent: 60 }, { kind: 'RETURNS', state: 'DONE', percent: 100 }, { kind: 'QUESTIONS', state: 'QUEUED', percent: null }]
-      : [{ kind: 'ORDERS', state: 'DONE', percent: 100 }, { kind: 'RETURNS', state: 'DONE', percent: 100 }, { kind: 'QUESTIONS', state: 'DONE', percent: 100 }]
-  }
-}
-
 function instantNotifications({ match }) {
   const platform = platformOf(match[1])
   if (platform === 'TRENDYOL') return { state: 'ACTIVE', endpoint: 'https://panel.ravencia.com/webhooks/trendyol/c-ty', registeredAt: '2026-10-02T10:00:00+03:00', lastReceivedAt: '2026-10-20T09:12:00+03:00', receivedLast24Hours: 148, message: null, setup: null }
@@ -413,7 +401,6 @@ export const catalog = [
 
   // Per-connection details used by the product editor and the integration cards
   ['^/connections/([^/]+)/capabilities$', capabilities],
-  ['^/connections/([^/]+)/initial-import$', initialImport],
   ['^/connections/([^/]+)/attribute-defaults$', attributeDefaults],
   ['^/connections/([^/]+)/instant-notifications$', instantNotifications],
   ['^/connections/([^/]+)/sync-policies$', syncPolicies],

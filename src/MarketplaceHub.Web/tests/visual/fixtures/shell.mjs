@@ -1,5 +1,5 @@
 // What the signed-in shell asks on every page: the menu counts (dashboard bootstrap, order and invoice summaries, the
-// waiting-question count), the account's appearance settings, the platform connections and the data-freshness line.
+// waiting-question count), the account's appearance settings and the platform connections.
 // Fixed data only: every timestamp sits around the frozen clock (2026-10-20 09:30 Istanbul).
 import { fixtures } from '../fixtures.mjs'
 import { ist, orderSummary } from './sales.mjs'
@@ -78,9 +78,4 @@ export const shell = [
   ['GET /orders/summary', ({ url }) => orderSummary.forPlatform(url.searchParams.get('platform'))],
   questionSummaryEntry,
   ['GET /connections', { items: connections, nextCursor: null, hasMore: false, totalCount: connections.length }],
-  ['GET /data-freshness', { parts: [
-    { kind: 'ORDERS', lastSuccessAt: ist('2026-10-20 09:28'), instant: true, connections: 5 },
-    { kind: 'RETURNS', lastSuccessAt: ist('2026-10-20 09:12'), instant: false, connections: 4 },
-    { kind: 'QUESTIONS', lastSuccessAt: ist('2026-10-20 09:05'), instant: false, connections: 4 },
-  ] }],
 ]
