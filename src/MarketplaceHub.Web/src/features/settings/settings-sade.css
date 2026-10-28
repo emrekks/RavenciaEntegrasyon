@@ -160,6 +160,26 @@
 .ss-page .ss-ses-when small { color: var(--rv-color-muted); font-size: 12px; }
 .ss-page .ss-ses-act { display: flex; justify-content: flex-end; }
 
+/* Database cleanup (option B): the lists as palette lines, the summary and typed confirmation in the sticky bar. */
+.ss-page .ss-dr-group { display: grid; gap: 4px; }
+.ss-page .ss-dr-sub { display: flex; align-items: center; gap: 8px; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+.ss-page .ss-cf.is-pick { grid-template-columns: 16px minmax(0, 1fr) auto; margin: 0; cursor: pointer; }
+.app-shell.stitch-shell main .ss-page .ss-cf.is-pick .ss-cb { margin: 0; }
+.ss-page .ss-cf.is-pick > span:nth-child(2) { min-width: 0; }
+.ss-page .ss-cf.is-pick.is-on b { color: var(--rv-color-primary); }
+.ss-page .ss-dr-count { color: var(--rv-color-muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ss-page .ss-dr-count strong { color: var(--rv-color-ink); font-size: 13px; font-weight: 500; }
+.ss-page .ss-dr-notes { display: grid; gap: 6px; }
+.ss-page .ss-dr-help { display: flex; align-items: flex-start; gap: 8px; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
+.ss-page .ss-dr-help > .ss-icon { margin-top: 1px; color: var(--rv-color-subtle); }
+.ss-page .ss-dr-help.is-warn > .ss-icon { color: var(--rv-color-warning); }
+.ss-page .ss-dr-help b { color: var(--rv-color-ink); font-weight: 600; }
+.app-shell.stitch-shell main .ss-page .ss-in.ss-dr-in { width: 180px; }
+.app-shell.stitch-shell main .ss-page .ss-in.ss-dr-in.is-match { border-color: var(--rv-color-accent); }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .ss-page .ss-in.ss-dr-in { width: 100%; min-width: 0; }
+}
+
 /* Database scopes */
 .ss-page .ss-scopes { display: grid; }
 .ss-page .ss-sg { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 24px; padding: 18px 20px; border-top: 1px solid var(--rv-color-border); }

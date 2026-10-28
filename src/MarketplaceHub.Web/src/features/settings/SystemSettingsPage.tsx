@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../shared/api'
 import { LoadingState, Modal } from '../../shared/components'
-import { DataResetLedger, type DataResetGroup } from '../../shared/components/DataResetLedger'
+import type { DataResetGroup } from '../../shared/components/DataResetLedger'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../shipping'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearancePalette, type AppearanceSettings } from './appearance-settings'
@@ -153,6 +153,57 @@ const resetScopeGroups: DataResetGroup[] = [
     { scope: 'OPTIONS', label: 'Ürün Seçenekleri', description: 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.', unit: 'seçenek' }
   ] }
 ]
+const resetConfirmWord = 'Verileri sil'
+const resetNumber = (value: number) => value.toLocaleString('tr-TR')
+
+// Database cleanup laid out like the colour palette: each list is a line with its count, the summary, the typed
+// confirmation and the reset button sit in the section's sticky bar (design option B, 28 Oct 2026).
+function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, confirmation, onConfirmation, busy, onConfirm }: { groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
+  const options = groups.flatMap(group => group.options)
+  const going = options.filter(option => picked.includes(option.scope))
+  const known = going.every(option => counts?.[option.scope] !== undefined)
+  const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0)
+  const confirmed = confirmation.trim() === resetConfirmWord
+  const allPicked = options.every(option => picked.includes(option.scope))
+  const countText = (scope: string, unit: string) => {
+    const value = counts?.[scope]
+    if (value !== undefined) return <><strong>{resetNumber(value)}</strong> {unit}</>
+    return countsFailed ? 'Sayı alınamadı' : counts ? '' : 'Sayılıyor…'
+  }
+  return <>
+    <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." actions={<button type="button" className="ss-btn" disabled={busy} onClick={() => onToggle(options.map(option => option.scope), !allPicked)}>{allPicked ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>} />
+    <div className="ss-body ss-dr" role="group" aria-label="Sıfırlanacak veriler">
+      {groups.map(group => {
+        const all = group.options.every(option => picked.includes(option.scope))
+        return <section className="ss-dr-group" key={group.label} aria-label={group.label}>
+          <header className="ss-dr-sub"><span title={group.description}>{group.label}</span><span className="ss-count">{group.options.length}</span><span className="ss-grow" /><button type="button" className="ss-btn is-quiet is-xs" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></header>
+          <div className="ss-cgrid">{group.options.map(option => {
+            const on = picked.includes(option.scope)
+            return <label key={option.scope} className={`ss-cf is-pick${on ? ' is-on' : ''}`}>
+              <input type="checkbox" className="ss-cb" checked={on} disabled={busy} onChange={event => onToggle([option.scope], event.target.checked)} />
+              <span><b>{option.label}</b><small>{option.description}</small></span>
+              <span className="ss-dr-count">{countText(option.scope, option.unit)}</span>
+            </label>
+          })}</div>
+        </section>
+      })}
+      <div className="ss-dr-notes">
+        <p className="ss-dr-help is-warn"><SettingsIcon name="alert" size={14} /><span><b>Yetkili işlemi:</b> bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></p>
+        <p className="ss-dr-help"><SettingsIcon name="info" size={14} /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></p>
+      </div>
+    </div>
+    <div className="ss-bar">
+      <div className="ss-bar-copy" role="status"><strong>Silinecekler · Toplam {going.length && !known ? '…' : `${resetNumber(total)} kayıt`}</strong><span className={going.length ? 'is-dirty' : undefined}>{going.length
+        ? going.map((option, index) => <Fragment key={option.scope}>{index ? ' · ' : ''}{option.label}{counts?.[option.scope] !== undefined ? <> <b>{resetNumber(counts[option.scope])}</b></> : null}</Fragment>)
+        : <>Silinecek veri türünü seçin; onaylamak için <b>{resetConfirmWord}</b> yazın.</>}</span></div>
+      <div className="ss-bar-actions">
+        <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={resetConfirmWord} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
+        <button type="button" className="ss-btn is-danger is-solid ss-dr-go" disabled={!going.length || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
+      </div>
+    </div>
+  </>
+}
+
 const mfaSteps: Array<{ key: 'password' | 'verify' | 'recovery'; label: string; hint: string }> = [
   { key: 'password', label: 'Parola', hint: 'Hesabı doğrula' },
   { key: 'verify', label: 'QR Kod', hint: 'Uygulamaya ekle' },
@@ -226,10 +277,10 @@ export function SystemSettingsPage() {
     setResetScopes(current => checked ? Array.from(new Set([...current, ...scopes])) : current.filter(value => !scopes.includes(value)))
   }
   async function resetOperationalData() {
-    if (!resetScopes.length || resetConfirmation !== 'Verileri sil') return
+    if (!resetScopes.length || resetConfirmation.trim() !== resetConfirmWord) return
     setResetBusy(true); setNotice(null)
     try {
-      const result = await hubApi<{ products: number; orders: number; returns: number; invoices: number; categories: number; categoryAttributes: number; brands: number; options: number }>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation }) })
+      const result = await hubApi<{ products: number; orders: number; returns: number; invoices: number; categories: number; categoryAttributes: number; brands: number; options: number }>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation.trim() }) })
       succeed(`Temizlik tamamlandı: ${result.products} ürün, ${result.categories} kategori, ${result.categoryAttributes} kategori özelliği, ${result.brands} marka, ${result.options} ürün seçeneği.`)
       setResetScopes([]); setResetConfirmation('')
       await client.invalidateQueries()
@@ -368,16 +419,7 @@ export function SystemSettingsPage() {
             {closedSessions.length ? <><div className="ss-sess-sub">Kapalı <span className="ss-count">{closedSessions.length}</span></div>{closedSessions.map(sessionRow)}</> : null}
           </div>}</div>
         </>}
-        {section === 'database' && <>
-          <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." />
-          <div className="ss-body is-flush ss-reset">
-            <DataResetLedger idPrefix="settings-reset" groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} confirmWord="Verileri sil" confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()}
-              notes={[
-                { tone: 'warn', text: 'Yetkili işlemi: bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.' },
-                { tone: 'ok', text: <>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</> }
-              ]} />
-          </div>
-        </>}
+        {section === 'database' && <SettingsDataReset groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>
