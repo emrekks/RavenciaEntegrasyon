@@ -201,14 +201,17 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   1. Panel bağı: ürünün bu bağlantıdaki bütün bağları gönderilen barkod olmalıdır.
   2. PTT AVM okuması: gönderimden hemen önce barkod okunur; PTT AVM o barkodu varyantlı bir ürün altında göstermemelidir.
 
-  Kategori yaprak olmalıdır; marka ve özellik eşlemesi istenmez.
+  Kategori yaprak olmalıdır; marka ve özellik eşlemesi istenmez (PTT AVM'de marka listesi yok; panel markasının adı
+  `UpdateProductsV3`'ün isteğe bağlı `Brand` metin alanında gider).
 - **7. aşama, varyantlı ürün (28 Ekim 2026, birleştirerek gerçek gönderim; canlıda henüz denenmedi):** Varyantlı ürünün PTT AVM karşılığı panelin **model ailesidir**
   (aynı marka ve model kodlu bütün renk kartları). Kart yayınlanınca ailenin bütün etkin varyantları tek `UpdateProductsV3`
   isteğinde hazırlanır (`PttAvmProductPublicationComposer.PlanFamily`):
   - Üst barkod: ailenin bu bağlantıdaki `MarketplaceProductLink.ExternalCode`'u, yoksa model kodu; ikisi farklıysa
     `PTTAVM_PARENT_BARCODE_MISMATCH`. Ailede tek model kodu olmalıdır (`PTTAVM_MODEL_CODE_REQUIRED` / `PTTAVM_MODEL_CODE_MISMATCH`).
-    Ailenin kartları aynı kategoride olmalıdır; ad ve açıklama ailenin ilk kartından, görseller her renkten birer tane önce olmak
-    üzere en çok 8 adet.
+    Ailenin kartları aynı kategoride olmalıdır; ad ve açıklama ailenin ilk kartından, görseller ürün düzeyindedir (`VariantV3`'te görsel
+    yok): her renk kartından en çok 8 (PTT AVM paneli renk başına 8 görsel alıyor), önce her renkten birer tane, sonra her
+    rengin diğerleri, tekrarsız; toplam sınır 8 × renk sayısı (varyantsız üründe 8). Marka, `ProductV3Request`'in isteğe bağlı
+    `Brand` alanında panel markasının adıyla gider (marka yoksa öğe gönderilmez).
   - Her varyant barkod, `Renk`, `Beden`, MAIN stok ve etkin teklif taşır; biri eksikse **bütün gönderim** durur (varyant atlanmaz,
     atlanan varyantı PTT AVM silerdi). Fiyat farkı 0: ailenin satış fiyatı ve KDV oranı tek olmalıdır. En çok 100 varyant; ürün
     düzeyi stok varyantların toplamıdır (en çok 9999).
@@ -240,6 +243,14 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     **tek varyantlı** açtı; iş `PRODUCT_BATCH_CONTRACT_INVALID` ile `MANUAL_REVIEW`'e düştü. Neden: varyant kısmı
     `ePttAVMService` ad alanındaki eski `Variant` tipinin adlarıyla (`Variant{Attributes/VariantAttr{Deger, Tanim}, Miktar,
     VariantBarkod}`) gönderilmişti; DataContract okuyucusu tanımadığı öğeleri sessizce atlar.
+  - **Yayın durumu (28 Ekim 2026, canlı MZ059YNC):** PTT AVM'de onay adımı yok, ürün gönderilince satışta. Varyant barkodu kendi
+    başına ürün olmadığından `SearchBarkod` ile aranınca bulunmaz; kartlar bu yüzden "Onay bekliyor"da kaldı. Artık aile kartının
+    varyantları üst barkodun ürünü üzerinden okunur (`GetFamilyPublicationStatusAsync`; üst barkod bu yayının ürün işinin
+    yükünden): ürün varyantı barkoduyla listeliyorsa (büyük/küçük harf farkı gözetilmez) o, listelemiyorsa varyant barkodu
+    `BarkodKontrol` ile önce yazıldığı gibi sonra küçük harfle sorulur; PTT AVM kodu bu ürüne (aynı `UrunId` ya da üst barkod)
+    bağlarsa varyant ürün aktifse LIVE, pasifse bekliyor; kod tanınmazsa NOT_FOUND (bekler), başka ürüne aitse MANUAL_REVIEW.
+    Varyant bağı PTT AVM'nin tanıdığı yazılışla kurulur. `BarkodKontrol`'ün varyant barkoduna model ürününü döndürdüğü hâlâ
+    canlıda görülecek (worker logu: "PTT AVM family status read").
   - **WSDL ile doğrulandı** (`https://ws.pttavm.com:93/service.svc?singleWsdl`, 28 Ekim 2026): `UpdateProductsV3(items:
     ArrayOfProductV3Request)`, bütün öğeler `http://schemas.datacontract.org/2004/07/ePttAVMService.Model.Requests` ad alanında,
     üyeler alfabetik sırada. `ProductV3Request`: Active, Barcode, BasketMaxQuantity, Brand, CargoProfileId, CatalogBarcode,

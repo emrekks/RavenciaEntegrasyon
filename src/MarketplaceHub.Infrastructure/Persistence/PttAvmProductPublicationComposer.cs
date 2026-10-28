@@ -17,7 +17,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // brand and model code) under the model code, every non-archived variant of every card in one request. PTT AVM
 // deletes the variants a request leaves out, so a variant that cannot be sent stops the whole send (none is skipped)
 // and the adapter compares the request with the variants PTT AVM holds right before the send.
-// The category must be a leaf; PTT AVM has no brand or attribute service, so neither is needed.
+// The category must be a leaf; PTT AVM has no brand or attribute service, so no mapping is needed: the panel brand's
+// name goes in the optional Brand field as text.
 internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfiguration configuration)
 {
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
@@ -118,12 +119,12 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
         var draft = new PttAvmProductPayloadRules.ProductDraft(barcode, title, description, categoryMapping.ExternalId, variant.Sku.Trim(), salePrice, vatRate,
-            PttAvmPriceInventoryRules.Quantity(inventory.Available - offer.SafetyStock), Math.Ceiling(variant.Desi.Value), imageUrls);
+            PttAvmPriceInventoryRules.Quantity(inventory.Available - offer.SafetyStock), Math.Ceiling(variant.Desi.Value), imageUrls, Brand: await BrandNameAsync(tenantId, product.BrandId, cancellationToken));
         return Draft(profile.Id, categoryMapping.ExternalId, draft, [new(variant.Id, variant.Sku.Trim(), barcode)]);
     }
 
     // The whole model family as one PTT AVM product. The lead card (the family's first) gives the name and the
-    // description, as for Shopify; every card's first images come first, then the rest, up to PTT AVM's eight.
+    // description, as for Shopify; every card's first images come first, then the rest, up to eight per colour card.
     private async Task<ServiceResult<ProductPublicationDraft>> BuildFamilyAsync(Guid tenantId, Guid productId, Guid connectionId, Product product, ChannelListingProfile profile, string externalCategoryId,
         IReadOnlyList<Product> members, IReadOnlyList<ProductVariant> familyVariants, CancellationToken cancellationToken)
     {
@@ -180,16 +181,12 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Select(url => url!))).ToList();
-        // PTT AVM's images are the product's: one per colour first, then each card's others.
-        var imageUrls = imagesByMember.Select(urls => urls.FirstOrDefault()).OfType<string>()
-            .Concat(imagesByMember.SelectMany(urls => urls.Skip(1)))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(PttAvmProductPayloadRules.MaxImages)
-            .ToList();
+        // PTT AVM's images are the product's: up to eight per colour card, one per colour first, then each card's others.
+        var imageUrls = PttAvmProductPayloadRules.FamilyImages(imagesByMember, PttAvmProductPayloadRules.ImageLimit(plan.Variants));
         if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", "PTT AVM'ye model ailesini göndermek için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
         var draft = new PttAvmProductPayloadRules.ProductDraft(plan.ParentBarcode, title, description, externalCategoryId, plan.ParentBarcode, plan.Price, plan.VatRate,
-            plan.Variants.Sum(x => x.Quantity), plan.Desi, imageUrls, plan.Variants);
+            plan.Variants.Sum(x => x.Quantity), plan.Desi, imageUrls, plan.Variants, await BrandNameAsync(tenantId, product.BrandId, cancellationToken));
         // This card's job records only this card's variants; the family's other cards have jobs of their own.
         var own = familyVariants.Where(x => x.ProductId == productId).Select(x => new PublicationVariantDraft(x.Id, x.Sku.Trim(), x.Barcode!.Trim())).ToList();
         return Draft(profile.Id, externalCategoryId, draft, own);
@@ -263,6 +260,11 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var variants = rows.Select(row => new PttAvmProductPayloadRules.VariantDraft(row.Barcode!.Trim(), row.Color!.Trim(), row.Size!.Trim(), row.Quantity!.Value)).ToList();
         return (new FamilyPlan(parent, rows[0].SalePrice!.Value, rows[0].VatRate!.Value, Math.Ceiling(rows.Max(row => row.Desi!.Value)), variants), null);
     }
+
+    // The panel brand's name for PTT AVM's optional Brand field (the family shares one brand); null without one.
+    private async Task<string?> BrandNameAsync(Guid tenantId, Guid? brandId, CancellationToken cancellationToken) =>
+        brandId is not { } id ? null
+            : (await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == id).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken))?.Trim() is { Length: > 0 } name ? name : null;
 
     private static ServiceResult<ProductPublicationDraft> Draft(Guid profileId, string externalCategoryId, PttAvmProductPayloadRules.ProductDraft draft, IReadOnlyList<PublicationVariantDraft> variants)
     {

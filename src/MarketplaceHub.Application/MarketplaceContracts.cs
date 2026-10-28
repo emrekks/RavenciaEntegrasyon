@@ -696,6 +696,13 @@ public interface IProductVisualLookupPort
     Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken);
 }
 
+// A marketplace that keeps a model family as one product under the parent barcode (PTT AVM) answers its variants'
+// publication status through that product: one status per barcode asked, under the barcode as asked.
+public interface IProductFamilyStatusPort
+{
+    Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<string> barcodes, CancellationToken cancellationToken);
+}
+
 public interface IInventoryPricePort
 {
     Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken);

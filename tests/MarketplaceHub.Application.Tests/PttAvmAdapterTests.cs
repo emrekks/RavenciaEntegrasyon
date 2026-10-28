@@ -1619,6 +1619,95 @@ public sealed class PttAvmAdapterTests
         Assert.Equal("PTTAVM_REMOTE_VARIANT_UNREADABLE", result.Error!.Code);
     }
 
+    // A variant barcode is not a product of its own on PTT AVM: it is resolved through the parent product, without
+    // regard to case (PTT AVM keeps variant barcodes lower-cased).
+    [Fact]
+    public async Task AFamilyVariantIsLiveWhenItsParentProductListsItWhateverTheCase()
+    {
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer),
+            _ => throw new InvalidOperationException("Unexpected operation.")
+        });
+        var page = (await Client(handler).ReadProductPageAsync(Account(), null, "FK4530", CancellationToken.None)).Value!;
+
+        var product = PttAvmProductPayloadRules.FamilyProduct("fk4530", page.Items)!;
+        var status = PttAvmProductPayloadRules.ListedVariantStatus("fk453001", product)!;
+        Assert.Equal(("fk453001", "APPROVED", "900001", "FK453001"), (status.Barcode, status.Status, status.ExternalProductId, status.ExternalVariantId));
+        Assert.Null(PttAvmProductPayloadRules.ListedVariantStatus("FK453009", product));
+        Assert.Null(PttAvmProductPayloadRules.FamilyProduct("FK45", page.Items));
+        Assert.True(PttAvmProductPayloadRules.ProductActive(product));
+    }
+
+    // The live shape: GetProductsWithVariants lists MZ059YNC's variants without barcodes, so BarkodKontrol names the owner.
+    [Fact]
+    public void AFamilyVariantPttAvmNamesUnderTheParentIsLiveWhileTheProductIsActive()
+    {
+        RemoteCatalogProduct Parent(string active) => new("900777", "MZ059YNC", "Bluz", "", null, null, "385", null, [],
+            [new("MZ059YNC/7101", "MZ059YNC-S", null, "MZ059YNC", new Dictionary<string, string>(), false, 100m, null, 10m, 3m, "TRY", "{}")],
+            $$"""{"Aktif":"{{active}}","Barkod":"MZ059YNC","UrunId":"900777"}""");
+        var ownedById = new RemoteProduct("900777", "mz059ync-01", "MZ059YNC", null, "{}");
+        var ownedByBarcode = new RemoteProduct("1", "mz059ync-01", "mz059ync", null, "{}");
+
+        var live = PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true"), "mz059ync-01", ownedById);
+        Assert.Equal(("MZ059YNC-01", "APPROVED", "900777", "mz059ync-01"), (live.Barcode, live.Status, live.ExternalProductId, live.ExternalVariantId));
+        Assert.Equal("APPROVED", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true"), "mz059ync-01", ownedByBarcode).Status);
+        Assert.Equal("PENDING_APPROVAL", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("false"), "mz059ync-01", ownedById).Status);
+        // Not named by PTT AVM yet, or no parent product: still waiting; named under another product: for the operator.
+        Assert.Equal("NOT_FOUND", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true"), null, null).Status);
+        Assert.Equal("NOT_FOUND", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", null, "MZ059YNC-01", ownedById).Status);
+        Assert.Equal("OWNED_BY_OTHER_PRODUCT", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true"), "MZ059YNC-01", new RemoteProduct("5", "MZ059YNC-01", "OTHER", null, "{}")).Status);
+        Assert.Null(PttAvmProductPayloadRules.ProductActive(Parent("true") with { RawJson = "{}" }));
+        Assert.Equal(["MZ059YNC-01", "mz059ync-01"], PttAvmProductPayloadRules.CodeSpellings(" MZ059YNC-01 "));
+        Assert.Equal(["mz059ync-01"], PttAvmProductPayloadRules.CodeSpellings("mz059ync-01"));
+    }
+
+    [Fact]
+    public void APublicationsParentBarcodeIsReadFromItsProductJob()
+    {
+        var productId = Guid.NewGuid();
+        var family = PttAvmProductPayloadRules.Payload(ProductDraft() with { Barcode = "MZ059YNC", ProductCode = "MZ059YNC", Variants = [new("MZ059YNC-01", "Siyah", "S", 1)] });
+        string Job(Guid product, string hash, string payloadJson) => System.Text.Json.JsonSerializer.Serialize(new ProductPublicationJobPayload(Guid.NewGuid(), product, Guid.NewGuid(), "POLL", hash, payloadJson, "t:1", Now));
+
+        Assert.Equal("MZ059YNC", PttAvmProductPayloadRules.PublicationParentBarcode([Job(Guid.NewGuid(), "H1", family)], productId, "H1"));
+        Assert.Null(PttAvmProductPayloadRules.PublicationParentBarcode([Job(productId, "H2", family)], productId, "H1"));
+        Assert.Null(PttAvmProductPayloadRules.PublicationParentBarcode([Job(productId, "H1", PttAvmProductPayloadRules.Payload(ProductDraft())), "not json"], productId, "H1"));
+    }
+
+    [Fact]
+    public void AFamilySendsUpToEightImagesPerColour()
+    {
+        IReadOnlyList<string> Urls(string colour, int count) => [.. Enumerable.Range(1, count).Select(i => $"https://cdn.example.com/{colour}/{i}.jpg")];
+        var images = PttAvmProductPayloadRules.FamilyImages([Urls("siyah", 10), Urls("beyaz", 2), ["https://cdn.example.com/siyah/1.jpg"]], 24);
+
+        Assert.Equal(10, images.Count);
+        Assert.Equal(["https://cdn.example.com/siyah/1.jpg", "https://cdn.example.com/beyaz/1.jpg", "https://cdn.example.com/siyah/2.jpg"], images.Take(3));
+        Assert.DoesNotContain("https://cdn.example.com/siyah/9.jpg", images);
+        Assert.Equal(8, PttAvmProductPayloadRules.ImageLimit(null));
+        Assert.Equal(16, PttAvmProductPayloadRules.ImageLimit([new("A1", "Siyah", "S", 1), new("A2", "siyah", "M", 1), new("A3", "Beyaz", "S", 1)]));
+
+        var nine = Urls("x", 9);
+        Assert.Null(PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(ProductDraft() with { Images = nine }), out _));
+        var family = ProductDraft() with { Barcode = "MZ059YNC", Images = nine, Variants = [new("MZ059YNC-01", "Siyah", "S", 1), new("MZ059YNC-02", "Beyaz", "S", 1)] };
+        Assert.NotNull(PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(family), out var error));
+        Assert.Null(error);
+    }
+
+    [Fact]
+    public void TheBrandGoesInItsOptionalFieldInSchemaOrder()
+    {
+        var draft = PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(ProductDraft() with { Brand = " Ravencia " }), out var error)!;
+
+        Assert.Null(error);
+        Assert.Equal("Ravencia", draft.Brand);
+        XNamespace ept = PttAvmHttpClient.RequestsNamespace;
+        var request = XElement.Parse($"<root>{PttAvmProductPayloadRules.ItemsXml(draft)}</root>").Elements().Single();
+        Assert.Equal(["Active", "Barcode", "Brand", "CategoryId"], request.Elements().Select(x => x.Name.LocalName).Take(4));
+        Assert.Equal("Ravencia", request.Element(ept + "Brand")!.Value);
+        Assert.Null(PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(ProductDraft()), out _)!.Brand);
+    }
+
     // A model product (barcode = model code) answered without VariantListesi, and its variants from
     // GetProductsWithVariants: one entry in the StokKontrolListesi variant shape, one carrying combinations.
     private const string ModelProductAnswer = """

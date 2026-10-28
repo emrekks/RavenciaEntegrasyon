@@ -639,12 +639,44 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && candidateVariantIds.Contains(x.VariantId))
                 .ToDictionaryAsync(x => x.VariantId, x => x.ExternalId, cancellationToken);
         var remoteByBarcode = new Dictionary<string, RemotePublicationStatus>(StringComparer.OrdinalIgnoreCase);
+        // A PTT AVM model family is one product under the parent barcode; its variant barcodes are not products of
+        // their own, so the card's variants are read together through that product.
+        Dictionary<string, RemotePublicationStatus>? familyStatuses = null;
+        if (isPttAvm && products is IProductFamilyStatusPort familyStatusPort
+            && await PttAvmParentBarcodeAsync(tenantId, connectionId, payload.ProductId, payload.PayloadHash, cancellationToken) is { } parentBarcode)
+        {
+            var waiting = candidates
+                .Where(listing => !ProductApprovalReconciliationPolicy.IsSettledLive(listing.ActualStatus, settledProductId is not null, settledVariantIds.ContainsKey(listing.VariantId)))
+                .Select(listing => approvalKey(listing)!)
+                .ToList();
+            familyStatuses = new Dictionary<string, RemotePublicationStatus>(StringComparer.OrdinalIgnoreCase);
+            if (waiting.Count > 0)
+            {
+                TrackRequest();
+                var familyResult = await familyStatusPort.GetFamilyPublicationStatusAsync(Context(tenantId, connectionId, correlationId, $"product-approval:{profile.Id:N}:{parentBarcode}"), parentBarcode, waiting, cancellationToken);
+                if (!familyResult.IsSuccess)
+                {
+                    TrackResultFailure(familyResult.Error);
+                    var adapterResult = JobExecutionResult.FromAdapterError(familyResult.Error!);
+                    if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
+                    return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", familyResult.Error!.Code, JobExecutionResult.ManualReview(familyResult.Error.Code, familyResult.Error.SafeMessage, familyResult.Error.RemoteRequestId), cancellationToken);
+                }
+                foreach (var status in familyResult.Value!) familyStatuses.TryAdd(status.Barcode, status);
+            }
+        }
         foreach (var listing in candidates)
         {
             var barcode = approvalKey(listing)!;
             if (ProductApprovalReconciliationPolicy.IsSettledLive(listing.ActualStatus, settledProductId is not null, settledVariantIds.TryGetValue(listing.VariantId, out var settledVariantId)))
             {
                 remoteByBarcode.Add(barcode, new RemotePublicationStatus(barcode, "APPROVED", settledProductId, settledVariantId, null, "{}"));
+                continue;
+            }
+            if (familyStatuses is not null)
+            {
+                if (!familyStatuses.TryGetValue(barcode, out var familyStatus))
+                    return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_CONTRACT_INVALID", $"{marketplaceName} ürün durum yanıtı istenen {keyLabel} için sonuç içermiyor."), cancellationToken);
+                remoteByBarcode.Add(barcode, familyStatus);
                 continue;
             }
             TrackRequest();
@@ -1126,6 +1158,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     // The colour cards of the product's model family (same brand and model code), the product itself included.
+    // The parent barcode a PTT AVM publication went out under: the family request of this publication's product job
+    // (the same publication hash). Null for a product sent without variants, or when no such job is found.
+    private async Task<string?> PttAvmParentBarcodeAsync(Guid tenantId, Guid connectionId, Guid productId, string publicationHash, CancellationToken cancellationToken)
+    {
+        var jobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductCreate && x.PayloadJson.Contains(publicationHash))
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => x.PayloadJson)
+            .Take(20)
+            .ToListAsync(cancellationToken);
+        return PttAvmProductPayloadRules.PublicationParentBarcode(jobs, productId, publicationHash);
+    }
+
     private async Task<List<Guid>> FamilyProductIdsAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
     {
         var brandId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.BrandId).SingleOrDefaultAsync(cancellationToken);
