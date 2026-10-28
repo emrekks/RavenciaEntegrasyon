@@ -872,6 +872,67 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(draft.Value.PayloadHash, metafields["payload_hash"]);
     }
 
+    // Hepsiburada, n11 and Shopify take the brand as free text: a name typed for one connection is sent there instead
+    // of the panel brand name; another connection keeps the panel name, and Trendyol (brand list) refuses a typed name.
+    [PostgreSqlFact]
+    public async Task BrandNameMapping_ReplacesThePanelBrandNameOnlyOnItsConnection()
+    {
+        var tenant = NewTenant("brand-name-mapping");
+        var shopify = NewConnection(tenant, "SHOPIFY", writesEnabled: true);
+        var otherShopify = NewConnection(tenant, "SHOPIFY");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var now = DateTimeOffset.UtcNow;
+        var brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Panel Marka", NormalizedName = "PANEL MARKA", IsActive = true, CreatedAt = now, UpdatedAt = now };
+        var (product, variant) = NewVariant(tenant, "BNM-1", "8690000000401");
+        product.BrandId = brand.Id;
+        var asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = "https://cdn.example.com/bnm.jpg", MimeType = "image/jpeg", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = now };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(shopify, otherShopify, trendyol);
+            seed.Brands.Add(brand);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.AddRange(asset, new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, FileAssetId = asset.Id, MediaRole = "GALLERY", SortOrder = 0, Status = "ACTIVE" });
+            seed.InventoryItems.Add(NewInventory(tenant, variant, 3m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, shopify, variant), NewOffer(tenant, otherShopify, variant));
+            seed.ChannelListingProfiles.AddRange(
+                new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, ProductId = product.Id, Enabled = true, DesiredStatus = "DRAFT", ActualStatus = "DRAFT" },
+                new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = otherShopify.Id, ProductId = product.Id, Enabled = true, DesiredStatus = "DRAFT", ActualStatus = "DRAFT" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new ReferenceDataService(db, fixture.TimeProvider);
+        var composer = new ShopifyProductPublicationComposer(db, new ConfigurationBuilder().Build());
+        async Task<string?> Vendor(PlatformConnection connection)
+        {
+            var draft = await composer.BuildAsync(tenant.Id, product.Id, connection.Id, CancellationToken.None);
+            Assert.True(draft.Succeeded, draft.Error?.Message);
+            using var payload = System.Text.Json.JsonDocument.Parse(draft.Value!.PayloadJson);
+            return payload.RootElement.GetProperty("vendor").GetString();
+        }
+
+        Assert.Equal("Panel Marka", await Vendor(shopify));
+        Assert.Equal("BRAND_NAME_MAPPING_UNSUPPORTED", (await service.UpsertBrandNameMappingAsync(tenant.Id, trendyol.Id, brand.Id, null, new("Ravencia"), CancellationToken.None)).Error?.Code);
+        Assert.Equal("BRAND_NAME_REQUIRED", (await service.UpsertBrandNameMappingAsync(tenant.Id, shopify.Id, brand.Id, null, new("   "), CancellationToken.None)).Error?.Code);
+        Assert.Equal("BRAND_NAME_TOO_LONG", (await service.UpsertBrandNameMappingAsync(tenant.Id, shopify.Id, brand.Id, null, new(new string('a', 201)), CancellationToken.None)).Error?.Code);
+        var saved = await service.UpsertBrandNameMappingAsync(tenant.Id, shopify.Id, brand.Id, null, new("  Ravencia Shop  "), CancellationToken.None);
+        Assert.True(saved.Succeeded, saved.Error?.Message);
+        Assert.Equal(("Ravencia Shop", "Panel Marka", 1L), (saved.Value!.Name, saved.Value.BrandName, saved.Value.Version));
+        Assert.Equal("PRECONDITION_REQUIRED", (await service.UpsertBrandNameMappingAsync(tenant.Id, shopify.Id, brand.Id, null, new("Ravencia"), CancellationToken.None)).Error?.Code);
+        Assert.Equal("CONCURRENCY_CONFLICT", (await service.UpsertBrandNameMappingAsync(tenant.Id, shopify.Id, brand.Id, 7, new("Ravencia"), CancellationToken.None)).Error?.Code);
+
+        Assert.Equal("Ravencia Shop", await Vendor(shopify));
+        Assert.Equal("Panel Marka", await Vendor(otherShopify));
+        Assert.Equal("Ravencia Shop", Assert.Single((await service.ListBrandNameMappingsAsync(tenant.Id, shopify.Id, CancellationToken.None)).Value!).Name);
+        Assert.Empty((await service.ListBrandNameMappingsAsync(tenant.Id, otherShopify.Id, CancellationToken.None)).Value!);
+
+        Assert.Equal("CONCURRENCY_CONFLICT", (await service.DeleteBrandNameMappingAsync(tenant.Id, shopify.Id, brand.Id, 7, CancellationToken.None)).Error?.Code);
+        Assert.True((await service.DeleteBrandNameMappingAsync(tenant.Id, shopify.Id, brand.Id, 1, CancellationToken.None)).Succeeded);
+        Assert.Equal("Panel Marka", await Vendor(shopify));
+    }
+
     private static IConfiguration WritesOnConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
 

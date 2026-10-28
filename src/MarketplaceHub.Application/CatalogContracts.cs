@@ -277,6 +277,11 @@ public sealed record MarketplaceNameHintsView(IReadOnlyList<string> AttributeNam
 public sealed record ConnectionAttributeDefaultView(string ExternalAttributeId, string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, DateTimeOffset UpdatedAt, long Version, string? SourceField = null);
 public sealed record UpsertConnectionAttributeDefaultCommand(string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, string? SourceField = null);
 
+// The brand name typed for a panel brand on a connection whose marketplace has no brand list (Hepsiburada, n11,
+// Shopify). Without one the panel brand name is sent.
+public sealed record BrandNameMappingView(Guid LocalId, string BrandName, string Name, DateTimeOffset UpdatedAt, long Version);
+public sealed record UpsertBrandNameMappingCommand(string Name);
+
 // Value mappings to review. SameCategory: one panel value mapped to several marketplace values in
 // one category (only one can be sent). CrossCategory: one panel value mapped to different
 // marketplace values in different categories of the same marketplace attribute.
@@ -293,6 +298,9 @@ public interface IReferenceDataService
     Task<ServiceResult<IReadOnlyList<ConnectionAttributeDefaultView>>> ListAttributeDefaultsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionAttributeDefaultView>> UpsertAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<BrandNameMappingView>>> ListBrandNameMappingsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<BrandNameMappingView>> UpsertBrandNameMappingAsync(Guid tenantId, Guid connectionId, Guid localId, long? expectedVersion, UpsertBrandNameMappingCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<bool>> DeleteBrandNameMappingAsync(Guid tenantId, Guid connectionId, Guid localId, long expectedVersion, CancellationToken cancellationToken);
     // Fills a mapped marketplace category from the decisions made for the connection's other categories.
     Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken);
