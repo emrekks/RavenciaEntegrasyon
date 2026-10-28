@@ -370,27 +370,55 @@ public sealed partial class ShopifyHttpClient(
             }
         }
 
-        var publish = await QueryAsync(shop,
-            "mutation($id:ID!,$input:[PublicationInput!]!){publishablePublish(id:$id,input:$input){publishable{id}userErrors{field message}}}",
-            new { id = productId, input = new[] { new { publicationId } } }, cancellationToken);
-        if (!publish.IsSuccess)
-            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Shopify ürünü oluşturdu ancak Online Store yayını doğrulanamadı. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
-        try
-        {
-            var publishPayload = publish.Value!.RootElement.GetProperty("publishablePublish");
-            if (HasUserErrors(publishPayload, out var publishError))
-                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", $"Shopify ürünü oluşturdu ancak Online Store kanalına yayınlayamadı: {publishError ?? "Shopify neden bildirmedi"}. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
-            var publishedResourceId = TextValue(publishPayload.GetProperty("publishable"), "id");
-            if (!string.Equals(publishedResourceId, productId, StringComparison.Ordinal))
-                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_PUBLISH_CONTRACT_INVALID", "Shopify ürün oluşturuldu ancak Online Store yayın sonucu ürün kimliğiyle eşleşmedi.", HttpStatusCode.BadGateway);
-        }
-        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
-        {
-            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_PUBLISH_CONTRACT_INVALID", "Shopify ürünü oluşturdu ancak Online Store yayın yanıtı doğrulanamadı. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
-        }
+        var publish = await QueryAsync(shop, PublishMutation, new { id = productId, input = new[] { new { publicationId } } }, cancellationToken);
+        if (PublishFailure(publish, productId, handle) is { } publishFailure)
+            return AdapterResult<RemoteOperationRef>.Failure(publishFailure, publish.RateLimit);
 
         var operationId = EncodeCompletedOperation(lines);
         return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRODUCT_CREATE", timeProvider.GetUtcNow()), publish.RateLimit ?? productSet?.RateLimit ?? publicationsResult.RateLimit ?? locationsResult.RateLimit);
+    }
+
+    // publishable is the Publishable interface, which has no id of its own: the product's id is read through the Product
+    // type. Asking publishable{id} fails the whole operation in GraphQL validation, so nothing was ever published (live
+    // 2026-10-27/28: every Shopify publication ended "Online Store yayını doğrulanamadı").
+    internal const string PublishMutation = "mutation($id:ID!,$input:[PublicationInput!]!){publishablePublish(id:$id,input:$input){publishable{... on Product{id}}userErrors{field message}}}";
+
+    // The product is written (created or updated under its handle) by the time the Online Store publication runs, so a
+    // publish that fails leaves no doubt about the product: it is not ambiguous and is never created again. A retry
+    // finds the product by its handle with the same payload hash, skips productSet and repeats only the publication,
+    // which Shopify applies once (publishing an already published product changes nothing).
+    internal const string PublishRetryCode = "SHOPIFY_PRODUCT_PUBLISH_RETRY";
+    internal const string PublishFailedCode = "SHOPIFY_PRODUCT_PUBLISH_FAILED";
+
+    internal static AdapterError? PublishFailure(AdapterResult<JsonDocument> publish, string productId, string handle)
+    {
+        var product = $"Shopify ürünü {productId} (handle {handle}) oluşturuldu/güncellendi";
+        if (!publish.IsSuccess)
+        {
+            var error = publish.Error!;
+            var retry = error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.RateLimit;
+            return new(retry ? AdapterErrorClass.TransientNetwork : AdapterErrorClass.Validation,
+                retry ? PublishRetryCode : PublishFailedCode,
+                $"{product} ancak Online Store yayını yapılamadı: {error.Code}: {error.SafeMessage}. {(retry ? "Yalnızca yayın adımı yeniden denenecek." : "Kartı yeniden yayınlayın; ürün yeniden oluşturulmaz, yalnızca yayın adımı tekrarlanır.")}",
+                error.HttpStatus, error.RetryAfter, error.RemoteRequestId);
+        }
+        try
+        {
+            var payload = publish.Value!.RootElement.GetProperty("publishablePublish");
+            if (HasUserErrors(payload, out var publishError))
+                return new(AdapterErrorClass.Validation, PublishFailedCode,
+                    $"{product} ancak Shopify Online Store yayınını reddetti: {publishError ?? "Shopify neden bildirmedi"}. Sorunu Shopify'da giderip kartı yeniden yayınlayın; ürün yeniden oluşturulmaz.",
+                    (int)HttpStatusCode.UnprocessableEntity, null, null);
+            if (!string.Equals(TextValue(payload.GetProperty("publishable"), "id"), productId, StringComparison.Ordinal))
+                throw new JsonException("The published resource is not the product.");
+            return null;
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return new(AdapterErrorClass.TransientNetwork, PublishRetryCode,
+                $"{product} ancak Online Store yayın yanıtı doğrulanamadı. Yalnızca yayın adımı yeniden denenecek.",
+                (int)HttpStatusCode.BadGateway, null, null);
+        }
     }
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
@@ -416,12 +444,16 @@ public sealed partial class ShopifyHttpClient(
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return CredentialFailure(Fail<RemotePublicationStatus>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         var result = await QueryAsync(shop,
-            "query($query:String!){productVariants(first:10,query:$query){nodes{id sku product{id status}}}}",
+            "query($query:String!){productVariants(first:10,query:$query){nodes{id sku product{id status handle}}}}",
             new { query = $"sku:\"{sku.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\"" }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(result.Error!, result.RateLimit);
         try
         {
             var raw = result.Value!.RootElement.GetProperty("productVariants");
+            if (SkuProducts(sku, raw) is { Count: > 1 } holders)
+                return Fail<RemotePublicationStatus>(AdapterErrorClass.Validation, DuplicateSkuCode,
+                    $"'{sku}' stok kodu Shopify'da birden çok üründe var: {string.Join(", ", holders.Select(holder => $"{holder.Id} (handle {holder.Handle ?? "?"})"))}. Ravencia model ailesinin ürünü ravencia-model- ile başlayan handle'dır; fazlalığı Shopify yönetim panelinden silip durumu yeniden sorgulayın.",
+                    HttpStatusCode.Conflict);
             return AdapterResult<RemotePublicationStatus>.Success(MapSkuPublicationStatus(sku, raw), result.RateLimit);
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
@@ -430,14 +462,27 @@ public sealed partial class ShopifyHttpClient(
         }
     }
 
+    internal const string DuplicateSkuCode = "SHOPIFY_SKU_IN_SEVERAL_PRODUCTS";
+
+    // The search is a prefix-tolerant index lookup; only an exact SKU counts.
+    private static JsonElement[] ExactSkuMatches(string sku, JsonElement productVariants) => productVariants.GetProperty("nodes").EnumerateArray()
+        .Where(variant => string.Equals(TextValue(variant, "sku")?.Trim(), sku, StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+
+    // The products whose variants carry this exact SKU (an earlier one-card product and the family product may both).
+    internal static IReadOnlyList<(string Id, string? Handle)> SkuProducts(string sku, JsonElement productVariants) => ExactSkuMatches(sku, productVariants)
+        .Select(variant => variant.GetProperty("product"))
+        .Select(product => (Id: TextValue(product, "id") ?? "?", Handle: TextValue(product, "handle")))
+        .DistinctBy(product => product.Id, StringComparer.Ordinal)
+        .ToList();
+
     internal static RemotePublicationStatus MapSkuPublicationStatus(string sku, JsonElement productVariants)
     {
-        // The search is a prefix-tolerant index lookup; only an exact SKU counts.
-        var matches = productVariants.GetProperty("nodes").EnumerateArray()
-            .Where(variant => string.Equals(TextValue(variant, "sku")?.Trim(), sku, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        var matches = ExactSkuMatches(sku, productVariants);
         if (matches.Length == 0) return new(sku, "NOT_FOUND", null, null, null, productVariants.GetRawText());
         if (matches.Length > 1) throw new JsonException("Several Shopify variants carry the same SKU.");
+        // A model family is one product: a card is live when its SKUs are variants of an active product, whichever card's
+        // job wrote it.
         var product = matches[0].GetProperty("product");
         var status = string.Equals(TextValue(product, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase) ? "APPROVED" : "PENDING";
         return new(sku, status, TextValue(product, "id"), TextValue(matches[0], "id"), null, matches[0].GetRawText());

@@ -417,6 +417,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var current = await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, payload.ProductId, connectionId, cancellationToken);
                 if (!current.Succeeded || !ShopifyProductPublicationComposer.SameVariantSkus(payload.PayloadJson, current.Value!.PayloadJson))
                     return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste Shopify'a gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
+                // Every colour card's job carries the whole family product: the family is written and published once,
+                // and a card whose family a sibling's job of the same round already sent reads its own SKUs from that send.
+                if (await ShopifyFamilySend.CoveringSendAsync(db, tenantId, connectionId, job.Id, job.CreatedAt, payload, timeProvider.GetUtcNow(), cancellationToken) is { } familySend)
+                {
+                    job.PayloadJson = JsonSerializer.Serialize(payload with { Phase = "POLL", ExternalOperationId = familySend.ExternalOperationId, SubmittedAt = familySend.SubmittedAt });
+                    job.PayloadHash = Hash(job.PayloadJson);
+                    profile.ActualStatus = "SHOPIFY_SUBMITTED";
+                    profile.LastRejectionCode = null;
+                    profile.Version++;
+                    await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken, payload.PayloadHash);
+                    await db.SaveChangesAsync(cancellationToken);
+                    return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "Model ailesi Shopify'a tek ürün olarak gönderildi; bu kartın sonucu aynı gönderimden okunuyor.", TimeSpan.FromSeconds(2), familySend.ExternalOperationId);
+                }
             }
             // A PTT AVM model product carries the whole family too, and UpdateProductsV3 deletes the variants it is not sent.
             var isPttAvmFamily = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && PttAvmProductPayloadRules.IsVariantPayload(payload.PayloadJson);
@@ -452,7 +465,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 TrackResultFailure(submit.Error);
                 var error = submit.Error!;
-                if (error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug)
+                // Shopify wrote the product and only its Online Store publication failed: the outcome is known, and a
+                // retry or resend repeats only the publication.
+                var shopifyPublishOnly = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) && ShopifyFamilySend.IsPublishOnlyFailure(error.Code);
+                if (!shopifyPublishOnly && error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug)
                     return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", AmbiguousCreateSummary(error), error.RemoteRequestId), cancellationToken, payload.PayloadHash);
                 db.ExternalEffectRecords.Remove(effect);
                 await db.SaveChangesAsync(cancellationToken);

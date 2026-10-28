@@ -169,15 +169,90 @@ public sealed class ShopifyFamilyPublicationTests
     [Fact]
     public void ASkuReadsAsMissingLiveOrPendingOnlyByAnExactMatch()
     {
-        using var none = JsonDocument.Parse("""{ "nodes": [ { "id": "v-9", "sku": "MZ-S-L2", "product": { "id": "p-9", "status": "ACTIVE" } } ] }""");
-        using var live = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "mz-s-l", "product": { "id": "p-1", "status": "ACTIVE" } } ] }""");
-        using var draft = JsonDocument.Parse("""{ "nodes": [ { "id": "v-2", "sku": "MZ-S-L", "product": { "id": "p-2", "status": "DRAFT" } } ] }""");
+        using var none = JsonDocument.Parse("""{ "nodes": [ { "id": "v-9", "sku": "MZ-S-L2", "product": { "id": "p-9", "status": "ACTIVE", "publishedAt": "2026-10-28T18:00:00Z" } } ] }""");
+        using var live = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "mz-s-l", "product": { "id": "p-1", "status": "ACTIVE", "publishedAt": "2026-10-28T18:00:00Z" } } ] }""");
+        using var draft = JsonDocument.Parse("""{ "nodes": [ { "id": "v-2", "sku": "MZ-S-L", "product": { "id": "p-2", "status": "DRAFT", "publishedAt": null } } ] }""");
 
         Assert.Equal("NOT_FOUND", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", none.RootElement).Status);
         var approved = ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", live.RootElement);
         Assert.Equal(("APPROVED", "p-1", "v-1"), (approved.Status, approved.ExternalProductId, approved.ExternalVariantId));
         Assert.Equal("PENDING", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", draft.RootElement).Status);
     }
+
+    [Fact]
+    public void ASkuHeldBySeveralProductsNamesEachOfThem()
+    {
+        using var twice = JsonDocument.Parse("""
+        { "nodes": [
+          { "id": "v-1", "sku": "MZ-S-L", "product": { "id": "gid://shopify/Product/1", "handle": "ravencia-01a178cc", "status": "ACTIVE", "publishedAt": null } },
+          { "id": "v-2", "sku": "mz-s-l", "product": { "id": "gid://shopify/Product/2", "handle": "ravencia-model-abc", "status": "ACTIVE", "publishedAt": null } },
+          { "id": "v-3", "sku": "MZ-S-L2", "product": { "id": "gid://shopify/Product/3", "handle": "other", "status": "ACTIVE", "publishedAt": null } } ] }
+        """);
+
+        var holders = ShopifyHttpClient.SkuProducts("MZ-S-L", twice.RootElement);
+
+        Assert.Equal(["gid://shopify/Product/1", "gid://shopify/Product/2"], holders.Select(holder => holder.Id));
+        Assert.Equal(["ravencia-01a178cc", "ravencia-model-abc"], holders.Select(holder => holder.Handle));
+    }
+
+    // publishable is the Publishable interface, which has no id: publishable{id} failed GraphQL validation, so no
+    // Shopify publication ever reached the Online Store (live 2026-10-27/28, 24 jobs).
+    [Fact]
+    public void ThePublicationReadsTheProductIdThroughTheProductType()
+    {
+        Assert.Contains("publishable{... on Product{id}}", ShopifyHttpClient.PublishMutation, StringComparison.Ordinal);
+        Assert.DoesNotContain("publishable{id}", ShopifyHttpClient.PublishMutation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void APublishThatFailsAfterTheProductWasWrittenIsNotAmbiguous()
+    {
+        const string product = "gid://shopify/Product/77";
+        using var published = JsonDocument.Parse("""{ "publishablePublish": { "publishable": { "id": "gid://shopify/Product/77" }, "userErrors": [] } }""");
+        using var refused = JsonDocument.Parse("""{ "publishablePublish": { "publishable": null, "userErrors": [ { "field": ["input"], "message": "Publication does not exist" } ] } }""");
+        using var otherResource = JsonDocument.Parse("""{ "publishablePublish": { "publishable": { "id": "gid://shopify/Product/78" }, "userErrors": [] } }""");
+
+        Assert.Null(ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(published), product, "ravencia-model-x"));
+
+        var rejected = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(refused), product, "ravencia-model-x")!;
+        Assert.Equal((AdapterErrorClass.Validation, ShopifyHttpClient.PublishFailedCode), (rejected.Class, rejected.Code));
+        Assert.Contains(product, rejected.SafeMessage, StringComparison.Ordinal);
+        Assert.Contains("ravencia-model-x", rejected.SafeMessage, StringComparison.Ordinal);
+        Assert.Contains("Publication does not exist", rejected.SafeMessage, StringComparison.Ordinal);
+
+        var denied = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.Validation, "SHOPIFY_GRAPHQL_ERROR", "Field 'id' doesn't exist on type 'Publishable'", 200, null, "req-1")), product, "ravencia-model-x")!;
+        Assert.Equal((AdapterErrorClass.Validation, ShopifyHttpClient.PublishFailedCode, "req-1"), (denied.Class, denied.Code, denied.RemoteRequestId));
+        Assert.Contains("Field 'id' doesn't exist", denied.SafeMessage, StringComparison.Ordinal);
+
+        var timeout = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "SHOPIFY_TIMEOUT", "zaman aşımı", null, null, null)), product, "ravencia-model-x")!;
+        Assert.Equal((AdapterErrorClass.TransientNetwork, ShopifyHttpClient.PublishRetryCode), (timeout.Class, timeout.Code));
+        Assert.Equal(ShopifyHttpClient.PublishRetryCode, ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(otherResource), product, "ravencia-model-x")!.Code);
+
+        Assert.True(ShopifyFamilySend.IsPublishOnlyFailure(rejected.Code));
+        Assert.True(ShopifyFamilySend.IsPublishOnlyFailure(timeout.Code));
+        Assert.False(ShopifyFamilySend.IsPublishOnlyFailure("SHOPIFY_PRODUCT_CREATE_CONTRACT_INVALID"));
+    }
+
+    [Fact]
+    public void ACardWhoseFamilyASiblingAlreadySentFollowsThatSend()
+    {
+        var now = new DateTimeOffset(2026, 10, 28, 17, 52, 40, TimeSpan.Zero);
+        var own = FamilyJob("SUBMIT", "HASH-A", null, null);
+        var sibling = FamilyJob("POLL", "hash-a", "shopify-completed:abc", now.AddSeconds(-8));
+
+        Assert.Same(sibling, ShopifyFamilySend.Covering(own, [sibling], now));
+        // Another content, a send not answered yet, another kind of operation or one past the window is not followed.
+        Assert.Null(ShopifyFamilySend.Covering(own, [FamilyJob("POLL", "HASH-B", "shopify-completed:abc", now.AddSeconds(-8))], now));
+        Assert.Null(ShopifyFamilySend.Covering(own, [FamilyJob("SUBMIT", "HASH-A", null, null)], now));
+        Assert.Null(ShopifyFamilySend.Covering(own, [FamilyJob("POLL", "HASH-A", "t:trk-1", now.AddSeconds(-8))], now));
+        Assert.Null(ShopifyFamilySend.Covering(own, [FamilyJob("POLL", "HASH-A", "shopify-completed:abc", now.AddHours(-5))], now));
+        // The latest send wins.
+        var later = FamilyJob("POLL", "HASH-A", "shopify-completed:def", now.AddSeconds(-2));
+        Assert.Same(later, ShopifyFamilySend.Covering(own, [sibling, later], now));
+    }
+
+    private static ProductPublicationJobPayload FamilyJob(string phase, string hash, string? operation, DateTimeOffset? submittedAt) =>
+        new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), phase, hash, """{"handle":"ravencia-model-a"}""", operation, submittedAt);
 
     [Fact]
     public void AnUncertainCreateKeepsTheMarketplacesOwnCodeAndMessage()

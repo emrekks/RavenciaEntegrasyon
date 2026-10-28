@@ -765,6 +765,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const client = useQueryClient()
   const platformName = publishPlatformName(card.connection.platformCode)
   const statusKey = ['publication-status', productId, card.connection.id]
+  // The other colour cards of the family (same model code): the card stays selectable while any of them is not live
+  // here, and Yayınla then sends only those (live or in-progress cards are skipped).
+  const otherFamilyIds = (familyProductIds ?? []).filter(id => id !== productId)
   const publication = useQuery({
     queryKey: statusKey,
     queryFn: () => hubApi<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
@@ -785,7 +788,10 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       })
     },
     onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: statusKey })
+      // The refresh checks every colour card of the family: their statuses are read again too, not only this card's
+      // (live 2026-10-28: all eight MZ054YNC cards LIVE on the server, the card showed "1/8 renk" from cached siblings).
+      await Promise.all([statusKey, ...otherFamilyIds.map(id => ['publication-status', id, card.connection.id])]
+        .map(queryKey => client.invalidateQueries({ queryKey })))
       onFeedback({ title: 'Durum Sorgulanıyor', message: publicationRefreshMessage(platformName, card.connection.platformCode, (familyProductIds ?? []).filter(id => id !== productId).length + 1), kind: 'info' })
     },
     onError: reason => onFeedback({ title: 'Durum Sorgulanamadı', message: `${platformName}: yayın durumu sorgulanamadı — ${reason instanceof Error ? reason.message : 'bilinmeyen hata.'}`, kind: 'error', persistent: true })
@@ -799,14 +805,14 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       ? 'Yayın durumu alınamadı'
       : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus, card.connection.platformCode)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
-  // The other colour cards of the family (same model code): the card stays selectable while any of them is not live
-  // here, and Yayınla then sends only those (live or in-progress cards are skipped).
-  const otherFamilyIds = (familyProductIds ?? []).filter(id => id !== productId)
   const familyStatuses = useQueries({
     queries: otherFamilyIds.map(id => ({
       queryKey: ['publication-status', id, card.connection.id],
       queryFn: () => hubApi<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
       enabled: card.mode === 'PUBLISH',
+      // A sibling's own send or status check is followed until it ends, like this card's.
+      refetchInterval: (query: { state: { data?: PublicationStatus } }) => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
+      refetchIntervalInBackground: true,
       retry: false,
       staleTime: 0
     }))
