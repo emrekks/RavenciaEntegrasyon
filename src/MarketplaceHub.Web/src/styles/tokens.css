@@ -68,6 +68,8 @@
   --rv-shadow-sm: 0 1px 3px rgb(0 0 0 / 8%);
   --rv-shadow-md: 0 8px 20px rgb(0 0 0 / 16%);
   --rv-shadow-lg: 0 12px 32px rgb(0 0 0 / 22%);
+  --rv-shadow-popover: var(--rv-shadow-md);
+  --rv-shadow-modal: var(--rv-shadow-lg);
   /* The one dimmed layer behind windows and drawers. */
   --rv-color-backdrop: rgb(5 16 29 / 68%);
   --rv-duration-fast: 160ms;

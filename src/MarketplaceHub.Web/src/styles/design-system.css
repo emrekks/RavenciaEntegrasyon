@@ -251,7 +251,7 @@
   .page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--rv-space-6); margin-bottom: var(--rv-space-6); padding-bottom: var(--rv-space-5); border-bottom: 1px solid var(--rv-color-border); }
   .page-heading > div:first-child { min-width: 0; }
   .page-heading .lede { max-width: 760px; margin: 0; }
-  .eyebrow { margin: 0 0 var(--rv-space-2); color: var(--rv-color-primary); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  .eyebrow { margin: 0 0 var(--rv-space-1); color: var(--rv-color-subtle); font-size: 13px; font-weight: 500; letter-spacing: 0; }
   .lede { color: var(--rv-color-muted); font-size: var(--rv-font-size-md); }
   .panel { min-width: 0; padding: var(--rv-space-6); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   .content > .panel, .content > .grid, .content > .split, .content > .metrics, .content > .data-table, .content > .table-wrap { margin-top: var(--rv-space-4); }
@@ -867,7 +867,7 @@
   .variant-table-editor { overflow-x: auto; padding: 0; }
   .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px 184px; min-width: 1286px; align-items: center; }
 .variant-table-head > *, .variant-table-row > * { grid-row: 1; }
-  .variant-table-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-xs); font-weight: 800; text-transform: uppercase; }
+  .variant-table-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-xs); font-weight: 500; }
   .variant-table-head > *, .variant-table-row > * { min-width: 0; margin: 0; padding: var(--rv-space-2); }
   .variant-table-row { min-height: 62px; border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-row:last-child { border-bottom: 0; }
@@ -6742,11 +6742,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   padding: 40px 24px;
 }
 
-/* Table headers: Title Case labels that all share one color and weight. */
+/* Table headers: one colour and weight (the labels are written in Title Case in the source). */
 .app-shell.stitch-shell main :is(.invoice-reference-head, .order-reference-head, .return-reference-head) :is(strong, .order-column-filter-label) {
   color: var(--rv-color-ink);
   font-weight: 500;
-  text-transform: capitalize;
   letter-spacing: 0;
 }
 
@@ -6790,8 +6789,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   font-size: 13px; font-weight: 500;
 }
 .app-shell.stitch-shell main .invoice-reference-filters > label:not(.invoice-reference-search):not(.invoice-reference-sort) { font-size: 13px; }
-/* Headings and captions always start every word with a capital (the page language is Turkish, so İ and ı follow along). */
-h1, h2, h3, h4, :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters, .jobs-reference-filter-panel, .appearance-settings-grid) label, .date-range-picker-label, .platform-multi-select-label, .invoice-sort-caption, .orders-control-label, .invoice-upload-field > span, .mapping-side-field > span { text-transform: capitalize; }
 .app-shell.stitch-shell main .invoice-reference-filters > .invoice-reference-search > span:first-child { color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
 
 /* Passive / hidden integration cards: quiet, single-surface layout; the status pill and one muted line carry the state. */
@@ -6899,11 +6896,6 @@ h1, h2, h3, h4, :is(.orders-control-bar, .invoice-reference-filters, .return-ref
   }
 }
 
-/* Title Case everywhere a label is a title: buttons, tabs, menu items, dropdown options, navigation
-   and card headings start every word with a capital (lang="tr", so i becomes İ and ı becomes I).
-   Data that must show exactly as stored (codes, product images, prices, option values) is excluded. */
-:is(button, [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], summary, legend, option, select, .nav-label, .reference-integration-private-state strong, .attribute-variant-action > div > strong, .editor-section-title h2):not(.technical-text, code, kbd, samp, .product-image-button, .clickable-cell, .order-number-copy, .option-chip, .reference-menu-trigger) { text-transform: capitalize; }
-:is(button, select, option) :is(code, .technical-text, kbd) { text-transform: none; }
 
 /* Connection settings drawer: calm hierarchy — muted kickers, one surface per section, key facts as a hairline-divided row. */
 .integration-settings-modal .eyebrow { color: var(--rv-color-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
