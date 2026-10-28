@@ -106,8 +106,14 @@ function forPlatform(label: string, platformCode?: string | null) {
   return platform ? label.replaceAll("Trendyol'a", platform.dative).replaceAll('Trendyol', platform.name) : label
 }
 
+// PTT AVM has no approval step: a sent product goes live at once, so its wait is our own check of PTT AVM.
+export function isPttAvmChecking(platformCode?: string | null, actualStatus?: string | null) {
+  return platformCode?.trim().toUpperCase() === 'PTTAVM' && ['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING'].includes(actualStatus?.trim().toUpperCase() ?? '')
+}
+
 export function publicationStatusLabel(actualStatus?: string | null, lastJobStatus?: string | null, platformCode?: string | null) {
   const status = actualStatus?.trim().toUpperCase() ?? ''
+  if (isPttAvmChecking(platformCode, status)) return 'Kontrol ediliyor'
   if (status && status !== 'UNKNOWN') return forPlatform(publicationLabels[status] ?? statusLabel(status), platformCode)
 
   const jobStatus = lastJobStatus?.trim().toUpperCase() ?? ''

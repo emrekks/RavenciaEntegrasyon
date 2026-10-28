@@ -8,6 +8,8 @@ describe('product publication status', () => {
     expect(publicationStatusLabel('BATCH_SUBMITTED', null, 'PTTAVM')).toBe("PttAVM'ye gönderildi")
     expect(publicationStatusLabel('BATCH_IN_PROGRESS', null, 'PAZARAMA')).toBe('Pazarama kontrol ediyor')
     expect(publicationStatusLabel('BATCH_SUBMITTED', null, 'TRENDYOL')).toBe("Trendyol'a gönderildi")
+    expect(publicationStatusLabel('APPROVAL_PENDING', null, 'PTTAVM')).toBe('Kontrol ediliyor')
+    expect(publicationStatusLabel('APPROVAL_PENDING', null, 'PAZARAMA')).toBe('Onay bekliyor')
     expect(publicationStatusLabel('IMPORT_SUBMITTED')).toBe("Hepsiburada'ya gönderildi")
     expect(isPublicationStatusPending('IMPORT_SUBMITTED')).toBe(true)
     expect(publicationStatusLabel('UNKNOWN')).toBe('Henüz yayınlanmadı')
