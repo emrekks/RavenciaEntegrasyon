@@ -75,7 +75,16 @@ public static class ConnectionReferencePlan
         var mappedQuery = db.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED");
         if (onlyCategories is not null) mappedQuery = mappedQuery.Where(x => onlyCategories.Contains(x.ExternalId));
         var mapped = (await mappedQuery.Select(x => x.ExternalId).Distinct().ToListAsync(cancellationToken))
-            .Where(x => !string.IsNullOrWhiteSpace(x)).Order(StringComparer.Ordinal).ToList();
+            .Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        if (mapped.Count == 0) return [];
+        // A field read is refused for a category that is no longer an active leaf of the current tree; none is queued.
+        mapped = (await db.ReferenceItems.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.IsLeaf && x.IsActive && mapped.Contains(x.ExternalId)
+                    && db.ReferenceSnapshots.Any(snapshot => snapshot.TenantId == tenantId && snapshot.Id == x.SnapshotId && snapshot.IsCurrent && snapshot.ScopeExternalId == ""))
+                .Select(x => x.ExternalId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+            .Order(StringComparer.Ordinal).ToList();
         if (mapped.Count == 0) return [];
 
         var attributeSnapshots = await db.ReferenceSnapshots.AsNoTracking()
