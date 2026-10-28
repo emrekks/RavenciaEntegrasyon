@@ -271,7 +271,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
       expect(container.querySelector<HTMLInputElement>(`[aria-label$="#${item.orderNumber} siparişini seç"]`)?.checked).toBe(true)
     }
     expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('3 sipariş seçildi')
-    expect(button('Siparişleri gizle').querySelector('.ui-icon-eyeOff')).not.toBeNull()
+    expect(button('Siparişleri Gizle').querySelector('.ui-icon-eyeOff')).not.toBeNull()
   })
 
   it('shows the all invoices tab and requests unhidden invoice records', async () => {
@@ -303,12 +303,12 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())
     await settle()
-    act(() => button('Fatura durumunu güncelle').click())
+    act(() => button('Fatura Durumunu Güncelle').click())
     await settle()
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Fatura dosyası yüklenmez')
     const status = container.querySelector<HTMLSelectElement>('[aria-label="Yeni fatura durumu"]')!
     act(() => { status.value = 'UPLOADED'; status.dispatchEvent(new Event('change', { bubbles: true })) })
-    act(() => button('2 siparişi güncelle').click())
+    act(() => button('2 Siparişi Güncelle').click())
     await settle()
 
     expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1', 'shopify-package-2'] }])

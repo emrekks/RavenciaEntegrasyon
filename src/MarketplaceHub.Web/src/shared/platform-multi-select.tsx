@@ -99,7 +99,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
   }
 
   const menuContent = open && <div ref={menu} className={`platform-multi-select-menu${compact ? ' is-compact' : alignStart ? ' is-start' : ''}`} id={`${id}-menu`} role="group" aria-labelledby={`${id}-label`} style={compact ? { position: 'fixed', ...(compactMenuPosition ?? {}) } : undefined}>
-    <div className="platform-multi-select-menu-header"><strong>Platformlar</strong><button type="button" onClick={() => onChange(selectedOptions.length ? [] : options.map(option => option.value))}>{selectedOptions.length ? 'Tümünü kaldır' : 'Tümünü seç'}</button></div>
+    <div className="platform-multi-select-menu-header"><strong>Platformlar</strong><button type="button" onClick={() => onChange(selectedOptions.length ? [] : options.map(option => option.value))}>{selectedOptions.length ? 'Tümünü Kaldır' : 'Tümünü Seç'}</button></div>
     {options.map(option => <label className="platform-multi-select-option" key={option.value}>
       <input type="checkbox" checked={Boolean(selectedCodes?.includes(option.value))} onChange={event => toggleOption(option.value, event.target.checked)} />
       <span>{option.label}</span>

@@ -16,7 +16,7 @@
 .cs-workspace .cs-grow { flex: 1; }
 .cs-workspace .cs-title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .cs-workspace .cs-tags-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.cs-workspace .cs-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; text-transform: capitalize; }
+.cs-workspace .cs-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .cs-workspace .cs-tag.is-on { color: var(--rv-color-ink); }
 .cs-workspace .cs-tag:not(:has(.cm-glyph)) { padding-left: 8px; }
 .cs-workspace .cs-tag .cm-glyph { width: 14px; height: 14px; color: var(--rv-color-subtle); }

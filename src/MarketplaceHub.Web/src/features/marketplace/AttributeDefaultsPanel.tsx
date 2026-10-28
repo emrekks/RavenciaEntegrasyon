@@ -115,9 +115,9 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
           <label>
             <span>Özellik</span>
             <select value={attributeId} onChange={event => { setAttributeId(event.target.value); setSearch(''); setValueId(''); setCustomValue('') }}>
-              <option value="">Özellik seçin…</option>
-              {requiredCandidates.length > 0 && <optgroup label="Zorunlu alanlar">{requiredCandidates.map(item => <option key={item.externalId} value={item.externalId}>{item.name}</option>)}</optgroup>}
-              {otherCandidates.length > 0 && <optgroup label="Diğer alanlar">{otherCandidates.map(item => <option key={item.externalId} value={item.externalId}>{item.name}</option>)}</optgroup>}
+              <option value="">Özellik Seçin…</option>
+              {requiredCandidates.length > 0 && <optgroup label="Zorunlu Alanlar">{requiredCandidates.map(item => <option key={item.externalId} value={item.externalId}>{item.name}</option>)}</optgroup>}
+              {otherCandidates.length > 0 && <optgroup label="Diğer Alanlar">{otherCandidates.map(item => <option key={item.externalId} value={item.externalId}>{item.name}</option>)}</optgroup>}
             </select>
           </label>
           {selected && freeText && <label>

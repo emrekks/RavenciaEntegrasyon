@@ -59,9 +59,18 @@ export function RrIcon({ name, size, className, style }: { name: IconName; size?
   return <svg className={['rr-ico', className].filter(Boolean).join(' ')} style={style} width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths}</svg>
 }
 
+// Conjunctions and particles stay lower case inside a title ("Fiyat ve Stok", "Gönderilsin mi?").
+const titleSmallWords = new Set(['ve', 'ile', 'veya', 'ya', 'da', 'de', 'ki', 'mi', 'mı', 'mu', 'mü', 'için'])
+
 // Words in title case, Turkish rules (i → İ).
 export function titleTr(value: string) {
-  return value.split(/(\s+)/).map(part => part.trim() ? part.charAt(0).toLocaleUpperCase('tr-TR') + part.slice(1) : part).join('')
+  let first = true
+  return value.split(/(\s+)/).map(part => {
+    if (!part.trim()) return part
+    const keepSmall = !first && titleSmallWords.has(part.replace(/[?!.,…]+$/, ''))
+    first = false
+    return keepSmall ? part : part.charAt(0).toLocaleUpperCase('tr-TR') + part.slice(1)
+  }).join('')
 }
 
 // Progress ring: how far the return (or its invoice) has come, coloured by its state.

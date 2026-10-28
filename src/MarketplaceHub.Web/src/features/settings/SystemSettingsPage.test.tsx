@@ -187,7 +187,7 @@ describe('SystemSettingsPage', () => {
     await renderPage('/settings?tab=designer')
     const address = container.querySelector('.preview-content-address')!
     const texts = Array.from(address.children).map(child => child.textContent)
-    expect(texts).toEqual(['Teslimat adresi', 'Alıcı adıFEHİME MAT', 'KARAKÖPRÜ / ŞANLIURFA'])
+    expect(texts).toEqual(['Teslimat Adresi', 'Alıcı AdıFEHİME MAT', 'KARAKÖPRÜ / ŞANLIURFA'])
   })
 
   it('label designer: Tab selects a block, the arrow keys move it 1% (Shift 5%), the drag handles stay out of the Tab order', async () => {

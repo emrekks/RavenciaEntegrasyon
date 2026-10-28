@@ -9,7 +9,7 @@ function monthStart(value: string) { const date = value ? new Date(`${value}T12:
 function firstShownMonth(value: string) { const start = monthStart(value); const now = new Date(); const latest = new Date(now.getFullYear(), now.getMonth() - 1, 1); return start > latest ? latest : start }
 
 // placeholder, icon and chevron let a page draw the trigger in its own style (the returns page uses the proposal's icons).
-export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı', className, placeholder, icon, chevron }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string; placeholder?: string; icon?: ReactNode; chevron?: ReactNode }) {
+export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı', className, placeholder, icon, chevron }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string; placeholder?: string; icon?: ReactNode; chevron?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [month, setMonth] = useState(() => firstShownMonth(from))
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(null)

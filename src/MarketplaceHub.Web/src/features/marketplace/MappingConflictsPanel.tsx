@@ -28,7 +28,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
   async function keep(conflict: Conflict, kept: ConflictOption) {
     const others = conflict.options.filter(item => item.externalId !== kept.externalId)
     const confirmed = await confirm({
-      title: 'Diğer eşlemeler kaldırılsın mı?',
+      title: 'Diğer Eşlemeler Kaldırılsın mı?',
       message: `“${conflict.localValueName}” (${conflict.categoryName} · ${conflict.attributeName}) için yalnızca “${kept.name}” kalacak; ${others.map(option => `“${option.name}”`).join(', ')} bu kategoriden kaldırılacak.`,
       confirmLabel: 'Kaldır ve Bunu Tut',
       destructive: true

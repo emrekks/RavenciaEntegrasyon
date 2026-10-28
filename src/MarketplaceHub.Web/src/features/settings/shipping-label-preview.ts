@@ -12,7 +12,7 @@ export type ShippingPreviewPart =
   | { type: 'field'; field: ShippingLabelField }
   | { type: 'lines'; field: 'address' | 'senderAddress' }
 
-export const addressBlockTitle = 'Teslimat adresi'
+export const addressBlockTitle = 'Teslimat Adresi'
 
 function fieldPart(field: ShippingLabelField): ShippingPreviewPart {
   return field === 'address' || field === 'senderAddress' ? { type: 'lines', field } : { type: 'field', field }

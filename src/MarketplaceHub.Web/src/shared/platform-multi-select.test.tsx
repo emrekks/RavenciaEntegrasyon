@@ -36,7 +36,7 @@ describe('PlatformMultiSelect', () => {
     expect(onChange).toHaveBeenLastCalledWith(['HEPSIBURADA', 'SHOPIFY'])
 
     act(() => root.render(<PlatformMultiSelect label="Platformlar" options={options} selectedCodes={['HEPSIBURADA', 'SHOPIFY']} onChange={onChange} />))
-    expect(container.querySelector('.platform-multi-select-menu-header button')?.textContent).toBe('Tümünü kaldır')
+    expect(container.querySelector('.platform-multi-select-menu-header button')?.textContent).toBe('Tümünü Kaldır')
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('.platform-multi-select-option input')).map(input => input.checked)).toEqual([true, true])
 
     act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-menu-header button')?.click())
@@ -44,7 +44,7 @@ describe('PlatformMultiSelect', () => {
 
     // A partial selection is cleared first; "select all" appears only when nothing is selected.
     act(() => root.render(<PlatformMultiSelect label="Platformlar" options={options} selectedCodes={['HEPSIBURADA']} onChange={onChange} />))
-    expect(container.querySelector('.platform-multi-select-menu-header button')?.textContent).toBe('Tümünü kaldır')
+    expect(container.querySelector('.platform-multi-select-menu-header button')?.textContent).toBe('Tümünü Kaldır')
     act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-menu-header button')?.click())
     expect(onChange).toHaveBeenLastCalledWith([])
   })

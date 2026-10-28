@@ -171,7 +171,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       <div className="rr-dgrid">
         <label className="rr-fld"><small>Ret Nedeni</small>
           <select className="rr-in" value={reasonId} onChange={event => setReasonId(event.target.value)} disabled={running || reasons.isLoading}>
-            <option value="">{reasons.isLoading ? 'Nedenler yükleniyor…' : 'Ret nedeni seçin'}</option>
+            <option value="">{reasons.isLoading ? 'Nedenler Yükleniyor…' : 'Ret Nedeni Seçin'}</option>
             {usableReasons.map(reason => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
           </select>
         </label>

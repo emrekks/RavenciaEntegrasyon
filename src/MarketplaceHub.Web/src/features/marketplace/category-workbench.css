@@ -192,7 +192,6 @@
 
 /* Modal title in Title Case like other titles, with a calm two-line head. */
 .workspace-modal.mapping-advanced-modal > header { padding: 18px 24px 16px; }
-.workspace-modal.mapping-advanced-modal > header h2 { text-transform: capitalize; }
 .workspace-modal.mapping-advanced-modal > header p { margin-top: 4px; }
 
 /* Category actions: one line, no clipping, first and last button on the row's edges. */

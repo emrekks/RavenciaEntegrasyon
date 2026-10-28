@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { ShippingLabelBlock } from '../shipping'
 import { shippingLabelBlockParts } from './shipping-label-preview'
 
-const block = (patch: Partial<ShippingLabelBlock>): ShippingLabelBlock => ({ id: 'b', kind: 'address', title: 'Teslimat adresi', fields: ['customerName', 'address'], align: 'left', text: '', ...patch })
+const block = (patch: Partial<ShippingLabelBlock>): ShippingLabelBlock => ({ id: 'b', kind: 'address', title: 'Teslimat Adresi', fields: ['customerName', 'address'], align: 'left', text: '', ...patch })
 
 describe('label designer preview follows the print rules', () => {
   it('shows the address block as title, recipient name, then the address lines', () => {
     expect(shippingLabelBlockParts(block({ fields: ['address', 'customerName'] }), { showCustomerPhone: true })).toEqual([
-      { type: 'title', text: 'Teslimat adresi' },
+      { type: 'title', text: 'Teslimat Adresi' },
       { type: 'field', field: 'customerName' },
       { type: 'lines', field: 'address' }
     ])

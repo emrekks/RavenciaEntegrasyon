@@ -41,5 +41,5 @@ restoreQuerySnapshot(queryClient)
 persistQuerySnapshot(queryClient)
 // A data router (one catch-all route; App keeps its own <Routes>) so screens can hold back in-app navigation while
 // they have unsaved edits (useBlocker).
-const router = createBrowserRouter([{ path: '*', element: <ErrorBoundary title="Panel açılamadı"><App /></ErrorBoundary> }])
+const router = createBrowserRouter([{ path: '*', element: <ErrorBoundary title="Panel Açılamadı"><App /></ErrorBoundary> }])
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider></StrictMode>)

@@ -321,7 +321,7 @@ function SortHeader({ label, sort, filter, onFilter }: { label: string; sort: Ta
   </th>
 }
 
-const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. Fiyat Aralığı` : bulk.kind === 'amount' ? 'En yüksek kâr tutarı' : 'En yüksek kâr oranı'
+const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. Fiyat Aralığı` : bulk.kind === 'amount' ? 'En Yüksek Kâr Tutarı' : 'En Yüksek Kâr Oranı'
 
 // Toplu Seçim: a column (a band, or the band leaving the most money or share), then a criterion on its profit (its share
 // of the cost or its amount) above or below a value, and the buttons that apply it, take that column's picks back or
@@ -361,14 +361,14 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
         <select value={column} onChange={event => setColumn(event.target.value)}>
           <option value="">Kolon Seçimi</option>
           {tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
-          <option value="amount">En yüksek kâr tutarı</option><option value="rate">En yüksek kâr oranı</option>
+          <option value="amount">En Yüksek Kâr Tutarı</option><option value="rate">En Yüksek Kâr Oranı</option>
         </select>
       </label>
       {column !== '' && <>
       <hr />
       <label><span>Ölçüt</span>
         <select value={criterion} onChange={event => setCriterion(event.target.value as '' | 'rate' | 'amount')}>
-          <option value="">Koşulsuz, tüm ürünler</option><option value="rate">Kâr / Zarar Oranına Göre (%)</option><option value="amount">Kâr / Zarar Tutarına Göre (₺)</option>
+          <option value="">Koşulsuz, Tüm Ürünler</option><option value="rate">Kâr / Zarar Oranına Göre (%)</option><option value="amount">Kâr / Zarar Tutarına Göre (₺)</option>
         </select>
       </label>
       <label><span>Karşılaştırma</span>

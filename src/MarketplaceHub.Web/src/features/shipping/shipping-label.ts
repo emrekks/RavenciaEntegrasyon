@@ -16,23 +16,23 @@ export type ShippingLabelBlock = {
 }
 
 export const shippingLabelBlockCatalog: Array<{ kind: ShippingLabelBlockKind; label: string; description: string; fields: ShippingLabelField[] }> = [
-  { kind: 'trackingBarcode', label: 'Takip barkodu', description: 'Takip numarası ve barkod', fields: ['trackingNumber'] },
-  { kind: 'address', label: 'Teslimat adresi', description: 'Alıcı ve teslimat adresi', fields: ['customerName', 'address'] },
-  { kind: 'orderInfo', label: 'Paket / sipariş bilgileri', description: 'Paket, sipariş ve iletişim bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'] },
-  { kind: 'packageBarcode', label: 'Paket barkodu', description: 'Paket numarası barkodu', fields: ['packageNumber'] },
-  { kind: 'sender', label: 'Gönderici ve kargo bilgileri', description: 'Gönderici, adres ve kargo firması', fields: ['cargoProvider', 'senderName', 'senderAddress'] },
-  { kind: 'custom', label: 'Özel içerik bloğu', description: 'Elle yazılan başlık ve metin', fields: [] }
+  { kind: 'trackingBarcode', label: 'Takip Barkodu', description: 'Takip numarası ve barkod', fields: ['trackingNumber'] },
+  { kind: 'address', label: 'Teslimat Adresi', description: 'Alıcı ve teslimat adresi', fields: ['customerName', 'address'] },
+  { kind: 'orderInfo', label: 'Paket / Sipariş Bilgileri', description: 'Paket, sipariş ve iletişim bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'] },
+  { kind: 'packageBarcode', label: 'Paket Barkodu', description: 'Paket numarası barkodu', fields: ['packageNumber'] },
+  { kind: 'sender', label: 'Gönderici ve Kargo Bilgileri', description: 'Gönderici, adres ve kargo firması', fields: ['cargoProvider', 'senderName', 'senderAddress'] },
+  { kind: 'custom', label: 'Özel İçerik Bloğu', description: 'Elle yazılan başlık ve metin', fields: [] }
 ]
 
 export const shippingLabelFields: Array<{ id: ShippingLabelField; label: string }> = [
-  { id: 'trackingNumber', label: 'Takip numarası' },
-  { id: 'packageNumber', label: 'Paket numarası' },
-  { id: 'orderNumber', label: 'Sipariş numarası' },
-  { id: 'customerName', label: 'Alıcı adı' },
-  { id: 'address', label: 'Teslimat adresi' },
-  { id: 'cargoProvider', label: 'Kargo firması' },
-  { id: 'senderName', label: 'Gönderici adı' },
-  { id: 'senderAddress', label: 'Gönderici adresi' },
+  { id: 'trackingNumber', label: 'Takip Numarası' },
+  { id: 'packageNumber', label: 'Paket Numarası' },
+  { id: 'orderNumber', label: 'Sipariş Numarası' },
+  { id: 'customerName', label: 'Alıcı Adı' },
+  { id: 'address', label: 'Teslimat Adresi' },
+  { id: 'cargoProvider', label: 'Kargo Firması' },
+  { id: 'senderName', label: 'Gönderici Adı' },
+  { id: 'senderAddress', label: 'Gönderici Adresi' },
   { id: 'customerEmail', label: 'Müşteri e-postası' }
 ]
 
@@ -72,11 +72,11 @@ export function code128Bars(value: string): boolean[] {
 }
 
 const defaultLayout: ShippingLabelBlock[] = [
-  { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip barkodu', fields: ['trackingNumber'], align: 'center', text: '', position: { x: 8, y: 5, width: 84, height: 18 } },
-  { id: 'address', kind: 'address', title: 'Teslimat adresi', fields: ['customerName', 'address'], align: 'left', text: '', position: { x: 8, y: 26, width: 84, height: 27 } },
-  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / sipariş bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'], align: 'left', text: '', position: { x: 8, y: 57, width: 84, height: 14 } },
-  { id: 'packageBarcode', kind: 'packageBarcode', title: 'Paket barkodu', fields: ['packageNumber'], align: 'center', text: '', position: { x: 8, y: 74, width: 84, height: 13 } },
-  { id: 'sender', kind: 'sender', title: 'Gönderici ve kargo bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], align: 'left', text: '', position: { x: 8, y: 90, width: 84, height: 8 } }
+  { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '', position: { x: 8, y: 5, width: 84, height: 18 } },
+  { id: 'address', kind: 'address', title: 'Teslimat Adresi', fields: ['customerName', 'address'], align: 'left', text: '', position: { x: 8, y: 26, width: 84, height: 27 } },
+  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / Sipariş Bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'], align: 'left', text: '', position: { x: 8, y: 57, width: 84, height: 14 } },
+  { id: 'packageBarcode', kind: 'packageBarcode', title: 'Paket Barkodu', fields: ['packageNumber'], align: 'center', text: '', position: { x: 8, y: 74, width: 84, height: 13 } },
+  { id: 'sender', kind: 'sender', title: 'Gönderici ve Kargo Bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], align: 'left', text: '', position: { x: 8, y: 90, width: 84, height: 8 } }
 ]
 
 export type ShippingLabelSettings = {
