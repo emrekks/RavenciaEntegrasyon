@@ -1708,6 +1708,59 @@ public sealed class PttAvmAdapterTests
         Assert.Null(PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(ProductDraft()), out _)!.Brand);
     }
 
+    // Live 28 Oct 2026: MZ059YNC is active on PTT AVM with its 24 variants, but no read gives their barcodes;
+    // GetProductsWithVariants names each one ("Gri / L"), so the variant is found by the colour and size it was sent with.
+    [Fact]
+    public void AFamilyVariantListedOnlyByNameIsLiveByItsColourAndSize()
+    {
+        XNamespace a = "http://schemas.datacontract.org/2004/07/ePttAVMService";
+        XNamespace n = "http://schemas.datacontract.org/2004/07/ePttAVMService.New";
+        XElement Row(string active) => new(a + "StokKontrolDetay", new XElement(a + "Aktif", active), new XElement(a + "Barkod", "MZ059YNC"), new XElement(a + "KDVli", "500"),
+            new XElement(a + "UrunAdi", "Taş İşlemeli Bluz"), new XElement(a + "UrunId", "2000251687"), new XElement(a + "VariantListesi", new XAttribute(XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance") + "nil", "true")));
+        XElement Entry(string id, string name) => new(n + "Variant", new XElement(n + "Limit", "0"), new XElement(n + "PriceDifference", "0"), new XElement(n + "Quantity", "5"), new XElement(n + "VariantId", id), new XElement(n + "VariantName", name));
+        var entries = new Dictionary<string, IReadOnlyList<XElement>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MZ059YNC"] = [Entry("8101", "Gri / L"), Entry("8102", "İndigo /  XL "), Entry("8103", "Gri / M"), Entry("8104", "S")]
+        };
+        var product = PttAvmProductMapper.Product(Row("true"), [], entries)!;
+
+        var gray = PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-01", "gri", " L "), product)!;
+        Assert.Equal(("MZ059YNC-01", "APPROVED", "2000251687", "MZ059YNC/8101"), (gray.Barcode, gray.Status, gray.ExternalProductId, gray.ExternalVariantId));
+        // Turkish case rules: "indigo" is the lower case of "İndigo"; extra spaces do not matter.
+        Assert.Equal("MZ059YNC/8102", PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-02", "indigo", "xl"), product)!.ExternalVariantId);
+        // No colour and size, a combination PTT AVM does not list, or a one-part name: no match (NOT_FOUND stays).
+        Assert.Null(PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-03", null, null), product));
+        Assert.Null(PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-04", "Gri", "XS"), product));
+        Assert.Null(PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-05", "Siyah", "S"), product));
+        // The same colour and size listed twice is not proof of either.
+        var twice = PttAvmProductMapper.Product(Row("true"), [], new Dictionary<string, IReadOnlyList<XElement>> { ["MZ059YNC"] = [Entry("1", "Gri / L"), Entry("2", "gri / l")] })!;
+        Assert.Null(PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-01", "Gri", "L"), twice));
+        // A passive product keeps its variants waiting.
+        Assert.Equal("PENDING_APPROVAL", PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-01", "Gri", "L"), PttAvmProductMapper.Product(Row("false"), [], entries)!)!.Status);
+    }
+
+    [Fact]
+    public void AFamilyStatusReadsTheVariantListAgainAtMostOnceInFiveMinutes()
+    {
+        var refreshes = new System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset>();
+        var connection = Guid.NewGuid();
+
+        Assert.True(PttAvmProductPayloadRules.TakeFamilyRefresh(refreshes, connection, Now));
+        Assert.False(PttAvmProductPayloadRules.TakeFamilyRefresh(refreshes, connection, Now.AddMinutes(4)));
+        Assert.True(PttAvmProductPayloadRules.TakeFamilyRefresh(refreshes, Guid.NewGuid(), Now.AddMinutes(4)));
+        Assert.True(PttAvmProductPayloadRules.TakeFamilyRefresh(refreshes, connection, Now.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void APublicationsFamilyCarriesEachVariantsColourAndSize()
+    {
+        var family = PttAvmProductPayloadRules.Payload(ProductDraft() with { Barcode = "MZ059YNC", ProductCode = "MZ059YNC", Variants = [new("MZ059YNC-01", "Gri", "L", 1)] });
+        var job = System.Text.Json.JsonSerializer.Serialize(new ProductPublicationJobPayload(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "POLL", "H1", family, "t:1", Now));
+
+        var sent = PttAvmProductPayloadRules.PublicationFamily([job], Guid.NewGuid(), "H1")!;
+        Assert.Equal(("MZ059YNC", "Gri", "L"), (sent.Barcode, sent.Variants![0].Color, sent.Variants[0].Size));
+    }
+
     // A model product (barcode = model code) answered without VariantListesi, and its variants from
     // GetProductsWithVariants: one entry in the StokKontrolListesi variant shape, one carrying combinations.
     private const string ModelProductAnswer = """

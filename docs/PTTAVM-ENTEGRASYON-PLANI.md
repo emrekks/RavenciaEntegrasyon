@@ -251,6 +251,12 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     bağlarsa varyant ürün aktifse LIVE, pasifse bekliyor; kod tanınmazsa NOT_FOUND (bekler), başka ürüne aitse MANUAL_REVIEW.
     Varyant bağı PTT AVM'nin tanıdığı yazılışla kurulur. `BarkodKontrol`'ün varyant barkoduna model ürününü döndürdüğü hâlâ
     canlıda görülecek (worker logu: "PTT AVM family status read").
+    **Canlı sonuç (aynı gün):** ürün okuması varyant barkodu vermiyor (`ListedVariantBarcodes: 0`), `BarkodKontrol` varyant
+    barkodunu tanımıyor; 24 varyant NOT_FOUND kaldı. Bu yüzden ikinci kaynak eklendi: `GetProductsWithVariants`'in
+    `VariantName`'i ("Gri / L") varyantın gönderildiği Renk/Beden ile eşleşirse (Türkçe büyük/küçük harf, boşluklar
+    yok sayılır; tek parçalı ad ya da iki kez listelenen çift eşleşmez) varyant `{üst barkod}/{VariantId}` bağıyla LIVE
+    olur. Sıra: barkod, ad, `BarkodKontrol`. Ürün adlı varyant listelemiyorsa varyant listesi bağlantı başına en çok
+    5 dakikada bir yeniden okunur. Log her barkodun kaynağını ve PTT'nin listelediği adları yazar.
   - **WSDL ile doğrulandı** (`https://ws.pttavm.com:93/service.svc?singleWsdl`, 28 Ekim 2026): `UpdateProductsV3(items:
     ArrayOfProductV3Request)`, bütün öğeler `http://schemas.datacontract.org/2004/07/ePttAVMService.Model.Requests` ad alanında,
     üyeler alfabetik sırada. `ProductV3Request`: Active, Barcode, BasketMaxQuantity, Brand, CargoProfileId, CatalogBarcode,

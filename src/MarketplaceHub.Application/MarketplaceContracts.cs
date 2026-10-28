@@ -700,8 +700,11 @@ public interface IProductVisualLookupPort
 // publication status through that product: one status per barcode asked, under the barcode as asked.
 public interface IProductFamilyStatusPort
 {
-    Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<string> barcodes, CancellationToken cancellationToken);
+    Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<FamilyVariantQuery> variants, CancellationToken cancellationToken);
 }
+
+// A family variant asked about: its barcode and the colour and size it was sent with (null when not known).
+public sealed record FamilyVariantQuery(string Barcode, string? Color, string? Size);
 
 public interface IInventoryPricePort
 {

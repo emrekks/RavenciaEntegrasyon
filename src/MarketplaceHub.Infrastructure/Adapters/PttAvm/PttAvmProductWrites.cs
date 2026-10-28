@@ -104,13 +104,15 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
     }
 
     // A model family's variants on PTT AVM. PTT AVM has no approval step: a variant it holds under an active product
-    // is on sale. The variant barcodes are not products of their own, so a lookup by a variant barcode finds nothing;
-    // they are resolved through the parent product. A variant the product lists with its barcode answers directly
-    // (PTT AVM may keep it lower-cased, so the match ignores case). GetProductsWithVariants lists a model's variants
-    // without barcodes, so a variant the product does not list by barcode is asked about with BarkodKontrol, as
-    // written and lower-cased: PTT AVM naming this product as its owner is the proof. Nothing else proves a variant;
-    // one PTT AVM does not show yet stays NOT_FOUND (still waiting).
-    public async Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<string> barcodes, CancellationToken cancellationToken)
+    // is on sale. The variant barcodes are not products of their own, so they are resolved through the parent product
+    // (StokKontrolListesi by the parent barcode, with its variants from GetProductsWithVariants), in this order:
+    // 1. a variant the product lists with this barcode (any case; PTT AVM may keep it lower-cased);
+    // 2. a variant the product lists only by name ("Gri / L", live 28 Oct 2026: GetProductsWithVariants gives no
+    //    barcodes), whose colour and size are the ones this barcode was sent with, and no other variant's;
+    // 3. BarkodKontrol, as written and lower-cased, naming this product as the code's owner.
+    // One none of them shows stays NOT_FOUND (still waiting). The variant list is read again when the cached one has
+    // no named variant under the product (a family sent within its 15-minute lifetime).
+    public async Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<FamilyVariantQuery> variants, CancellationToken cancellationToken)
     {
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<IReadOnlyList<RemotePublicationStatus>>(load);
@@ -119,11 +121,26 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
         if (!page.IsSuccess) return AdapterResult<IReadOnlyList<RemotePublicationStatus>>.Failure(page.Error!, page.RateLimit);
         var rate = page.RateLimit;
         var product = PttAvmProductPayloadRules.FamilyProduct(parent, page.Value!.Items);
-        var statuses = new List<RemotePublicationStatus>();
-        foreach (var barcode in barcodes)
+        if (product is not null && !product.Variants.Any(x => x.Barcode is null && x.Options.ContainsKey(PttAvmVariantMapper.VariantNameOption))
+            && PttAvmProductPayloadRules.TakeFamilyRefresh(FamilyListRefreshes, load.Account.Connection.Id, timeProvider.GetUtcNow()))
         {
-            var code = barcode.Trim();
-            if (product is null || PttAvmProductPayloadRules.ListedVariantStatus(code, product) is not { } status)
+            var refreshed = await VariantListAsync(load.Account, refresh: true, cancellationToken);
+            if (!refreshed.IsSuccess) return AdapterResult<IReadOnlyList<RemotePublicationStatus>>.Failure(refreshed.Error!, refreshed.RateLimit);
+            page = await ReadProductPageAsync(load.Account, null, parent, cancellationToken);
+            if (!page.IsSuccess) return AdapterResult<IReadOnlyList<RemotePublicationStatus>>.Failure(page.Error!, page.RateLimit);
+            rate = page.RateLimit ?? rate;
+            product = PttAvmProductPayloadRules.FamilyProduct(parent, page.Value!.Items);
+        }
+        var statuses = new List<RemotePublicationStatus>();
+        var sources = new List<string>();
+        foreach (var variant in variants)
+        {
+            var code = variant.Barcode.Trim();
+            var source = "none";
+            RemotePublicationStatus? status = null;
+            if (product is not null && PttAvmProductPayloadRules.ListedVariantStatus(code, product) is { } listed) (status, source) = (listed, "barcode");
+            else if (product is not null && PttAvmProductPayloadRules.NamedVariantStatus(variant, product) is { } named) (status, source) = (named, "name");
+            else
             {
                 PttAvmCodeOwner? owner = null;
                 if (product is not null)
@@ -137,16 +154,24 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
                         if (CodeCheckProduct(spelling, check.Value!) is { } found) { owner = new(spelling, found); break; }
                     }
                 status = PttAvmProductPayloadRules.CodeCheckStatus(code, product, owner?.Code, owner?.Product);
+                if (owner is not null) source = "code-check";
             }
-            statuses.Add(status);
+            statuses.Add(status with { Barcode = variant.Barcode });
+            sources.Add($"{variant.Barcode}={status.Status}({source})");
         }
-        logger.LogInformation("PTT AVM family status read. ConnectionId: {ConnectionId}, Parent: {Parent}, ProductFound: {ProductFound}, ProductId: {ProductId}, Active: {Active}, ListedVariantBarcodes: {ListedVariantBarcodes}, Statuses: {Statuses}",
+        // The names PTT AVM lists (catalog text such as "Gri / L") show why a variant did or did not match.
+        logger.LogInformation("PTT AVM family status read. ConnectionId: {ConnectionId}, Parent: {Parent}, ProductFound: {ProductFound}, ProductId: {ProductId}, Active: {Active}, ListedVariantBarcodes: {ListedVariantBarcodes}, ListedVariantNames: {ListedVariantNames}, Statuses: {Statuses}",
             load.Account.Connection.Id, parent, product is not null, product?.ExternalProductId, product is null ? null : PttAvmProductPayloadRules.ProductActive(product),
-            product?.Variants.Count(x => x.Barcode is not null) ?? 0, string.Join(", ", statuses.Select(x => $"{x.Barcode}={x.Status}")));
+            product?.Variants.Count(x => x.Barcode is not null) ?? 0,
+            product is null ? "" : string.Join(", ", product.Variants.Select(x => x.Options.GetValueOrDefault(PttAvmVariantMapper.VariantNameOption)).OfType<string>().Take(100)),
+            string.Join(", ", sources));
         return AdapterResult<IReadOnlyList<RemotePublicationStatus>>.Success(statuses, rate);
     }
 
     private sealed record PttAvmCodeOwner(string Code, RemoteProduct Product);
+
+    // When each connection's variant list was last read again for a family status (every card of a family asks).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset> FamilyListRefreshes = new();
 }
 
 public static class PttAvmProductPayloadRules
@@ -532,9 +557,42 @@ public static class PttAvmProductPayloadRules
         return new(barcode, match.variant.Archived ? "PENDING_APPROVAL" : "APPROVED", match.product.ExternalProductId, match.variant.Barcode, null, match.product.RawJson);
     }
 
-    // The parent barcode of a publication from its product jobs' payloads (ProductPublicationJobPayload JSON): the
-    // family request of the job with this product (else any job) and this publication hash. Null when none is a family.
-    public static string? PublicationParentBarcode(IEnumerable<string> jobPayloads, Guid productId, string publicationHash)
+    // A forced variant-list read for family statuses at most once in five minutes per connection: the list is a few
+    // pages for the whole store, and every card of every waiting family asks each minute.
+    public static readonly TimeSpan FamilyRefreshInterval = TimeSpan.FromMinutes(5);
+
+    public static bool TakeFamilyRefresh(System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset> refreshes, Guid connectionId, DateTimeOffset now)
+    {
+        if (refreshes.TryGetValue(connectionId, out var last) && now - last < FamilyRefreshInterval) return false;
+        refreshes[connectionId] = now;
+        return true;
+    }
+
+    private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
+
+    // A variant the parent product lists only by its name ("Gri / L": colour, then size), matched to the colour and size
+    // the barcode was sent with (Turkish case rules, spaces collapsed). It answers only when exactly one listed variant
+    // carries that colour and size; a name of one part ("S") names no colour and matches nothing. The link is PTT AVM's
+    // own "{parent}/{VariantId}".
+    public static RemotePublicationStatus? NamedVariantStatus(FamilyVariantQuery variant, RemoteCatalogProduct product)
+    {
+        if (string.IsNullOrWhiteSpace(variant.Color) || string.IsNullOrWhiteSpace(variant.Size)) return null;
+        var (color, size) = (Words(variant.Color), Words(variant.Size));
+        var matches = product.Variants
+            .Where(x => x.Barcode is null && x.Options.TryGetValue(PttAvmVariantMapper.VariantNameOption, out var name) && NameParts(name) is [var nameColor, var nameSize]
+                && Turkish.CompareInfo.Compare(nameColor, color, CompareOptions.IgnoreCase) == 0 && Turkish.CompareInfo.Compare(nameSize, size, CompareOptions.IgnoreCase) == 0)
+            .ToList();
+        if (matches.Count != 1) return null;
+        var active = !matches[0].Archived && ProductActive(product) == true;
+        return new(variant.Barcode, active ? "APPROVED" : "PENDING_APPROVAL", product.ExternalProductId, matches[0].ExternalVariantId, null, product.RawJson);
+    }
+
+    private static string[] NameParts(string name) => name.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(Words).ToArray();
+
+    private static string Words(string text) => string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    // The family a publication went out as (its product job's request), or null; see PublicationParentBarcode.
+    public static ProductDraft? PublicationFamily(IEnumerable<string> jobPayloads, Guid productId, string publicationHash)
     {
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var payloads = new List<ProductPublicationJobPayload>();
@@ -549,9 +607,14 @@ public static class PttAvmProductPayloadRules
             catch (JsonException) { }
         }
         return payloads.OrderByDescending(x => x.ProductId == productId)
-            .Select(x => VariantParentBarcode(x.PayloadJson))
-            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
+            .Select(x => Read(x.PayloadJson, out _))
+            .FirstOrDefault(x => x?.Variants is { Count: > 0 });
     }
+
+    // The parent barcode of a publication from its product jobs' payloads (ProductPublicationJobPayload JSON): the
+    // family request of the job with this product (else any job) and this publication hash. Null when none is a family.
+    public static string? PublicationParentBarcode(IEnumerable<string> jobPayloads, Guid productId, string publicationHash)
+        => PublicationFamily(jobPayloads, productId, publicationHash)?.Barcode.Trim();
 
     // The parent product of a model family: the listed product whose own barcode is the parent barcode.
     public static RemoteCatalogProduct? FamilyProduct(string parentBarcode, IReadOnlyList<RemoteCatalogProduct> listed) =>
