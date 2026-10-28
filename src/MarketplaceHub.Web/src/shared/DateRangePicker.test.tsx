@@ -27,13 +27,13 @@ describe('DateRangePicker presets', () => {
     act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
 
     const presetButtons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-presets button'))
-    expect(presetButtons.map(button => button.textContent)).toContain('Bu ay')
-    expect(presetButtons.map(button => button.textContent)).toContain('Bu sene')
+    expect(presetButtons.map(button => button.textContent)).toContain('Bu Ay')
+    expect(presetButtons.map(button => button.textContent)).toContain('Bu Sene')
     expect(presetButtons.map(button => button.textContent)).not.toContain('Son 60 gün')
     expect(presetButtons.map(button => button.textContent)).not.toContain('Son 90 gün')
     expect(presetButtons.map(button => button.textContent)).not.toContain('Son 180 gün')
 
-    act(() => presetButtons.find(button => button.textContent === 'Bu ay')!.click())
+    act(() => presetButtons.find(button => button.textContent === 'Bu Ay')!.click())
     expect(onChange).toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-10-11' })
   })
 
@@ -41,7 +41,7 @@ describe('DateRangePicker presets', () => {
     const onChange = vi.fn()
     act(() => root.render(<DateRangePicker from="" to="" onChange={onChange} />))
     act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
-    const yearPreset = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-presets button')).find(button => button.textContent === 'Bu sene')!
+    const yearPreset = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-presets button')).find(button => button.textContent === 'Bu Sene')!
 
     act(() => yearPreset.click())
     expect(onChange).toHaveBeenCalledWith({ from: '2026-01-01', to: '2026-10-11' })

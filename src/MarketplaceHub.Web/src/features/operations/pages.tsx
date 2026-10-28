@@ -74,12 +74,12 @@ const statuses: Array<{ value: '' | JobStatus; label: string }> = [
   { value: '', label: 'Tüm Durumlar' },
   { value: 'PENDING', label: 'Bekliyor' },
   { value: 'LEASED', label: 'Çalışıyor' },
-  { value: 'RETRY_SCHEDULED', label: 'Tekrar denenecek' },
+  { value: 'RETRY_SCHEDULED', label: 'Tekrar Denenecek' },
   { value: 'BLOCKED', label: 'Engellendi' },
-  { value: 'MANUAL_REVIEW', label: 'Manuel inceleme' },
+  { value: 'MANUAL_REVIEW', label: 'Manuel İnceleme' },
   { value: 'SUCCEEDED', label: 'Başarılı' },
-  { value: 'DEAD', label: 'Deneme limiti doldu' },
-  { value: 'CANCELLED', label: 'İptal edildi' }
+  { value: 'DEAD', label: 'Deneme Limiti Doldu' },
+  { value: 'CANCELLED', label: 'İptal Edildi' }
 ]
 
 

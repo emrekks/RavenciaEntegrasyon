@@ -20,10 +20,10 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
   const presetRanges: Array<{ label: string; range: DateRange }> = [
     { label: 'Bugün', range: { from: today, to: today } },
     { label: 'Dün', range: { from: dateOffset(-1), to: dateOffset(-1) } },
-    { label: 'Geçen hafta', range: (() => { const end = new Date(); const weekday = (end.getDay() + 6) % 7; end.setDate(end.getDate() - weekday - 1); const start = new Date(end); start.setDate(start.getDate() - 6); return { from: dateKey(start), to: dateKey(end) } })() },
-    { label: 'Geçen ay', range: (() => { const start = new Date(); start.setDate(1); start.setMonth(start.getMonth() - 1); const end = new Date(start.getFullYear(), start.getMonth() + 1, 0); return { from: dateKey(start), to: dateKey(end) } })() },
-    { label: 'Bu ay', range: (() => { const now = new Date(); return { from: dateKey(new Date(now.getFullYear(), now.getMonth(), 1)), to: today } })() },
-    { label: 'Bu sene', range: { from: `${new Date().getFullYear()}-01-01`, to: today } },
+    { label: 'Geçen Hafta', range: (() => { const end = new Date(); const weekday = (end.getDay() + 6) % 7; end.setDate(end.getDate() - weekday - 1); const start = new Date(end); start.setDate(start.getDate() - 6); return { from: dateKey(start), to: dateKey(end) } })() },
+    { label: 'Geçen Ay', range: (() => { const start = new Date(); start.setDate(1); start.setMonth(start.getMonth() - 1); const end = new Date(start.getFullYear(), start.getMonth() + 1, 0); return { from: dateKey(start), to: dateKey(end) } })() },
+    { label: 'Bu Ay', range: (() => { const now = new Date(); return { from: dateKey(new Date(now.getFullYear(), now.getMonth(), 1)), to: today } })() },
+    { label: 'Bu Sene', range: { from: `${new Date().getFullYear()}-01-01`, to: today } },
   ]
   function computePosition() {
     const bounds = root.current?.getBoundingClientRect()

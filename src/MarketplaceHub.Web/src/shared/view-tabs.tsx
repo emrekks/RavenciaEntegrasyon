@@ -9,7 +9,7 @@ import './view-tabs.css'
 export type ViewTabIconName =
   | 'all' | 'new' | 'processing' | 'shipping' | 'done' | 'cancelled' | 'partial' | 'resend' | 'paused'
   | 'waiting' | 'unread' | 'due' | 'attention' | 'review' | 'disputed' | 'hidden' | 'connected'
-  | 'order' | 'product' | 'price' | 'invoice' | 'invoiceMissing' | 'invoiceDone' | 'return' | 'category' | 'brand' | 'more'
+  | 'order' | 'product' | 'price' | 'invoice' | 'invoiceMissing' | 'invoiceDone' | 'return' | 'category' | 'brand' | 'attribute' | 'more'
 
 const line = (d: string) => <path d={d} fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
 const circle = <circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" strokeWidth={1.4} />
@@ -43,6 +43,8 @@ const icons: Record<ViewTabIconName, ReactNode> = {
   category: <>{line('M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z')}</>,
   more: <><circle cx="3.8" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="12.2" cy="8" r="1" fill="currentColor" /></>,
   brand: <>{line('M8 2.2 9.7 5.7l3.8.5-2.8 2.7.7 3.8L8 10.9l-3.4 1.8.7-3.8-2.8-2.7 3.8-.5z')}</>,
+  // An attribute: three named values on sliders (Özellik tabs).
+  attribute: <>{line('M2.5 4h11M2.5 8h11M2.5 12h11')}<circle cx="5.5" cy="4" r="1.3" fill="var(--rv-color-surface)" stroke="currentColor" strokeWidth={1.4} /><circle cx="10.5" cy="8" r="1.3" fill="var(--rv-color-surface)" stroke="currentColor" strokeWidth={1.4} /><circle cx="7" cy="12" r="1.3" fill="var(--rv-color-surface)" stroke="currentColor" strokeWidth={1.4} /></>,
 }
 
 export function ViewTabIcon({ name }: { name: ViewTabIconName }) {

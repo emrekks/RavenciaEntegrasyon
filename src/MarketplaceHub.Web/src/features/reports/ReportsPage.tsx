@@ -1448,7 +1448,7 @@ function Customers({ data }: { data: ReportSales }) {
     <RevealPanel title="Bir Kez Alan ve Tekrar Alan" className="is-wide" description="Dönemde birden çok sipariş veren müşteriler tekrar alan sayılır.">
       {shown => customers.uniqueCustomers > 0 ? <>
         <StackedBar shown={shown} total={customers.uniqueCustomers} label={`Bir kez alan ${formatCount(customers.uniqueCustomers - customers.repeatCustomers)}, tekrar alan ${formatCount(customers.repeatCustomers)}`}
-          parts={[{ key: 'repeat', label: 'Tekrar alan', value: customers.repeatCustomers, tone: 'left' }, { key: 'once', label: 'Bir kez alan', value: customers.uniqueCustomers - customers.repeatCustomers, tone: 'fees' }]} />
+          parts={[{ key: 'repeat', label: 'Tekrar Alan', value: customers.repeatCustomers, tone: 'left' }, { key: 'once', label: 'Bir Kez Alan', value: customers.uniqueCustomers - customers.repeatCustomers, tone: 'fees' }]} />
         <ul className="reports-legend-row">
           <li><i className="is-left" aria-hidden="true" />Tekrar Alan<b>{formatCount(customers.repeatCustomers)}</b></li>
           <li><i className="is-fees" aria-hidden="true" />Bir Kez Alan<b>{formatCount(customers.uniqueCustomers - customers.repeatCustomers)}</b></li>
