@@ -58,23 +58,26 @@
   --rv-space-5: 20px;
   --rv-space-6: 24px;
   --rv-space-8: 32px;
-  --rv-radius-sm: 6px;
-  --rv-radius-md: 8px;
+  /* Three radii (CLAUDE.md UI): 7px for controls, chips inside cards and menu items; 12px for cards and popovers; 14px
+     for windows, drawers and toasts. sm and md are both the control radius. */
+  --rv-radius-sm: 7px;
+  --rv-radius-md: 7px;
   --rv-radius-lg: 12px;
-  --rv-shadow-sm: 0 1px 2px rgb(0 0 0 / 12%);
-  --rv-shadow-md: 0 10px 30px rgb(0 0 0 / 28%);
-  --rv-shadow-lg: 0 24px 60px rgb(0 0 0 / 40%);
+  --rv-radius-xl: 14px;
+  /* Light shadows everywhere: sm for bars and raised cards, md for menus and popovers, lg for windows and drawers. */
+  --rv-shadow-sm: 0 1px 3px rgb(0 0 0 / 8%);
+  --rv-shadow-md: 0 8px 20px rgb(0 0 0 / 16%);
+  --rv-shadow-lg: 0 12px 32px rgb(0 0 0 / 22%);
+  /* The one dimmed layer behind windows and drawers. */
+  --rv-color-backdrop: rgb(5 16 29 / 68%);
   --rv-duration-fast: 160ms;
   --rv-ease-standard: cubic-bezier(.2, .8, .2, 1);
   /* Shared motion (styles/motion.css): measured, short and only on first appearance; all zero under reduced motion. */
   --rv-motion-fast: 160ms;
   --rv-motion-base: 280ms;
-  --rv-motion-enter: 520ms;
   --rv-motion-block-stagger: 70ms;
-  --rv-motion-row: 400ms;
   --rv-motion-row-delay: 60ms;
   --rv-motion-stagger: 35ms;
-  --rv-motion-distance: 12px;
   --rv-motion-sheen: 900ms;
   --rv-motion-sheen-delay: 120ms;
   --rv-motion-press: .96;
@@ -84,25 +87,9 @@
   --rv-z-sticky: 20;
   --rv-z-sidebar: 40;
   --rv-z-dropdown: 80;
+  --rv-z-tooltip: 90;
   --rv-z-modal: 1000;
   --rv-z-toast: 1100;
-  /* Compatibility aliases for route styles while they are migrated. */
-  --rv-bg: var(--rv-color-bg);
-  --rv-bg-raised: var(--rv-color-surface-raised);
-  --rv-sidebar: var(--rv-color-sidebar);
-  --rv-surface: var(--rv-color-surface);
-  --rv-surface-raised: var(--rv-color-surface-raised);
-  --rv-surface-deep: var(--rv-color-surface-soft);
-  --rv-line: var(--rv-color-border);
-  --rv-line-strong: var(--rv-color-border-strong);
-  --rv-ink: var(--rv-color-ink);
-  --rv-muted: var(--rv-color-muted);
-  --rv-muted-2: var(--rv-color-subtle);
-  --rv-primary: var(--rv-color-primary);
-  --rv-primary-hover: var(--rv-color-primary-hover);
-  --rv-success: var(--rv-color-accent);
-  --rv-warning: var(--rv-color-warning);
-  --rv-danger: var(--rv-color-danger);
 }
 
 :root[data-theme="dark"] { color-scheme: dark; }

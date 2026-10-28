@@ -30,7 +30,7 @@
 /* A band of light passes over the first rows of a table one after another (the rest, below the fold, with the last of
    them); the rows themselves do not move (owner, 24 Oct 2026). A page of the list that is mounted again does the same. */
 :where(.app-shell.is-opening main > .content:not(.reports-page)) tbody > tr {
-  --rv-motion-band: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--rv-primary) 12%, transparent) 50%, transparent 65%);
+  --rv-motion-band: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--rv-color-primary) 12%, transparent) 50%, transparent 65%);
   animation: rv-motion-row var(--rv-motion-sheen) ease-out backwards;
   animation-delay: var(--rv-motion-row-delay);
 }
@@ -52,7 +52,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--rv-primary) 16%, transparent) 50%, transparent 65%) 100% 0 / 300% 100% no-repeat;
+  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--rv-color-primary) 16%, transparent) 50%, transparent 65%) 100% 0 / 300% 100% no-repeat;
   opacity: 0;
   pointer-events: none;
   animation: rv-motion-sheen var(--rv-motion-sheen) ease-out backwards;
@@ -97,12 +97,9 @@
   :root {
     --rv-motion-fast: 0ms;
     --rv-motion-base: 0ms;
-    --rv-motion-enter: 0ms;
     --rv-motion-block-stagger: 0ms;
-    --rv-motion-row: 0ms;
     --rv-motion-row-delay: 0ms;
     --rv-motion-stagger: 0ms;
-    --rv-motion-distance: 0px;
     --rv-motion-sheen-delay: 0ms;
     --rv-motion-press: 1;
     --rv-motion-lift: 0px;
