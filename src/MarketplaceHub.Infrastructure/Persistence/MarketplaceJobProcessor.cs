@@ -446,6 +446,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // The variant send's dry run: the request was built and checked, nothing was written.
                 if (isPttAvmFamily && error.Code == PttAvmProductPayloadRules.DryRunCode)
                     return await MarkPublicationResult(tenantId, connectionId, profile, "DRY_RUN", error.Code, JobExecutionResult.Blocked(error.Code, error.SafeMessage), cancellationToken, payload.PayloadHash);
+                // PTT AVM already holds every variant of the family: nothing was sent and nothing went wrong.
+                if (isPttAvmFamily && error.Code == PttAvmProductPayloadRules.VariantsAlreadyPresentCode)
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "ALREADY_PRESENT", error.Code, JobExecutionResult.SuccessWithNote(error.Code, error.SafeMessage), cancellationToken, payload.PayloadHash);
                 var adapterResult = JobExecutionResult.FromAdapterError(error);
                 var status = adapterResult.Kind == JobCompletionKind.Retry ? "RETRY_SCHEDULED" : adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
                 return await MarkPublicationResult(tenantId, connectionId, profile, status, error.Code, adapterResult, cancellationToken, payload.PayloadHash);

@@ -15,9 +15,10 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // without variants loses every variant it has on PTT AVM, so a single-variant product is sent only when the barcode
 // is not a product PTT AVM lists with variants. A product with variants is the panel's model family under the model
 // code, every variant of every colour card in one request; PTT AVM deletes the variants a request leaves out, so
-// right before the send the family's variants on PTT AVM are read again and any variant missing from the request
-// stops it. The variant send is a dry run for now (PttAvmProductPayloadRules.VariantSendDryRun): it logs the request
-// it would send and ends without a write. Every send passes the adapter's write gate.
+// right before the send the family's variants on PTT AVM are read again and the request carries every one of them as
+// PTT AVM holds it, plus the panel's variants PTT AVM lacks. Nothing to add ends the job without a write. The request
+// is logged before it goes; PttAvmProductPayloadRules.VariantSendDryRun turns the send back into a dry run. Every
+// send passes the adapter's write gate.
 public sealed partial class PttAvmHttpClient
 {
     internal const string ProductUpsert = "UpdateProductsV3";
@@ -41,8 +42,9 @@ public sealed partial class PttAvmHttpClient
     }
 
     // A model family with its variants. The variant list is read fresh (not from the scan's cache), then the parent
-    // barcode's product: every variant PTT AVM holds under it must be in the request, and an entry that cannot be read
-    // stops the send as well (unknown is not "absent").
+    // barcode's product. The request carries every variant PTT AVM holds under it unchanged, so the upsert deletes
+    // nothing, plus the panel's variants PTT AVM lacks; an entry that cannot be read or carried stops the send
+    // (unknown is not "absent"), and a family PTT AVM already holds whole is not sent at all.
     internal async Task<AdapterResult<RemoteOperationRef>> CreateVariantProductAsync(PttAvmRequestContext account, PttAvmProductPayloadRules.ProductDraft draft, CancellationToken cancellationToken)
     {
         var variantList = await VariantListAsync(account, refresh: true, cancellationToken);
@@ -51,21 +53,24 @@ public sealed partial class PttAvmHttpClient
         if (!current.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(current.Error!, current.RateLimit);
         if ((current.Value!.Issues ?? []).Any(issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE"
                 || issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Identity.StartsWith(draft.Barcode + ":", StringComparison.OrdinalIgnoreCase)))
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "PTTAVM_REMOTE_VARIANT_UNREADABLE", $"PTT AVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PTT AVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
         var remote = PttAvmProductPayloadRules.RemoteVariants(draft.Barcode, current.Value.Items);
-        var missing = PttAvmProductPayloadRules.RemoteVariantsMissing(draft.Variants!, remote);
-        if (missing.Count > 0)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantMissingCode, PttAvmProductPayloadRules.RemoteVariantMissingMessage(missing), HttpStatusCode.Conflict);
+        var merge = PttAvmProductPayloadRules.MergeVariants(draft.Variants!, remote);
+        if (merge.Unreadable.Count > 0)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, PttAvmProductPayloadRules.RemoteVariantUnreadableMessage(merge.Unreadable), HttpStatusCode.Conflict);
+        if (merge.Added.Count == 0)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.VariantsAlreadyPresentCode, PttAvmProductPayloadRules.VariantsAlreadyPresentMessage, HttpStatusCode.Conflict);
+        if (PttAvmProductPayloadRules.MergeRefusal(merge.Variants) is { } refusal)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, refusal.Code, refusal.Message, HttpStatusCode.UnprocessableEntity);
+        var request = draft with { Variants = merge.Variants, Quantity = merge.Variants.Sum(x => x.Quantity) };
 
+        // The request as it goes (or would go), for the operator to read in the worker log.
+        logger.LogInformation("PTT AVM variant product request. DryRun: {DryRun}, ConnectionId: {ConnectionId}, Barcode: {Barcode}, Variants: {Variants}, RemoteVariants: {RemoteVariants}, Added: {Added}, Operation: {Operation}, Items: {Items}",
+            PttAvmProductPayloadRules.VariantSendDryRun, account.Connection.Id, draft.Barcode, merge.Variants.Count, remote.Count, merge.Added.Count, ProductUpsert, PttAvmProductPayloadRules.ItemsXml(request));
         if (PttAvmProductPayloadRules.VariantSendDryRun)
-        {
-            // The request it would send, for the operator to read in the worker log; nothing leaves the panel.
-            logger.LogInformation("PTT AVM variant product dry run, nothing sent. ConnectionId: {ConnectionId}, Barcode: {Barcode}, Variants: {Variants}, RemoteVariants: {RemoteVariants}, Operation: {Operation}, Items: {Items}",
-                account.Connection.Id, draft.Barcode, draft.Variants!.Count, remote.Count, ProductUpsert, PttAvmProductPayloadRules.ItemsXml(draft));
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, PttAvmProductPayloadRules.DryRunCode, PttAvmProductPayloadRules.DryRunMessage(draft), HttpStatusCode.UnprocessableEntity);
-        }
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, PttAvmProductPayloadRules.DryRunCode, PttAvmProductPayloadRules.DryRunMessage(request), HttpStatusCode.UnprocessableEntity);
         if (WriteBlocked<RemoteOperationRef>(account, "ürün") is { } blocked) return blocked;
-        return await SendProductAsync(account, draft, cancellationToken);
+        return await SendProductAsync(account, request, cancellationToken);
     }
 
     private async Task<AdapterResult<RemoteOperationRef>> SendProductAsync(PttAvmRequestContext account, PttAvmProductPayloadRules.ProductDraft draft, CancellationToken cancellationToken)
@@ -96,13 +101,16 @@ public static class PttAvmProductPayloadRules
     public const int MaxImages = 8;
 
     public const int MaxVariantValueLength = 100;
-    public const string RemoteVariantMissingCode = "PTTAVM_REMOTE_VARIANT_MISSING";
+    public const string RemoteVariantUnreadableCode = "PTTAVM_REMOTE_VARIANT_UNREADABLE";
+    public const string VariantsAlreadyPresentCode = "PTTAVM_VARIANTS_ALREADY_PRESENT";
+    public const string VariantsAlreadyPresentMessage = "PTT AVM'de bu modelin bütün varyantları zaten var; gönderim yapılmadı.";
     public const string DryRunCode = "PTTAVM_VARIANT_SEND_DRY_RUN";
 
-    // The one switch of the variant product send: while it is true the request is built, checked against PTT AVM's
-    // variants and logged, and never sent. Going live is a deliberate change here, after the variant XML element
-    // names and the barcode case have been verified on PTT AVM (docs/PTTAVM-ENTEGRASYON-PLANI.md §6.1, phase 7).
-    public static readonly bool VariantSendDryRun = true;
+    // The one switch of the variant product send: while it is true the merged request is built, checked against
+    // PTT AVM's variants and logged, and never sent. It is off since the request carries every variant PTT AVM holds
+    // (nothing can be deleted); turning it on again stops the send without touching the rest
+    // (docs/PTTAVM-ENTEGRASYON-PLANI.md §6.1, phase 7).
+    public static readonly bool VariantSendDryRun = false;
 
     // Variants is null for a product without variants. A model family's variants each carry their barcode, their
     // colour and size (PTT AVM's attributes "Renk" and "Beden") and their stock; the price is the product's.
@@ -110,8 +118,13 @@ public static class PttAvmProductPayloadRules
 
     public sealed record VariantDraft(string Barcode, string Color, string Size, int Quantity);
 
-    // A variant PTT AVM holds: its barcode, or else only its name ("Lacivert / L") with GetProductsWithVariants.
-    public sealed record RemoteVariant(string? Barcode, string? Color, string? Size, string? Name);
+    // A variant PTT AVM holds: its barcode, or else only its name ("Lacivert / L") with GetProductsWithVariants, and
+    // its stock as PTT AVM reports it.
+    public sealed record RemoteVariant(string? Barcode, string? Color, string? Size, string? Name, decimal? Quantity = null);
+
+    // The request's variants (PTT AVM's own first, then the panel's it lacks), the panel variants added, and the
+    // PTT AVM variants that cannot be carried unchanged.
+    public sealed record VariantMerge(IReadOnlyList<VariantDraft> Variants, IReadOnlyList<VariantDraft> Added, IReadOnlyList<RemoteVariant> Unreadable);
 
     public static string Payload(ProductDraft draft)
     {
@@ -220,7 +233,7 @@ public static class PttAvmProductPayloadRules
     // UNVERIFIED: the repo holds no ProductV3Request sample with variants. The shape follows the service schema's
     // write-side Variant (VariantBarkod, Miktar, Attributes{VariantAttr{Tanim, Deger}}), members in alphabetical
     // order, without Combination and without a price difference (the schema's Variant has no price; the family's
-    // variants share the product price). Check it on PTT AVM before VariantSendDryRun is turned off.
+    // variants share the product price). The first real send is the check; VariantSendDryRun stops it again.
     internal static string ItemsXml(ProductDraft draft)
     {
         var xml = new StringBuilder($"""<ept:ProductV3Request xmlns:ept="{PttAvmHttpClient.RequestsNamespace}">""");
@@ -267,34 +280,61 @@ public static class PttAvmProductPayloadRules
             {
                 if (variant.Options.Count == 0 && string.Equals(variant.Barcode, parentBarcode, StringComparison.OrdinalIgnoreCase)) continue;
                 string? Option(params string[] names) => names.Select(name => variant.Options.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null).FirstOrDefault(x => x is not null);
-                variants.Add(new(string.IsNullOrWhiteSpace(variant.Barcode) ? null : variant.Barcode.Trim(), Option("Renk", "Varyant 1"), Option("Beden", "Varyant 2"), Option(PttAvmVariantMapper.VariantNameOption)));
+                variants.Add(new(string.IsNullOrWhiteSpace(variant.Barcode) ? null : variant.Barcode.Trim(), Option("Renk", "Varyant 1"), Option("Beden", "Varyant 2"), Option(PttAvmVariantMapper.VariantNameOption), variant.StockQuantity));
             }
         return variants;
     }
 
-    // The guard of the variant send (pure, so it can be tested): the variants PTT AVM holds that the request leaves
-    // out, which PTT AVM would delete. A variant with a barcode is matched by it (case-insensitive); one PTT AVM names
-    // only ("Lacivert / L") is matched by its colour and size. A variant that matches nothing is missing.
-    public static IReadOnlyList<RemoteVariant> RemoteVariantsMissing(IReadOnlyList<VariantDraft> draft, IReadOnlyList<RemoteVariant> remote)
+    // The merge of the variant send (pure, so it can be tested). PTT AVM's upsert deletes the variants a request leaves
+    // out, so every variant PTT AVM holds is carried as it is there (its barcode, colour, size and stock), a panel
+    // variant PTT AVM already holds is not sent with the panel's data (price and stock sync update it), and a panel
+    // variant whose barcode PTT AVM lacks (case-insensitive) is added. A PTT AVM variant without a barcode, colour,
+    // size or a readable stock, or one whose barcode repeats, cannot be carried unchanged: it is listed as unreadable.
+    public static VariantMerge MergeVariants(IReadOnlyList<VariantDraft> panel, IReadOnlyList<RemoteVariant> remote)
     {
-        var barcodes = draft.Select(x => x.Barcode).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var labels = draft.Select(x => VariantLabel(x.Color, x.Size)).ToHashSet(StringComparer.Ordinal);
-        return remote.Where(variant => variant.Barcode is { } barcode
-                ? !barcodes.Contains(barcode)
-                : RemoteLabel(variant) is not { } label || !labels.Contains(label))
-            .ToList();
+        var carried = new List<VariantDraft>();
+        var unreadable = new List<RemoteVariant>();
+        var held = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var variant in remote)
+        {
+            if (variant is not { Barcode: { Length: > 0 and <= PttAvmPriceInventoryRules.MaxBarcodeLength } barcode, Color: { Length: > 0 and <= MaxVariantValueLength } color, Size: { Length: > 0 and <= MaxVariantValueLength } size, Quantity: { } quantity }
+                || quantity != decimal.Truncate(quantity) || quantity is < 0 or > PttAvmPriceInventoryRules.MaxQuantity
+                || !held.Add(barcode))
+            {
+                unreadable.Add(variant);
+                continue;
+            }
+            carried.Add(new(barcode, color, size, (int)quantity));
+        }
+        var added = panel.Where(x => !held.Contains(x.Barcode)).ToList();
+        return new([.. carried, .. added], added, unreadable);
     }
 
-    public static string RemoteVariantMissingMessage(IReadOnlyList<RemoteVariant> missing)
+    // The merged request against PTT AVM's limits; null when it may go.
+    public static (string Code, string Message)? MergeRefusal(IReadOnlyList<VariantDraft> merged)
+    {
+        if (merged.Count > PttAvmPriceInventoryRules.MaxVariantsPerProduct)
+            return ("PTTAVM_VARIANT_LIMIT_EXCEEDED", $"PTT AVM'deki varyantlarla birlikte {merged.Count} varyant oluyor; PTT AVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar. İstek gönderilmedi.");
+        // A panel variant with another barcode under a colour and size PTT AVM already holds would make two of one variant.
+        var duplicate = merged.GroupBy(x => VariantLabel(x.Color, x.Size), StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+            return ("PTTAVM_VARIANT_OPTION_CONFLICT", $"PTT AVM'de '{duplicate.First().Color} / {duplicate.First().Size}' varyantı başka bir barkodla var ({string.Join(", ", duplicate.Select(x => x.Barcode))}); aynı renk ve beden iki kez gönderilemez. İstek gönderilmedi.");
+        var total = merged.Sum(x => x.Quantity);
+        if (total > PttAvmPriceInventoryRules.MaxQuantity)
+            return ("PTTAVM_STOCK_TOTAL_TOO_HIGH", $"PTT AVM bir ürünün stoğunu en fazla {PttAvmPriceInventoryRules.MaxQuantity} tutar; PTT AVM'deki varyantlarla birlikte toplam {total} adet oluyor. İstek gönderilmedi.");
+        return null;
+    }
+
+    public static string RemoteVariantUnreadableMessage(IReadOnlyList<RemoteVariant> unreadable)
     {
         const int shown = 8;
-        var names = missing.Take(shown).Select(variant =>
+        var names = unreadable.Take(shown).Select(variant =>
         {
             var options = variant.Color is not null && variant.Size is not null ? $"{variant.Color} / {variant.Size}" : variant.Name;
             return variant.Barcode is null ? options ?? "adı okunamayan varyant" : options is null ? variant.Barcode : $"{variant.Barcode} ({options})";
         });
-        var more = missing.Count > shown ? $" ve {missing.Count - shown} varyant daha" : "";
-        return $"PTT AVM'de olup panelde olmayan varyantlar var; gönderilirse PTT AVM bunları siler: {string.Join(", ", names)}{more}. Bu varyantları panele ekleyin ya da PTT AVM satıcı panelinden kaldırın; istek gönderilmedi.";
+        var more = unreadable.Count > shown ? $" ve {unreadable.Count - shown} varyant daha" : "";
+        return $"PTT AVM'deki bazı varyantların barkodu, renk/beden değeri veya stoğu okunamadı: {string.Join(", ", names)}{more}. Bu varyantlar olduğu gibi taşınamadığı ve gönderim onları silebileceği için istek gönderilmedi.";
     }
 
     public static string DryRunMessage(ProductDraft draft) =>
@@ -302,13 +342,6 @@ public static class PttAvmProductPayloadRules
 
     // Colour and size folded for comparison: case, Turkish letters and the spacing around a dash do not matter.
     private static string VariantLabel(string color, string size) => $"{Fold(color)}/{Fold(size)}";
-
-    private static string? RemoteLabel(RemoteVariant variant)
-    {
-        if (variant.Color is not null && variant.Size is not null) return VariantLabel(variant.Color, variant.Size);
-        var parts = (variant.Name ?? "").Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 2 ? VariantLabel(parts[0], parts[1]) : null;
-    }
 
     private static string Fold(string value) =>
         Regex.Replace(Regex.Replace(PttAvmOrderMapper.Fold(value.Replace('İ', 'I')), @"\s*-\s*", "-"), @"\s+", " ");

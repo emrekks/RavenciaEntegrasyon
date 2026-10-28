@@ -74,4 +74,10 @@ describe('product publication status', () => {
     expect(publicationStatusTone('DRY_RUN', 'BLOCKED')).toBe('info')
     expect(publicationStatusNote('PTTAVM_VARIANT_SEND_DRY_RUN')).toBeNull()
   })
+
+  it('shows a PTT AVM family it already holds whole as not sent, without a rejection code', () => {
+    expect(publicationStatusLabel('ALREADY_PRESENT', 'SUCCEEDED')).toBe("PTT AVM'de zaten var, gönderilmedi")
+    expect(publicationStatusTone('ALREADY_PRESENT', 'SUCCEEDED')).toBe('info')
+    expect(publicationStatusNote('PTTAVM_VARIANTS_ALREADY_PRESENT')).toBeNull()
+  })
 })

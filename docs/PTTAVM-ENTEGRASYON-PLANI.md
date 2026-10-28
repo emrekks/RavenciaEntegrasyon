@@ -202,7 +202,7 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   2. PTT AVM okuması: gönderimden hemen önce barkod okunur; PTT AVM o barkodu varyantlı bir ürün altında göstermemelidir.
 
   Kategori yaprak olmalıdır; marka ve özellik eşlemesi istenmez.
-- **7. aşama, varyantlı ürün (28 Ekim 2026, KURU ÇALIŞTIRMA):** Varyantlı ürünün PTT AVM karşılığı panelin **model ailesidir**
+- **7. aşama, varyantlı ürün (28 Ekim 2026, birleştirerek gerçek gönderim; canlıda henüz denenmedi):** Varyantlı ürünün PTT AVM karşılığı panelin **model ailesidir**
   (aynı marka ve model kodlu bütün renk kartları). Kart yayınlanınca ailenin bütün etkin varyantları tek `UpdateProductsV3`
   isteğinde hazırlanır (`PttAvmProductPublicationComposer.PlanFamily`):
   - Üst barkod: ailenin bu bağlantıdaki `MarketplaceProductLink.ExternalCode`'u, yoksa model kodu; ikisi farklıysa
@@ -212,23 +212,32 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
   - Her varyant barkod, `Renk`, `Beden`, MAIN stok ve etkin teklif taşır; biri eksikse **bütün gönderim** durur (varyant atlanmaz,
     atlanan varyantı PTT AVM silerdi). Fiyat farkı 0: ailenin satış fiyatı ve KDV oranı tek olmalıdır. En çok 100 varyant; ürün
     düzeyi stok varyantların toplamıdır (en çok 9999).
-  - Uzak set koruması (kullanıcı kuralı): gönderimden hemen önce `GetProductsWithVariants` önbelleksiz, ardından üst barkod
-    `StokKontrolListesi` ile okunur. PTT AVM'nin üst barkod altında tuttuğu ve istekte olmayan her varyant (barkodla, harf
-    duyarsız; barkodsuz kayıtta "Renk / Beden" adıyla) gönderimi `PTTAVM_REMOTE_VARIANT_MISSING` ile durdurur ve kartta
-    listelenir: "PTT AVM'de olup panelde olmayan varyantlar var; gönderilirse PTT AVM bunları siler: mzdb003yesl2xl (Yeşil / 2XL), …".
-    Okunamayan varyant kaydı da durdurur (`PTTAVM_REMOTE_VARIANT_UNREADABLE`). Karşılaştırma saf fonksiyondur
-    (`PttAvmProductPayloadRules.RemoteVariantsMissing`).
-  - Kuru çalıştırma: tek anahtar `PttAvmProductPayloadRules.VariantSendDryRun` (varsayılan `true`). İstek hazırlanır, korumalardan
-    geçer, worker günlüğüne `PTT AVM variant product dry run` satırıyla XML olarak yazılır ve **gönderilmez**. Kart `DRY_RUN`
-    ("Kuru çalıştırma, gönderilmedi") olur, iş özeti "Kuru çalıştırma: N varyantlı PTT AVM isteği hazırlandı, gönderilmedi." der.
-    Tek varyantlı ürünün gerçek gönderimi değişmedi.
+  - Birleştirme (kullanıcı kuralı, 28 Ekim 2026): gönderimden hemen önce `GetProductsWithVariants` önbelleksiz, ardından üst
+    barkod `StokKontrolListesi` ile okunur. İstek = PTT AVM'nin üst barkod altında tuttuğu **her varyant olduğu gibi** (kendi
+    barkodu, Renk/Beden değeri ve PTT AVM'nin bildirdiği stoğu) + panelde olup PTT AVM'de olmayan varyantlar (barkodla, harf
+    duyarsız). PTT AVM'de zaten olan panel varyantı panel verisiyle yeniden gönderilmez (fiyat/stok eşitlemesi günceller); böylece
+    gönderim PTT AVM'deki hiçbir varyantı silemez. Saf fonksiyon: `PttAvmProductPayloadRules.MergeVariants`.
+    - Eklenecek varyant yoksa gönderim yapılmaz: iş `PTTAVM_VARIANTS_ALREADY_PRESENT` ile **başarılı** biter ("PTT AVM'de bu
+      modelin bütün varyantları zaten var; gönderim yapılmadı."), kart `ALREADY_PRESENT` ("PTT AVM'de zaten var, gönderilmedi",
+      bilgi tonu, red kodu gösterilmez).
+    - Barkodu, Renk/Beden değeri veya stoğu okunamayan (ya da barkodu yinelenen) bir PTT AVM varyantı varsa gönderim durur
+      (`PTTAVM_REMOTE_VARIANT_UNREADABLE`, varyantlar kartta listelenir); okunamayan kayıt (`PRODUCT_VARIANT_INVALID`) da durdurur.
+    - Birleşik set yine en çok 100 varyant (`PTTAVM_VARIANT_LIMIT_EXCEEDED`), toplam stok en çok 9999
+      (`PTTAVM_STOCK_TOTAL_TOO_HIGH`); aynı Renk/Beden iki farklı barkodla olamaz (`PTTAVM_VARIANT_OPTION_CONFLICT`). Ürün düzeyi
+      stok birleşik varyantların toplamıdır.
+    - Eski `PTTAVM_REMOTE_VARIANT_MISSING` reddi kaldırıldı (PTT AVM'deki fazla varyantlar artık taşınır).
+  - Kuru çalıştırma anahtarı `PttAvmProductPayloadRules.VariantSendDryRun` **`false`** (birleştirmeyle silme olmadığı için gerçek
+    gönderim açık). Birleşik istek her durumda gönderimden önce worker günlüğüne `PTT AVM variant product request` satırıyla
+    (Information) XML olarak yazılır. Anahtar `true` yapılırsa istek gönderilmez, kart `DRY_RUN` ("Kuru çalıştırma, gönderilmedi")
+    olur. Tek varyantlı ürünün gönderimi değişmedi.
   - İş işleyici: kuyruktaki aile isteği, ailenin varyant barkodları sonradan değiştiyse gönderilmez (`PRODUCT_PUBLICATION_SUPERSEDED`);
-    sonuç satırları yalnız kartın kendi barkodlarıyla eşlenir (Shopify gibi).
-  - **Canlıda doğrulanacak (anahtar kapatılmadan önce):** `ProductV3Request` içindeki varyant öğe adları ve sırası
+    sonuç satırları yalnız kartın kendi barkodlarıyla eşlenir (Shopify gibi); taşınan PTT AVM varyantlarının satırları sayılmaz.
+  - **Canlıda doğrulanacak (ilk gerçek gönderimde):** `ProductV3Request` içindeki varyant öğe adları ve sırası
     (`Variants/Variant{Attributes/VariantAttr{Deger, Tanim}, Miktar, VariantBarkod}`; `Combination` ve fiyat farkı gönderilmiyor;
     repoda örnek yok, şema notlarından türetildi); varyant barkodunun büyük/küçük harf duyarlılığı (dışa aktarımda küçük harf);
     ürün düzeyi `Quantity`'nin kabulü; takip sonucunun varyant barkoduyla mı üst barkodla mı satır döndüğü (üst barkodla dönerse
-    yayın işi `MANUAL_REVIEW`'e düşer); `GetProductsWithVariants`'in barkodsuz kayıtlarında `VariantName`'in "Renk / Beden" biçimi.
+    yayın işi `MANUAL_REVIEW`'e düşer); `GetProductsWithVariants`'in barkodsuz kayıtlarında `VariantName`'in "Renk / Beden" biçimi; taşınan bir PTT AVM varyantının
+    fiyat farkı ve pasif durumu istekte yokken korunuyor mu (istek yalnız barkod, Renk/Beden ve stok taşır).
 - **8. aşama (iade görünümü, salt okunur):** Satırı `iade` olan her sipariş, yalnız o satırlarla tamamlanmış bir iade kaydıdır (`iade:{sipariş no}`).
   Kaydedilmesi stoğu değiştirmez; iade kararları PTT AVM paneline bırakılır ve panelden gönderilmez.
 - **Varyantlar (22 Ekim 2026, canlı mağazadan):** İlk eşleştirmede 198 üründen 25'i eşleşti; eşleşmeyen 172 barkod panelin

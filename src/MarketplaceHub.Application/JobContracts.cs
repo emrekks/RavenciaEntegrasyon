@@ -23,6 +23,8 @@ public sealed record JobExecutionResult(
     public bool Succeeded => Kind == JobCompletionKind.Succeeded;
 
     public static JobExecutionResult Success() => new(JobCompletionKind.Succeeded);
+    /// <summary>The job is done without anything to do (e.g. the marketplace already holds it); the code and summary say why.</summary>
+    public static JobExecutionResult SuccessWithNote(string code, string summary) => new(JobCompletionKind.Succeeded, code, Safe(summary));
     /// <summary>The job could not start yet (e.g. its connection lock is busy); retry later without consuming an attempt.</summary>
     public static JobExecutionResult Deferred(string code, string? summary = null, TimeSpan? retryAfter = null) =>
         new(JobCompletionKind.Retry, code, Safe(summary), retryAfter, null, RefundAttempt: true);
