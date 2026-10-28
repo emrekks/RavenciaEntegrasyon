@@ -891,13 +891,11 @@
 .variant-header-action-menu-portal button strong { font-size: var(--rv-font-size-sm); }
 .publish-platform-fact-publication dd { display: flex; min-width: 0; align-items: center; gap: 5px; }
 .publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 28px; padding-inline: 8px; font-size: 11px; white-space: normal; line-height: 1.25; padding-block: 4px; text-align: left; }
-.publish-platform-fact-publication .publish-tracking-action { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; }
+.publish-platform-fact-publication .publish-tracking-action { display: grid; width: 30px; min-width: 30px; height: 30px; min-height: 0; place-items: center; padding: 0; }
 /* A running publication job shows inside the status row, so the card keeps its height: the badge dot turns into a
    spinner (job message on hover), the stop control sits beside refresh, a stopped job leaves one cut-off line. */
 .publish-platform-fact-publication .publish-platform-status.is-working > i { box-sizing: border-box; width: 10px; height: 10px; flex: 0 0 10px; background: transparent; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rv-publish-status-spin .8s linear infinite; }
 .publish-platform-fact-publication .publish-tracking-stop > i { display: block; width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
-.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-stop:hover:not(:disabled),
-.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-stop:focus-visible { color: var(--rv-color-danger); }
 .publish-platform-fact-publication > small.publish-platform-job-note { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .publish-platform-fact-publication > small.publish-platform-job-note.is-muted { color: var(--rv-color-muted); }
 @keyframes rv-publish-status-spin { to { transform: rotate(360deg); } }

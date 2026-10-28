@@ -6143,27 +6143,49 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .variant-row-actions > .variant-platform-empty { flex: 0 0 34px; text-align: center; }
 .app-shell.stitch-shell main .variant-table-head > span:nth-child(9) { text-align: center; }
 
-/* Keep the refresh control icon-only and visually quiet beside the status. */
+/* Refresh and stop are compact icon buttons beside the status badge: same 30 px square, surface fill, strong border. */
 .app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action {
   display: grid;
   width: 30px;
   min-width: 30px;
   height: 30px;
-  min-height: 30px;
+  min-height: 0;
   flex: 0 0 30px;
   place-items: center;
+  align-self: center;
   padding: 0;
   box-sizing: border-box;
   color: var(--rv-color-muted);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 7px;
+  box-shadow: none;
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease;
 }
-.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action:hover:not(:disabled),
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action:hover:not(:disabled) {
+  color: var(--rv-color-primary);
+  background: var(--rv-color-primary-soft);
+  border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong));
+}
 .app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action:focus-visible {
   color: var(--rv-color-primary);
-  background: transparent;
-  border: 0;
+  border-color: var(--rv-color-primary);
+  outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 48%, transparent);
+  outline-offset: 2px;
+}
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-stop:hover:not(:disabled) {
+  color: var(--rv-color-danger);
+  background: var(--rv-color-danger-soft);
+  border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border-strong));
+}
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-stop:focus-visible {
+  color: var(--rv-color-danger);
+  border-color: var(--rv-color-danger);
+  outline-color: color-mix(in srgb, var(--rv-color-danger) 48%, transparent);
+}
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action:disabled {
+  cursor: wait;
+  opacity: .6;
 }
 
 /* Product copy action sits in a compact, keyboard-accessible overflow menu. */

@@ -8,7 +8,7 @@ describe('bulk status run', () => {
     const result = await runInChunks(['a', 'b', 'c'], 2, send, progress)
     expect(send.mock.calls).toEqual([[['a', 'b']], [['c']]])
     expect(progress.mock.calls).toEqual([[2, 3], [3, 3]])
-    expect(bulkStatusResultMessage('Aktif', result)).toEqual({ message: '3 ürün durumu “Aktif” olarak güncellendi.', kind: 'success' })
+    expect(bulkStatusResultMessage('Aktif', result)).toEqual({ title: 'Ürün Durumları Güncellendi', message: '3 ürün durumu “Aktif” olarak güncellendi.', kind: 'success' })
   })
 
   it('stops at a failed chunk and names the partial result', async () => {
@@ -17,11 +17,11 @@ describe('bulk status run', () => {
     expect(result.doneIds).toEqual(['a', 'b'])
     expect(result.remainingIds).toEqual(['c', 'd', 'e'])
     expect(send).toHaveBeenCalledTimes(2)
-    expect(bulkStatusResultMessage('Arşiv', result)).toEqual({ message: '2 ürün “Arşiv” olarak güncellendi; kalan 3 ürün güncellenemedi: Sunucu hatası.', kind: 'error' })
+    expect(bulkStatusResultMessage('Arşiv', result)).toEqual({ title: 'Ürün Durumları Kısmen Güncellendi', message: '2 ürün “Arşiv” olarak güncellendi; kalan 3 ürün güncellenemedi: Sunucu hatası.', kind: 'error' })
   })
 
   it('reports a failure of the first chunk as a plain error', async () => {
     const result = await runInChunks(['a'], 500, () => Promise.reject(new Error('Yetki yok.')))
-    expect(bulkStatusResultMessage('Aktif', result)).toEqual({ message: 'Yetki yok.', kind: 'error' })
+    expect(bulkStatusResultMessage('Aktif', result)).toEqual({ title: 'Ürün Durumları Güncellenemedi', message: 'Yetki yok.', kind: 'error' })
   })
 })

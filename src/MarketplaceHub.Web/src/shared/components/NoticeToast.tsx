@@ -65,15 +65,15 @@ export function MessageToast({ message, onClose, kind: explicitKind }: { message
 }
 
 /** An action's error as a toast that also goes to the notification history; it hides itself after eight seconds. */
-export function ErrorToast({ error, onDismiss }: { error: unknown; onDismiss?: () => void }) {
+export function ErrorToast({ error, title, onDismiss }: { error: unknown; title?: string; onDismiss?: () => void }) {
   const message = error ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
   const [hiddenMessage, setHiddenMessage] = useState('')
   useEffect(() => {
     if (!message) return
-    appendNotification(message, 'error')
+    appendNotification(title ? `${title}: ${message}` : message, 'error')
     const timeout = window.setTimeout(() => setHiddenMessage(message), 8000)
     return () => window.clearTimeout(timeout)
-  }, [message])
+  }, [message, title])
   if (!message || hiddenMessage === message) return null
-  return <NoticeToast kind="error" message={message} durationMs={8000} onClose={() => { setHiddenMessage(message); onDismiss?.() }} />
+  return <NoticeToast kind="error" title={title} message={message} durationMs={8000} onClose={() => { setHiddenMessage(message); onDismiss?.() }} />
 }

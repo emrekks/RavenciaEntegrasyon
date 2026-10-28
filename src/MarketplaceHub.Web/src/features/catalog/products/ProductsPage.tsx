@@ -118,7 +118,7 @@ function productVariantDisplayGroups(variants: Variant[]) {
   })).sort((left, right) => left.label.localeCompare(right.label, 'tr', { sensitivity: 'base' }))
 }
 type QuickEditMode = 'stock' | 'price' | 'both'
-function ProductQuickEditModal({ products, connections, mode = 'both', onChanged, onClose, onResult }: { products: Product[]; connections: MarketplaceConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onClose: () => void; onResult?: (message: string, kind: 'success' | 'error') => void }) {
+function ProductQuickEditModal({ products, connections, mode = 'both', onChanged, onClose, onResult }: { products: Product[]; connections: MarketplaceConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onClose: () => void; onResult?: (title: string, message: string, kind: 'success' | 'error') => void }) {
   const contextProduct = products[0]
   const contextTitle = contextProduct?.title || 'Toplu düzenleme'
   const contextModelCode = contextProduct ? contextProduct.modelCode || contextProduct.variants.find(variant => variant.modelCode)?.modelCode || '—' : null
@@ -186,13 +186,13 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   }
   async function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (saving) return
-    if (!selectionDraft.length) { const message = 'Önce en az bir varyant seçin.'; setNotice(message); onResult?.(message, 'error'); return }
+    if (!selectionDraft.length) { const message = 'Önce en az bir varyant seçin.'; setNotice(message); onResult?.('Varyant Seçilmedi', message, 'error'); return }
     const targetSelection = selectionDraft
     const targetSelectionSet = new Set(targetSelection)
     const priceRequested = mode !== 'stock' && (listPrice !== '' || salePrice !== ''); const stockRequested = stockAmount !== ''
-    if (!priceRequested && !stockRequested) { const message = 'Uygulanacak fiyat veya stok değerini girin.'; setNotice(message); onResult?.(message, 'error'); return }
+    if (!priceRequested && !stockRequested) { const message = 'Uygulanacak fiyat veya stok değerini girin.'; setNotice(message); onResult?.('Değer Girilmedi', message, 'error'); return }
     const list = listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
-    if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale < 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.(message, 'error'); return }
+    if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale < 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.('Geçersiz Değer', message, 'error'); return }
     setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
     // Every selected variant is attempted; a failure is recorded and the rest still go out. Stock is sent as an
     // absolute value against the stock this dialog opened with, so a change made meanwhile is refused, not undone.
@@ -231,9 +231,9 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
       setSaving(false)
     }
     const summary = bulkEditSummary(targetSelection.length, failures)
-    if (!failures.length) { onResult?.(summary, 'success'); onClose(); return }
+    if (!failures.length) { onResult?.('Hızlı Düzenleme Uygulandı', summary, 'success'); onClose(); return }
     const staleHint = anyStale ? ' Değişen değerler yenilendi; kontrol edip yeniden uygulayın.' : ''
-    setNotice(`Başarısız: ${summary}${staleHint}`); onResult?.(summary, 'error')
+    setNotice(`Başarısız: ${summary}${staleHint}`); onResult?.('Hızlı Düzenleme Tamamlanamadı', summary, 'error')
     // The refreshed list is the user's new baseline once they have been told the stock changed.
     if (anyStale) resetStockBaseline.current = true
   }
@@ -521,7 +521,7 @@ export function ProductsPage() {
   const [searchParams] = useSearchParams()
   const [initialList] = useState(() => productListFromUrl(searchParams))
   const [trackedProductImportJobIds, setTrackedProductImportJobIds] = useState<string[]>([])
-  const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(initialList.filters.search); const [searchFilter, setSearchFilter] = useState(initialList.filters.search); const [status, setStatus] = useState(initialList.filters.status); const [platform, setPlatform] = useState(initialList.filters.platform); const [stock, setStock] = useState(initialList.filters.stock); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' } | null>(null); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED' } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(true); const [productImportUpdateExistingPricesAndStock, setProductImportUpdateExistingPricesAndStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [lowStockOpen, setLowStockOpen] = useState(() => searchParams.get('details') === 'low-stock'); const [transferOpen, setTransferOpen] = useState(false); const [bulkPublishOpen, setBulkPublishOpen] = useState(false); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>(initialList.pageCursors)
+  const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(initialList.filters.search); const [searchFilter, setSearchFilter] = useState(initialList.filters.search); const [status, setStatus] = useState(initialList.filters.status); const [platform, setPlatform] = useState(initialList.filters.platform); const [stock, setStock] = useState(initialList.filters.stock); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ title: string; message: string; kind: 'success' | 'error' | 'info' } | null>(null); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED' } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(true); const [productImportUpdateExistingPricesAndStock, setProductImportUpdateExistingPricesAndStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [lowStockOpen, setLowStockOpen] = useState(() => searchParams.get('details') === 'low-stock'); const [transferOpen, setTransferOpen] = useState(false); const [bulkPublishOpen, setBulkPublishOpen] = useState(false); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>(initialList.pageCursors)
   const [pageJumping, setPageJumping] = useState(false)
   const [catalogSort, setCatalogSort] = useState<ProductCatalogSort>(() => parseProductCatalogSort(initialList.filters.sort))
   const [productImportIncludePendingApproval, setProductImportIncludePendingApproval] = useState(false)
@@ -604,10 +604,10 @@ export function ProductsPage() {
   const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
   const hasMoreProductsToSelect = totalCount > pageProductGroups.length
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
-  function showProductToast(message: string, kind: 'success' | 'error' | 'info') { setProductToast({ message, kind }) }
+  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info') { setProductToast({ title, message, kind }) }
   useEffect(() => {
     if (!productToast) return
-    appendNotification(productToast.message, productToast.kind)
+    appendNotification(`${productToast.title}: ${productToast.message}`, productToast.kind)
     const timeout = window.setTimeout(() => setProductToast(current => current === productToast ? null : current), 4000)
     return () => window.clearTimeout(timeout)
   }, [productToast])
@@ -623,9 +623,9 @@ export function ProductsPage() {
   }
   async function importProductsFromPlatforms() {
     if (productImporting) return
-    if (!productImportConnectionIds.length) { showProductToast('Aktarım için en az bir aktif pazar yeri bağlantısı seçin.', 'error'); return }
-    if (productImportMethod === 'SINGLE' && productImportConnectionIds.length !== 1) { showProductToast('Tek ürün aktarımında yalnızca bir bağlantı seçilebilir.', 'error'); return }
-    if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast(`Tek ürün aktarımı için ${singleLookupLabel} girin.`, 'error'); return }
+    if (!productImportConnectionIds.length) { showProductToast('Bağlantı Seçilmedi', 'Aktarım için en az bir aktif pazar yeri bağlantısı seçin.', 'error'); return }
+    if (productImportMethod === 'SINGLE' && productImportConnectionIds.length !== 1) { showProductToast('Tek Bağlantı Seçin', 'Tek ürün aktarımında yalnızca bir bağlantı seçilebilir.', 'error'); return }
+    if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast('Ürün Bilgisi Gerekli', `Tek ürün aktarımı için ${singleLookupLabel} girin.`, 'error'); return }
     setProductImporting(true)
     try {
       const full = productImportMode === 'FULL'
@@ -650,11 +650,11 @@ export function ProductsPage() {
         ? selectedImportOnlyHepsiburada ? ' · Hepsiburada ürün içeriği korunacak' : productImportUpdateExistingProducts ? ' · Hepsiburada içeriği korunacak, desteklenen platform içerikleri güncellenecek' : ' · mevcut ürün içerikleri korunacak'
         : productImportUpdateExistingProducts ? ' · mevcut ürün bilgileri güncellenecek' : ' · mevcut ürün bilgileri korunacak' : ''
        const priceStockLabel = productImportMethod === 'BULK' && existingOnly && !selectedImportOnlyHepsiburada ? productImportUpdateExistingPricesAndStock ? ' · mevcut fiyat ve stoklar güncellenecek' : ' · mevcut fiyat ve stoklar korunacak' : ''
-       showProductToast(`${productImportConnectionIds.length} bağlantı için ${modeLabel} aktarımı kuyruğa alındı${productImportIncludeArchived ? selectedImportHasShopify ? ' · arşiv ve taslak ürünler dahil' : ' · arşiv ürünleri dahil' : ''}${includePendingApproval ? ' · onay bekleyen ürünler dahil' : ''}${contentLabel}${priceStockLabel}.`, 'info')
+       showProductToast('Ürün Aktarımı Kuyruğa Alındı', `${productImportConnectionIds.length} bağlantı için ${modeLabel} aktarımı kuyruğa alındı${productImportIncludeArchived ? selectedImportHasShopify ? ' · arşiv ve taslak ürünler dahil' : ' · arşiv ürünleri dahil' : ''}${includePendingApproval ? ' · onay bekleyen ürünler dahil' : ''}${contentLabel}${priceStockLabel}.`, 'info')
       void productSyncJobsQuery.refetch()
       void client.invalidateQueries({ queryKey: ['jobs'] })
     } catch (err) {
-      showProductToast(err instanceof Error ? err.message : 'Platform ürünleri panele alınamadı.', 'error')
+      showProductToast('Ürün Aktarımı Başlatılamadı', err instanceof Error ? err.message : 'Platform ürünleri panele alınamadı.', 'error')
     } finally {
       setProductImporting(false)
     }
@@ -702,9 +702,9 @@ export function ProductsPage() {
       setSelectedProductIds(ids)
       setSelectedProductCache(Object.fromEntries(all.items.map(product => [product.id, product])))
       setAllProductsSelected(true)
-      showProductToast(`${productRowsAsCards(all.items).length} ürün kartı · ${ids.length} katalog kaydı tüm sayfalardan seçildi.`, 'success')
+      showProductToast('Tüm Ürünler Seçildi', `${productRowsAsCards(all.items).length} ürün kartı · ${ids.length} katalog kaydı tüm sayfalardan seçildi.`, 'success')
     } catch (err) {
-      showProductToast(err instanceof Error ? err.message : 'Tüm sayfalardaki ürünler seçilemedi.', 'error')
+      showProductToast('Ürünler Seçilemedi', err instanceof Error ? err.message : 'Tüm sayfalardaki ürünler seçilemedi.', 'error')
     } finally {
       setSelectingAllProducts(false)
     }
@@ -733,7 +733,7 @@ export function ProductsPage() {
       }
       setPageNumber(target)
     } catch (err) {
-      showProductToast(err instanceof Error ? err.message : 'İstenen ürün sayfası yüklenemedi.', 'error')
+      showProductToast('Ürün Sayfası Yüklenemedi', err instanceof Error ? err.message : 'İstenen ürün sayfası yüklenemedi.', 'error')
     } finally {
       setPageJumping(false)
     }
@@ -750,7 +750,7 @@ export function ProductsPage() {
     try {
       const result = await runInChunks(targetIds, 500, productIds => hubApi('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, status: newStatus }) }), (done, total) => setStatusProgress({ done, total }))
       const outcome = bulkStatusResultMessage(productStatusLabel(newStatus), result)
-      showProductToast(outcome.message, outcome.kind)
+      showProductToast(outcome.title, outcome.message, outcome.kind)
       const doneIds = new Set(result.doneIds)
       setSelectedProductIds(current => current.filter(id => !doneIds.has(id)))
       setSelectedProductCache(current => { const next = { ...current }; doneIds.forEach(id => delete next[id]); return next })
@@ -794,10 +794,10 @@ export function ProductsPage() {
       setSelectedProductCache(current => { const next = { ...current }; targetIds.forEach(id => delete next[id]); return next })
       setAllProductsSelected(false)
       setDeleteRequest(null)
-      showProductToast(request.productIds.length === 1 ? 'Ürün yerel katalogdan silindi.' : `${request.productIds.length} katalog kaydı silindi.`, 'success')
+      showProductToast(request.productIds.length === 1 ? 'Ürün Silindi' : 'Ürünler Silindi', request.productIds.length === 1 ? 'Ürün yerel katalogdan silindi.' : `${request.productIds.length} katalog kaydı silindi.`, 'success')
       await refresh()
     } catch (err) {
-      showProductToast(err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
+      showProductToast('Ürün Silinemedi', err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
     } finally {
       setDeletingProducts(false)
     }
@@ -883,9 +883,9 @@ export function ProductsPage() {
       </div></>}
       {activeProductSyncJobs.length > 0 && <section className="rr-dsec" aria-live="polite"><header><div className="rr-h3">Devam Eden Aktarımlar</div><p>{activeProductSyncJobs.length} işlem</p></header>{activeProductSyncJobs.map(job => { const received = Math.max(0, job.progressReceived); const total = job.progressTotal != null && job.progressTotal >= received ? job.progressTotal : null; const percent = job.progressPercent != null ? Math.min(100, Math.max(0, job.progressPercent)) : total != null && total > 0 ? Math.min(100, Math.max(0, Math.floor(received * 100 / total))) : null; const label = job.progressLabel ?? (job.status === 'PENDING' ? 'Kuyrukta bekliyor' : 'Aktarım çalışıyor'); const mapping = job.progressLabel?.includes('Eşlenen') ?? false; const jobConnection = (connectionsQuery.data?.items ?? []).find(item => item.id === job.connectionId); return <div className="rr-job" key={job.id}><div className="rr-job-h">{jobConnection && <RrLogo code={jobConnection.platformCode} />}<b>{jobConnection && <span className="rr-job-src">{jobConnection.displayName}</span>}{label}</b><span className="rr-num">{percent == null ? '—' : `%${percent}`}</span><button type="button" className="rr-btn rr-quiet" style={{ height: 28 }} disabled={cancelProductSync.isPending} onClick={() => cancelProductSync.mutate(job.id)}>Durdur</button></div><span className="rr-bar"><i style={{ width: `${percent ?? 8}%` }} /></span><div className="rr-job-c"><span>Alınan <b className="rr-num">{received.toLocaleString('tr-TR')}</b></span><span>{mapping ? 'Eşlenen' : 'İşlenen'} <b className="rr-num">{job.progressProcessed.toLocaleString('tr-TR')}</b></span><span>{mapping ? 'Eşleşmeyen' : 'Atlanan'} <b className="rr-num">{job.progressSkipped.toLocaleString('tr-TR')}</b></span><span>Hatalı <b className="rr-num rr-bad">{job.progressFailed.toLocaleString('tr-TR')}</b></span></div></div> })}</section>}
     </RrModal>}
-    {productToast && <NoticeToast key={`${productToast.kind}:${productToast.message}`} kind={productToast.kind} message={productToast.message} onClose={() => setProductToast(null)} durationMs={4000} />}
+    {productToast && <NoticeToast key={`${productToast.kind}:${productToast.message}`} kind={productToast.kind} title={productToast.title} message={productToast.message} onClose={() => setProductToast(null)} durationMs={4000} />}
     {transferOpen && <ProductTransferDialog onClose={() => setTransferOpen(false)} />}
-    {bulkPublishOpen && <BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} onClose={() => setBulkPublishOpen(false)} onDone={(message, kind) => setProductToast({ message, kind })} />}
+    {bulkPublishOpen && <BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} onClose={() => setBulkPublishOpen(false)} onDone={(message, kind) => setProductToast({ title: kind === 'success' ? 'Toplu Yayın Kuyruğa Alındı' : 'Toplu Yayın Kısmen Gönderildi', message, kind })} />}
     {lowStockOpen && <LowStockDetailsModal products={lowStockQuery.data?.items ?? []} loading={lowStockQuery.isLoading} error={lowStockQuery.error} onClose={() => setLowStockOpen(false)} onImageClick={(url, title) => setLightboxImage({ url, title })} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </section>

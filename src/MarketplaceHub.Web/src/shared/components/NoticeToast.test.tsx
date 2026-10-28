@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NoticeToast } from './NoticeToast'
+import { ErrorToast, NoticeToast } from './NoticeToast'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -46,5 +46,11 @@ describe('notice toast', () => {
     expect(view.querySelector('.app-toast-progress')).not.toBeNull()
     expect(view.querySelector('.app-toast')?.getAttribute('aria-busy')).toBe('true')
     expect(view.querySelector('.app-toast-close')).toBeNull()
+  })
+
+  it('shows the specific title an error toast is given instead of the generic one', () => {
+    const view = render(<ErrorToast title="Kategori Kaydedilemedi" error={new Error('Ad zorunlu.')} />)
+    expect(view.querySelector('strong')?.textContent).toBe('Kategori Kaydedilemedi')
+    expect(view.querySelector('p')?.textContent).toBe('Ad zorunlu.')
   })
 })

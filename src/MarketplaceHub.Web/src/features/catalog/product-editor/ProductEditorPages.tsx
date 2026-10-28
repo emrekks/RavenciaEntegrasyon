@@ -970,7 +970,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     </dl>
     {valueMappingFixes.length > 0 && readinessCategoryScope && <button type="button" className="publish-platform-fix-mappings" onClick={() => setValueFixOpen(true)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${valueMappingFixes.length} değer`}>{valueMappingFixes.length}</span></button>}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification(message, 'success') }} />}
-    {valueFixNotice && <NoticeToast kind="success" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
+    {valueFixNotice && <NoticeToast kind="success" title="Değer Eşlemeleri Kaydedildi" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify dış yazması kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}
     {shopifyCapabilityCheckPending && <span id={`${issueListId}-shopify-pending`} className="sr-only">Shopify izinleri kontrol ediliyor.</span>}
     {blockedIssues.length > 0 && <span id={`${issueListId}-required`} className="sr-only">{blockedIssues.map(issue => `${issue.attribute}: ${issue.detail}`).join('. ')}</span>}
@@ -1157,8 +1157,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     document.addEventListener('keydown', closeCodeGenerationOnEscape)
     return () => document.removeEventListener('keydown', closeCodeGenerationOnEscape)
   }, [pendingVariantCodeGeneration])
-  function showFeedback(message: string, kind: OperationFeedback['kind'], options: { persistent?: boolean } = {}) {
-    setFeedback({ message, kind, ...options })
+  function showFeedback(title: string, message: string, kind: OperationFeedback['kind'], options: { persistent?: boolean } = {}) {
+    setFeedback({ title, message, kind, ...options })
   }
   function handleMediaFiles(files: File[]) {
     const accepted: File[] = []
@@ -1172,9 +1172,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (accepted.length) setMediaFiles(current => [...current, ...accepted.map(file => ({ id: crypto.randomUUID(), file }))])
     if (rejected.length) {
       const message = rejected.length === 1 ? rejected[0] : `${rejected.length} görsel eklenemedi. Dosya türü ve 6 MB sınırını kontrol edin.`
-      setNotice(message); showFeedback(message, 'error')
+      setNotice(message); showFeedback('Görsel Eklenemedi', message, 'error')
     } else if (accepted.length) {
-      const message = `${accepted.length} görsel seçildi.`; setNotice(message); showFeedback(message, 'info')
+      const message = `${accepted.length} görsel seçildi.`; setNotice(message); showFeedback('Görsel Seçildi', message, 'info')
     }
   }
   const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
@@ -1314,7 +1314,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const requirement = mappedRequirements.find(item => item.attributeId === attributeId)
     const alreadySelected = (attributeSelections[attributeId] ?? []).includes(valueId)
     if (!alreadySelected && requirement && isOptionRequirement(requirement) && !variantAttributeIds.includes(attributeId) && variantAttributeIds.length >= 2) {
-      const message = 'Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'; setNotice(message); showFeedback(message, 'error'); return
+      const message = 'Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'; setNotice(message); showFeedback('Seçenek Grubu Sınırı', message, 'error'); return
     }
     setAttributeSelections(current => {
       const next = toggleProductAttributeValue(current, attributeId, valueId, Boolean(requirement && !isOptionRequirement(requirement)))
@@ -1385,12 +1385,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function generateVariants(attributeIds = variantAttributeIds, preserveExistingDetails = false) {
     try {
       if (automaticBarcodeGeneration && !form.modelCode.trim()) {
-        const message = 'Otomatik barkod oluşturmak için önce model kodunu girin.'; setNotice(message); showFeedback(message, 'error')
+        const message = 'Otomatik barkod oluşturmak için önce model kodunu girin.'; setNotice(message); showFeedback('Model Kodu Gerekli', message, 'error')
         return false
       }
       const generated = buildVariantMatrix(mappedRequirements, attributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
       if (!generated.length) {
-        const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback(message, 'error')
+        const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback('Varyant Özelliği Seçilmedi', message, 'error')
         return false
       }
       setVariantRows(current => {
@@ -1422,9 +1422,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           ? sortedRows.map((row, index) => ({ ...row, ...buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) }))
           : sortedRows
       })
-      const message = `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback(message, 'success')
+      const message = `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
       return true
-    } catch (reason) { const message = reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.'; setNotice(message); showFeedback(message, 'error'); return false }
+    } catch (reason) { const message = reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.'; setNotice(message); showFeedback('Varyantlar Oluşturulamadı', message, 'error'); return false }
   }
   function syncOptionGroups() {
     const allIds = bulkSyncOptionRequirements.map(item => item.attributeId)
@@ -1439,7 +1439,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const message = clearedSavedIds.length
       ? `Varyant satırları temizlendi. Kaydedince ${clearedSavedIds.length} kayıtlı varyant panelden silinir; pazaryerlerindeki ilanlara dokunulmaz.`
       : 'Oluşan varyant satırları temizlendi.'
-    setNotice(message); showFeedback(message, 'success')
+    setNotice(message); showFeedback('Varyantlar Temizlendi', message, 'success')
   }
   function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'costPrice' ? (value.trim() === '' ? null : Number(value)) : field === 'stock' || field === 'salePrice' || field === 'listPrice' ? Number(value || 0) : value })) }
   function updateVariantMedia(keyValue: string, values: string[]) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, mediaRefs: values })) }
@@ -1509,7 +1509,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setFamilyMediaOrderDirty(Boolean(editProductId))
     const orderedProductMediaUrls = mediaUrlsInPreferredOrder(mediaUrls, next)
     if (!mediaRefsEqual(orderedProductMediaUrls, mediaUrls)) updateField('mediaUrls', orderedProductMediaUrls.join('\n'))
-    showFeedback(editProductId ? 'Görsel sırası diğer renklerle birlikte Kaydet’te uygulanacak.' : 'Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
+    showFeedback('Görsel Sırası Değişti', editProductId ? 'Görsel sırası diğer renklerle birlikte Kaydet’te uygulanacak.' : 'Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
   }
   function startMediaTouch(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.pointerType === 'mouse' || submitting) return
@@ -1568,7 +1568,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setDraggedMedia(null); setDragOverMedia(null)
     if (next === mediaFiles) return
     setMediaFiles(next)
-    showFeedback('Yüklenen görsel sırası güncellendi. Kalıcı olması için ürünü kaydedin.', 'info')
+    showFeedback('Görsel Sırası Değişti', 'Yüklenen görsel sırası güncellendi. Kalıcı olması için ürünü kaydedin.', 'info')
   }
   function clearAllMedia() {
     setMediaFiles([])
@@ -1577,7 +1577,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: [] })))
     setDraggedMedia(null)
     setDragOverMedia(null)
-    showFeedback('Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
+    showFeedback('Görseller Temizlendi', 'Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
   }
   async function removeProductMedia(url: string, confirmed = false) {
     const targetKey = mediaImageKey(url)
@@ -1589,7 +1589,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!isPersisted || !editProductId || !productToEdit.data) {
       updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
       setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
-      showFeedback('Görsel taslaktan kaldırıldı. Kalıcı olması için Kaydet’e basın.', 'info')
+      showFeedback('Görsel Kaldırıldı', 'Görsel taslaktan kaldırıldı. Kalıcı olması için Kaydet’e basın.', 'info')
       return
     }
 
@@ -1629,16 +1629,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       })
       await productToEdit.refetch()
       await client.invalidateQueries({ queryKey: ['products'] })
-      showFeedback(`${result.deletedCount} görsel bağlantısı kaldırıldı ve ürün yenilendi.`, 'success')
+      showFeedback('Görsel Kaldırıldı', `${result.deletedCount} görsel bağlantısı kaldırıldı ve ürün yenilendi.`, 'success')
     } catch (reason) {
-      showFeedback(reason instanceof Error ? reason.message : 'Görsel kaldırılamadı.', 'error')
+      showFeedback('Görsel Kaldırılamadı', reason instanceof Error ? reason.message : 'Görsel kaldırılamadı.', 'error')
     } finally {
       setDeletingProductMediaKey(null)
     }
   }
   async function removeFamilyMedia(item: ProductFamilyMediaItem, confirmed = false) {
     if (item.mediaIds.length === 0) {
-      showFeedback('Görselin kaynak bağlantıları yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error')
+      showFeedback('Görsel Kaldırılamadı', 'Görselin kaynak bağlantıları yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error')
       return
     }
     if (!confirmed) {
@@ -1656,9 +1656,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setFamilyMediaOrder(current => current.filter(url => mediaImageKey(url) !== mediaImageKey(item.url)))
       await productToEdit.refetch()
       await client.invalidateQueries({ queryKey: ['products'] })
-      showFeedback('Renk ailesi görseli kaldırıldı.', 'success')
+      showFeedback('Aile Görseli Kaldırıldı', 'Renk ailesi görseli kaldırıldı.', 'success')
     } catch (reason) {
-      showFeedback(reason instanceof Error ? reason.message : 'Renk ailesi görseli kaldırılamadı.', 'error')
+      showFeedback('Aile Görseli Kaldırılamadı', reason instanceof Error ? reason.message : 'Renk ailesi görseli kaldırılamadı.', 'error')
     } finally {
       setDeletingFamilyMediaKey(null)
     }
@@ -1675,7 +1675,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const platformCode = connections.data?.items.find(item => item.id === id)?.platformCode
     const name = platformCode ? publishPlatformName(platformCode) : 'Pazaryeri'
     setSelectedChannelIds(current => selected ? current.filter(item => item !== id) : [...current, id])
-    showFeedback(selected ? `${name} yayın seçiminden çıkarıldı; Yayınla ona gönderim yapmaz.` : `${name} yayın için seçildi; Yayınla ile gönderim kuyruğuna alınır.`, 'info')
+    showFeedback(selected ? 'Platform Seçimden Çıkarıldı' : 'Platform Seçildi', selected ? `${name} yayın seçiminden çıkarıldı; Yayınla ona gönderim yapmaz.` : `${name} yayın için seçildi; Yayınla ile gönderim kuyruğuna alınır.`, 'info')
   }
   function updateableProductConnectionIds() {
     return (connections.data?.items ?? []).filter(item => isProductPublicationConnection(item) && productUpdateCapabilities(item.platformCode).writable && item.status.trim().toUpperCase() === 'ACTIVE').map(item => item.id)
@@ -1691,12 +1691,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const updateableIds = new Set(updateableProductConnectionIds())
     const safeConnectionIds = [...new Set(connectionIds)].filter(id => updateableIds.has(id))
     if (!safeConnectionIds.length) {
-      showFeedback('Güncelleme için desteklenen ve aktif bir platform seçin.', 'error')
+      showFeedback('Platform Seçilmedi', 'Güncelleme için desteklenen ve aktif bir platform seçin.', 'error')
       return
     }
     const formElement = document.getElementById('product-creation-form')
     if (!(formElement instanceof HTMLFormElement)) {
-      showFeedback('Ürün formu bulunamadı; güncelleme başlatılamadı.', 'error')
+      showFeedback('Güncelleme Başlatılamadı', 'Ürün formu bulunamadı; güncelleme başlatılamadı.', 'error')
       return
     }
     pendingPlatformUpdate.current = { connectionIds: safeConnectionIds, includeProductInformation }
@@ -1710,7 +1710,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const connectionIds = quickPlatformUpdateTargets(selectedChannelIds, updateableProductConnectionIds())
     if (!connectionIds.length) {
       openPlatformUpdateDialog()
-      showFeedback('Hızlı güncelleme için önce güncellenecek platformu seçin.', 'info')
+      showFeedback('Platform Seçin', 'Hızlı güncelleme için önce güncellenecek platformu seçin.', 'info')
       return
     }
     queuePlatformUpdate(connectionIds, false)
@@ -1745,14 +1745,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!variantPlatformPricing) return
     const selectedPlatform = targetPlatform ?? variantPlatformPricing.platform
     if (!selectedPlatform.connectionId) {
-      showFeedback('Bu platform bağlantısının fiyat bilgisi alınamadı.', 'error')
+      showFeedback('Fiyat Bilgisi Alınamadı', 'Bu platform bağlantısının fiyat bilgisi alınamadı.', 'error')
       return
     }
     const activeDraft = targetDraft ?? variantPlatformPricingDraft
     const listPrice = Number(activeDraft.listPrice)
     const salePrice = Number(activeDraft.salePrice)
     if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) {
-      showFeedback('Liste fiyatı satış fiyatından küçük olamaz.', 'error')
+      showFeedback('Geçersiz Fiyat', 'Liste fiyatı satış fiyatından küçük olamaz.', 'error')
       return
     }
     setVariantPlatformPricingSaving(true)
@@ -1778,7 +1778,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         savedOffers.push({ rowKey: row.key, platform, saved })
       }
       if (!savedOffers.length) {
-        showFeedback('Bu platform için güncellenebilir varyant bulunamadı.', 'error')
+        showFeedback('Varyant Bulunamadı', 'Bu platform için güncellenebilir varyant bulunamadı.', 'error')
         return
       }
       const savedByRow = new Map(savedOffers.map(item => [item.rowKey, item]))
@@ -1789,7 +1789,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }))
       setVariantPlatformPricing(null)
       const message = `${platformDisplayName(selectedPlatform)} için ${savedOffers.length} varyantın fiyatı toplu olarak kaydedildi.`
-      setNotice(message); showFeedback(message, 'success')
+      setNotice(message); showFeedback('Platform Fiyatları Kaydedildi', message, 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
@@ -1797,7 +1797,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.'
-      showFeedback(message, 'error')
+      showFeedback('Platform Fiyatları Kaydedilemedi', message, 'error')
     } finally {
       setVariantPlatformPricingSaving(false)
     }
@@ -1805,13 +1805,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   async function saveVariantPlatformPricingRow(targetRow: VariantDraft, targetPlatform: VariantPlatformStatus, targetDraft: ChannelPricingDraft) {
     const platform = targetRow.platformStatuses?.find(item => item.connectionId === targetPlatform.connectionId)
     if (!platform?.connectionId) {
-      showFeedback('Bu platform bağlantısının fiyat bilgisi alınamadı.', 'error')
+      showFeedback('Fiyat Bilgisi Alınamadı', 'Bu platform bağlantısının fiyat bilgisi alınamadı.', 'error')
       return
     }
     const listPrice = Number(targetDraft.listPrice)
     const salePrice = Number(targetDraft.salePrice)
     if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) {
-      showFeedback('Liste fiyatı satış fiyatından küçük olamaz.', 'error')
+      showFeedback('Geçersiz Fiyat', 'Liste fiyatı satış fiyatından küçük olamaz.', 'error')
       return
     }
     setVariantPlatformPricingSaving(true)
@@ -1831,14 +1831,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
         : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: targetRow.key, ...body }) })
       setVariantRows(rows => rows.map(row => row.key !== targetRow.key ? row : { ...row, platformStatuses: row.platformStatuses?.map(item => item.connectionId === platform.connectionId ? { ...item, offerId: saved.id, listPrice: saved.listPrice, salePrice: saved.salePrice, currency: saved.currency, offerVersion: saved.version } : item) }))
-      showFeedback(`${platformDisplayName(platform)} ${targetRow.optionSignature || targetRow.sku} fiyatı kaydedildi.`, 'success')
+      showFeedback('Platform Fiyatı Kaydedildi', `${platformDisplayName(platform)} ${targetRow.optionSignature || targetRow.sku} fiyatı kaydedildi.`, 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
       }
     } catch (reason) {
-      showFeedback(reason instanceof Error ? reason.message : 'Varyant kanal fiyatı kaydedilemedi.', 'error')
+      showFeedback('Platform Fiyatı Kaydedilemedi', reason instanceof Error ? reason.message : 'Varyant kanal fiyatı kaydedilemedi.', 'error')
     } finally {
       setVariantPlatformPricingSaving(false)
     }
@@ -1850,7 +1850,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const sourceRow = variantRows.find(item => item.key === variantPlatformPricing.rowKey)
     const sourcePlatforms = sourceRow?.platformStatuses?.length ? sourceRow.platformStatuses : !editProductId ? variantPricingPlatforms : []
     if (!sourceRow || !sourcePlatforms.length) {
-      showFeedback('Bu ürün için güncellenebilir platform fiyatı bulunamadı.', 'error')
+      showFeedback('Platform Fiyatı Bulunamadı', 'Bu ürün için güncellenebilir platform fiyatı bulunamadı.', 'error')
       return
     }
     const platformKey = (platform: VariantPlatformStatus) => `${platform.platformCode}:${platform.connectionId ?? platform.platform}`
@@ -1860,14 +1860,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       return platform?.connectionId && draft ? [{ row: targetRow, platform, draft }] : []
     }))
     if (!targets.length) {
-      showFeedback('Bu platform için güncellenebilir varyant bulunamadı.', 'error')
+      showFeedback('Varyant Bulunamadı', 'Bu platform için güncellenebilir varyant bulunamadı.', 'error')
       return
     }
     for (const target of targets) {
       const listPrice = Number(target.draft.listPrice)
       const salePrice = Number(target.draft.salePrice)
       if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) {
-        showFeedback('Liste fiyatı satış fiyatından küçük olamaz.', 'error')
+        showFeedback('Geçersiz Fiyat', 'Liste fiyatı satış fiyatından küçük olamaz.', 'error')
         return
       }
     }
@@ -1878,7 +1878,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }))
       setVariantPlatformPricing(null)
       const message = `${targets.length} varyantın platform fiyatı ürün kaydedilince uygulanacak.`
-      setNotice(message); showFeedback(message, 'success')
+      setNotice(message); showFeedback('Platform Fiyatları Hazırlandı', message, 'success')
       return
     }
     setVariantPlatformPricingSaving(true)
@@ -1907,14 +1907,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setVariantRows(currentRows => currentRows.map(targetRow => ({ ...targetRow, platformStatuses: targetRow.platformStatuses?.map(platform => { const saved = savedByKey.get(`${targetRow.key}:${platform.connectionId}`); return saved ? { ...platform, offerId: saved.saved.id, listPrice: saved.saved.listPrice, salePrice: saved.saved.salePrice, currency: saved.saved.currency, offerVersion: saved.saved.version } : platform }) })))
       setVariantPlatformPricing(null)
       const message = `${savedOffers.length} varyant platform fiyatı kaydedildi.`
-      setNotice(message); showFeedback(message, 'success')
+      setNotice(message); showFeedback('Platform Fiyatları Kaydedildi', message, 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
       }
     } catch (reason) {
-      showFeedback(reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.', 'error')
+      showFeedback('Platform Fiyatları Kaydedilemedi', reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.', 'error')
     } finally {
       setVariantPlatformPricingSaving(false)
     }
@@ -1923,11 +1923,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const cost = bulkCostPrice === '' ? null : Number(bulkCostPrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
     const matchingKeys = new Set(variantRows.filter(row => rowMatchesVariantFilters(row)).map(row => row.key))
     if (hasVariantFilters && !matchingKeys.size) {
-      const message = 'Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.'; setNotice(message); showFeedback(message, 'error')
+      const message = 'Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.'; setNotice(message); showFeedback('Eşleşen Varyant Yok', message, 'error')
       return
     }
     setVariantRows(rows => rows.map(row => !matchingKeys.has(row.key) ? row : { ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, costPrice: cost == null || !Number.isFinite(cost) ? row.costPrice : cost, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list }))
-    const message = hasVariantFilters ? `Toplu stok, fiyat ve maliyet değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok, fiyat ve maliyet değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback(message, 'success')
+    const message = hasVariantFilters ? `Toplu stok, fiyat ve maliyet değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok, fiyat ve maliyet değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback('Toplu Değerler Uygulandı', message, 'success')
   }
 
   function openVariantBulkEdit(field: VariantBulkEditField) {
@@ -1954,19 +1954,19 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     const rowKeys = new Set(targetRows.map(row => row.key))
     setVariantRows(rows => applyVariantBulkEditValue(rows, rowKeys, variantBulkEdit.field, value))
-    showFeedback(`${variantBulkEditLabels[variantBulkEdit.field]} değeri ${hasVariantBulkEditFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
+    showFeedback('Toplu Değer Uygulandı', `${variantBulkEditLabels[variantBulkEdit.field]} değeri ${hasVariantBulkEditFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
     setVariantBulkEdit(null)
   }
 
   function applyBarcodeToSku(mode: 'missing' | 'all') {
     const rowsWithBarcode = variantRows.filter(row => row.barcode.trim())
     if (!rowsWithBarcode.length) {
-      const message = 'Stok kodu oluşturmak için önce en az bir barkod girin.'; setNotice(message); showFeedback(message, 'error'); setBarcodeSkuMenuOpen(false)
+      const message = 'Stok kodu oluşturmak için önce en az bir barkod girin.'; setNotice(message); showFeedback('Barkod Gerekli', message, 'error'); setBarcodeSkuMenuOpen(false)
       return
     }
     const rowsToUpdate = rowsWithBarcode.filter(row => mode === 'all' || !row.sku.trim())
     if (!rowsToUpdate.length) {
-      const message = 'Boş stok kodu bulunamadı; mevcut kodlar korunuyor.'; setNotice(message); showFeedback(message, 'info'); setBarcodeSkuMenuOpen(false)
+      const message = 'Boş stok kodu bulunamadı; mevcut kodlar korunuyor.'; setNotice(message); showFeedback('Stok Kodları Korundu', message, 'info'); setBarcodeSkuMenuOpen(false)
       return
     }
     const targetKeys = new Set(rowsToUpdate.map(row => row.key))
@@ -1980,7 +1980,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const conflictingKeys = new Set([...skuOwners.values()].filter(keys => keys.length > 1).flat())
     const safeRows = rowsToUpdate.filter(row => !conflictingKeys.has(row.key))
     if (!safeRows.length) {
-      const message = 'Barkodlar uygulanamadı; stok kodlarında çakışma var. Önce tekrar eden barkodları düzeltin.'; setNotice(message); showFeedback(message, 'error'); setBarcodeSkuMenuOpen(false)
+      const message = 'Barkodlar uygulanamadı; stok kodlarında çakışma var. Önce tekrar eden barkodları düzeltin.'; setNotice(message); showFeedback('Stok Kodu Çakışması', message, 'error'); setBarcodeSkuMenuOpen(false)
       return
     }
     const safeKeys = new Set(safeRows.map(row => row.key))
@@ -1989,14 +1989,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const message = skippedCount
       ? `${safeRows.length} varyanta uygulandı; ${skippedCount} satır çakışma nedeniyle korunuyor.`
       : `${safeRows.length} varyantın stok kodu barkoddan güncellendi.`
-    setNotice(message); showFeedback(message, skippedCount ? 'info' : 'success'); setBarcodeSkuMenuOpen(false)
+    setNotice(message); showFeedback('Stok Kodları Güncellendi', message, skippedCount ? 'info' : 'success'); setBarcodeSkuMenuOpen(false)
   }
 
   function regenerateVariantCodes(target: 'barcode' | 'sku') {
     const codes = buildSequentialVariantCodes(form.modelCode, variantRows.length)
     if (!codes.length) {
       const message = !form.modelCode.trim() ? 'Otomatik kod üretmek için önce model kodunu girin.' : 'Kod üretimi için varyant sayısı 1-1000 arasında olmalıdır.'
-      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false)
+      setNotice(message); showFeedback('Kod Üretilemedi', message, 'error'); setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false)
       return
     }
     setPendingVariantCodeGeneration({ target, codes })
@@ -2009,7 +2009,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!request) return
     if (variantRowsRef.current.length !== request.codes.length) {
       const message = 'Varyant sayısı değiştiği için kodlar üretilmedi. Menüyü yeniden açıp tekrar deneyin.'
-      setNotice(message); showFeedback(message, 'error'); setPendingVariantCodeGeneration(null)
+      setNotice(message); showFeedback('Kod Üretilemedi', message, 'error'); setPendingVariantCodeGeneration(null)
       return
     }
 
@@ -2019,13 +2019,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const ruleIssues = platformCodeIssues(codeRulePlatforms, request.target === 'barcode' ? request.codes[0] : '', request.target === 'sku' ? request.codes[0] : '')
     const ruleText = describePlatformCodeIssues(ruleIssues, request.target)
     const message = `${request.codes.length} varyantın ${request.target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu.${request.target === 'barcode' ? ' Üst barkod alanı ilk varyantla eşitlendi.' : ''} Kalıcı olması için Kaydet’e basın.${ruleText ? ` Uyarı: ${ruleText}.` : ''}`
-    setNotice(message); showFeedback(message, ruleText ? 'info' : 'success'); setPendingVariantCodeGeneration(null)
+    setNotice(message); showFeedback('Kodlar Oluşturuldu', message, ruleText ? 'info' : 'success'); setPendingVariantCodeGeneration(null)
   }
 
   async function pasteBarcodesFromClipboard(mode: 'missing' | 'all') {
     if (typeof navigator.clipboard?.readText !== 'function') {
       const message = 'Pano okuma bu tarayıcıda kullanılamıyor; barkodları satırlara elle yapıştırın.'
-      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false)
+      setNotice(message); showFeedback('Pano Kullanılamıyor', message, 'error'); setBarcodePasteMenuOpen(false)
       return
     }
 
@@ -2034,7 +2034,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       clipboardText = await navigator.clipboard.readText()
     } catch {
       const message = 'Panoya erişilemedi. Tarayıcı pano iznini verip tekrar deneyin.'
-      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false)
+      setNotice(message); showFeedback('Panoya Erişilemedi', message, 'error'); setBarcodePasteMenuOpen(false)
       return
     }
 
@@ -2042,7 +2042,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const rowsToUpdate = mode === 'missing' ? rows.filter(row => !row.barcode.trim()) : rows
     if (!rowsToUpdate.length) {
       const message = mode === 'missing' ? 'Boş barkod satırı bulunamadı.' : 'Önce varyant satırlarını oluşturun.'
-      setNotice(message); showFeedback(message, 'info'); setBarcodePasteMenuOpen(false)
+      setNotice(message); showFeedback('Barkod Satırı Yok', message, 'info'); setBarcodePasteMenuOpen(false)
       return
     }
     const values = parseBarcodeClipboardValues(clipboardText)
@@ -2050,7 +2050,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const reservedValues = rows.filter(row => !targetKeys.has(row.key)).map(row => row.barcode.trim())
     const issue = barcodeClipboardIssue(values, rowsToUpdate.length, reservedValues)
     if (issue) {
-      setNotice(issue); showFeedback(issue, 'error'); setBarcodePasteMenuOpen(false)
+      setNotice(issue); showFeedback('Barkodlar Yapıştırılamadı', issue, 'error'); setBarcodePasteMenuOpen(false)
       return
     }
 
@@ -2060,7 +2060,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       return barcode === undefined ? row : { ...row, barcode }
     }))
     const message = `${rowsToUpdate.length} varyantın barkodu panodan yapıştırıldı.`
-    setNotice(message); showFeedback(message, 'success'); setBarcodePasteMenuOpen(false)
+    setNotice(message); showFeedback('Barkodlar Yapıştırıldı', message, 'success'); setBarcodePasteMenuOpen(false)
   }
 
   function toggleVariantFilter(groupId: string, valueId: string) {
@@ -2081,7 +2081,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const groups = bulkMediaGroups
     if (!groups.length) {
       const message = 'Önce seçenek grubu ve en az bir seçenek değeri seçin.'
-      setNotice(message); showFeedback(message, 'error')
+      setNotice(message); showFeedback('Seçenek Değeri Gerekli', message, 'error')
       return
     }
     const group = groups.find(item => normalizeVariantOptionName(item.name) === 'RENK') ?? groups[0]
@@ -2105,7 +2105,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!mediaAutoSaveTick || !editProductId || !product) return
     const requests = variantMediaReconcileRequests(variantRows, initialEditVariantMediaRefs.current)
     if (requests === null || submitting) {
-      showFeedback('Görsel ataması forma eklendi; ürünü kaydettiğinizde kaydedilir.', 'info')
+      showFeedback('Görsel Ataması Eklendi', 'Görsel ataması forma eklendi; ürünü kaydettiğinizde kaydedilir.', 'info')
       return
     }
     if (!requests.length) return
@@ -2118,10 +2118,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       // A form with no other edits stays clean; other unsaved edits are left for the Kaydet button.
       if (formWasClean) setSnapshotRequest(value => value + 1)
       void client.invalidateQueries({ queryKey: ['products'] })
-      showFeedback(`${requests.length} varyantın görsel ataması kaydedildi.${formWasClean ? '' : ' Formdaki diğer değişiklikler henüz kaydedilmedi.'}`, 'success')
+      showFeedback('Görsel Ataması Kaydedildi', `${requests.length} varyantın görsel ataması kaydedildi.${formWasClean ? '' : ' Formdaki diğer değişiklikler henüz kaydedilmedi.'}`, 'success')
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Görsel ataması kaydedilemedi.'
-      showFeedback(`Görsel ataması kaydedilemedi: ${message} Atama formda duruyor; ürünü kaydettiğinizde yeniden denenir.`, 'error')
+      showFeedback('Görsel Ataması Kaydedilemedi', `Görsel ataması kaydedilemedi: ${message} Atama formda duruyor; ürünü kaydettiğinizde yeniden denenir.`, 'error')
     }
   })
   useEffect(() => { void saveVariantMediaAssignments() }, [mediaAutoSaveTick])
@@ -2136,7 +2136,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       updateVariantMedia(variantMediaModal.rowKey, variantMediaModal.draftRefs)
       setVariantMediaModal(null)
       requestVariantMediaSave()
-      showFeedback(variantMediaModal.draftRefs.length ? `${variantMediaModal.draftRefs.length} varyant görseli seçildi.` : 'Varyant görselleri kaldırıldı.', 'success')
+      showFeedback('Varyant Görselleri Güncellendi', variantMediaModal.draftRefs.length ? `${variantMediaModal.draftRefs.length} varyant görseli seçildi.` : 'Varyant görselleri kaldırıldı.', 'success')
       return
     }
     const group = bulkMediaGroups.find(item => item.id === variantMediaModal.groupId)
@@ -2149,7 +2149,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const matchingRowCount = new Set(assignments.flatMap(assignment => assignment.matchingRows.map(row => row.key))).size
     if (!matchingRowCount) {
       const message = `${group.name} değerleriyle eşleşen varyant satırı bulunamadı.`
-      setNotice(message); showFeedback(message, 'error')
+      setNotice(message); showFeedback('Eşleşen Varyant Yok', message, 'error')
       return
     }
     setVariantRows(rows => rows.map(row => {
@@ -2158,7 +2158,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }))
     setVariantMediaModal(null); requestVariantMediaSave()
     const message = `${group.name} görsel eşlemesi uygulandı: ${assignments.length} değer, ${matchingRowCount} varyant satırı.`
-    setNotice(message); showFeedback(message, 'success')
+    setNotice(message); showFeedback('Görsel Eşlemesi Uygulandı', message, 'success')
   }
 
   function rowsForSubmit(requireCompleteCatalog = true) {
@@ -2231,7 +2231,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const message = target.validationMessage || 'Lütfen zorunlu alanları doldurun.'
     setError(new Error(message))
     setNotice(message)
-    showFeedback(message, 'error')
+    showFeedback('Zorunlu Alan Eksik', message, 'error')
   }
 
   function dismissProductError() {
@@ -2258,7 +2258,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     // Whether the product itself had edits to write: the result says "Ürün bilgileri kaydedildi" only then.
     const productChangedAtSubmit = editorDirty
-    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(editProductId ? 'Ürün Kaydediliyor' : 'Ürün Oluşturuluyor', editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
     try {
       let submitRequirements = requirements.data ?? []
       if (form.categoryId && !requirements.data) {
@@ -2359,7 +2359,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const publicationErrors: Array<{ platformName: string; message: string }> = []
       const updates: MarketplaceUpdateOutcome[] = []
       // The steps after the product (media, stock, channel prices, publication) can take a while; the progress toast names them.
-      if (!editProductId) showFeedback('Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true })
+      if (!editProductId) showFeedback('Ürün Oluşturuldu', 'Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true })
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
       const productMediaChanged = editProductId
         ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
@@ -2420,7 +2420,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       for (const [connectionIndex, connectionId] of publicationConnectionIds.entries()) {
         const platformName = connectionPlatformName(connectionId)
         const progress = publicationConnectionIds.length > 1 ? ` (${connectionIndex + 1}/${publicationConnectionIds.length})` : ''
-        showFeedback(platformUpdate ? `${platformName}: güncelleme işleri kuyruğa alınıyor${progress}…` : `${platformName}: yayın işleri kuyruğa alınıyor${progress}…`, 'info', { persistent: true })
+        showFeedback(platformUpdate ? 'Güncelleme Kuyruğa Alınıyor' : 'Yayın Kuyruğa Alınıyor', platformUpdate ? `${platformName}: güncelleme işleri kuyruğa alınıyor${progress}…` : `${platformName}: yayın işleri kuyruğa alınıyor${progress}…`, 'info', { persistent: true })
         const update: MarketplaceUpdateOutcome = { platformName, queued: { productInformation: false, priceInventory: false } }
         try {
           if (platformUpdate) {
@@ -2740,7 +2740,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const showVariantStockTotal = Boolean(editProductId || (duplicateProductId && variantRows.length))
 
   if (duplicateProductId && productToCopy.isLoading) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><div className="panel" role="status">Kaynak ürünün bilgileri forma hazırlanıyor…</div></Page>
-  if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorToast error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere dön</Link></Page>
+  if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorToast title="Kopyalanacak Ürün Yüklenemedi" error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere dön</Link></Page>
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
     <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />
@@ -3032,7 +3032,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     </section>
 
     <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}><span className="submit-label-long">Yayınlamaya devam et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></section>
-    <ErrorToast error={error ?? categories.error ?? brands.error ?? connections.error} onDismiss={dismissProductError} />
+    <ErrorToast title={error ? (editProductId ? 'Ürün İşlemi Başarısız' : 'Ürün Oluşturulamadı') : 'Ürün Bilgileri Yüklenemedi'} error={error ?? categories.error ?? brands.error ?? connections.error} onDismiss={dismissProductError} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">

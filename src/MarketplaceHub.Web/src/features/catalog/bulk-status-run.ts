@@ -18,9 +18,9 @@ export async function runInChunks(ids: readonly string[], chunkSize: number, sen
   return { doneIds, remainingIds: [], error: null }
 }
 
-export function bulkStatusResultMessage(statusLabel: string, result: ChunkRunResult): { message: string; kind: 'success' | 'error' } {
+export function bulkStatusResultMessage(statusLabel: string, result: ChunkRunResult): { title: string; message: string; kind: 'success' | 'error' } {
   const reason = result.error instanceof Error ? result.error.message : 'Toplu durum güncelleme başarısız.'
-  if (!result.remainingIds.length) return { message: `${result.doneIds.length} ürün durumu “${statusLabel}” olarak güncellendi.`, kind: 'success' }
-  if (!result.doneIds.length) return { message: reason, kind: 'error' }
-  return { message: `${result.doneIds.length} ürün “${statusLabel}” olarak güncellendi; kalan ${result.remainingIds.length} ürün güncellenemedi: ${reason}`, kind: 'error' }
+  if (!result.remainingIds.length) return { title: 'Ürün Durumları Güncellendi', message: `${result.doneIds.length} ürün durumu “${statusLabel}” olarak güncellendi.`, kind: 'success' }
+  if (!result.doneIds.length) return { title: 'Ürün Durumları Güncellenemedi', message: reason, kind: 'error' }
+  return { title: 'Ürün Durumları Kısmen Güncellendi', message: `${result.doneIds.length} ürün “${statusLabel}” olarak güncellendi; kalan ${result.remainingIds.length} ürün güncellenemedi: ${reason}`, kind: 'error' }
 }
