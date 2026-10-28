@@ -558,7 +558,9 @@
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-link-rail { grid-column: 2; grid-row: 1; align-self: end; margin: 0 !important; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-link-rail small { display: none; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid .mapping-side-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
-.app-shell.stitch-shell main section.mapping-page .brand-mapping-target-controls { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.2fr); gap: 8px; }
+.app-shell.stitch-shell main section.mapping-page .brand-mapping-target-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+/* The tab picks the platform; a connection select shows only when the platform has more than one connection. */
+.app-shell.stitch-shell main section.mapping-page .brand-mapping-target-controls:has(> select) { grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.2fr); }
 .app-shell.stitch-shell main section.mapping-page .brand-reference-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 14px 0 0; color: var(--rv-color-muted); background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .brand-reference-action strong { color: var(--rv-color-ink); font-weight: 600; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card > header { display: flex; align-items: center; justify-content: flex-start; text-align: left; }
