@@ -2,7 +2,7 @@
   margin-block: 10px;
   background: var(--rv-color-surface);
   border: 1px solid color-mix(in srgb, var(--rv-color-warning) 45%, var(--rv-color-border));
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .mapping-conflicts-panel > summary {

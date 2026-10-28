@@ -9,7 +9,7 @@
 /* An empty value stands out: a pale yellow frame. */
 .vp-trigger.is-empty { color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-warning) 7%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-warning) 55%, var(--rv-color-border)); }
 .vp-trigger.is-empty:hover { border-color: var(--rv-color-warning); }
-.vp-menu { position: fixed; z-index: 10000; display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: min(360px, 60vh); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 18px 44px -18px rgba(15, 20, 35, .55); }
+.vp-menu { position: fixed; z-index: 10000; display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: min(360px, 60vh); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
 .vp-menu.is-up { transform: translateY(-100%); }
 .vp-search { box-sizing: border-box; width: calc(100% - 16px); height: 36px; min-height: 0; margin: 8px; padding: 0 10px; color: var(--rv-color-ink); font: inherit; font-size: 14px; background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .vp-search:focus { outline: 2px solid var(--rv-color-primary); outline-offset: 0; }
