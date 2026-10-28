@@ -257,6 +257,11 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
     yok sayılır; tek parçalı ad ya da iki kez listelenen çift eşleşmez) varyant `{üst barkod}/{VariantId}` bağıyla LIVE
     olur. Sıra: barkod, ad, `BarkodKontrol`. Ürün adlı varyant listelemiyorsa varyant listesi bağlantı başına en çok
     5 dakikada bir yeniden okunur. Log her barkodun kaynağını ve PTT'nin listelediği adları yazar.
+    **İkinci canlı sonuç:** PTT, `UpdateProductsV3` ile açılan aileyi "Renk / Beden" çiftleri olarak değil, her seçenek değeri
+    için bir kayıtla listeliyor ("Lacivert, Siyah, Mürdüm, L, 2XL, XL, Gri, Kahverengi, Haki, Bordo, Açık Kahverengi"). Bu
+    liste hangi çiftin var olduğunu söylemez; bu yüzden ürün aktifse, bütün adlar tek değerse, varyantın gönderilen rengi
+    ve bedeni ikisi de listede varsa ve yayının başarılı bir ürün işi (aynı yük hash'i, takip sonucu kabul) bu barkodu
+    gönderdiyse varyant LIVE olur (kaynak `values`, bağ gönderilen barkod). Değerlerden biri yoksa NOT_FOUND kalır.
   - **WSDL ile doğrulandı** (`https://ws.pttavm.com:93/service.svc?singleWsdl`, 28 Ekim 2026): `UpdateProductsV3(items:
     ArrayOfProductV3Request)`, bütün öğeler `http://schemas.datacontract.org/2004/07/ePttAVMService.Model.Requests` ad alanında,
     üyeler alfabetik sırada. `ProductV3Request`: Active, Barcode, BasketMaxQuantity, Brand, CargoProfileId, CatalogBarcode,

@@ -703,8 +703,9 @@ public interface IProductFamilyStatusPort
     Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<FamilyVariantQuery> variants, CancellationToken cancellationToken);
 }
 
-// A family variant asked about: its barcode and the colour and size it was sent with (null when not known).
-public sealed record FamilyVariantQuery(string Barcode, string? Color, string? Size);
+// A family variant asked about: its barcode and the colour and size it was sent with (null when not known), and whether
+// the send's tracking result accepted it (a succeeded product job of the publication carried it; the card did not refuse it).
+public sealed record FamilyVariantQuery(string Barcode, string? Color, string? Size, bool SendAccepted = false);
 
 public interface IInventoryPricePort
 {

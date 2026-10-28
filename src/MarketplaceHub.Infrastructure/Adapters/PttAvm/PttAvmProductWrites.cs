@@ -109,7 +109,8 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
     // 1. a variant the product lists with this barcode (any case; PTT AVM may keep it lower-cased);
     // 2. a variant the product lists only by name ("Gri / L", live 28 Oct 2026: GetProductsWithVariants gives no
     //    barcodes), whose colour and size are the ones this barcode was sent with, and no other variant's;
-    // 3. BarkodKontrol, as written and lower-cased, naming this product as the code's owner.
+    // 3. a list of single option values (live shape) holding both the sent colour and size (ValueVariantStatus);
+    // 4. BarkodKontrol, as written and lower-cased, naming this product as the code's owner.
     // One none of them shows stays NOT_FOUND (still waiting). The variant list is read again when the cached one has
     // no named variant under the product (a family sent within its 15-minute lifetime).
     public async Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<FamilyVariantQuery> variants, CancellationToken cancellationToken)
@@ -140,6 +141,7 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
             RemotePublicationStatus? status = null;
             if (product is not null && PttAvmProductPayloadRules.ListedVariantStatus(code, product) is { } listed) (status, source) = (listed, "barcode");
             else if (product is not null && PttAvmProductPayloadRules.NamedVariantStatus(variant, product) is { } named) (status, source) = (named, "name");
+            else if (product is not null && PttAvmProductPayloadRules.ValueVariantStatus(variant, product) is { } valued) (status, source) = (valued, "values");
             else
             {
                 PttAvmCodeOwner? owner = null;
@@ -585,6 +587,44 @@ public static class PttAvmProductPayloadRules
         if (matches.Count != 1) return null;
         var active = !matches[0].Archived && ProductActive(product) == true;
         return new(variant.Barcode, active ? "APPROVED" : "PENDING_APPROVAL", product.ExternalProductId, matches[0].ExternalVariantId, null, product.RawJson);
+    }
+
+    // Live 28 Oct 2026 (MZ059YNC): GetProductsWithVariants lists a family made through UpdateProductsV3 not as
+    // "Renk / Beden" combinations but one entry per option value ("Lacivert", "Siyah", "L", "2XL", ...). Such a list
+    // cannot tell which combinations exist, so a variant counts as held when both its sent colour and its sent size are
+    // among the values, the product is active, every listed name is a single value, and the send's tracking result
+    // accepted it. Either value missing leaves it NOT_FOUND. The link is the barcode as sent (no PTT AVM variant id
+    // names the combination).
+    public static RemotePublicationStatus? ValueVariantStatus(FamilyVariantQuery variant, RemoteCatalogProduct product)
+    {
+        if (!variant.SendAccepted || string.IsNullOrWhiteSpace(variant.Color) || string.IsNullOrWhiteSpace(variant.Size) || ProductActive(product) != true) return null;
+        var names = product.Variants.Where(x => x.Barcode is null).Select(x => x.Options.GetValueOrDefault(PttAvmVariantMapper.VariantNameOption)).OfType<string>().Select(NameParts).ToList();
+        if (names.Count == 0 || names.Any(parts => parts.Length != 1)) return null;
+        bool Listed(string value) => names.Any(parts => Turkish.CompareInfo.Compare(parts[0], Words(value), CompareOptions.IgnoreCase) == 0);
+        return Listed(variant.Color) && Listed(variant.Size)
+            ? new(variant.Barcode, "APPROVED", product.ExternalProductId, variant.Barcode.Trim(), null, product.RawJson)
+            : null;
+    }
+
+    // The variant barcodes a family send of this publication carried in a product job that succeeded (its tracking
+    // result accepted the request). The family request is the same in every card's job, and one send answers for every
+    // card (a card may follow a sibling's send), so any succeeded job of the publication counts.
+    public static HashSet<string> AcceptedFamilyBarcodes(IEnumerable<string> succeededJobPayloads, string publicationHash)
+    {
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var barcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var json in succeededJobPayloads)
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<ProductPublicationJobPayload>(json, options) is { } payload
+                    && string.Equals(payload.PayloadHash, publicationHash, StringComparison.Ordinal)
+                    && Read(payload.PayloadJson, out _)?.Variants is { } variants)
+                    barcodes.UnionWith(variants.Select(x => x.Barcode.Trim()));
+            }
+            catch (JsonException) { }
+        }
+        return barcodes;
     }
 
     private static string[] NameParts(string name) => name.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(Words).ToArray();

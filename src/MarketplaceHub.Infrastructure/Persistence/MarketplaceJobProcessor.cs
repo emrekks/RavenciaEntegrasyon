@@ -643,7 +643,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // their own, so the card's variants are read together through that product.
         Dictionary<string, RemotePublicationStatus>? familyStatuses = null;
         if (isPttAvm && products is IProductFamilyStatusPort familyStatusPort
-            && await PttAvmPublicationFamilyAsync(tenantId, connectionId, payload.ProductId, payload.PayloadHash, cancellationToken) is { } sentFamily)
+            && await PttAvmPublicationFamilyAsync(tenantId, connectionId, payload.ProductId, payload.PayloadHash, cancellationToken) is ({ } sentFamily, var acceptedBarcodes))
         {
             var waiting = candidates
                 .Where(listing => !ProductApprovalReconciliationPolicy.IsSettledLive(listing.ActualStatus, settledProductId is not null, settledVariantIds.ContainsKey(listing.VariantId)))
@@ -652,7 +652,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var parentBarcode = sentFamily.Barcode.Trim();
             // The colour and size each barcode was sent with: PTT AVM may list a variant only by that name.
             var sentVariants = (sentFamily.Variants ?? []).GroupBy(x => x.Barcode, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
-            var queries = waiting.Select(barcode => sentVariants.TryGetValue(barcode, out var sent) ? new FamilyVariantQuery(barcode, sent.Color, sent.Size) : new FamilyVariantQuery(barcode, null, null)).ToList();
+            var queries = waiting.Select(barcode => sentVariants.TryGetValue(barcode, out var sent) ? new FamilyVariantQuery(barcode, sent.Color, sent.Size, acceptedBarcodes.Contains(barcode)) : new FamilyVariantQuery(barcode, null, null)).ToList();
             familyStatuses = new Dictionary<string, RemotePublicationStatus>(StringComparer.OrdinalIgnoreCase);
             if (waiting.Count > 0)
             {
@@ -1165,15 +1165,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // The family request a PTT AVM publication went out as: the request of this publication's product job (the same
     // publication hash), with its parent barcode and each variant's colour and size. Null for a product sent without
     // variants, or when no such job is found.
-    private async Task<PttAvmProductPayloadRules.ProductDraft?> PttAvmPublicationFamilyAsync(Guid tenantId, Guid connectionId, Guid productId, string publicationHash, CancellationToken cancellationToken)
+    // AcceptedBarcodes: the variant barcodes a succeeded product job of this publication sent (its tracking result accepted them).
+    private async Task<(PttAvmProductPayloadRules.ProductDraft? Family, HashSet<string> AcceptedBarcodes)> PttAvmPublicationFamilyAsync(Guid tenantId, Guid connectionId, Guid productId, string publicationHash, CancellationToken cancellationToken)
     {
         var jobs = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductCreate && x.PayloadJson.Contains(publicationHash))
             .OrderByDescending(x => x.CreatedAt)
-            .Select(x => x.PayloadJson)
-            .Take(20)
+            .Select(x => new { x.PayloadJson, x.Status })
+            .Take(50)
             .ToListAsync(cancellationToken);
-        return PttAvmProductPayloadRules.PublicationFamily(jobs, productId, publicationHash);
+        var payloads = jobs.Select(x => x.PayloadJson).ToList();
+        return (PttAvmProductPayloadRules.PublicationFamily(payloads, productId, publicationHash),
+            PttAvmProductPayloadRules.AcceptedFamilyBarcodes(jobs.Where(x => x.Status == JobStatus.Succeeded).Select(x => x.PayloadJson), publicationHash));
     }
 
     private async Task<List<Guid>> FamilyProductIdsAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
