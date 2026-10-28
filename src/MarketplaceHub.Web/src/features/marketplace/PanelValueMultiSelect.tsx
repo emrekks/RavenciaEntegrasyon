@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from '../../shared/components'
+import { useDismissable } from '../../shared/hooks/useDismissable'
 
 // Picks any number of panel values for one marketplace value.
 export function PanelValueMultiSelect({ label, options, selectedIds, assignedElsewhere, allowReuse = false, disabled, onToggle }: {
@@ -35,14 +36,7 @@ export function PanelValueMultiSelect({ label, options, selectedIds, assignedEls
     window.addEventListener('resize', closeOnResize)
     return () => { window.removeEventListener('scroll', closeOnScroll, true); window.removeEventListener('resize', closeOnResize) }
   }, [open])
-  useEffect(() => {
-    if (!open) return
-    const close = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !menu.current?.contains(event.target as Node)) setOpen(false) }
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('pointerdown', close)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', closeOnEscape) }
-  }, [open])
+  useDismissable(open, [root, menu], () => setOpen(false))
   const selected = options.filter(option => selectedIds.includes(option.id))
   const stateOf = (id: string) => selectedIds.includes(id) ? 'here' : assignedElsewhere[id] ? 'elsewhere' : 'unmatched'
   const order = { unmatched: 0, here: 1, elsewhere: 2 } as const

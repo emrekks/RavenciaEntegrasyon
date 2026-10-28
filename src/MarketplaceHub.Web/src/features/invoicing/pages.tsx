@@ -38,6 +38,7 @@ import { formatMoney } from '../../shared/format-money'
 import { InvoiceLinkRevocationPanel } from './InvoiceLinkRevocationPanel'
 import { adjustmentRequiredStatus, invoiceDetailActionLabel, invoiceErrorText, manualDeliveryIdempotencyKey, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
 import { isLinkRevocationStatus, linkRevocationStatusLabel, type InvoiceLinkRevocation } from './invoice-link-revocation'
+import { useDismissable } from '../../shared/hooks/useDismissable'
 // Platforms whose invoice state is kept by hand (the API server's ManualInvoiceStatusPlatforms): Shopify has no invoice
 // of its own; n11, PTT AVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
 const manualInvoiceStatusPlatforms = new Set(['SHOPIFY', 'N11', 'PTTAVM', 'PAZARAMA'])
@@ -297,20 +298,13 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
     const frame = window.requestAnimationFrame(updatePosition)
     window.addEventListener('resize', updatePosition)
     window.addEventListener('scroll', updatePosition, true)
-    const dismiss = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent && event.key === 'Escape') setOpen(false)
-      if (event instanceof MouseEvent && !menuRef.current?.contains(event.target as Node) && !triggerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', dismiss)
-    document.addEventListener('keydown', dismiss)
     return () => {
       window.cancelAnimationFrame(frame)
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, true)
-      document.removeEventListener('mousedown', dismiss)
-      document.removeEventListener('keydown', dismiss)
     }
   }, [open])
+  useDismissable(open, [triggerRef, menuRef], () => setOpen(false), { triggerRef })
   return <div className="invoice-reference-actions-menu">
     <button ref={triggerRef} type="button" className="invoice-reference-actions-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <span>İşlemler</span><UiIcon name="chevronDown" />
@@ -336,17 +330,9 @@ export function InvoicesPage() {
   const requestedTab = searchParams.get('tab')
   const initialTab = resolveInvoiceTab(requestedTab)
   const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [sortOrder, setSortOrder] = useState('ORDER_DESC'); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | 'action' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedSnapshot, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null); const [selectedPackages, setSelectedPackages] = useState<Set<string>>(() => new Set())
-  // A column filter closes on a click outside its column heading or on Escape.
-  useEffect(() => {
-    if (!columnFilterOpen) return
-    const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent) { if (event.key === 'Escape') setColumnFilterOpen(null); return }
-      if (!(event.target as Element | null)?.closest?.('.order-column-filter, .platform-multi-select-field')) setColumnFilterOpen(null)
-    }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', close)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close) }
-  }, [columnFilterOpen])
+  // A column filter closes on a press outside its column heading, Escape, a route change or another popover opening.
+  const openColumnFilter = { get current() { return columnFilterOpen ? document.getElementById(`invoices-${columnFilterOpen}-filter`)?.closest('.order-column-filter') ?? null : null } }
+  useDismissable(Boolean(columnFilterOpen), [openColumnFilter], () => setColumnFilterOpen(null))
   useEffect(() => { setTab(initialTab) }, [initialTab])
   function setMessage(value: string, kind: InvoiceNoticeKind = 'info') { setMessageState(value); setMessageKind(kind); if (value && kind !== 'pending') appendNotification(value, kind) }
   useEffect(() => {

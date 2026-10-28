@@ -21,6 +21,7 @@ import { viewTabLabel } from '../../shared/view-tabs'
 import { formatIstanbul, istanbulDayBoundary } from '../../shared/format-date'
 import { scopedStorageKey } from '../../shared/storage-scope'
 import { QuestionReportAction } from './QuestionReportAction'
+import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -256,15 +257,9 @@ export function QuestionsPage() {
     if (questionSyncIsStale(syncStates.data, Date.now())) startSync({ kind: 'ALL' })
   }, [tab, kind, connections.isSuccess, syncStates.isSuccess, syncStates.data, startSync])
 
-  useEffect(() => {
-    if (!filterOpen && !statusOpen) return
-    const close = (event: MouseEvent) => {
-      if (filterOpen && filterRef.current && !filterRef.current.contains(event.target as Node) && !(event.target as Element).closest?.('.date-range-picker-popover')) setFilterOpen(false)
-      if (statusOpen && statusRef.current && !statusRef.current.contains(event.target as Node)) setStatusOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [filterOpen, statusOpen])
+  // The filter panel holds a date picker whose calendar is portalled: a press there belongs to the filter too.
+  useDismissable(filterOpen, [filterRef], () => setFilterOpen(false), { isInside: insideSelector('.date-range-picker-popover') })
+  useDismissable(statusOpen, [statusRef], () => setStatusOpen(false))
 
   const rows = questions.data?.items ?? []
   const connectionNames = connections.data ?? []

@@ -43,6 +43,7 @@ import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, var
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
 import { AcceptedJob, Attribute, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
+import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
 const productSaveToastKey = 'product-editor-save'
@@ -545,14 +546,7 @@ function CategoryAttributeValueDropdown({
   const filteredValues = values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
   const summary = selected.length === 0 ? 'Değer seçin' : isSingle ? selected[0].value : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
 
-  useEffect(() => {
-    if (!open) return
-    function closeOnOutsidePointer(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [open])
+  useDismissable(open, [rootRef], () => setOpen(false))
 
   function clearSelection() {
     selected.forEach(value => onToggleValue(value.id))
@@ -605,14 +599,7 @@ function VariantFilterDropdown({
   const filteredValues = group.values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
   const summary = selected.length === 0 ? 'Değer seçin' : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
 
-  useEffect(() => {
-    if (!open) return
-    function closeOnOutsidePointer(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [open])
+  useDismissable(open, [rootRef], () => setOpen(false))
 
   return <div className="variant-filter-field" ref={rootRef}>
     <button type="button" className={`variant-filter-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
@@ -1135,23 +1122,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const initialEditModelCode = useRef('')
   const initialEditDesi = useRef(1)
   const initialEditVariantMediaRefs = useRef<Record<string, string[]>>({})
-  useEffect(() => {
-    if (!barcodeSkuMenuOpen && !barcodePasteMenuOpen) return
-    function closeBarcodeMenus(event: PointerEvent) {
-      const target = event.target as Node
-      if (target instanceof Element && target.closest('[data-variant-header-popover="true"]')) return
-      if (!barcodeSkuActionRef.current?.contains(target) && !barcodePasteActionRef.current?.contains(target)) {
-        setBarcodeSkuMenuOpen(false)
-        setBarcodePasteMenuOpen(false)
-      }
-    }
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') { setBarcodeSkuMenuOpen(false); setBarcodePasteMenuOpen(false) }
-    }
-    document.addEventListener('pointerdown', closeBarcodeMenus)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => { document.removeEventListener('pointerdown', closeBarcodeMenus); document.removeEventListener('keydown', closeOnEscape) }
-  }, [barcodeSkuMenuOpen, barcodePasteMenuOpen])
+  // The two column menus draw their list in a portal marked data-variant-header-popover.
+  useDismissable(barcodeSkuMenuOpen, [barcodeSkuActionRef], () => setBarcodeSkuMenuOpen(false), { isInside: insideSelector('[data-variant-header-popover="true"]') })
+  useDismissable(barcodePasteMenuOpen, [barcodePasteActionRef], () => setBarcodePasteMenuOpen(false), { isInside: insideSelector('[data-variant-header-popover="true"]') })
   useEffect(() => {
     if (!pendingVariantCodeGeneration) return
     function closeCodeGenerationOnEscape(event: KeyboardEvent) {

@@ -29,6 +29,7 @@ import { formatDateTime, formatIstanbul } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { jobAttemptDuration } from './job-duration'
+import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -373,28 +374,8 @@ export function JobsPage({ me }: { me: Me }) {
   }, { replace: true })
   const connections = useQuery({ queryKey: ['connections', 'job-platforms'], queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
   const platformOptions = useMemo(() => jobPlatformOptions((connections.data?.items ?? []).map(connection => connection.platformCode), platform), [connections.data, platform])
-  useEffect(() => {
-    if (!filterOpen && !timeRangeOpen) return
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!(event.target instanceof Element)) return
-      if (!event.target.closest('.jobs-reference-range-wrap') && !event.target.closest('.jobs-reference-filter-wrap')) {
-        setFilterOpen(false)
-        setTimeRangeOpen(false)
-      }
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setFilterOpen(false)
-        setTimeRangeOpen(false)
-      }
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [filterOpen, timeRangeOpen])
+  useDismissable(filterOpen, [], () => setFilterOpen(false), { isInside: insideSelector('.jobs-reference-filter-wrap') })
+  useDismissable(timeRangeOpen, [], () => setTimeRangeOpen(false), { isInside: insideSelector('.jobs-reference-range-wrap') })
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' } | null>(null)
   useEffect(() => {

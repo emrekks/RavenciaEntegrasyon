@@ -33,6 +33,7 @@ import { viewTabLabel } from '../../../shared/view-tabs'
 import { formatDateTime } from '../../../shared/format-date'
 import { focusOnMount } from '../../../shared/focus'
 import { Badge, Connection, FieldState, MappingStateGlyph, Page, notificationKindFromMessage } from '../shared'
+import { useDismissable } from '../../../shared/hooks/useDismissable'
 // Styles of this route only (their rules are scoped to its own containers).
 import '../value-mapping-modal.css'
 import '../mapping-workspace.css'
@@ -54,20 +55,22 @@ type BrandMappingTransferBundle = { format: 'RAVENCIA_BRAND_MAPPING_BUNDLE'; ver
 type MappingTransferScope = 'categories' | 'options' | 'attributes' | 'mappings'
 type SearchOption = { value: string; label: string; description?: string }
 // triggerClassName lets a caller give the trigger another control's look (the brand page dresses it as the platform picker).
-function SearchableSelect({ label, value, options, placeholder, disabled = false, triggerClassName = '', onChange }: { label: string; value: string; options: SearchOption[]; placeholder: string; disabled?: boolean; triggerClassName?: string; onChange: (value: string) => void }) {
+export function SearchableSelect({ label, value, options, placeholder, disabled = false, triggerClassName = '', onChange }: { label: string; value: string; options: SearchOption[]; placeholder: string; disabled?: boolean; triggerClassName?: string; onChange: (value: string) => void }) {
   const selected = options.find(option => option.value === value)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const normalized = query.trim().toLocaleLowerCase('tr-TR')
   const filtered = options.filter(option => !normalized || `${option.label} ${option.description ?? ''}`.toLocaleLowerCase('tr-TR').includes(normalized)).slice(0, normalized ? 500 : 100)
+  const rootRef = useRef<HTMLLabelElement>(null)
+  // It had no outside close at all: the list stayed open over the page until an option was chosen.
+  useDismissable(open, [rootRef], () => { setOpen(false); setQuery('') })
   function toggleMenu() { if (disabled) return; setQuery(''); setOpen(current => !current) }
   function choose(option: SearchOption) { onChange(option.value); setQuery(''); setOpen(false) }
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'Escape') setOpen(false)
     if (event.key === 'Enter' && open && filtered.length) { event.preventDefault(); choose(filtered[0]) }
   }
   const listId = `search-select-${label.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]+/g, '-')}`
-  return <label className={`searchable-select${open ? ' open' : ''}${disabled ? ' disabled' : ''}`}><span>{label}</span><button type="button" className={triggerClassName ? `searchable-select-trigger ${triggerClassName}` : 'searchable-select-trigger'} aria-expanded={open} aria-haspopup="listbox" disabled={disabled} onClick={toggleMenu}><span>{selected?.label ?? placeholder}</span><UiIcon name="chevronDown" /></button>{open && <div id={listId} className="searchable-select-menu" role="listbox"><div className="searchable-select-search"><UiIcon name="search" /><input ref={focusOnMount} role="combobox" aria-label={`${label} ara`} aria-controls={listId} aria-expanded={open} aria-autocomplete="list" value={query} placeholder={placeholder} onKeyDown={keyDown} onChange={event => { setQuery(event.target.value); if (value) onChange('') }} onBlur={() => window.setTimeout(() => setOpen(false), 120)} /></div><div className="searchable-select-options">{filtered.length ? filtered.map(option => <button type="button" role="option" aria-selected={option.value === value} key={option.value} onMouseDown={event => { event.preventDefault(); choose(option) }}><span>{option.label}</span>{option.description && <small>{option.description}</small>}</button>) : <span className="searchable-select-empty">Eşleşen kayıt bulunamadı.</span>}</div></div>}</label>
+  return <label ref={rootRef} className={`searchable-select${open ? ' open' : ''}${disabled ? ' disabled' : ''}`}><span>{label}</span><button type="button" className={triggerClassName ? `searchable-select-trigger ${triggerClassName}` : 'searchable-select-trigger'} aria-expanded={open} aria-haspopup="listbox" disabled={disabled} onClick={toggleMenu}><span>{selected?.label ?? placeholder}</span><UiIcon name="chevronDown" /></button>{open && <div id={listId} className="searchable-select-menu" role="listbox"><div className="searchable-select-search"><UiIcon name="search" /><input ref={focusOnMount} role="combobox" aria-label={`${label} ara`} aria-controls={listId} aria-expanded={open} aria-autocomplete="list" value={query} placeholder={placeholder} onKeyDown={keyDown} onChange={event => { setQuery(event.target.value); if (value) onChange('') }} onBlur={() => window.setTimeout(() => setOpen(false), 120)} /></div><div className="searchable-select-options">{filtered.length ? filtered.map(option => <button type="button" role="option" aria-selected={option.value === value} key={option.value} onMouseDown={event => { event.preventDefault(); choose(option) }}><span>{option.label}</span>{option.description && <small>{option.description}</small>}</button>) : <span className="searchable-select-empty">Eşleşen kayıt bulunamadı.</span>}</div></div>}</label>
 }
 function MappingViewTabs({ active }: { active: 'category' | 'brand' | 'attribute' }) {
   return <div className="mapping-view-tabs rv-tabs rv-view-tabs" aria-label="Eşleştirme türü" role="tablist"><Link role="tab" aria-selected={active === 'category'} className={active === 'category' ? 'active is-active' : ''} to="/mappings/categories"><span className="rv-tab-label">{viewTabLabel('category', 'Kategori Eşleme')}</span></Link><Link role="tab" aria-selected={active === 'brand'} className={active === 'brand' ? 'active is-active' : ''} to="/mappings/categories?view=brands"><span className="rv-tab-label">{viewTabLabel('brand', 'Marka Eşleme')}</span></Link>{active === 'attribute' && <Link role="tab" aria-selected className="active is-active" to="/mappings/attributes"><span className="rv-tab-label"><span className="rv-tab-text" data-text="Özellik Eşleme">Özellik Eşleme</span></span></Link>}</div>
@@ -182,40 +185,10 @@ function CategoryMappingWorkspace() {
     window.addEventListener('scroll', positionPicker, true)
     return () => { window.removeEventListener('resize', positionPicker); window.removeEventListener('scroll', positionPicker, true) }
   }, [panelPickerOpen])
-  useEffect(() => {
-    if (!panelPickerOpen) return
-    const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) return
-      const trigger = document.querySelector<HTMLElement>('.mapping-category-builder .mapping-reference-local .panel-category-picker-trigger')
-      const picker = document.querySelector<HTMLElement>('.mapping-category-builder .mapping-reference-local > .panel-category-picker')
-      if (!trigger?.contains(target) && !picker?.contains(target)) setPanelPickerOpen(false)
-    }
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setPanelPickerOpen(false) }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [panelPickerOpen])
-  useEffect(() => {
-    if (!externalPickerOpen) return
-    const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) return
-      const trigger = document.querySelector<HTMLElement>('.mapping-category-builder .mapping-reference-target .panel-category-picker-trigger')
-      const picker = document.querySelector<HTMLElement>('.mapping-category-builder .mapping-reference-target .panel-category-picker')
-      if (!trigger?.contains(target) && !picker?.contains(target)) setExternalPickerOpen(false)
-    }
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setExternalPickerOpen(false) }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [externalPickerOpen])
+  // The two category pickers are fixed to the screen, so their trigger and panel are found where they are drawn.
+  const pickerPart = (selector: string) => ({ get current() { return document.querySelector(selector) } })
+  useDismissable(panelPickerOpen, [pickerPart('.mapping-category-builder .mapping-reference-local .panel-category-picker-trigger'), pickerPart('.mapping-category-builder .mapping-reference-local > .panel-category-picker')], () => setPanelPickerOpen(false))
+  useDismissable(externalPickerOpen, [pickerPart('.mapping-category-builder .mapping-reference-target .panel-category-picker-trigger'), pickerPart('.mapping-category-builder .mapping-reference-target .panel-category-picker')], () => setExternalPickerOpen(false))
   const activeMappingConnections = connections.data?.items.filter(item => mappingPlatformDefinitions.some(platform => platform.code === item.platformCode.toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())) ?? []
   // Platforms without an active connection are hidden from the tabs; until any connection is known every tab stays.
   const shownMappingPlatforms = mappingPlatformDefinitions.filter(platform => !activeMappingConnections.length || activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code))
@@ -1762,6 +1735,9 @@ type BrandMappingSaveInput = { connectionId: string; snapshotId: string; localId
 export function BrandMappingPage() {
   const [confirm, confirmDialog] = useConfirmDialog()
   const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [brandName, setBrandName] = useState(''); const [brandExternalSearch, setBrandExternalSearch] = useState(''); const [brandExternalPickerOpen, setBrandExternalPickerOpen] = useState(false); const [brandEditOpen, setBrandEditOpen] = useState(false); const [editingBrandMappingId, setEditingBrandMappingId] = useState(''); const [brandTransferBusy, setBrandTransferBusy] = useState(false); const [brandTransferBundle, setBrandTransferBundle] = useState<BrandMappingTransferBundle | null>(null); const [brandTransferOpen, setBrandTransferOpen] = useState(false); const [brandTransferSelection, setBrandTransferSelection] = useState({ brands: true, mappings: true })
+  // The platform brand picker closed only from its own close button or a choice; now also on a press outside or Escape.
+  const brandPickerRef = useRef<HTMLDivElement>(null)
+  useDismissable(brandExternalPickerOpen, [brandPickerRef], () => setBrandExternalPickerOpen(false))
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
@@ -1935,7 +1911,7 @@ export function BrandMappingPage() {
     {brandMappingSupported && <>
     <article className="mapping-reference-card brand-mapping-console">
       <header className="mapping-builder-head"><h2><UiIcon name="link" />2. Yeni Marka Eşleme</h2>{brandPlatformTabs}</header>
-      <div className="mapping-pair-grid brand-mapping-pair-grid"><section className="mapping-side local"><div className="mapping-side-head"><span>Panel Kataloğu</span><small>Ürünlerinizde kullandığınız yerel markayı seçin.</small></div><SearchableSelect label="Panel Markası" value={localId} options={activeLocalBrands.map(item => ({ value: item.id, label: item.name, description: 'Panel markası' }))} placeholder="Panel markalarında ara" disabled={!connectionId} triggerClassName="panel-category-picker-trigger" onChange={value => { if (localId) setExternalId(''); setLocalId(value); setBrandExternalSearch(''); setBrandExternalPickerOpen(false); setNotice('') }} /></section><div className="mapping-link-rail" aria-hidden="true"><UiIcon name="link" /><small>Eşleştir</small></div><section className="mapping-side remote"><div className="mapping-side-head"><div className="mapping-side-head-copy"><span>Hedef Pazar Yeri &amp; Marka</span><small>Bağlantıyı seçin, güncel marka referansından karşılığını belirleyin.</small></div></div><div className="mapping-side-field"><span>{brandPlatformLabel} Markası</span><div className="mapping-target-controls brand-mapping-target-controls">{platformConnections.length > 1 && <select aria-label="Hedef pazaryeri bağlantısı" value={connectionId} onChange={event => { setConnectionId(event.target.value); setLastListConnectionId(event.target.value); setEditingBrandMappingId(''); setLocalId(''); setExternalId(''); setBrandExternalSearch(''); setBrandExternalPickerOpen(false); setNotice('') }}><option value="">{brandPlatformLabel} Bağlantısı</option>{platformConnections.map(item => <option value={item.id} key={item.id}>{brandPlatformLabel}{platformConnections.length > 1 ? ` · ${item.displayName}` : ''}</option>)}</select>}<div className="platform-category-picker-wrap"><button type="button" className="panel-category-picker-trigger" aria-expanded={brandExternalPickerOpen} onClick={() => setBrandExternalPickerOpen(value => !value)} disabled={!connectionId || !references.data}><span>{selectedExternalBrand?.name ?? (references.data ? 'Platform Markası Seçin...' : references.isFetching || syncBrands.isPending ? 'Markalar yükleniyor…' : 'Önce marka listesini senkronize edin')}</span><UiIcon name="chevronDown" /></button>{brandExternalPickerOpen && <div className="panel-category-picker platform-category-picker brand-reference-picker" role="dialog" aria-label="Platform markası seçimi"><div><input ref={focusOnMount} aria-label="Platform markalarında ara" value={brandExternalSearch} onChange={event => setBrandExternalSearch(event.target.value)} placeholder="Marka adı veya marka no ara..." /><button type="button" aria-label="Platform marka menüsünü kapat" onClick={() => setBrandExternalPickerOpen(false)}><UiIcon name="close" /></button></div><div role="listbox">{visibleExternalBrands.length ? visibleExternalBrands.map(item => <button type="button" role="option" aria-selected={item.externalId === externalId} key={item.externalId} onClick={() => { setExternalId(item.externalId); setBrandExternalPickerOpen(false) }}><span>{item.name}</span><small>Marka no: {item.externalId}</small></button>) : <span>{externalBrands.length ? 'Aramayla eşleşen marka bulunamadı.' : 'Marka listesi boş. Senkronize Et ile yeniden deneyin.'}</span>}</div></div>}</div></div></div></section></div>
+      <div className="mapping-pair-grid brand-mapping-pair-grid"><section className="mapping-side local"><div className="mapping-side-head"><span>Panel Kataloğu</span><small>Ürünlerinizde kullandığınız yerel markayı seçin.</small></div><SearchableSelect label="Panel Markası" value={localId} options={activeLocalBrands.map(item => ({ value: item.id, label: item.name, description: 'Panel markası' }))} placeholder="Panel markalarında ara" disabled={!connectionId} triggerClassName="panel-category-picker-trigger" onChange={value => { if (localId) setExternalId(''); setLocalId(value); setBrandExternalSearch(''); setBrandExternalPickerOpen(false); setNotice('') }} /></section><div className="mapping-link-rail" aria-hidden="true"><UiIcon name="link" /><small>Eşleştir</small></div><section className="mapping-side remote"><div className="mapping-side-head"><div className="mapping-side-head-copy"><span>Hedef Pazar Yeri &amp; Marka</span><small>Bağlantıyı seçin, güncel marka referansından karşılığını belirleyin.</small></div></div><div className="mapping-side-field"><span>{brandPlatformLabel} Markası</span><div className="mapping-target-controls brand-mapping-target-controls">{platformConnections.length > 1 && <select aria-label="Hedef pazaryeri bağlantısı" value={connectionId} onChange={event => { setConnectionId(event.target.value); setLastListConnectionId(event.target.value); setEditingBrandMappingId(''); setLocalId(''); setExternalId(''); setBrandExternalSearch(''); setBrandExternalPickerOpen(false); setNotice('') }}><option value="">{brandPlatformLabel} Bağlantısı</option>{platformConnections.map(item => <option value={item.id} key={item.id}>{brandPlatformLabel}{platformConnections.length > 1 ? ` · ${item.displayName}` : ''}</option>)}</select>}<div className="platform-category-picker-wrap" ref={brandPickerRef}><button type="button" className="panel-category-picker-trigger" aria-expanded={brandExternalPickerOpen} onClick={() => setBrandExternalPickerOpen(value => !value)} disabled={!connectionId || !references.data}><span>{selectedExternalBrand?.name ?? (references.data ? 'Platform Markası Seçin...' : references.isFetching || syncBrands.isPending ? 'Markalar yükleniyor…' : 'Önce marka listesini senkronize edin')}</span><UiIcon name="chevronDown" /></button>{brandExternalPickerOpen && <div className="panel-category-picker platform-category-picker brand-reference-picker" role="dialog" aria-label="Platform markası seçimi"><div><input ref={focusOnMount} aria-label="Platform markalarında ara" value={brandExternalSearch} onChange={event => setBrandExternalSearch(event.target.value)} placeholder="Marka adı veya marka no ara..." /><button type="button" aria-label="Platform marka menüsünü kapat" onClick={() => setBrandExternalPickerOpen(false)}><UiIcon name="close" /></button></div><div role="listbox">{visibleExternalBrands.length ? visibleExternalBrands.map(item => <button type="button" role="option" aria-selected={item.externalId === externalId} key={item.externalId} onClick={() => { setExternalId(item.externalId); setBrandExternalPickerOpen(false) }}><span>{item.name}</span><small>Marka no: {item.externalId}</small></button>) : <span>{externalBrands.length ? 'Aramayla eşleşen marka bulunamadı.' : 'Marka listesi boş. Senkronize Et ile yeniden deneyin.'}</span>}</div></div>}</div></div></div></section></div>
       {connections.isError || localBrands.isError ? <ErrorBox error={connections.error ?? localBrands.error} /> : connectionId && (references.data || references.isError) ? <div className={`mapping-action brand-reference-action${references.isError && !references.data ? ' has-error' : ''}`}><span>{references.data ? <><strong>{externalBrands.length.toLocaleString('tr-TR')}</strong> marka · {formatDateTime(references.data.fetchedAt)}{mapping.data ? ` · Kayıt v${mapping.data.version}` : ''}</> : 'Marka listesi henüz alınmadı. Senkronize Et ile alın.'}</span><div className="brand-reference-buttons"><button type="button" className="secondary" disabled={!connectionId || syncBrands.isPending} onClick={() => syncBrands.mutate()}><UiIcon name={syncBrands.isPending ? 'loader' : 'refresh'} />{syncBrands.isPending ? 'Kuyruğa Alınıyor…' : 'Senkronize Et'}</button>{references.data && <button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading} onClick={saveSelectedBrandMapping}>{save.isPending ? 'Kaydediliyor…' : mapping.data ? 'Eşleştirmeyi Güncelle' : 'Eşleştirmeyi Kaydet'}</button>}</div></div> : null}
     </article>
     </>}

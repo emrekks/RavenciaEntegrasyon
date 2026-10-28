@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { closeAllDismissables, useDismissable } from '../shared/hooks/useDismissable'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazyPage } from '../shared/lazy-page'
@@ -92,17 +93,11 @@ function Shell({ me }: { me: Me }) {
   }, [])
   useEffect(() => {
     const unsubscribe = subscribeNotificationHistory(() => setNotifications(readNotificationHistory()))
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!(event.target instanceof Node)) return
-      if (notificationRef.current?.contains(event.target) || notificationHistoryRef.current?.contains(event.target)) return
-      setNotificationsOpen(false)
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => {
-      unsubscribe()
-      document.removeEventListener('pointerdown', closeOnOutsidePointer)
-    }
+    return unsubscribe
   }, [])
+  useDismissable(notificationsOpen, [notificationRef, notificationHistoryRef], () => setNotificationsOpen(false))
+  // Every dropdown, menu and picker closes when the page changes (shared/hooks/useDismissable).
+  useEffect(() => { closeAllDismissables('route') }, [location.pathname])
   useEffect(() => {
     const load = () => void loadNotificationPanel()
     if (typeof window.requestIdleCallback === 'function') { const id = window.requestIdleCallback(load, { timeout: 4000 }); return () => window.cancelIdleCallback(id) }

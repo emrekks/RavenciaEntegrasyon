@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { createPortal } from 'react-dom'
 import { focusOnMount } from '../../../shared/focus'
 import { matchingKey } from '../../../shared/value-matching'
+import { useDismissable } from '../../../shared/hooks/useDismissable'
 import './value-picker.css'
 
 // One marketplace value: its id, its name and the folded name the search compares (matchingKey, worked out once).
@@ -52,16 +53,13 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
   useLayoutEffect(() => { if (open) place() }, [open])
   useEffect(() => {
     if (!open) return
-    const outside = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setOpen(false) }
     const scrolled = (event: Event) => { if (!menu.current?.contains(event.target as Node)) setOpen(false) }
-    // Escape closes only the list: caught first (capture) so the mapping window around it stays open.
-    const escape = (event: globalThis.KeyboardEvent) => { if (event.key !== 'Escape') return; event.preventDefault(); event.stopImmediatePropagation(); setOpen(false); trigger.current?.focus() }
-    document.addEventListener('keydown', escape, true)
-    document.addEventListener('pointerdown', outside, true)
     window.addEventListener('scroll', scrolled, true)
     window.addEventListener('resize', place)
-    return () => { document.removeEventListener('keydown', escape, true); document.removeEventListener('pointerdown', outside, true); window.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', place) }
+    return () => { window.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', place) }
   }, [open])
+  // Escape closes only the list (the hook catches it first), so the mapping window around it stays open.
+  useDismissable(open, [trigger, menu], () => setOpen(false), { triggerRef: trigger })
   useEffect(() => { menu.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [active, open])
 
   function openMenu() { setQuery(''); setActive(Math.max(0, options.findIndex(option => option.value === value))); setOpen(true) }

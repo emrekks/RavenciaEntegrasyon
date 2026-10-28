@@ -32,6 +32,7 @@ import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from 
 import { OrderMetricCards } from './OrderMetricCards'
 import { orderDetailQueryKey } from './order-query-keys'
 import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnPlatformName, usableShipmentDueAt } from '../shared'
+import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 type ProductImagePreview = { url: string; fallbackUrl?: string | null; fallbackUrls?: string[]; title: string; modelCode?: string | null; variant?: string | null }
@@ -563,6 +564,10 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   }, [lines.length, noBuyer])
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailActionsOpen, setDetailActionsOpen] = useState(false)
+  // The detail sheet's action menu had no outside close: it stayed open until an action ran or the sheet closed.
+  const detailMenuRef = useRef<HTMLDivElement>(null)
+  const detailActionsTriggerRef = useRef<HTMLButtonElement>(null)
+  useDismissable(detailActionsOpen, [detailActionsTriggerRef, detailMenuRef], () => setDetailActionsOpen(false), { triggerRef: detailActionsTriggerRef })
   // The order detail sheet covers the page on phones only; there the page behind it holds still.
   const phone = useMediaQuery('(max-width: 760px)')
   useScrollLock(detailOpen && phone)
@@ -617,8 +622,8 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
       <article className="rr-scard"><header><div className="rr-h3">Fatura Bilgileri</div><ReturnInvoiceRing status={item.invoiceStatus} isMicroExport={item.isMicroExport} /></header><dl className="rr-kv">{hasDiscount && <><dt>Satış Tutarı</dt><dd className="rr-num">{money(saleTotal)}</dd><dt>Satıcı İndirimi</dt><dd className="rr-num">{money(item.discountAmount)}</dd></>}<dt>Faturalanacak Tutar</dt><dd className="rr-num"><b>{money(invoiceableTotal)}</b></dd>{!invoiceNeedsAction && invoiceDocumentHref && <><dt>Fatura Belgesi</dt><dd><a className="rr-btn rr-link" href={invoiceDocumentHref} download>Faturayı Gör</a></dd></>}</dl></article>
     </div>
     <footer className="rr-sheet-f">
-      {detailActionsOpen && detailMenuActions.length > 0 && <div className="rr-menu rr-sheet-menu" role="menu">{detailMenuActions.map(action => <button type="button" role="menuitem" key={action.key} disabled={action.disabled} onClick={closeDetailThen(action.run)}>{action.label}</button>)}</div>}
-      {detailMenuActions.length > 0 && <button type="button" className="rr-btn" aria-haspopup="menu" aria-expanded={detailActionsOpen} onClick={() => setDetailActionsOpen(open => !open)}>İşlemler<RrIcon name="chev" /></button>}
+      {detailActionsOpen && detailMenuActions.length > 0 && <div ref={detailMenuRef} className="rr-menu rr-sheet-menu" role="menu">{detailMenuActions.map(action => <button type="button" role="menuitem" key={action.key} disabled={action.disabled} onClick={closeDetailThen(action.run)}>{action.label}</button>)}</div>}
+      {detailMenuActions.length > 0 && <button ref={detailActionsTriggerRef} type="button" className="rr-btn" aria-haspopup="menu" aria-expanded={detailActionsOpen} onClick={() => setDetailActionsOpen(open => !open)}>İşlemler<RrIcon name="chev" /></button>}
       {detailQuickAction && <button type="button" className="rr-btn" disabled={detailQuickAction.disabled} onClick={closeDetailThen(detailQuickAction.run)}><RrIcon name="play" />{detailQuickAction.label}</button>}
       {detailPrimaryAction}
     </footer>
@@ -946,22 +951,7 @@ export function OrdersPage() {
       return params
     }, { replace: true })
   }, [searchParams, setSearchParams])
-  useEffect(() => {
-    const closeColumnFilter = (event: PointerEvent) => {
-      if (!(event.target instanceof Element)) return
-      if (!event.target.closest('.order-column-filter')) setColumnFilterOpen(null)
-      if (!event.target.closest('.row-menu')) setMenu(null)
-    }
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') { setColumnFilterOpen(null); setMenu(null) }
-    }
-    document.addEventListener('pointerdown', closeColumnFilter)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeColumnFilter)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [])
+  useDismissable(Boolean(menu), [], () => setMenu(null), { isInside: insideSelector('.row-menu') })
   useEffect(() => { const invoiceId = searchParams.get('invoice'); if (!invoiceId || !all.length) return; const item = all.find(order => order.invoiceId === invoiceId); if (!item) return; setInvoiceViewerOrder(item); setSearchParams(current => { const next = new URLSearchParams(current); next.delete('invoice'); return next }, { replace: true }) }, [all, searchParams, setSearchParams])
   function updateSelection(id: string, checked: boolean) { if (all.find(item => item.id === id)?.derivedStatus.toUpperCase() === 'CANCELLED') return; setSelectedIds(current => checked ? Array.from(new Set([...current, id])) : current.filter(value => value !== id)) }
   const [selectionMode, setSelectionMode] = useState(false)

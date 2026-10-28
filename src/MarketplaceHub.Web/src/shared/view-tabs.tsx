@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRememberedTabCounts } from './tab-counts'
+import { useDismissable } from './hooks/useDismissable'
 import { createPortal } from 'react-dom'
 import './view-tabs.css'
 
@@ -103,10 +104,10 @@ export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ari
     if (!open) return
     const place = () => { const rect = trigger.current?.getBoundingClientRect(); if (rect) setPosition({ top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) }) }
     place()
-    const close = (event: Event) => { if (event instanceof KeyboardEvent) { if (event.key === 'Escape') setOpen(false); return } const target = event.target as Node; if (!trigger.current?.contains(target) && !menu.current?.contains(target)) setOpen(false) }
-    window.addEventListener('resize', place); window.addEventListener('scroll', place, true); document.addEventListener('pointerdown', close); document.addEventListener('keydown', close)
-    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close) }
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
   }, [open])
+  useDismissable(open, [trigger, menu], () => setOpen(false), { triggerRef: trigger })
   const tab = (item: ViewTabItem) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className={`rv-tab-count${item.countTone === 'warn' ? ' is-warn' : ''}`}>{item.count}</span> : null}</button>
   return <div ref={row} className={['rv-tabs', 'rv-view-tabs', phone ? 'is-strip' : '', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
     {main.map(tab)}

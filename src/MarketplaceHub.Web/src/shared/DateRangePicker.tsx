@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
+import { useDismissable } from './hooks/useDismissable'
 import { formatDateRange, selectDateRangeDay, type DateRange } from './date-range'
 
 function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
@@ -54,17 +55,14 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
   useEffect(() => {
     if (!open) return
     showSelectedMonth()
-    const closeOnOutside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !popover.current?.contains(event.target as Node)) setOpen(false) }
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     // The popover is fixed to the viewport, so it follows its field whenever the page scrolls or resizes.
     let frame = 0
     const follow = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { const position = computePosition(); if (position) setPopoverPosition(position) }) }
-    document.addEventListener('pointerdown', closeOnOutside)
-    document.addEventListener('keydown', closeOnEscape)
     window.addEventListener('scroll', follow, true)
     window.addEventListener('resize', follow)
-    return () => { cancelAnimationFrame(frame); document.removeEventListener('pointerdown', closeOnOutside); document.removeEventListener('keydown', closeOnEscape); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow) }
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow) }
   }, [open])
+  useDismissable(open, [root, popover], () => setOpen(false))
   const nextMonthBlocked = new Date(month.getFullYear(), month.getMonth() + 2, 1) > monthStart(today)
   const renderMonth =(visibleMonth: Date) => {
     const monthStartWeekday = (visibleMonth.getDay() + 6) % 7

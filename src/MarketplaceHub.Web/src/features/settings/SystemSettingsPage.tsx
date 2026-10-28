@@ -14,6 +14,7 @@ import { useRememberedTabCounts } from '../../shared/tab-counts'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
 import { formatIstanbul } from '../../shared/format-date'
+import { useDismissable } from '../../shared/hooks/useDismissable'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
@@ -466,6 +467,9 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
   const [busy, setBusy] = useState(false)
   const [newThemeName, setNewThemeName] = useState('')
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
+  // Blur alone missed presses that move no focus (Safari does not focus a pressed button), so the list stayed open.
+  const themePickerRef = useRef<HTMLDivElement>(null)
+  useDismissable(themeMenuOpen, [themePickerRef], () => setThemeMenuOpen(false))
   const [selectedThemeId, setSelectedThemeId] = useState(() => matchingColorThemeId(appearance.settings))
   const [themeToDelete, setThemeToDelete] = useState<AppearanceColorThemeProfile | null>(null)
   const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)
@@ -636,7 +640,7 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
         <div className="ss-app-grid">
           <label className="ss-fld"><small>Font Tipi</small><select className="ss-in" value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className="ss-fld"><small>Yazı Boyutu</small><select className="ss-in" value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
-          <div className="ss-fld"><small>Tema</small><div className="ss-picker" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setThemeMenuOpen(false) }}>
+          <div className="ss-fld"><small>Tema</small><div className="ss-picker" ref={themePickerRef} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setThemeMenuOpen(false) }}>
             <button type="button" className={`ss-pick-btn${themeMenuOpen ? ' is-on' : ''}`} aria-label="Arayüz teması" aria-haspopup="listbox" aria-expanded={themeMenuOpen} onClick={() => setThemeMenuOpen(value => !value)} onKeyDown={event => { if (event.key === 'Escape') setThemeMenuOpen(false) }}><SettingsSwatches palette={themePalette(activeSelectableTheme)} /><span>{activeSelectableTheme.label} <small>— {activeSelectableTheme.description}</small></span><SettingsIcon name="chev" /></button>
             {themeMenuOpen && <div className="ss-pick-menu" role="listbox" aria-label="Arayüz teması seçenekleri">{selectableThemes.map((theme, index) => <Fragment key={theme.id}>{index === 1 ? <div className="ss-pick-sep" /> : null}<button type="button" role="option" aria-selected={theme.id === activeSelectableTheme.id} className={`ss-pick-opt${theme.id === activeSelectableTheme.id ? ' is-on' : ''}`} onMouseDown={event => event.preventDefault()} onClick={() => { if (theme.mode === 'light') applyLightTheme(); else if (theme.profile) applyColorTheme(theme.profile); setThemeMenuOpen(false) }}><SettingsSwatches palette={themePalette(theme)} /><span><b>{theme.label}</b><small>{theme.description}</small></span>{theme.id === activeSelectableTheme.id ? <SettingsGlyph state="done" /> : <span />}</button></Fragment>)}</div>}
           </div></div>

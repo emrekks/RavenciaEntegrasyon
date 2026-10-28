@@ -8,6 +8,7 @@ import { useDialogSurface } from '../../shared/components/DesignSystem'
 import { autoRetryLine, useAutoRetry } from '../../shared/hooks/useAutoRetry'
 import './returns-sade.css'
 import { lockPageScroll } from '../../shared/hooks/useScrollLock'
+import { useDismissable } from '../../shared/hooks/useDismissable'
 
 // Building blocks of the returns page, as drawn in docs/tasarim-onerileri/iadeler-yeni.html. Class names carry the
 // "rr-" prefix of returns-sade.css.
@@ -131,18 +132,9 @@ export function RrLogo({ code, large }: { code: string | null | undefined; large
   return source ? <img className={`rr-logo${large ? ' rr-lg' : ''}`} src={source} alt="" /> : <span className={`rr-logo${large ? ' rr-lg' : ''}`} aria-hidden="true" />
 }
 
-// Closes a popover on an outside press or Escape.
+// Closes a popover on an outside press, Escape, a route change or another popover opening (shared/hooks/useDismissable).
 export function useOutsideClose(open: boolean, ref: RefObject<HTMLElement | null>, onClose: () => void) {
-  const close = useRef(onClose)
-  close.current = onClose
-  useEffect(() => {
-    if (!open) return
-    const press = (event: PointerEvent) => { if (ref.current && !ref.current.contains(event.target as Node)) close.current() }
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') close.current() }
-    document.addEventListener('pointerdown', press)
-    document.addEventListener('keydown', key)
-    return () => { document.removeEventListener('pointerdown', press); document.removeEventListener('keydown', key) }
-  }, [open, ref])
+  useDismissable(open, [ref], () => onClose())
 }
 
 // One trigger with its popover beneath it.
@@ -214,15 +206,14 @@ export function RrHeadCell({ label, active, extra, pop, sort, onSort }: { label:
 // filters) opens every other field in a sheet from the bottom, which closes again on Filtrele, Temizle or a tap outside.
 export function RrFilterCard({ active, children }: { active: number; children: ReactNode }) {
   const [open, setOpen] = useState(false)
+  const card = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('keydown', key)
-    const unlock = lockPageScroll()
-    return () => { document.removeEventListener('keydown', key); unlock() }
+    return lockPageScroll()
   }, [open])
+  useDismissable(open, [card], () => setOpen(false))
   // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- delegated: closes the sheet after one of its buttons ran, which keyboards trigger too
-  return <div className={`rr-fcard${open ? ' rr-fopen' : ''}`} onClick={event => { if (open && (event.target as Element).closest('.rr-fbtns button')) setOpen(false) }}>
+  return <div ref={card} className={`rr-fcard${open ? ' rr-fopen' : ''}`} onClick={event => { if (open && (event.target as Element).closest('.rr-fbtns button')) setOpen(false) }}>
     <button type="button" className="rr-btn rr-ftoggle" aria-expanded={open} onClick={() => setOpen(true)}><RrIcon name="filter" />Filtre{active > 0 && <span className="rr-fcount">{active}</span>}</button>
     {open && <div className="rr-fscrim" aria-hidden="true" onClick={() => setOpen(false)} />}
     {children}

@@ -1,5 +1,6 @@
-import { Children, cloneElement, isValidElement, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { Children, cloneElement, isValidElement, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import { UiIcon } from './components'
+import { useDismissable } from './hooks/useDismissable'
 
 /**
  * Page-heading actions. On desktop the children render exactly where they were (the wrapper is
@@ -10,14 +11,7 @@ import { UiIcon } from './components'
 export function MobileActionMenu({ children, label = 'Diğer işlemler', primary = [0, 1], className }: { children: ReactNode; label?: string; primary?: number[]; className?: string }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('pointerdown', close)
-    document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape) }
-  }, [open])
+  useDismissable(open, [root], () => setOpen(false))
   // Each item keeps its original index as CSS order, so the desktop order never changes.
   const items = Children.toArray(children).map((child, index) => isValidElement(child) ? cloneElement(child as ReactElement<{ style?: CSSProperties }>, { style: { ...(child.props as { style?: CSSProperties }).style, ['--mam-order' as string]: index, ['--mam-primary-order' as string]: Math.max(0, primary.indexOf(index)) } as CSSProperties }) : child)
   const primaryItems = primary.filter(index => index < items.length).map(index => items[index])

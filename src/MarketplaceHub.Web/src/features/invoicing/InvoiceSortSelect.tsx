@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { UiIcon } from '../../shared/components'
+import { useDismissable } from '../../shared/hooks/useDismissable'
 import './invoice-sort-select.css'
 
 type SortOption = { value: string; label: string; direction: 'up' | 'down' }
@@ -26,14 +27,7 @@ export function InvoiceSortSelect({ value, onChange }: { value: string; onChange
   const rootRef = useRef<HTMLDivElement>(null)
   const listId = useId()
   const current = invoiceSortOptions.find(option => option.value === value) ?? invoiceSortOptions[0]
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
-  }, [open])
+  useDismissable(open, [rootRef], () => setOpen(false))
   return <div className="invoice-reference-sort" ref={rootRef}>
     <span className="invoice-sort-caption" id={`${listId}-label`}>Sıralama</span>
     <button type="button" className="invoice-sort-trigger" aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${listId}-label ${listId}-value`} onClick={() => setOpen(item => !item)}>

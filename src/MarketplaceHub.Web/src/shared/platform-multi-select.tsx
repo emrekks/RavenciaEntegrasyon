@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
+import { useDismissable } from './hooks/useDismissable'
 
 export type PlatformFilterOption = { value: string; label: string }
 
@@ -39,20 +40,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
     setCompactMenuPosition(current => current?.top === top && current.left === left ? current : { top, left })
   }
 
-  useEffect(() => {
-    const closeOutside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target) && !menu.current?.contains(event.target)) setOpen(false)
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('pointerdown', closeOutside)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [])
+  useDismissable(open, [root, menu], () => setOpen(false), { triggerRef: trigger })
 
   const repositionCompactMenu = useEffectEvent(() => updateCompactMenuPosition())
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { Fragment, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
@@ -7,6 +7,7 @@ import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { onCost, profitText, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
+import { useDismissable } from '../../../shared/hooks/useDismissable'
 import '../commission-tariffs.css'
 
 // The marketplaces whose commission tariff export the panel reads (CommissionTariffPlatforms on the server).
@@ -333,14 +334,7 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
   const [above, setAbove] = useState(bulk.maxRate == null && bulk.maxAmount == null)
   const [value, setValue] = useState(String(bulk.minRate ?? bulk.minAmount ?? bulk.maxRate ?? bulk.maxAmount ?? ''))
   const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => { if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
-  }, [open])
+  useDismissable(open, [ref], () => setOpen(false))
   const limit = Number(value.replace(',', '.'))
   const valid = column !== '' && (!criterion || (value.trim() !== '' && Number.isFinite(limit)))
   const apply = () => {
