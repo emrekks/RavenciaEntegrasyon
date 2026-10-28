@@ -60,6 +60,10 @@ public sealed partial class PazaramaHttpClient : IReferenceDataPort
             return MapReference(type, cachedDocument.RootElement, categoryId, attributeId, brandPage, firstBrandId, null);
         }
         var result = await SendAsync(account, HttpMethod.Get, path, cancellationToken);
+        // Pazarama refuses a brand page or name lookup that matches nothing ("Listelenecek veri bulunamadı!")
+        // instead of answering an empty list; for a brand read that is the empty answer.
+        if (!result.IsSuccess && type is "BRANDS" or "BRAND_SEARCH" && PazaramaReferenceMapper.IsNoDataRefusal(result.Error!))
+            return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new([], null, false, 0), result.RateLimit);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
         try
@@ -182,8 +186,10 @@ public static class PazaramaReferenceMapper
         return (int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var page) && page > 0 ? page : 1, parts.Length > 1 && parts[1].Length > 0 ? parts[1] : null);
     }
 
-    // Walks until an empty or short page. A page that starts with the id page one started with
-    // means the server ignored the page number; that page is dropped and the scan ends.
+    // Walks until an empty page (Pazarama refuses one with "no data", read as empty). A short page does
+    // not end the scan: Pazarama answered 499 rows to Size=500 with more brands behind them. A page that
+    // starts with the id page one started with means the server ignored the page number; that page is
+    // dropped and the scan ends.
     public static (IReadOnlyList<RemoteReferenceItem> Items, string? NextCursor) Brands(JsonElement data, int page, string? firstIdOfPageOne, int size)
     {
         var items = Rows(data, "brands", "items", "data")
@@ -198,7 +204,7 @@ public static class PazaramaReferenceMapper
             .Select(group => group.First())
             .Select(x => new RemoteReferenceItem("BRANDS", x.id!, null, x.name!, x.name!, 0, true, true, x.brand.GetRawText()))
             .ToList();
-        var next = items.Count < size ? null : $"{(page + 1).ToString(CultureInfo.InvariantCulture)}:{firstId}";
+        var next = $"{(page + 1).ToString(CultureInfo.InvariantCulture)}:{firstId}";
         return (mapped, next);
     }
 
@@ -215,6 +221,9 @@ public static class PazaramaReferenceMapper
     // Pazarama answers a name lookup with the brands whose name contains the text. The lookup only
     // proves a brand is missing when every row really carries the text: a server that ignored the
     // filter answers page one of the whole list, and that proves nothing about the name.
+    public static bool IsNoDataRefusal(AdapterError error) =>
+        error.Code == "PAZARAMA_REQUEST_REJECTED" && error.SafeMessage.Contains("Listelenecek veri bulunamad", StringComparison.OrdinalIgnoreCase);
+
     public static bool BrandSearchHonoured(string name, IReadOnlyList<RemoteReferenceItem> rows)
     {
         var text = FoldBrandName(name);

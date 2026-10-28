@@ -120,7 +120,7 @@ public sealed class PazaramaCatalogTests
     }
 
     [Fact]
-    public void Brand_page_continues_only_while_pages_are_full()
+    public void Brand_page_continues_while_pages_carry_brands()
     {
         var data = Data("""{"data":[{"id":"b1","name":"Marka 1"},{"id":"b2","name":"Marka 2"}]}""");
 
@@ -128,8 +128,15 @@ public sealed class PazaramaCatalogTests
         Assert.Equal(["b1", "b2"], items.Select(x => x.ExternalId));
         Assert.Equal("2:b1", next);
 
-        var (_, last) = PazaramaReferenceMapper.Brands(data, 2, "other", 5);
-        Assert.Null(last);
+        var (_, shortPage) = PazaramaReferenceMapper.Brands(data, 2, "other", 5);
+        Assert.Equal("3:other", shortPage);
+    }
+
+    [Fact]
+    public void A_no_data_refusal_is_an_empty_brand_answer()
+    {
+        Assert.True(PazaramaReferenceMapper.IsNoDataRefusal(PazaramaHttpClient.EnvelopeError(Parse("""{"success":false,"userMessage":"Listelenecek veri bulunamadı!"}"""))!));
+        Assert.False(PazaramaReferenceMapper.IsNoDataRefusal(PazaramaHttpClient.EnvelopeError(Parse("""{"success":false,"userMessage":"Yetkisiz istek"}"""))!));
     }
 
     [Fact]
