@@ -179,6 +179,27 @@ public sealed class ShopifyFamilyPublicationTests
         Assert.Equal("PENDING", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", draft.RootElement).Status);
     }
 
+    // Live 2026-10-28: every Shopify product written before the publish fix was active but not on the Online Store, and
+    // its cards read LIVE, so Yayınla skipped them. The status check finds such a product and publishes it.
+    [Fact]
+    public void AnActiveProductTheOnlineStoreDoesNotShowIsFoundForPublishing()
+    {
+        using var unpublished = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "mz-s-l", "product": { "id": "gid://shopify/Product/9", "handle": "ravencia-model-ce7f", "status": "ACTIVE", "publishedOnPublication": false } } ] }""");
+        using var published = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "MZ-S-L", "product": { "id": "gid://shopify/Product/9", "status": "ACTIVE", "publishedOnPublication": true } } ] }""");
+        using var draft = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "MZ-S-L", "product": { "id": "gid://shopify/Product/9", "status": "DRAFT", "publishedOnPublication": false } } ] }""");
+        using var missing = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "MZ-S-L2", "product": { "id": "gid://shopify/Product/9", "status": "ACTIVE", "publishedOnPublication": false } } ] }""");
+        using var unknown = JsonDocument.Parse("""{ "nodes": [ { "id": "v-1", "sku": "MZ-S-L", "product": { "id": "gid://shopify/Product/9", "status": "ACTIVE" } } ] }""");
+
+        Assert.Equal(("gid://shopify/Product/9", "ravencia-model-ce7f"), ShopifyHttpClient.OnlineStoreUnpublishedProduct("MZ-S-L", unpublished.RootElement));
+        Assert.Equal((null, null), ShopifyHttpClient.OnlineStoreUnpublishedProduct("MZ-S-L", published.RootElement));
+        // A draft is not published by a status check, and nothing is ever created for a SKU Shopify does not hold.
+        Assert.Equal((null, null), ShopifyHttpClient.OnlineStoreUnpublishedProduct("MZ-S-L", draft.RootElement));
+        Assert.Equal((null, null), ShopifyHttpClient.OnlineStoreUnpublishedProduct("MZ-S-L", missing.RootElement));
+        // A missing answer is broken, never "unpublished".
+        Assert.ThrowsAny<Exception>(() => ShopifyHttpClient.OnlineStoreUnpublishedProduct("MZ-S-L", unknown.RootElement));
+        Assert.Contains("publishedOnPublication(publicationId:$publicationId)", ShopifyHttpClient.SkuStatusQuery, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ASkuHeldBySeveralProductsNamesEachOfThem()
     {
