@@ -820,7 +820,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const familyPartial = someLinked || (!allLinked && ownLive && otherFamilyIds.length > 0 && familyLiveCount < familyTotal && familyStatuses.every(status => !status.isPending))
   const alreadyPublished = allLinked || (ownLive && !familyPartial)
   const selectionStatus = familyPartial ? null : allLinked ? 'LIVE' : publication.data?.actualStatus
-  const partialLabel = someLinked ? `Kısmen yayında (${linkedCount}/${linkedTotal} varyant)` : `Kısmen yayında (${familyLiveCount}/${familyTotal} renk)`
+  const partialLabel = someLinked ? `Kısmen yayında · ${linkedCount}/${linkedTotal}` : `Kısmen yayında · ${familyLiveCount}/${familyTotal} renk`
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   // card.code is lower case (it also names the logo tone); the platform code decides the Shopify-only checks.

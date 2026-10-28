@@ -890,7 +890,7 @@
 }
 .variant-header-action-menu-portal button strong { font-size: var(--rv-font-size-sm); }
 .publish-platform-fact-publication dd { display: flex; min-width: 0; align-items: center; gap: 5px; }
-.publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 28px; padding-inline: 8px; font-size: 11px; white-space: nowrap; }
+.publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 28px; padding-inline: 8px; font-size: 11px; white-space: normal; line-height: 1.25; padding-block: 4px; text-align: left; }
 .publish-platform-fact-publication .publish-tracking-action { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; }
 .publish-platform-job-heading > strong { min-width: 0; overflow-wrap: anywhere; }
 .publish-platform-job.is-compact { gap: 6px; padding-bottom: 12px; }

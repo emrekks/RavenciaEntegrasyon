@@ -2103,7 +2103,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var profileIds = profiles.Select(x => x.Id).ToArray();
         var listingVariants = await db.ChannelListingVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && profileIds.Contains(x.ProfileId) && variantIds.Contains(x.VariantId))
-            .Select(x => new { x.ProfileId, x.VariantId })
+            .Select(x => new { x.ProfileId, x.VariantId, x.ActualStatus })
             .ToListAsync(cancellationToken);
         var productAttributes = await db.ProductAttributeAssignments.AsNoTracking()
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.VariantId == null)
@@ -2229,9 +2229,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 {
                     var profile = productProfiles.FirstOrDefault(x => x.ConnectionId == connectionId);
                     var linkedVariantIds = productLinks.Where(x => x.ConnectionId == connectionId).Select(x => x.VariantId).ToHashSet();
+                    // A listed variant counts only once it is live there: one the marketplace refused (n11 MZ059YNC-03)
+                    // or one still queued is not matched, so a 23 of 24 card does not read 24 of 24.
                     if (profile is not null)
                     {
-                        foreach (var listing in listingVariants.Where(x => x.ProfileId == profile.Id)) linkedVariantIds.Add(listing.VariantId);
+                        foreach (var listing in listingVariants.Where(x => x.ProfileId == profile.Id && x.ActualStatus == "LIVE")) linkedVariantIds.Add(listing.VariantId);
                     }
 
                     var matchedVariantCount = linkedVariantIds.Count;
