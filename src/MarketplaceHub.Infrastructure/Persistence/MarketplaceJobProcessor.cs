@@ -27,7 +27,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private const int ProductApprovalReconcileMaxAttempts = (7 * 24 * 12) + 1;
     private const int MaxReferenceItems = 500_000;
     private const int MaxBrandReferenceItems = 2_000_000;
-    private const int MaxPazaramaBrandLookups = 100;
     // The job types that have their own handler class; built here when the processor is made without DI.
     private readonly IReadOnlyList<IJobHandler> jobHandlers = handlers?.ToArray() ?? [new MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler(questions)];
     private int telemetryRequestCount;
@@ -2252,46 +2251,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var seen = new HashSet<string>(StringComparer.Ordinal);
         string? cursor = null;
         var itemCount = 0;
-        async Task Stage(IReadOnlyList<RemoteReferenceItem> pageItems)
-        {
-            if (itemCount > MaxBrandReferenceItems - pageItems.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Trendyol marka referansı güvenli işleme sınırını aştı."));
-            var uniquePageItems = new List<RemoteReferenceItem>(pageItems.Count);
-            foreach (var item in pageItems)
-            {
-                TrackReceived();
-                if (!string.Equals(item.ResourceType, "BRANDS", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(item.ExternalId) || string.IsNullOrWhiteSpace(item.Name) || item.ParentExternalId is not null)
-                    throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Marka referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
-                if (seen.Add(item.ExternalId)) uniquePageItems.Add(item);
-            }
-            for (var index = 0; index < uniquePageItems.Count; index++)
-            {
-                var item = uniquePageItems[index];
-                db.ReferenceItems.Add(new ReferenceItem
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    ConnectionId = connectionId,
-                    SnapshotId = staging.Id,
-                    ResourceType = "BRANDS",
-                    ExternalId = item.ExternalId,
-                    ParentExternalId = null,
-                    Name = item.Name,
-                    NormalizedName = item.Name.Trim().ToUpperInvariant(),
-                    Path = item.Path,
-                    Depth = item.Depth,
-                    IsLeaf = item.IsLeaf,
-                    IsActive = item.IsActive,
-                    IsRequired = item.IsRequired,
-                    AllowsCustomValue = item.AllowsCustomValue,
-                    AllowsMultipleValues = item.AllowsMultipleValues,
-                    PayloadHash = Hash(item.RawJson),
-                    SortOrder = itemCount + index
-                });
-            }
-            itemCount += uniquePageItems.Count;
-            await db.SaveChangesAsync(cancellationToken);
-            db.ChangeTracker.Clear();
-        }
         try
         {
             do
@@ -2300,34 +2259,50 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 const int pageSize = 2000;
                 var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:BRANDS::{cursor}"), new("BRANDS", null), new(cursor, pageSize), cancellationToken);
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
-                await Stage(result.Value!.Items);
+                var pageItems = result.Value!.Items;
+                if (itemCount > MaxBrandReferenceItems - pageItems.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Trendyol marka referansı güvenli işleme sınırını aştı."));
+                var uniquePageItems = new List<RemoteReferenceItem>(pageItems.Count);
+                foreach (var item in pageItems)
+                {
+                    TrackReceived();
+                    if (!string.Equals(item.ResourceType, "BRANDS", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(item.ExternalId) || string.IsNullOrWhiteSpace(item.Name) || item.ParentExternalId is not null)
+                        throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Marka referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
+                    if (seen.Add(item.ExternalId)) uniquePageItems.Add(item);
+                }
+                for (var index = 0; index < uniquePageItems.Count; index++)
+                {
+                    var item = uniquePageItems[index];
+                    db.ReferenceItems.Add(new ReferenceItem
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        ConnectionId = connectionId,
+                        SnapshotId = staging.Id,
+                        ResourceType = "BRANDS",
+                        ExternalId = item.ExternalId,
+                        ParentExternalId = null,
+                        Name = item.Name,
+                        NormalizedName = item.Name.Trim().ToUpperInvariant(),
+                        Path = item.Path,
+                        Depth = item.Depth,
+                        IsLeaf = item.IsLeaf,
+                        IsActive = item.IsActive,
+                        IsRequired = item.IsRequired,
+                        AllowsCustomValue = item.AllowsCustomValue,
+                        AllowsMultipleValues = item.AllowsMultipleValues,
+                        PayloadHash = Hash(item.RawJson),
+                        SortOrder = itemCount + index
+                    });
+                }
+                itemCount += uniquePageItems.Count;
+                await db.SaveChangesAsync(cancellationToken);
+                db.ChangeTracker.Clear();
                 cursor = result.Value.NextCursor;
                 if (!result.Value.HasMore) break;
                 if (string.IsNullOrWhiteSpace(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci eksik döndü."));
             } while (!cancellationToken.IsCancellationRequested);
 
             cancellationToken.ThrowIfCancellationRequested();
-            // Pazarama's paged brand list can end long before the whole list (the live scan stopped at
-            // 499 brands without any panel brand in it). Every active panel brand is also looked up by
-            // name and the matches join the same snapshot, so a brand Pazarama has is always mappable.
-            // The marker records that every panel brand was looked up and each answer was a real
-            // name-filtered one; only then may a missing brand be reported as not on Pazarama.
-            var lookedUpEveryBrand = false;
-            if (await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PAZARAMA", cancellationToken))
-            {
-                var names = (await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive).OrderBy(x => x.Name).Select(x => x.Name).Take(MaxPazaramaBrandLookups + 1).ToListAsync(cancellationToken))
-                    .Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                lookedUpEveryBrand = names.Count <= MaxPazaramaBrandLookups;
-                foreach (var name in names.Take(MaxPazaramaBrandLookups))
-                {
-                    TrackRequest();
-                    var found = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:BRAND_SEARCH:{name}"), new("BRAND_SEARCH", name), new(null, PazaramaHttpClient.BrandSearchSize), cancellationToken);
-                    if (!found.IsSuccess) { TrackResultFailure(found.Error); lookedUpEveryBrand = false; break; }
-                    await Stage(found.Value!.Items);
-                    if (!PazaramaReferenceMapper.BrandSearchHonoured(name, found.Value.Items)) lookedUpEveryBrand = false;
-                }
-            }
-            if (lookedUpEveryBrand) sourceVersion += PazaramaReferenceMapper.BrandNameLookupMarker;
             if (itemCount == 0) throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", "Trendyol BRANDS salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
             var contentHash = await HashReferenceItemsAsync(tenantId, staging.Id, cancellationToken);
             // Reference refresh can be invoked while the caller already owns a transaction.
