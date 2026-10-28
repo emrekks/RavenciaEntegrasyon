@@ -732,6 +732,26 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderMapper_TakesTheLinesProductBarcodeNotThePackagesCargoBarcode()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-2026-23",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "items": [
+            { "id": "line-23a", "merchantSku": "SKU-05", "barcode": "62755312362914", "productBarcode": "00SKU05", "quantity": 1, "price": 10.0, "status": "Open" },
+            { "id": "line-23b", "merchantSku": "SKU-20", "barcode": "62755312362914", "productBarcode": "00SKU20", "quantity": 1, "price": 10.0, "status": "Open" },
+            { "id": "line-23c", "merchantSku": "SKU-30", "barcode": "8690000000300", "productBarcode": "", "quantity": 1, "price": 10.0, "status": "Open" }
+          ]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-2026-23");
+
+        Assert.Equal(new string?[] { "00SKU05", "00SKU20", "8690000000300" }, order.Lines.Select(line => line.Barcode));
+    }
+
+    [Fact]
     public void OrderMapperReadsDueDateAndInvoiceStateFromDetailLineItems()
     {
         using var json = JsonDocument.Parse("""

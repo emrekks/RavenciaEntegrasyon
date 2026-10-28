@@ -1546,7 +1546,11 @@ internal static class HepsiburadaJsonMapper
         var status = Text(line, "status", "Status", "lineStatus", "LineStatus") ?? missingStatus ?? string.Empty;
         var cancelled = status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? quantity : 0m;
         var snapshot = EnrichSnapshot(line.GetRawText(), ("imageUrl", ImageUrl(line)));
-        return new(lineId, sku, Text(line, "barcode", "Barcode", "productBarcode", "ProductBarcode"), Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, snapshot, cancelled);
+        // A line's "barcode" is its package's cargo barcode (every line of the package carries the same one); the
+        // product's own barcode is "productBarcode".
+        var productBarcode = Text(line, "productBarcode", "ProductBarcode");
+        var barcode = string.IsNullOrWhiteSpace(productBarcode) ? Text(line, "barcode", "Barcode") : productBarcode;
+        return new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, snapshot, cancelled);
     }
 
     // Every identity a line is known by (id, lineItemId, orderLineId) leads to its ExternalLineId, so a package
