@@ -304,4 +304,110 @@ public sealed class PazaramaProductWriteTests
         Assert.Equal("product/create", PazaramaHttpClient.ProductCreate);
         Assert.Equal("product/getProductBatchResult", PazaramaHttpClient.ProductBatchResult);
     }
+
+    // Seen live 2026-10-28: a just-created product awaiting approval made the approved list refuse its barcode with
+    // "Ürün bulunamadı" (success=false), and the approval check stopped there with a manual review.
+    private const string NotFound = """{"success":false,"userMessage":"Ürün bulunamadı."}""";
+
+    private static Func<string, Task<AdapterResult<JsonDocument>>> Answers(List<string> asked, Func<string, string> answer) => path =>
+    {
+        asked.Add(path);
+        var document = JsonDocument.Parse(answer(path));
+        var refusal = PazaramaHttpClient.EnvelopeError(document.RootElement);
+        if (refusal is null) return Task.FromResult(AdapterResult<JsonDocument>.Success(document));
+        document.Dispose();
+        return Task.FromResult(AdapterResult<JsonDocument>.Failure(refusal));
+    };
+
+    private static bool IsApprovedList(string path) => path.StartsWith("product/products/approved", StringComparison.Ordinal);
+
+    [Fact]
+    public async Task A_product_the_approved_list_does_not_find_is_read_from_the_unapproved_list()
+    {
+        var asked = new List<string>();
+        var status = await PazaramaHttpClient.LookupPublicationAsync("B1", Answers(asked, path => IsApprovedList(path)
+            ? NotFound
+            : """{"data":[{"code":"B1","name":"Ürün","groupCode":"G1","status":"Onay Bekliyor"}],"pageIndex":1,"hasPreviousPage":false,"success":true}"""));
+
+        Assert.True(status.IsSuccess);
+        Assert.Equal("PENDING_APPROVAL", status.Value!.Status);
+        Assert.Equal("group:G1", status.Value.ExternalProductId);
+        Assert.Equal(2, asked.Count);
+        Assert.Contains("Code=B1", asked[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_barcode_no_list_finds_stays_not_found_instead_of_a_refusal()
+    {
+        var asked = new List<string>();
+        var status = await PazaramaHttpClient.LookupPublicationAsync("B1", Answers(asked, _ => NotFound));
+
+        Assert.True(status.IsSuccess);
+        Assert.Equal("NOT_FOUND", status.Value!.Status);
+        Assert.Null(status.Value.RejectionCode);
+        // Approved list, unapproved page 1 and, as nothing said page 1 was the first page, page 0.
+        Assert.Equal(3, asked.Count);
+        Assert.Contains("pageIndex=0", asked[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Page_zero_is_asked_only_when_page_one_may_be_the_second_page()
+    {
+        var asked = new List<string>();
+        var status = await PazaramaHttpClient.LookupPublicationAsync("B1", Answers(asked, path => IsApprovedList(path)
+            ? NotFound
+            : """{"data":[],"pageIndex":1,"hasPreviousPage":false,"success":true}"""));
+
+        Assert.Equal("NOT_FOUND", status.Value!.Status);
+        Assert.Equal(2, asked.Count);
+
+        asked.Clear();
+        status = await PazaramaHttpClient.LookupPublicationAsync("B1", Answers(asked, path => IsApprovedList(path)
+            ? NotFound
+            : path.Contains("pageIndex=1", StringComparison.Ordinal)
+                ? """{"data":[],"pageIndex":1,"hasPreviousPage":true,"success":true}"""
+                : """{"data":[{"code":"B1","groupCode":"G1","status":"Reddedildi"}],"pageIndex":0,"success":true}"""));
+
+        Assert.Equal("REJECTED", status.Value!.Status);
+        Assert.Equal(3, asked.Count);
+    }
+
+    [Fact]
+    public async Task An_approved_product_is_answered_from_the_approved_list()
+    {
+        var asked = new List<string>();
+        var status = await PazaramaHttpClient.LookupPublicationAsync("B1", Answers(asked, _ => """{"data":[{"code":"B1","name":"Ürün","groupCode":"G1","productStatus":1}],"success":true}"""));
+
+        Assert.Equal("APPROVED", status.Value!.Status);
+        Assert.Single(asked);
+    }
+
+    [Fact]
+    public async Task Another_refusal_still_fails_the_lookup()
+    {
+        var asked = new List<string>();
+        var status = await PazaramaHttpClient.LookupPublicationAsync("B1", Answers(asked, _ => """{"success":false,"userMessage":"Yetkiniz yok."}"""));
+
+        Assert.False(status.IsSuccess);
+        Assert.Equal("PAZARAMA_REQUEST_REJECTED", status.Error!.Code);
+        Assert.Single(asked);
+    }
+
+    [Fact]
+    public void Only_a_not_found_refusal_counts_as_an_empty_answer()
+    {
+        Assert.True(PazaramaProductWriteMapper.IsNotFoundAnswer(PazaramaHttpClient.EnvelopeError(Parse(NotFound))!));
+        Assert.True(PazaramaProductWriteMapper.IsNotFoundAnswer(PazaramaHttpClient.EnvelopeError(Parse("""{"success":false,"message":"Listelenecek veri bulunamadı!"}"""))!));
+        Assert.False(PazaramaProductWriteMapper.IsNotFoundAnswer(PazaramaHttpClient.EnvelopeError(Parse("""{"success":false,"userMessage":"Yetkiniz yok."}"""))!));
+        Assert.False(PazaramaProductWriteMapper.IsNotFoundAnswer(new AdapterError(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Ürün bulunamadı", 500, null, null)));
+    }
+
+    [Fact]
+    public void A_check_window_that_ran_out_says_how_long_it_waited()
+    {
+        var started = new DateTimeOffset(2026, 10, 28, 13, 48, 0, TimeSpan.Zero);
+        var message = ProductApprovalReconciliationPolicy.DeadlineExpiredMessage("Pazarama", started, started.AddDays(7));
+        Assert.Contains("7 gün", message, StringComparison.Ordinal);
+        Assert.Contains("bulunamadı", message, StringComparison.Ordinal);
+    }
 }

@@ -79,26 +79,51 @@ public sealed partial class PazaramaHttpClient
             return Failure<RemotePublicationStatus>(AdapterErrorClass.Validation, "PAZARAMA_BARCODE_REQUIRED", "Pazarama ürün durumu için barkod gerekir.", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemotePublicationStatus>();
-        var code = barcode.Trim();
+        return await LookupPublicationAsync(barcode.Trim(), path => SendAsync(account, HttpMethod.Get, path, cancellationToken));
+    }
+
+    // Asked for one barcode, Pazarama refuses with "Ürün bulunamadı" (success=false) instead of answering an empty
+    // list; seen live on the approved list for products still awaiting approval. Such a refusal is an empty answer,
+    // so the lookup goes on to the unapproved list. The unapproved list pages by index and a server counting from
+    // zero answers page 1 as the second page, so page 0 is asked too unless page 1 said it was the first page.
+    // Nothing found on either list stays NOT_FOUND (still unknown), never a rejection.
+    internal static async Task<AdapterResult<RemotePublicationStatus>> LookupPublicationAsync(string code, Func<string, Task<AdapterResult<JsonDocument>>> send)
+    {
         var filter = new ProductReadFilter(null, Barcode: code);
-        foreach (var (path, pending) in new[] { (ApprovedPage(null, 1, filter), false), (UnapprovedPage(1, null, 1, filter), true) })
+        var lookups = new (string Path, bool Pending, bool PageZero)[]
         {
-            var result = await SendAsync(account, HttpMethod.Get, path, cancellationToken);
-            if (!result.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(result.Error!, result.RateLimit);
+            (ApprovedPage(null, 1, filter), false, false),
+            (UnapprovedPage(1, null, 1, filter), true, false),
+            (UnapprovedPage(0, null, 1, filter), true, true)
+        };
+        var askPageZero = true;
+        RateLimitMetadata? rate = null;
+        foreach (var (path, pending, pageZero) in lookups)
+        {
+            if (pageZero && !askPageZero) break;
+            var result = await send(path);
+            rate = result.RateLimit ?? rate;
+            if (!result.IsSuccess)
+            {
+                if (PazaramaProductWriteMapper.IsNotFoundAnswer(result.Error!)) continue;
+                // A server counting from one may refuse page 0; that is no answer about the product.
+                if (pageZero && result.Error!.Class == AdapterErrorClass.Validation) continue;
+                return AdapterResult<RemotePublicationStatus>.Failure(result.Error!, result.RateLimit);
+            }
             using var document = result.Value!;
             try
             {
                 var page = PazaramaProductMapper.Page(document.RootElement, pending);
-                var item = FindItem(document.RootElement, code);
-                if (page.Items.Count > 0 && item is { } found)
+                if (FindItem(document.RootElement, code) is { } found)
                     return AdapterResult<RemotePublicationStatus>.Success(PazaramaProductWriteMapper.Publication(found, code, pending), result.RateLimit);
+                if (pending && !pageZero && page.HasPreviousPage == false) askPageZero = false;
             }
             catch (JsonException)
             {
                 return Failure<RemotePublicationStatus>(AdapterErrorClass.ContractViolation, "PAZARAMA_PRODUCT_CONTRACT_INVALID", "Pazarama ürün yanıtı beklenen yapıda değil.", HttpStatusCode.BadGateway);
             }
         }
-        return AdapterResult<RemotePublicationStatus>.Success(new(code, "NOT_FOUND", null, null, null, "{}"));
+        return AdapterResult<RemotePublicationStatus>.Success(new(code, "NOT_FOUND", null, null, null, "{}"), rate);
     }
 
     private static JsonElement? FindItem(JsonElement root, string code)
@@ -323,6 +348,12 @@ public static class PazaramaProductWriteMapper
         // An error batch without any line applied nothing.
         return new(operationId, status == 3 && lines.Count == 0 ? "REJECTED" : "COMPLETED", lines);
     }
+
+    // A barcode lookup Pazarama refused because no product matched ("Ürün bulunamadı", "Listelenecek veri
+    // bulunamadı"): an empty answer, not a rejection of the product.
+    public static bool IsNotFoundAnswer(AdapterError error) =>
+        error.Code is "PAZARAMA_REQUEST_REJECTED" or "PAZARAMA_NOT_FOUND"
+        && error.SafeMessage.Contains("bulunamad", StringComparison.OrdinalIgnoreCase);
 
     // Approved products are live; unapproved ones wait for review or were turned down.
     public static RemotePublicationStatus Publication(JsonElement item, string barcode, bool unapproved)

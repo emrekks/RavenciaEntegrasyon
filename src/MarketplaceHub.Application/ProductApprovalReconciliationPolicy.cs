@@ -4,6 +4,14 @@ public static class ProductApprovalReconciliationPolicy
 {
     public const string SplitApprovedContentsCode = "PRODUCT_APPROVAL_CONTENT_SPLIT";
 
+    // The check window ran out while the marketplace kept the product pending or did not list it at all (Pazarama,
+    // n11 and PTT AVM answer a just-sent product as not found while it waits); the card says how long it waited.
+    public static string DeadlineExpiredMessage(string marketplaceName, DateTimeOffset startedAt, DateTimeOffset deadlineAt)
+    {
+        var days = Math.Max(1, (int)Math.Round((deadlineAt - startedAt).TotalDays, MidpointRounding.AwayFromZero));
+        return $"{marketplaceName} ürün onayı {days} gün içinde sonuçlanmadı; ürün bu sürede onaylanmadı ya da {marketplaceName} listelerinde bulunamadı. Barkodu {marketplaceName} satıcı panelinden kontrol edip yayın durumunu yeniden sorgulayın.";
+    }
+
     public static bool ShouldResetMissingPublication(int expectedVariantCount, IReadOnlyCollection<RemotePublicationStatus> statuses) =>
         expectedVariantCount > 0
         && statuses.Count == expectedVariantCount

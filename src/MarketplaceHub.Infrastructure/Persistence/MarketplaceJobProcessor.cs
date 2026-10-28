@@ -425,6 +425,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var current = await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, payload.ProductId, connectionId, cancellationToken);
                 if (!current.Succeeded || !PttAvmProductPayloadRules.SameVariantBarcodes(payload.PayloadJson, current.Value!.PayloadJson))
                     return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste PTT AVM'ye gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
+                // Every colour card's job carries the whole family: the family goes out once, and a card whose family a
+                // sibling's job already sent follows that send's tracking result instead of sending it again.
+                if (await PttAvmFamilySend.CoveringSendAsync(db, tenantId, connectionId, job.Id, payload.PayloadJson, timeProvider.GetUtcNow(), cancellationToken) is { } familySend)
+                {
+                    job.PayloadJson = JsonSerializer.Serialize(payload with { Phase = "POLL", ExternalOperationId = familySend.ExternalOperationId, SubmittedAt = familySend.SubmittedAt });
+                    job.PayloadHash = Hash(job.PayloadJson);
+                    profile.ActualStatus = "BATCH_SUBMITTED";
+                    profile.LastRejectionCode = null;
+                    profile.Version++;
+                    await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken, payload.PayloadHash);
+                    await db.SaveChangesAsync(cancellationToken);
+                    return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "Model ailesi PTT AVM'ye tek istekle gönderildi; bu kartın sonucu aynı gönderimden okunuyor.", TimeSpan.FromSeconds(15), familySend.ExternalOperationId);
+                }
             }
             var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
             if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken, payload.PayloadHash);
@@ -450,6 +463,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (isPttAvmFamily && error.Code == PttAvmProductPayloadRules.VariantsAlreadyPresentCode)
                     return await MarkPublicationResult(tenantId, connectionId, profile, "ALREADY_PRESENT", error.Code, JobExecutionResult.SuccessWithNote(error.Code, error.SafeMessage), cancellationToken, payload.PayloadHash);
                 var adapterResult = JobExecutionResult.FromAdapterError(error);
+                // PTT AVM's five-minute wait for a repeated request holds this request only, not the connection's other jobs.
+                if (error.Code == PttAvmProductPayloadRules.RepeatRequestWaitCode) adapterResult = adapterResult with { BackOffConnection = false };
                 var status = adapterResult.Kind == JobCompletionKind.Retry ? "RETRY_SCHEDULED" : adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
                 return await MarkPublicationResult(tenantId, connectionId, profile, status, error.Code, adapterResult, cancellationToken, payload.PayloadHash);
             }
@@ -596,7 +611,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (states.Values.Any(x => !string.Equals(x.PayloadHash, payload.PayloadHash, StringComparison.Ordinal) && !string.Equals(x.ActualStatus, "LIVE", StringComparison.Ordinal)))
             return JobExecutionResult.Blocked("PRODUCT_APPROVAL_SUPERSEDED", "Daha yeni bir ürün yayınlama payload'ı bulundu; eski onay işi güncel listing durumunu değiştirmedi.");
         if (timeProvider.GetUtcNow() > payload.DeadlineAt)
-            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_DEADLINE_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_DEADLINE_EXPIRED", $"{marketplaceName} ürün onayı belirlenen uzlaştırma penceresinde terminal duruma ulaşmadı."), cancellationToken);
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_DEADLINE_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_DEADLINE_EXPIRED", ProductApprovalReconciliationPolicy.DeadlineExpiredMessage(marketplaceName, payload.StartedAt, payload.DeadlineAt)), cancellationToken);
         if (listings.Count == 0 || states.Count != listings.Count)
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_STATE_INCOMPLETE", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_STATE_INCOMPLETE", "Onay uzlaştırması için listing state kayıtları eksik."), cancellationToken);
 
@@ -662,6 +677,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", $"{marketplaceName} onay yanıtı birden fazla {keyLabel} için aynı variantId değerini döndürdü."), cancellationToken);
         // n11 groups a model's colour cards under one product (productMainId is the model code), so its id is held by the
         // family's first approved card; a sibling card is then not a conflict and goes live without a product link.
+        // Pazarama does the same: the family's cards share one groupCode (from the model code), its product identity.
         var contentHeldByFamily = false;
         if (approvedContentIds.Count > 0)
         {
@@ -669,11 +685,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedContentIds.Contains(x.ExternalId) && x.ProductId != payload.ProductId)
                 .Select(x => x.ProductId)
                 .ToListAsync(cancellationToken);
-            if (holders.Count > 0 && isN11)
+            if (holders.Count > 0 && (isN11 || isPazarama))
             {
                 var family = await FamilyProductIdsAsync(tenantId, payload.ProductId, cancellationToken);
                 contentHeldByFamily = holders.All(family.Contains);
             }
+            // A PTT AVM model family is one product under the parent barcode: every colour card's variants answer with
+            // that product's id, which the family's first approved card holds.
+            if (holders.Count > 0 && isPttAvm)
+                contentHeldByFamily = holders.All((await FamilyProductIdsAsync(tenantId, payload.ProductId, cancellationToken)).Contains);
             if (holders.Count > 0 && !contentHeldByFamily)
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", $"{marketplaceName} ürün kimliği başka bir yerel ürünle eşleşiyor."), cancellationToken);
             var localProductLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId, cancellationToken);
