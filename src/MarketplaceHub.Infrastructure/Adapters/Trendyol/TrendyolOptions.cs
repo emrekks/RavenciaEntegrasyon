@@ -40,7 +40,6 @@ internal static class TrendyolEndpoints
     public static string ProductUpdateDelivery(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/delivery-info-bulk-update";
     public static string ProductArchiveState(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/archive-state";
     public static string ApprovedProducts(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/approved";
-    public static string ProductByBarcode(string sellerId, string barcode) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/product/{Uri.EscapeDataString(barcode)}";
     public static string UnapprovedProducts(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/unapproved";
     public static string BatchResult(string sellerId, string batchId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/batch-requests/{Uri.EscapeDataString(batchId)}";
     public static string PriceAndInventory(string sellerId) => $"inventory/sellers/{Uri.EscapeDataString(sellerId)}/products/price-and-inventory";
@@ -104,9 +103,4 @@ internal static class TrendyolReadStorefronts
     // getClaims is a global claims endpoint in the documented V2 contract; the
     // storefront header is required for order stream reads, not claims reads.
     public static readonly string[] ReturnCodes = ["TR"];
-    // Return hydration is a bounded fallback for the seller's Türkiye and UAE
-    // order scopes. Other storefront orders arrive through the full order stream.
-    // Domestic orders are the normal lifecycle path for a seller. Probe TR first
-    // so a slow optional international storefront cannot hide a current status.
-    public static readonly string[] ReturnOrderCodes = ["TR", "AE"];
 }

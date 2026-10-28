@@ -581,8 +581,6 @@ public static class TrendyolJsonMapper
         return merged;
     }
 
-    private static bool HasColorOption(IReadOnlyDictionary<string, string> options) => options.Keys.Any(IsColorOptionKey);
-
     private static string? ColorOptionValue(IReadOnlyDictionary<string, string> options) => options
         .Where(pair => IsColorOptionKey(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
         .OrderBy(pair => IsWebColorOptionKey(pair.Key) ? 1 : 0)

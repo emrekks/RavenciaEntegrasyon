@@ -108,9 +108,6 @@ public sealed class ProductAttributeAssignment
     public bool? BooleanValue { get; set; }
     public int SortOrder { get; set; }
     public long Version { get; set; } = 1;
-
-    public bool HasExactlyOneTypedValue() =>
-        new object?[] { ValueId, TextValue, NumberValue, BooleanValue }.Count(value => value is not null) == 1;
 }
 
 public sealed class ProductVariant

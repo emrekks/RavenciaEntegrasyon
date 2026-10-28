@@ -1040,7 +1040,6 @@ public sealed partial class InvoicingBillingService(
     {
         public string? InvoiceNumber => ResolveInvoiceNumber(Invoice?.InvoiceNumber, Package.MarketplaceInvoiceNumber);
     }
-    private sealed record WorkspacePageCounts(int Uninvoiced, int Invoiced, int DueSoon, int Total);
 
     private static string MediaUrl(Guid assetId, string classification, string relativePath) => classification == "PRODUCT_MEDIA_URL"
         ? relativePath

@@ -167,9 +167,6 @@ public static class PackageIngestionSafety
         : currentStatusAt is { } held && held > now ? held
         : now;
 
-    public static bool AllEventsRecorded(IReadOnlyList<RemotePackage> packages, IReadOnlySet<string> recordedEventIds) =>
-        packages.Count > 0 && packages.All(package => recordedEventIds.Contains(EventId(package.ExternalPackageId, package.OccurredAt)));
-
     public static bool TryNormalize(
         decimal orderedQuantity,
         RemotePackageAllocation remote,
