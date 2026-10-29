@@ -603,6 +603,22 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
+    public void AnOrderLineWithoutKdvOraniLeavesTheRateUnknown()
+    {
+        // The first line of the order loses KdvOrani; the second keeps its 10.
+        var withoutRate = System.Text.RegularExpressions.Regex.Replace(OrderListAnswer, @"<a:KdvOrani>10</a:KdvOrani>(\s*<a:LineItemId>229049580</a:LineItemId>)", "$1");
+        Assert.NotEqual(OrderListAnswer, withoutRate);
+        var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, withoutRate, PttAvmHttpClient.Orders);
+
+        var lines = PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-A1712HP2E-071024").Lines;
+
+        Assert.Null(lines[0].VatRate);
+        Assert.Equal(10m, lines[1].VatRate);
+        Assert.True(InvoiceIssuePolicy.IsLineVatRateUnknown("PTTAVM", lines[0].SourceSnapshotJson));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("PTTAVM", lines[1].SourceSnapshotJson));
+    }
+
+    [Fact]
     public void AnOrderLineOfAVariantCarriesTheVariantBarcode()
     {
         // As the live store answers: UrunBarkod is the model code, VariantBarkod the variant sold.
@@ -1943,11 +1959,110 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(300m, blouse.Variants[0].SalePrice);
         // The entry without any barcode is reported by its element names.
         Assert.Contains(page.Issues!, issue => issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Message.Contains("Variant[Tanim]", StringComparison.Ordinal));
-        // Variant pages start at 1 (PTT AVM refuses page 0) and are read until one brings no new product.
-        Assert.Equal(2, variantPages);
+        // Variant pages start at 1 (PTT AVM refuses page 0) and are read up to TotalPage (1 here).
+        Assert.Equal(1, variantPages);
+        Assert.Equal(["1"], VariantPagesAsked(handler));
+    }
+
+    // Without TotalPage the pages are read until one brings no new product.
+    [Fact]
+    public async Task AVariantListWithoutTotalPageIsReadUntilAPageBringsNothingNew()
+    {
+        var variantPages = 0;
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, (variantPages++ == 0 ? VariantsAnswer : EmptyVariantsAnswer).Replace("<a:TotalPage>1</a:TotalPage>", "", StringComparison.Ordinal)),
+            _ => throw new InvalidOperationException()
+        });
+
+        var page = (await Client(handler).ReadProductPageAsync(Account(), null, null, CancellationToken.None)).Value!;
+
+        Assert.Equal(["FK453001", "FK453002"], page.Items.Single(x => x.ProductMainId == "FK4530").Variants.Select(x => x.Barcode));
+        Assert.Equal(["1", "2"], VariantPagesAsked(handler));
+        Assert.DoesNotContain(page.Issues!, issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE");
+    }
+
+    // Audit 29 Oct 2026, M-1: a page that brings nothing new (products without variants) is not the end while TotalPage
+    // says more follow. Stopping there left FK4530 (on page 3) out of the list, so it read as a model without variants and
+    // the family request would have gone without FK453001/FK453002, which PTT AVM then deletes.
+    [Fact]
+    public async Task AModelFamilyOnALaterVariantPageIsSentWithItsPttAvmVariants()
+    {
+        var variantPages = 0;
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, (++variantPages switch
+            {
+                1 => VariantsAnswer.Replace("FK4530<", "AB1000<", StringComparison.Ordinal).Replace("FK45300", "AB10000", StringComparison.Ordinal),
+                2 => EmptyVariantsAnswer,
+                _ => VariantsAnswer.Replace("<a:Fiyat>25</a:Fiyat>", "<a:Fiyat>0</a:Fiyat>", StringComparison.Ordinal)
+            }).Replace("<a:TotalPage>1</a:TotalPage>", "<a:TotalPage>3</a:TotalPage>", StringComparison.Ordinal)),
+            PttAvmHttpClient.ProductUpsert => Respond(HttpStatusCode.OK, ProductUpsertAnswer),
+            _ => throw new InvalidOperationException("Unexpected operation.")
+        });
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Quantity = 4, Variants = [new("FK453003", "Bordo", "L", 4)] };
+
+        var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Code);
+        Assert.Equal(["1", "2", "3"], VariantPagesAsked(handler));
+        var sent = Assert.Single(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+        XNamespace ept = PttAvmHttpClient.RequestsNamespace;
+        Assert.Equal(["FK453001", "FK453002", "FK453003"], XDocument.Parse(sent.Body!).Descendants(ept + "VariantV3").Select(x => x.Element(ept + "VariantBarcode")!.Value));
+    }
+
+    // A variant list longer than the pages that can be read is a failure, not a shorter list: the family is not sent.
+    [Fact]
+    public async Task AVariantListLongerThanThePageLimitStopsTheFamilySend()
+    {
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer.Replace("<a:TotalPage>1</a:TotalPage>", $"<a:TotalPage>{PttAvmHttpClient.MaxVariantPages + 1}</a:TotalPage>", StringComparison.Ordinal)),
+            _ => throw new InvalidOperationException("No write may leave the panel.")
+        });
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Variants = [new("FK453003", "Bordo", "L", 4)] };
+
+        var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
+
+        Assert.Equal(PttAvmProductPayloadRules.RemoteVariantUnreadableCode, result.Error!.Code);
+        Assert.Equal(["1"], VariantPagesAsked(handler));
+        Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+    }
+
+    // Without TotalPage, a list still bringing new products at the page limit is cut short: the family is not sent, and
+    // a scan reads its products without variants and says so (the cut list is not cached as the whole list).
+    [Fact]
+    public async Task AVariantListStillGoingAtThePageLimitStopsTheFamilySend()
+    {
+        var variantPages = 0;
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer.Replace("<a:TotalPage>1</a:TotalPage>", "", StringComparison.Ordinal)
+                .Replace("RVNC015<", $"PAGE{++variantPages}<", StringComparison.Ordinal)),
+            _ => throw new InvalidOperationException("No write may leave the panel.")
+        });
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Variants = [new("FK453003", "Bordo", "L", 4)] };
+        var account = Account(status: "ACTIVE", connectionWrites: true);
+
+        var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(account, draft, CancellationToken.None);
+
+        Assert.Equal(PttAvmProductPayloadRules.RemoteVariantUnreadableCode, result.Error!.Code);
+        Assert.Equal(PttAvmHttpClient.MaxVariantPages, variantPages);
+        Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+        var page = (await Client(handler).ReadProductPageAsync(account, null, "FK4530", CancellationToken.None)).Value!;
+        Assert.Contains(page.Issues!, issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE" && issue.Message.Contains(PttAvmHttpClient.VariantListIncompleteCode, StringComparison.Ordinal));
+        Assert.Equal(2 * PttAvmHttpClient.MaxVariantPages, variantPages);
+    }
+
+    private static IReadOnlyList<string> VariantPagesAsked(CapturingHandler handler)
+    {
         XNamespace tem = PttAvmHttpClient.ServiceNamespace;
-        Assert.Equal(["1", "2"], handler.Requests.Where(x => x.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductsWithVariants, StringComparison.Ordinal))
-            .Select(x => XDocument.Parse(x.Body!).Descendants(tem + "page").Single().Value));
+        return handler.Requests.Where(x => x.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductsWithVariants, StringComparison.Ordinal))
+            .Select(x => XDocument.Parse(x.Body!).Descendants(tem + "page").Single().Value).ToList();
     }
 
     [Fact]

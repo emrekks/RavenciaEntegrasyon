@@ -362,7 +362,7 @@ public sealed partial class InvoicingBillingService
         else if (existing is null && activeLines.Any(line => InvoiceIssuePolicy.IsLineVatRateUnknown(marketplace.PlatformCode, line.SourceSnapshotJson)))
         {
             canCreate = false;
-            blockedReason = InvoiceIssuePolicy.LineVatRateUnknown.Message;
+            blockedReason = InvoiceIssuePolicy.LineVatRateUnknownFor(marketplace.PlatformCode).Message;
         }
         var nextAction = manualDocument is not null ? "MANUAL_DOCUMENT_PRESENT" : existing is null ? "CREATE_AND_SUBMIT"
             : ExistingInvoiceNextAction(existing.Status, existing.LastErrorCode, existing.ExternalReference);

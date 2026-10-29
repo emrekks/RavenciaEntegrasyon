@@ -211,6 +211,42 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await transaction.RollbackAsync();
     }
 
+    // Q-1/K-1: a failed price/stock write that gave up its key guards nothing and goes after the failed retention;
+    // one still holding its key is kept for the guard retention.
+    [PostgreSqlFact]
+    public async Task ARetiredPriceStockJobGoesAfterTheFailedRetention()
+    {
+        var aged = DateTimeOffset.UtcNow.AddDays(-40);
+        var tenant = NewTenant("bg-retired-push");
+        IntegrationJob Push(string dedup)
+        {
+            var job = NewJob(tenant.Id, MarketplaceJobTypes.PriceInventorySync);
+            job.JobDedupKey = dedup;
+            job.Status = JobStatus.Dead;
+            job.AttemptCount = job.MaxAttempts;
+            job.LastErrorCode = "REMOTE_5XX";
+            job.CreatedAt = aged;
+            job.CompletedAt = aged;
+            return job;
+        }
+        var dedup = $"price-inventory:{Guid.NewGuid():N}:revision:ABC";
+        var holding = Push($"price-inventory:{Guid.NewGuid():N}:revision:DEF");
+        var retired = Push(dedup);
+        retired.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, retired.Id);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.IntegrationJobs.AddRange(holding, retired);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await new JobRetentionService(db, fixture.TimeProvider).PurgeAsync(TimeSpan.FromDays(14), TimeSpan.FromDays(30), TimeSpan.FromDays(90), maximumBatches: 1_000, CancellationToken.None);
+
+        Assert.Equal([holding.Id], await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync());
+        await transaction.RollbackAsync();
+    }
+
     // An old list snapshot nothing uses goes with its items; the current one and a fresh one still being built stay.
     [PostgreSqlFact]
     public async Task OldReferenceSnapshotsGoWithTheirItemsWhileTheCurrentAndAFreshOneStay()
@@ -427,6 +463,57 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
             Assert.Equal(JobStatus.Dead, final.Status);
             Assert.Equal(5, final.AttemptCount);
             Assert.Equal(2, final.MaxAttempts - final.WaitingChecks);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
+    // Q-4 (29 Oct): a two-day-old dead job retried by hand gets one attempt. A busy lock right after the retry, and a
+    // waiting check after that, keep it; the retry's attempt is still there for the run itself.
+    [PostgreSqlFact]
+    public async Task AManuallyRetriedOldJobIsNotKilledByAWaitOrACheck()
+    {
+        var tenant = NewTenant("bg-manual-retry");
+        var job = NewJob(tenant.Id, MarketplaceJobTypes.WebhookIngest);
+        job.CreatedAt = DateTimeOffset.UtcNow.AddDays(-2);
+        job.Status = JobStatus.Dead;
+        job.AttemptCount = 3;
+        job.MaxAttempts = 3;
+        job.CompletedAt = DateTimeOffset.UtcNow.AddDays(-1);
+        job.LastErrorCode = "REMOTE_TIMEOUT";
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.Add(job);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True((await new JobOperationsService(db, fixture.TimeProvider).RetryAsync(tenant.Id, job.Id, CancellationToken.None)).Succeeded);
+
+            var busy = MarketplaceSyncExecutionLock.ContentionResult(MarketplaceJobTypes.WebhookIngest, "{}", "webhook", sameTypeRunning: false);
+            var waiting = JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "sürüyor", TimeSpan.FromSeconds(15));
+            foreach (var result in new[] { busy, waiting })
+            {
+                await using var db = fixture.CreateContext();
+                var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+                await db.IntegrationJobs.Where(x => x.Id == job.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AvailableAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+                var lease = await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: job.Id);
+                Assert.NotNull(lease);
+                Assert.True(await leases.CompleteAsync(job.Id, lease.LeaseToken, result, CancellationToken.None));
+            }
+
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == job.Id);
+            Assert.Equal(JobStatus.RetryScheduled, stored.Status);
+            Assert.NotNull(stored.RetriedAt);
+            // The deferral gave its attempt back and the check raised the limit: one attempt is still left.
+            Assert.Equal(4, stored.AttemptCount);
+            Assert.Equal(5, stored.MaxAttempts);
         }
         finally
         {

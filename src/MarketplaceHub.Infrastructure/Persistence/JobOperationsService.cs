@@ -214,6 +214,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         job.LastErrorCode = null;
         job.LastErrorSummary = null;
         job.MaxAttempts = Math.Max(job.MaxAttempts, job.AttemptCount + 1);
+        // The retry's attempt is spent on running the job: a busy lock or quota wait right after it keeps the attempt.
+        job.RetriedAt = now;
         job.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));

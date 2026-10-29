@@ -1224,7 +1224,7 @@ public sealed partial class InvoicingBillingService(
                 return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
         }
         if (orderLines.Any(line => InvoiceIssuePolicy.IsLineVatRateUnknown(orderPlatform, line.SourceSnapshotJson)))
-            return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.LineVatRateUnknown);
+            return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.LineVatRateUnknownFor(orderPlatform));
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
             Id = Guid.CreateVersion7(),
@@ -1383,7 +1383,7 @@ public sealed partial class InvoicingBillingService(
         var sourcePlatform = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
             .Join(db.PlatformConnections.AsNoTracking(), x => new { x.TenantId, x.ConnectionId }, x => new { x.TenantId, ConnectionId = x.Id }, (_, connection) => connection.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
-        if (sourceLineIds.Count > 0 && sourcePlatform == "TRENDYOL"
+        if (sourceLineIds.Count > 0
             && (await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && sourceLineIds.Contains(x.Id)).Select(x => x.SourceSnapshotJson).ToListAsync(cancellationToken))
                 .Any(snapshot => InvoiceIssuePolicy.IsLineVatRateUnknown(sourcePlatform, snapshot)))
             failures.Insert(0, InvoiceIssuePolicy.LineVatRateUnknownCode);

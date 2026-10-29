@@ -421,7 +421,9 @@ public sealed record RemoteReferenceItem(string ResourceType, string ExternalId,
 public sealed record ReferenceResource(string ResourceType, string? ParentExternalId);
 public sealed record RemoteOperationRef(string ExternalOperationId, string Kind, DateTimeOffset SubmittedAt);
 public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable, string? Status = null);
-public sealed record RemoteOperationStatus(string ExternalOperationId, string Status, IReadOnlyList<RemoteOperationLine> Lines);
+// UnlistedLinesUnconfirmed: the answer lists refused lines alone (Hepsiburada) but failed as a whole, so a line it
+// leaves out was not shown to be applied.
+public sealed record RemoteOperationStatus(string ExternalOperationId, string Status, IReadOnlyList<RemoteOperationLine> Lines, bool UnlistedLinesUnconfirmed = false);
 public sealed record ProductPublication(Guid ProductId, string PayloadHash, string PayloadJson);
 public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
 public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string? ExternalOperationId = null);
@@ -508,7 +510,7 @@ public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string
 public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
-public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);
+public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
 public sealed record RemotePackageInvoiceObservation(
     string? RawStatus,
@@ -1182,7 +1184,11 @@ public sealed record ReturnLineView(
     string? AcceptDetail = null,
     string? MarketplaceNote = null,
     bool? Resolved = null,
-    bool? AcceptedBySeller = null);
+    bool? AcceptedBySeller = null,
+    // A sent decision whose outcome is still open covers this line; the claim's other lines stay free.
+    bool DecisionPending = false,
+    // Stock can be decided on this line: the line, or the claim when the line has no status of its own, is approved.
+    bool StockDispositionAvailable = false);
 public sealed record ReturnAuditEntryView(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // A return line's status history read live from the marketplace; Error when that read failed for this line.
 public sealed record ReturnLineAuditView(Guid ReturnLineId, string Title, IReadOnlyList<ReturnAuditEntryView> Entries, string? Error);

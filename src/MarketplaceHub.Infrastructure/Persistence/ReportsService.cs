@@ -175,8 +175,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                 Options = line.VariantId is { } id && signatures.TryGetValue(id, out var signature) ? signature : null
             }).ToList()
         }).ToList();
-        return ServiceResult<ReportOrderProfitPage>.Ok(new(page, ordered.Count, query.Page, query.PageSize, all.Sum(order => order.Amount),
-            all.Sum(order => order.Profit ?? 0m), all.Count(order => order.Profit is null)));
+        var totals = ReportOrderProfit.Totals(all);
+        return ServiceResult<ReportOrderProfitPage>.Ok(new(page, ordered.Count, query.Page, query.PageSize, totals.Amount, totals.Profit, totals.MissingCost,
+            totals.ProfitAmount, totals.ProfitOrders, totals.Margin, totals.MissingCargo));
     }
 
     // The listed products' catalogue details, as the product list shows them: the variant's model code and options
@@ -250,6 +251,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
         var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
         var orderLines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
+        var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
         return await (from row in PeriodOrders(tenantId, allowedIds, period)
                       let order = row.Order
                       let priced = currentPackages.Any(package => package.OrderId == order.Id && (package.NetAmount > 0 || package.GrossAmount > 0))
@@ -262,10 +264,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                               .Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount)
                           : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
                       // A Trendyol micro-export order's return (claim, returned line or package, returned status) counts once Trendyol's
-                      // statement records the refund: Trendyol keeps the sale and charges a weekly overseas return fee instead.
-                      let returnBooked = order.StoreFrontCode == null || order.StoreFrontCode == "" || order.StoreFrontCode == "TR"
-                          || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == order.ConnectionId
-                              && entry.OrderNumber == order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
+                      // statement records the refund, on the overview too (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
+                      let returnBooked = !unbookedReturns.Contains(order.Id)
                       let packagesBack = priced && returnBooked
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
@@ -314,6 +314,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     {
         var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
         var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
+        var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
         return await (from row in PeriodOrders(tenantId, allowedIds, period)
                       join line in db.OrderLines.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { line.TenantId, line.OrderId }
                       join variant in db.ProductVariants.AsNoTracking() on new { line.TenantId, Id = line.VariantId } equals new { variant.TenantId, Id = (Guid?)variant.Id } into variants
@@ -334,14 +335,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           UnitPrice = line.UnitPrice,
                           OrderedQuantity = line.OrderedQuantity,
                           CancelledQuantity = line.CancelledQuantity,
-                          ReturnedQuantity = row.Order.StoreFrontCode == null || row.Order.StoreFrontCode == "" || row.Order.StoreFrontCode == "TR"
-                              || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == row.Order.ConnectionId
-                                  && entry.OrderNumber == row.Order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
-                              ? line.ReturnedQuantity
-                              : 0m,
-                          AcceptedReturnQuantity = !(row.Order.StoreFrontCode == null || row.Order.StoreFrontCode == "" || row.Order.StoreFrontCode == "TR"
-                                  || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == row.Order.ConnectionId
-                                      && entry.OrderNumber == row.Order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return))
+                          ReturnedQuantity = unbookedReturns.Contains(row.Order.Id) ? 0m : line.ReturnedQuantity,
+                          AcceptedReturnQuantity = unbookedReturns.Contains(row.Order.Id)
                               ? 0m
                               : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
                                   && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
@@ -355,15 +350,16 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                       }).ToListAsync(cancellationToken);
     }
 
-    private async Task<List<ReportClaimRow>> ClaimRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken) =>
-        await (from row in PeriodOrders(tenantId, allowedIds, period)
-               join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
-               // A micro-export order's claim counts once Trendyol's statement records the return, as its units do (LineRowsAsync).
-               where row.Order.StoreFrontCode == null || row.Order.StoreFrontCode == "" || row.Order.StoreFrontCode == "TR"
-                   || db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == row.Order.ConnectionId
-                       && entry.OrderNumber == row.Order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return)
-               select new ReportClaimRow { OrderId = claim.OrderId, ConnectionId = claim.ConnectionId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
+    private async Task<List<ReportClaimRow>> ClaimRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
+    {
+        var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
+        return await (from row in PeriodOrders(tenantId, allowedIds, period)
+                      join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
+                      // A micro-export order's claim counts once Trendyol's statement records the return, as its units do (LineRowsAsync).
+                      where !unbookedReturns.Contains(row.Order.Id)
+                      select new ReportClaimRow { OrderId = claim.OrderId, ConnectionId = claim.ConnectionId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
             .ToListAsync(cancellationToken);
+    }
 
     // The current packages of the period's orders with their first "shipped" and "delivered" status times and what
     // tells whether they hold an invoice.

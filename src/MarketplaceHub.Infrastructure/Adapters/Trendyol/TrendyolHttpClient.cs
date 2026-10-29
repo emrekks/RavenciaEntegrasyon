@@ -617,7 +617,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 var mapped = TrendyolJsonMapper.Orders(streamResponse.Value!);
                 var streamedPackage = TrendyolJsonMapper.ShipmentPackage(mapped, externalPackageId);
                 var mergedStreamPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(streamedPackage, v2Package);
-                if (HasPackageReadbackValue(streamedPackage) && HasPackageReadbackValue(mergedStreamPackage))
+                // T-3: the matching package ends the scan even without cargo or invoice fields (a cancelled package
+                // has none); reading on would turn a found package into "not found" or an endless incomplete scan.
+                // Empty fields stay unknown for the caller; they are not read as "not invoiced".
+                if (streamedPackage is not null)
                 {
                     logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from historical stream.",
                         !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoProviderExternalId),

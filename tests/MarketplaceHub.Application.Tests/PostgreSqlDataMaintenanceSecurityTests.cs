@@ -223,6 +223,145 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // P-2 (29 Oct 2026): an order reset without the products used to leave the stock of the removed lines behind, and
+    // the next sync imported the same open order under new line ids and took its units from stock a second time.
+    // The re-imported lines now take over the removed lines' stock movements and reservation.
+    [PostgreSqlFact]
+    public async Task OrderReset_ThenResync_DoesNotTakeAnOpenOrdersStockTwice()
+    {
+        var seed = NewSeed("dm-stock");
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Title = "Stok ürünü", Description = "Sıfırlama testi", Status = ProductStatus.Active, CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        var inStock = NewStockVariant(seed, product, "RESET-A", "8690000000301");
+        var shortStock = NewStockVariant(seed, product, "RESET-B", "8690000000318");
+        var inStockItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, VariantId = inStock.Id, LocationCode = "MAIN", OnHand = 10m, Available = 10m };
+        var shortStockItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, VariantId = shortStock.Id, LocationCode = "MAIN", OnHand = 2m, Available = 2m };
+        var processorConfiguration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var project = typeof(MarketplaceJobProcessor).GetMethod("ProjectOrderReservations", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        try
+        {
+            await SeedAsync(seed, db =>
+            {
+                db.Products.Add(product);
+                db.ProductVariants.AddRange(inStock, shortStock);
+                db.InventoryItems.AddRange(inStockItem, shortStockItem);
+            });
+
+            // The open order arrives: 3 units from 10 on hand, and 3 units from 2 on hand with 1 held as a reservation.
+            var (firstOrder, firstLines) = NewOpenOrder(seed, inStock, shortStock);
+            await using (var db = fixture.CreateContext())
+            {
+                db.Orders.Add(firstOrder);
+                db.OrderLines.AddRange(firstLines);
+                var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, processorConfiguration, fixture.TimeProvider);
+                await (Task)project.Invoke(processor, [seed.Tenant.Id, seed.Marketplace.Id, firstLines.Select(line => (line, fixture.Now)).ToList(), CancellationToken.None])!;
+                await db.SaveChangesAsync();
+            }
+            await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 1m);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var connectionVersion = await db.PlatformConnections.AsNoTracking().Where(x => x.Id == seed.Marketplace.Id).Select(x => x.Version).SingleAsync();
+                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                    .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, connectionVersion, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+                Assert.True(result.Succeeded, result.Error?.Message);
+            }
+            await using (var verification = fixture.CreateContext())
+            {
+                Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+                // The reset changes no stock: the units the order took stay taken until its lines come back.
+                var carryKey = OrderInventoryStockPolicy.ResetCarryKey(seed.Marketplace.Id, firstOrder.ExternalOrderId, "line-b");
+                Assert.Equal(carryKey, (await verification.StockReservations.AsNoTracking().SingleAsync(x => x.InventoryItemId == shortStockItem.Id)).SourceId);
+            }
+            await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 1m);
+
+            // The next sync imports the same order under new ids.
+            var (secondOrder, secondLines) = NewOpenOrder(seed, inStock, shortStock);
+            await using (var db = fixture.CreateContext())
+            {
+                db.Orders.Add(secondOrder);
+                db.OrderLines.AddRange(secondLines);
+                var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, processorConfiguration, fixture.TimeProvider);
+                await (Task)project.Invoke(processor, [seed.Tenant.Id, seed.Marketplace.Id, secondLines.Select(line => (line, fixture.Now.AddMinutes(5))).ToList(), CancellationToken.None])!;
+                await db.SaveChangesAsync();
+            }
+
+            await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 1m);
+            await using var after = fixture.CreateContext();
+            var reservation = await after.StockReservations.AsNoTracking().SingleAsync(x => x.InventoryItemId == shortStockItem.Id);
+            Assert.Equal(ReservationStatus.Active, reservation.Status);
+            Assert.Equal(1m, reservation.Quantity);
+            Assert.Equal(secondLines[1].Id.ToString("D"), reservation.SourceId);
+            var itemIds = new[] { inStockItem.Id, shortStockItem.Id };
+            Assert.False(await after.StockLedgerEntries.AnyAsync(x => itemIds.Contains(x.InventoryItemId) && x.SourceId.StartsWith(OrderInventoryStockPolicy.ResetCarryPrefix)));
+            Assert.Equal(2, await after.StockLedgerEntries.CountAsync(x => itemIds.Contains(x.InventoryItemId) && x.MovementType == "ORDER_STOCK_BASELINE"));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.OperationalIssues.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.StockReservations.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.StockLedgerEntries.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.InventoryItems.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.OrderLines.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.ProductVariants.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.Products.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private async Task AssertStockAsync(Guid inventoryItemId, decimal onHand, decimal reserved)
+    {
+        await using var db = fixture.CreateContext();
+        var item = await db.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == inventoryItemId);
+        Assert.Equal(onHand, item.OnHand);
+        Assert.Equal(reserved, item.Reserved);
+    }
+
+    private ProductVariant NewStockVariant(Seed seed, Product product, string sku, string barcode) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = seed.Tenant.Id,
+        ProductId = product.Id,
+        Sku = sku,
+        SkuNormalized = sku,
+        Barcode = barcode,
+        BarcodeNormalized = barcode,
+        ModelCode = "RESET",
+        OptionSignature = sku,
+        CreatedAt = fixture.Now,
+        UpdatedAt = fixture.Now
+    };
+
+    // One open (not shipped) order of 3 + 3 units; every call gives new row ids, the marketplace ids stay the same.
+    private (Order Order, List<OrderLine> Lines) NewOpenOrder(Seed seed, ProductVariant first, ProductVariant second)
+    {
+        var order = new Order
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            ConnectionId = seed.Marketplace.Id,
+            ExternalOrderId = "dm-stock-open",
+            OrderNumber = "dm-stock-open",
+            Currency = "TRY",
+            GrossAmount = 600m,
+            NetAmount = 600m,
+            OrderedAt = fixture.Now.AddHours(-1),
+            LastRemoteModifiedAt = fixture.Now.AddHours(-1),
+            CustomerSnapshotJson = "{}",
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = "{}",
+            DerivedStatus = "CREATED",
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        OrderLine Line(ProductVariant variant, string externalLineId) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, OrderId = order.Id, VariantId = variant.Id, ExternalLineId = externalLineId, Sku = variant.Sku, TitleSnapshot = variant.Sku, OrderedQuantity = 3m, UnitPrice = 100m, VatRate = 20m, RawStatus = "Created" };
+        return (order, [Line(first, "line-a"), Line(second, "line-b")]);
+    }
+
     [PostgreSqlFact]
     public async Task WebhookGate_NeedsTheRouteTokenOfAnActiveSubscription()
     {

@@ -101,6 +101,107 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
     }
 
+    // Q-1/K-1: a price/stock job of the same values that ended without getting them through no longer counts as
+    // sent. The reconcile scan retires its key and queues them again (at once after a pre-send stop, an hour after
+    // any other failure), while a job still queued is left alone and no second one is opened beside it.
+    [PostgreSqlFact]
+    public async Task StockReconcile_SendsTheValuesAgainAfterTheirJobFailed()
+    {
+        var tenant = NewTenant("stock-reconcile-failed-push");
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var (product, variant) = NewVariant(tenant, "RET-1", "8690000000042");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.InventoryItems.Add(NewInventory(tenant, variant, 2m));
+            seed.ChannelOffers.Add(NewOffer(tenant, n11, variant));
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = variant.Id, ExternalId = "RET-1" });
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<List<IntegrationJob>> ScanAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, WritesOnConfiguration(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, n11.Id, MarketplaceJobTypes.StockReconciliation, "{\"lookbackHours\":1}", "stock-reconcile-failed-push", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+            return await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync).OrderBy(x => x.CreatedAt).ToListAsync();
+        }
+        async Task EndAsync(Guid jobId, JobStatus status, string code, TimeSpan ago)
+        {
+            await using var db = fixture.CreateContext();
+            await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, status).SetProperty(x => x.LastErrorCode, code).SetProperty(x => x.CompletedAt, DateTimeOffset.UtcNow - ago));
+        }
+
+        var first = Assert.Single(await ScanAsync());
+        // Queued: the next scan finds it and opens nothing beside it.
+        Assert.Equal(first.Id, Assert.Single(await ScanAsync()).Id);
+
+        // Blocked before the send because the stock policy was off; the policy is on again.
+        await EndAsync(first.Id, JobStatus.Blocked, "EXTERNAL_WRITE_POLICY_DISABLED", TimeSpan.FromMinutes(5));
+        var afterBlock = await ScanAsync();
+        Assert.Equal(2, afterBlock.Count);
+        Assert.Equal($"{first.JobDedupKey}:retired:{first.Id:N}", afterBlock.Single(x => x.Id == first.Id).JobDedupKey);
+        var second = afterBlock.Single(x => x.Id != first.Id);
+        Assert.Equal(first.JobDedupKey, second.JobDedupKey);
+        Assert.Equal(JobStatus.Pending, second.Status);
+
+        // Dead after its retries ten minutes ago: the scan waits out the hour before it sends again.
+        await EndAsync(second.Id, JobStatus.Dead, "REMOTE_5XX", TimeSpan.FromMinutes(10));
+        Assert.Equal(2, (await ScanAsync()).Count);
+        await EndAsync(second.Id, JobStatus.Dead, "REMOTE_5XX", TimeSpan.FromHours(2));
+        var afterDead = await ScanAsync();
+        Assert.Equal(3, afterDead.Count);
+        Assert.Single(afterDead, x => x.JobDedupKey == first.JobDedupKey && x.Status == JobStatus.Pending);
+    }
+
+    // Q-1/K-1: the panel's send returns a queued job of the same values, but queues them again when their job failed.
+    [PostgreSqlFact]
+    public async Task PanelPriceStockSend_QueuesAgainAfterAFailedJobOfTheSameValues()
+    {
+        var tenant = NewTenant("panel-send-failed-push");
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var (product, variant) = NewVariant(tenant, "PAN-1", "8690000000059");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.InventoryItems.Add(NewInventory(tenant, variant, 7m));
+            seed.ChannelOffers.Add(NewOffer(tenant, n11, variant));
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = variant.Id, ExternalId = "PAN-1" });
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<Guid> SendAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var service = new InventoryService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), fixture.TimeProvider, WritesOnConfiguration());
+            var result = await service.EnqueuePriceInventorySyncAsync(tenant.Id, n11.Id, $"send-{Guid.NewGuid():N}", "panel-send-failed-push", CancellationToken.None);
+            Assert.True(result.Succeeded, result.Error?.Message);
+            return result.Value;
+        }
+
+        var first = await SendAsync();
+        Assert.Equal(first, await SendAsync());
+
+        await using (var db = fixture.CreateContext())
+            await db.IntegrationJobs.Where(x => x.Id == first).ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, JobStatus.Dead).SetProperty(x => x.LastErrorCode, "REMOTE_5XX").SetProperty(x => x.CompletedAt, DateTimeOffset.UtcNow));
+        var second = await SendAsync();
+
+        Assert.NotEqual(first, second);
+        await using var check = fixture.CreateContext();
+        var jobs = await check.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync).ToDictionaryAsync(x => x.Id);
+        Assert.Equal($"{jobs[second].JobDedupKey}:retired:{first:N}", jobs[first].JobDedupKey);
+        Assert.Equal(JobStatus.Pending, jobs[second].Status);
+    }
+
     // PTT AVM keeps a product with variants by its model code and names each variant by its colour and size: the send
     // is one product with the changed variants, priced from the lowest variant with each variant's difference. A
     // product without variants goes by its own code with its stock, and an old option-id link is not sent.

@@ -340,13 +340,15 @@ public static class PazaramaProductWriteMapper
             foreach (var item in results.EnumerateArray())
                 if (item.ValueKind == JsonValueKind.Object && (item.TryGetProperty("productCode", out var c) || item.TryGetProperty("code", out c)) && c.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(c.GetString()))
                     succeeded.Add(c.GetString()!.Trim());
+        // An error batch that names no product, failed or done, applied nothing: the remembered barcodes stand for
+        // the rest of a batch answered product by product, not for a batch Pazarama ended in error.
+        if (status == 3 && failed.Count == 0 && succeeded.Count == 0) return new(operationId, "REJECTED", []);
         if (succeeded.Count == 0 && codes is not null) succeeded.AddRange(codes.Where(code => !failed.ContainsKey(code)));
 
         var lines = failed.Select(entry => new RemoteOperationLine(entry.Key, false, null, "PAZARAMA_PRODUCT_REJECTED", false, PazaramaErrorAdvice.WithAdvice(entry.Value.Length <= 300 ? entry.Value : entry.Value[..300])))
             .Concat(succeeded.Where(code => !failed.ContainsKey(code)).Distinct(StringComparer.OrdinalIgnoreCase).Select(code => new RemoteOperationLine(code, true, null, null, false, "Ürün onaya gönderildi.")))
             .ToList();
-        // An error batch without any line applied nothing.
-        return new(operationId, status == 3 && lines.Count == 0 ? "REJECTED" : "COMPLETED", lines);
+        return new(operationId, "COMPLETED", lines);
     }
 
     // A barcode lookup Pazarama refused because no product matched ("Ürün bulunamadı", "Listelenecek veri

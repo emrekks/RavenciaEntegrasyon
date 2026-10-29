@@ -32,6 +32,10 @@ public sealed class IntegrationJob
     public string? LastErrorSummary { get; set; }
     public required string CorrelationId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    // The last manual retry. The day a deferral keeps its attempt and the window a waiting check is free count from it
+    // as from a new job: otherwise the single attempt a retry gives an older job went to the first busy lock or quota
+    // wait, and the job died without running.
+    public DateTimeOffset? RetriedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public int ProgressCurrent { get; set; }

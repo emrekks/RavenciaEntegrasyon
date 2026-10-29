@@ -2665,6 +2665,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 // The event keeps its deterministic name, so a replay is still known.
                 Assert.Equal(PackageIngestionSafety.EventId(packageNumber, deliveredEventAt), history[1].SourceEventId);
                 Assert.Equal(seenAt, history[1].OccurredAt);
+                // Audit 29 Oct S-1: the line follows the event that was applied, not one named by the seen time.
+                var line = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lineId);
+                Assert.Equal(1m, line.ShippedQuantity);
+                Assert.Equal(1m, line.DeliveredQuantity);
             }
 
             // The next read sees the same status: nothing changes and the time stays where it was first seen.
@@ -2676,12 +2680,152 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.Equal(version, package.Version);
                 Assert.Equal(2, await check.OrderStatusHistory.CountAsync(x => x.PackageId == packageId));
                 Assert.Equal(2, await check.PackageLineAllocations.CountAsync(x => x.PackageId == packageId));
+                var line = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lineId);
+                Assert.Equal(1m, line.DeliveredQuantity);
             }
         }
         finally
         {
             await DeleteInvoiceTestTenantAsync(tenant.Id);
         }
+    }
+
+    // Audit 29 Oct S-1: a PTT AVM package stores the time its status was first seen, so that time names no event.
+    // A cancellation still reaches the line (and so the stock), and a line a read left unprojected since 24 Oct is
+    // projected again by the next read of the same status.
+    [PostgreSqlFact]
+    public async Task OrderSync_WithoutAStatusTimeProjectsTheAppliedEventOntoTheLines()
+    {
+        var tenant = NewTenant("status-time-unknown-lines");
+        var connection = NewQuestionConnection(tenant);
+        var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
+        var seenAt = fixture.Now.AddDays(-1);
+        var createdEventAt = orderedAt.AddSeconds(2);
+        var deliveredEventAt = orderedAt.AddSeconds(5);
+        var cancelledEventAt = orderedAt.AddSeconds(6);
+        const string cancelledOrderId = "11697864101";
+        const string cancelledPackage = "order:PTT-CANCEL-1";
+        const string deliveredOrderId = "11697864102";
+        const string deliveredPackage = "order:PTT-DELIVERED-1";
+        var cancelledLineId = Guid.CreateVersion7();
+        var deliveredLineId = Guid.CreateVersion7();
+
+        void Seed(AppDbContext db, string externalOrderId, string packageNumber, Guid lineId, string rawStatus, ShipmentPackageStatus status, DateTimeOffset eventAt, decimal shipped, decimal delivered) =>
+            SeedUnprojectedPackage(db, tenant.Id, connection.Id, externalOrderId, packageNumber, lineId, rawStatus, status, orderedAt, seenAt, eventAt, new RemotePackageAllocation("line-1", 1m, 0m, shipped, delivered, 0m));
+
+        async Task SyncAsync(string externalOrderId, string packageNumber, string rawStatus, DateTimeOffset eventAt, RemotePackageAllocation allocation)
+        {
+            var remotePackage = new RemotePackage(packageNumber, null, rawStatus, eventAt, null, null, [allocation], GrossAmount: 100m, NetAmount: 100m, StatusTimeUnknown: true);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, orderedAt, eventAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, rawStatus, CancelledQuantity: allocation.CancelledQuantity)], [remotePackage], "{}");
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "status-time-unknown-lines", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            Seed(seedDb, cancelledOrderId, cancelledPackage, cancelledLineId, "Created", ShipmentPackageStatus.New, createdEventAt, 0m, 0m);
+            Seed(seedDb, deliveredOrderId, deliveredPackage, deliveredLineId, "Delivered", ShipmentPackageStatus.Delivered, deliveredEventAt, 1m, 1m);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            // The customer cancels: PTT AVM's mapper sends the cancelled units as cancelled, none allocated.
+            await SyncAsync(cancelledOrderId, cancelledPackage, "Cancelled", cancelledEventAt, new RemotePackageAllocation("line-1", 0m, 1m, 0m, 0m, 0m));
+            // A delivered order read again with the status it already holds.
+            await SyncAsync(deliveredOrderId, deliveredPackage, "Delivered", deliveredEventAt, new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+
+            await using var check = fixture.CreateContext();
+            var cancelledLine = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == cancelledLineId);
+            Assert.Equal(1m, cancelledLine.CancelledQuantity);
+            Assert.Equal(0m, cancelledLine.ShippedQuantity);
+            Assert.Equal(ShipmentPackageStatus.Cancelled, (await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ExternalPackageId == cancelledPackage)).Status);
+            var deliveredLine = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == deliveredLineId);
+            Assert.Equal(0m, deliveredLine.CancelledQuantity);
+            Assert.Equal(1m, deliveredLine.ShippedQuantity);
+            Assert.Equal(1m, deliveredLine.DeliveredQuantity);
+            // The repair is a projection only: the replay writes no history row and no allocation.
+            Assert.Equal(1, await check.OrderStatusHistory.CountAsync(x => x.TenantId == tenant.Id && x.OrderId == deliveredLine.OrderId));
+            Assert.Equal(1, await check.PackageLineAllocations.CountAsync(x => x.TenantId == tenant.Id && x.OrderLineId == deliveredLineId));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // Audit 29 Oct S-1 data fix: closed PTT AVM orders are not read again, so the migration projects the lines the
+    // reads since 24 October left at 0 from the allocations already stored. Other marketplaces are left alone.
+    [PostgreSqlFact]
+    public async Task ProjectPttAvmPackageLinesMigration_ProjectsTheStoredEventOfPttAvmPackagesOnly()
+    {
+        var tenant = NewTenant("ptt-line-projection-fix");
+        var ptt = NewQuestionConnection(tenant);
+        ptt.PlatformCode = "PTTAVM";
+        var trendyol = NewQuestionConnection(tenant);
+        var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
+        var seenAt = fixture.Now.AddDays(-1);
+        var cancelledLineId = Guid.CreateVersion7();
+        var deliveredLineId = Guid.CreateVersion7();
+        var projectedLineId = Guid.CreateVersion7();
+        var trendyolLineId = Guid.CreateVersion7();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(ptt, trendyol);
+            SeedUnprojectedPackage(seedDb, tenant.Id, ptt.Id, "PTT-FIX-1", "order:PTT-FIX-1", cancelledLineId, "Cancelled", ShipmentPackageStatus.Cancelled, orderedAt, seenAt, orderedAt.AddSeconds(6), new RemotePackageAllocation("line-1", 0m, 1m, 0m, 0m, 0m));
+            SeedUnprojectedPackage(seedDb, tenant.Id, ptt.Id, "PTT-FIX-2", "order:PTT-FIX-2", deliveredLineId, "Delivered", ShipmentPackageStatus.Delivered, orderedAt, seenAt, orderedAt.AddSeconds(5), new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+            // A package from before 24 October: its status time names its event, so the order sync projects it and the
+            // migration does not.
+            SeedUnprojectedPackage(seedDb, tenant.Id, ptt.Id, "PTT-FIX-3", "order:PTT-FIX-3", projectedLineId, "Delivered", ShipmentPackageStatus.Delivered, orderedAt, orderedAt.AddSeconds(5), orderedAt.AddSeconds(5), new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+            SeedUnprojectedPackage(seedDb, tenant.Id, trendyol.Id, "TY-FIX-1", "TY-FIX-1", trendyolLineId, "Delivered", ShipmentPackageStatus.Delivered, orderedAt, seenAt, orderedAt.AddSeconds(5), new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            var migration = new MarketplaceHub.Infrastructure.Persistence.Migrations.ProjectPttAvmPackageLines();
+            await using (var db = fixture.CreateContext())
+                foreach (var operation in migration.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>())
+                    await db.Database.ExecuteSqlRawAsync(operation.Sql);
+
+            await using var check = fixture.CreateContext();
+            var lines = await check.OrderLines.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+            Assert.Equal((1m, 0m, 0m, 2L), (lines[cancelledLineId].CancelledQuantity, lines[cancelledLineId].ShippedQuantity, lines[cancelledLineId].DeliveredQuantity, lines[cancelledLineId].Version));
+            Assert.Equal((0m, 1m, 1m, 2L), (lines[deliveredLineId].CancelledQuantity, lines[deliveredLineId].ShippedQuantity, lines[deliveredLineId].DeliveredQuantity, lines[deliveredLineId].Version));
+            // Neither the package whose status time names its event nor another marketplace's line is touched.
+            Assert.Equal((0m, 1L), (lines[projectedLineId].DeliveredQuantity, lines[projectedLineId].Version));
+            Assert.Equal((0m, 1L), (lines[trendyolLineId].DeliveredQuantity, lines[trendyolLineId].Version));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // A package as the reads since 24 October left it: the status stored at seenAt, the allocations and the status row
+    // under the event the read named (eventAt), the line not projected.
+    private static void SeedUnprojectedPackage(AppDbContext db, Guid tenantId, Guid connectionId, string externalOrderId, string packageNumber, Guid lineId, string rawStatus, ShipmentPackageStatus status, DateTimeOffset orderedAt, DateTimeOffset seenAt, DateTimeOffset eventAt, RemotePackageAllocation allocation)
+    {
+        var orderId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenantId, connectionId, orderId, externalOrderId, isReturnClaim: false, seenAt);
+        order.OrderedAt = orderedAt;
+        order.LastRemoteModifiedAt = eventAt;
+        db.Orders.Add(order);
+        db.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenantId, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = rawStatus, Version = 1 });
+        db.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenantId, ConnectionId = connectionId, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = status, RawStatus = rawStatus, StatusOccurredAt = seenAt, CreatedAt = seenAt, UpdatedAt = seenAt, Version = 1 });
+        db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = allocation.AllocatedQuantity, CancelledQuantity = allocation.CancelledQuantity, ShippedQuantity = allocation.ShippedQuantity, DeliveredQuantity = allocation.DeliveredQuantity, SourceEventId = PackageIngestionSafety.EventId(packageNumber, eventAt) });
+        db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = orderId, PackageId = packageId, CanonicalStatus = status.ToString().ToUpperInvariant(), RawStatus = rawStatus, SourceEventId = PackageIngestionSafety.EventId(packageNumber, eventAt), OccurredAt = seenAt, RecordedAt = seenAt });
     }
 
     [PostgreSqlFact]
@@ -4310,6 +4454,150 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // Q-2: a manual retry of a shipment action whose effect was closed as unresolved neither sends it again nor
+    // succeeds unread. A split (no read can judge it) stays in manual review; a picking succeeds only once the
+    // order read shows the package picked.
+    [PostgreSqlFact]
+    public async Task ShipmentActionRetry_DoesNotTakeAnUnresolvedEffectAsApplied()
+    {
+        var tenant = NewTenant("shipment-unresolved-effect");
+        var connection = NewQuestionConnection(tenant);
+        RemoteOrder RemoteWith(string rawStatus, int minutesAgo)
+        {
+            var package = new RemotePackage("unresolved-package", null, rawStatus, fixture.Now.AddMinutes(-minutesAgo), null, null,
+                [new RemotePackageAllocation("unresolved-line", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 100m, NetAmount: 100m);
+            return new RemoteOrder("unresolved-order", "unresolved-order", fixture.Now.AddDays(-1), fixture.Now.AddMinutes(-minutesAgo), "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("unresolved-line", "SKU-1", "SKU-1", "Test ürün", 1m, 100m, 10m, rawStatus)], [package], "{}");
+        }
+        // Its ExecutePackageActionAsync throws: nothing here may send the action again.
+        var port = new SwitchableOrderPort(RemoteWith("Created", 10));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<JobExecutionResult> RunAsync(string jobType, string payload)
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, port, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                return await processor.ProcessAsync(tenant.Id, connection.Id, jobType, payload, "shipment-unresolved-effect", CancellationToken.None);
+            }
+            async Task<(string Payload, Guid EffectId)> ReviewedActionAsync(string action, string? effectAction)
+            {
+                await using var db = fixture.CreateContext();
+                var packageId = await db.ShipmentPackages.Where(x => x.TenantId == tenant.Id && x.ExternalPackageId == "unresolved-package").Select(x => x.Id).SingleAsync();
+                var job = NewJob(tenant.Id);
+                job.ConnectionId = connection.Id;
+                job.JobType = MarketplaceJobTypes.ShipmentAction;
+                job.Status = JobStatus.ManualReview;
+                job.PayloadJson = JsonSerializer.Serialize(new ShipmentActionJobPayload(job.Id, packageId, action, "{}"));
+                var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = fixture.Now.AddDays(-8), CompletedAt = fixture.Now.AddDays(-1), Outcome = "UNRESOLVED", ConnectionId = connection.Id, TargetId = packageId, Action = effectAction };
+                db.IntegrationJobs.Add(job);
+                db.ExternalEffectRecords.Add(effect);
+                await db.SaveChangesAsync();
+                return (job.PayloadJson, effect.Id);
+            }
+
+            Assert.True((await RunAsync(MarketplaceJobTypes.OrderSync, """{"externalOrderId":"unresolved-order","full":false}""")).Succeeded);
+
+            var (split, _) = await ReviewedActionAsync("SPLIT", null);
+            var splitResult = await RunAsync(MarketplaceJobTypes.ShipmentAction, split);
+            Assert.Equal(JobCompletionKind.ManualReview, splitResult.Kind);
+            Assert.Equal("EXTERNAL_EFFECT_UNRESOLVED", splitResult.ErrorCode);
+
+            var (picking, pickingEffectId) = await ReviewedActionAsync("PICKING", "PICKING");
+            var stillNew = await RunAsync(MarketplaceJobTypes.ShipmentAction, picking);
+            Assert.Equal(JobCompletionKind.ManualReview, stillNew.Kind);
+            port.Order = RemoteWith("Picking", 1);
+            Assert.True((await RunAsync(MarketplaceJobTypes.ShipmentAction, picking)).Succeeded);
+            await using (var db = fixture.CreateContext())
+                Assert.Equal("APPLIED", (await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == pickingEffectId)).Outcome);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.JobAttempts.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // Q-2: a manual retry of a return action whose effect was closed as unresolved does not mark the decision
+    // submitted. It reads the claim once (never sends again): a claim still waiting keeps the job in manual
+    // review and the decision failed; an accepted claim settles the decision and the job succeeds.
+    [PostgreSqlFact]
+    public async Task ReturnActionRetry_DoesNotTakeAnUnresolvedEffectAsSubmitted()
+    {
+        var tenant = NewTenant("return-unresolved-effect");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "unresolved-return-order", isReturnClaim: false, fixture.Now);
+        var orderLine = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "unresolved-return-line", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1, UnitPrice = 100, VatRate = 20, RawStatus = "Delivered" };
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "unresolved-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.ActionRequired;
+        claim.RawStatus = "WaitingInAction";
+        var key = $"return-unresolved-{Guid.NewGuid():N}";
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = key, Status = "FAILED", ErrorCode = "EXTERNAL_EFFECT_UNRESOLVED", ActorUserId = Guid.CreateVersion7(), CreatedAt = fixture.Now.AddDays(-8), CompletedAt = fixture.Now.AddDays(-1) };
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(orderLine);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = "unresolved-return-line", Quantity = 1, RawStatus = "WaitingInAction" });
+            seedDb.ReturnDecisions.Add(decision);
+            seedDb.ExternalEffectRecords.Add(new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = MarketplaceJobTypes.ReturnAction, IdempotencyKey = key, CreatedAt = fixture.Now.AddDays(-8), CompletedAt = fixture.Now.AddDays(-1), Outcome = "UNRESOLVED", ConnectionId = connection.Id, TargetId = claim.Id, Action = "RETURN_APPROVE" });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<JobExecutionResult> RetryAsync(ReadOnlyReturnTestPort port)
+            {
+                await using var db = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    db, null!, null!, null!, null!, null!, null!, null!, port, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                return await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnAction, $$"""{"decisionId":"{{decision.Id}}"}""", "return-unresolved-effect", CancellationToken.None);
+            }
+            async Task<ReturnDecision> DecisionAsync()
+            {
+                await using var db = fixture.CreateContext();
+                return await db.ReturnDecisions.AsNoTracking().SingleAsync(x => x.Id == decision.Id);
+            }
+
+            // Its ExecuteAsync throws: the retry may read the claim, never send the decision again.
+            var waiting = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "WaitingInAction", externalOrderId: order.ExternalOrderId);
+            var stillWaiting = await RetryAsync(waiting);
+            Assert.Equal(JobCompletionKind.ManualReview, stillWaiting.Kind);
+            Assert.Equal("EXTERNAL_EFFECT_UNRESOLVED", stillWaiting.ErrorCode);
+            Assert.Equal(["unresolved-claim"], waiting.ReadCalls);
+            Assert.Equal("FAILED", (await DecisionAsync()).Status);
+
+            Assert.True((await RetryAsync(new ReadOnlyReturnTestPort(fixture.Now.AddMinutes(1), rawStatus: "Accepted", externalOrderId: order.ExternalOrderId))).Succeeded);
+            Assert.Equal("SUCCEEDED", (await DecisionAsync()).Status);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.ReturnLines.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.OrderLines.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
     private sealed class SwitchableOrderPort(RemoteOrder order) : IOrderPort
     {
         public RemoteOrder Order { get; set; } = order;
@@ -4470,6 +4758,58 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var persistedPackage = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == packageNumber);
             Assert.Equal(persistedOrder.Id, persistedPackage.OrderId);
             Assert.Equal("7330037500176178", persistedPackage.CargoTrackingNumber);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // T-2 (live 29 Oct 2026): a Hepsiburada claim read without vatRate stored 0% over the order read's 10%.
+    [PostgreSqlFact]
+    public async Task AReadWithoutTheLineVatRateKeepsTheRateAnEarlierReadStored()
+    {
+        var tenant = NewTenant("hb-claim-vat-rate");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        const string externalOrderId = "4100000017";
+        var package = new RemotePackage("hb-package-17", null, "Delivered", fixture.Now.AddDays(-3), null, null, [new RemotePackageAllocation("line-17", 1m, 0m, 1m, 1m, 0m)]);
+        var orderRead = new RemoteOrder(externalOrderId, externalOrderId, fixture.Now.AddDays(-4), fixture.Now.AddDays(-3), "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+            [new RemoteOrderLine("line-17", "SKU-17", null, "Test ürün", 1m, 100m, 10m, "Delivered", """{"id":"line-17","merchantSku":"SKU-17","vatRate":10}""")],
+            [package], "{}");
+        var claimRead = orderRead with
+        {
+            LastModifiedAt = fixture.Now.AddDays(-1),
+            Lines = [new RemoteOrderLine("line-17", "SKU-17", null, "Test ürün", 1m, 100m, null, "ClaimCreated", """{"lineItemId":"line-17","merchantSku":"SKU-17"}""")],
+            Packages = []
+        };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            foreach (var (read, key) in new[] { (orderRead, "hb-order-read"), (claimRead, "hb-claim-read") })
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(package, read, externalOrderId, directOrderResult: read), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""", key, CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var line = await verifyDb.OrderLines.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+            Assert.Equal("ClaimCreated", line.RawStatus);
+            Assert.Equal(10m, line.VatRate);
+            Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("HEPSIBURADA", line.SourceSnapshotJson));
         }
         finally
         {

@@ -84,7 +84,7 @@ public static class PazaramaOrderMapper
                 var sku = stockCode ?? barcode ?? "";
                 var title = Text(product, "name") ?? Text(product, "title") ?? sku;
                 var cancelled = raw == "Cancelled" ? quantity.Value : 0;
-                lines.Add(new(itemId, sku, barcode, title, quantity.Value, unitPrice.Value, Decimal(product, "vatRate") ?? 0, raw, ItemSnapshot(item, product), cancelled));
+                lines.Add(new(itemId, sku, barcode, title, quantity.Value, unitPrice.Value, Decimal(product, "vatRate"), raw, ItemSnapshot(item, product), cancelled));
                 // The allocation counts only what is still active: a cancelled item's units are cancelled, not allocated, so the
                 // package check (active + cancelled <= ordered) holds when other items go on. A returned item was delivered first.
                 allocations.Add(new(itemId, quantity.Value - cancelled, cancelled, Shipped(raw) ? quantity.Value : 0, raw is "Delivered" or "Returned" ? quantity.Value : 0, raw is "Returned" ? quantity.Value : 0));

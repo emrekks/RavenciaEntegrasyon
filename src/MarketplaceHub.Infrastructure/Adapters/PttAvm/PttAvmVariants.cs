@@ -29,17 +29,26 @@ public sealed partial class PttAvmHttpClient
             return AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>>.Success(cached.Variants);
         var variants = new Dictionary<string, IReadOnlyList<XElement>>(StringComparer.OrdinalIgnoreCase);
         RateLimitMetadata? rate = null;
-        // Pages start at 1 (PTT AVM answers page 0 with "Page 0.dan büyük olmalıdır") and are read until one brings no new product.
+        // Pages start at 1 (PTT AVM answers page 0 with "Page 0.dan büyük olmalıdır"). With TotalPage every page up to it
+        // is read (a page of products without variants brings nothing new and is no end); without it, until a page
+        // brings no new product. A list cut short is a failure, never a shorter list: a model missing from it would
+        // read as one without variants, and a family send built on that deletes PTT AVM's variants.
+        int? totalPages = null;
+        var complete = false;
         for (var page = 1; page <= MaxVariantPages; page++)
         {
             var result = await SendSoapAsync(account, ProductsWithVariants, [new("page", page.ToString(CultureInfo.InvariantCulture)), new("size", VariantPageSize.ToString(CultureInfo.InvariantCulture))], cancellationToken);
             if (!result.IsSuccess) return AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>>.Failure(result.Error!, result.RateLimit);
             rate = result.RateLimit ?? rate;
+            if (PttAvmVariantMapper.TotalPages(result.Value!) is { } reported) totalPages = Math.Max(totalPages ?? 0, reported);
+            if (totalPages > MaxVariantPages)
+                return VariantListIncomplete($"PTT AVM varyant listesi {totalPages} sayfa; en çok {MaxVariantPages} sayfa okunabiliyor.", rate);
             var added = 0;
             foreach (var (productBarcode, entries) in PttAvmVariantMapper.ProductsWithVariants(result.Value!))
                 if (variants.TryAdd(productBarcode, entries)) added++;
-            if (added == 0) break;
+            if (totalPages is { } last ? page >= last : added == 0) { complete = true; break; }
         }
+        if (!complete) return VariantListIncomplete($"PTT AVM varyant listesi {MaxVariantPages} sayfada bitmedi.", rate);
         if (VariantLists.Count > 50) VariantLists.Clear();
         VariantLists[account.Connection.Id] = (now, variants);
         // The element names and one variant name (catalog text, e.g. "Lacivert / L") show the live shape of the list.
@@ -48,6 +57,13 @@ public sealed partial class PttAvmHttpClient
             account.Connection.Id, variants.Count, sample is null ? "none" : PttAvmVariantMapper.Shape(sample), sample is null ? null : ContractValue(sample, "VariantName"));
         return AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>>.Success(variants, rate);
     }
+
+    internal const string VariantListIncompleteCode = "PTTAVM_VARIANT_LIST_INCOMPLETE";
+
+    // Not cached: the next read starts over.
+    private static AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>> VariantListIncomplete(string reason, RateLimitMetadata? rate) =>
+        AdapterResult<IReadOnlyDictionary<string, IReadOnlyList<XElement>>>.Failure(new(AdapterErrorClass.ContractViolation, VariantListIncompleteCode,
+            reason, (int)System.Net.HttpStatusCode.BadGateway, null, null), rate);
 }
 
 public static class PttAvmVariantMapper
@@ -71,6 +87,10 @@ public static class PttAvmVariantMapper
             if (entries.Count > 0) yield return (barcode, entries);
         }
     }
+
+    // TotalPage of a GetProductsWithVariants answer; null when absent or not a number.
+    public static int? TotalPages(XElement result) =>
+        int.TryParse(PttAvmHttpClient.ContractValue(result, "TotalPage"), NumberStyles.None, CultureInfo.InvariantCulture, out var pages) ? pages : null;
 
     // The variants an entry stands for: its combinations when it carries them (each with its own barcode), else itself.
     public static IReadOnlyList<VariantRead> Read(XElement entry)
