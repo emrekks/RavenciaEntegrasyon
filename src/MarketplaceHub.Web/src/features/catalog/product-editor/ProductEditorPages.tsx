@@ -749,6 +749,17 @@ export function cardLookupKey(platformCode: string, keys: { modelCode: string; b
   return value.trim() || null
 }
 
+// Live is green, being sent or awaiting the marketplace is yellow, refused is red; a card missing required fields is
+// still unpublished (its pill names the gap).
+export function publishCardState({ tone, jobRunning, requiredBlock, retryable }: { tone: string; jobRunning: boolean; requiredBlock: boolean; retryable: boolean }): 'unpublished' | 'error' | 'working' | 'live' {
+  if (requiredBlock) return 'unpublished'
+  if (jobRunning) return 'working'
+  if (retryable || tone === 'danger') return 'error'
+  if (tone === 'success') return 'live'
+  if (tone === 'info' || tone === 'warning') return 'working'
+  return 'unpublished'
+}
+
 function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, lookupKeys, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
@@ -981,7 +992,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
   const readOnlyIsN11 = card.connection.platformCode.trim().toUpperCase() === 'N11'
   const readOnlyTitle = readOnlyIsN11 ? 'N11 ürün açma için Entegrasyonlar bölümünde N11 bağlantısının dış yazma anahtarını açın.' : 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.'
-  return <article className={`publish-platform-card${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
+  // The card's frame and place in the grid: not yet published first, then refused, in progress, and live last.
+  const cardState = publishCardState({ tone: displayedPublicationTone, jobRunning, requiredBlock: hasRequiredPublicationBlock, retryable: Boolean(pttAvmRetry) })
+  return <article className={`publish-platform-card is-state-${cardState}${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
     <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(selectionStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /></span>
       <span><strong>{card.name}</strong><small>{card.mode === 'READ_ONLY' ? 'Dış yazma kapalı · yayın kuyruğu devre dışı' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : shopifyCapabilityCheckPending ? 'Shopify yazma izinleri kontrol ediliyor…' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : pttAvmRetry ? "Tekrar denemek için seçip Yayınla'ya basın" : 'Yayın için seçilmedi'}</small></span>

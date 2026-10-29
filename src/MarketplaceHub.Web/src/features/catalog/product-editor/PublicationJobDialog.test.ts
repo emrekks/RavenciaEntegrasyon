@@ -28,3 +28,17 @@ describe('a card refreshed without a publication record', () => {
     expect(cardLookupKey('HEPSIBURADA', keys)).toBeNull()
   })
 })
+
+describe('a publication card frame', () => {
+  it('reads the card state from its status', async () => {
+    const { publishCardState } = await import('./ProductEditorPages')
+    const base = { tone: 'neutral', jobRunning: false, requiredBlock: false, retryable: false }
+    expect(publishCardState(base)).toBe('unpublished')
+    expect(publishCardState({ ...base, tone: 'success' })).toBe('live')
+    expect(publishCardState({ ...base, tone: 'info' })).toBe('working')
+    expect(publishCardState({ ...base, tone: 'success', jobRunning: true })).toBe('working')
+    expect(publishCardState({ ...base, tone: 'danger' })).toBe('error')
+    expect(publishCardState({ ...base, tone: 'warning', retryable: true })).toBe('error')
+    expect(publishCardState({ ...base, tone: 'danger', requiredBlock: true })).toBe('unpublished')
+  })
+})

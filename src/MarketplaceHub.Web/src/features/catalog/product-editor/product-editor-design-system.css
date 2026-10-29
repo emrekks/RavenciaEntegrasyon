@@ -1027,3 +1027,13 @@
   .publication-job-facts { grid-template-columns: 1fr; }
   .publication-job-facts > div:nth-child(odd) { border-right: 0; }
 }
+
+/* Publication cards by state: not yet published first, then refused (red frame), in progress (yellow), live (green)
+   last. A selected card keeps its primary frame. */
+.publish-platform-grid > .publish-platform-card.is-state-unpublished { order: 0; }
+.publish-platform-grid > .publish-platform-card.is-state-error { order: 1; }
+.publish-platform-grid > .publish-platform-card.is-state-working { order: 2; }
+.publish-platform-grid > .publish-platform-card.is-state-live { order: 3; }
+.app-shell.stitch-shell main .publish-platform-card.is-state-live:not(.selected) { border-color: color-mix(in srgb, var(--rv-color-accent) 60%, var(--rv-color-border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-accent) 35%, transparent); }
+.app-shell.stitch-shell main .publish-platform-card.is-state-working:not(.selected) { border-color: color-mix(in srgb, var(--rv-color-warning) 65%, var(--rv-color-border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-warning) 35%, transparent); }
+.app-shell.stitch-shell main .publish-platform-card.is-state-error:not(.selected) { border-color: color-mix(in srgb, var(--rv-color-danger) 65%, var(--rv-color-border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-danger) 35%, transparent); }
