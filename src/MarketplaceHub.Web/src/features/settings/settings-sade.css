@@ -169,6 +169,8 @@
 .ss-page .ss-dr-gh h3 { font-size: 14px; font-weight: 600; }
 .ss-page .ss-dr-gh p { color: var(--rv-color-muted); font-size: 12px; }
 .ss-page .ss-dr-gh .ss-tag { font-variant-numeric: tabular-nums; }
+/* The group's "0/4 Seçili" count matches the Tümünü Seç button beside it (.ss-btn.is-xs: 28px, radius 7). */
+.ss-page .ss-dr-gh .ss-dr-sel { box-sizing: border-box; height: 28px; border-radius: 7px; }
 .ss-page .ss-dr-ico { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
 .ss-page .ss-dr-sel.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
 .ss-page .ss-dr-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
