@@ -984,3 +984,45 @@
 .app-shell.stitch-shell main .product-edit-page .product-page-heading-title h1 { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .product-edit-page .product-page-heading-meta { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .product-edit-page .product-page-heading-meta b { color: var(--rv-color-ink); font-weight: 600; }
+
+/* A card's publication status opens its API job (PublicationJobDialog): the pill stays a pill, only pointing. */
+.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button { min-height: 0; margin: 0; font: inherit; line-height: inherit; cursor: pointer; box-shadow: none; }
+.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:hover { border-color: var(--rv-color-border-strong); filter: brightness(.97); }
+.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+
+.publication-job-modal { width: min(640px, 100%); }
+.publication-job-modal > header { align-items: flex-start; }
+.publication-job-head { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.publication-job-head h2 { margin: 0 0 6px; font-size: 18px; }
+.publication-job-head .eyebrow { margin: 0 0 2px; }
+.publication-job-logo { width: 36px; height: 36px; flex: none; border-radius: 7px; object-fit: contain; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); }
+.publication-job-status { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--rv-color-border-strong); font-size: 12px; font-weight: 600; color: var(--rv-color-info, var(--rv-color-ink)); background: color-mix(in srgb, var(--rv-color-info, var(--rv-color-primary)) 10%, var(--rv-color-surface)); }
+.publication-job-status.is-success { color: var(--rv-color-accent); background: color-mix(in srgb, var(--rv-color-accent) 12%, var(--rv-color-surface)); }
+.publication-job-status.is-danger { color: var(--rv-color-danger); background: var(--rv-color-danger-soft, color-mix(in srgb, var(--rv-color-danger) 10%, var(--rv-color-surface))); }
+.publication-job-status.is-warning { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 12%, var(--rv-color-surface)); }
+.publication-job-status.is-neutral { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
+.publication-job-body { display: grid; gap: 14px; min-height: 0; padding: 20px 24px; overflow: auto; }
+.publication-job-note { margin: 0; color: var(--rv-color-muted); }
+.publication-job-error { display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; color: var(--rv-color-danger); background: var(--rv-color-danger-soft, color-mix(in srgb, var(--rv-color-danger) 8%, var(--rv-color-surface))); border: 1px solid color-mix(in srgb, var(--rv-color-danger) 30%, transparent); }
+.publication-job-error > div { display: grid; gap: 2px; min-width: 0; }
+.publication-job-error strong { color: var(--rv-color-ink); font-weight: 600; overflow-wrap: anywhere; }
+.publication-job-error small { color: var(--rv-color-muted); }
+.publication-job-change { margin: 0; color: var(--rv-color-ink); font-size: 13px; }
+.publication-job-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; border: 1px solid var(--rv-color-border); border-radius: 12px; overflow: hidden; }
+.publication-job-facts > div { display: grid; gap: 2px; padding: 10px 14px; border-bottom: 1px solid var(--rv-color-border); }
+.publication-job-facts > div:nth-child(odd) { border-right: 1px solid var(--rv-color-border); }
+.publication-job-facts dt { color: var(--rv-color-muted); font-size: 12px; }
+.publication-job-facts dd { margin: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.publication-job-attempts h3 { margin: 0 0 8px; font-size: 14px; }
+.publication-job-attempts ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.publication-job-attempts li { display: grid; gap: 2px; padding: 8px 12px; border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 13px; }
+.publication-job-attempts li small { color: var(--rv-color-muted); overflow-wrap: anywhere; }
+.publication-job-attempts li.is-failed small { color: var(--rv-color-danger); }
+.publication-job-attempts li.is-ok small { color: var(--rv-color-accent); }
+.publication-job-modal > footer { display: flex; justify-content: flex-end; gap: 10px; }
+.publication-job-modal > footer > :is(a, button) { height: 36px; min-height: 0; display: inline-flex; align-items: center; }
+@media (max-width: 760px) {
+  .publication-job-body { padding: 16px; }
+  .publication-job-facts { grid-template-columns: 1fr; }
+  .publication-job-facts > div:nth-child(odd) { border-right: 0; }
+}
