@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
+import { DialogSurface, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
-import { RrIcon, RrModal } from '../../marketplace/returns-ui'
 import type { MarketplaceConnection, Product } from '../shared'
 import { bulkPublishPlatformName, summarizeBulkPublishStatus, type BulkPublishStatusSummary } from './bulk-publish-status'
-import './bulk-publish-dialog.css'
+import '../product-editor/product-editor-design-system.css'
 
 type BulkPublicationFailure = { productId: string; productTitle: string; connectionId: string; code: string; message: string }
 type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPublicationFailure[] }
@@ -14,10 +15,20 @@ type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPubl
 // The server takes the cards in slices so a long selection never runs into one request's time limit.
 const CHUNK_SIZE = 50
 
-// Product list "Platformlara Yayınla": the selected cards to the chosen marketplaces, laid out like the product
-// editor's publish step (one card per connection with an on/off switch). Cards already on a marketplace (matched, live
-// or still in progress) are skipped by the server; a missing marketplace price is filled from the general price, as the
-// editor does. `products` (the selected records the list holds) only feeds each card's "Yayın Durumu" summary.
+// The card's frame and place, as on a product's own publish popup: not yet published first, then refused, in
+// progress, and live (all selected records on it) last.
+export function bulkPublishCardState(summary: BulkPublishStatusSummary | null): 'unpublished' | 'error' | 'working' | 'live' {
+  if (!summary) return 'unpublished'
+  if (summary.allLive || summary.tone === 'success') return 'live'
+  if (summary.tone === 'danger') return 'error'
+  if (summary.tone === 'info' || summary.tone === 'warning') return 'working'
+  return 'unpublished'
+}
+
+// Product list "Platformlara Yayınla" for several cards: the same popup as a single product's "Platformlarda Yayınla"
+// (the editor's publish step), one card per connection with an on/off switch. Cards already on a marketplace (matched,
+// live or still in progress) are skipped by the server; a missing marketplace price is filled from the general price, as
+// the editor does. `products` (the selected records the list holds) only feeds each card's "Yayın Durumu" summary.
 export function BulkPublishDialog({ productIds, cardCount, connections, products, onClose, onDone }: {
   productIds: string[]
   cardCount: number
@@ -41,6 +52,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }, [productIds, products])
   const summaries = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords ? summarizeBulkPublishStatus(selectedRecords, connection) : null])), [connections, selectedRecords])
   const locked = running || Boolean(result)
+  const close = () => { if (!running) onClose() }
 
   function toggle(connectionId: string) {
     setConnectionIds(ids => ids.includes(connectionId) ? ids.filter(id => id !== connectionId) : [...ids, connectionId])
@@ -69,29 +81,26 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }
 
   const selectedCount = connectionIds.length
-  const foot = <div className="bulk-publish-footer">
-    <div className="bulk-publish-footer-text">
-      <strong>{selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong>
-      <small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : result ? 'Yayın işleri kuyruğa alındı; sonuçlar ürün listesinde güncellenir.' : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu açılır.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small>
-    </div>
-    {!selectedCount && !result && <span className="publish-selection-warning"><RrIcon name="alert" /> En az bir platform seçin</span>}
-    <div className="bulk-publish-footer-actions">
-      <button type="button" className="rr-btn" onClick={onClose} disabled={running}>{result ? 'Kapat' : 'Vazgeç'}</button>
-      {!result && <button type="button" className="rr-btn rr-primary" onClick={() => void publish()} disabled={running || !selectedCount}><RrIcon name="export" />{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
-    </div>
-  </div>
-
-  return <RrModal crumb="Toplu İşlem" title="Platformlara Yayınla" desc={`Seçili ${cardCount.toLocaleString('tr-TR')} ürün kartı (${productIds.length.toLocaleString('tr-TR')} katalog kaydı) seçtiğiniz pazar yerlerine gönderilir. Zaten yayında ya da işlemde olanlar atlanır.`} size="xl" modalClass="bulk-publish-dialog" locked={running} onClose={onClose} foot={foot}>
-    {connections.length ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">
-      {connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}
-    </div> : <div className="rr-callout rr-warn"><RrIcon name="alert" /><span>Yayına uygun, aktif bir pazar yeri bağlantısı bulunamadı. Önce Platformlar sayfasından aktif bir bağlantı oluşturun.</span></div>}
-    <div className="rr-callout"><RrIcon name="alert" /><span>Pazar yeri fiyatı olmayan varyantlara genel fiyat yazılır. Kategori ve özellik eşlemesi eksik olan kartlar o platformda gönderilmez; nedeni aşağıda listelenir.</span></div>
-    {error && <div className="rr-callout rr-warn"><RrIcon name="alert" /><span>{error}</span></div>}
-    {result && <section className="rr-dsec" aria-live="polite">
-      <header><div className="rr-h3">Sonuç</div><p>{result.queued} kuyruğa alındı · {result.skipped} atlandı · {result.failed.length} gönderilemedi</p></header>
-      {result.failed.length > 0 && <ul className="bulk-publish-failures">{result.failed.map(item => <li key={`${item.productId}:${item.connectionId}`}><b>{item.productTitle}</b> · {connectionName(item.connectionId)}: {item.message}</li>)}</ul>}
-    </section>}
-  </RrModal>
+  return createPortal(
+    <div className="workspace-modal-backdrop product-publish-popup-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
+      <DialogSurface as="section" onClose={close} className="workspace-modal product-publish-popup-modal" aria-labelledby="bulk-publish-title" onMouseDown={event => event.stopPropagation()}>
+        <header><div><p className="eyebrow">Toplu İşlem</p><h2 id="bulk-publish-title">Platformlarda Yayınla</h2><p>Seçili {cardCount.toLocaleString('tr-TR')} ürün kartı ({productIds.length.toLocaleString('tr-TR')} katalog kaydı) seçtiğiniz pazar yerlerine gönderilir. Zaten yayında ya da işlemde olanlar atlanır.</p></div><button type="button" className="modal-close" onClick={close} disabled={running} aria-label="Yayın penceresini kapat"><UiIcon name="close" /></button></header>
+        <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Toplu ürün yayınlama"><div className="product-publish-layout"><div className="product-publish-main">
+          {connections.length
+            ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}</div>
+            : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p></div>}
+          <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Fiyat ve Eşleme</strong><p>Pazar yeri fiyatı olmayan varyantlara genel fiyat yazılır. Kategori ve özellik eşlemesi eksik olan kartlar o platformda gönderilmez; nedeni sonuçta listelenir.</p></div></div>
+          {error && <div className="publish-platform-warning" role="alert"><UiIcon name="alert" /><div><strong>Yayın İşleri Oluşturulamadı</strong><p>{error}</p></div></div>}
+          {result && <div className="publish-platform-warning" role="status" aria-live="polite"><UiIcon name="check" /><div><strong>{result.queued} kuyruğa alındı · {result.skipped} atlandı · {result.failed.length} gönderilemedi</strong>{result.failed.length > 0 && <ul>{result.failed.map(item => <li key={`${item.productId}:${item.connectionId}`}><b>{item.productTitle}</b> · {connectionName(item.connectionId)}: {item.message}</li>)}</ul>}</div></div>}
+          <div className="publish-selection-footer">
+            <div><strong>{result ? 'Yayın işleri kuyruğa alındı' : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : result ? 'Sonuçlar ürün listesinde güncellenir.' : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
+            {!selectedCount && !result && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
+            {result ? <button type="button" onClick={onClose}>Kapat</button> : <button type="button" disabled={running || !selectedCount} onClick={() => void publish()}>{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
+          </div>
+        </div></div></section></div></div>
+      </DialogSurface>
+    </div>,
+    document.querySelector('main') ?? document.body)
 }
 
 function BulkPublishPlatformCard({ connection, summary, selected, locked, onToggle }: {
@@ -107,7 +116,7 @@ function BulkPublishPlatformCard({ connection, summary, selected, locked, onTogg
   const allLive = Boolean(summary?.allLive) && !selected
   const subtitle = allLive ? 'Seçili kayıtların tümü zaten yayında' : selected ? 'Yayın için seçildi' : 'Yayın için seçilmedi'
   const statusId = `bulk-publish-status-${connection.id}`
-  return <article className={`publish-platform-card${selected ? ' selected' : ''}`}>
+  return <article className={`publish-platform-card is-state-${bulkPublishCardState(summary)}${selected ? ' selected' : ''}`}>
     <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={selected} aria-describedby={statusId} disabled={locked || allLive} title={allLive ? 'Seçili kayıtlar bu platformda zaten yayında.' : undefined}>
       <span className={`publish-platform-mark ${connection.platformCode.trim().toLocaleLowerCase('tr-TR')}`}>{logo ? <img className={`publish-platform-logo ${platformLogoClass(connection.platformCode)}`} src={logo} alt="" aria-hidden="true" /> : <b aria-hidden="true">{storeName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R'}</b>}</span>
       <span><strong>{storeName}</strong><small>{subtitle}</small></span>

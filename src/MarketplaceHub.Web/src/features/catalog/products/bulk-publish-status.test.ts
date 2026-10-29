@@ -63,3 +63,16 @@ describe('bulk publish platform status', () => {
     expect(bulkPublishPlatformName('TRENDYOL_EFATURAM')).toBe('E-Faturam')
   })
 })
+
+describe('a bulk publication card frame', () => {
+  it('follows the summary like a product popup card', async () => {
+    const { bulkPublishCardState } = await import('./BulkPublishDialog')
+    const summary = (tone: 'success' | 'info' | 'warning' | 'danger' | 'neutral', allLive = false) => ({ tone, allLive, label: '', detail: null }) as unknown as Parameters<typeof bulkPublishCardState>[0]
+    expect(bulkPublishCardState(null)).toBe('unpublished')
+    expect(bulkPublishCardState(summary('neutral'))).toBe('unpublished')
+    expect(bulkPublishCardState(summary('success'))).toBe('live')
+    expect(bulkPublishCardState(summary('info', true))).toBe('live')
+    expect(bulkPublishCardState(summary('info'))).toBe('working')
+    expect(bulkPublishCardState(summary('danger'))).toBe('error')
+  })
+})

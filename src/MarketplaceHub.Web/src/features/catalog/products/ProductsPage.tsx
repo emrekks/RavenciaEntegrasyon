@@ -25,7 +25,8 @@ import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
 import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { ProductTransferDialog } from './ProductTransferDialog'
-import { BulkPublishDialog } from './BulkPublishDialog'
+// Loaded with the editor's stylesheet only when a bulk publication opens, like a row's publish popup.
+const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
 import { AcceptedJob, ImageLightboxModal, MarketplaceConnection, Product, Variant, compareLabelsAlphabetically, compareOptionValues, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantColorKey, variantOptionEntries } from '../shared'
 
 function compareVariantItemsAlphabetically(left: { variant: { optionSignature?: string | null; sku: string } }, right: { variant: { optionSignature?: string | null; sku: string } }) {
@@ -893,7 +894,9 @@ export function ProductsPage() {
     </RrModal>}
     {transferOpen && <ProductTransferDialog onClose={() => setTransferOpen(false)} />}
     {publishProductId && <Suspense fallback={null}><ProductPublishPopup productId={publishProductId} onClose={() => { setPublishProductId(null); void client.invalidateQueries({ queryKey: ['products'] }) }} /></Suspense>}
-    {bulkPublishOpen && <BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={(message, kind) => showProductToast(kind === 'success' ? 'Toplu Yayın Kuyruğa Alındı' : 'Toplu Yayın Kısmen Gönderildi', message, kind)} />}
+    {/* One product card (a whole model family) opens the very same popup as its row's Platformlarda Yayınla. */}
+    {bulkPublishOpen && selectedProductCardCount === 1 && selectedProductIds[0] && <Suspense fallback={null}><ProductPublishPopup productId={selectedProductIds[0]} onClose={() => { setBulkPublishOpen(false); void client.invalidateQueries({ queryKey: ['products'] }) }} /></Suspense>}
+    {bulkPublishOpen && selectedProductCardCount !== 1 && <Suspense fallback={null}><BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={(message, kind) => showProductToast(kind === 'success' ? 'Toplu Yayın Kuyruğa Alındı' : 'Toplu Yayın Kısmen Gönderildi', message, kind)} /></Suspense>}
     {lowStockOpen && <LowStockDetailsModal products={lowStockQuery.data?.items ?? []} loading={lowStockQuery.isLoading} error={lowStockQuery.error} onClose={() => setLowStockOpen(false)} onImageClick={(url, title) => setLightboxImage({ url, title })} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </section>
