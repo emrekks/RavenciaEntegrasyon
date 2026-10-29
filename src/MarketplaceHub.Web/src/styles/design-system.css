@@ -940,7 +940,6 @@
   .product-submit-sticky p { margin: 3px 0 0; color: var(--rv-color-muted); }
   .calculated-field strong { font-size: var(--rv-font-size-xl); }
   /* Shipping designer */
-  .shipping-designer-help { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .shipping-designer-paper { position: relative; width: min(100%, 560px); margin: 0 auto; overflow: hidden; background: #fff; background-image: linear-gradient(rgb(181 193 213 / 42%) 1px, transparent 1px), linear-gradient(90deg, rgb(181 193 213 / 42%) 1px, transparent 1px); background-size: 2.5% 2.5%; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); box-shadow: var(--rv-shadow-md); }
   .shipping-designer-block { position: absolute; display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: 18px minmax(0, 1fr); gap: 2px 5px; min-width: 28px; min-height: 24px; padding: var(--rv-space-1); overflow: hidden; color: #132038; background: rgb(255 255 255 / 92%); border: 1px solid #9eabc1; border-radius: var(--rv-radius-sm); text-align: left; }
   .shipping-designer-block.is-selected { border-color: var(--rv-color-primary); outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 62%, transparent); }
@@ -4354,8 +4353,7 @@ small,
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-e { top: 50%; right: 0; transform: translate(50%, -50%); }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-s { bottom: 0; left: 50%; transform: translate(-50%, 50%); }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-w { top: 50%; left: 0; transform: translate(-50%, -50%); }
-.app-shell.stitch-shell main .shipping-designer-rotate-handle { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); cursor: grab; }
-.app-shell.stitch-shell main .shipping-designer-rotate-handle:active { cursor: grabbing; }
+.app-shell.stitch-shell main .shipping-designer-rotate-handle { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
 
 .app-shell.stitch-shell main .shipping-designer-resize-handle:hover {
   background: var(--rv-color-primary);
@@ -6863,8 +6861,14 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-s { cursor: ns-resize; }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-e,
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-w { cursor: ew-resize; }
-.app-shell.stitch-shell main .shipping-designer-resize-handle.shipping-designer-rotate-handle { cursor: grab; border-radius: 3px; }
-.app-shell.stitch-shell main .shipping-designer-resize-handle.shipping-designer-rotate-handle:active { cursor: grabbing; }
+/* Corners show a circular-arrow rotate cursor (hotspot at its centre), on hover and while the drag holds the pointer
+   (setPointerCapture keeps the handle's cursor); grab / grabbing where custom cursors are not drawn. */
+.app-shell.stitch-shell main .shipping-designer-resize-handle.shipping-designer-rotate-handle {
+  --shipping-rotate-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='white' stroke-width='4.5'%3E%3Cpath d='M20 12a8 8 0 1 1-2.34-5.66L20 8.5'/%3E%3Cpath d='M20 3.5v5h-5'/%3E%3C/g%3E%3Cg stroke='%23111827' stroke-width='2'%3E%3Cpath d='M20 12a8 8 0 1 1-2.34-5.66L20 8.5'/%3E%3Cpath d='M20 3.5v5h-5'/%3E%3C/g%3E%3C/svg%3E") 12 12;
+  cursor: var(--shipping-rotate-cursor), grab;
+  border-radius: 3px;
+}
+.app-shell.stitch-shell main .shipping-designer-resize-handle.shipping-designer-rotate-handle:active { cursor: var(--shipping-rotate-cursor), grabbing; }
 
 /* Platform breakdown tooltip: size to its content so platform names never break letter by letter. */
 
