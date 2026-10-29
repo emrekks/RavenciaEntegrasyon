@@ -970,9 +970,12 @@
 /* Product list "Platformlarda Yayınla": the editor's publish step in a popup (ProductPublishPopup). */
 .product-publish-popup-modal { width: min(1180px, 100%); }
 .product-publish-popup-modal > header h2 { margin-bottom: 0; }
-.product-publish-popup-body { min-height: 0; overflow: auto; padding: 20px 24px; }
+/* The same space above the cards and below the Yayınla bar: the body has no bottom padding and the steps add none, so
+   the bar sits --popup-gap above the popup's edge both while it sticks and at the end of the list. */
+.product-publish-popup-body { --popup-gap: 20px; min-height: 0; overflow: auto; padding: var(--popup-gap) 24px 0; }
 .product-publish-popup { display: block; min-width: 0; }
-.product-publish-popup .product-add-workspace { margin: 0; padding: 0; }
+.product-publish-popup :is(.product-add-workspace, .product-publish-step, .product-publish-layout, .product-publish-main) { margin: 0; padding: 0; }
+.product-publish-popup .product-publish-step .publish-selection-footer { bottom: var(--popup-gap); margin-bottom: var(--popup-gap); }
 @media (max-width: 760px) {
-  .product-publish-popup-body { padding: 16px; }
+  .product-publish-popup-body { --popup-gap: 16px; padding-inline: 16px; }
 }
