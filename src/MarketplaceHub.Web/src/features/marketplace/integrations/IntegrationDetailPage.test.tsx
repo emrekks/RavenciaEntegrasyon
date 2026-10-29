@@ -93,6 +93,23 @@ describe('IntegrationDetailPage credentials (W10)', () => {
     expect(container.textContent).toContain('Kimlik bilgisi şifreli olarak yenilendi')
   })
 
+  // P-5 (30 Oct 2026): the store and environment cannot change; the form saves the name and points to a new connection.
+  it('shows the store without editing it, saves only the name and points to a new connection', async () => {
+    await renderPage()
+    openSection('Mağaza ve Kimlik')
+    const store = Array.from(container.querySelectorAll<HTMLInputElement>('.connection-settings-fields input')).find(input => input.value === '9999')!
+    expect(store.readOnly).toBe(true)
+    expect(container.querySelector('.connection-scope-locked')!.textContent).toContain('Ortam ve mağaza bağlantı eklenirken belirlenir, sonradan değiştirilemez')
+    expect(container.querySelector<HTMLAnchorElement>('.connection-scope-locked a')!.getAttribute('href')).toBe('/integrations?yeni=1')
+
+    const name = container.querySelector<HTMLInputElement>('.connection-settings-fields input:not([readonly])')!
+    act(() => setValue(name, 'Trendyol Yeni Ad'))
+    await act(async () => { name.form!.requestSubmit() })
+    await settle()
+    const save = apiState.calls.find(call => call.path === '/connections/c1' && call.method === 'PATCH')!
+    expect(JSON.parse(save.body!)).toEqual({ displayName: 'Trendyol Yeni Ad' })
+  })
+
   it('names the environment in Turkish and offers the test order without a fixed store number (W32)', async () => {
     await renderPage()
     expect(container.textContent).toContain('Test Ortamı · Mağaza 9999')
@@ -127,6 +144,25 @@ describe('IntegrationsPage filters (W16)', () => {
     await settle()
     expect(currentSearch).toBe('?platform=trendyol')
     expect(container.querySelector('.integration-filter-summary')!.textContent).toContain('1 bağlantı')
+  })
+
+  it('opens the new connection form from ?yeni=1 and drops it from the address', async () => {
+    await renderList('/integrations?yeni=1')
+    expect(container.querySelector('.integration-modal')).not.toBeNull()
+    expect(currentSearch).toBe('')
+  })
+
+  it('offers Tam Sıfırlama beside the selective reset in Verileri Sıfırla', async () => {
+    await renderList('/integrations')
+    act(() => { container.querySelector<HTMLButtonElement>('.reference-menu-trigger')!.click() })
+    const reset = Array.from(container.querySelectorAll<HTMLButtonElement>('.reference-menu-popover button')).find(button => button.textContent === 'Verileri Sıfırla')!
+    await act(async () => { reset.click() })
+    await settle()
+    const full = Array.from(container.querySelectorAll<HTMLButtonElement>('.data-reset-modes button')).find(button => button.textContent?.includes('Tam Sıfırlama'))!
+    await act(async () => { full.click() })
+    await settle()
+    expect(container.querySelector('.connection-full-reset')).not.toBeNull()
+    expect(apiState.calls.some(call => call.path === '/connections/c1/full-reset' && call.method === 'GET')).toBe(true)
   })
 
   it('blocks a new Trendyol connection only for an identity that cannot be sent; another format is a warning', async () => {

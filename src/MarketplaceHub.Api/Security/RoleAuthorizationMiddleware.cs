@@ -96,8 +96,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 if (last == "evidence" && segments.Any(segment => segment.Equals("capabilities", StringComparison.OrdinalIgnoreCase))) return ElevatedRoles;
                 // Revoking a webhook subscription (/webhooks/{subscriptionId}) is as elevated as creating one.
                 if (segments.Length > 5 && segments[4].Equals("webhooks", StringComparison.OrdinalIgnoreCase)) return ElevatedRoles;
-                // PATCH /connections/{id} stays operational; the endpoint refuses its external write, invoice creation,
-                // environment and store scope changes to other roles (IsElevated).
+                // PATCH /connections/{id} stays operational; the endpoint refuses its external write and invoice creation
+                // changes to other roles (IsElevated), and environment and store changes to everyone.
                 // Credentials, stage test orders, deleting, emptying or hiding a connection's data, and registering
                 // the marketplace's notifications (a setting on the store's side) and webhook subscriptions (they hold
                 // the verifier secret and hand out the route token) are for administrators.

@@ -5677,6 +5677,10 @@ small,
   .app-shell.stitch-shell main .connection-settings-fields { grid-template-columns: 1fr; }
 }
 
+/* The store and environment a connection was added for cannot change; the field only shows it. */
+.app-shell.stitch-shell main .connection-settings-fields input[readonly] { color: var(--rv-color-muted); background: var(--rv-color-surface-raised); cursor: default; }
+.app-shell.stitch-shell main .connection-scope-locked { margin-top: var(--rv-space-2); }
+
 /* Keep the fixed topbar stacking context above catalog cards. The notification
    history can grow over the metric row, so its child z-index is not enough if
    the topbar itself remains in the sticky-content layer. */
@@ -7132,15 +7136,15 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 .data-reset-title h2 { margin: 0; font-size: 18px; }
 .data-reset-title p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .data-reset-dialog .drl { max-height: calc(100dvh - 120px); }
-
-/* "Temizle" is the same framed button on every page, like the lists' Temizle (.rr-btn): surface fill, strong
-   border, 36px, 7px corners. While there is nothing to clear it stays framed and only fades. */
-html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear) { display: inline-flex; align-items: center; justify-content: center; height: 36px; min-height: 0; padding: 0 12px; white-space: nowrap; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500; }
 /* A marketplace connection also offers Tam Sıfırlama: the two kinds sit as tabs under the header. */
 .data-reset-dialog.has-modes.workspace-modal { grid-template-rows: auto auto minmax(0, 1fr); }
 .data-reset-dialog.has-modes .drl { max-height: calc(100dvh - 170px); }
 .data-reset-modes { padding: 0 20px; }
 .connection-full-reset-status { margin: 0; padding: 10px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
 .connection-full-reset-status.is-running { color: var(--rv-color-primary); border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+
+/* "Temizle" is the same framed button on every page, like the lists' Temizle (.rr-btn): surface fill, strong
+   border, 36px, 7px corners. While there is nothing to clear it stays framed and only fades. */
+html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear) { display: inline-flex; align-items: center; justify-content: center; height: 36px; min-height: 0; padding: 0 12px; white-space: nowrap; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500; }
 html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-raised)); }
 html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):disabled { background: var(--rv-color-surface); opacity: .5; cursor: default; }
