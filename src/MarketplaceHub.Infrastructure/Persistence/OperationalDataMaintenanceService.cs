@@ -111,21 +111,16 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
             await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
             await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
             await DeleteOrdersAsync(tenantId, connectionId, cancellationToken, keepIssued: true, carryStock: true);
-            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "ORDERS", cancellationToken);
         }
         else
         {
-            if (scopes.Contains("RETURNS"))
-            {
-                await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
-                await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "RETURNS", cancellationToken);
-            }
-            if (scopes.Contains("INVOICES"))
-            {
-                await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
-                await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "INVOICES", cancellationToken);
-            }
+            if (scopes.Contains("RETURNS")) await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
+            if (scopes.Contains("INVOICES")) await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
         }
+        // Every list whose rows went reads again from the start: an order reset takes the returns with it, and with
+        // orders and returns chosen together only the order cursors used to go, so the returns never came back.
+        string[] cursorScopes = scopes.Contains("ORDERS") ? ["ORDERS", "RETURNS", "INVOICES"] : scopes.Intersect(["RETURNS", "INVOICES"]).ToArray();
+        if (cursorScopes.Length > 0) await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, cursorScopes.SelectMany(scope => SalesCursorResources[scope]).ToArray(), cancellationToken);
         if (scopes.Contains("CATEGORIES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: true, cancellationToken);
         else if (scopes.Contains("CATEGORY_ATTRIBUTES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: false, cancellationToken);
         if (scopes.Contains("BRANDS")) await DeleteConnectionBrandDataAsync(tenantId, connectionId, cancellationToken);
@@ -135,7 +130,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         {
             await DeleteProductsAsync(tenantId, connectionId, cancellationToken);
             await DeleteConnectionProductArtifactsAsync(tenantId, connectionId, cancellationToken);
-            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "PRODUCTS", cancellationToken);
+            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, ["PRODUCTS"], cancellationToken);
         }
 
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
@@ -204,8 +199,16 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.promotion_offer_files WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         """, cancellationToken);
 
-    private Task DeleteConnectionSyncCursorsAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType"={{resourceType}};
+    // The cursors that hold where a sales list's reading stands: the list itself and its wide re-reads.
+    private static readonly Dictionary<string, string[]> SalesCursorResources = new(StringComparer.Ordinal)
+    {
+        ["ORDERS"] = ["ORDERS", "PACKAGES", HepsiburadaCancellationPolicy.CursorResource, HepsiburadaCancellationPolicy.WideCursorResource],
+        ["RETURNS"] = ["RETURNS", ReturnRereadPolicy.WideCursorResource],
+        ["INVOICES"] = ["INVOICES"],
+    };
+
+    private Task DeleteConnectionSyncCursorsAsync(Guid tenantId, Guid connectionId, string[] resourceTypes, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType" = ANY({{resourceTypes}});
         """, cancellationToken);
 
     private Task DeleteConnectionCategoryDataAsync(Guid tenantId, Guid connectionId, bool includeCategories, CancellationToken cancellationToken) => includeCategories

@@ -284,6 +284,58 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // With orders and returns chosen together only the order cursor went, so the removed returns never came back.
+    [PostgreSqlFact]
+    public async Task OrderAndReturnReset_ReadsBothListsAgain_AndKeepsTheOtherCursors()
+    {
+        var seed = NewSeed("dm-cursor");
+        SyncCursor Cursor(string resource) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, ResourceType = resource, OpaqueCursor = "page-9", LastSuccessAt = fixture.Now, Version = 1 };
+        try
+        {
+            await SeedAsync(seed, db => db.SyncCursors.AddRange(Cursor("ORDERS"), Cursor("PACKAGES"), Cursor("RETURNS"), Cursor(ReturnRereadPolicy.WideCursorResource), Cursor("PRODUCTS"), Cursor("QUESTIONS")));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS", "RETURNS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            await using var verification = fixture.CreateContext();
+            var left = await verification.SyncCursors.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ResourceType).OrderBy(x => x).ToListAsync();
+            Assert.Equal(["PRODUCTS", "QUESTIONS"], left);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.SyncCursors.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ReturnReset_ReadsTheReturnsAgain_AndKeepsTheOrderCursor()
+    {
+        var seed = NewSeed("dm-retcur");
+        SyncCursor Cursor(string resource) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, ResourceType = resource, OpaqueCursor = "page-9", Version = 1 };
+        try
+        {
+            await SeedAsync(seed, db => db.SyncCursors.AddRange(Cursor("ORDERS"), Cursor("RETURNS"), Cursor(ReturnRereadPolicy.WideCursorResource)));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["RETURNS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(["ORDERS"], await verification.SyncCursors.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ResourceType).ToListAsync());
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.SyncCursors.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task OrderReset_MarksTheFilesOfRemovedRowsForPurge_AndTheSweepDeletesThem()
     {
