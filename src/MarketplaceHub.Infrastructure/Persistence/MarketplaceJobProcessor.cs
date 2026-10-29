@@ -551,12 +551,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma işlemi sürüyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM ürün gönderimi işleniyor." : "Trendyol create batch işlemi sürüyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", runningMessage, TimeSpan.FromSeconds(15), payload.ExternalOperationId);
         }
-        // n11 drops a whole task without per-SKU lines when it rejects it; nothing was created.
-        if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
-            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "N11_TASK_REJECTED", JobExecutionResult.Blocked("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
-        // PTT AVM cancelled the whole send without a per-product answer.
-        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
-            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "PTTAVM_PRODUCT_REJECTED", JobExecutionResult.Blocked("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        if (WholeBatchRejection(platformCode, operationStatus.Status) is { } refusal)
+            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", refusal.Code, JobExecutionResult.Blocked(refusal.Code, refusal.Summary, payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         if (!string.Equals(operationStatus.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_BATCH_STATUS_UNKNOWN", "Batch servisi tanınmayan bir durum döndürdü.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
 
         var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
@@ -616,6 +612,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return succeeded == 0
             ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", $"{marketplaceName} ürün yayınındaki tüm varyantlar reddedildi.{reasons}", payload.ExternalOperationId)
             : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", $"{marketplaceName} ürün yayını kısmi başarısızlıkla tamamlandı.{reasons}", payload.ExternalOperationId);
+    }
+
+    // A create batch the marketplace refused as a whole, without a line per product: nothing counts as created.
+    // n11 drops a rejected task without per-SKU lines, PTT AVM cancels the whole send, and Pazarama ends a batch in
+    // error (status 3) without naming any product.
+    internal static (string Code, string Summary)? WholeBatchRejection(string? platformCode, string operationStatus)
+    {
+        if (!string.Equals(operationStatus, "REJECTED", StringComparison.OrdinalIgnoreCase)) return null;
+        return platformCode?.ToUpperInvariant() switch
+        {
+            "N11" => ("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir."),
+            "PTTAVM" => ("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir."),
+            "PAZARAMA" => ("PAZARAMA_BATCH_REJECTED", "Pazarama ürün açma partisini hata durumuyla bitirdi ve hiçbir ürün için sonuç vermedi; ürün açılmış sayılmadı. Nedeni Pazarama satıcı panelindeki parti sonucunda görülebilir."),
+            _ => null
+        };
     }
 
     private async Task<JobExecutionResult> ReconcileProductApproval(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
