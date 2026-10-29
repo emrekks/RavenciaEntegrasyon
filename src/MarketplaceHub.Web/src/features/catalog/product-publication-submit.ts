@@ -22,7 +22,9 @@ export type MarketplacePublishOutcome = {
   /** Variants the queued jobs carry (n11 sends only a card's variants not yet live there). */
   enqueuedVariants: number
   skipped: { live: number; running: number; matched: number }
-  /** Refusal message → the cards (0 = the opened one) it stopped. */
+  /** Where the opened card stands among the family's cards (0 when left out). */
+  openedCard?: number
+  /** Refusal message → the cards (their places in the family's colour order) it stopped. */
   failures: ReadonlyMap<string, readonly number[]>
 }
 
@@ -61,9 +63,10 @@ export type ProductSaveFeedback = {
 
 const cardCount = (count: number) => `${count} renk kartı`
 
-function cardsNote(indexes: readonly number[]) {
+// A refusal of the opened card alone needs no note; another card is named by its place in the colour order.
+function cardsNote(indexes: readonly number[], openedCard = 0) {
   if (indexes.length > 1) return ` (${indexes.length} renk kartında)`
-  return indexes[0] ? ` (${indexes[0] + 1}. renk kartı)` : ''
+  return indexes.length === 1 && indexes[0] !== openedCard ? ` (${indexes[0] + 1}. renk kartı)` : ''
 }
 
 function skippedPhrase(outcome: MarketplacePublishOutcome) {
@@ -96,7 +99,7 @@ export function marketplacePublishLines(outcome: MarketplacePublishOutcome) {
     lines.push(`${name}: ${skipped}; yeni gönderim yapılmadı.`)
   }
   for (const [failure, indexes] of outcome.failures) {
-    lines.push(`${name}: reddedildi — ${failure.replace(/\s+$/u, '')}${cardsNote(indexes)}`)
+    lines.push(`${name}: reddedildi — ${failure.replace(/\s+$/u, '')}${cardsNote(indexes, outcome.openedCard)}`)
   }
   if (!lines.length) lines.push(`${name}: gönderilecek renk kartı bulunamadı.`)
   return lines

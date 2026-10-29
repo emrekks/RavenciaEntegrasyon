@@ -39,7 +39,8 @@ import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublica
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { publicationJobPollInterval } from '../publication-job-poll'
 import { publicationJobInline } from '../publication-job-inline'
-import { productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome } from '../product-publication-submit'
+import { familyCardsInPanelOrder } from '../family-card-order'
+import { productPublicationTargets, productSaveFeedback,publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
@@ -2483,11 +2484,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           }
           // Every colour card of the family (same model code) goes with the opened one; a card already live or still
           // being published on this marketplace is left as it is. One card's failure does not stop the others.
-          const familyIds = [product.id, ...(productToEdit.data?.familyProductIds ?? []).filter(id => id !== product.id)]
+          // The cards are queued in the panel's colour order (not the opened card first), so a marketplace that takes
+          // them as they come lists the colours as the products page does.
+          const familyIds = familyCardsInPanelOrder([product.id, ...(productToEdit.data?.familyProductIds ?? [])], product.variants, product.id)
           // The same reason on several cards (a connection setting missing) is said once, with how many cards it stopped.
           const familyFailures = new Map<string, number[]>()
           const platformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
-          const outcome: MarketplacePublishOutcome = { platformName, platformCode: platformCode ?? '', familyCards: familyIds.length, enqueuedCards: 0, enqueuedVariants: 0, skipped: { live: 0, running: 0, matched: 0 }, failures: familyFailures }
+          const outcome: MarketplacePublishOutcome = { platformName, platformCode: platformCode ?? '', familyCards: familyIds.length, openedCard: familyIds.indexOf(product.id), enqueuedCards: 0, enqueuedVariants: 0, skipped: { live: 0, running: 0, matched: 0 }, failures: familyFailures }
           publications.push(outcome)
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {

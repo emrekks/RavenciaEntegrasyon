@@ -419,6 +419,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", JobExecutionResult.Blocked("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi doğrulanmadı; ürün aktarımı gönderilmedi."), cancellationToken, payload.PayloadHash);
                 if (!await HasHepsiburadaPublicationEvidenceAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", JobExecutionResult.Blocked("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Bu mağaza/ortamda doğrulanmış fiyat ve stok yazma kanıtı bulunamadı; bağlantıyı test edin. Ürün aktarımı gönderilmedi."), cancellationToken, payload.PayloadHash);
             }
+            // Pazarama shows a family's colours in the order it created them: the cards of one round go out one by one
+            // in the panel's colour order, each after the earlier cards have their answer.
+            if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase)
+                && await PazaramaFamilyOrder.WaitAsync(db, tenantId, connectionId, job, payload, timeProvider.GetUtcNow(), cancellationToken) is { } familyOrderWait)
+                return familyOrderWait;
             // A Shopify product carries the whole model family and productSet deletes the variants it is not sent, so a
             // job composed before the family's variants changed must not write its older variant list.
             if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
