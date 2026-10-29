@@ -26,6 +26,7 @@ import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
+import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
@@ -765,8 +766,8 @@ export function publishCardState({ tone, jobRunning, requiredBlock, retryable }:
 function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, lookupKeys, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
-  // How many of the family's variants are already matched to a listing on this marketplace (imported or published).
-  variantLinks?: { linked: number; total: number }
+  // How many of the family's variants are present on this marketplace (matched or live), and how many it no longer knows.
+  variantLinks?: { linked: number; total: number; missing?: number }
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
   selected: boolean
   productId?: string
@@ -881,13 +882,15 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     && familyStatuses.some(status => Boolean(status.data?.profileId) && Boolean(status.data?.actualStatus) && status.data?.actualStatus !== 'UNKNOWN')
   // Matched variants are the truth when they exist: every variant matched = live and not selectable; some = partly
   // live and selectable (Yayınla then sends only the cards none of whose variants is matched here).
+  // A variant the marketplace no longer knows (link NOT_FOUND or REJECTED) is not live there: the card is partly live, or
+  // "Bulunamadı" when none is left, and stays selectable so Yayınla sends it again.
   const linkedTotal = variantLinks?.total ?? 0
   const linkedCount = variantLinks?.linked ?? 0
-  const allLinked = linkedTotal > 0 && linkedCount === linkedTotal
-  const someLinked = linkedCount > 0 && linkedCount < linkedTotal
-  const familyPartial = someLinked || (!allLinked && ownLive && otherFamilyIds.length > 0 && familyLiveCount < familyTotal && familyStatuses.every(status => !status.isPending))
-  const alreadyPublished = allLinked || (ownLive && !familyPartial)
-  const selectionStatus = familyPartial ? null : allLinked ? 'LIVE' : publication.data?.actualStatus
+  const missingCount = variantLinks?.missing ?? 0
+  const { allLinked, someLinked, noneFound } = publishCardVariantPresence(variantLinks)
+  const familyPartial = !noneFound && (someLinked || (!allLinked && ownLive && otherFamilyIds.length > 0 && familyLiveCount < familyTotal && familyStatuses.every(status => !status.isPending)))
+  const alreadyPublished = missingCount === 0 && (allLinked || (ownLive && !familyPartial))
+  const selectionStatus = noneFound || familyPartial ? null : allLinked ? 'LIVE' : publication.data?.actualStatus
   const partialLabel = someLinked ? `Kısmen yayında · ${linkedCount}/${linkedTotal}` : `Kısmen yayında · ${familyLiveCount}/${familyTotal} renk`
   // PTT AVM keeps a product with variants as the whole model family under its model code: every colour card goes in
   // one request. The variant count is this card's when the family is this card alone.
@@ -1013,8 +1016,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const hasRequiredPublicationBlock = blockedIssues.length > 0 && !alreadyPublished
   const lastJobId = !hasRequiredPublicationBlock && productId ? publication.data?.lastJobId ?? null : null
   // A product that is not saved yet has no platform record: it shows what keeps it from publishing, or that it is not out yet.
-  const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : familyPartial ? partialLabel : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
-  const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
+  const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : noneFound ? 'Bulunamadı' : familyPartial ? partialLabel : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
+  const missingVariantsTitle = noneFound ? 'Pazaryerinde Bulunamadı' : missingCount > 0 ? `${missingCount} varyant pazaryerinde bulunamadı` : undefined
+  const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : noneFound ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
   const readOnlyIsN11 = card.connection.platformCode.trim().toUpperCase() === 'N11'
   const readOnlyTitle = readOnlyIsN11 ? 'N11 ürün açma için Entegrasyonlar bölümünde N11 bağlantısının dış yazma anahtarını açın.' : 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.'
   // The card's frame and place in the grid: not yet published first, then refused, in progress, and live last.
@@ -1030,7 +1034,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can open the publication issues */}
-      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}><i aria-hidden="true" />{displayedPublicationLabel}</button> : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning && !hasRequiredPublicationBlock ? jobView.message : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
+      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : missingVariantsTitle ? `${missingVariantsTitle} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}><i aria-hidden="true" />{displayedPublicationLabel}</button> : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={hasRequiredPublicationBlock ? undefined : jobRunning ? jobView.message : missingVariantsTitle} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
         ? <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} yayın durumu sorgulanıyor` : `${card.name} yayın durumunu güncelle`} aria-busy={refreshBusy} title={refreshBusy ? 'Platformdaki durum sorgulanıyor…' : 'Platformdaki mevcut durumu yeniden sorgula'} disabled={refreshBusy || isPublicationStatusJobRunning(publication.data?.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>
         : productId && card.mode !== 'READ_ONLY' && <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} mağazasında ürün aranıyor` : `${card.name} mağazasında ürünü ara`} aria-busy={refreshBusy} title={refreshBusy ? `${card.name} mağazasında ${lookupKey} aranıyor…` : lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`} disabled={!lookupKey || refreshBusy || publication.isPending} onClick={() => lookupProduct.mutate()}><UiIcon name="refresh" /></button>}{refreshJob.running && !(jobRunning && publication.data?.lastJobId === refreshJobId) && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={refreshJob.cancel.isPending ? `${card.name} sorgusu durduruluyor` : `${card.name} sorgusunu durdur`} title="Sorguyu Durdur" disabled={refreshJob.cancel.isPending} onClick={() => refreshJob.cancel.mutate()}><i aria-hidden="true" /></button>}{jobRunning &&<button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
@@ -2552,13 +2556,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               // n11 sends only a card's variants not yet live there, so a partly refused n11 card goes again; elsewhere a
               // card with a matched variant is left as it is (its publication would send the whole card).
               const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
-              const matchedCount = cardVariants.filter(variant => rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses?.some(status => status.connectionId === connectionId && status.isMatched)).length
+              // A card with a variant the marketplace no longer knows (Bulunamadı, Kısmen yayında) goes again.
+              const cardLinks = publishCardVariantLinks(cardVariants.map(variant => ({ platformStatuses: rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses })), connectionId)
+              const matchedCount = cardLinks.linked
+              const hasMissingVariant = cardLinks.missing > 0
               const resendsRefused = platformCode === 'N11'
-              if (matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) { outcome.skipped.matched++; continue }
+              if (!hasMissingVariant && matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) { outcome.skipped.matched++; continue }
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               // A PTT AVM family card shown as "Tekrar Deneyin" goes again; the API closes its waiting approval checks.
               const pttAvmFamily = familyIds.length > 1 || cardVariants.length > 1
-              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily)) {
+              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily, hasMissingVariant)) {
                 if (isPublicationLive(status.actualStatus)) outcome.skipped.live++
                 else outcome.skipped.running++
                 continue
@@ -3118,7 +3125,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               productId={editProductId}
               familyProductIds={productToEdit.data?.familyProductIds}
               lookupKeys={{ modelCode: form.modelCode, barcode: variantRows[0]?.barcode || form.barcode, sku: variantRows[0]?.sku || form.baseSku }}
-              variantLinks={{ total: variantRows.length, linked: variantRows.filter(row => row.platformStatuses?.some(status => status.connectionId === card.connection.id && status.isMatched)).length }}
+              variantLinks={publishCardVariantLinks(variantRows, card.connection.id)}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
               productChecks={productChecks}

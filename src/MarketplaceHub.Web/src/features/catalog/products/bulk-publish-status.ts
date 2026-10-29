@@ -4,7 +4,8 @@ import type { MarketplaceConnection, Product, ProductPlatformStatus } from '../s
 
 // Where one catalog record stands on one connection, read from the list's product.platformStatuses. A record without
 // a matching entry, or with an UNKNOWN status, stays unknown: a missing field is never read as "not published".
-export type BulkPublishStatusBucket = 'live' | 'partial' | 'processing' | 'error' | 'linked' | 'archived' | 'notPublished' | 'other' | 'unknown'
+// notFound: every variant once matched or published there is one the marketplace no longer knows (server NOT_FOUND).
+export type BulkPublishStatusBucket = 'live' | 'partial' | 'processing' | 'error' | 'notFound' | 'linked' | 'archived' | 'notPublished' | 'other' | 'unknown'
 export type BulkPublishStatusTone = 'success' | 'info' | 'warning' | 'danger' | 'neutral'
 export type BulkPublishStatusSummary = {
   total: number
@@ -16,12 +17,13 @@ export type BulkPublishStatusSummary = {
   allLive: boolean
 }
 
-const bucketOrder: BulkPublishStatusBucket[] = ['live', 'partial', 'processing', 'error', 'linked', 'archived', 'notPublished', 'other', 'unknown']
+const bucketOrder: BulkPublishStatusBucket[] = ['live', 'partial', 'processing', 'error', 'notFound', 'linked', 'archived', 'notPublished', 'other', 'unknown']
 const bucketCountLabels: Record<BulkPublishStatusBucket, string> = {
   live: 'yayında',
   partial: 'kısmen yayında',
   processing: 'işlemde',
   error: 'hatalı veya incelemede',
+  notFound: 'pazaryerinde bulunamadı',
   linked: 'eşleşmiş, yayını doğrulanmadı',
   archived: 'arşivde',
   notPublished: 'yayında değil',
@@ -33,6 +35,7 @@ const singleBucketLabels: Record<BulkPublishStatusBucket, string> = {
   partial: 'Kısmen yayında',
   processing: 'İşlemde',
   error: 'Hatalı veya incelemede',
+  notFound: 'Bulunamadı',
   linked: 'Eşleşmiş, yayını doğrulanmadı',
   archived: 'Arşivde',
   notPublished: 'Yayında değil',
@@ -44,6 +47,7 @@ const singleBucketTones: Record<BulkPublishStatusBucket, BulkPublishStatusTone> 
   partial: 'info',
   processing: 'info',
   error: 'danger',
+  notFound: 'danger',
   linked: 'info',
   archived: 'neutral',
   notPublished: 'neutral',
@@ -79,6 +83,7 @@ export function bulkPublishStatusBucket(entry: ProductPlatformStatus | null): Bu
   if (state === 'partial') return 'partial'
   if (state === 'processing') return 'processing'
   if (state === 'error') return 'error'
+  if (state === 'missing') return 'notFound'
   if (state === 'linked') return 'linked'
   return 'other'
 }
@@ -100,7 +105,7 @@ export function summarizeBulkPublishStatus(products: ReadonlyArray<Pick<Product,
   }
 
   const detail = present.map(bucket => `${format(counts[bucket])} ${bucketCountLabels[bucket]}`).join(' · ')
-  const tone: BulkPublishStatusTone = counts.error > 0 ? 'warning' : counts.live + counts.partial + counts.processing + counts.linked > 0 ? 'info' : 'neutral'
+  const tone: BulkPublishStatusTone = counts.error + counts.notFound > 0 ? 'warning' : counts.live + counts.partial + counts.processing + counts.linked > 0 ? 'info' : 'neutral'
   return { total, counts, label: `${format(counts.live)}/${format(total)} kayıt yayında`, detail, tone, allLive: false }
 }
 

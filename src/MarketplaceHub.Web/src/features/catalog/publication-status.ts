@@ -37,6 +37,8 @@ const publicationLabels: Record<string, string> = {
   APPROVAL_PARTIAL_PENDING: 'Kısmi onay bekliyor',
   LIVE: 'Yayında',
   PARTIAL_LIVE: 'Kısmen yayında',
+  // Every variant once matched or published there is one the marketplace no longer knows (two full scans missed it).
+  NOT_FOUND: 'Bulunamadı',
   REJECTED: 'Reddedildi',
   CREATE_REJECTED: 'Yayın reddedildi',
   UPDATE_REJECTED: 'Güncelleme reddedildi',
@@ -130,6 +132,7 @@ export function publicationStatusTone(actualStatus?: string | null, lastJobStatu
   const status = actualStatus?.trim().toUpperCase() ?? ''
   if (['LIVE', 'PARTIAL_LIVE', 'APPROVED'].includes(status)) return 'success' as const
   if (status === 'DRY_RUN' || status === 'ALREADY_PRESENT') return 'info' as const
+  if (status === 'NOT_FOUND') return 'danger' as const
   if (status.includes('REJECT') || status.includes('FAIL') || ['FAILED', 'BLOCKED', 'MANUAL_REVIEW'].includes(lastJobStatus?.trim().toUpperCase() ?? '')) return 'danger' as const
   if (isPublicationStatusPending(actualStatus, lastJobStatus)) return 'info' as const
   return 'neutral' as const
@@ -156,9 +159,10 @@ export function isPttAvmFamilyRetryable(platformCode?: string | null, actualStat
     && !['LEASED', 'RUNNING'].includes(lastJobStatus?.trim().toUpperCase() ?? '')
 }
 
-// Yayınla leaves a live card, and one still being published, as it is; a PTT AVM family card to try again goes.
-export function isSkippedByPublish(platformCode: string | null | undefined, actualStatus: string | null | undefined, lastJobStatus: string | null | undefined, pttAvmFamily: boolean) {
-  if (isPublicationLive(actualStatus)) return true
+// Yayınla leaves a live card, and one still being published, as it is; a PTT AVM family card to try again goes. A
+// "live" card with a variant the marketplace no longer knows (Bulunamadı, Kısmen yayında) goes again.
+export function isSkippedByPublish(platformCode: string | null | undefined, actualStatus: string | null | undefined, lastJobStatus: string | null | undefined, pttAvmFamily: boolean, hasMissingVariant = false) {
+  if (isPublicationLive(actualStatus)) return !hasMissingVariant
   if (pttAvmFamily && isPttAvmFamilyRetryable(platformCode, actualStatus, lastJobStatus)) return false
   return isPublicationStatusPending(actualStatus, lastJobStatus)
 }
