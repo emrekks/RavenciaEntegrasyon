@@ -10,19 +10,37 @@ import { platformName } from './report-format'
 
 // Sipariş Kârlılık Analizi (ReportsContracts.cs, ReportOrderProfitView): each order of the period with what it leaves
 // after product cost, commission, cargo, the platform's fees, withholding tax and net VAT, and its items one by one.
-export type OrderProfitCost = { key: string; label: string; amount: number; estimated: boolean; source: string | null }
+// amount null: unknown (a Trendyol cargo with no invoice and no tariff to estimate it at), and so the order's profit.
+export type OrderProfitCost = { key: string; label: string; amount: number | null; estimated: boolean; source: string | null }
 export type OrderProfitLine = { variantId: string | null; title: string; barcode: string | null; sku: string; quantity: number; returnedQuantity: number; amount: number
   commissionRate: number | null; commission: number | null; costPrice: number | null; vatRate: number; imageUrl: string | null; options: string | null }
 export type OrderProfit = { orderId: string; orderNumber: string; platformCode: string; storeName: string; storeFront: string | null; microExport: boolean; orderedAt: string
   state: 'SOLD' | 'PARTLY_RETURNED' | 'RETURNED'; amount: number; cost: number | null; profit: number | null; profitOnCost: number | null; margin: number | null
   costs: OrderProfitCost[]; lines: OrderProfitLine[] }
-type Page = { items: OrderProfit[]; totalCount: number; page: number; pageSize: number; amount: number; profit: number; missingCost: number }
+// The totals of every order the filter keeps: amount over all of them; profit, profitAmount (their amount) and margin
+// only over the profitOrders whose profit is known (profit null when none is).
+export type OrderProfitPage = { items: OrderProfit[]; totalCount: number; page: number; pageSize: number; amount: number; profit: number | null; missingCost: number
+  profitAmount: number; profitOrders: number; margin: number | null; missingCargo: number }
 type Sort = 'date' | 'amount' | 'profit' | 'profitOnCost' | 'margin'
 
 const money = (value: number) => `${value < 0 ? '−' : ''}₺${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const percent = (value: number | null) => value === null ? '—' : `%${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const tone = (value: number | null) => value === null ? 'is-unknown' : value < 0 ? 'is-loss' : 'is-gain'
+const count = (value: number) => value.toLocaleString('tr-TR')
 export const stateText: Record<OrderProfit['state'], string | null> = { SOLD: null, PARTLY_RETURNED: 'Kısmi İade', RETURNED: 'İade' }
+
+// Why an order's profit is unknown: a line without a product cost, or a cargo that could not be estimated.
+export const unknownProfit = (order: OrderProfit) => order.cost === null ? 'Maliyet eksik' : 'Kargo bilinmiyor'
+
+// The summary's note when some orders' profit is unknown: the profit and the margin are theirs only, not the period's.
+export function profitScope(page: OrderProfitPage) {
+  if (page.profitOrders >= page.totalCount) return null
+  const left = [page.missingCost > 0 && `maliyeti eksik ${count(page.missingCost)}`, page.missingCargo > 0 && `kargosu bilinmeyen ${count(page.missingCargo)}`]
+    .filter(Boolean).join(', ')
+  return page.profitOrders === 0
+    ? `Hiçbir siparişin kârı bilinmiyor (${left} sipariş); Kâr ve Kâr Marjı hesaplanamadı.`
+    : `Kâr ve Kâr Marjı yalnız kârı bilinen ${count(page.profitOrders)} / ${count(page.totalCount)} siparişten (${money(page.profitAmount)} tutar) hesaplandı; ${left} sipariş dışarıda.`
+}
 
 // The query of a page: the period and platforms of the report, the search, the order and the page.
 export function orderProfitQuery(filters: { from: string; to: string; platforms: string[] | null; search: string; sort: Sort; descending: boolean; page: number }) {
@@ -46,7 +64,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState<OrderProfit | null>(null)
   const query = orderProfitQuery({ from, to, platforms, search: applied, sort, descending, page })
-  const result = useQuery({ queryKey: ['report-order-profit', query], queryFn: () => hubApi<Page>(`/reports/order-profitability?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const result = useQuery({ queryKey: ['report-order-profit', query], queryFn: () => hubApi<OrderProfitPage>(`/reports/order-profitability?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = result.data
   const pageCount = data ? Math.max(1, Math.ceil(data.totalCount / data.pageSize)) : 1
   // A header click orders by it, highest first; a second click turns the order round.
@@ -66,10 +84,12 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
     {data && <dl className="reports-order-summary">
       <div><dt>Sipariş</dt><dd>{data.totalCount.toLocaleString('tr-TR')}</dd></div>
       <div><dt>Sipariş Tutarı</dt><dd>{money(data.amount)}</dd></div>
-      <div><dt>Kâr</dt><dd className={tone(data.profit)}>{money(data.profit)}</dd></div>
-      <div><dt>Kâr Marjı</dt><dd>{percent(data.amount > 0 ? Math.round(data.profit / data.amount * 10000) / 100 : null)}</dd></div>
-      {data.missingCost > 0 && <div className="is-warn"><dt>Maliyeti Eksik</dt><dd>{data.missingCost.toLocaleString('tr-TR')} sipariş</dd></div>}
+      <div><dt>Kâr</dt><dd className={tone(data.profit)}>{data.profit === null ? '—' : money(data.profit)}</dd></div>
+      <div><dt>Kâr Marjı</dt><dd>{percent(data.margin)}</dd></div>
+      {data.missingCost > 0 && <div className="is-warn"><dt>Maliyeti Eksik</dt><dd>{count(data.missingCost)} sipariş</dd></div>}
+      {data.missingCargo > 0 && <div className="is-warn"><dt>Kargosu Bilinmeyen</dt><dd>{count(data.missingCargo)} sipariş</dd></div>}
     </dl>}
+    {data && profitScope(data) && <p className="reports-order-scope" role="note">{profitScope(data)}</p>}
     {result.isLoading && <Busy />}
     {result.isError && <ErrorBox error={result.error} onRetry={() => void result.refetch()} />}
     {data && data.items.length === 0 && <p className="reports-empty">Bu dönemde sipariş yok.</p>}
@@ -81,7 +101,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
           {stateText[item.state] && <em className="reports-order-badge is-return">{stateText[item.state]}</em>}</span></th>
         <td>{formatIstanbul(item.orderedAt, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
         <td className="is-num">{money(item.amount)}</td>
-        <td className={`is-num ${tone(item.profit)}`}>{item.profit === null ? 'Maliyet eksik' : money(item.profit)}</td>
+        <td className={`is-num ${tone(item.profit)}`}>{item.profit === null ? unknownProfit(item) : money(item.profit)}</td>
         <td className={`is-num ${tone(item.profitOnCost)}`}>{percent(item.profitOnCost)}</td>
         <td className={`is-num ${tone(item.margin)}`}>{percent(item.margin)}</td>
         <td><button type="button" className="secondary reports-order-detail" onClick={() => setOpen(item)}>Detaylar</button></td>
@@ -112,7 +132,7 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
     description={`${formatIstanbul(order.orderedAt, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${order.storeName}${order.microExport ? ` · Mikro ihracat (${order.storeFront})` : ''}`}>
     <div className={`reports-order-result ${tone(order.profit)}`}>
       <span>Bu siparişteki net kârınız<small>Tüm giderler çıkarıldıktan sonra</small></span>
-      <strong>{order.profit === null ? 'Maliyet eksik' : money(order.profit)}</strong>
+      <strong>{order.profit === null ? unknownProfit(order) : money(order.profit)}</strong>
     </div>
     <div className="reports-order-columns">
       <section>
@@ -136,7 +156,7 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
           <li><span><b>Ürün Maliyeti</b><small>Ürün ayarlarındaki maliyet</small></span><strong>{order.cost === null ? 'Eksik' : money(-order.cost)}</strong></li>
           {order.costs.map(cost => <li key={cost.key}>
             <span><b>{cost.label}{cost.estimated && <em>Tahmini</em>}</b>{cost.source && <small>{cost.source}</small>}</span>
-            <strong>{money(-cost.amount)}</strong>
+            <strong>{cost.amount === null ? 'Bilinmiyor' : money(-cost.amount)}</strong>
           </li>)}
         </ul>
       </section>

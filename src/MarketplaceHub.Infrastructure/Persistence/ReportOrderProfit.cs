@@ -88,16 +88,20 @@ internal static class ReportOrderProfit
                 : trendyol ? "Siparişten gelen oran; Trendyol indirimli komisyonu sipariş işleme alınınca bildirir, oran o zaman güncellenir"
                 : "Siparişteki komisyon oranından"));
 
-            decimal orderCargo, serviceFee, stoppage, paymentFee = 0m, vatFees;
+            decimal? orderCargo;
+            decimal serviceFee, stoppage, paymentFee = 0m, vatFees;
             if (trendyol)
             {
                 var perOrder = finance?.CargoSamples.GetValueOrDefault(store)?.PerOrder;
                 var billed = cargo.GetValueOrDefault(id);
-                var estimatedShip = !shipped.Contains(id) && perOrder is { } ship ? ship : 0m;
-                var estimatedReturn = order.Back > 0 && !returnBilled.Contains(id) && perOrder is { } back ? back : 0m;
-                orderCargo = Round(billed + estimatedShip + estimatedReturn);
-                costs.Add(new("cargo", order.Back > 0 ? "Kargo (Gönderi ve İade)" : "Kargo", orderCargo, estimatedShip + estimatedReturn > 0,
-                    estimatedShip + estimatedReturn > 0 ? "Mağazanın güncel kargo tarifesinden; fatura kesilince kesin tutar yansır" : "Kargo faturasından"));
+                var unbilled = (!shipped.Contains(id) ? 1 : 0) + (order.Back > 0 && !returnBilled.Contains(id) ? 1 : 0);
+                var estimated = unbilled * (perOrder ?? 0m);
+                // A cargo neither billed nor estimable (no store tariff: no cargo billed in the 60 days before the period's
+                // end) is unknown, and so the profit, as the report's cargo is (ReportCosts.Notes); never 0 "from the invoice".
+                orderCargo = unbilled > 0 && perOrder is null ? null : Round(billed + estimated);
+                costs.Add(new("cargo", order.Back > 0 ? "Kargo (Gönderi ve İade)" : "Kargo", orderCargo, estimated > 0,
+                    orderCargo is null ? "Kargo faturası henüz yok ve son 60 günde faturalanmış kargo olmadığı için tahmin edilemedi"
+                    : estimated > 0 ? "Mağazanın güncel kargo tarifesinden; fatura kesilince kesin tutar yansır" : "Kargo faturasından"));
                 var settledFees = settled.Contains(id);
                 serviceFee = Round(settledFees ? fees.GetValueOrDefault((id, MarketplaceFinanceCategories.ServiceFee))
                     : ReportCosts.PlatformServiceFeePerOrder + (domestic ? 0m : order.Kept * ReportCosts.InternationalServiceFeeRate));
@@ -133,13 +137,16 @@ internal static class ReportOrderProfit
             var salesVat = domestic ? order.Lines.Sum(line => ReportCosts.Vat(line.KeptAmount, line.Row.VatRate)) : 0m;
             var costVat = keptLines.Where(line => line.Row.CostPrice is > 0).Sum(line => ReportCosts.Vat(line.Row.CostPrice!.Value * line.KeptUnits, line.Row.VatRate));
             // Each VAT rounded to kuruş on its own, as the invoices carry it (25 Oct 2026: 42.36 − 14.55 − 16.00 − 16.39 − 2.20).
-            var expenseVat = Round(ReportCosts.Vat(orderCommission, ReportCosts.ExpenseVatRate)) + Round(ReportCosts.Vat(orderCargo, ReportCosts.ExpenseVatRate))
-                + Round(ReportCosts.Vat(vatFees, ReportCosts.ExpenseVatRate));
-            var netVat = Round(salesVat) - Round(costVat) - expenseVat;
-            costs.Add(new("netVat", "Net KDV", netVat, false, "Satış KDV'si − maliyet, komisyon, kargo ve hizmet bedeli KDV'si"));
+            // An unknown cargo leaves its VAT, and so the net VAT, unknown.
+            decimal? netVat = orderCargo is { } knownCargo
+                ? Round(salesVat) - Round(costVat) - Round(ReportCosts.Vat(orderCommission, ReportCosts.ExpenseVatRate))
+                    - Round(ReportCosts.Vat(knownCargo, ReportCosts.ExpenseVatRate)) - Round(ReportCosts.Vat(vatFees, ReportCosts.ExpenseVatRate))
+                : null;
+            costs.Add(new("netVat", "Net KDV", netVat, false, netVat is null ? "Kargo bilinmediği için hesaplanamadı" : "Satış KDV'si − maliyet, komisyon, kargo ve hizmet bedeli KDV'si"));
 
             var amount = Round(order.Kept);
-            decimal? profit = productCost is { } knownCost ? Round(amount - knownCost - orderCommission - orderCargo - serviceFee - stoppage - paymentFee - other - netVat) : null;
+            decimal? profit = productCost is { } knownCost && orderCargo is { } cargoCost && netVat is { } vat
+                ? Round(amount - knownCost - orderCommission - cargoCost - serviceFee - stoppage - paymentFee - other - vat) : null;
             var state = order.Back > 0 && order.Kept == 0m ? "RETURNED" : order.Back > 0 ? "PARTLY_RETURNED" : "SOLD";
             views.Add(new ReportOrderProfitView(id, order.Order.OrderNumber, order.PlatformCode, input.Channels.TryGetValue(store, out var channel) ? channel.DisplayName : "",
                 order.Order.StoreFrontCode, !domestic, order.Order.RealAt, state, amount, productCost, profit,
@@ -152,6 +159,21 @@ internal static class ReportOrderProfit
         }
         return views;
     }
+
+    // The page's totals: the amount of every order, but the profit and the margin only of the orders whose profit is
+    // known, so an order without a cost (or with an unknown cargo) neither counts as 0 profit nor pulls the margin down.
+    public static OrderTotals Totals(IReadOnlyCollection<ReportOrderProfitView> orders)
+    {
+        var known = orders.Where(order => order.Profit is not null).ToList();
+        var profit = known.Count == 0 ? (decimal?)null : known.Sum(order => order.Profit!.Value);
+        var profitAmount = known.Sum(order => order.Amount);
+        return new(orders.Sum(order => order.Amount), profit, profitAmount, known.Count,
+            profit is { } p && profitAmount > 0 ? Math.Round(p / profitAmount * 100m, 2) : null,
+            orders.Count(order => order.Cost is null),
+            orders.Count(order => order.Costs.Any(cost => cost.Key == "cargo" && cost.Amount is null)));
+    }
+
+    internal sealed record OrderTotals(decimal Amount, decimal? Profit, decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCost, int MissingCargo);
 
     private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 }
