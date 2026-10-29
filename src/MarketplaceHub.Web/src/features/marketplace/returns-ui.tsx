@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
-import { thumbnailUrl } from '../../shared/product-thumbnail'
+import { thumbnailSources } from '../../shared/product-thumbnail'
 import { orderPlatformLogoSource, platformLogoSource } from '../../shared/platform-logos'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
@@ -262,13 +262,13 @@ export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => vo
 // Every 2:3 product image: a framed button that opens the preview, with the unit count bubble.
 export { thumbnailUrl } from '../../shared/product-thumbnail'
 
-export function RrThumb({ src, quantity, large, small, onOpen, alt }: { src: string | null | undefined; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string }) {
-  // 0: the small CDN copy, 1: the original (when the small copy fails), 2: no picture.
+export function RrThumb({ src, fallbackSrc, quantity, large, small, onOpen, alt }: { src: string | null | undefined; fallbackSrc?: string | null; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string }) {
+  // Each address that fails moves to the next (thumbnailSources); after the last one the frame stays empty.
   const [stage, setStage] = useState(0)
-  useEffect(() => setStage(0), [src])
-  const small0 = src ? thumbnailUrl(src) : null
-  const shown = !src || stage === 2 ? null : stage === 0 ? small0 : src
-  const content = <>{shown ? <img src={shown} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setStage(value => value === 0 && small0 !== src ? 1 : 2)} /> : null}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
+  useEffect(() => setStage(0), [src, fallbackSrc])
+  const sources = thumbnailSources(src, fallbackSrc)
+  const shown = sources[stage] ?? null
+  const content = <>{shown ? <img key={shown} src={shown} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setStage(value => value + 1)} /> : null}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
   const className = `rr-thumb${large ? ' rr-lg' : ''}${small ? ' rr-sm' : ''}`
   return onOpen ? <button type="button" className={className} onClick={event => { event.preventDefault(); event.stopPropagation(); onOpen() }} aria-label={`${alt} görselini büyüt`}>{content}</button> : <span className={className} role="img" aria-label={alt}>{content}</span>
 }

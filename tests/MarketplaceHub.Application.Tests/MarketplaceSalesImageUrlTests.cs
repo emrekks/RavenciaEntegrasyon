@@ -39,6 +39,65 @@ public sealed class MarketplaceSalesImageUrlTests
         Assert.Equal("https://productimages.hepsiburada.net/s/777/500/image.jpg", MarketplaceSalesService.NormalizeImageUrl(MarketplaceSalesService.SourceImageUrl(snapshot)));
     }
 
+    // Live 2026-10-29: a Hepsiburada line built from a claim lists the customer's photo (Reports[].ImageUrl) before the
+    // product's image; the line showed that unloadable claim photo and its frame stayed empty.
+    [Fact]
+    public void SourceImageUrlSkipsClaimEvidencePhotosListedBeforeTheProductImage()
+    {
+        const string snapshot = """
+            {"status":"Refunded","MerchantSku":"KRLHN517805",
+             "Reports":[{"ImageUrl":"https://images.hepsiburada.net/oms/claim/2026/10/11/photo.jpeg","ReportedBy":"Customer"}],
+             "productBarcode":"00KRLHN517805",
+             "productImageUrlFormat":"https://productimages.hepsiburada.net/s/777/{size}/110000846862267.jpg",
+             "imageUrl":"https://productimages.hepsiburada.net/s/777/{size}/110000846862267.jpg"}
+            """;
+
+        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/110000846862267.jpg", MarketplaceSalesService.NormalizeImageUrl(MarketplaceSalesService.SourceImageUrl(snapshot)));
+    }
+
+    [Fact]
+    public void SourceImageUrlIgnoresASnapshotWhoseOnlyImageIsAClaimPhoto()
+    {
+        const string snapshot = """{"Reports":[{"ImageUrl":"https://images.hepsiburada.net/oms/claim/photo.jpeg"}],"images":[]}""";
+
+        Assert.Null(MarketplaceSalesService.SourceImageUrl(snapshot));
+    }
+
+    [Fact]
+    public void SourceImageUrlPrefersTheProductImageFieldOverALaterGenericOne()
+    {
+        const string snapshot = """{"imageUrl":"https://cdn.example.test/generic.jpg","productImageUrl":"https://cdn.example.test/product.jpg"}""";
+
+        Assert.Equal("https://cdn.example.test/product.jpg", MarketplaceSalesService.SourceImageUrl(snapshot));
+    }
+
+    [Fact]
+    public void SourceImageUrlSkipsAnUnusableAddressForTheNextField()
+    {
+        const string snapshot = """{"productImageUrl":"http://insecure.example.test/a.jpg","imageUrl":"https://cdn.example.test/b.jpg"}""";
+
+        Assert.Equal("https://cdn.example.test/b.jpg", MarketplaceSalesService.SourceImageUrl(snapshot));
+    }
+
+    [Fact]
+    public void LineImageUrlsUseTheCatalogPhotoWhenTheMarketplaceGaveNone()
+    {
+        Assert.Equal<(string?, string?)>(("/api/v1/files/product-media/1/content", null), MarketplaceSalesService.LineImageUrls(null, "/api/v1/files/product-media/1/content"));
+    }
+
+    [Fact]
+    public void LineImageUrlsKeepTheCatalogPhotoAsFallbackBehindTheMarketplaceImage()
+    {
+        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", "https://cdn.example.test/catalog.jpg"), MarketplaceSalesService.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/catalog.jpg"));
+        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), MarketplaceSalesService.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/a.jpg"));
+    }
+
+    [Fact]
+    public void LineImageUrlsStayEmptyWhenNothingIsKnown()
+    {
+        Assert.Equal<(string?, string?)>((null, null), MarketplaceSalesService.LineImageUrls(null, null));
+    }
+
     [Fact]
     public void CatalogLookupKeysRemoveHepsiburadaZeroPaddingForAlphaNumericBarcodes()
     {
