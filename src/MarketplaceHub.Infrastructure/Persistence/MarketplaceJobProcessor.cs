@@ -9307,6 +9307,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     package.Version++;
                 }
                 if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; }
+                // The event is known, but a line the detailed read places in this package may have none: an order
+                // first built from a return claim held only the returned lines when the event was recorded, and the
+                // order read that brought the other lines found the event already recorded.
+                if (package is not null && !remotePackage.IsStatusObservation)
+                    telemetryInsertedCount += AddMissingLineAllocations(tenantId, package, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId);
                 continue;
             }
             var rejectedEventId = PackageIngestionSafety.RejectedEventId(eventId);
@@ -10051,6 +10056,38 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private static string AllocationKey(Guid packageId, Guid orderLineId, string sourceEventId) => $"{packageId:D}:{orderLineId:D}:{sourceEventId}";
+
+    // Adds the allocation of each line the read places in the package that has no allocation in any package of the
+    // order; a line already allocated somewhere is never allocated again, and an existing allocation is not changed.
+    // The quantities are the read's normalized ones (quantity integrity was checked for the whole package), shipped and
+    // delivered following the package's stored status. Stock follows the lines' ordered and cancelled quantities, so
+    // the allocation does not take the units from stock again; it only lets the line's shipped and delivered
+    // quantities be projected.
+    private int AddMissingLineAllocations(
+        Guid tenantId,
+        ShipmentPackage package,
+        IReadOnlyList<RemotePackageAllocation> remoteAllocations,
+        IReadOnlyDictionary<string, NormalizedPackageAllocation> safeAllocations,
+        IReadOnlyDictionary<string, OrderLine> lines,
+        Dictionary<string, PackageLineAllocation> allocationsByKey,
+        string eventId)
+    {
+        var allocatedLineIds = allocationsByKey.Values.Select(allocation => allocation.OrderLineId).ToHashSet();
+        var added = 0;
+        foreach (var remoteAllocation in remoteAllocations)
+        {
+            if (!lines.TryGetValue(remoteAllocation.ExternalLineId, out var line)
+                || !safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)
+                || !allocatedLineIds.Add(line.Id)) continue;
+            var shipped = package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered ? safe.ActiveAllocatedQuantity : safe.ShippedQuantity;
+            var delivered = package.Status == ShipmentPackageStatus.Delivered ? safe.ActiveAllocatedQuantity : safe.DeliveredQuantity;
+            var allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = shipped, DeliveredQuantity = delivered, ReturnedQuantity = safe.ReturnedQuantity };
+            db.PackageLineAllocations.Add(allocation);
+            allocationsByKey[AllocationKey(package.Id, line.Id, eventId)] = allocation;
+            added++;
+        }
+        return added;
+    }
 
     private async Task ProjectOrderReservations(Guid tenantId, Guid connectionId, IEnumerable<(OrderLine Line, DateTimeOffset ModifiedAt)> sourceLines, CancellationToken cancellationToken)
     {

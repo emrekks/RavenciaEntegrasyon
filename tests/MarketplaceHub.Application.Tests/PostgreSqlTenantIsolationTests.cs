@@ -2886,6 +2886,146 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // A claim-built order held only the returned line when its Delivered event was recorded; the order read that brings
+    // the other line finds the event already recorded and still allocates that line, once, without touching the
+    // returned line's allocation.
+    [PostgreSqlFact]
+    public async Task TrendyolOrderRead_AllocatesALineTheRecordedEventLeftOut()
+    {
+        var tenant = NewTenant("ty-claim-allocation");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        var returnedLineId = Guid.CreateVersion7();
+        const string externalOrderId = "11456630182";
+        const string packageNumber = "4198765432";
+        var deliveredAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-4).ToUnixTimeSeconds());
+        var eventId = PackageIngestionSafety.EventId(packageNumber, deliveredAt);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: true, fixture.Now);
+        order.LastRemoteModifiedAt = DateTimeOffset.UnixEpoch;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(new OrderLine { Id = returnedLineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Bluz", OrderedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, UnitPrice = 875m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 875m, NetAmount = 875m, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = deliveredAt, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = returnedLineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = eventId });
+            seedDb.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, PackageId = packageId, CanonicalStatus = "DELIVERED", RawStatus = "Delivered", SourceEventId = eventId, OccurredAt = deliveredAt, RecordedAt = fixture.Now });
+            await seedDb.SaveChangesAsync();
+        }
+
+        async Task SyncAsync()
+        {
+            var remotePackage = new RemotePackage(packageNumber, null, "Delivered", deliveredAt, null, null,
+                [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m), new RemotePackageAllocation("line-2", 1m, 0m, 1m, 1m, 0m)], 1750m, 40m, 1710m);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, deliveredAt.AddDays(-2), deliveredAt, "TRY", 1750m, 40m, 1710m, """{"customerFirstName":"Test"}""", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Bluz", 1m, 855m, 10m, "Delivered"), new RemoteOrderLine("line-2", "SKU-2", null, "Bluz", 1m, 855m, 10m, "Delivered")], [remotePackage], "{}");
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "claim-allocation", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        try
+        {
+            // Read twice: the second read finds the line allocated and adds nothing.
+            await SyncAsync();
+            await SyncAsync();
+            await using var check = fixture.CreateContext();
+            var lines = await check.OrderLines.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+            var allocations = await check.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+            Assert.Equal(2, lines.Count);
+            Assert.Equal(2, allocations.Count);
+            Assert.All(allocations, allocation => Assert.Equal((packageId, eventId, 1m, 1m, 1m), (allocation.PackageId, allocation.SourceEventId, allocation.AllocatedQuantity, allocation.ShippedQuantity, allocation.DeliveredQuantity)));
+            Assert.Single(allocations, allocation => allocation.OrderLineId == returnedLineId);
+            Assert.All(lines, line => Assert.Equal((1m, 1m, 0m), (line.ShippedQuantity, line.DeliveredQuantity, line.CancelledQuantity)));
+            Assert.Equal(1, await check.OrderStatusHistory.CountAsync(x => x.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // The repair of the lines the recorded event left without an allocation: only a line of a completed Trendyol order
+    // with one Delivered package whose allocations carry one event; run twice, it adds each allocation once.
+    [PostgreSqlFact]
+    public async Task RepairTrendyolClaimBuiltLineAllocationsMigration_AllocatesTheLeftOutLinesOnly()
+    {
+        var tenant = NewTenant("ty-claim-allocation-repair");
+        var trendyol = NewQuestionConnection(tenant);
+        var shopify = NewQuestionConnection(tenant);
+        shopify.PlatformCode = "SHOPIFY";
+        var seenAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-4).ToUnixTimeSeconds());
+        var missing = new Dictionary<string, Guid>();
+
+        void Seed(AppDbContext db, Guid connectionId, string name, bool isReturnClaim = false, ShipmentPackageStatus status = ShipmentPackageStatus.Delivered, int packages = 1)
+        {
+            var orderId = Guid.CreateVersion7();
+            db.Orders.Add(NewInvoiceTestOrder(tenant.Id, connectionId, orderId, $"{name}-{orderId:N}", isReturnClaim, fixture.Now));
+            var allocatedLineId = Guid.CreateVersion7();
+            var missingLineId = Guid.CreateVersion7();
+            missing[name] = missingLineId;
+            db.OrderLines.Add(new OrderLine { Id = allocatedLineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Bluz", OrderedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
+            db.OrderLines.Add(new OrderLine { Id = missingLineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-2", Sku = "SKU-2", TitleSnapshot = "Bluz", OrderedQuantity = 2m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
+            for (var index = 1; index <= packages; index++)
+            {
+                var packageId = Guid.CreateVersion7();
+                var packageNumber = $"{orderId:N}-{index}";
+                db.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connectionId, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 300m, NetAmount = 300m, Status = status, RawStatus = status.ToString(), StatusOccurredAt = seenAt, CreatedAt = seenAt, UpdatedAt = seenAt, Version = 1 });
+                if (index == 1)
+                    db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = allocatedLineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId(packageNumber, seenAt) });
+            }
+        }
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(trendyol, shopify);
+            Seed(seedDb, trendyol.Id, "repaired");
+            Seed(seedDb, trendyol.Id, "still-claim", isReturnClaim: true);
+            Seed(seedDb, trendyol.Id, "shipped", status: ShipmentPackageStatus.Shipped);
+            Seed(seedDb, trendyol.Id, "two-packages", packages: 2);
+            Seed(seedDb, shopify.Id, "shopify");
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            var migration = new MarketplaceHub.Infrastructure.Persistence.Migrations.RepairTrendyolClaimBuiltLineAllocations();
+            for (var run = 0; run < 2; run++)
+                await using (var db = fixture.CreateContext())
+                    foreach (var operation in migration.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>())
+                        await db.Database.ExecuteSqlRawAsync(operation.Sql);
+
+            await using var check = fixture.CreateContext();
+            var lines = await check.OrderLines.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+            var allocations = await check.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+            var repaired = lines[missing["repaired"]];
+            Assert.Equal((2m, 2m, 2L), (repaired.ShippedQuantity, repaired.DeliveredQuantity, repaired.Version));
+            var added = Assert.Single(allocations, x => x.OrderLineId == repaired.Id);
+            var sibling = Assert.Single(allocations, x => x.PackageId == added.PackageId && x.OrderLineId != repaired.Id);
+            Assert.Equal((sibling.SourceEventId, 2m, 0m, 2m, 2m, 0m), (added.SourceEventId, added.AllocatedQuantity, added.CancelledQuantity, added.ShippedQuantity, added.DeliveredQuantity, added.ReturnedQuantity));
+            foreach (var name in new[] { "still-claim", "shipped", "two-packages", "shopify" })
+            {
+                var untouched = lines[missing[name]];
+                Assert.Equal((0m, 0m, 1L), (untouched.ShippedQuantity, untouched.DeliveredQuantity, untouched.Version));
+                Assert.DoesNotContain(allocations, x => x.OrderLineId == untouched.Id);
+            }
+            // The repair moves no stock.
+            Assert.Equal(0, await check.StockLedgerEntries.CountAsync(x => x.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     // The repair of the orders the claim-built amounts left wrong: only a completed Trendyol order with one package,
     // discount 0, net = gross and lines that carry Trendyol's amount, discount and price takes its lines' totals.
     [PostgreSqlFact]
