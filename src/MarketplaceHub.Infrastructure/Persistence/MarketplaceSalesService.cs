@@ -210,9 +210,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             {
                 var variant = ResolveOrderVariant(order, x);
                 var source = SourceLine(x.SourceSnapshotJson);
-                var imageUrl = string.IsNullOrWhiteSpace(source.ImageUrl) ? null : source.ImageUrl;
+                var images = LineImageUrls(string.IsNullOrWhiteSpace(source.ImageUrl) ? null : source.ImageUrl, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
                 var barcode = string.IsNullOrWhiteSpace(x.Barcode) ? variant?.Barcode : x.Barcode;
-                return new OrderLineView(x.Id, x.Sku, barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId ?? variant?.Id, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, imageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
+                return new OrderLineView(x.Id, x.Sku, barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId ?? variant?.Id, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl, FallbackImageUrl: images.FallbackImageUrl);
             }).ToList();
             // Live packages first (each still by its latest event): the card, its label and its
             // actions take the first package, which must not be a cancelled split package.
@@ -734,7 +734,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
             var source = SourceLine(x.SourceSnapshotJson);
-            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)), allocatedQuantities.GetValueOrDefault(x.Id));
+            var images = LineImageUrls(source.ImageUrl, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
+            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl, allocatedQuantities.GetValueOrDefault(x.Id), FallbackImageUrl: images.FallbackImageUrl);
         }).ToList();
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
         var packages = await CurrentShipmentPackages().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -3194,14 +3195,48 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         return new(image, JsonText(snapshot, "modelCode"), options.Count == 0 ? null : string.Join(" | ", options));
     }
 
+    // The product's own image fields, the most specific first. The first field that holds a usable address wins,
+    // wherever it sits in the snapshot: a match in document order picked a claim photo listed before the product's.
+    private static readonly string[] ProductImageFields = ["productImageUrl", "productImageUrlFormat", "emaproductImageUrlFormat", "imageUrl", "productImage", "image"];
+
+    // Parts of a line snapshot whose images are not the product: a Hepsiburada claim merged into the line keeps the
+    // customer's evidence photos under Reports[].ImageUrl (an images.hepsiburada.net/oms/claim address the panel cannot load).
+    private static readonly HashSet<string> NonProductImageContainers = new(StringComparer.OrdinalIgnoreCase) { "Reports" };
+
     internal static string? SourceImageUrl(string json)
     {
         try
         {
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
-            return FindImageUrl(document.RootElement) ?? JsonText(json, "productImageUrl", "productImageUrlFormat", "emaproductImageUrlFormat", "imageUrl", "productImage", "image");
+            return FindImageUrl(document.RootElement)
+                ?? ProductImageFields.Select(field => FindImageField(document.RootElement, field)).FirstOrDefault(value => value is not null);
         }
         catch (JsonException) { return null; }
+    }
+
+    // The line's image and, when it is the marketplace's, the catalog's photo to show if that address no longer loads.
+    internal static (string? ImageUrl, string? FallbackImageUrl) LineImageUrls(string? sourceImageUrl, string? catalogImageUrl) =>
+        sourceImageUrl is null
+            ? (catalogImageUrl, null)
+            : (sourceImageUrl, catalogImageUrl is null || string.Equals(catalogImageUrl, sourceImageUrl, StringComparison.Ordinal) ? null : catalogImageUrl);
+
+    private static string? FindImageField(JsonElement element, string field)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (NonProductImageContainers.Contains(property.Name)) continue;
+                if (property.Name.Equals(field, StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
+                {
+                    var value = property.Value.GetString();
+                    if (NormalizeImageUrl(value) is not null) return value;
+                }
+                var nested = FindImageField(property.Value, field); if (nested is not null) return nested;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array) foreach (var item in element.EnumerateArray()) { var nested = FindImageField(item, field); if (nested is not null) return nested; }
+        return null;
     }
 
     internal static string? NormalizeImageUrl(string? value)
@@ -3223,11 +3258,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             foreach (var property in element.EnumerateObject())
             {
+                if (NonProductImageContainers.Contains(property.Name)) continue;
                 if (property.Name.Equals("images", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Array)
                     foreach (var image in property.Value.EnumerateArray())
                     {
                         var url = image.ValueKind == JsonValueKind.Object && image.TryGetProperty("url", out var value) ? value.ToString() : image.ToString();
-                        if (!string.IsNullOrWhiteSpace(url)) return url;
+                        if (NormalizeImageUrl(url) is not null) return url;
                     }
                 var nested = FindImageUrl(property.Value); if (!string.IsNullOrWhiteSpace(nested)) return nested;
             }

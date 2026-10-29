@@ -1087,7 +1087,9 @@ public sealed record OrderLineView(
     string? ImageUrl = null,
     decimal AllocatedQuantity = 0,
     // Return lists only: what the returned quantity is worth, calculated from the order (ReturnRefundAmounts).
-    decimal? RefundAmount = null);
+    decimal? RefundAmount = null,
+    // The catalog's photo of the line's variant when ImageUrl is the marketplace's own address; shown if that one fails to load.
+    string? FallbackImageUrl = null);
 public sealed record ShipmentView(
     Guid Id,
     Guid OrderId,
