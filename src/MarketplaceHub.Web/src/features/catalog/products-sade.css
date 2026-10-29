@@ -351,3 +351,7 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * { grid-column: auto; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > :last-child { grid-column: 1 / -1; }
 }
+
+/* Variant stock table: a little less room on the right, where the last size's cell padding added to the popup's. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { padding-right: 6px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtab :is(th, td):last-child { padding-right: 2px; }
