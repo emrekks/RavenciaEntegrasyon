@@ -23,6 +23,72 @@ public sealed class PackageIngestionSafetyTests
         Assert.Equal(now.AddMinutes(1), PackageIngestionSafety.StatusTime(ptt, now.AddMinutes(1), now));
     }
 
+    // Audit 29 Oct S-1: the seen time a PTT AVM package stores names no event; the read that reports the status the
+    // package holds names the one its allocations were written under, so a cancellation and a delivery reach the line.
+    [Theory]
+    [InlineData("Cancelled", 6, 1, 0, 0)]
+    [InlineData("Delivered", 5, 0, 1, 1)]
+    public void APackageWithoutAStatusTimeProjectsTheEventOfTheReadThatReportsItsStatus(string rawStatus, int step, int cancelled, int shipped, int delivered)
+    {
+        var lineId = Guid.NewGuid();
+        var orderedAt = DateTimeOffset.Parse("2026-10-26T09:00:00Z");
+        var package = Package("order:PTT-1", DateTimeOffset.Parse("2026-10-28T14:00:00Z"));
+        package.RawStatus = rawStatus;
+        var read = new MarketplaceHub.Application.RemotePackage(package.ExternalPackageId, null, rawStatus, orderedAt.AddSeconds(step), null, null, [], StatusTimeUnknown: true);
+
+        var result = PackageLineProjectionPolicy.Recalculate(
+            [package],
+            [
+                Allocation(package, lineId, orderedAt.AddSeconds(2)),
+                Allocation(package, lineId, orderedAt.AddSeconds(step), cancelled, shipped, delivered)
+            ],
+            [read]);
+
+        Assert.Equal(cancelled, result[lineId].CancelledQuantity);
+        Assert.Equal(shipped, result[lineId].ShippedQuantity);
+        Assert.Equal(delivered, result[lineId].DeliveredQuantity);
+    }
+
+    // A read whose status the package refused names an event that was not applied: the lines keep what they hold.
+    [Fact]
+    public void APackageWithoutAStatusTimeIgnoresAReadOfAStatusItDoesNotHold()
+    {
+        var lineId = Guid.NewGuid();
+        var orderedAt = DateTimeOffset.Parse("2026-10-26T09:00:00Z");
+        var package = Package("order:PTT-1", DateTimeOffset.Parse("2026-10-28T14:00:00Z"));
+        var read = new MarketplaceHub.Application.RemotePackage(package.ExternalPackageId, null, "Cancelled", orderedAt.AddSeconds(6), null, null, [], StatusTimeUnknown: true);
+
+        var result = PackageLineProjectionPolicy.Recalculate(
+            [package],
+            [Allocation(package, lineId, orderedAt.AddSeconds(5), shipped: 1, delivered: 1)],
+            [read]);
+
+        Assert.Empty(result);
+    }
+
+    // Marketplaces that send a status time (Trendyol, Hepsiburada, Shopify, n11, Pazarama) keep the event their
+    // stored status time names, whatever the read in hand carries.
+    [Fact]
+    public void APackageWithAStatusTimeKeepsTheEventItsStatusTimeNames()
+    {
+        var lineId = Guid.NewGuid();
+        var oldAt = DateTimeOffset.Parse("2026-09-09T10:00:00Z");
+        var currentAt = DateTimeOffset.Parse("2026-09-09T10:01:00Z");
+        var package = Package("package-1", currentAt);
+        var olderRead = new MarketplaceHub.Application.RemotePackage(package.ExternalPackageId, null, "Delivered", oldAt, null, null, []);
+        IReadOnlyList<PackageLineAllocation> allocations =
+        [
+            Allocation(package, lineId, oldAt, shipped: 1),
+            Allocation(package, lineId, currentAt, shipped: 1, delivered: 1)
+        ];
+
+        var withRead = PackageLineProjectionPolicy.Recalculate([package], allocations, [olderRead]);
+        var withoutRead = PackageLineProjectionPolicy.Recalculate([package], allocations);
+
+        Assert.Equal(withoutRead[lineId], withRead[lineId]);
+        Assert.Equal(1m, withRead[lineId].DeliveredQuantity);
+    }
+
     [Fact]
     public void MissingAllocationsAreRejectedWhenOrderHasLines()
     {
