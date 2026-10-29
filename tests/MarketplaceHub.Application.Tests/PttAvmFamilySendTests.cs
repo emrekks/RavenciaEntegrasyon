@@ -89,4 +89,39 @@ public sealed class PttAvmFamilySendTests
 
         Assert.Equal("t:new", PttAvmFamilySend.Covering(Payload(variants: Family), [older, newer], Now)!.ExternalOperationId);
     }
+
+    private static (string PayloadJson, bool Succeeded, DateTimeOffset CreatedAt) Job(ProductPublicationJobPayload payload, bool succeeded = true) =>
+        (System.Text.Json.JsonSerializer.Serialize(payload), succeeded, payload.SubmittedAt ?? Now);
+
+    // Live 2026-10-29: a bulk publication of MZ053TCD queued one card of eight; its request carried every variant and
+    // finished, the other seven cards kept no state. A card the family's finished send carried is taken into it.
+    [Fact]
+    public void ACardTheFamilysFinishedSendCarriedIsTakenIntoIt()
+    {
+        var send = Sent(Payload(variants: Family), TimeSpan.FromHours(3), operation: "t:6ae35b6f");
+
+        var carrying = PttAvmFamilySend.Carrying(["MZDB003YESLS", "mzdb003yeslm "], [Job(send)]);
+
+        Assert.Equal("t:6ae35b6f", carrying!.ExternalOperationId);
+        Assert.Equal("hash", carrying.PayloadHash);
+    }
+
+    [Fact]
+    public void OnlyTheFamilysLatestFinishedSendCarryingEveryVariantOfTheCardTakesItIn()
+    {
+        var older = Sent(Payload(variants: Family), TimeSpan.FromHours(5), operation: "t:old");
+        var newerWithoutTheCard = Sent(Payload(variants: Family[..2]), TimeSpan.FromHours(1), operation: "t:new");
+
+        // The latest send left the card's variants out (PTT AVM deletes the variants a request leaves out): unknown.
+        Assert.Null(PttAvmFamilySend.Carrying(["mzdb003yesls"], [Job(older), Job(newerWithoutTheCard)]));
+        // One of the card's variants was not in the send.
+        Assert.Null(PttAvmFamilySend.Carrying(["mzdb003yesls", "mzdb003yesll"], [Job(older)]));
+        // The latest send did not finish (refused, manual review): unknown.
+        Assert.Null(PttAvmFamilySend.Carrying(["mzdb003lacs"], [Job(older), Job(Sent(Payload(variants: Family), TimeSpan.FromMinutes(30), operation: "t:review"), succeeded: false)]));
+        // A job that never reached PTT AVM is no send; the finished send before it answers.
+        Assert.Equal("t:old", PttAvmFamilySend.Carrying(["mzdb003lacs"], [Job(older), Job(Sent(Payload(variants: Family), TimeSpan.Zero, phase: "SUBMIT"), succeeded: false)])!.ExternalOperationId);
+        // A card without barcodes, or no send at all, is left as it is.
+        Assert.Null(PttAvmFamilySend.Carrying(["mzdb003lacs", " "], [Job(older)]));
+        Assert.Null(PttAvmFamilySend.Carrying(["mzdb003lacs"], []));
+    }
 }

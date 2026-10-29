@@ -66,7 +66,28 @@ internal static class PttAvmFamilySend
         return Covering(ownPayloadJson, payloads.Select(Read).OfType<ProductPublicationJobPayload>(), now);
     }
 
-    private static ProductPublicationJobPayload? Read(string payloadJson)
+    // A colour card the family's send carried while the card had no publication of its own (live 2026-10-29: a bulk
+    // publication of MZ053TCD queued one card of eight, its request carried all 24 variants, the other seven cards kept
+    // no state). jobs are the family's product jobs on the connection. The family's latest send (the newest job that
+    // reached PTT AVM with a tracking id) answers, only when it finished and carried every one of the card's variant
+    // barcodes (case-insensitive); otherwise null, and the card is left as it is.
+    internal static ProductPublicationJobPayload? Carrying(IReadOnlyCollection<string> cardBarcodes, IEnumerable<(string PayloadJson, bool Succeeded, DateTimeOffset CreatedAt)> jobs)
+    {
+        if (cardBarcodes.Count == 0 || cardBarcodes.Any(string.IsNullOrWhiteSpace)) return null;
+        var latest = jobs
+            .Select(job => (Payload: Read(job.PayloadJson), job.Succeeded, job.CreatedAt))
+            .Where(job => job.Payload is { } payload && string.Equals(payload.Phase, "POLL", StringComparison.OrdinalIgnoreCase)
+                && payload.ExternalOperationId is { Length: > 0 } operation && operation.StartsWith("t:", StringComparison.Ordinal)
+                && payload.SubmittedAt is not null && PttAvmProductPayloadRules.IsVariantPayload(payload.PayloadJson))
+            .OrderByDescending(job => job.Payload!.SubmittedAt)
+            .ThenByDescending(job => job.CreatedAt)
+            .FirstOrDefault();
+        if (latest.Payload is null || !latest.Succeeded) return null;
+        var sent = PttAvmProductPayloadRules.Read(latest.Payload.PayloadJson, out _)?.Variants?.Select(x => x.Barcode.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return sent is not null && cardBarcodes.All(barcode => sent.Contains(barcode.Trim())) ? latest.Payload : null;
+    }
+
+    internal static ProductPublicationJobPayload? Read(string payloadJson)
     {
         try { return JsonSerializer.Deserialize<ProductPublicationJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
         catch (JsonException) { return null; }

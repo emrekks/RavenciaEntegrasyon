@@ -872,6 +872,168 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(draft.Value.PayloadHash, metafields["payload_hash"]);
     }
 
+    // A PTT AVM model family of two colour cards (Siyah, Kahverengi) with two sizes each, ready to send but without a
+    // PTT AVM price: the price comes from the cards' Trendyol offers, as in a bulk publication.
+    private async Task<(Tenant Tenant, PlatformConnection PttAvm, Product Black, Product Brown, ProductVariant[] Variants)> SeedPttAvmFamilyAsync(string code)
+    {
+        var tenant = NewTenant(code);
+        var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var now = DateTimeOffset.UtcNow;
+        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz", IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var snapshot = new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ResourceType = "CATEGORIES", ScopeExternalId = "", SourceVersion = "categories-v1", ContentHash = "hash-categories-v1", FetchedAt = now, IsCurrent = true, ItemCount = 1 };
+        var leaf = new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, SnapshotId = snapshot.Id, ResourceType = "CATEGORIES", ExternalId = "1632", Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz", PayloadHash = "h", IsActive = true, IsLeaf = true };
+        var mapping = new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, SnapshotId = snapshot.Id, LocalId = category.Id, ExternalId = "1632", Status = "VERIFIED", VerifiedAt = now, Version = 1 };
+        var rows = new List<object>();
+        var variants = new List<ProductVariant>();
+        Product Card(string colour, string prefix, DateTimeOffset createdAt)
+        {
+            var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Yonca Bluz", Description = "Penye bluz", CategoryId = category.Id, Status = ProductStatus.Active, CreatedAt = createdAt, UpdatedAt = createdAt };
+            foreach (var (size, index) in new[] { ("L", 0), ("XL", 1) })
+            {
+                var sku = $"{prefix}-{size}-{Guid.NewGuid():N}"[..20];
+                var barcode = $"mz053{prefix.ToLowerInvariant()}{size.ToLowerInvariant()}";
+                variants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode.ToUpperInvariant(), ModelCode = "MZ053TCD", OptionSignature = $"Renk: {colour} | Beden: {size}", Desi = 1m, SortOrder = index, CreatedAt = createdAt, UpdatedAt = createdAt });
+            }
+            var asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = $"https://cdn.example.com/{colour}.jpg", MimeType = "image/jpeg", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = createdAt };
+            rows.AddRange([asset, new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, FileAssetId = asset.Id, MediaRole = "GALLERY", SortOrder = 0, Status = "ACTIVE" }]);
+            return product;
+        }
+        var black = Card("Siyah", "SYH", now.AddMinutes(-5));
+        var brown = Card("Kahverengi", "KHV", now);
+        await using var seed = fixture.CreateContext();
+        seed.Tenants.Add(tenant);
+        seed.PlatformConnections.AddRange(pttAvm, trendyol);
+        seed.Categories.Add(category);
+        seed.ReferenceSnapshots.Add(snapshot);
+        seed.ReferenceItems.Add(leaf);
+        seed.CategoryMappings.Add(mapping);
+        seed.Products.AddRange(black, brown);
+        seed.ProductVariants.AddRange(variants);
+        seed.AddRange(rows);
+        seed.InventoryItems.AddRange(variants.Select(variant => NewInventory(tenant, variant, 3m)));
+        seed.ChannelOffers.AddRange(variants.Select(variant => NewOffer(tenant, trendyol, variant)));
+        await seed.SaveChangesAsync();
+        return (tenant, pttAvm, black, brown, [.. variants]);
+    }
+
+    private CatalogService NewCatalogService(AppDbContext db) =>
+        new(db, null!, WritesOnConfiguration(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+
+    // Live 2026-10-29: a bulk publication of MZ053TCD's eight colour cards to PTT AVM priced and queued one card at a
+    // time; the family request needs every card's PTT AVM price, so seven cards were refused (CHANNEL_OFFER_REQUIRED)
+    // and only the last went out, carrying all 24 variants. Every card is now priced first, and every card is queued.
+    [PostgreSqlFact]
+    public async Task BulkPublication_QueuesEveryColourCardOfAPttAvmFamily()
+    {
+        var (tenant, pttAvm, black, brown, variants) = await SeedPttAvmFamilyAsync("pttavm-bulk-family");
+
+        await using var db = fixture.CreateContext();
+        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Empty(result.Value!.Failed);
+        Assert.Equal(2, result.Value.Queued);
+        var jobs = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.ProductCreate).ToListAsync();
+        Assert.Equal(2, jobs.Count);
+        Assert.Contains(jobs, job => job.JobDedupKey.StartsWith($"product-create:{pttAvm.Id:N}:{black.Id:N}:", StringComparison.Ordinal));
+        Assert.Contains(jobs, job => job.JobDedupKey.StartsWith($"product-create:{pttAvm.Id:N}:{brown.Id:N}:", StringComparison.Ordinal));
+        // Every card records its own variants on PTT AVM; the request of each carries the whole family.
+        var listed = await db.ChannelListingVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.VariantId).ToListAsync();
+        Assert.Equal(variants.Select(x => x.Id).Order(), listed.Order());
+        Assert.All(jobs, job => Assert.Equal(4, PttAvmProductPayloadRules.Read(PttAvmFamilySend.Read(job.PayloadJson)!.PayloadJson, out _)!.Variants!.Count));
+    }
+
+    // PTT AVM sends the family as one product, so a selected card goes with its family's other cards, as in the editor.
+    [PostgreSqlFact]
+    public async Task BulkPublication_OfOneCardOfAPttAvmFamilyQueuesTheWholeFamily()
+    {
+        var (tenant, pttAvm, black, brown, _) = await SeedPttAvmFamilyAsync("pttavm-bulk-one-card");
+
+        await using var db = fixture.CreateContext();
+        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Empty(result.Value!.Failed);
+        Assert.Equal(2, result.Value.Queued);
+        var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id).ToListAsync();
+        Assert.Equal(new[] { black.Id, brown.Id }.Order(), profiles.Select(x => x.ProductId).Order());
+        Assert.All(profiles, profile => Assert.Equal("QUEUED", profile.ActualStatus));
+    }
+
+    // A card the family's finished send carried without a job of its own (the MZ053TCD state on live) is taken into
+    // that send by the status refresh, which then reads its variants from PTT AVM; a card the latest send left out is not.
+    [PostgreSqlFact]
+    public async Task StatusRefresh_TakesAPttAvmCardTheFamilysSendCarriedIntoThatSend()
+    {
+        var (tenant, pttAvm, black, brown, variants) = await SeedPttAvmFamilyAsync("pttavm-refresh-family");
+        var now = DateTimeOffset.UtcNow;
+        const string hash = "149B5C8920DCEF01D4691A5AD5E3827D9DAE4EE7898208968EEC266F175D372A";
+        var blackProfile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ProductId = black.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "LIVE", Version = 3 };
+        var brownProfile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ProductId = brown.Id, Enabled = true, DesiredStatus = "DRAFT", ActualStatus = "UNKNOWN", Version = 1 };
+        var blackVariants = variants.Where(x => x.ProductId == black.Id).ToArray();
+        var familyPayload = PttAvmProductPayloadRules.Payload(new PttAvmProductPayloadRules.ProductDraft("MZ053TCD", "Yonca Bluz", "Penye bluz", "1632", "MZ053TCD", 120m, 20m, 12, 1m, ["https://cdn.example.com/Siyah.jpg"],
+            [.. variants.Select(x => new PttAvmProductPayloadRules.VariantDraft(x.Barcode!, x.OptionSignature!.Contains("Siyah") ? "Siyah" : "Kahverengi", x.OptionSignature.EndsWith("XL", StringComparison.Ordinal) ? "XL" : "L", 3))]));
+        var sendId = Guid.CreateVersion7();
+        var sendPayload = System.Text.Json.JsonSerializer.Serialize(new ProductPublicationJobPayload(sendId, black.Id, blackProfile.Id, "POLL", hash, familyPayload, "t:6ae35b6f", now.AddMinutes(-30)));
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.ChannelListingProfiles.AddRange(blackProfile, brownProfile);
+            foreach (var variant in blackVariants)
+            {
+                seed.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProfileId = blackProfile.Id, VariantId = variant.Id, ExternalSku = variant.Sku, ExternalBarcode = variant.Barcode, DesiredStatus = "LIVE", ActualStatus = "LIVE" });
+                seed.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = variant.Id, DesiredStatus = "LIVE", ActualStatus = "LIVE", PayloadHash = hash, Version = 2 });
+            }
+            var dedup = $"product-create:{pttAvm.Id:N}:{black.Id:N}:{hash}";
+            seed.IntegrationJobs.Add(new IntegrationJob { Id = sendId, TenantId = tenant.Id, ConnectionId = pttAvm.Id, JobType = MarketplaceJobTypes.ProductCreate, PayloadJson = sendPayload, PayloadVersion = 1, PayloadHash = "job-hash", JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:key", Priority = 10, Status = JobStatus.Succeeded, AvailableAt = now.AddMinutes(-31), MaxAttempts = 10, CorrelationId = "bulk", CreatedAt = now.AddMinutes(-31), CompletedAt = now.AddMinutes(-29), Version = 3 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var refreshed = await NewCatalogService(db).RequestPublicationStatusRefreshAsync(tenant.Id, black.Id, pttAvm.Id, CancellationToken.None);
+
+        Assert.True(refreshed.Succeeded, refreshed.Error?.Message);
+        db.ChangeTracker.Clear();
+        var brownVariantIds = variants.Where(x => x.ProductId == brown.Id).Select(x => x.Id).ToArray();
+        var listings = await db.ChannelListingVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ProfileId == brownProfile.Id).ToListAsync();
+        Assert.Equal(brownVariantIds.Order(), listings.Select(x => x.VariantId).Order());
+        Assert.All(listings, listing => Assert.Equal("BATCH_SUBMITTED", listing.ActualStatus));
+        var states = await db.MarketplaceListingStates.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id && brownVariantIds.Contains(x.VariantId)).ToListAsync();
+        Assert.Equal(2, states.Count);
+        Assert.All(states, state => Assert.Equal((hash, "BATCH_SUBMITTED"), (state.PayloadHash, state.ActualStatus)));
+        Assert.Equal("BATCH_SUBMITTED", (await db.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.Id == brownProfile.Id)).ActualStatus);
+        // The check that reads PTT AVM is queued for both cards; the send's result answers nothing by itself.
+        var checks = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile).Select(x => x.JobDedupKey).ToListAsync();
+        Assert.Contains($"product-approval:{pttAvm.Id:N}:{brownProfile.Id:N}:{hash}", checks);
+        Assert.Contains(checks, key => key.StartsWith($"product-approval:{pttAvm.Id:N}:{blackProfile.Id:N}:{hash}", StringComparison.Ordinal));
+    }
+
+    [PostgreSqlFact]
+    public async Task StatusRefresh_LeavesAPttAvmCardTheFamilysLatestSendDidNotCarry()
+    {
+        var (tenant, pttAvm, black, brown, variants) = await SeedPttAvmFamilyAsync("pttavm-refresh-uncarried");
+        var now = DateTimeOffset.UtcNow;
+        const string hash = "AB12";
+        var blackVariants = variants.Where(x => x.ProductId == black.Id).ToArray();
+        var blackOnly = PttAvmProductPayloadRules.Payload(new PttAvmProductPayloadRules.ProductDraft("MZ053TCD", "Yonca Bluz", "Penye bluz", "1632", "MZ053TCD", 120m, 20m, 6, 1m, ["https://cdn.example.com/Siyah.jpg"],
+            [.. blackVariants.Select(x => new PttAvmProductPayloadRules.VariantDraft(x.Barcode!, "Siyah", x.OptionSignature!.EndsWith("XL", StringComparison.Ordinal) ? "XL" : "L", 3))]));
+        var sendId = Guid.CreateVersion7();
+        var dedup = $"product-create:{pttAvm.Id:N}:{black.Id:N}:{hash}";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.ChannelListingProfiles.Add(new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ProductId = brown.Id, Enabled = true, DesiredStatus = "DRAFT", ActualStatus = "UNKNOWN", Version = 1 });
+            seed.IntegrationJobs.Add(new IntegrationJob { Id = sendId, TenantId = tenant.Id, ConnectionId = pttAvm.Id, JobType = MarketplaceJobTypes.ProductCreate, PayloadJson = System.Text.Json.JsonSerializer.Serialize(new ProductPublicationJobPayload(sendId, black.Id, Guid.CreateVersion7(), "POLL", hash, blackOnly, "t:only-black", now.AddMinutes(-30))), PayloadVersion = 1, PayloadHash = "job-hash", JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:key", Priority = 10, Status = JobStatus.Succeeded, AvailableAt = now.AddMinutes(-31), MaxAttempts = 10, CorrelationId = "bulk", CreatedAt = now.AddMinutes(-31), CompletedAt = now.AddMinutes(-29), Version = 3 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var refreshed = await NewCatalogService(db).RequestPublicationStatusRefreshAsync(tenant.Id, brown.Id, pttAvm.Id, CancellationToken.None);
+
+        Assert.Equal("PUBLICATION_STATE_REQUIRED", refreshed.Error?.Code);
+        Assert.False(await db.ChannelListingVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
+        Assert.False(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile));
+    }
+
     private static IConfiguration WritesOnConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
 
