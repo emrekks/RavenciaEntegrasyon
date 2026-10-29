@@ -2090,6 +2090,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 continue;
             }
             if (!found.Found && !isHepsiburada) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
+            // A Hepsiburada upload that failed as a whole proves nothing of the lines it leaves out: they are not recorded
+            // as sent, so the same values go again with the next send.
+            if (!found.Found && operation.Value.UnlistedLinesUnconfirmed)
+            {
+                failed++;
+                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:PRICE_INVENTORY_UPLOAD_FAILED", "PRICE_INVENTORY_UPLOAD_FAILED", $"Pazar yeri fiyat-stok yüklemesi başarısız döndü ve {line.Barcode} için satır sonucu vermedi; gönderilmiş sayılmadı.", cancellationToken);
+                continue;
+            }
             var lineSucceeded = !found.Found || found.Remote!.Succeeded;
             // Only an answered line speaks for the code: Hepsiburada lists the refused ones alone, so a line it leaves
             // out is accepted but proves nothing about the code.

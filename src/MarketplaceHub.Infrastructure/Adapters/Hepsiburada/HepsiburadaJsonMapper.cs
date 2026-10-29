@@ -427,7 +427,11 @@ internal static class HepsiburadaJsonMapper
         }
         if (lines.GroupBy(line => line.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
             throw new JsonException("Hepsiburada listing sonuçlarında yinelenen SKU var.");
-        return new($"LISTING_INVENTORY:{uploadId}", status, lines);
+        // Done lists the refused SKUs alone, so a SKU it leaves out was applied. A failed upload says nothing of the SKUs
+        // it leaves out: without any it is refused whole, with some those it leaves out stay unconfirmed. An error state
+        // that names no SKU is refused whole as well.
+        if (lines.Count == 0 && normalized is "FAILED" or "PARTIAL_SUCCESS" or "COMPLETED_WITH_ERRORS") return new($"LISTING_INVENTORY:{uploadId}", "REJECTED", []);
+        return new($"LISTING_INVENTORY:{uploadId}", status, lines, UnlistedLinesUnconfirmed: normalized == "FAILED");
     }
 
     public static RemoteOperationStatus ProductImportStatus(JsonElement root, string trackingId)

@@ -194,6 +194,43 @@ public sealed class HepsiburadaAdapterTests
         Assert.False(line.Succeeded);
         Assert.Equal("OutOfPriceRange", line.ErrorCode);
         Assert.Equal("LISTING_INVENTORY:71", mapped.ExternalOperationId);
+        Assert.False(mapped.UnlistedLinesUnconfirmed);
+    }
+
+    // A failed upload (or any error state) that names no SKU applied nothing: it is refused whole, never "completed with
+    // no refused line", which would record every price and stock as sent.
+    [Theory]
+    [InlineData("""{"status":"Failed"}""")]
+    [InlineData("""{"status":"Failed","errors":[]}""")]
+    [InlineData("""{"status":"FAILED","errors":null}""")]
+    [InlineData("""{"status":"PARTIAL_SUCCESS","errors":[]}""")]
+    [InlineData("""{"status":"Completed With Errors"}""")]
+    public void AnInventoryUploadThatFailedWithoutSkuErrorsIsRejected(string body)
+    {
+        using var failed = JsonDocument.Parse(body);
+
+        var mapped = HepsiburadaJsonMapper.InventoryUploadStatus(failed.RootElement, "71");
+
+        Assert.Equal("REJECTED", mapped.Status);
+        Assert.Empty(mapped.Lines);
+    }
+
+    // A failed upload that names refused SKUs keeps them line by line; the SKUs it leaves out are not confirmed.
+    [Fact]
+    public void AnInventoryUploadThatFailedWithSkuErrorsLeavesTheOthersUnconfirmed()
+    {
+        using var failed = JsonDocument.Parse("""{"status":"Failed","errors":[{"merchantSku":"SKU-TWO","hepsiburadaSku":"HB-2","errors":["OutOfPriceRange"]}]}""");
+        using var done = JsonDocument.Parse("""{"status":"Done","errors":[{"merchantSku":"SKU-TWO","hepsiburadaSku":"HB-2","errors":["OutOfPriceRange"]}]}""");
+        using var doneClean = JsonDocument.Parse("""{"status":"Done","errors":[]}""");
+
+        var mapped = HepsiburadaJsonMapper.InventoryUploadStatus(failed.RootElement, "71");
+
+        Assert.Equal("COMPLETED", mapped.Status);
+        Assert.True(mapped.UnlistedLinesUnconfirmed);
+        Assert.Equal(("SKU-TWO", false, "OutOfPriceRange"), (Assert.Single(mapped.Lines).ExternalKey, mapped.Lines[0].Succeeded, mapped.Lines[0].ErrorCode));
+        Assert.False(HepsiburadaJsonMapper.InventoryUploadStatus(done.RootElement, "71").UnlistedLinesUnconfirmed);
+        var clean = HepsiburadaJsonMapper.InventoryUploadStatus(doneClean.RootElement, "71");
+        Assert.Equal(("COMPLETED", 0, false), (clean.Status, clean.Lines.Count, clean.UnlistedLinesUnconfirmed));
     }
 
     [Fact]
