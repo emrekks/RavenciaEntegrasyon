@@ -370,6 +370,10 @@ public sealed class MarketplaceVariantLink
     public string? HealthStatus { get; set; }
     public string? HealthReason { get; set; }
     public DateTimeOffset? HealthChangedAt { get; set; }
+    // The last single-variant lookup at the marketplace (after a refused price/stock line or a verification scan that
+    // missed the code) and what it answered (MarketplaceListingLookupOutcome); one lookup per variant every few hours.
+    public DateTimeOffset? LastLookupAt { get; set; }
+    public string? LastLookupOutcome { get; set; }
     public long Version { get; set; } = 1;
 }
 
@@ -389,6 +393,31 @@ public static class MarketplaceVariantLinkHealth
     // Only a code the marketplace refused twice as unknown is left out of bulk price/stock sends; a code a scan
     // missed still gets them, so a listing the scan cannot see never stops receiving stock.
     public static bool SkipsBulkPush(string? healthStatus) => healthStatus == Rejected;
+
+    public const string NotFoundByLookupReason = "Pazaryeri tekil sorguda bu kodu bulamadı.";
+    public const string MissedByScanReason = "Son tam ürün taramasında görülmedi.";
+
+    // Whether a price/stock send leaves the link out. A code the marketplace no longer knows (NOT_FOUND) gets nothing,
+    // in a bulk send or one for the variant alone, so a deleted listing does not fail every stock change; it is sent
+    // again once a scan or lookup sees it. A twice-refused code (REJECTED) stays out of bulk sends only.
+    public static bool SkipsPush(string? healthStatus, bool variantScoped) =>
+        healthStatus == NotFound || !variantScoped && healthStatus == Rejected;
+
+    // A listing whose publication is still on its way (queued, sent, waiting for approval, being updated, archived or
+    // unarchived, or waiting for a person) may not be on the marketplace's lists yet: no scan marks its code missing.
+    public static readonly string[] PublicationInFlightStatuses =
+    [
+        "QUEUED", "UPDATE_QUEUED", "BATCH_SUBMITTED", "BATCH_IN_PROGRESS", "IMPORT_SUBMITTED", "IMPORT_IN_PROGRESS",
+        "UPDATE_SUBMITTED", "UPDATE_IN_PROGRESS", "SHOPIFY_SUBMITTED", "APPROVAL_PENDING", "APPROVAL_PARTIAL_PENDING",
+        "MANUAL_REVIEW", "ARCHIVE_QUEUED", "ARCHIVE_BATCH_SUBMITTED", "ARCHIVE_RECONCILING", "UNARCHIVE_QUEUED",
+        "UNARCHIVE_BATCH_SUBMITTED", "UNARCHIVE_RECONCILING"
+    ];
+
+    // A link written for a panel publication whose marketplace variant id is not known yet (Shopify answers the id
+    // only when the publication is checked): it carries the listing's own codes and is never sent as a variant id.
+    public const string ListingPlaceholderPrefix = "listing:";
+    public static bool IsListingPlaceholder(string? externalId) => externalId?.StartsWith(ListingPlaceholderPrefix, StringComparison.Ordinal) == true;
+    public static string? RemoteVariantId(string? externalId) => IsListingPlaceholder(externalId) ? null : externalId;
 
     // A link the marketplace's product listing showed again is healthy, whatever it was before.
     public static void MarkSeen(MarketplaceVariantLink link, DateTimeOffset seenAt)
@@ -440,6 +469,20 @@ public static class MarketplaceVariantLinkHealth
         .Replace('İ', 'I').Replace('ı', 'I').Replace('Ş', 'S').Replace('ş', 'S').Replace('Ğ', 'G').Replace('ğ', 'G')
         .Replace('Ü', 'U').Replace('ü', 'U').Replace('Ö', 'O').Replace('ö', 'O').Replace('Ç', 'C').Replace('ç', 'C')
         .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+}
+
+// What a single-variant lookup at the marketplace answered. Only a well-formed successful answer that does not hold the
+// variant is NOT_FOUND; an error, a timeout, an answer the filter may have ignored or a platform that cannot be asked
+// is UNKNOWN and changes nothing.
+public static class MarketplaceListingLookupOutcome
+{
+    public const string Found = "FOUND";
+    public const string NotFound = "NOT_FOUND";
+    public const string Unknown = "UNKNOWN";
+    public const string Unsupported = "UNSUPPORTED";
+
+    // A lookup that could not tell (UNKNOWN or UNSUPPORTED) leaves the two-scan rule to decide.
+    public static bool Undecided(string? outcome) => outcome is Unknown or Unsupported;
 }
 
 public sealed class MarketplaceListingState

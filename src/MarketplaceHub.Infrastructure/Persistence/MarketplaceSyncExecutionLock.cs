@@ -132,6 +132,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     public static string GroupFor(string jobType)
     {
         var type = jobType.ToUpperInvariant();
+        // The link verification reads the whole catalog: it shares the product imports' lane so the two never read it
+        // together. Its single-code lookups are short and keep a lane of their own.
+        if (type == MarketplaceJobTypes.ListingVerify) return "products";
+        if (type == MarketplaceJobTypes.ListingLookup) return "listing-lookup";
         // Interactive shipment changes must not wait behind the recurring order
         // synchronization lane. They still serialize with other shipment
         // changes for the same connection, while their read-back can safely

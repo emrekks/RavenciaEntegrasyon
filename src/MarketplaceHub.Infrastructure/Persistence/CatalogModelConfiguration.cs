@@ -147,7 +147,7 @@ internal static class CatalogModelConfiguration
         builder.Entity<MarketplaceVariantLink>(entity =>
         {
             entity.ToTable("marketplace_variant_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.VariantId }).IsUnique(); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.Property(x => x.HealthStatus).HasMaxLength(32); entity.Property(x => x.HealthReason).HasMaxLength(200);
+            entity.Property(x => x.HealthStatus).HasMaxLength(32); entity.Property(x => x.HealthReason).HasMaxLength(200); entity.Property(x => x.LastLookupOutcome).HasMaxLength(16);
             entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<MarketplaceListingState>(entity =>

@@ -9,8 +9,22 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // codes, so the product mapping asks PTT AVM about the panel's own barcode and stock code instead of guessing a
 // variant from its name: a code PTT AVM answers under the model's product id is the code it keeps the variant by.
 // An unknown code answers nil or a request fault; both read as "not found".
-public sealed partial class PttAvmHttpClient : IProductVisualLookupPort
+public sealed partial class PttAvmHttpClient : IProductVisualLookupPort, IListingCodeCheckPort
 {
+    // The link verification's question: a nil answer is "not held", an answer naming a product is "held"; a request
+    // fault (which PTT AVM also gives for some unknown codes) and any other shape stay unknown.
+    public async Task<AdapterResult<bool?>> HoldsCodeAsync(AdapterContext context, string code, CancellationToken cancellationToken)
+    {
+        var value = code.Trim();
+        if (value.Length == 0 || value.Length > PttAvmPriceInventoryRules.MaxBarcodeLength) return AdapterResult<bool?>.Success(null);
+        var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (load.Account is null) return CredentialFailure<bool?>(load);
+        var result = await SendSoapAsync(load.Account, CodeCheck, [new("Barkod", value)], cancellationToken);
+        if (!result.IsSuccess) return AdapterResult<bool?>.Failure(result.Error!, result.RateLimit);
+        if (IsNil(result.Value!)) return AdapterResult<bool?>.Success(false, result.RateLimit);
+        return AdapterResult<bool?>.Success(CodeCheckProduct(value, result.Value!) is not null ? true : null, result.RateLimit);
+    }
+
     internal const string CodeCheck = "BarkodKontrol";
     private static int codeCheckShapeLogged;
 

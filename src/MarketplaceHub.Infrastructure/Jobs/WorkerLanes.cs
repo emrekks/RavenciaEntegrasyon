@@ -47,13 +47,13 @@ public static class WorkerLanes
         // Return reads and product-catalog syncs have dedicated lanes and are kept out of the shared
         // hot/background lanes so long reads cannot occupy their slots.
         new("returns-read", 2, null, null, ReturnReadJobTypes, []),
-        new("product-catalog", 1, null, null, JobTypeRegistry.ProductCatalogSyncJobTypes, []),
+        new("product-catalog", 1, null, null, [.. JobTypeRegistry.ProductCatalogSyncJobTypes, .. JobTypeRegistry.ListingVerificationJobTypes], []),
         new("hepsiburada-status", 1, hotPriorityCeiling, 0, HepsiburadaStatusJobTypes, []),
         new("hepsiburada-orders", 1, hotPriorityCeiling, 0, HepsiburadaOrderJobTypes, []),
         new("pazarama-orders", 1, hotPriorityCeiling, 0, PazaramaOrderJobTypes, []),
         new("pttavm-orders", 1, hotPriorityCeiling, 0, PttAvmOrderJobTypes, []),
         new("hot", 3, hotPriorityCeiling, 0, [], HotLaneExcludedJobTypes),
-        new("background", 2, null, hotPriorityCeiling + 1, [], [.. JobTypeRegistry.ProductCatalogSyncJobTypes, .. ReturnReadJobTypes])
+        new("background", 2, null, hotPriorityCeiling + 1, [], [.. JobTypeRegistry.ProductCatalogSyncJobTypes, .. JobTypeRegistry.ListingVerificationJobTypes, .. ReturnReadJobTypes])
     ];
 
     // The lane that leases a job of this type and priority; "unassigned" when no lane takes it.

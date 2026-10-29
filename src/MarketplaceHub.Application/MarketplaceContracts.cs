@@ -75,6 +75,12 @@ public static class MarketplaceJobTypes
     public const string PttAvmOrderStatusSync = "PTTAVM_ORDER_STATUS_SYNC";
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
     public const string CatalogStructureImport = "CATALOG_STRUCTURE_IMPORT";
+    // The nightly read of a connection's whole marketplace catalog that only checks which linked codes are still
+    // there (link health); it never writes products, content, prices or stock.
+    public const string ListingVerify = "LISTING_VERIFY";
+    // Single-variant lookups at the marketplace by barcode (or the platform's own key) for codes a price/stock send
+    // refused as unknown or a verification scan did not see.
+    public const string ListingLookup = "LISTING_LOOKUP";
 
     // Every job type executed by the marketplace processor. Each of them runs under the
     // per-connection execution lock of its lock group.
@@ -94,7 +100,8 @@ public static class MarketplaceJobTypes
         ReturnSync, HepsiburadaReturnSync, ReturnStatusSync, ReturnReconciliation, ReturnAction,
         StockReconciliation,
         WebhookIngest, ShopifyWebhookIngest, HepsiburadaWebhookIngest,
-        QuestionSync, CatalogStructureImport, TrendyolFinanceSync, PazaramaFinanceSync
+        QuestionSync, CatalogStructureImport, TrendyolFinanceSync, PazaramaFinanceSync,
+        ListingVerify, ListingLookup
     ];
 
     public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is not null && ProcessorJobTypes.Contains(jobType);
@@ -681,6 +688,13 @@ public interface IHepsiburadaProductMatchPort
 public interface IProductVisualLookupPort
 {
     Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken);
+}
+
+// A marketplace that answers whether it holds one code (PTT AVM's BarkodKontrol), for the link verification. True or
+// false only from a well-formed answer; null when the answer could not tell. A refused request is a failure, never false.
+public interface IListingCodeCheckPort
+{
+    Task<AdapterResult<bool?>> HoldsCodeAsync(AdapterContext context, string code, CancellationToken cancellationToken);
 }
 
 // A marketplace that keeps a model family as one product under the parent barcode (PTT AVM) answers its variants'

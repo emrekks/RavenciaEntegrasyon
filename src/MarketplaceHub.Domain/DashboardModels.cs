@@ -170,6 +170,7 @@ public static class IntegrationJobMetadataPolicy
         "MANUAL_ORDER_INVOICE_DELIVERY" => new("invoices", "delivery", "manual"),
         "TRENDYOL_CONNECTION_TEST" or "SHOPIFY_CONNECTION_TEST" or "HEPSIBURADA_CONNECTION_TEST" or "EFATURAM_CONNECTION_TEST" or "TRENDYOL_CAPABILITY_PROBE" or "EFATURAM_STAGE_CAPABILITY_PROBE" or "TRENDYOL_REFERENCE_SYNC" or "HEPSIBURADA_REFERENCE_SYNC" => new("connections", "sync", "scheduled"),
         "IMPORT_PREVIEW" or "IMPORT_APPLY" => new("products", "import", "manual"),
+        "LISTING_VERIFY" or "LISTING_LOOKUP" => new("products", "verify", "scheduled"),
         _ => new("jobs", "execute", "system")
     };
 

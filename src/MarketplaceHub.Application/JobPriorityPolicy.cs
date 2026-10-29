@@ -71,7 +71,9 @@ public static class JobPriorityPolicy
             or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync or MarketplaceJobTypes.PttAvmReferenceSync
             or MarketplaceJobTypes.CatalogStructureImport => Catalog,
 
-        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => Recovery,
+        // Link verification runs after the user's imports in the product-catalog lane.
+        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync
+            or MarketplaceJobTypes.ListingVerify or MarketplaceJobTypes.ListingLookup => Recovery,
 
         _ => Default
     };

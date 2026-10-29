@@ -31,6 +31,11 @@ public static class JobTypeRegistry
     public static readonly IReadOnlyList<string> ProductCatalogSyncJobTypes =
         [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.CatalogStructureImport];
 
+    // The nightly link verification and its single-code lookups share the product-catalog lane: they never take the
+    // background lane's slots from order recovery and reconciliation reads.
+    public static readonly IReadOnlyList<string> ListingVerificationJobTypes =
+        [MarketplaceJobTypes.ListingVerify, MarketplaceJobTypes.ListingLookup];
+
     public static readonly IReadOnlyList<string> OrderInvoiceReconciliationJobTypes =
         [MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation];
 
