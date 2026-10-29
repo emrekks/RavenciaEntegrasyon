@@ -1144,8 +1144,8 @@ public sealed record OrderLineView(
     string? OptionSignature = null,
     string? ImageUrl = null,
     decimal AllocatedQuantity = 0,
-    // Return lists only: what the returned quantity is worth, calculated from the order (ReturnRefundAmounts).
-    decimal? RefundAmount = null,
+    // Return lists only: the returned quantity's amounts as the marketplace wrote them (ReturnMarketplaceAmounts).
+    ReturnAmountsView? ReturnAmounts = null,
     // The catalog's photo of the line's variant when ImageUrl is the marketplace's own address; shown if that one fails to load.
     string? FallbackImageUrl = null);
 public sealed record ShipmentView(
@@ -1209,8 +1209,8 @@ public sealed record ReturnLineView(
     string? OptionSignature = null,
     string? ModelCode = null,
     string? Status = null,
-    // Quantity × the order line's paid unit price; null without an order line.
-    decimal? RefundAmount = null,
+    // The returned quantity's amounts as the marketplace wrote them; null when it wrote none.
+    ReturnAmountsView? ReturnAmounts = null,
     // Trendyol's settlement of the line (RemoteReturnLine); null when the marketplace has not said.
     string? AcceptDetail = null,
     string? MarketplaceNote = null,
@@ -1220,6 +1220,9 @@ public sealed record ReturnLineView(
     bool DecisionPending = false,
     // Stock can be decided on this line: the line, or the claim when the line has no status of its own, is approved.
     bool StockDispositionAvailable = false);
+// A return's amounts as the marketplace wrote them: sale (before discount), discount, invoiced, and the refund itself
+// where the marketplace states one (Hepsiburada). A null figure is unknown, never calculated from the order.
+public sealed record ReturnAmountsView(decimal? SaleAmount, decimal? DiscountAmount, decimal? InvoicedAmount, decimal? RefundAmount);
 public sealed record ReturnAuditEntryView(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // A return line's status history read live from the marketplace; Error when that read failed for this line.
 public sealed record ReturnLineAuditView(Guid ReturnLineId, string Title, IReadOnlyList<ReturnAuditEntryView> Entries, string? Error);
@@ -1262,8 +1265,8 @@ public sealed record ReturnListView(
     string? CargoTrackingLink = null,
     IReadOnlyDictionary<Guid, string>? LineStatuses = null,
     bool ActionDueAtEstimated = false,
-    // Calculated from the order (quantity × paid unit price), in Currency; null when no line matches its order line.
-    decimal? RefundAmount = null,
+    // The return's amounts as the marketplace wrote them for its lines, in Currency; a figure a line lacks stays null.
+    ReturnAmountsView? ReturnAmounts = null,
     // Set when a claim is shown as more than one card (its accepted lines apart from the waiting ones).
     string? RowKey = null);
 public sealed record ReturnListQuery(
@@ -1322,8 +1325,8 @@ public sealed record ReturnDetailView(
     string? PlatformCode = null,
     string? CargoTrackingLink = null,
     bool ActionDueAtEstimated = false,
-    // Calculated from the order (quantity × paid unit price), in Currency; null when no line matches its order line.
-    decimal? RefundAmount = null);
+    // The return's amounts as the marketplace wrote them for its lines, in Currency; a figure a line lacks stays null.
+    ReturnAmountsView? ReturnAmounts = null);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);

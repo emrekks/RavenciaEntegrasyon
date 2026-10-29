@@ -9,7 +9,7 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // Audit 2026-10-19 W4 and İ13: the Returns page's cards, filters, counts and paging come from the
-// server, and returns carry an amount calculated from the order.
+// server, and returns carry the amounts the marketplace wrote for the returned lines.
 [Collection("postgres-integration")]
 public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -71,22 +71,24 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             var approved = first.Items[1];
             Assert.Equal("ACTION_REQUIRED", waiting.Status);
             Assert.Equal([seed.SecondLineId], waiting.Lines!.Select(x => x.Id));
-            // 200 gross, 40 discount: a 50 unit is worth 40, a 100 unit 80.
-            Assert.Equal(40m, waiting.RefundAmount);
+            // The amounts Trendyol wrote on the lines (a 50 unit sold, 10 off, 40 invoiced), never the order's totals.
+            Assert.Equal(new ReturnAmountsView(50m, 10m, 40m, null), waiting.ReturnAmounts);
             Assert.Equal("APPROVED", approved.Status);
-            Assert.Equal(80m, approved.RefundAmount);
+            Assert.Equal(new ReturnAmountsView(100m, 20m, 80m, null), approved.ReturnAmounts);
 
             var second = await service.ReturnsAsync(seed.TenantId, 2, first.NextCursor, new ReturnListQuery(), false, CancellationToken.None);
             Assert.False(second.HasMore);
             Assert.Null(second.NextCursor);
             Assert.Equal([seed.TransitClaimId, seed.N11ClaimId], second.Items.Select(x => x.Id));
-            Assert.Equal(100m, second.Items[0].RefundAmount);
+            Assert.Equal(100m, second.Items[0].ReturnAmounts!.InvoicedAmount);
+            // The n11 line has no marketplace snapshot: its amounts stay unknown.
+            Assert.Null(second.Items[1].ReturnAmounts);
             var jumped = await service.ReturnsAsync(seed.TenantId, 2, null, new ReturnListQuery(), false, CancellationToken.None, page: 2);
             Assert.Equal(second.Items.Select(x => x.Id), jumped.Items.Select(x => x.Id));
 
             var detail = await service.ReturnAsync(seed.TenantId, seed.SplitClaimId, CancellationToken.None);
-            Assert.Equal(120m, detail.Value!.RefundAmount);
-            Assert.Equal([40m, 80m], detail.Value.Lines!.Select(x => x.RefundAmount!.Value).Order());
+            Assert.Equal(new ReturnAmountsView(150m, 30m, 120m, null), detail.Value!.ReturnAmounts);
+            Assert.Equal([40m, 80m], detail.Value.Lines!.Select(x => x.ReturnAmounts!.InvoicedAmount!.Value).Order());
         }
         finally
         {
@@ -172,7 +174,7 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             UpdatedAt = now,
             Version = 1
         };
-        OrderLine NewLine(Order order, string sku, decimal quantity, decimal price) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = sku, Sku = sku, TitleSnapshot = $"Ürün {sku}", OrderedQuantity = quantity, DeliveredQuantity = quantity, ShippedQuantity = quantity, UnitPrice = price, VatRate = 20m, RawStatus = "Delivered" };
+        OrderLine NewLine(Order order, string sku, decimal quantity, decimal price, string? snapshot = null) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = sku, Sku = sku, TitleSnapshot = $"Ürün {sku}", OrderedQuantity = quantity, DeliveredQuantity = quantity, ShippedQuantity = quantity, UnitPrice = price, VatRate = 20m, RawStatus = "Delivered", SourceSnapshotJson = snapshot };
         // Claims made in the same millisecond get random-order ids; one millisecond apart they sort in the order made.
         var claimTick = 0;
         ReturnClaim NewClaim(PlatformConnection connection, Order order, ReturnClaimStatus status, string raw, string? cargo, string? reasonCode, string? reasonText) => new()
@@ -195,10 +197,10 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         ReturnLine NewReturnLine(ReturnClaim claim, OrderLine line, decimal quantity, string? raw) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, OrderLineId = line.Id, ExternalLineId = $"r-{line.Sku}", Quantity = quantity, RawStatus = raw };
 
         var splitOrder = NewOrder(trendyol, "RET-1001", 200m, 40m, """{"customerFirstName":"Ayşe","customerLastName":"Yılmaz","customerEmail":"ayse@example.com"}""", now.AddDays(-10));
-        var firstLine = NewLine(splitOrder, "RET-SKU-1", 1m, 100m);
-        var secondLine = NewLine(splitOrder, "RET-SKU-2", 2m, 50m);
+        var firstLine = NewLine(splitOrder, "RET-SKU-1", 1m, 100m, """{"quantity":1,"amount":100,"discount":20,"price":80}""");
+        var secondLine = NewLine(splitOrder, "RET-SKU-2", 2m, 50m, """{"quantity":2,"amount":50,"discount":10,"price":40}""");
         var transitOrder = NewOrder(trendyol, "RET-1002", 100m, 0m, """{"customerFirstName":"Mehmet"}""", now.AddDays(-8));
-        var transitLine = NewLine(transitOrder, "RET-SKU-3", 1m, 100m);
+        var transitLine = NewLine(transitOrder, "RET-SKU-3", 1m, 100m, """{"quantity":1,"amount":100,"discount":0,"price":100}""");
         var n11Order = NewOrder(n11, "RET-1003", 50m, 0m, """{"customerFirstName":"Can"}""", now.AddDays(-5));
         var n11Line = NewLine(n11Order, "RET-SKU-4", 1m, 50m);
         var splitClaim = NewClaim(trendyol, splitOrder, ReturnClaimStatus.ActionRequired, "WaitingInAction", " Aras Kargo", "SIZE", "Beden küçük");

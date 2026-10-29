@@ -281,7 +281,7 @@ public sealed partial class MarketplaceSalesService
             ProductCount = lines.Count,
             Status = card.Kind == ApprovedCard ? "APPROVED" : view.Status,
             RawStatus = card.Kind == ApprovedCard ? "Accepted" : view.RawStatus,
-            RefundAmount = ReturnRefundAmounts.ClaimTotal(lines.Select(line => line.RefundAmount)),
+            ReturnAmounts = ReturnMarketplaceAmounts.Total(lines.Select(line => line.ReturnAmounts).ToList()),
             RowKey = card.RowKey
         };
     }

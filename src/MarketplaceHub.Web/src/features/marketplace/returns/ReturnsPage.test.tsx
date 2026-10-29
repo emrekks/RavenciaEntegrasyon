@@ -9,8 +9,14 @@ const claim = (id: string, extra: Record<string, unknown> = {}) => ({
   id, externalClaimId: `CL-${id}`, orderNumber: `#${id}`, status: 'ACTION_REQUIRED', rawStatus: 'WaitingInAction', reasonText: 'Beden küçük', reasonCode: null, actionDueAt: null, version: 1,
   customerName: `Alıcı ${id}`, orderedAt: '2026-10-10T08:00:00Z', orderAmount: 100, currency: 'TRY', cargoProviderName: 'Aras Kargo', cargoTrackingNumber: null, primaryImageUrl: null,
   productCount: 1, primaryBarcode: null, lines: [], packageNumber: null, invoiceStatus: 'FATURA_BILINMIYOR', grossAmount: 100, discountAmount: 0, isMicroExport: false,
-  connectionId: 'c', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', lineStatuses: {}, refundAmount: null, rowKey: null, ...extra
+  connectionId: 'c', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', lineStatuses: {}, returnAmounts: null, rowKey: null, ...extra
 })
+// Trendyol return 11738971444 as Trendyol's own panel shows it: 2 × 799,00 sold, 80,98 off, 1.517,02 invoiced.
+const trendyolAmounts = { saleAmount: 1598, discountAmount: 80.98, invoicedAmount: 1517.02, refundAmount: null }
+const returnedLine = {
+  id: 'l1', sku: 'MZ035DYD25', barcode: 'MZ035DYD25', title: 'Penye Bluz', quantity: 2, orderedQuantity: 2, cancelledQuantity: 0, shippedQuantity: 2, deliveredQuantity: 2, returnedQuantity: 2,
+  unitPrice: 758.51, vatRate: 10, rawStatus: 'Delivered', variantId: null, modelCode: null, optionSignature: null, imageUrl: null, returnAmounts: trendyolAmounts
+}
 const summary = {
   tabCounts: { ALL: 41, REQUESTED: 3, SHIPPING: 5, ACTION_REQUIRED: 7, APPROVED: 22, REJECTED: 4, REVIEW: 0, DISPUTED: 0, SUSPENDED: 0 },
   platforms: [{ platformCode: 'TRENDYOL', displayName: 'Trendyol' }], cargoProviders: ['Yurtiçi', 'Aras Kargo'],
@@ -26,7 +32,7 @@ vi.mock('../../../shared/api', async importOriginal => ({
     if (path.startsWith('/returns?')) {
       if (params.get('after') === 'next-1') return { items: [claim('21')], nextCursor: null, hasMore: false, totalCount: 41 }
       if (params.get('page') === '3') return { items: [claim('41')], nextCursor: null, hasMore: false, totalCount: 41 }
-      return { items: [claim('1', { refundAmount: 79.9 }), claim('2', { rowKey: '2:waiting' })], nextCursor: 'next-1', hasMore: true, totalCount: 41 }
+      return { items: [claim('1', { returnAmounts: trendyolAmounts, lines: [returnedLine] }), claim('2', { rowKey: '2:waiting' })], nextCursor: 'next-1', hasMore: true, totalCount: 41 }
     }
     return []
   }),
@@ -58,9 +64,29 @@ describe('returns page', () => {
     expect(metrics).toContain('7')
     expect(metrics).toContain('41')
     expect(host.textContent).toContain('Toplam 41 iade bilgisi')
-    // The amount calculated from the order, with its note.
-    expect(host.textContent).toContain('İade Tutarı')
-    expect(host.textContent).toContain('Siparişten hesaplanan')
+    // The return's amounts as the marketplace wrote them, never ones calculated from the order.
+    expect(host.textContent).not.toContain('Siparişten hesaplanan')
+    expect(host.textContent).not.toContain('Faturalanacak Tutar')
+  })
+
+  it('shows the amounts the marketplace wrote for the return and a dash where it wrote none', async () => {
+    const { host } = renderPage()
+    await waitFor(() => host.textContent?.includes('#2'))
+    const [first, second] = Array.from(host.querySelectorAll<HTMLElement>('.rr-invcell'))
+    expect(first.textContent).toContain('Satış Tutarı')
+    expect(first.textContent).toContain('1.598,00')
+    expect(first.textContent).toContain('İndirim Tutarı')
+    expect(first.textContent).toContain('80,98')
+    expect(first.textContent).toContain('Faturalanmış Tutar')
+    expect(first.textContent).toContain('1.517,02')
+    // The unit price column shows the sale price the marketplace sold at, as Trendyol does (799,00, not 758,51).
+    const prices = host.querySelector<HTMLElement>('.rr-price-col')!.textContent!
+    expect(prices).toContain('799,00')
+    expect(prices).not.toContain('758,51')
+    // No amount from the marketplace: unknown, not calculated.
+    expect(second.textContent).toContain('İade Tutarı')
+    expect(second.textContent).toContain('—')
+    expect(second.querySelector('[title="Pazaryeri iade tutarını bildirmedi."]')).not.toBeNull()
   })
 
   it('continues with the cursor and jumps to a page by number', async () => {

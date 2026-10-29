@@ -98,7 +98,7 @@ public sealed class ReturnListCardTests
     [Fact]
     public void A_split_card_shows_only_its_lines_and_their_refund()
     {
-        var view = View(lines: [Line(First, "SKU-A", "A", 80m), Line(Second, "SKU-B", "B", 40m)]) with { RefundAmount = 120m };
+        var view = View(lines: [Line(First, "SKU-A", "A", 80m), Line(Second, "SKU-B", "B", 40m)]) with { ReturnAmounts = new(null, null, 120m, null) };
         var card = new MarketplaceSalesService.ReturnCard(view.Id, MarketplaceSalesService.ApprovedCard, "APPROVED", "TRENDYOL", "Trendyol", null, null, null, [Second]);
 
         var shown = MarketplaceSalesService.ReturnCardView(view, card);
@@ -107,7 +107,7 @@ public sealed class ReturnListCardTests
         Assert.Equal(1, shown.ProductCount);
         Assert.Equal("APPROVED", shown.Status);
         Assert.Equal("Accepted", shown.RawStatus);
-        Assert.Equal(40m, shown.RefundAmount);
+        Assert.Equal(40m, shown.ReturnAmounts!.InvoicedAmount);
         Assert.Equal($"{view.Id:D}:approved", shown.RowKey);
         Assert.Same(view, MarketplaceSalesService.ReturnCardView(view, card with { Kind = MarketplaceSalesService.WholeCard }));
     }
@@ -148,7 +148,7 @@ public sealed class ReturnListCardTests
     }
 
     private static OrderLineView Line(Guid id, string sku, string title, decimal? refund = null) =>
-        new(id, sku, null, title, 1, 0, 1, 1, 0, 100m, 20m, "Delivered", RefundAmount: refund);
+        new(id, sku, null, title, 1, 0, 1, 1, 0, 100m, 20m, "Delivered", ReturnAmounts: refund is null ? null : new(null, null, refund, null));
 
     private static ReturnListView View(IReadOnlyList<OrderLineView> lines) =>
         new(Guid.Parse("01900000-0000-7000-8000-0000000000aa"), "claim-77", "1001", "ACTION_REQUIRED", "WaitingInAction", "Beden küçük", null, 1,
