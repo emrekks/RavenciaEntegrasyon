@@ -7128,3 +7128,9 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 .data-reset-title h2 { margin: 0; font-size: 18px; }
 .data-reset-title p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .data-reset-dialog .drl { max-height: calc(100dvh - 120px); }
+
+/* "Filtreleri Temizle" is the same framed button on every page, like the lists' Temizle (.rr-btn): surface fill, strong
+   border, 36px, 7px corners. While there is nothing to clear it stays framed and only fades. */
+html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear) { display: inline-flex; align-items: center; justify-content: center; height: 36px; min-height: 0; padding: 0 12px; white-space: nowrap; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500; }
+html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-raised)); }
+html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):disabled { background: var(--rv-color-surface); opacity: .5; cursor: default; }
