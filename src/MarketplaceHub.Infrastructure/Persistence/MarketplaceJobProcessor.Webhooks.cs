@@ -20,7 +20,7 @@ public sealed partial class MarketplaceJobProcessor
         // An address change carries the whole new delivery address, while a read of the order may count as older
         // than the order and keep the old one: the body is written first.
         if (reference is ("orders", var addressOrder) && WebhookEventPath.Normalize(eventPath)?.EndsWith("/shippingaddress", StringComparison.Ordinal) == true)
-            await ApplyHepsiburadaShippingAddressAsync(tenantId, connectionId, addressOrder, root, cancellationToken);
+            await ApplyHepsiburadaShippingAddressAsync(tenantId, connectionId, addressOrder, root, eventKey, cancellationToken);
         var orderNumbers = new List<string>();
         void AddOrder(string? value)
         {
@@ -83,12 +83,15 @@ public sealed partial class MarketplaceJobProcessor
 
     // The new delivery address of PUT /orders/{n}/shippingaddress (addressId, address, name, email, countryCode, phone
     // numbers, district, city, town: the names of the order's shippingAddress) replaces the stored one's fields.
-    private async Task ApplyHepsiburadaShippingAddressAsync(Guid tenantId, Guid connectionId, string orderNumber, JsonElement root, CancellationToken cancellationToken)
+    // An event whose order read failed runs again later, after address events that arrived meanwhile: it is applied only
+    // while no later address event of the order has arrived, so a retry never brings an older address back.
+    internal async Task ApplyHepsiburadaShippingAddressAsync(Guid tenantId, Guid connectionId, string orderNumber, JsonElement root, string eventKey, CancellationToken cancellationToken)
     {
         if (root.ValueKind != JsonValueKind.Object) return;
         if (FindString(root, "orderNumber") is { } bodyOrder && !string.Equals(bodyOrder, orderNumber, StringComparison.Ordinal)) return;
         var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == orderNumber, cancellationToken);
         if (order is null) return;
+        if (await LaterHepsiburadaEventArrivedAsync(tenantId, eventKey, cancellationToken)) return;
         var address = new System.Text.Json.Nodes.JsonObject();
         foreach (var property in root.EnumerateObject())
             if (!string.Equals(property.Name, "orderNumber", StringComparison.OrdinalIgnoreCase))
@@ -100,6 +103,21 @@ public sealed partial class MarketplaceJobProcessor
         order.UpdatedAt = timeProvider.GetUtcNow();
         order.Version++;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // True when another event of the same path (its message id up to the body hash: "{connection}:order_event:{path}:")
+    // reached the inbox after this one. An event without its inbox row has no arrival time to compare and counts as latest.
+    private async Task<bool> LaterHepsiburadaEventArrivedAsync(Guid tenantId, string eventKey, CancellationToken cancellationToken)
+    {
+        const string source = "HEPSIBURADA_WEBHOOK";
+        var separator = eventKey.LastIndexOf(':');
+        if (separator <= 0) return false;
+        var samePath = eventKey[..(separator + 1)];
+        var receivedAt = await db.InboxMessages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId == eventKey)
+            .Select(x => (DateTimeOffset?)x.ReceivedAt).SingleOrDefaultAsync(cancellationToken);
+        return receivedAt is { } at && await db.InboxMessages.AsNoTracking()
+            .AnyAsync(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId.StartsWith(samePath) && x.ReceivedAt > at, cancellationToken);
     }
 
     // One targeted Hepsiburada order read per order, keyed by the event (its message id) so the same event
