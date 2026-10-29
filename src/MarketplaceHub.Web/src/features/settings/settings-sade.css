@@ -242,7 +242,6 @@
 .ss-page .ss-dz-canvas { flex: 1; display: grid; place-items: center; padding: 24px 16px; background-image: radial-gradient(var(--rv-color-border) 1px, transparent 1px); background-size: 14px 14px; }
 .app-shell.stitch-shell main .ss-page .ss-dz-canvas .shipping-designer-paper { width: min(100%, 560px); margin: 0; border: 0; border-radius: 4px; box-shadow: 0 0 0 1px rgb(0 0 0 / 18%), 0 4px 12px rgb(0 0 0 / 14%); }
 .app-shell.stitch-shell main .ss-page .ss-dz-canvas .shipping-designer-paper.is-sticker { width: min(100%, 420px); }
-.ss-page .ss-dz-help { padding: 10px 16px; color: var(--rv-color-subtle); background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border); font-size: 12px; }
 .ss-page .ss-itabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .ss-page .ss-itabs button { display: inline-flex; align-items: center; justify-content: center; height: 30px; min-height: 30px; padding: 0 6px; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-itabs button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
