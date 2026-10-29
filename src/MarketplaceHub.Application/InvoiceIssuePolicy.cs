@@ -52,34 +52,66 @@ public static class InvoiceIssuePolicy
 
     public const string LineVatRateUnknownCode = "ORDER_LINE_VAT_RATE_UNKNOWN";
 
-    public static readonly InvoiceIssueRefusal LineVatRateUnknown = new(LineVatRateUnknownCode,
-        "Trendyol siparişin en az bir ürün satırında KDV oranını bildirmedi. KDV oranı bilinmeyen satırla fatura kesilmez; siparişi yeniden eşitleyin ya da faturayı E-Faturam portalında doğru KDV ile düzenleyip siparişe manuel belge olarak ekleyin.");
+    /// <summary>The refusal without the marketplace's name, for a stored validation code.</summary>
+    public static readonly InvoiceIssueRefusal LineVatRateUnknown = LineVatRateUnknownFor(null);
+
+    public static InvoiceIssueRefusal LineVatRateUnknownFor(string? platformCode) => new(LineVatRateUnknownCode,
+        $"{PlatformName(platformCode)} siparişin en az bir ürün satırında KDV oranını bildirmedi. KDV oranı bilinmeyen satırla fatura kesilmez; siparişi yeniden eşitleyin ya da faturayı E-Faturam portalında doğru KDV ile düzenleyip siparişe manuel belge olarak ekleyin.");
+
+    private static string PlatformName(string? platformCode) => platformCode switch
+    {
+        "TRENDYOL" => "Trendyol",
+        "HEPSIBURADA" => "Hepsiburada",
+        "N11" => "N11",
+        "PAZARAMA" => "Pazarama",
+        "PTTAVM" => "PTT AVM",
+        _ => "Pazaryeri"
+    };
+
+    // Where each marketplace reports a line's VAT rate inside the raw line JSON the order line keeps (alternatives,
+    // each a property path). Shopify reports none (its lines carry 0), so its lines are not judged here.
+    private static string[][]? VatRatePaths(string? platformCode) => platformCode switch
+    {
+        "TRENDYOL" or "N11" => [["vatRate"]],
+        "HEPSIBURADA" => [["vatRate"], ["VatRate"]],
+        "PAZARAMA" => [["product", "vatRate"]],
+        "PTTAVM" => [["KdvOrani"]],
+        _ => null
+    };
 
     /// <summary>
-    /// True when the marketplace did not report the line's VAT rate. Trendyol lines keep their raw JSON; a line
-    /// without a numeric vatRate was kept with an inferred rate or 0 (G30), which must not reach a fiscal invoice.
-    /// Lines of other platforms, and lines without a raw snapshot, carry the rate the platform reported (0 included).
+    /// True when the marketplace did not report the line's VAT rate. Order lines keep their raw JSON; a line whose
+    /// JSON has no numeric rate was kept with an inferred rate (Trendyol, G30), with 0, or with the rate an earlier
+    /// read reported (T-2), none of which may reach a fiscal invoice. Lines without a raw snapshot, and Shopify lines,
+    /// carry the rate they were stored with (0 included).
     /// </summary>
     public static bool IsLineVatRateUnknown(string? platformCode, string? lineSourceSnapshotJson)
     {
-        if (!string.Equals(platformCode, "TRENDYOL", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(lineSourceSnapshotJson)) return false;
+        if (VatRatePaths(platformCode) is not { } paths || string.IsNullOrWhiteSpace(lineSourceSnapshotJson)) return false;
         try
         {
             using var document = JsonDocument.Parse(lineSourceSnapshotJson);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object || !root.EnumerateObject().Any()) return false;
-            if (!root.TryGetProperty("vatRate", out var vatRate)) return true;
-            return vatRate.ValueKind switch
-            {
-                JsonValueKind.Number => false,
-                JsonValueKind.String => !decimal.TryParse(vatRate.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out _),
-                _ => true
-            };
+            return !paths.Any(path => IsReportedRate(root, path));
         }
         catch (JsonException)
         {
             return false;
         }
+    }
+
+    private static bool IsReportedRate(JsonElement root, string[] path)
+    {
+        var vatRate = root;
+        foreach (var name in path)
+            if (vatRate.ValueKind != JsonValueKind.Object || !vatRate.TryGetProperty(name, out vatRate)) return false;
+        return vatRate.ValueKind switch
+        {
+            JsonValueKind.Number => true,
+            JsonValueKind.String => decimal.TryParse(vatRate.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out _),
+            _ => false
+        };
     }
 
     private static readonly System.Text.RegularExpressions.Regex GibInvoiceNumberPattern = new(@"^[A-Za-z0-9]{3}\d{13}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);

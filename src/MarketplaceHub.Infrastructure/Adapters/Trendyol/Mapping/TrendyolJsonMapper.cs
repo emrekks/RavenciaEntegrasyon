@@ -127,7 +127,7 @@ public static class TrendyolJsonMapper
     {
         if (linesWithoutVat.Count == 0) return;
         var missing = linesWithoutVat.ToHashSet();
-        var known = lines.Where((_, index) => !missing.Contains(index)).Select(line => line.VatRate).Distinct().ToList();
+        var known = lines.Where((_, index) => !missing.Contains(index)).Select(line => line.VatRate.GetValueOrDefault()).Distinct().ToList();
         foreach (var index in linesWithoutVat)
         {
             var line = lines[index];
@@ -812,7 +812,7 @@ public static class TrendyolJsonMapper
         if (index >= 0) { lines[index] = lines[index] with { Quantity = lines[index].Quantity + quantity }; return; }
         lines.Add(new(externalLineId, Text(orderLine, "merchantSku", "stockCode", "sku"), NullText(orderLine, "barcode"),
             Text(orderLine, "productName", "title"), quantity, Decimal(orderLine, "price", "lineUnitPrice", "amount"),
-            Decimal(orderLine, "vatRate"), status, orderLine.GetRawText()));
+            TryDecimal(orderLine, out var vatRate, "vatRate") ? vatRate : null, status, orderLine.GetRawText()));
     }
 
     private static string? NormalizeCreatedBy(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();

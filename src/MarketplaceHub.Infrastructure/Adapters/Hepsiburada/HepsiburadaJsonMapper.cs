@@ -1006,7 +1006,8 @@ internal static class HepsiburadaJsonMapper
                 First(Text(line, "productName", "ProductName", "name", "Name"), Text(entry, "productName", "ProductName", "name", "Name"), Text(root, "productName", "ProductName", "name", "Name")) ?? sku,
                 quantity.Value,
                 unitPrice ?? 0m,
-                Decimal(line, "vatRate", "VatRate") ?? Decimal(root, "vatRate", "VatRate") ?? 0m,
+                // Live claims carry no VAT rate; a missing one is unknown, not 0%, and keeps the order line's rate (T-2).
+                Decimal(line, "vatRate", "VatRate") ?? Decimal(root, "vatRate", "VatRate"),
                 "ClaimCreated",
                 line.GetRawText()));
         }
@@ -1554,7 +1555,7 @@ internal static class HepsiburadaJsonMapper
         // product's own barcode is "productBarcode".
         var productBarcode = Text(line, "productBarcode", "ProductBarcode");
         var barcode = string.IsNullOrWhiteSpace(productBarcode) ? Text(line, "barcode", "Barcode") : productBarcode;
-        return new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, snapshot, cancelled);
+        return new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate"), status, snapshot, cancelled);
     }
 
     // Every identity a line is known by (id, lineItemId, orderLineId) leads to its ExternalLineId, so a package
