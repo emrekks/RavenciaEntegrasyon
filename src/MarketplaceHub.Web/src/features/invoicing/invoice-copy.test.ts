@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { handSetInvoiceStatusPlatforms, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
 import { invoiceGlyphKind } from './invoice-state-glyph'
 
 import { invoiceStatusLabel, invoiceStatusTone } from '../../shared/status-labels'
@@ -18,6 +18,15 @@ describe('invoice copy', () => {
     expect(invoiceStatusLabel(providerAnswerAwaitedStatus)).toBe('E-Faturam Cevap Bekleniyor')
     expect(invoiceStatusTone(providerAnswerAwaitedStatus)).toBe('warning')
     expect(invoiceGlyphKind(providerAnswerAwaitedStatus)).toBe('sending')
+  })
+
+  it('says per marketplace what "Fatura Bekliyor" does to an order whose invoice was cancelled', () => {
+    expect(invoiceReopenNote(['TRENDYOL', 'SHOPIFY'])).toBeNull()
+    expect(invoiceReopenNote(['N11'])).toContain('eskisinin yerine geçer')
+    expect(invoiceReopenNote(['PAZARAMA'])).not.toContain('PTT AVM')
+    expect(invoiceReopenNote(['PTTAVM'])).toContain('PTT AVM satıcı panelinde')
+    expect(invoiceReopenNote(['PTTAVM'])).not.toContain('n11 ve Pazarama')
+    expect([...handSetInvoiceStatusPlatforms].sort()).toEqual(['N11', 'PAZARAMA', 'PTTAVM'])
   })
 
   it('offers a refused or stalled e-Archive cancellation again', () => {

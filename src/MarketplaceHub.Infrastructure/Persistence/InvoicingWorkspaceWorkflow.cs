@@ -329,7 +329,10 @@ public sealed partial class InvoicingBillingService
         }
         var taxTotal = calculated.TaxTotal;
         var taxExclusive = calculated.TaxExclusiveTotal;
-        var remoteInvoicePresent = activePackages.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received);
+        // A package the seller reopened after a cancelled invoice (n11, Pazarama, PTT AVM) holds no invoice any more.
+        var reopenedPackageIds = await MarketplaceInvoiceReopen.ReopenedPackageIdsAsync(db, tenantId, activePackageIds, cancellationToken);
+        var remoteInvoicePresent = activePackages.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received
+            && !MarketplaceInvoiceReopen.Overrides(item, reopenedPackageIds));
         var manuallyUploaded = activePackages.Any(item => MarketplaceInvoiceStatePolicy.IsManuallyUploaded(item.ManualInvoiceStatus));
         var legacyInvoiceConflict = orderInvoices.Count > 1;
         var manualDocument = await db.ManualOrderInvoiceDocuments.AsNoTracking()
@@ -591,6 +594,13 @@ public sealed partial class InvoicingBillingService
             state.UpdatedAt = now;
             state.CompletedAt = now;
             state.Version++;
+            // A hand-set "Fatura Bekliyor" (a package reopened after a cancelled invoice) is answered by this invoice.
+            if (string.Equals(package.ManualInvoiceStatus, "PENDING", StringComparison.OrdinalIgnoreCase))
+            {
+                package.ManualInvoiceStatus = null;
+                package.UpdatedAt = now;
+                package.Version++;
+            }
         }
         invoice.Status = InvoiceStatus.Completed;
         invoice.LastErrorCode = null;

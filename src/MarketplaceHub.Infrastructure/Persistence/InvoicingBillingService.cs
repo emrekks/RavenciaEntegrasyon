@@ -1187,7 +1187,10 @@ public sealed partial class InvoicingBillingService(
         }
         if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.ConnectionId != order.ConnectionId))
             return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı; yeni mali fatura kesilmedi.", 409);
-        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received))
+        // A package the seller reopened after a cancelled invoice (n11, Pazarama, PTT AVM) holds no invoice any more.
+        var reopenedPackageIds = await MarketplaceInvoiceReopen.ReopenedPackageIdsAsync(db, tenantId, activePackagesForOrder.Select(item => item.Id).ToArray(), cancellationToken);
+        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received
+                && !MarketplaceInvoiceReopen.Overrides(item, reopenedPackageIds)))
             return ServiceResult<InvoiceDetailView>.Fail("MARKETPLACE_INVOICE_ALREADY_PRESENT", "Pazaryerinde fatura bulundu veya işleniyor. Yeni mali fatura kesimi kapatıldı.", 409);
         // A hand-set "Faturası yüklendi" is the seller's word that the marketplace already holds an invoice (Pazarama,
         // n11 and PTT AVM cannot show a seller-panel upload): no second fiscal invoice, whichever the platform.

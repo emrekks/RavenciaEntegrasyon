@@ -191,6 +191,34 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(apiState.pageRequests.length).toBeGreaterThan(pageReads)
   })
 
+  // G-4 (29 Oct 2026): n11, Pazarama and PTT AVM report no invoice state, so the same menu item sets it by hand and
+  // "Fatura Bekliyor" reopens an order whose invoice was cancelled.
+  it('sets an n11 invoice status by hand from the row menu instead of reading the marketplace', async () => {
+    invoiceFixtures.push({ ...invoiceFixtures[2], id: 'inv-4', orderId: 'order-4', packageId: 'n11-package-4', orderNumber: 'N11-1004', invoiceId: 'invoice-4', invoiceStatus: 'FATURA_KONTROLDE', invoiceNumber: 'GIB2026000000004', canCreateInvoice: false, platformInvoiceStatus: 'INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'N11', platformDisplayName: 'n11', marketplaceConnectionId: 'n11-connection', externalOrderId: 'external-n11-1004', externalPackageNumber: 'package-n11-4' } as unknown as (typeof invoiceFixtures)[number])
+    try {
+      await act(async () => { await client.refetchQueries() })
+      await settle()
+      const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+        .find(item => item.textContent?.includes('N11-1004'))!
+      act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+      const refresh = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+        .find(item => item.textContent?.includes('Fatura Durumu Güncelle'))
+      // The n11 connection is not active in this page's connection list, yet the hand-set status needs no read.
+      expect(refresh?.disabled).toBe(false)
+      act(() => refresh!.click())
+      await settle()
+      expect(apiState.reconcileRequests).toEqual([])
+      const dialog = document.body.querySelector<HTMLElement>('[aria-labelledby="invoice-workspace-bulk-status-title"]')!
+      expect(dialog.textContent).toContain('Fatura Durumunu Güncelle')
+      expect(dialog.textContent).toContain('yeni faturanın linki gönderildiğinde eskisinin yerine geçer')
+      act(() => Array.from(dialog.querySelectorAll<HTMLButtonElement>('button')).find(item => item.textContent?.includes('Siparişi Güncelle'))!.click())
+      await settle()
+      expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'PENDING', packageIds: ['n11-package-4'] }])
+    } finally {
+      invoiceFixtures.pop()
+    }
+  })
+
   it('locks the invoice status refresh when the row offers no marketplace check', async () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('SH-1001'))!
