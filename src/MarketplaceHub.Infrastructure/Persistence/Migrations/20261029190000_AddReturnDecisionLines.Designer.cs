@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261029181103_AddReturnDecisionLines")]
+    [Migration("20261029190000_AddReturnDecisionLines")]
     partial class AddReturnDecisionLines
     {
         /// <inheritdoc />
@@ -2159,6 +2159,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(48)
                         .HasColumnType("character varying(48)")
                         .HasDefaultValue("jobs");
+
+                    b.Property<DateTimeOffset?>("RetriedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
