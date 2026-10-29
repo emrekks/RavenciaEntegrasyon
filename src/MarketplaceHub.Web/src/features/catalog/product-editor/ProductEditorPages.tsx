@@ -869,7 +869,10 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     onCancelled: () => onFeedback({ title: 'Sorgu Durduruldu', message: `${platformName} sorgusu durduruldu.`, kind: 'info' }),
     onCancelFailed: message => onFeedback({ title: 'Sorgu Durdurulamadı', message: `${platformName}: sorgu durdurulamadı — ${message}`, kind: 'error', persistent: true })
   })
-  const refreshBusy = refreshJob.running || refreshPublication.isPending || lookupProduct.isPending
+  // A family refresh queues a status check for every colour card: the icon keeps turning until the last one ends,
+  // not only this card's own check.
+  const familyChecksRunning = Boolean(refreshJobId) && [publication, ...familyStatuses].some(status => isPublicationStatusJobRunning(status.data?.lastJobStatus))
+  const refreshBusy = refreshJob.running || familyChecksRunning || refreshPublication.isPending || lookupProduct.isPending
   const ownLive = isPublicationLive(publication.data?.actualStatus)
   const familyLiveCount = (ownLive ? 1 : 0) + familyStatuses.filter(status => isPublicationLive(status.data?.actualStatus)).length
   const familyTotal = otherFamilyIds.length + 1
