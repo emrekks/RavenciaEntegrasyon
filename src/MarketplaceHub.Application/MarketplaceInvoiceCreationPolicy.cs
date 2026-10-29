@@ -8,6 +8,16 @@ public static class MarketplaceInvoiceCreationPolicy
     public const string DisabledMessage = "Fatura oluşturma bu bağlantı ayarlarında kapalı. Entegrasyonlar bölümünden açın.";
     public const string UnsupportedFiscalProviderMessage = "Shopify için mali fatura sağlayıcısı sözleşmesi henüz doğrulanmadı; güvenli biçimde fatura oluşturma kapalı.";
 
+    // The per-connection "Faturalama" switch. Every marketplace connection carries it; Shopify's stays off because
+    // its fiscal provider contract is not verified, so a request to turn it on is refused instead of being stored
+    // as a value the invoicing flow would ignore.
+    public static string? UpdateRefusal(string? platformCode, bool? requested)
+    {
+        if (requested is null) return null;
+        if (!ActiveIntegrationScope.IsMarketplace(platformCode)) return "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.";
+        return requested == true && string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? UnsupportedFiscalProviderMessage : null;
+    }
+
     public static bool IsEnabled(string? platformCode, string? settingsJson)
     {
         // Shopify fiscal submission is intentionally fail-closed until the

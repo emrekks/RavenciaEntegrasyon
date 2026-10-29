@@ -169,7 +169,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ExternalStoreId = externalStoreId!,
             ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : platform == "HEPSIBURADA" ? "V1.0" : platform is "N11" or "PAZARAMA" or "PTTAVM" ? "V1" : "1.0.0",
             Status = "DRAFT",
-            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : platform == "HEPSIBURADA" ? JsonSerializer.Serialize(new HepsiburadaConnectionSettings(false)) : platform == "N11" ? JsonSerializer.Serialize(new N11ConnectionSettings(false)) : platform == "PAZARAMA" ? JsonSerializer.Serialize(new PazaramaConnectionSettings(false)) : platform == "PTTAVM" ? JsonSerializer.Serialize(new PttAvmConnectionSettings(false)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
+            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : platform == "HEPSIBURADA" ? JsonSerializer.Serialize(new HepsiburadaConnectionSettings(false, true)) : platform == "N11" ? JsonSerializer.Serialize(new N11ConnectionSettings(false)) : platform == "PAZARAMA" ? JsonSerializer.Serialize(new PazaramaConnectionSettings(false)) : platform == "PTTAVM" ? JsonSerializer.Serialize(new PttAvmConnectionSettings(false)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
             Version = 1
         };
         db.PlatformConnections.Add(connection);
@@ -280,10 +280,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>();
         if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (string.IsNullOrWhiteSpace(command.DisplayName)) return Invalid<ConnectionView>("connection", "Bağlantı adı zorunludur.");
-        if (command.InvoiceCreationEnabled.HasValue && !ActiveIntegrationScope.IsMarketplace(connection.PlatformCode))
-            return Invalid<ConnectionView>("invoiceCreationEnabled", "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.");
-        if (connection.PlatformCode == "HEPSIBURADA" && command.InvoiceCreationEnabled == true)
-            return Invalid<ConnectionView>("invoiceCreationEnabled", "Hepsiburada fatura aktarımı SIT doğrulaması tamamlanana kadar kapalıdır.");
+        if (MarketplaceInvoiceCreationPolicy.UpdateRefusal(connection.PlatformCode, command.InvoiceCreationEnabled) is { } invoiceRefusal)
+            return Invalid<ConnectionView>("invoiceCreationEnabled", invoiceRefusal);
         if ((command.N11ShipmentTemplate is not null || command.N11PreparingDay.HasValue) && connection.PlatformCode != "N11")
             return Invalid<ConnectionView>("n11ShipmentTemplate", "Kargo şablonu ve hazırlık süresi yalnız N11 bağlantısında kullanılır.");
         if (command.N11ShipmentTemplate is not null && command.N11ShipmentTemplate.Trim().Length > N11ProductPublicationComposer.MaxShipmentTemplateLength)
@@ -377,7 +375,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(requestedExternalWrites));
         else if (connection.PlatformCode == "HEPSIBURADA")
-            connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(requestedExternalWrites));
+            connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         else if (connection.PlatformCode == "N11")
         {
             var current = n11Settings!;
@@ -498,7 +496,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(ReadShopifySettings(connection).ExternalWritesEnabled, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         else if (connection.PlatformCode == "HEPSIBURADA")
-            connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(ReadHepsiburadaSettings(connection).ExternalWritesEnabled));
+            connection.SettingsJson = JsonSerializer.Serialize(ReadHepsiburadaSettings(connection));
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
         foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken)) { capability.SupportLevel = CapabilitySupportLevel.Unknown; capability.VerifiedAt = null; capability.EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."; capability.Version++; }
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, true));
@@ -585,7 +583,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(ReadShopifySettings(connection).ExternalWritesEnabled, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         else if (connection.PlatformCode == "HEPSIBURADA")
-            connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(ReadHepsiburadaSettings(connection).ExternalWritesEnabled));
+            connection.SettingsJson = JsonSerializer.Serialize(ReadHepsiburadaSettings(connection));
         connection.Version++;
         if (queueActivationBootstrap)
         {
@@ -961,7 +959,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                     : x.PlatformCode == "PTTAVM"
                         ? ReadPttAvmSettings(x).ExternalWritesEnabled
                         : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
-        var invoiceCreationEnabled = x.PlatformCode != "HEPSIBURADA" && MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
+        var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
         var n11Settings = x.PlatformCode == "N11" ? ReadN11Settings(x) : null;
         return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled, n11Settings?.N11ShipmentTemplate, n11Settings?.N11PreparingDay, x.DisabledAt);
     }
@@ -969,7 +967,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
     private static ConnectionSettings ReadSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ConnectionSettings>(value.SettingsJson) ?? new("", false); } catch (JsonException) { return new("", false); } }
     private static ShopifyConnectionSettings ReadShopifySettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ShopifyConnectionSettings>(value.SettingsJson) ?? new(false, MarketplaceInvoiceCreationPolicy.IsEnabled(value.PlatformCode, value.SettingsJson)); } catch (JsonException) { return new(false, MarketplaceInvoiceCreationPolicy.IsEnabled(value.PlatformCode, value.SettingsJson)); } }
-    private static HepsiburadaConnectionSettings ReadHepsiburadaSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<HepsiburadaConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
+    private static HepsiburadaConnectionSettings ReadHepsiburadaSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<HepsiburadaConnectionSettings>(value.SettingsJson) ?? new(false, MarketplaceInvoiceCreationPolicy.IsEnabled(value.PlatformCode, value.SettingsJson)); } catch (JsonException) { return new(false, MarketplaceInvoiceCreationPolicy.IsEnabled(value.PlatformCode, value.SettingsJson)); } }
     private static N11ConnectionSettings ReadN11Settings(PlatformConnection value) { try { return JsonSerializer.Deserialize<N11ConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private static PazaramaConnectionSettings ReadPazaramaSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<PazaramaConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private static PttAvmConnectionSettings ReadPttAvmSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<PttAvmConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
@@ -1034,7 +1032,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private sealed record ShopifyCredentialPayload(string AccessToken);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
     private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
-    private sealed record HepsiburadaConnectionSettings(bool ExternalWritesEnabled);
+    // Hepsiburada settings stored before this switch existed carry no InvoiceCreationEnabled; the invoicing flow has
+    // always read that as on (MarketplaceInvoiceCreationPolicy) and Hepsiburada invoices were issued and delivered that
+    // way, so the default keeps it on.
+    private sealed record HepsiburadaConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
     // Invoice creation stays off until the n11 invoice-link phase is live. The shipment
     // template (the template name in the n11 seller panel) and preparing day are written
     // into every n11 product create; n11 requires both.

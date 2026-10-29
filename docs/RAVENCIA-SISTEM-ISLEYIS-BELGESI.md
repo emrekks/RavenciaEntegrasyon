@@ -616,6 +616,16 @@ Her bağlantı için desteklenen yetenekler kaydedilir:
 
 Yetenek durumu `Destekleniyor`, `Desteklenmiyor` veya `Bilinmiyor` olabilir. Bilinmeyen yetenek destekleniyor kabul edilmez.
 
+### 13.5. Bağlantı ayar penceresi
+
+Her pazaryeri bağlantısının (Trendyol, Hepsiburada, N11, Pazarama, PTT AVM, Shopify) ayar penceresinde ortak bölümler aynıdır; yalnız Veri Eşitleme ve Mağaza ve Kimlik platforma göre değişir. Araçlar bölümü yalnız platforma özel işlemi olan bağlantılarda görünür.
+
+- **Genel Bakış:** Kimlik Bilgisi, Son Doğrulama, Pazaryerine Yazma (ana anahtar ve Otomatik/Manuel durumu), Akış Sağlığı, Dikkat İsteyenler.
+- **Pazaryerine Yazma:** Dış Yazma Ana Anahtarı (bağlantı ayarı `ExternalWritesEnabled`) ve altında iki grup:
+  - *Otomatik:* sistemin kendiliğinden gönderdiği fiyat-stok güncellemeleri; `PRICE_WRITE` + `STOCK_WRITE` eşitleme politikaları. Stok projeksiyonu işi ikisi de açık değilse pazaryerine istek göndermez.
+  - *Manuel:* panelden kullanıcının başlattığı kargo/paket ve iade kararları; `SHIPMENT_WRITE` + `RETURN_WRITE` politikaları. PTT AVM bu işlemleri API’den almadığı için kendi anahtarı yoktur; panelden elle başlatılan PTT AVM fiyat-stok ve ürün gönderimleri yalnız ana anahtara bağlıdır.
+- **Faturalama:** bağlantı ayarı `InvoiceCreationEnabled`. Kapalıyken o bağlantının siparişlerine fatura kesilmez, bekleyen gönderim işleri durdurulur. Hepsiburada’nın eski kayıtlarında alan yoktur ve açık okunur (fatura akışı hep öyle çalıştı). Shopify’da mali sağlayıcı sözleşmesi doğrulanmadığı için kapalıdır, açma isteği reddedilir.
+
 ## 14. Veritabanı temizliği ve bağlantı silme
 
 ### 14.1. Liste bazlı temizlik
