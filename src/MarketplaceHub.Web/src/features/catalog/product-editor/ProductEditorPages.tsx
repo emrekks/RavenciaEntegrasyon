@@ -1023,7 +1023,13 @@ function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'
 function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
   return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || normalizeVariantOptionValue(rowOptionValue(row, group)) === normalizeVariantOptionValue(value.value))
 }
-export function NewProductPage({ editProductId }: { editProductId?: string } = {}) {
+// The product list's "Platformlarda Yayınla" opens the editor's publish step in a popup: the same cards, checks and
+// Yayınla, without the page heading, the step bar or the leave-page guard (the popup closes instead of navigating).
+function EditorShell({ publishOnly, className, title, children }: { publishOnly: boolean; className: string; title: string; children: ReactNode }) {
+  return publishOnly ? <div className={`${className} product-publish-popup`}>{children}</div> : <Page className={className} title={title} eyebrow="Katalog">{children}</Page>
+}
+
+export function NewProductPage({ editProductId, publishOnly = false }: { editProductId?: string; publishOnly?: boolean } = {}) {
   const client = useQueryClient();
   const location = useLocation()
   const navigate = useNavigate()
@@ -1042,7 +1048,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const initializedEditProductKey = useRef<string | null>(null)
   const initializedEditOptionsKey = useRef<string | null>(null)
   const initializedEditWebColorKey = useRef<string | null>(null)
-  const [wizardStep, setWizardStep] = useState<1 | 2>(() => routeState?.wizardStep === 2 ? 2 : 1)
+  const [wizardStep, setWizardStep] = useState<1 | 2>(() => publishOnly || routeState?.wizardStep === 2 ? 2 : 1)
   const [platformUpdateDialogOpen, setPlatformUpdateDialogOpen] = useState(false)
   const [platformUpdateConnectionIds, setPlatformUpdateConnectionIds] = useState<string[]>([])
   const [platformUpdateProductInformation, setPlatformUpdateProductInformation] = useState(true)
@@ -2720,11 +2726,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   if (duplicateProductId && productToCopy.isLoading) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><div className="panel" role="status">Kaynak ürünün bilgileri forma hazırlanıyor…</div></Page>
   if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorToast title="Kopyalanacak Ürün Yüklenemedi" error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere Dön</Link></Page>
 
-  return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
-    <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />
+  return <EditorShell publishOnly={publishOnly} className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"}>
+    {!publishOnly && <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />}
     {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
-    <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün Bilgileri ve Varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
+    {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün Bilgileri ve Varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
@@ -3143,8 +3149,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         <footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit} disabled={!variantBulkEditMatchingRows.length}>Uygula</button></footer>
       </DialogSurface>
     </div>}
-  </form></Page>
+  </form></EditorShell>
 }
+// The publish step as a popup over the product list. It is placed in the page's <main> (not in <body>) because the
+// publish cards' styles are scoped to the panel's main area, and outside the list's own styling root.
+export function ProductPublishPopup({ productId, onClose }: { productId: string; onClose: () => void }) {
+  return createPortal(
+    <div className="workspace-modal-backdrop product-publish-popup-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+      <DialogSurface as="section" onClose={onClose} className="workspace-modal product-publish-popup-modal" aria-labelledby="product-publish-popup-title" onMouseDown={event => event.stopPropagation()}>
+        <header><div><p className="eyebrow">Ürün</p><h2 id="product-publish-popup-title">Platformlarda Yayınla</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Yayın penceresini kapat"><UiIcon name="close" /></button></header>
+        <div className="product-publish-popup-body"><NewProductPage key={productId} editProductId={productId} publishOnly /></div>
+      </DialogSurface>
+    </div>,
+    document.querySelector('main') ?? document.body)
+}
+
 export function ProductDetailPage() {
   const { id } = useParams()
   if (!id) return <p className="unknown">Ürün kimliği bulunamadı.</p>
