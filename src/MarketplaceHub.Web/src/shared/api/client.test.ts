@@ -134,3 +134,53 @@ describe('errors a repeat cannot fix', () => {
     expect(isPermanentRequestError(new TypeError('Failed to fetch'))).toBe(false)
   })
 })
+
+describe('an expired security token', () => {
+  it('is renewed once for requests refused together, so their retries match the one cookie the server holds', async () => {
+    // The server keeps the last token it issued (the cookie) and refuses any other.
+    let issued = 0
+    let cookie = 'expired'
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/auth/csrf') { cookie = `fresh-${++issued}`; return new Response(JSON.stringify({ token: cookie }), { status: 200 }) }
+      const sent = new Headers(init?.headers).get('X-CSRF-TOKEN')
+      if (sent !== cookie) return new Response(JSON.stringify({ code: 'REQUEST_VERIFICATION_FAILED' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ jobId: url }), { status: 202, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const jobs = await Promise.all(['a', 'b', 'c'].map(id => hubApi<{ jobId: string }>(`/connections/${id}/product-sync-jobs`, { method: 'POST', body: '{}' })))
+
+    expect(jobs.map(job => job.jobId)).toEqual(['/api/v1/connections/a/product-sync-jobs', '/api/v1/connections/b/product-sync-jobs', '/api/v1/connections/c/product-sync-jobs'])
+    expect(issued).toBe(1)
+  })
+})
+
+describe('a request that lands while a new version starts', () => {
+  const jsonResponse = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  it('sends a write with an Idempotency-Key again after the proxy answered 502, and returns the real answer', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/v1/auth/csrf') return jsonResponse(200, { token: 'gw' })
+      calls += 1
+      return calls === 1 ? new Response('Bad Gateway', { status: 502 }) : jsonResponse(202, { jobId: 'j1' })
+    }))
+    const result = hubApi<{ jobId: string }>('/products/p1/publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': 'k1' }, body: '{}' })
+    await vi.advanceTimersByTimeAsync(2000)
+    await expect(result).resolves.toEqual({ jobId: 'j1' })
+    expect(calls).toBe(2)
+    vi.useRealTimers()
+  })
+
+  it('does not send a write without an Idempotency-Key again', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/v1/auth/csrf') return jsonResponse(200, { token: 'gw' })
+      calls += 1
+      return new Response('Bad Gateway', { status: 502 })
+    }))
+    await expect(hubApi('/products/p1', { method: 'PUT', body: '{}' })).rejects.toMatchObject({ status: 502 })
+    expect(calls).toBe(1)
+  })
+})

@@ -35,6 +35,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         // for the hourly defaults pass; the check is a single EXISTS query.
         if (await ConnectionsWithoutPoliciesExistAsync(cancellationToken)) await EnsureDefaultPoliciesAsync(cancellationToken);
         added += await RetestTransientDraftsAsync(now, cancellationToken);
+        added += await RetestFailedOperationalConnectionsAsync(now, cancellationToken);
         // Jobs and policy timestamps of this pass are saved together below; nothing tracked by the
         // passes above may ride along.
         db.ChangeTracker.Clear();
@@ -436,6 +437,72 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         return added;
     }
 
+    // An ACTIVE or VERIFIED connection that carries an error code (a sync read was refused, or its last test failed)
+    // is tested again on its own: a quarter hour after the error, an hour later, then every six hours, with the same
+    // test the panel queues; see ConnectionAutoRecoveryPolicy. A healthy connection (no error code) is never selected,
+    // and a test already waiting for the connection (the seller's or an earlier retest) is not doubled. The job is
+    // leased like any other, so it waits out the connection's quota or refusal backoff.
+    internal async Task<int> RetestFailedOperationalConnectionsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var failing = await db.PlatformConnections.AsNoTracking()
+            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.LastErrorCode != null && x.LastErrorCode != ""
+                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM")
+                && db.PlatformCredentials.Any(credential => credential.ConnectionId == x.Id && credential.RevokedAt == null))
+            .Select(x => new { x.TenantId, x.Id, x.PlatformCode, x.Status, x.LastErrorCode, x.LastTestedAt, x.LastSuccessAt })
+            .ToListAsync(cancellationToken);
+        var added = 0;
+        foreach (var connection in failing)
+        {
+            if (!ConnectionAutoRecoveryPolicy.IsEligible(connection.Status, connection.LastErrorCode)) continue;
+            var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.ConnectionTest);
+            var testWaiting = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id
+                && x.JobType == jobType && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
+            if (testWaiting) continue;
+            var dedupPrefix = $"{ConnectionAutoRecoveryPolicy.DedupPrefix}{connection.Id:N}:";
+            // The recovery retests queued since the last passing test set the step of the ladder.
+            var retestQuery = db.IntegrationJobs.AsNoTracking()
+                .Where(x => x.TenantId == connection.TenantId && x.JobType == jobType && x.JobDedupKey.StartsWith(dedupPrefix));
+            if (connection.LastSuccessAt is { } lastSuccessAt) retestQuery = retestQuery.Where(x => x.CreatedAt > lastSuccessAt);
+            var retestCount = await retestQuery.CountAsync(cancellationToken);
+            var latestRetestAt = retestCount == 0 ? null : await retestQuery.MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken);
+            var lastProbeAt = ConnectionAutoRecoveryPolicy.Latest(ConnectionAutoRecoveryPolicy.FailedTestAt(connection.LastTestedAt, connection.LastSuccessAt), latestRetestAt);
+            // Only an error no test has looked at yet (a refused sync read) needs the time it was first seen.
+            var errorSeenAt = lastProbeAt is null ? await FirstErrorSeenAtAsync(connection.TenantId, connection.Id, connection.LastErrorCode!, connection.LastSuccessAt, now, cancellationToken) : null;
+            if (!ConnectionAutoRecoveryPolicy.ShouldRetest(connection.Status, connection.LastErrorCode, retestCount, lastProbeAt, errorSeenAt, now)) continue;
+            var job = NewJob(connection.TenantId, connection.Id, jobType, $"{dedupPrefix}{now.ToUnixTimeSeconds()}",
+                JsonSerializer.Serialize(new { connectionId = connection.Id, trigger = ConnectionAutoRecoveryPolicy.PayloadTrigger }), now, $"scheduler-recover-{Guid.NewGuid():N}");
+            // The ladder spaces the probes; a failed probe is not retried within its own step, and its time is the scheduler's clock.
+            job.MaxAttempts = 1;
+            job.CreatedAt = now;
+            db.IntegrationJobs.Add(job);
+            added++;
+        }
+        if (added == 0) return 0;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
+        {
+            // Another worker queued the same retest in the same second; the next pass sees it.
+            db.ChangeTracker.Clear();
+            return 0;
+        }
+        return added;
+    }
+
+    // The first refused attempt of the connection with its current error code since its last passing test (a month at most).
+    private Task<DateTimeOffset?> FirstErrorSeenAtAsync(Guid tenantId, Guid connectionId, string errorCode, DateTimeOffset? lastSuccessAt, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var since = now.AddDays(-30);
+        if (lastSuccessAt is { } success && success > since) since = success;
+        return (from attempt in db.JobAttempts.AsNoTracking()
+                join job in db.IntegrationJobs.AsNoTracking() on new { attempt.TenantId, attempt.JobId } equals new { job.TenantId, JobId = job.Id }
+                where attempt.TenantId == tenantId && job.ConnectionId == connectionId && attempt.StartedAt > since && !attempt.Succeeded && attempt.ErrorCode == errorCode
+                select (DateTimeOffset?)attempt.StartedAt)
+            .MinAsync(cancellationToken);
+    }
+
     private async Task EnsureDefaultPoliciesAsync(CancellationToken cancellationToken)
     {
         var operationalConnections = await db.PlatformConnections.AsNoTracking()
@@ -788,15 +855,16 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         catch (JsonException) { return false; }
     }
 
-    private static string DisableStoredWrites(string settingsJson)
+    // Only the write switch is turned off: the connection's other settings (the invoice switch, the Trendyol
+    // User-Agent, n11's shipment template) stay as the seller set them. Dropping InvoiceCreationEnabled would read
+    // back as "on" for every platform.
+    internal static string DisableStoredWrites(string settingsJson)
     {
         try
         {
-            using var document = JsonDocument.Parse(settingsJson);
-            var userAgent = document.RootElement.TryGetProperty("UserAgentIdentity", out var value) && value.ValueKind == JsonValueKind.String
-                ? value.GetString() ?? ""
-                : "";
-            return JsonSerializer.Serialize(new { UserAgentIdentity = userAgent, ExternalWritesEnabled = false });
+            if (System.Text.Json.Nodes.JsonNode.Parse(settingsJson) is not System.Text.Json.Nodes.JsonObject settings) return settingsJson;
+            settings["ExternalWritesEnabled"] = false;
+            return settings.ToJsonString();
         }
         catch (JsonException) { return settingsJson; }
     }

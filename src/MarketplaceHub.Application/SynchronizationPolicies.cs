@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Application;
@@ -890,6 +891,64 @@ public static class ConnectionRetestPolicy
     // (tested - saved), never less than AuthRefusalInterval.
     public static TimeSpan AuthRefusalPause(DateTimeOffset credentialSavedAt, DateTimeOffset lastTestedAt) =>
         lastTestedAt - credentialSavedAt > AuthRefusalInterval ? lastTestedAt - credentialSavedAt : AuthRefusalInterval;
+}
+
+// A connection in use (ACTIVE, or VERIFIED and waiting for the seller to activate it) keeps its status when a sync read
+// is refused (credentials, access, a gateway block) or a test fails: it only carries the error code, and the panel
+// shows it as an error until a connection test passes. Such a connection is tested again on its own with the same
+// test the panel's Test Et button queues: a quarter hour after the error was first seen (or after the last failed
+// test), an hour after that retest, then every six hours while it keeps failing. A passing test clears the code and
+// leaves the status as it was; a failing one records its own code, as a manual test does. A connection the seller
+// disabled, hid or deleted, or one waiting for its first test (DRAFT, see ConnectionRetestPolicy), is never tested
+// here, and a connection without an error code is never touched.
+public static class ConnectionAutoRecoveryPolicy
+{
+    public const string DedupPrefix = "scheduled:connection-recover:";
+    // The recovery test's payload names its trigger, so the worker can skip it when the connection no longer qualifies.
+    public const string PayloadTrigger = "auto-recovery";
+    public static readonly TimeSpan FirstPause = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan SecondPause = TimeSpan.FromHours(1);
+    public static readonly TimeSpan SteadyPause = TimeSpan.FromHours(6);
+
+    public static bool IsEligible(string? status, string? lastErrorCode) =>
+        status is "ACTIVE" or "VERIFIED" && !string.IsNullOrWhiteSpace(lastErrorCode);
+
+    // The pause before the next retest, by the number of recovery retests already queued since the last passing test.
+    public static TimeSpan PauseAfter(int retestsSinceSuccess) => retestsSinceSuccess switch
+    {
+        <= 0 => FirstPause,
+        1 => SecondPause,
+        _ => SteadyPause
+    };
+
+    // The last probe is the newer of the last failed test (manual or automatic) and the last recovery retest queued;
+    // without one, the first time the error was seen. Without either (its traces are gone) the error is old: due now.
+    public static bool ShouldRetest(string? status, string? lastErrorCode, int retestsSinceSuccess, DateTimeOffset? lastProbeAt, DateTimeOffset? errorSeenAt, DateTimeOffset now)
+    {
+        if (!IsEligible(status, lastErrorCode)) return false;
+        return (lastProbeAt ?? errorSeenAt) is not { } anchor || now - anchor >= PauseAfter(retestsSinceSuccess);
+    }
+
+    // A failed test is one newer than the last passing test.
+    public static DateTimeOffset? FailedTestAt(DateTimeOffset? lastTestedAt, DateTimeOffset? lastSuccessAt) =>
+        lastTestedAt is { } tested && (lastSuccessAt is not { } success || tested > success) ? tested : null;
+
+    public static DateTimeOffset? Latest(DateTimeOffset? first, DateTimeOffset? second) =>
+        first is null ? second : second is null ? first : first > second ? first : second;
+
+    public static bool IsRecoveryPayload(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("trigger", out var trigger)
+                && trigger.ValueKind == JsonValueKind.String
+                && string.Equals(trigger.GetString(), PayloadTrigger, StringComparison.Ordinal);
+        }
+        catch (JsonException) { return false; }
+    }
 }
 
 public enum EffectVerdict { Applied, NotApplied, Unknown }
