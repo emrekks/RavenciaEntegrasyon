@@ -175,8 +175,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                 Options = line.VariantId is { } id && signatures.TryGetValue(id, out var signature) ? signature : null
             }).ToList()
         }).ToList();
-        return ServiceResult<ReportOrderProfitPage>.Ok(new(page, ordered.Count, query.Page, query.PageSize, all.Sum(order => order.Amount),
-            all.Sum(order => order.Profit ?? 0m), all.Count(order => order.Profit is null)));
+        var totals = ReportOrderProfit.Totals(all);
+        return ServiceResult<ReportOrderProfitPage>.Ok(new(page, ordered.Count, query.Page, query.PageSize, totals.Amount, totals.Profit, totals.MissingCost,
+            totals.ProfitAmount, totals.ProfitOrders, totals.Margin, totals.MissingCargo));
     }
 
     // The listed products' catalogue details, as the product list shows them: the variant's model code and options

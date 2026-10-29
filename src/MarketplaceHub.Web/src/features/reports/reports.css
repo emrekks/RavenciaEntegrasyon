@@ -705,6 +705,7 @@
 .app-shell.stitch-shell main .reports-page .reports-order-summary dd.is-gain { color: var(--rv-color-accent); }
 .app-shell.stitch-shell main .reports-page .reports-order-summary dd.is-loss { color: var(--rv-color-danger); }
 .app-shell.stitch-shell main .reports-page .reports-order-summary .is-warn dd { color: var(--rv-color-warning); font-size: 15px; }
+.app-shell.stitch-shell main .reports-page .reports-order-scope { margin: -8px 0 0; color: var(--rv-color-warning); font-size: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-order-table { min-width: 860px; }
 .app-shell.stitch-shell main .reports-page .reports-order-table :is(th, td) { vertical-align: middle; }
 .app-shell.stitch-shell main .reports-page .reports-order-table .is-gain { color: var(--rv-color-accent); font-weight: 600; }
