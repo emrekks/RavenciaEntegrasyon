@@ -592,7 +592,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0
                 && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(x.Id) ?? [], inventoryByVariant)),
-            platforms);
+            platforms,
+            products.Sum(x => Math.Max(0, stockByProduct.GetValueOrDefault(x.Id))));
     }
 
     public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken)

@@ -336,3 +336,17 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small.rr-field-error { color: var(--rr-bad); max-width: 140px; }
 /* why a price field is locked (no offer version, no channel chosen yet) */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small.rr-field-hint { color: var(--rr-subtle); max-width: 140px; }
+
+/* Five summary cards (Stok Adeti joined): one row of five on desktop, three over two on tablet, two per row with the
+   last one full width on phone, like the orders summary. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1024px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * { grid-column: span 2; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > :nth-child(n + 4) { grid-column: span 3; }
+}
+@media (max-width: 760px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: 1fr 1fr; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * { grid-column: auto; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > :last-child { grid-column: 1 / -1; }
+}
