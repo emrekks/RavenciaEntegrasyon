@@ -26,6 +26,9 @@ public static class ListingVerificationPolicy
     // Single-variant lookups: at most this many per connection and run, one per variant within LookupSpacing.
     public const int MaxLookupsPerRun = 300;
     public static readonly TimeSpan LookupSpacing = TimeSpan.FromHours(6);
+    // A NOT_FOUND code is asked again once a night (it gets no sends, so a lookup is the only way it heals); PTT AVM's
+    // "not held" answer must come on two separate nights at least this far apart before a code breaks.
+    public static readonly TimeSpan NotFoundRelookupSpacing = TimeSpan.FromHours(20);
     // A lookup answer that runs over this many pages or variants did not apply the code filter: it says nothing.
     public const int MaxLookupPages = 5;
     public const int MaxLookupVariants = 50;
@@ -54,6 +57,14 @@ public static class ListingVerificationPolicy
         if (lastCompletedAt is null && lastQueuedAt is null) return now < cycleStart + windowLength;
         return true;
     }
+
+    // A connection whose run keeps failing is queued at most this many times a cycle; then it waits for the next night.
+    public const int MaxRunsPerCycle = 3;
+
+    // Whether another run may be queued in this cycle: fewer than MaxRunsPerCycle so far, and none refused as blocked
+    // (a connection the verification does not serve stays done for the cycle instead of starting again hourly).
+    public static bool MayQueueAgain(int queuedRunsThisCycle, bool blockedThisCycle) =>
+        !blockedThisCycle && queuedRunsThisCycle < MaxRunsPerCycle;
 
     public static bool ObservesOnly(string? platformCode, int completedRuns) =>
         platformCode is "N11" or "PAZARAMA" or "PTTAVM" && completedRuns < ObserveOnlyRuns;

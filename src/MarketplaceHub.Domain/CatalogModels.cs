@@ -396,6 +396,7 @@ public static class MarketplaceVariantLinkHealth
 
     public const string NotFoundByLookupReason = "Pazaryeri tekil sorguda bu kodu bulamadı.";
     public const string MissedByScanReason = "Son tam ürün taramasında görülmedi.";
+    public const string FirstLookupMissReason = "Pazaryeri tekil sorguda bu kodu bulamadı; ertesi gece yeniden sorulacak.";
 
     // Whether a price/stock send leaves the link out. A code the marketplace no longer knows (NOT_FOUND) gets nothing,
     // in a bulk send or one for the variant alone, so a deleted listing does not fail every stock change; it is sent

@@ -245,6 +245,169 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.Contains(bulk.Value.Lines, x => x.VariantId == seed.Seen.Id);
     }
 
+    [PostgreSqlFact]
+    public async Task A_not_found_code_is_asked_again_each_night_and_heals_when_the_marketplace_lists_it_again()
+    {
+        var seed = await Seed("TRENDYOL");
+        await using (var db = fixture.CreateContext())
+            await db.MarketplaceVariantLinks.Where(x => x.ConnectionId == seed.Connection.Id && x.VariantId == seed.Missed.Id)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.HealthStatus, MarketplaceVariantLinkHealth.NotFound).SetProperty(x => x.HealthChangedAt, DateTimeOffset.UtcNow.AddDays(-2)));
+        var port = new ScriptedProductPort { Catalog = [Remote("Ürün", "869100000001")], LookupAnswer = [Remote("Ürün", "869100000002")] };
+
+        Assert.True((await Verify(seed, port)).Succeeded);
+        Assert.True((await RunLookupJob(seed, port)).Succeeded);
+
+        await using var check = fixture.CreateContext();
+        var healed = await Link(check, seed.Connection.Id, seed.Missed.Id);
+        Assert.Null(healed.HealthStatus);
+        Assert.Equal(MarketplaceListingLookupOutcome.Found, healed.LastLookupOutcome);
+    }
+
+    [PostgreSqlFact]
+    public async Task A_ptt_avm_code_breaks_only_after_two_nights_of_not_held_answers()
+    {
+        var seed = await Seed("PTTAVM");
+        await using (var db = fixture.CreateContext())
+        {
+            db.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, ResourceType = ListingVerificationPolicy.StateCursorResource, OpaqueCursor = new ListingVerificationState(CompletedRuns: 2).ToJson(), Version = 1 });
+            await db.SaveChangesAsync();
+        }
+        var port = new ScriptedProductPort { Catalog = [Remote("Ürün", "869100000001")], Held = false };
+
+        Assert.True((await Verify(seed, port)).Succeeded);
+        Assert.True((await RunLookupJob(seed, port)).Succeeded);
+        await using (var db = fixture.CreateContext())
+        {
+            var first = await Link(db, seed.Connection.Id, seed.Missed.Id);
+            Assert.Equal(MarketplaceVariantLinkHealth.Suspect, first.HealthStatus);
+            Assert.Equal(MarketplaceListingLookupOutcome.NotFound, first.LastLookupOutcome);
+            // The next night.
+            var night = DateTimeOffset.UtcNow.AddHours(-21);
+            await db.MarketplaceVariantLinks.Where(x => x.Id == first.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastLookupAt, night).SetProperty(x => x.HealthChangedAt, night));
+        }
+
+        Assert.True((await Verify(seed, port)).Succeeded);
+        Assert.True((await RunLookupJob(seed, port)).Succeeded);
+
+        await using var check = fixture.CreateContext();
+        Assert.Equal(MarketplaceVariantLinkHealth.NotFound, (await Link(check, seed.Connection.Id, seed.Missed.Id)).HealthStatus);
+        Assert.True(await check.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == "LISTING_NOT_FOUND"));
+    }
+
+    [PostgreSqlFact]
+    public async Task A_lookup_answer_older_than_a_later_sighting_does_not_break_the_code()
+    {
+        var seed = await Seed("TRENDYOL");
+        var port = new ScriptedProductPort { Catalog = [Remote("Ürün", "869100000001")] };
+        Assert.True((await Verify(seed, port)).Succeeded);
+        await using (var db = fixture.CreateContext())
+            await db.MarketplaceVariantLinks.Where(x => x.ConnectionId == seed.Connection.Id && x.VariantId == seed.Missed.Id)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastSeenAt, DateTimeOffset.UtcNow.AddMinutes(5)));
+
+        Assert.True((await RunLookupJob(seed, port)).Succeeded);
+
+        await using var check = fixture.CreateContext();
+        Assert.Equal(MarketplaceVariantLinkHealth.Suspect, (await Link(check, seed.Connection.Id, seed.Missed.Id)).HealthStatus);
+        Assert.False(await check.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == "LISTING_NOT_FOUND"));
+    }
+
+    [PostgreSqlFact]
+    public async Task A_refused_code_on_an_observing_connection_is_only_recorded()
+    {
+        var seed = await Seed("PAZARAMA");
+        await using (var db = fixture.CreateContext())
+            await Processor(db, new ScriptedProductPort()).QueueListingLookupsForRefusedCodes(seed.Tenant.Id, seed.Connection.Id, [seed.Missed.Id], CancellationToken.None);
+        var port = new ScriptedProductPort();
+
+        Assert.True((await RunLookupJob(seed, port)).Succeeded);
+
+        await using var check = fixture.CreateContext();
+        var job = await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.JobType == MarketplaceJobTypes.ListingLookup);
+        Assert.Contains("\"ObserveOnly\":true", job.PayloadJson);
+        var link = await Link(check, seed.Connection.Id, seed.Missed.Id);
+        Assert.Null(link.HealthStatus);
+        Assert.Equal(MarketplaceListingLookupOutcome.NotFound, link.LastLookupOutcome);
+    }
+
+    [PostgreSqlFact]
+    public async Task A_shopify_import_gives_a_publication_placeholder_link_the_variant_id_it_reads()
+    {
+        var seed = await Seed("SHOPIFY");
+        await using (var db = fixture.CreateContext())
+        {
+            await db.MarketplaceVariantLinks.Where(x => x.ConnectionId == seed.Connection.Id && x.VariantId == seed.Seen.Id)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ExternalId, "listing:LV-SEEN").SetProperty(x => x.ExternalSku, "LV-SEEN"));
+            db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, ProductId = seed.Seen.ProductId, ExternalId = "P-869100000001", SyncStatus = "SYNCED", Version = 1 });
+            await db.SaveChangesAsync();
+        }
+        var remote = new RemoteCatalogProduct("P-869100000001", null, "Ürün", "", null, null, null, null, [],
+            [new RemoteCatalogVariant("44791234567890", "LV-SEEN", "869100000001", null, new Dictionary<string, string>(), false, 120m, 150m, 20m, 5m, "TRY", "{}")], "{}");
+        var port = new ScriptedProductPort { Catalog = [remote] };
+
+        await using (var db = fixture.CreateContext())
+        {
+            var result = await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ShopifyProductSync, "{\"full\":true,\"updateExistingProducts\":false}", "shopify-placeholder", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using var check = fixture.CreateContext();
+        var link = await Link(check, seed.Connection.Id, seed.Seen.Id);
+        Assert.Equal("44791234567890", link.ExternalId);
+        Assert.False(await check.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == "PRODUCT_VARIANT_LINK_CONFLICT"));
+    }
+
+    [PostgreSqlFact]
+    public async Task A_connection_is_queued_at_most_three_times_a_cycle_and_a_blocked_run_ends_the_cycle()
+    {
+        var seed = await Seed("TRENDYOL");
+        var cycleStart = ListingVerificationPolicy.CycleStart(DateTimeOffset.UtcNow);
+        async Task<(int Queued, bool Blocked)> Attempts()
+        {
+            await using var db = fixture.CreateContext();
+            return await new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build()).ListingVerifyCycleAttemptsAsync(seed.Tenant.Id, seed.Connection.Id, cycleStart, CancellationToken.None);
+        }
+        async Task AddRun(JobStatus status, DateTimeOffset createdAt)
+        {
+            await using var db = fixture.CreateContext();
+            var id = Guid.CreateVersion7();
+            db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, JobType = MarketplaceJobTypes.ListingVerify, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"scheduled:listing-verify:{id:N}", EffectIdempotencyKey = $"lv:{id:N}", Status = status, AvailableAt = createdAt, CorrelationId = "lv", CreatedAt = createdAt, Version = 1 });
+            await db.SaveChangesAsync();
+        }
+
+        await AddRun(JobStatus.Dead, cycleStart.AddMinutes(-30));
+        await AddRun(JobStatus.Dead, cycleStart.AddMinutes(10));
+        await AddRun(JobStatus.Dead, cycleStart.AddMinutes(80));
+        var twoFailed = await Attempts();
+        Assert.Equal((2, false), twoFailed);
+        Assert.True(ListingVerificationPolicy.MayQueueAgain(twoFailed.Queued, twoFailed.Blocked));
+
+        await AddRun(JobStatus.Dead, cycleStart.AddMinutes(150));
+        var threeFailed = await Attempts();
+        Assert.False(ListingVerificationPolicy.MayQueueAgain(threeFailed.Queued, threeFailed.Blocked));
+
+        var blockedSeed = await Seed("TRENDYOL");
+        await using (var db = fixture.CreateContext())
+        {
+            var id = Guid.CreateVersion7();
+            db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = blockedSeed.Tenant.Id, ConnectionId = blockedSeed.Connection.Id, JobType = MarketplaceJobTypes.ListingVerify, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"scheduled:listing-verify:{id:N}", EffectIdempotencyKey = $"lv:{id:N}", Status = JobStatus.Blocked, AvailableAt = cycleStart.AddMinutes(5), CorrelationId = "lv", CreatedAt = cycleStart.AddMinutes(5), Version = 1 });
+            await db.SaveChangesAsync();
+            var blocked = await new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build()).ListingVerifyCycleAttemptsAsync(blockedSeed.Tenant.Id, blockedSeed.Connection.Id, cycleStart, CancellationToken.None);
+            Assert.False(ListingVerificationPolicy.MayQueueAgain(blocked.Queued, blocked.Blocked));
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task A_connection_outside_production_and_stage_is_refused_as_blocked()
+    {
+        var seed = await Seed("TRENDYOL");
+        await using (var db = fixture.CreateContext())
+            await db.PlatformConnections.Where(x => x.Id == seed.Connection.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Environment, "SANDBOX"));
+
+        var result = await Verify(seed, new ScriptedProductPort { Catalog = [Remote("Ürün", "869100000001")] });
+
+        Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+    }
+
     private sealed record Seeded(Tenant Tenant, PlatformConnection Connection, ProductVariant Seen, ProductVariant Missed);
 
     // A connection with two linked variants of two products: one the catalog lists (…001), one it does not (…002).
@@ -338,8 +501,14 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
 
     // The marketplace: a whole-catalog read (no code filter) answers Catalog; a filtered lookup answers LookupAnswer or
     // LookupError; a price/stock poll answers Operation.
-    private sealed class ScriptedProductPort : IProductPort
+    private sealed class ScriptedProductPort : IProductPort, IListingCodeCheckPort
     {
+        // PTT AVM's BarkodKontrol answer: true held, false not held (nil), null unclear.
+        public bool? Held { get; init; }
+
+        public Task<AdapterResult<bool?>> HoldsCodeAsync(AdapterContext context, string code, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<bool?>.Success(Held));
+
         public IReadOnlyList<RemoteCatalogProduct> Catalog { get; init; } = [];
         public IReadOnlyList<RemoteCatalogProduct> LookupAnswer { get; init; } = [];
         public AdapterError? LookupError { get; init; }

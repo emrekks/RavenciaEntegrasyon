@@ -127,6 +127,7 @@ public sealed partial class MarketplaceJobProcessor
         var firstMisses = 0;
         var secondMisses = 0;
         var queued = new List<Guid>();
+        var relookedUp = 0;
         if (healthy > 0 && !complete)
         {
             await RecordIssue(tenantId, $"variant-link-scan-short:{connectionId}", "VARIANT_LINK_SCAN_SHORT",
@@ -183,14 +184,35 @@ public sealed partial class MarketplaceJobProcessor
                             .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
             }
         }
+        // A code already NOT_FOUND gets no price or stock (SkipsPush), so only a lookup can heal one the marketplace lists
+        // again: each is asked again at most once a night, after the new suspects and inside the same cap.
+        var room = ListingVerificationPolicy.MaxLookupsPerRun - queued.Count;
+        if (room > 0 && (healthy > 0 ? complete : state.Received > 0))
+        {
+            var askedBefore = now - ListingVerificationPolicy.NotFoundRelookupSpacing;
+            var broken = await JudgeableVariantLinks(tenantId, connectionId)
+                .Where(x => x.HealthStatus == MarketplaceVariantLinkHealth.NotFound && (x.LastLookupAt == null || x.LastLookupAt < askedBefore)
+                    && (x.LastSeenAt == null || x.LastSeenAt < startedAt))
+                .OrderBy(x => x.LastLookupAt != null).ThenBy(x => x.LastLookupAt)
+                .Select(x => new { x.VariantId, x.ExternalId, x.ExternalSku, x.ExternalBarcode })
+                .Take(room * 2)
+                .ToListAsync(cancellationToken);
+            var relookups = broken
+                .Where(link => ListingVerificationPolicy.LookupKey(platform, new MarketplaceVariantLink { ExternalId = link.ExternalId, ExternalSku = link.ExternalSku, ExternalBarcode = link.ExternalBarcode }) is not null)
+                .Select(link => link.VariantId)
+                .Take(room)
+                .ToList();
+            relookedUp = relookups.Count;
+            queued.AddRange(relookups);
+        }
 
         var completedRun = state.CompletedRuns + 1;
         var summary = observe
             ? $"{platformName} doğrulama taraması (gözlem {completedRun}/{ListingVerificationPolicy.ObserveOnlyRuns}): {state.Received:N0} ürün okundu, bağlı {healthy:N0} koddan {seen:N0} tanesi görüldü"
-                + (complete ? $"; {firstMisses:N0} kod şüpheli, {secondMisses:N0} kod bulunamadı işaretlenecekti, {queued.Count:N0} kod tekil sorguya alındı." : "; tarama eksik sayıldı.")
+                + (complete ? $"; {firstMisses:N0} kod şüpheli, {secondMisses:N0} kod bulunamadı işaretlenecekti, {queued.Count:N0} kod tekil sorguya alındı ({relookedUp:N0} tanesi bulunamadı kodun yeniden sorgusu)." : "; tarama eksik sayıldı.")
                 + " Hiçbir durum değiştirilmedi."
             : $"{platformName} doğrulama taraması: {state.Received:N0} ürün okundu, bağlı {healthy:N0} koddan {seen:N0} tanesi görüldü"
-                + (complete ? $"; {firstMisses:N0} kod ilk kez görülmedi, {newlyNotFound.Count:N0} kod bulunamadı işaretlendi, {queued.Count:N0} kod tekil sorguya alındı." : "; tarama eksik sayıldı, hiçbir kod işaretlenmedi.");
+                + (complete ? $"; {firstMisses:N0} kod ilk kez görülmedi, {newlyNotFound.Count:N0} kod bulunamadı işaretlendi, {queued.Count:N0} kod tekil sorguya alındı ({relookedUp:N0} tanesi bulunamadı kodun yeniden sorgusu)." : "; tarama eksik sayıldı, hiçbir kod işaretlenmedi.");
         if (observe) await RecordIssue(tenantId, $"listing-verify-observe:{connectionId}", "LISTING_VERIFY_OBSERVE", summary, cancellationToken);
         var cursor = await Cursor(tenantId, connectionId, ListingVerificationPolicy.StateCursorResource, cancellationToken);
         cursor.OpaqueCursor = state.Complete(now).ToJson();
@@ -232,7 +254,7 @@ public sealed partial class MarketplaceJobProcessor
 
     // Codes a price/stock answer refused as unknown are asked about at once, one lookup job per variant; a variant
     // already asked within the last hours (or waiting for its lookup) is not asked again.
-    private async Task QueueListingLookupsForRefusedCodes(Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken)
+    internal async Task QueueListingLookupsForRefusedCodes(Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken)
     {
         if (variantIds.Count == 0) return;
         var now = timeProvider.GetUtcNow();
@@ -244,12 +266,20 @@ public sealed partial class MarketplaceJobProcessor
             .Where(x => ListingVerificationPolicy.LookupDue(x.LastLookupAt, now))
             .Select(x => x.VariantId)
             .ToList();
+        if (due.Count == 0) return;
+        // n11, Pazarama and PTT AVM in their first two verification runs only record what a lookup answers.
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var state = ListingVerificationState.Parse(await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == ListingVerificationPolicy.StateCursorResource)
+            .Select(x => x.OpaqueCursor)
+            .FirstOrDefaultAsync(cancellationToken));
+        var observe = ListingVerificationPolicy.ObservesOnly(platform, state.CompletedRuns);
         var bucket = now.ToUnixTimeSeconds() / (long)ListingVerificationPolicy.LookupSpacing.TotalSeconds;
         foreach (var variantId in due)
         {
             var dedup = $"listing-lookup:{connectionId:N}:push:{variantId:N}:{bucket}";
             if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ListingLookup && x.JobDedupKey == dedup, cancellationToken)) continue;
-            AddListingLookupJob(tenantId, connectionId, dedup, new ListingLookupJobPayload(connectionId, [variantId], ListingLookupPushSource), now);
+            AddListingLookupJob(tenantId, connectionId, dedup, new ListingLookupJobPayload(connectionId, [variantId], ListingLookupPushSource, ObserveOnly: observe), now);
         }
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -286,9 +316,11 @@ public sealed partial class MarketplaceJobProcessor
             if (askable)
             {
                 var outcome = await LookUpListing(tenantId, connectionId, platform!, link!, correlationId, cancellationToken);
-                link!.LastLookupAt = now;
+                var (previousOutcome, previousLookupAt) = (link!.LastLookupOutcome, link.LastLookupAt);
+                link.LastLookupAt = now;
                 link.LastLookupOutcome = outcome;
                 link.Version++;
+                string? breakTo = null;
                 if (outcome == MarketplaceListingLookupOutcome.Found)
                 {
                     found++;
@@ -297,15 +329,30 @@ public sealed partial class MarketplaceJobProcessor
                 else if (outcome == MarketplaceListingLookupOutcome.NotFound)
                 {
                     missing++;
+                    // PTT AVM's "not held" must come on two separate nights: the first makes the code suspect only.
+                    var secondNight = previousOutcome == MarketplaceListingLookupOutcome.NotFound && previousLookupAt is { } previous && now - previous >= ListingVerificationPolicy.NotFoundRelookupSpacing;
                     if (!payload.ObserveOnly && link.HealthStatus != MarketplaceVariantLinkHealth.NotFound)
-                    {
-                        link.HealthStatus = MarketplaceVariantLinkHealth.NotFound;
-                        link.HealthReason = MarketplaceVariantLinkHealth.NotFoundByLookupReason;
-                        link.HealthChangedAt = now;
-                        notFound.Add(variantId);
-                    }
+                        breakTo = platform != "PTTAVM" || secondNight
+                            ? MarketplaceVariantLinkHealth.NotFound
+                            : link.HealthStatus is null or MarketplaceVariantLinkHealth.Unverified ? MarketplaceVariantLinkHealth.Suspect : null;
                 }
                 else unknown++;
+                await db.SaveChangesAsync(cancellationToken);
+                // Written only while nothing newer spoke for the code: a scan that saw it, or a change, after the lookup was
+                // queued wins over this answer.
+                if (breakTo is { } status)
+                {
+                    var reason = status == MarketplaceVariantLinkHealth.NotFound ? MarketplaceVariantLinkHealth.NotFoundByLookupReason : MarketplaceVariantLinkHealth.FirstLookupMissReason;
+                    var linkId = link.Id;
+                    var changed = await db.MarketplaceVariantLinks
+                        .Where(x => x.Id == linkId && x.HealthStatus != MarketplaceVariantLinkHealth.NotFound
+                            && (x.HealthChangedAt == null || x.HealthChangedAt <= queuedAt) && (x.LastSeenAt == null || x.LastSeenAt <= queuedAt))
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(x => x.HealthStatus, status)
+                            .SetProperty(x => x.HealthReason, reason)
+                            .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
+                    if (changed > 0 && status == MarketplaceVariantLinkHealth.NotFound) notFound.Add(variantId);
+                }
             }
             remaining.RemoveAt(0);
             sliceCount++;

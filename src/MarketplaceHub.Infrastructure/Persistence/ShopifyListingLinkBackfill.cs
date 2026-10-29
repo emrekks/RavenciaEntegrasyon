@@ -46,10 +46,8 @@ internal static class ShopifyListingLinkBackfill
                 .ToListAsync(cancellationToken))
             .Select(link => (link.TenantId, link.ConnectionId, link.ExternalId))
             .ToHashSet();
-        var added = 0;
-        foreach (var row in rows.Where(row => !taken.Contains((row.TenantId, row.ConnectionId, row.ExternalId))))
-        {
-            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink
+        var links = rows.Where(row => !taken.Contains((row.TenantId, row.ConnectionId, row.ExternalId)))
+            .Select(row => new MarketplaceVariantLink
             {
                 Id = Guid.CreateVersion7(),
                 TenantId = row.TenantId,
@@ -61,19 +59,34 @@ internal static class ShopifyListingLinkBackfill
                 HealthStatus = MarketplaceVariantLinkHealth.Unverified,
                 HealthChangedAt = now,
                 Version = 1
-            });
-            added++;
-        }
-        if (added == 0) return 0;
+            })
+            .ToList();
+        if (links.Count == 0) return 0;
+        db.MarketplaceVariantLinks.AddRange(links);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            return links.Count;
         }
         catch (DbUpdateException)
         {
-            // A publication check linked one of them meanwhile; the next pass sees the committed state.
+            // One row of the batch could not be written (a publication check linked it meanwhile, or a row the
+            // database refuses): the others are written one by one, so a failing row never holds the batch back.
             db.ChangeTracker.Clear();
-            return 0;
+        }
+        var added = 0;
+        foreach (var link in links)
+        {
+            db.MarketplaceVariantLinks.Add(link);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                added++;
+            }
+            catch (DbUpdateException)
+            {
+                db.ChangeTracker.Clear();
+            }
         }
         return added;
     }

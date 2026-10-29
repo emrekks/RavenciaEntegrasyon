@@ -44,6 +44,14 @@ public sealed class ListingVerificationPolicyTests
         Assert.True(ListingVerificationPolicy.IsDue(At(29, 1, 0), At(27, 3, 30), At(28, 3, 10), 0));
     }
 
+    [Theory]
+    [InlineData(0, false, true)]
+    [InlineData(2, false, true)]
+    [InlineData(3, false, false)]
+    [InlineData(1, true, false)]
+    public void A_failing_connection_is_queued_at_most_three_times_a_cycle_and_a_blocked_one_waits_for_the_next(int queued, bool blocked, bool mayQueue) =>
+        Assert.Equal(mayQueue, ListingVerificationPolicy.MayQueueAgain(queued, blocked));
+
     [Fact]
     public void The_cycle_starts_at_three_in_the_morning_istanbul_time()
     {

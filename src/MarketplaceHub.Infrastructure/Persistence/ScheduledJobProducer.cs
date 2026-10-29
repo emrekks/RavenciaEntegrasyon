@@ -24,8 +24,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         {
             await ReferenceSnapshotBackfill.QueueMissingAsync(db, timeProvider, configuration, cancellationToken);
             db.ChangeTracker.Clear();
-            // Live Shopify publications without a variant link get one, so the link verification can judge them.
-            await ShopifyListingLinkBackfill.EnsureAsync(db, timeProvider, cancellationToken);
+            // Live Shopify publications without a variant link get one, so the link verification can judge them. A failure
+            // here never stops the pass (nor the startup recovery's scheduling after it).
+            try
+            {
+                await ShopifyListingLinkBackfill.EnsureAsync(db, timeProvider, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException) { }
             db.ChangeTracker.Clear();
         }
     }
@@ -154,7 +159,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
             if (isListingVerify)
             {
-                if (!ListingVerificationPolicy.IsDue(now, await ListingVerifyCompletedAtAsync(row.Policy.TenantId, row.Connection.Id, cancellationToken), latest, jitterSeconds)) continue;
+                var completedAt = await ListingVerifyCompletedAtAsync(row.Policy.TenantId, row.Connection.Id, cancellationToken);
+                if (!ListingVerificationPolicy.IsDue(now, completedAt, latest, jitterSeconds)) continue;
+                var (queuedRuns, blocked) = await ListingVerifyCycleAttemptsAsync(row.Policy.TenantId, row.Connection.Id, ListingVerificationPolicy.CycleStart(now), cancellationToken);
+                if (!ListingVerificationPolicy.MayQueueAgain(queuedRuns, blocked)) continue;
             }
             else if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
             // A hot order read of a connection without any order yet runs at once, whatever its interval.
@@ -252,6 +260,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .Select(x => x.OpaqueCursor)
             .FirstOrDefaultAsync(cancellationToken);
         return ListingVerificationState.Parse(state).LastCompletedAt;
+    }
+
+    // The verification runs queued for the connection in this cycle, and whether one of them ended blocked (a
+    // connection the verification refuses, which another run would only refuse again).
+    internal async Task<(int Queued, bool Blocked)> ListingVerifyCycleAttemptsAsync(Guid tenantId, Guid connectionId, DateTimeOffset cycleStart, CancellationToken cancellationToken)
+    {
+        var since = cycleStart.ToUniversalTime();
+        var runs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ListingVerify && x.CreatedAt >= since)
+            .Select(x => x.Status)
+            .ToListAsync(cancellationToken);
+        return (runs.Count, runs.Contains(JobStatus.Blocked));
     }
 
     internal Task<bool> ConnectionsWithoutPoliciesExistAsync(CancellationToken cancellationToken) =>

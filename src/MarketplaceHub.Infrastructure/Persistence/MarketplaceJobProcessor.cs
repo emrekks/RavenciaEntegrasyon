@@ -7975,6 +7975,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = externalVariantId, Version = 1 });
                 telemetryInsertedCount++;
             }
+            // A link written for a panel publication before the marketplace named the variant (a "listing:" placeholder)
+            // takes the variant id the import read, unless another link already holds that id.
+            else if (MarketplaceVariantLinkHealth.IsListingPlaceholder(existingVariantLink.ExternalId)
+                && !await ExternalIdTaken(tenantId, connectionId, externalVariantId, existingVariantLink.Id, cancellationToken))
+            {
+                existingVariantLink.ExternalId = externalVariantId;
+                existingVariantLink.Version++;
+            }
             else if (!string.Equals(existingVariantLink.ExternalId, externalVariantId, StringComparison.Ordinal))
             {
                 await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir pazar yeri varyant bağlantısı zaten var; ikinci bağlantı güvenli biçimde atlandı.", cancellationToken);
