@@ -739,6 +739,126 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // K-3: a variant's marketplace code typed anew (a changed Shopify variant id, a first code where none was) makes
+    // its offer on that connection unsent; the offer of a code left as it was keeps its marks.
+    [PostgreSqlFact]
+    public async Task ProductMarketplaceCodes_ChangedCodeMakesTheOfferUnsent()
+    {
+        var tenant = NewTenant("marketplace-code-unsent");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var (product, changed) = NewVariant(tenant, "MOVE-S", "8690000000601");
+        var added = NewVariant(tenant, "MOVE-M", "8690000000602", product.Id).Variant;
+        var kept = NewVariant(tenant, "MOVE-L", "8690000000603", product.Id).Variant;
+        ChannelOffer SentOffer(ProductVariant variant)
+        {
+            var offer = NewOffer(tenant, shopify, variant);
+            offer.LastPriceHash = "SENT";
+            offer.LastStockProjectionVersion = 1;
+            return offer;
+        }
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(changed, added, kept);
+            seed.ChannelOffers.AddRange(SentOffer(changed), SentOffer(added), SentOffer(kept));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = changed.Id, ExternalId = "44791234560001" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = kept.Id, ExternalId = "44791234560003" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CatalogService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+            var saved = await service.UpdateProductMarketplaceCodesAsync(tenant.Id, product.Id, new([
+                new(changed.Id, shopify.Id, "44791234560009"),
+                new(added.Id, shopify.Id, "44791234560002"),
+                new(kept.Id, shopify.Id, "44791234560003")]), CancellationToken.None);
+            Assert.True(saved.Succeeded, saved.Error?.Message);
+        }
+
+        await using var check = fixture.CreateContext();
+        var offers = await check.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.VariantId);
+        Assert.Null(offers[changed.Id].LastPriceHash);
+        Assert.Null(offers[changed.Id].LastStockProjectionVersion);
+        Assert.Null(offers[added.Id].LastPriceHash);
+        Assert.Null(offers[added.Id].LastStockProjectionVersion);
+        Assert.Equal("SENT", offers[kept.Id].LastPriceHash);
+        Assert.Equal(1, offers[kept.Id].LastStockProjectionVersion);
+    }
+
+    // K-3: any save that points a link elsewhere (an import or rekey changing its id or a held code, or moving it to
+    // another variant) makes the offers of the old and new variant unsent. A health update, a placeholder taking the
+    // marketplace's own id, a first code recorded, and marks the same save writes itself all leave the marks.
+    [PostgreSqlFact]
+    public async Task VariantLinkReaddressed_MakesTheOfferUnsentInTheSameSave()
+    {
+        var tenant = NewTenant("link-readdressed");
+        var hepsiburada = NewConnection(tenant, "HEPSIBURADA");
+        var product = NewVariant(tenant, "LINK-0", "8690000000700").Product;
+        var variants = Enumerable.Range(1, 7).Select(index => NewVariant(tenant, $"LINK-{index}", $"869000000070{index}", product.Id).Variant).ToArray();
+        var (rekeyed, moved, movedTo, barcodeChanged, healthOnly, placeholder, seeded) = (variants[0], variants[1], variants[2], variants[3], variants[4], variants[5], variants[6]);
+        MarketplaceVariantLink Link(ProductVariant variant, string externalId, string? barcode = null) =>
+            new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = variant.Id, ExternalId = externalId, ExternalBarcode = barcode };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(hepsiburada);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(variants);
+            foreach (var variant in variants)
+            {
+                var offer = NewOffer(tenant, hepsiburada, variant);
+                offer.LastPriceHash = "SENT";
+                offer.LastStockProjectionVersion = 4;
+                seed.ChannelOffers.Add(offer);
+            }
+            seed.MarketplaceVariantLinks.AddRange(
+                Link(rekeyed, "LINK-1"), Link(moved, "HBCV0000MOVED"), Link(barcodeChanged, "HBCV0000BARC", "8690000000704"),
+                Link(healthOnly, "HBCV0000HEALTH"), Link(placeholder, MarketplaceVariantLinkHealth.ListingPlaceholderPrefix + "LINK-6"), Link(seeded, "HBCV0000SEED"));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var links = await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.VariantId);
+            links[rekeyed.Id].ExternalId = "HBCV0000REKEY";
+            links[moved.Id].VariantId = movedTo.Id;
+            links[barcodeChanged.Id].ExternalBarcode = "8690000000799";
+            links[healthOnly.Id].LastSeenAt = DateTimeOffset.UtcNow;
+            links[healthOnly.Id].ExternalBarcode = "8690000000705";
+            links[placeholder.Id].ExternalId = "HBCV0000PLACE";
+            links[seeded.Id].ExternalId = "HBCV0000SEED2";
+            var seededOffer = await db.ChannelOffers.SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == seeded.Id);
+            seededOffer.LastPriceHash = "SEEDED";
+            seededOffer.LastStockProjectionVersion = 5;
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = fixture.CreateContext();
+        var offers = await check.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.VariantId);
+        foreach (var unsent in new[] { rekeyed, moved, movedTo, barcodeChanged })
+        {
+            Assert.Null(offers[unsent.Id].LastPriceHash);
+            Assert.Null(offers[unsent.Id].LastStockProjectionVersion);
+        }
+        Assert.Equal("SENT", offers[healthOnly.Id].LastPriceHash);
+        Assert.Equal("SENT", offers[placeholder.Id].LastPriceHash);
+        Assert.Equal(4, offers[placeholder.Id].LastStockProjectionVersion);
+        Assert.Equal("SEEDED", offers[seeded.Id].LastPriceHash);
+        Assert.Equal(5, offers[seeded.Id].LastStockProjectionVersion);
+
+        // Removing a link leaves its offer without the address the marks named.
+        await using (var db = fixture.CreateContext())
+        {
+            db.MarketplaceVariantLinks.Remove(await db.MarketplaceVariantLinks.SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == healthOnly.Id));
+            await db.SaveChangesAsync();
+        }
+        Assert.Null((await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == healthOnly.Id)).LastPriceHash);
+    }
+
     // A PTT AVM product with variants is kept by its model code and lists only its colour and size values: the
     // panel variants of the model are linked by their own stock codes (PTT AVM's variant stock codes), an earlier
     // option-id link is rewritten, and a variant whose size PTT AVM does not list stays unlinked and is reported.

@@ -148,8 +148,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.ConfigureMarketplaceFinanceModels();
     }
 
-    public override int SaveChanges(bool acceptAllChangesOnSuccess) { TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) { ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+
+    // K-3: offers of a variant link that now points elsewhere are unsent again (ChannelOfferSendMarks).
+    private void ResetReaddressedOfferMarks()
+    {
+        var targets = ChannelOfferSendMarks.ReaddressedTargets(ChangeTracker);
+        if (targets.Count == 0) return;
+        ChannelOfferSendMarks.ResetLoaded(this, ChannelOfferSendMarks.Candidates(this, targets).ToList(), targets);
+    }
+
+    private async Task ResetReaddressedOfferMarksAsync(CancellationToken cancellationToken)
+    {
+        var targets = ChannelOfferSendMarks.ReaddressedTargets(ChangeTracker);
+        if (targets.Count == 0) return;
+        ChannelOfferSendMarks.ResetLoaded(this, await ChannelOfferSendMarks.Candidates(this, targets).ToListAsync(cancellationToken), targets);
+    }
 
     private void TrackSyncCursorProgress()
     {
