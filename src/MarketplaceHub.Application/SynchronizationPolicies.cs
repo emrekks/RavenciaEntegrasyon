@@ -410,6 +410,15 @@ public static class OrderInventoryStockPolicy
         return currentlyCommitted - targetCommittedQuantity;
     }
 
+    // A connection's order reset deletes the order lines but not their stock: the physical units already left
+    // OnHand. Their ORDER_LINE ledger rows and reservations are re-keyed from the deleted line's id to this key,
+    // and the line the next sync imports under the same marketplace ids takes them over, so it does not take the
+    // same units from stock a second time. OperationalDataMaintenanceService builds the same key in SQL.
+    public const string ResetCarryPrefix = "order-line-reset:";
+
+    public static string ResetCarryKey(Guid connectionId, string externalOrderId, string externalLineId) =>
+        $"{ResetCarryPrefix}{connectionId:D}:{externalOrderId}:{externalLineId}";
+
     public static decimal LimitToAvailableStock(decimal onHand, decimal available, decimal sourceReservation, decimal requestedDelta, bool negativeStockAllowed)
     {
         if (available < 0 || sourceReservation < 0)

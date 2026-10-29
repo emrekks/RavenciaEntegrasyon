@@ -54,6 +54,16 @@ public sealed class InventoryPolicyTests
         Assert.Equal(0m, shippedDelta);
     }
 
+    // The order reset builds the same key in SQL from the connection id as uuid text (lowercase, hyphenated).
+    [Fact]
+    public void ResetCarryKeyNamesTheConnectionAndTheMarketplaceOrderAndLine()
+    {
+        var connectionId = Guid.Parse("0198A3C4-5E6F-7A8B-9C0D-1E2F3A4B5C6D");
+        Assert.Equal(
+            "order-line-reset:0198a3c4-5e6f-7a8b-9c0d-1e2f3a4b5c6d:10928374651:4455667788",
+            OrderInventoryStockPolicy.ResetCarryKey(connectionId, "10928374651", "4455667788"));
+    }
+
     [Fact]
     public void CancellationRestoresOnlyUnshippedOrderQuantity()
     {

@@ -9979,6 +9979,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             && itemIds.Contains(x.InventoryItemId) && sourceIds.Contains(x.SourceId) && persistedLedgerIds.Add(x.Id)
             && (x.MovementType == "ORDER_SHIPPED" || x.MovementType == "ORDER_SHIPMENT_PROGRESS"
                 || x.MovementType == "ORDER_RECEIVED" || x.MovementType == "ORDER_STOCK_BASELINE")));
+        await AdoptResetOrderLineStock(tenantId, connectionId, lines, itemsByVariant, orderLedgerRows, reservationsByKey, cancellationToken);
         var legacyShippedLedger = orderLedgerRows
             .Where(x => x.MovementType == "ORDER_SHIPPED")
             .GroupBy(x => x.SourceId)
@@ -10132,6 +10133,62 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         // Every connection selling the variant gets the new stock, not only the one that sold it.
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, outbox, now, cancellationToken);
+    }
+
+    // A connection's order reset leaves the stock movements and reservation of a deleted line under a carry key
+    // (OrderInventoryStockPolicy.ResetCarryKey). The line a later sync imports under the same marketplace order and
+    // line ids takes them over before its first projection, so the units the order already took from stock are not
+    // taken a second time and its reservation is not held twice. Only rows of the line's own inventory item move.
+    private async Task AdoptResetOrderLineStock(
+        Guid tenantId,
+        Guid connectionId,
+        List<OrderLine> lines,
+        Dictionary<Guid, InventoryItem> itemsByVariant,
+        List<StockLedgerEntry> orderLedgerRows,
+        Dictionary<(Guid InventoryItemId, string SourceId), StockReservation> reservationsByKey,
+        CancellationToken cancellationToken)
+    {
+        var projectedSourceIds = orderLedgerRows.Select(x => x.SourceId).Concat(reservationsByKey.Keys.Select(key => key.SourceId)).ToHashSet(StringComparer.Ordinal);
+        var unprojected = lines.Where(line => itemsByVariant.ContainsKey(line.VariantId!.Value) && !projectedSourceIds.Contains(line.Id.ToString("D"))).ToList();
+        if (unprojected.Count == 0) return;
+        var orderIds = unprojected.Select(line => line.OrderId).Distinct().ToArray();
+        var externalOrderIds = db.Orders.Local.Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionary(x => x.Id, x => x.ExternalOrderId);
+        var unloaded = orderIds.Where(id => !externalOrderIds.ContainsKey(id)).ToArray();
+        if (unloaded.Length > 0)
+        {
+            var rows = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && unloaded.Contains(x.Id)).Select(x => new { x.Id, x.ExternalOrderId }).ToListAsync(cancellationToken);
+            foreach (var row in rows) externalOrderIds[row.Id] = row.ExternalOrderId;
+        }
+        var carryKeys = unprojected
+            .Where(line => externalOrderIds.ContainsKey(line.OrderId))
+            .ToDictionary(line => line.Id, line => OrderInventoryStockPolicy.ResetCarryKey(connectionId, externalOrderIds[line.OrderId], line.ExternalLineId));
+        if (carryKeys.Count == 0) return;
+        var keys = carryKeys.Values.Distinct(StringComparer.Ordinal).ToArray();
+        var itemIds = unprojected.Select(line => itemsByVariant[line.VariantId!.Value].Id).Distinct().ToArray();
+        var carriedLedger = await db.StockLedgerEntries
+            .Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && itemIds.Contains(x.InventoryItemId) && keys.Contains(x.SourceId))
+            .ToListAsync(cancellationToken);
+        var carriedReservations = await db.StockReservations
+            .Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && itemIds.Contains(x.InventoryItemId) && keys.Contains(x.SourceId))
+            .ToListAsync(cancellationToken);
+        if (carriedLedger.Count == 0 && carriedReservations.Count == 0) return;
+        foreach (var line in unprojected)
+        {
+            if (!carryKeys.TryGetValue(line.Id, out var key)) continue;
+            var itemId = itemsByVariant[line.VariantId!.Value].Id;
+            var sourceId = line.Id.ToString("D");
+            foreach (var row in carriedLedger.Where(x => x.InventoryItemId == itemId && x.SourceId == key))
+            {
+                row.SourceId = sourceId;
+                orderLedgerRows.Add(row);
+            }
+            foreach (var reservation in carriedReservations.Where(x => x.InventoryItemId == itemId && x.SourceId == key))
+            {
+                reservation.SourceId = sourceId;
+                reservation.Version++;
+                reservationsByKey[(itemId, sourceId)] = reservation;
+            }
+        }
     }
 
     private async Task<JobExecutionResult> DispatchStockProjection(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
