@@ -102,6 +102,7 @@ public sealed class RoleAuthorizationMiddlewareTests
     [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111//credential")]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/deep-delete/")]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/data-reset")]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/full-reset/")]
     [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/data-visibility/")]
     [InlineData("POST", "/api/v1/connections")]
     [InlineData("POST", "/api/v1/connections/")]

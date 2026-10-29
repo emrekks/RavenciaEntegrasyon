@@ -81,6 +81,9 @@ public static class MarketplaceJobTypes
     // Single-variant lookups at the marketplace by barcode (or the platform's own key) for codes a price/stock send
     // refused as unknown or a verification scan did not see.
     public const string ListingLookup = "LISTING_LOOKUP";
+    // Removes every operational record of one connection (Entegrasyonlar › Verileri Sıfırla › Tam Sıfırlama) while it
+    // holds all of the connection's sync locks; the connection's settings stay.
+    public const string ConnectionFullReset = "CONNECTION_FULL_RESET";
 
     // Every job type executed by the marketplace processor. Each of them runs under the
     // per-connection execution lock of its lock group.
@@ -101,7 +104,7 @@ public static class MarketplaceJobTypes
         StockReconciliation,
         WebhookIngest, ShopifyWebhookIngest, HepsiburadaWebhookIngest,
         QuestionSync, CatalogStructureImport, TrendyolFinanceSync, PazaramaFinanceSync,
-        ListingVerify, ListingLookup
+        ListingVerify, ListingLookup, ConnectionFullReset
     ];
 
     public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is not null && ProcessorJobTypes.Contains(jobType);
@@ -980,8 +983,19 @@ public sealed record OperationalDataResetView(
 public sealed record DataResetCountView(string Scope, int Count);
 public sealed record DataResetCountsView(IReadOnlyList<DataResetCountView> Items, int KeptIssuedInvoices);
 
+// A connection's full reset: what it removes (issued invoices included), the linked products it keeps (used by another
+// connection or created on the panel; only their link to this connection goes) and the reset job when one is queued or
+// running.
+public sealed record FullResetConnectionCommand(string? Confirmation);
+public sealed record ConnectionFullResetJobView(Guid JobId, string Status, string? ProgressLabel, int? ProgressPercent, DateTimeOffset CreatedAt);
+public sealed record ConnectionFullResetView(IReadOnlyList<DataResetCountView> Items, int KeptProducts, ConnectionFullResetJobView? Job);
+
 public interface IOperationalDataMaintenanceService
 {
+    Task<ServiceResult<ConnectionFullResetView>> FullResetAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<ConnectionFullResetView>> RequestFullResetAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, FullResetConnectionCommand command, string correlationId, CancellationToken cancellationToken);
+    // The reset job's work (ConnectionFullResetJobHandler); jobId is the running job, which stays.
+    Task<JobOutcome> RunFullResetAsync(Guid tenantId, Guid connectionId, Guid? jobId, CancellationToken cancellationToken);
     Task<ServiceResult<DataResetCountsView>> ResetCountsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<OperationalDataResetView>> ResetConnectionDataAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken);

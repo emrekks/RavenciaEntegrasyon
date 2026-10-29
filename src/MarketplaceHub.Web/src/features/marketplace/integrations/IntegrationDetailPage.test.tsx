@@ -16,6 +16,8 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path === '/connections/c1') return connection()
     if (path.endsWith('/sync-policies') || path.endsWith('/capabilities')) return []
     if (path.endsWith('/instant-notifications')) return { supported: false }
+    if (path === '/connections/c1/data-reset') return { items: [{ scope: 'ORDERS', count: 3 }], keptIssuedInvoices: 0 }
+    if (path === '/connections/c1/full-reset') return { items: [{ scope: 'ORDERS', count: 3 }], keptProducts: 0, job: null }
     return []
   }
   return { ...original, hubApi: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [connection()], nextCursor: null, hasMore: false })) }

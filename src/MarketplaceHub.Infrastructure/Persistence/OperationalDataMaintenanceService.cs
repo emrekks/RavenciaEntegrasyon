@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard, ILogger<OperationalDataMaintenanceService> logger) : IOperationalDataMaintenanceService
+public sealed partial class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard, ILogger<OperationalDataMaintenanceService> logger) : IOperationalDataMaintenanceService
 {
     // Orders, returns and invoices are reset per connection only (ResetConnectionDataAsync, Entegrasyonlar › Verileri
     // Sıfırla); the settings-wide reset covers the catalog lists.
@@ -333,10 +333,18 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.product_options WHERE "TenantId"={{tenantId}};
         """, cancellationToken);
 
-    private Task DeleteProductsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+    // ImportedOnly (full reset): of the connection's products only those its own import created go. A product created
+    // on the panel, or matched to a panel product by its codes, keeps its row and loses only the link (30 Oct 2026
+    // owner decision). The link of a product an import created is written with the product, so both ids (version 7)
+    // carry the same moment; a product older than its link was there before, and an id without a time keeps the product.
+    // (The link's LastImportedAt does not tell them apart: a sync that matches a panel product by barcode sets it too.)
+    private Task DeleteProductsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool importedOnly = false) => db.Database.ExecuteSqlInterpolatedAsync($$"""
         CREATE TEMP TABLE IF NOT EXISTS purge_products ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_products;
-        INSERT INTO purge_products SELECT p."Id" FROM catalog.products p WHERE p."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR (EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId"={{tenantId}} AND l."ProductId"=p."Id" AND l."ConnectionId"={{connectionId}}) AND NOT EXISTS (SELECT 1 FROM catalog.marketplace_product_links other_link WHERE other_link."TenantId"={{tenantId}} AND other_link."ProductId"=p."Id" AND other_link."ConnectionId"<> {{connectionId}})));
+        INSERT INTO purge_products SELECT p."Id" FROM catalog.products p WHERE p."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR (EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId"={{tenantId}} AND l."ProductId"=p."Id" AND l."ConnectionId"={{connectionId}}
+                AND (NOT {{importedOnly}} OR abs(extract(epoch FROM uuid_extract_timestamp(p."Id") - uuid_extract_timestamp(l."Id"))) <= {{ImportedProductLinkSeconds}}))
+            AND NOT EXISTS (SELECT 1 FROM catalog.marketplace_product_links other_link WHERE other_link."TenantId"={{tenantId}} AND other_link."ProductId"=p."Id" AND other_link."ConnectionId"<> {{connectionId}})
+            AND NOT ({{importedOnly}} AND EXISTS (SELECT 1 FROM catalog.marketplace_variant_links other_variant JOIN catalog.product_variants v ON v."TenantId"=other_variant."TenantId" AND v."Id"=other_variant."VariantId" WHERE other_variant."TenantId"={{tenantId}} AND v."ProductId"=p."Id" AND other_variant."ConnectionId"<> {{connectionId}}))));
         UPDATE sales.order_lines SET "VariantId"=NULL WHERE "TenantId"={{tenantId}} AND "VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId" WHERE v."TenantId"={{tenantId}});
         DELETE FROM catalog.import_decisions WHERE "TenantId"={{tenantId}} AND "CandidateId" IN (SELECT c."Id" FROM catalog.import_match_candidates c WHERE c."TenantId"={{tenantId}} AND (c."ProductId" IN (SELECT "Id" FROM purge_products) OR c."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId")));
         DELETE FROM catalog.import_match_candidates c WHERE c."TenantId"={{tenantId}} AND (c."ProductId" IN (SELECT "Id" FROM purge_products) OR c."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId"));
@@ -430,7 +438,8 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
           AND NOT EXISTS (SELECT 1 FROM billing.invoice_documents d WHERE d."TenantId"={{tenantId}} AND d."FileAssetId"=f."Id")
           AND NOT EXISTS (SELECT 1 FROM billing.manual_order_invoice_documents d WHERE d."TenantId"={{tenantId}} AND d."FileAssetId"=f."Id")
           AND NOT EXISTS (SELECT 1 FROM sales.return_evidence e WHERE e."TenantId"={{tenantId}} AND e."FileAssetId"=f."Id")
-          AND NOT EXISTS (SELECT 1 FROM sales.shipment_documents s WHERE s."TenantId"={{tenantId}} AND s."FileAssetId"=f."Id");
+          AND NOT EXISTS (SELECT 1 FROM sales.shipment_documents s WHERE s."TenantId"={{tenantId}} AND s."FileAssetId"=f."Id")
+          AND NOT EXISTS (SELECT 1 FROM catalog.import_sessions i WHERE i."TenantId"={{tenantId}} AND i."SourceAssetId"=f."Id");
         """, cancellationToken);
 
     // The dashboard snapshot is rebuilt after the reset has committed, so a failure there must not turn a finished reset

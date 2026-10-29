@@ -101,7 +101,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 // Credentials, stage test orders, deleting, emptying or hiding a connection's data, and registering
                 // the marketplace's notifications (a setting on the store's side) and webhook subscriptions (they hold
                 // the verifier secret and hand out the route token) are for administrators.
-                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "data-visibility" or "instant-notifications" or "webhooks"
+                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "data-visibility" or "instant-notifications" or "webhooks"
                     ? ElevatedRoles
                     : OperationalRoles;
             case "shipments":
