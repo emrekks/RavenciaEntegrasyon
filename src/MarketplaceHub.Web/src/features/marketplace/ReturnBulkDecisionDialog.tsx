@@ -6,6 +6,8 @@ import { integrationNotificationTarget, isExternalWriteMessage, type Notificatio
 import { allocateStock, stockedUnits, totalUnits, type ApprovedReturn } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
+import type { ReturnReasonSummary } from './return-reference-presentation'
+import { bulkApproveConfirmText, bulkApproveFailureText } from './return-bulk-approve'
 
 export type BulkDecisionLine = {
   id: string
@@ -17,6 +19,8 @@ export type BulkDecisionLine = {
   color: string | null
   size: string | null
   modelCode: string | null
+  /** A reason given on this product line itself; the claim's reason covers the line otherwise. */
+  reason: string | null
 }
 
 export type BulkDecisionItem = {
@@ -29,6 +33,8 @@ export type BulkDecisionItem = {
   packageNumber: string | null
   platformCode: string
   platformName: string
+  /** The reason the customer gave for the return; null when the marketplace sent none. */
+  reason: ReturnReasonSummary | null
   lines: BulkDecisionLine[]
 }
 
@@ -61,6 +67,8 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   const [reasonId, setReasonId] = useState('')
   const [explanation, setExplanation] = useState('')
   const [running, setRunning] = useState(false)
+  // Approving asks once more ("2 sipariş ve 2 ürün onaylanacak…") before anything is sent.
+  const [confirming, setConfirming] = useState(false)
   const [outcomes, setOutcomes] = useState<Outcome[]>([])
   const finished = !running && outcomes.length > 0
   const failed = outcomes.filter(outcome => !outcome.ok)
@@ -87,6 +95,11 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   const allGroups = items.map((item, index) => groupsFor(item, index))
   const unitsFor = (group: ProductGroup) => Math.max(1, Math.min(stockUnits[group.key] ?? group.units, group.units))
   const stockTotal = allGroups.flat().filter(group => stockKeys.includes(group.key) && group.mapped).reduce((sum, group) => sum + unitsFor(group), 0)
+  // The units each return approves: its waiting lines once the details arrive, the listed lines until then.
+  const confirmText = bulkApproveConfirmText(items.map((item, index) => {
+    const groups = allGroups[index] ?? []
+    return { platformCode: item.platformCode, orderNumber: item.orderNumber, units: groups.length > 0 ? groups.reduce((sum, group) => sum + group.units, 0) : item.lines.reduce((sum, line) => sum + line.quantity, 0) }
+  }))
 
   // Rejecting needs a reason the marketplace accepts without evidence files. The reasons come from the
   // first selected return; a reason a later return does not accept is reported on that return only.
@@ -123,15 +136,17 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       }
       setOutcomes([...results])
     }
-    setRunning(false)
-    await Promise.all([client.invalidateQueries({ queryKey: ['returns'] }), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])])
+    // An approval closes every popup when it ends and reports through the toast; a rejection keeps its result screen.
+    if (!approving) setRunning(false)
+    await Promise.all([client.invalidateQueries({ queryKey: ['returns'] }), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])]).catch(() => undefined)
     const okCount = results.filter(outcome => outcome.ok).length
     const failCount = results.length - okCount
     const noun = approving ? 'onaylandı' : 'reddedildi'
     const stockText = approving && stockTotal > 0 ? ` Stok ${stocked.toLocaleString('tr-TR')} adet artırıldı${stocked < stockTotal ? ` (istenen ${stockTotal.toLocaleString('tr-TR')})` : ''}.` : ''
+    const failureText = approving ? ` ${bulkApproveFailureText(results.filter(outcome => !outcome.ok).map(outcome => ({ orderNumber: items.find(item => item.id === outcome.id)?.orderNumber ?? outcome.id, message: outcome.message })))}` : ''
     onDone(failCount === 0
       ? `${okCount} iadenin ${approving ? 'kabul' : 'ret'} kararı pazar yerine iletildi.${stockText}`
-      : `Toplu ${approving ? 'iade kabulünde' : 'iade retinde'} ${okCount}/${results.length} iade ${noun}, ${failCount} iade tamamlanamadı.${stockText} Ayrıntılar bildirimde listelendi.`, failCount === 0 && stocked >= (approving ? stockTotal : 0) ? 'success' : failCount === results.length ? 'error' : 'info',
+      : `Toplu ${approving ? 'iade kabulünde' : 'iade retinde'} ${okCount}/${results.length} iade ${noun}, ${failCount} iade tamamlanamadı.${stockText}${failureText} Ayrıntılar bildirimde listelendi.`, failCount === 0 && stocked >= (approving ? stockTotal : 0) ? 'success' : failCount === results.length ? 'error' : 'info',
       [
         ...items.map(item => {
           const result = results.find(entry => entry.id === item.id)
@@ -140,6 +155,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
         ...(approving && stockTotal > 0 ? [{ label: 'Stok', value: `+${stocked.toLocaleString('tr-TR')} / ${stockTotal.toLocaleString('tr-TR')} adet stoğa eklendi`, tone: stocked < stockTotal ? 'error' as const : 'success' as const }] : []),
         ...(!approving ? [{ label: 'Ret Nedeni', value: usableReasons.find(reason => reason.id === reasonId)?.name ?? reasonId }] : [])
       ], bulkTarget(results))
+    if (approving) onClose()
   }
 
   // Failures from a closed write switch lead to that integration; everything else to the matching returns tab.
@@ -155,15 +171,16 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   const toggleStock = (key: string) => setStockKeys(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
 
   const mixedReject = !approving && !singlePlatform && !finished
-  return <RrModal
+  return <><RrModal
     crumb="Aksiyon Bekleyen İadeler"
     title={approving ? 'Toplu İade Onayı' : 'Toplu İade Reddi'}
     desc={`${items.length} iade seçildi. ${approving ? 'Onayla' : 'Reddet'} dediğinizde her iade sırayla pazar yerine gönderilir.`}
     size={mixedReject ? 'md' : 'lg'}
+    locked={running}
     onClose={() => { if (!running) onClose() }}
     foot={finished
       ? <><span className="rr-note" /><button type="button" className="rr-btn rr-primary" onClick={onClose}>Kapat</button></>
-      : <><span className="rr-note">{approving && stockTotal > 0 && <>Stoğa Eklenecek: <b>+{stockTotal.toLocaleString('tr-TR')} adet</b></>}</span><button type="button" className="rr-btn" onClick={onClose} disabled={running}>Vazgeç</button><button type="button" className={`rr-btn ${approving ? 'rr-primary' : 'rr-solid'}`} disabled={running || !canSubmit} onClick={() => void run()}>{running ? `Gönderiliyor… (${outcomes.length}/${items.length})` : approving ? `${items.length} İadeyi Onayla` : `${items.length} İadeyi Reddet`}</button></>}
+      : <><span className="rr-note">{approving && stockTotal > 0 && <>Stoğa Eklenecek: <b>+{stockTotal.toLocaleString('tr-TR')} adet</b></>}</span><button type="button" className="rr-btn" onClick={onClose} disabled={running}>Vazgeç</button><button type="button" className={`rr-btn ${approving ? 'rr-primary' : 'rr-solid'}`} disabled={running || !canSubmit} onClick={() => approving ? setConfirming(true) : void run()}>{running ? `Gönderiliyor… (${outcomes.length}/${items.length})` : approving ? `${items.length} İadeyi Onayla` : `${items.length} İadeyi Reddet`}</button></>}
   >
     {finished && <div className={`rr-callout${failed.length ? ' rr-danger' : ''}`}><RrIcon name={failed.length ? 'alert' : 'info'} /><span><b>{failed.length === 0 ? `${outcomes.length} iade ${approving ? 'onaylandı' : 'reddedildi'}.` : `${outcomes.length - failed.length} iade ${approving ? 'onaylandı' : 'reddedildi'}, ${failed.length} iade ${approving ? 'onaylanamadı' : 'reddedilemedi'}.`}</b> Ayrıntılar bildirimde listelendi.</span></div>}
     {mixedReject && <div className="rr-callout rr-danger"><RrIcon name="alert" /><span>Toplu ret için tek bir pazar yerinin iadelerini seçin. Ret nedenleri pazar yerine göre değişir.</span></div>}
@@ -190,7 +207,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       const loadingDetail = approving && details[index]?.isLoading
       const stockLocked = running || finished
       const products = groups.length > 0
-        ? groups.map(group => ({ group, line: group.display ?? { id: group.key, title: group.fallbackTitle, imageUrl: group.fallbackImage, quantity: group.units, sku: '', barcode: null, color: null, size: null, modelCode: null } }))
+        ? groups.map(group => ({ group, line: group.display ?? { id: group.key, title: group.fallbackTitle, imageUrl: group.fallbackImage, quantity: group.units, sku: '', barcode: null, color: null, size: null, modelCode: null, reason: null } }))
         : item.lines.map(line => ({ group: undefined, line }))
       const state = outcome ? (outcome.ok ? (approving ? 'Onaylandı' : 'Reddedildi') : null) : running ? 'Sırada' : 'Bekliyor'
       return <article className="rr-ocard" key={item.id}>
@@ -205,9 +222,11 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
             const facts = [['Barkod', line.barcode], ['Stok Kodu', line.sku], ['Model Kodu', line.modelCode], ['Renk', line.color], ['Beden', line.size]].filter((fact): fact is [string, string] => Boolean(fact[1]))
             const units = group?.units ?? line.quantity
             const stockOn = Boolean(group && stockKeys.includes(group.key) && group.mapped)
+            // The line's own reason when it has one, else the claim's; nothing when the marketplace gave none.
+            const reason = line.reason ? { label: line.reason, note: null, sellerFault: false } : item.reason
             return <div className="rr-bcard-p" key={group?.key ?? line.id}>
               <RrThumb src={line.imageUrl} quantity={units} large alt={line.title} />
-              <span className="rr-ptext"><b>{line.title}</b>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
+              <span className="rr-ptext"><b>{line.title}</b>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}{reason && <small className="rr-preason">İade Sebebi: <b className={reason.sellerFault ? 'rr-fault' : undefined} title={reason.sellerFault ? 'Satıcı kaynaklı iade: iade masrafları satıcıya yansıtılır.' : undefined}>{reason.label}</b></small>}{reason?.note && <small className="rr-preason">{reason.note[0]}: {reason.note[1]}</small>}</span>
               {approving && <div className="rr-stockctl">
                 <button type="button" role="switch" aria-checked={stockOn} disabled={stockLocked || !group || !group.mapped} className={`rr-switch${stockOn ? ' rr-on' : ''}`} onClick={() => group && toggleStock(group.key)} title={loadingDetail ? 'İade ayrıntıları yükleniyor…' : group && !group.mapped ? 'Bu ürün yerel stok kaydıyla eşleşmiyor.' : undefined}><i aria-hidden="true" /><span>Stoğa Ekle</span></button>
                 {stockOn && group && group.units > 1 && <select className="rr-in" aria-label={`${line.title} stoğa eklenecek adet`} disabled={stockLocked} value={unitsFor(group)} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: group.units }, (_, number) => <option key={number + 1} value={number + 1}>{number + 1} Adet Stoğa Ekle</option>)}</select>}
@@ -218,4 +237,16 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       </article>
     })}
   </RrModal>
+    {confirming && <RrModal
+      crumb="Toplu İade Onayı"
+      title="İadeleri Onayla"
+      size="sm"
+      locked={running}
+      onClose={() => { if (!running) setConfirming(false) }}
+      foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={running} onClick={() => setConfirming(false)}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={running} onClick={() => void run()}>{running ? `Onaylanıyor… (${outcomes.length}/${items.length})` : 'Onayla'}</button></>}
+    >
+      <p className="rr-confirm-q">{confirmText}</p>
+      {stockTotal > 0 && <p className="rr-lead">Stoğa Eklenecek: <b>+{stockTotal.toLocaleString('tr-TR')} adet</b></p>}
+    </RrModal>}
+  </>
 }

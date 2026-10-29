@@ -344,6 +344,12 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ocard > header > div > b { overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ocard > header > div { flex: 1 1 220px; min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-osfacts b { color: var(--rr-ink); font-weight: 500; }
+/* Bulk approval: the customer's reason under each product's codes, and the question asked before sending. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ptext .rr-preason { overflow-wrap: anywhere; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ptext .rr-preason b { display: inline; color: var(--rr-ink); font-weight: 500; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ptext .rr-preason b.rr-fault { color: var(--rr-bad); font-weight: 600; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-confirm-q { margin: 0; color: var(--rr-ink); font-size: 14px; line-height: 1.5; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-confirm-q + .rr-lead { margin: 8px 0 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview { display: grid; place-items: center; aspect-ratio: 4 / 3; background: linear-gradient(135deg, #3a3a46, #1d1d23); border: 1px solid var(--rr-line); border-radius: 12px; color: var(--rr-subtle); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-rlabel { width: min(520px, 100%); padding: 18px; color: #111; background: #fff; border: 2px solid #111; border-radius: 4px; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-rlabel .rr-hd { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #999; }
