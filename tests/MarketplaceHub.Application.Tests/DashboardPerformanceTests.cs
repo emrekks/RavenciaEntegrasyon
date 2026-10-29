@@ -148,6 +148,23 @@ public sealed class DashboardPerformanceTests
         Assert.Contains("shipment_packages", packageSql, StringComparison.Ordinal);
     }
 
+    // Owner, 29 Oct 2026: a Trendyol micro-export return keeps its revenue until Trendyol's statement records a refund;
+    // the overview asks the statement through the same query as the reports (PostgreSqlReportsTests compares the numbers).
+    [Fact]
+    public void A_micro_export_return_counts_on_the_overview_only_once_trendyols_statement_records_it()
+    {
+        using var db = DashboardOrderVisibilityTests.MetadataOnlyContext();
+        var tenantId = Guid.NewGuid();
+        var period = DashboardPerformancePeriod.Resolve(new DateOnly(2026, 10, 14), new DateOnly(2026, 10, 20), Now, Istanbul).Value!;
+        var orders = DashboardReadService.PerformanceOrders(db, tenantId, period, "Europe/Istanbul");
+        var rule = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId).ToQueryString();
+
+        Assert.Contains("StoreFrontCode", rule, StringComparison.Ordinal);
+        Assert.Contains("marketplace_finance_transactions", rule, StringComparison.Ordinal);
+        foreach (var sql in new[] { orders.ToQueryString(), DashboardReadService.UnitQuery(db, orders).ToQueryString(), DashboardReadService.PackageQuery(db, orders).ToQueryString() })
+            Assert.Contains("marketplace_finance_transactions", sql, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Returned_orders_stay_out_of_revenue_and_show_on_their_own()
     {

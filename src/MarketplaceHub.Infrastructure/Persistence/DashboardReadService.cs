@@ -156,29 +156,31 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         .Select(group => new RevenueGroup(group.Key.Day, group.Key.ConnectionId, group.Key.Currency,
             group.Sum(x => x.Kept), group.Sum(x => x.Counted), group.Sum(x => x.Back), group.Sum(x => x.BackCounted)));
 
-    // Units still ordered and kept: a line's cancelled and returned quantities are not sold products.
+    // Units still ordered and kept: a line's cancelled and returned quantities are not sold products, unless the return
+    // does not count (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
     internal static IQueryable<UnitGroup> UnitQuery(AppDbContext db, IQueryable<PerformanceOrderRow> orders) =>
         from row in orders
         join line in db.OrderLines.AsNoTracking() on new { row.TenantId, OrderId = row.Id } equals new { line.TenantId, line.OrderId }
         where !row.Returned
         let active = line.OrderedQuantity - line.CancelledQuantity
-        let accepted = db.ReturnLines.Where(returned => returned.TenantId == line.TenantId && returned.OrderLineId == line.Id
+        let accepted = !row.ReturnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == line.TenantId && returned.OrderLineId == line.Id
                 && db.ReturnClaims.Any(claim => claim.TenantId == returned.TenantId && claim.Id == returned.ClaimId
                     && (returned.RawStatus == null || returned.RawStatus == ""
                         ? AcceptedClaims.Contains(claim.Status)
                         : AcceptedLines.Contains(returned.RawStatus.ToUpper()))))
             .Sum(returned => (decimal?)returned.Quantity) ?? 0m
-        let back = line.ReturnedQuantity > accepted ? line.ReturnedQuantity : accepted
+        let returned = row.ReturnBooked ? line.ReturnedQuantity : 0m
+        let back = returned > accepted ? returned : accepted
         group new { active, back } by new { row.Day, row.ConnectionId, row.Currency } into grouped
         select new UnitGroup(grouped.Key.Day, grouped.Key.ConnectionId, grouped.Key.Currency,
             grouped.Sum(x => x.active > x.back ? x.active - x.back : 0m));
 
     // Packages as the order screens count them: current packages only (no split parents or placeholders), not cancelled
-    // and not sent back.
+    // and not sent back (a package sent back whose return does not count keeps its sale, and counts).
     internal static IQueryable<PackageGroup> PackageQuery(AppDbContext db, IQueryable<PerformanceOrderRow> orders) =>
         from row in orders
         join package in MarketplaceSalesService.CurrentShipmentPackages(db) on new { row.TenantId, OrderId = row.Id } equals new { package.TenantId, package.OrderId }
-        where !row.Returned && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
+        where !row.Returned && package.Status != ShipmentPackageStatus.Cancelled && (package.Status != ShipmentPackageStatus.Returned || !row.ReturnBooked)
         group package by new { row.Day, row.ConnectionId, row.Currency } into grouped
         select new PackageGroup(grouped.Key.Day, grouped.Key.ConnectionId, grouped.Key.Currency, grouped.Count());
 
@@ -210,13 +212,16 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         public decimal Amount { get; init; }
         public decimal ReturnedAmount { get; init; }
         public bool Returned { get; init; }
+        // False while the order's return does not count (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
+        public bool ReturnBooked { get; init; } = true;
         public DateTime Day { get; init; }
     }
 
     // One row per order of both periods. The amount is the order's current packages that are not cancelled (a
     // Trendyol order total also holds its cancelled packages); an order whose packages carry no amount keeps the
     // order total. The returned amount is the larger of the packages sent back and the returned share of the lines
-    // (returned quantities and accepted return claims), so a partial return is taken off too.
+    // (returned quantities and accepted return claims), so a partial return is taken off too. A Trendyol micro-export
+    // return its statement has not refunded takes nothing off, as in the reports (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
     internal static IQueryable<PerformanceOrderRow> PerformanceOrders(AppDbContext db, Guid tenantId, DashboardPerformancePeriod period, string timezone, bool hourly = false)
     {
         var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
@@ -233,6 +238,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var scanEnd = period.CurrentEnd + ahead;
         var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
         var lines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
+        var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
         return from order in db.Orders.AsNoTracking()
                join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
                // Every store the tenant had counts, also one waiting for new credentials or switched off; only stores
@@ -252,7 +258,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                    ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
                        .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                    : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
-               let packagesBack = priced
+               let returnBooked = !unbookedReturns.Contains(order.Id)
+               let packagesBack = priced && returnBooked
                    ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
                        .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                    : 0m
@@ -262,8 +269,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                    {
                        line.UnitPrice,
                        Active = line.OrderedQuantity - line.CancelledQuantity,
-                       line.ReturnedQuantity,
-                       Accepted = db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
+                       ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
+                       Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
                                && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
                                    && (returned.RawStatus == null || returned.RawStatus == ""
                                        ? acceptedClaims.Contains(claim.Status)
@@ -280,7 +287,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                    Currency = order.Currency,
                    Amount = amount,
                    ReturnedAmount = packagesBack > linesBack ? packagesBack : linesBack,
-                   Returned = returnedStatuses.Contains(order.DerivedStatus),
+                   Returned = returnBooked && returnedStatuses.Contains(order.DerivedStatus),
+                   ReturnBooked = returnBooked,
                    // Day is the local calendar day, or the local hour for an hourly report.
                    Day = hourly
                        ? TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Date.AddHours(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Hour)
@@ -414,6 +422,17 @@ public static class DashboardRevenuePolicy
     public static readonly string[] AcceptedReturnLineRawStatuses = ["ACCEPTED", "APPROVED", "COMPLETED", "REFUNDED"];
 
     public static decimal Amount(decimal netAmount, decimal grossAmount) => netAmount > 0 ? netAmount : grossAmount;
+
+    // Trendyol micro-export orders (a storefront other than Turkey's) whose statement records no refund. Their return (claim,
+    // returned line or package, returned status) takes nothing off: Trendyol keeps the sale and takes a weekly overseas
+    // return fee off the payout instead (owner, 29 Oct 2026; 7-13 Sep 2026, a Romanian order of 584.75 TL). The overview
+    // and the reports both read this, so the two pages count such a return alike.
+    internal static IQueryable<Guid> OrdersWithUnbookedReturn(AppDbContext db, Guid tenantId) =>
+        db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId && order.StoreFrontCode != null && order.StoreFrontCode != "" && order.StoreFrontCode != "TR"
+                && !db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == order.ConnectionId
+                    && entry.OrderNumber == order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return))
+            .Select(order => order.Id);
 }
 
 // The chosen calendar days and the previous period of equal length. "Today" alone runs until now and is compared with
