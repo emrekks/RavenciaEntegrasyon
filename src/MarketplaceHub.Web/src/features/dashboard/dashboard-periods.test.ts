@@ -14,8 +14,10 @@ const performance = (current: PerformanceRow[], previous: PerformanceRow[] = [],
 })
 
 describe('dashboard periods', () => {
-  it('asks for today so far, or for Istanbul days ending with today', () => {
+  it('asks for today so far, yesterday as one whole day, or for Istanbul days ending with today', () => {
     expect(periodDays('today', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-20', to: '2026-10-20' })
+    expect(periodDays('yesterday', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-19', to: '2026-10-19' })
+    expect(periodDays('yesterday', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-02-28', to: '2026-02-28' })
     expect(periodDays('7', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-14', to: '2026-10-20' })
     expect(periodDays('30', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-01-31', to: '2026-03-01' })
   })
