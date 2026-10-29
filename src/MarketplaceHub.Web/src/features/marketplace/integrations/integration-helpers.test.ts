@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionEnvironmentLabel, credentialRequestBody, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
+import { connectionEnvironmentLabel, connectionTestFeedback, credentialRequestBody,readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
 
 describe('integration helpers', () => {
   it('builds the credential body of each platform', () => {
@@ -48,5 +48,13 @@ describe('trendyolUserAgentNotice', () => {
   })
   it('reports an identity that cannot be sent as a header', () => {
     expect(trendyolUserAgentNotice('123456 - Gümüş', '123456')?.kind).toBe('error')
+  })
+
+  it('reports a connection test in the seller’s words, naming the marketplace', () => {
+    const passed = connectionTestFeedback('Pazarama', { succeeded: true })
+    expect(passed).toMatchObject({ kind: 'success', title: 'Bağlantı Testi Başarılı', message: 'Pazarama mağazasına erişim doğrulandı. Mağazada hiçbir ürün, stok, fiyat veya sipariş değiştirilmedi.', context: { record: true, operation: 'Bağlantı testi' } })
+    expect(passed.message).not.toMatch(/dış yazma|yetenek/iu)
+    const failed = connectionTestFeedback('PTT AVM', { succeeded: false, errorCode: 'AUTH_FAILED', errorSummary: 'Kullanıcı adı veya şifre hatalı.' })
+    expect(failed).toMatchObject({ kind: 'error', title: 'Bağlantı Testi Başarısız', message: 'PTT AVM mağazasına erişilemedi: Kullanıcı adı veya şifre hatalı.', context: { code: 'AUTH_FAILED' } })
   })
 })

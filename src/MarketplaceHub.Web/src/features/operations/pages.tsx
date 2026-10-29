@@ -7,7 +7,7 @@ import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-su
 import { Button, Pagination, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
-import { appendNotification } from '../../shared/notifications'
+import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
 import { marketplaceQuestionSyncChange } from './marketplace-question-sync'
 import { catalogStructureImportChange } from './catalog-structure-import'
@@ -69,6 +69,11 @@ type JobChange = { label: string; value: string; detail: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
 type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
 type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null }
+// The job a notice is about: its title ("Pazarama Ürün İşlemi"), number, marketplace and store.
+function jobNotificationContext(job: Pick<JobSummary, 'id' | 'connectionId' | 'jobType' | 'marketplace'>): NotificationContext {
+  const title = jobTitle(job.jobType, job.marketplace)
+  return { operation: title, platformCode: platformCodeFromName(job.marketplace), connectionId: job.connectionId ?? undefined, jobId: job.id, subject: { kind: 'job', id: job.id, label: title, href: notificationLinks.job(job.id) } }
+}
 type JobPage = { items: JobSummary[]; nextCursor: string | null; hasMore: boolean }
 
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
@@ -377,10 +382,10 @@ export function JobsPage({ me }: { me: Me }) {
   useDismissable(filterOpen, [], () => setFilterOpen(false), { isInside: insideSelector('.jobs-reference-filter-wrap') })
   useDismissable(timeRangeOpen, [], () => setTimeRangeOpen(false), { isInside: insideSelector('.jobs-reference-range-wrap') })
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' } | null>(null)
+  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info'; context?: NotificationContext } | null>(null)
   useEffect(() => {
     if (!feedback) return
-    appendNotification(feedback.message, feedback.tone === 'danger' ? 'error' : feedback.tone)
+    appendNotification({ ...feedback.context, message: feedback.message, kind: feedback.tone === 'danger' ? 'error' : feedback.tone })
     const timeout = window.setTimeout(() => setFeedback(null), 5500)
     return () => window.clearTimeout(timeout)
   }, [feedback])
@@ -425,10 +430,15 @@ export function JobsPage({ me }: { me: Me }) {
     mutationFn: ({ id, verb }: { id: string; verb: 'retry' | 'cancel' }) => hubApi<JobDetail>(`/jobs/${id}/${verb}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(`${verb}-${id}`) } }),
     onSuccess: async (data, variables) => {
       setSelectedId(data.job.id)
-      setFeedback({ message: variables.verb === 'retry' ? 'İşlem yeniden kuyruğa alındı.' : 'İşlem iptal edildi.', tone: variables.verb === 'retry' ? 'info' : 'success' })
+      const title = jobTitle(data.job.jobType, data.job.marketplace)
+      setFeedback({ message: variables.verb === 'retry' ? `${title} yeniden kuyruğa alındı.` : `${title} iptal edildi.`, tone: variables.verb === 'retry' ? 'info' : 'success', context: { ...jobNotificationContext(data.job), title: variables.verb === 'retry' ? 'İşlem Yeniden Denenecek' : 'İşlem İptal Edildi' } })
       await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
     },
-    onError: error => setFeedback({ message: error instanceof Error ? error.message : 'İşlem güncellenemedi.', tone: 'danger' })
+    onError: (error, variables) => {
+      const failure = notificationError(error, 'İşlem güncellenemedi.')
+      const job = rawJobs.find(candidate => candidate.id === variables.id)
+      setFeedback({ message: failure.message, tone: 'danger', context: { ...(job ? jobNotificationContext(job) : { jobId: variables.id }), title: variables.verb === 'retry' ? 'İşlem Yeniden Denenemedi' : 'İşlem İptal Edilemedi', code: failure.code } })
+    }
   })
   const oneTimeInvoiceDelivery = useMutation({
     mutationFn: ({ id, confirmed, orderNumber }: { id: string; confirmed: boolean; orderNumber: string }) => hubApi<JobDetail>(`/jobs/${id}/invoice-delivery-once`, {
@@ -465,7 +475,7 @@ export function JobsPage({ me }: { me: Me }) {
       if (!matchCategory) return false
       if (statusChips.length && !statusChips.includes(jobStatusChip(job.status))) return false
       if (!term) return true
-      return [job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
+      return [job.id, job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
   }, [rangeFiltered, category, search, statusChips])
   // A count toggles its filter; several can be on at once and tapping one again takes it off.

@@ -14,7 +14,7 @@ import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
 import { isSellerFaultReturn, returnReasonPresentation, returnReasonSummary } from '../return-reference-presentation'
 import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrLoading, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
-import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, type NotificationDetail, type NotificationTarget } from '../../../shared/notifications'
+import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, notificationError, notificationLinks, type NotificationContext, type NotificationDetail, type NotificationTarget } from '../../../shared/notifications'
 import { resolveReturnStatus } from '../../../shared/dashboard-operational-links'
 import { code128Bars } from '../../shipping'
 import { marketplacePlatformOptions } from '../marketplace-platform-support'
@@ -165,7 +165,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   </tr>
     {previewLine && <ReturnImagePreview title={previewLine.title} imageUrl={previewLine.imageUrl ?? item.primaryImageUrl} facts={returnLineFacts(item.platformCode, previewLine)} onClose={() => setPreviewLine(null)} />}
     {labelOpen && <ReturnLabelPreview item={item} lines={lines} onClose={() => setLabelOpen(false)} />}
-    {dialogMode === 'APPROVE' && useApproveDialog && <ReturnApproveDialog open claimId={item.id} version={detailItem.version} marketplaceName={marketplaceName} order={{ connectionId: detailItem.connectionId ?? item.connectionId ?? null, platformCode: detailItem.platformCode, platformName: marketplaceName, orderNumber: displayOrderNumber(detailItem.orderNumber), customer: detailItem.customerName, orderedAt: detailItem.orderedAt, packageNumber: item.packageNumber, claimCode: item.externalClaimId, reason: reasonPresentation.label }} rows={approveRows} wholeClaim={approveIsHepsiburada} loading={detailQuery.isLoading} error={detailQuery.isError ? detailQuery.error : null} onClose={closeDialog} onDone={(message, kind, details, target) => notifyReturn(onNotice, message, kind, details, target)} />}
+    {dialogMode === 'APPROVE' && useApproveDialog && <ReturnApproveDialog open claimId={item.id} version={detailItem.version} marketplaceName={marketplaceName} order={{ connectionId: detailItem.connectionId ?? item.connectionId ?? null, platformCode: detailItem.platformCode, platformName: marketplaceName, orderNumber: displayOrderNumber(detailItem.orderNumber), customer: detailItem.customerName, orderedAt: detailItem.orderedAt, packageNumber: item.packageNumber, claimCode: item.externalClaimId, reason: reasonPresentation.label }} rows={approveRows} wholeClaim={approveIsHepsiburada} loading={detailQuery.isLoading} error={detailQuery.isError ? detailQuery.error : null} onClose={closeDialog} onDone={(message, kind, details, target) => notifyReturn(onNotice, message, kind, details, target?.href.startsWith('/integrations') ? target : undefined, { ...returnNotificationContext(detailItem), title: kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi', operation: 'İade kabul kararı' })} />}
     {dialogMode && !(dialogMode === 'APPROVE' && useApproveDialog) && <RrModal crumb={`${marketplaceName} İade`} title={dialogMode === 'APPROVE' ? 'İade Onayı' : dialogMode === 'REJECT' ? 'İade Ret Talebi' : 'Detaylı Bilgi'} desc={`Sipariş ${displayOrderNumber(detailItem.orderNumber)} · ${detailItem.customerName}`} size="lg" onClose={closeDialog} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={closeDialog}>Kapat</button></>}>
       {detailQuery.isLoading ? <RrLoading text="İade detayları yükleniyor…" /> : detailQuery.isError || !detailQuery.data ? <RrError error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /> : <>
         <ReturnDetailFacts item={detailItem} plain={dialogMode === 'DETAIL'} invoicedTotal={invoicedTotal} money={detailMoney} />
@@ -219,20 +219,25 @@ function returnPlatformStatusKind(rawStatus: string | null | undefined): ReturnN
   if (/(APPROV|ACCEPT|COMPLETE|SUCCESS)/u.test(normalized)) return 'success'
   return 'info'
 }
-function notifyReturn(onNotice: ReturnNoticeHandler | undefined, message: string, kind: ReturnNoticeKind = 'info', details?: NotificationDetail[], target?: NotificationTarget | null) {
-  appendNotification(message, kind, target, details)
+function notifyReturn(onNotice: ReturnNoticeHandler | undefined, message: string, kind: ReturnNoticeKind = 'info', details?: NotificationDetail[], target?: NotificationTarget | null, context?: NotificationContext) {
+  appendNotification({ ...context, message, kind, target, details })
   onNotice?.(message, kind)
+}
+// The return a notice is about: its claim and order number (opening the return), its marketplace and store.
+function returnNotificationContext(item: Pick<ReturnClaim, 'id' | 'orderNumber' | 'externalClaimId' | 'platformCode' | 'connectionId' | 'platformDisplayName'>): NotificationContext {
+  const claim = item.externalClaimId?.trim()
+  return { platformCode: item.platformCode, connectionId: item.connectionId ?? undefined, storeName: item.platformDisplayName || undefined, subject: { kind: 'return', id: item.id, label: `${displayOrderNumber(item.orderNumber)}${claim ? ` · Talep ${claim}` : ''}`, href: notificationLinks.return(item.id) } }
 }
 function ReturnReceiptButton({ item, onNotice }: { item: ReturnDetail; onNotice?: ReturnNoticeHandler }) {
   const client = useQueryClient()
   const receive = useMutation({
     mutationFn: () => hubApi(`/returns/${item.id}/received`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` } }),
     onSuccess: async () => {
-      notifyReturn(onNotice, 'İade paketi teslim alındı. Onay veya ret işlemleri açıldı.', 'success')
+      notifyReturn(onNotice, 'İade paketi teslim alındı. Onay veya ret işlemleri açıldı.', 'success', undefined, undefined, { ...returnNotificationContext(item), title: 'İade Paketi Teslim Alındı', operation: 'İade teslim alma' })
       await client.invalidateQueries({ queryKey: ['return', item.id] })
       await client.invalidateQueries({ queryKey: ['returns'] })
     },
-    onError: error => notifyReturn(onNotice, error instanceof Error ? error.message : 'İade teslim alındı olarak işaretlenemedi.', 'error')
+    onError: error => { const failure = notificationError(error, 'İade teslim alındı olarak işaretlenemedi.'); notifyReturn(onNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(item), title: 'İade Teslim Alınamadı', operation: 'İade teslim alma', code: failure.code }) }
   })
   if (!item.allowedActions.includes('RECEIVE')) return null
   return <section className="rr-dsec"><header><div className="rr-h3">Kargo Teslimi</div><p>İade paketi fiziksel olarak elinize ulaştıysa teslim aldığınızı işaretleyin. Ardından aynı pencereden onay veya ret kararı verebilirsiniz.</p></header><div><button type="button" className="rr-btn" disabled={receive.isPending} onClick={() => receive.mutate()}><RrIcon name="box" />{receive.isPending ? 'Kaydediliyor…' : 'Teslim Aldım'}</button></div></section>
@@ -261,14 +266,16 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
             ? `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletildi; sonuç henüz kesinleşmedi.${response}`
             : `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı iletildi ancak ${marketplaceName}’dan yanıt alınamadı.`
       const kind = payload.action === 'PREAPPROVAL_CONFIRM' ? 'info' : result.status === 'REJECTED' ? 'error' : result.status === 'APPROVED' ? returnPlatformStatusKind(result.rawStatus) : 'info'
-      notifyReturn(onNotice, message, kind, [{ label: 'Sipariş', value: `${displayOrderNumber(item.orderNumber)} · ${item.customerName}`, tone: kind === 'error' ? 'error' : undefined }, { label: 'Pazar Yeri', value: marketplaceName }], { href: `/returns?search=${encodeURIComponent(item.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
+      const title = payload.action === 'PREAPPROVAL_CONFIRM' ? 'İnceleme Talebi İletildi' : result.status === 'APPROVED' ? 'İade Kabul Kararı İletildi' : result.status === 'REJECTED' ? 'İade Ret Kararı İletildi' : 'İade Kararı İletildi'
+      notifyReturn(onNotice, message, kind, [{ label: 'Müşteri', value: item.customerName }, ...(result.rawStatus ? [{ label: `${marketplaceName} Durumu`, value: returnPlatformStatusText(result.rawStatus, marketplaceName) }] : [])], undefined, { ...returnNotificationContext(item), title, operation: 'İade kararı' })
       await client.invalidateQueries({ queryKey: ['return', item.id] })
       await client.invalidateQueries({ queryKey: ['returns'] })
       onComplete?.()
     },
     onError: error => {
-      const reason = error instanceof Error ? error.message : 'İade kararı başlatılamadı.'
-      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletilemedi: ${reason}`, 'error', [{ label: 'Sipariş', value: `${displayOrderNumber(item.orderNumber)} · ${item.customerName}` }, { label: 'Pazar Yeri', value: marketplaceName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(item.connectionId, marketplaceName) : { href: `/returns?search=${encodeURIComponent(item.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
+      const failure = notificationError(error, 'İade kararı başlatılamadı.')
+      const reason = failure.message
+      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletilemedi: ${reason}`, 'error', [{ label: 'Müşteri', value: item.customerName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(item.connectionId, marketplaceName) : undefined, { ...returnNotificationContext(item), title: 'İade Kararı İletilemedi', operation: 'İade kararı', code: failure.code })
     }
   })
   async function uploadFile(file: File) {
@@ -442,7 +449,7 @@ export function ReturnsPage() {
       {!query.isLoading && !query.isError && visibleItems.length > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{totalCount.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={currentPage <= 1} onClick={() => setPageNumber(Math.max(1, currentPage - 1))}><RrIcon name="left" /></button>{pageList.map(page => <button key={page} type="button" className={page === currentPage ? 'rr-on' : undefined} aria-current={page === currentPage ? 'page' : undefined} onClick={() => setPageNumber(page)}>{page}</button>)}<button type="button" aria-label="Sonraki" disabled={currentPage >= totalPages} onClick={() => setPageNumber(Math.min(totalPages, currentPage + 1))}><RrIcon name="right" /></button></div><label className="rr-jump">Sayfaya Git<input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } } }} /><button type="button" className="rr-btn" onClick={() => { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } }}>Git</button></label></div>}
     </div>
     {bulkSelected.length > 0 && <div className="rr-bulk" role="group" aria-label="Toplu işlemler"><span className="rr-grow">{bulkSelected.length} iade seçildi</span><button type="button" className="rr-btn rr-quiet" onClick={() => setBulkIds([])}>Vazgeç</button><button type="button" className="rr-btn rr-danger" onClick={() => setBulkMode('REJECT')}><RrIcon name="close" />Reddet</button><button type="button" className="rr-btn rr-primary" onClick={() => setBulkMode('APPROVE')}><RrIcon name="check" />Onayla</button></div>}
-    {bulkMode && <ReturnBulkDecisionDialog mode={bulkMode} items={bulkSelected.map((claim): BulkDecisionItem => ({ id: claim.id, version: claim.version, orderNumber: displayOrderNumber(claim.orderNumber), customerName: claim.customerName, orderedAt: claim.orderedAt, packageNumber: claim.packageNumber, connectionId: claim.connectionId, platformCode: claim.platformCode, platformName: claim.platformDisplayName || returnPlatformName(claim.platformCode), reason: returnReasonSummary(claim), lines: (claim.lines ?? []).map(line => ({ id: line.id, title: line.title, imageUrl: line.imageUrl ?? claim.primaryImageUrl, quantity: productLineQuantity(line), sku: line.sku, barcode: formatMarketplaceBarcode(claim.platformCode, line.barcode) ?? line.barcode, color: returnLineFieldValue(line, ['renk', 'color'], 'color') ?? null, size: returnLineFieldValue(line, ['beden', 'size'], 'size') ?? null, modelCode: line.modelCode ?? null, reason: returnLineFieldValue(line, ['sebep', 'reason'], 'reasonText') })) }))} onClose={() => { setBulkMode(null); setBulkIds([]) }} onDone={(message, kind, details, target) => notifyReturn((text, tone) => setNotice(text, tone, tone !== 'success'), message, kind, details, target)} />}
+    {bulkMode && <ReturnBulkDecisionDialog mode={bulkMode} items={bulkSelected.map((claim): BulkDecisionItem => ({ id: claim.id, version: claim.version, orderNumber: displayOrderNumber(claim.orderNumber), customerName: claim.customerName, orderedAt: claim.orderedAt, packageNumber: claim.packageNumber, connectionId: claim.connectionId, platformCode: claim.platformCode, platformName: claim.platformDisplayName || returnPlatformName(claim.platformCode), reason: returnReasonSummary(claim), lines: (claim.lines ?? []).map(line => ({ id: line.id, title: line.title, imageUrl: line.imageUrl ?? claim.primaryImageUrl, quantity: productLineQuantity(line), sku: line.sku, barcode: formatMarketplaceBarcode(claim.platformCode, line.barcode) ?? line.barcode, color: returnLineFieldValue(line, ['renk', 'color'], 'color') ?? null, size: returnLineFieldValue(line, ['beden', 'size'], 'size') ?? null, modelCode: line.modelCode ?? null, reason: returnLineFieldValue(line, ['sebep', 'reason'], 'reasonText') })) }))} onClose={() => { setBulkMode(null); setBulkIds([]) }} onDone={(message, kind, details, target) => notifyReturn((text, tone) => setNotice(text, tone, tone !== 'success'), message, kind, details, target, { title: `Toplu İade ${bulkMode === 'APPROVE' ? 'Kabulü' : 'Reddi'} ${kind === 'success' ? 'İletildi' : kind === 'error' ? 'İletilemedi' : 'Kısmen Tamamlandı'}`, operation: bulkMode === 'APPROVE' ? 'Toplu iade kabulü' : 'Toplu iade reddi', platformCode: new Set(bulkSelected.map(claim => claim.platformCode)).size === 1 ? bulkSelected[0]?.platformCode : undefined })} />}
   </section>
 }
 // The separate detail route (/returns/:id), as the proposal's detail page.
@@ -469,9 +476,9 @@ export function ReturnDetailPage() {
     try {
       const kind = String(data.get('disposition'))
       await dispositionRequest.mutateAsync({ lineId: line.id, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
-      notifyReturn(setNotice, kind === 'PASS' ? 'İade stok kararı kaydedildi; ürün stoğa eklendi.' : 'İade stok kararı kaydedildi; stok değişmedi.', 'success')
+      notifyReturn(setNotice, kind === 'PASS' ? 'İade stok kararı kaydedildi; ürün stoğa eklendi.' : 'İade stok kararı kaydedildi; stok değişmedi.', 'success', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedildi', operation: 'İade stok kararı' })
       await Promise.all([client.invalidateQueries({ queryKey: ['return', id] }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: ['products'] })] : [])])
-    } catch (reason) { notifyReturn(setNotice, reason instanceof Error ? reason.message : 'Stok kararı kaydedilemedi.', 'error') }
+    } catch (reason) { const failure = notificationError(reason, 'Stok kararı kaydedilemedi.'); notifyReturn(setNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedilemedi', operation: 'İade stok kararı', code: failure.code }) }
     finally { dispositionInFlight.current = false }
   }
   if (query.isLoading) return <section className="content f3 rr"><RrLoading /></section>; if (query.isError || !query.data) return <section className="content f3 rr"><RrError error={query.error} onRetry={() => void query.refetch()} /></section>; const item = query.data; const lines = item.lines ?? []; const marketplaceName = returnPlatformName(item.platformCode)

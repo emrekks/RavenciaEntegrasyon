@@ -1847,10 +1847,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         // Trendyol, Hepsiburada, Shopify, n11, Pazarama and PTT AVM read the publication state back; Hepsiburada by the
         // tracking id of its last import, Shopify and n11 by each variant's stock code, Trendyol, Pazarama and PTT AVM by
-        // barcode.
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.AllowsManualRead(connection))
-            return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın durumunu sorgulamak için etkin Trendyol, Hepsiburada, Shopify, N11, Pazarama veya PTT AVM bağlantısı gerekir.", 422);
-        var platformName = connection.PlatformCode switch { "HEPSIBURADA" => "Hepsiburada", "SHOPIFY" => "Shopify", "N11" => "N11", "PAZARAMA" => "Pazarama", "PTTAVM" => "PTT AVM", _ => "Trendyol" };
+        // barcode. A refusal names the store and why it was refused (PublicationStatusRefreshPolicy).
+        var refusal = PublicationStatusRefreshPolicy.Refusal(connection);
+        if (connection is null || refusal is not null)
+            return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", refusal ?? "Bağlantı bulunamadı; yayın durumu sorgulanamadı.", 422);
+        var platformName = PublicationStatusRefreshPolicy.PlatformName(connection.PlatformCode);
 
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.Products.AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken))

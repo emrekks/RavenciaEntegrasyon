@@ -45,7 +45,7 @@ vi.mock('../../shared/api', () => ({
   }),
   loadAllPages: vi.fn(async () => ({ items: [{ id: 'shopify-connection', platformCode: 'SHOPIFY', displayName: 'Shopify', status: 'ACTIVE', environment: 'LIVE', hasCredential: false }, { id: 'trendyol-connection', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE', environment: 'LIVE', hasCredential: false }], nextCursor: null, hasMore: false })),
 }))
-vi.mock('../../shared/notifications', () => ({ appendNotification: vi.fn() }))
+vi.mock('../../shared/notifications', async importOriginal => ({ ...(await importOriginal<typeof import('../../shared/notifications')>()), appendNotification: vi.fn() }))
 
 import { InvoicesPage } from './pages'
 

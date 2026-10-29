@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { appendNotification, normalizeNotificationKind } from '../notifications'
+import { appendNotification, normalizeNotificationKind, notificationError, type NotificationContext } from '../notifications'
 import { ToneIcon } from './ToneIcon'
 import { ToastViewportContext } from './toast-stack-context'
 import { UiIcon } from './UiIcon'
@@ -69,12 +69,16 @@ export function MessageToast({ message, onClose, kind: explicitKind }: { message
 }
 
 /** An action's error as a toast that also goes to the notification history; it hides itself after eight seconds. */
-export function ErrorToast({ error, title, onDismiss }: { error: unknown; title?: string; onDismiss?: () => void }) {
+export function ErrorToast({ error, title, onDismiss, context }: { error: unknown; title?: string; onDismiss?: () => void; context?: NotificationContext }) {
   const message = error ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
   const [hiddenMessage, setHiddenMessage] = useState('')
+  const contextRef = useRef(context)
+  const errorRef = useRef(error)
+  useEffect(() => { contextRef.current = context; errorRef.current = error })
   useEffect(() => {
     if (!message) return
-    appendNotification(title ? `${title}: ${message}` : message, 'error')
+    // The title says what failed ("Kategoriler Yüklenemedi"); the server's code goes to the Ayrıntı rows.
+    appendNotification({ ...contextRef.current, title: title ?? contextRef.current?.title, message, kind: 'error', code: contextRef.current?.code ?? notificationError(errorRef.current, message).code })
     const timeout = window.setTimeout(() => setHiddenMessage(message), 8000)
     return () => window.clearTimeout(timeout)
   }, [message, title])

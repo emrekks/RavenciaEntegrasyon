@@ -7,7 +7,7 @@ import { Busy, ErrorBox, Pagination, UiIcon, useConfirmDialog } from '../../../s
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
-import { appendNotification } from '../../../shared/notifications'
+import { appendNotification, notificationError, notificationLinks, sentenceTitle } from '../../../shared/notifications'
 import { formatDate } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
 import { Badge, DateText, Empty, Page, Shipment, notificationKindFromMessage } from '../shared'
@@ -72,10 +72,18 @@ export function ShipmentDetailPage() {
   const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selectedCargoShortName, setSelectedCargoShortName] = useState(''); const query = useQuery({ queryKey: ['shipment', id], queryFn: () => hubApi<ShipmentDetail>(`/shipments/${id}`) })
   const carriers = useQuery({ queryKey: ['shipment-carriers', id], queryFn: () => hubApi<RemoteCargoCompany[]>(`/shipments/${id}/changeable-cargo-companies`), enabled: query.data?.platformCode === 'HEPSIBURADA' && query.data.allowedActions.includes('CHANGE_CARGO_PROVIDER'), retry: false })
   useEffect(() => { if (carriers.data?.length && !carriers.data.some(item => item.shortName === selectedCargoShortName)) setSelectedCargoShortName(carriers.data[0].shortName) }, [carriers.data, selectedCargoShortName])
+  const shipmentRef = useRef(query.data)
+  // The failed request's own title and code, kept until its notice is recorded.
+  const noticeFailureRef = useRef<{ title?: string; code?: string } | null>(null)
+  useEffect(() => { shipmentRef.current = query.data })
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
-    appendNotification(notice, kind)
+    // Every notice of this page is about this package: its number, its order and its marketplace.
+    const shipment = shipmentRef.current
+    const failure = noticeFailureRef.current
+    noticeFailureRef.current = null
+    appendNotification({ message: notice, kind, title: failure?.title, code: failure?.code, operation: 'Paket işlemi', platformCode: shipment?.platformCode, subject: shipment ? { kind: 'package', id: shipment.package.id, label: `Paket ${shipment.package.externalPackageId} · Sipariş #${shipment.package.orderNumber.replace(/^#+/u, '')}`, href: notificationLinks.package(shipment.package.id) } : undefined })
     document.documentElement.dataset.rvShipmentFeedback = kind
     const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
@@ -94,9 +102,10 @@ export function ShipmentDetailPage() {
     requestInFlight.current = true
     try {
       await packageRequest.mutateAsync({ path, body: JSON.stringify(payload), version: query.data.package.version })
+      noticeFailureRef.current = null
       setNotice(success)
       await Promise.all(refresh.map(queryKey => client.invalidateQueries({ queryKey })))
-    } catch (reason) { setNotice(reason instanceof Error ? reason.message : failure) }
+    } catch (reason) { const failed = notificationError(reason, failure); noticeFailureRef.current = { title: sentenceTitle(failure), code: failed.code }; setNotice(failed.message) }
     finally { requestInFlight.current = false }
   }
   async function action(event: FormEvent<HTMLFormElement>) {

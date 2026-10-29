@@ -12,7 +12,7 @@ import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
-import { appendNotification } from '../../../shared/notifications'
+import { appendNotification, notificationError, productNotificationSubject } from '../../../shared/notifications'
 import { toggleProductAttributeValue } from '../attribute-selection'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
 import { filterAttributeOptionValues } from '../attribute-value-search'
@@ -736,7 +736,7 @@ function placePublishIssueTooltip(event: { currentTarget: HTMLElement }) {
   const fitsBelow = window.innerHeight - rect.bottom >= height + 16
   tooltip.dataset.placement = !fitsBelow && rect.top >= height + 16 ? 'top' : 'bottom'
 }
-function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback }: {
+function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
   familyProductIds?: string[] | null
   // How many of the family's variants are already matched to a listing on this marketplace (imported or published).
   variantLinks?: { linked: number; total: number }
@@ -754,6 +754,8 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
 }) {
   const client = useQueryClient()
   const platformName = publishPlatformName(card.connection.platformCode)
+  // Every notice of this card names the marketplace and the store it is about.
+  const onFeedback = (feedback: OperationFeedback) => emitFeedback({ ...feedback, context: { platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, ...feedback.context } })
   const statusKey = ['publication-status', productId, card.connection.id]
   // The other colour cards of the family (same model code): the card stays selectable while any of them is not live
   // here, and Yayınla then sends only those (live or in-progress cards are skipped).
@@ -784,7 +786,11 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
         .map(queryKey => client.invalidateQueries({ queryKey })))
       onFeedback({ title: 'Durum Sorgulanıyor', message: publicationRefreshMessage(platformName, card.connection.platformCode, (familyProductIds ?? []).filter(id => id !== productId).length + 1), kind: 'info' })
     },
-    onError: reason => onFeedback({ title: 'Durum Sorgulanamadı', message: `${platformName}: yayın durumu sorgulanamadı — ${reason instanceof Error ? reason.message : 'bilinmeyen hata.'}`, kind: 'error', persistent: true })
+    onError: reason => {
+      // Several cards refused in one go (a family, repeated clicks) collapse into one notice listing the products.
+      const failure = notificationError(reason, 'Pazaryeri yanıt vermedi.')
+      onFeedback({ title: 'Yayın Durumu Sorgulanamadı', message: `${platformName} yayın durumu sorgulanamadı: ${failure.message}`, kind: 'error', persistent: true, context: { operation: 'Yayın durumu sorgulama', code: failure.code, groupKey: `publication-refresh-failed:${card.connection.id}:${failure.code ?? failure.message}`, groupMessage: `{count} ürün için ${platformName} yayın durumu sorgulanamadı.` } })
+    }
   })
 
   const publicationLabel = card.mode === 'READ_ONLY'
@@ -959,7 +965,7 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd><span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning && !hasRequiredPublicationBlock ? jobView.message : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}{jobRunning && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
     {valueMappingFixes.length > 0 && readinessCategoryScope && <button type="button" className="publish-platform-fix-mappings" onClick={() => setValueFixOpen(true)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${valueMappingFixes.length} değer`}>{valueMappingFixes.length}</span></button>}
-    {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification(message, 'success') }} />}
+    {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
     {valueFixNotice && <NoticeToast kind="success" title="Değer Eşlemeleri Kaydedildi" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify Dış Yazması Kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}
     {shopifyCapabilityCheckPending && <span id={`${issueListId}-shopify-pending`} className="sr-only">Shopify izinleri kontrol ediliyor.</span>}
@@ -1035,7 +1041,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const navigate = useNavigate()
   const routeState = location.state as { duplicateProductId?: unknown; wizardStep?: unknown } | null
   const duplicateProductId = typeof routeState?.duplicateProductId === 'string' ? routeState.duplicateProductId : undefined
-  const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts(); const setFeedback = operationToasts.show; const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
+  const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
+  // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
+  const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', listPrice: '699.90', salePrice: '549.90', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
@@ -2491,11 +2499,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // One line per marketplace; a refused marketplace stays on screen until it is closed, so it is not lost among
       // later toasts.
       if (createOnly) operationToasts.dismiss(productSaveToastKey)
-      else setFeedback({ message, kind: result.kind, persistent: result.persistent, title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey })
+      else setFeedback({ message, kind: result.kind, persistent: result.persistent, title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
       // A new product or a copy opens on its own page once created, whichever button saved it: there it saves as an
       // edit and its publication progress shows. A publish opens the publication step; the copy source is dropped.
       if (productCreated && !editProductId) {
-        appendNotification(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : `${result.title}: ${message} Ürün sayfası açılıyor; yayın ilerlemesi orada görünür.`, result.kind === 'error' ? 'error' : 'success')
+        // The save toast of a publish already went to the history; a bare create (its toast closed) is recorded here.
+        if (createOnly) appendNotification({ title: 'Ürün Oluşturuldu', message: 'Ürün kataloğa eklendi.', kind: 'success', subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) })
         leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly ? null : { wizardStep: 2 } })
       }
@@ -2503,10 +2512,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage)
-      setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey })
+      setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
       if (!productCreated) setFieldErrors(editorFieldErrors(reason))
       if (productCreated && !editProductId) {
-        appendNotification(`${feedbackMessage} Ürün sayfası açılıyor; kaldığınız yerden düzenleyebilirsiniz.`, 'error')
         leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`)
       }

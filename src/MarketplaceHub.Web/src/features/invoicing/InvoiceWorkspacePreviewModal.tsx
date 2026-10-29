@@ -5,6 +5,7 @@ import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { formatDate } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { newIdempotencyKey } from '../../shared/idempotency'
+import { notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
 import { invoiceConfirmResultLabel, invoiceEnvironmentLabel, invoiceTypeLabel } from './invoice-copy'
 
 export type InvoicePreviewTarget = { orderId: string; packageId: string; providerConnectionId: string }
@@ -58,7 +59,7 @@ function actionLabel(action: string | null) {
           : action === 'REFRESH_PREVIEW' ? 'Önizlemeyi Yenileyin' : 'İnceleme Gerekiyor'
 }
 
-export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onNotice }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void; onNotice: (message: string, kind: 'success' | 'error' | 'info' | 'pending') => void }) {
+export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onNotice }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void; onNotice: (message: string, kind: 'success' | 'error' | 'info' | 'pending', context?: NotificationContext) => void }) {
   const [previews, setPreviews] = useState<PreviewItem[]>([])
   const [results, setResults] = useState<ConfirmResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -82,6 +83,16 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
     const eligible = previews.filter(item => item.canConfirm)
     const body = JSON.stringify({ items: eligible.map(item => ({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: item.providerConnectionId, previewDigest: item.previewDigest })), includeInternetSalesInfo })
     const labels = new Map(eligible.map(item => [item.packageId, `#${item.orderNumber}`]))
+    const previewsByPackage = new Map(eligible.map(item => [item.packageId, item]))
+    // Each result names its order and marketplace; a completed one opens its invoice, a refused one its order.
+    const resultContext = (result: ConfirmResult['items'][number], title: string): NotificationContext => {
+      const preview = previewsByPackage.get(result.packageId)
+      const orderNumber = preview?.orderNumber ?? ''
+      const subject = result.invoiceId && result.status === 'COMPLETED'
+        ? { kind: 'invoice' as const, id: result.invoiceId, label: `#${orderNumber} faturası`, href: notificationLinks.invoice(result.invoiceId) }
+        : orderNumber ? { kind: 'order' as const, id: orderNumber, label: `#${orderNumber}`, href: notificationLinks.order(orderNumber) } : undefined
+      return { title, operation: 'Fatura kesme', platformCode: preview?.platformCode, subject, code: result.status === 'COMPLETED' ? undefined : result.status, jobId: result.jobId ?? undefined, groupKey: result.status === 'COMPLETED' ? undefined : `invoice-failed:${result.status}:${result.message}`, groupMessage: '{count} siparişin faturası kesilemedi.' }
+    }
     onClose()
     onNotice(eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…` : `${eligible.length} siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…`, 'pending')
     void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('invoice-workspace-confirm') }, body })
@@ -95,14 +106,18 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
           if (result.status === 'QUEUED') continue
           const label = labels.get(result.packageId) ?? '#?'
           const failed = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT'].includes(result.status)
-          if (failed) { failedCount++; onNotice(`${label} nolu siparişin faturası oluşturulamadı: ${result.message}`, 'error') }
-          else if (result.status === 'COMPLETED') { succeeded++; onNotice(/^Fatura (kesildi|E-Faturam)/u.test(result.message) ? `${label} nolu siparişin faturası ${result.message.replace(/^Fatura /u, '')}` : `${label} nolu sipariş: ${result.message}`, 'success') }
-          else onNotice(`${label} nolu siparişin faturası: ${result.message}`, 'info')
+          if (failed) { failedCount++; onNotice(`${label} nolu siparişin faturası oluşturulamadı: ${result.message}`, 'error', resultContext(result, 'Fatura Kesilemedi')) }
+          else if (result.status === 'COMPLETED') { succeeded++; onNotice(/^Fatura (kesildi|E-Faturam)/u.test(result.message) ? `${label} nolu siparişin faturası ${result.message.replace(/^Fatura /u, '')}` : `${label} nolu sipariş: ${result.message}`, 'success', resultContext(result, 'Fatura Kesildi')) }
+          else onNotice(`${label} nolu siparişin faturası: ${result.message}`, 'info', resultContext(result, 'Fatura İşleniyor'))
         }
         if (queued.length) onNotice(`${queued.length} siparişin faturası sıraya alındı; arka planda kesilecek. İlerlemeyi İşlem Takibi’nde görebilirsiniz.`, 'info')
-        if (response.items.length > 1) onNotice(`${response.items.length} siparişin faturası işlendi: ${succeeded} başarılı, ${failedCount} başarısız${response.items.length - succeeded - failedCount > 0 ? `, ${response.items.length - succeeded - failedCount} devam ediyor` : ''}.`, failedCount > 0 ? 'error' : succeeded > 0 ? 'success' : 'info')
+        if (response.items.length > 1) onNotice(`${response.items.length} siparişin faturası işlendi: ${succeeded} başarılı, ${failedCount} başarısız${response.items.length - succeeded - failedCount > 0 ? `, ${response.items.length - succeeded - failedCount} devam ediyor` : ''}.`, failedCount > 0 ? 'error' : succeeded > 0 ? 'success' : 'info', { title: failedCount > 0 ? 'Toplu Fatura Kısmen Kesildi' : 'Toplu Fatura Kesildi', operation: 'Toplu fatura kesme' })
       })
-      .catch(reason => onNotice(`${eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası` : 'Faturalar'} oluşturulamadı: ${reason instanceof Error ? reason.message : 'Bilinmeyen hata'}`, 'error'))
+      .catch(reason => {
+        const failure = notificationError(reason, 'Bilinmeyen hata')
+        const single = eligible.length === 1 ? eligible[0] : null
+        onNotice(`${single ? `${labels.get(single.packageId)} nolu siparişin faturası` : 'Faturalar'} oluşturulamadı: ${failure.message}`, 'error', { title: single ? 'Fatura Kesilemedi' : 'Faturalar Kesilemedi', operation: 'Fatura kesme', code: failure.code, platformCode: single?.platformCode, subject: single ? { kind: 'order', id: single.orderNumber, label: `#${single.orderNumber}`, href: notificationLinks.order(single.orderNumber) } : undefined })
+      })
       .finally(onComplete)
   }
 

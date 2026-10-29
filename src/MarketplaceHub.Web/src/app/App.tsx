@@ -11,7 +11,8 @@ import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
-import { readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
+import { readNotificationHistory, registerNotificationConnectionResolver, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
+import { connectionIdentityFromCache } from '../shared/notification-connections'
 import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
 import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
 import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession } from '../shared/query-snapshot'
@@ -31,6 +32,12 @@ const SystemSettingsPage = lazyPage(() => import('../features/settings/SystemSet
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
+  const queryClient = useQueryClient()
+  // A notification that names only its connection gets the store name from the connections already loaded.
+  useEffect(() => {
+    registerNotificationConnectionResolver(connectionId => connectionIdentityFromCache(queryClient, connectionId))
+    return () => registerNotificationConnectionResolver(null)
+  }, [queryClient])
   const [topbarHidden, setTopbarHidden] = useState(false)
   useEffect(() => {
     let last = window.scrollY

@@ -10,7 +10,7 @@ import { CountUp } from '../../../shared/components/CountUp'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../marketplace/returns-ui'
-import { appendNotification } from '../../../shared/notifications'
+import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection, variantGroupSelectionState } from '../variant-bulk-edit'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from '../product-platform-status'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
@@ -609,8 +609,8 @@ export function ProductsPage() {
   const hasMoreProductsToSelect = totalCount > pageProductGroups.length
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
   // Each result lands below the toasts already shown and goes to the notification history.
-  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info') {
-    appendNotification(`${title}: ${message}`, kind)
+  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext) {
+    appendNotification({ ...context, title, message, kind })
     toastStack.show({ kind, title, message, durationMs: 4000 })
   }
   function openProductImport() {
@@ -796,10 +796,12 @@ export function ProductsPage() {
       setSelectedProductCache(current => { const next = { ...current }; targetIds.forEach(id => delete next[id]); return next })
       setAllProductsSelected(false)
       setDeleteRequest(null)
-      showProductToast(request.productIds.length === 1 ? 'Ürün Silindi' : 'Ürünler Silindi', request.productIds.length === 1 ? 'Ürün yerel katalogdan silindi.' : `${request.productIds.length} katalog kaydı silindi.`, 'success')
+      // A deleted product has no page any more: the notice names it without a link.
+      showProductToast(request.productIds.length === 1 ? 'Ürün Silindi' : 'Ürünler Silindi', request.productIds.length === 1 ? 'Ürün ve varyantları yerel katalogdan silindi.' : `${request.productIds.length} katalog kaydı yerel katalogdan silindi.`, 'success', { operation: 'Katalogdan silme', subject: productNotificationSubject({ name: request.title, modelCode: request.product?.modelCode }) })
       await refresh()
     } catch (err) {
-      showProductToast('Ürün Silinemedi', err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
+      const failure = notificationError(err, 'Ürün silinemedi.')
+      showProductToast(request.productIds.length === 1 ? 'Ürün Silinemedi' : 'Ürünler Silinemedi', failure.message, 'error', { operation: 'Katalogdan silme', code: failure.code, subject: productNotificationSubject({ id: request.product?.id, name: request.title, modelCode: request.product?.modelCode }) })
     } finally {
       setDeletingProducts(false)
     }

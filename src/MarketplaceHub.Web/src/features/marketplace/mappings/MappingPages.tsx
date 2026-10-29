@@ -40,6 +40,13 @@ import '../value-mapping-modal.css'
 import '../mapping-workspace.css'
 import '../category-workbench.css'
 
+// A mapping notice names the store whose mappings it is about; the connection is read when the notice is recorded.
+function useMappingNotificationConnection(connectionId: string) {
+  const current = useRef(connectionId)
+  useEffect(() => { current.current = connectionId })
+  return current
+}
+
 function MappingDeleteIcon() {
   return <UiIcon name="close" className="mapping-delete-icon" />
 }
@@ -102,14 +109,15 @@ function CategoryMappingWorkspace() {
   const [connectionId, setConnectionId] = useState(''); const [selectedPlatformCode, setSelectedPlatformCode] = useState<MappingPlatformCode>('TRENDYOL'); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [categoryName, setCategoryName] = useState(''); const [categoryLibrarySearch, setCategoryLibrarySearch] = useState(''); const [categoryLibraryOpen, setCategoryLibraryOpen] = useState(false); const [categoryLibrarySort, setCategoryLibrarySort] = useState<'NAME_ASC' | 'NAME_DESC'>('NAME_ASC'); const [externalSearch, setExternalSearch] = useState(''); const [externalPickerOpen, setExternalPickerOpen] = useState(false); const [savedSearch, setSavedSearch] = useState(''); const [savedSort, setSavedSort] = useState<'NAME_ASC' | 'NAME_DESC'>('NAME_ASC'); const [savedPage, setSavedPage] = useState(1); const [advancedOpen, setAdvancedOpen] = useState(false); const [panelPickerOpen, setPanelPickerOpen] = useState(false); const [panelPickerSearch, setPanelPickerSearch] = useState(''); const [exportOpen, setExportOpen] = useState(false); const [exportSelection, setExportSelection] = useState<Record<MappingTransferScope, boolean>>({ categories: true, options: true, attributes: true, mappings: true }); const [transferOpen, setTransferOpen] = useState(false); const [transferBundle, setTransferBundle] = useState<MappingTransferBundle | null>(null); const [transferSelection, setTransferSelection] = useState<Record<MappingTransferScope, boolean>>({ categories: true, options: true, attributes: true, mappings: true }); const [transferBusy, setTransferBusy] = useState(false)
   const autoSelectedConnectionPlatform = useRef(false)
   useScrollLock(exportOpen || transferOpen || advancedOpen || panelPickerOpen, true)
+  const mappingConnection = useMappingNotificationConnection(connectionId)
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
-    appendNotification(notice, kind)
+    appendNotification({ message: notice, kind, connectionId: mappingConnection.current || undefined, operation: 'Eşleştirme' })
     document.documentElement.dataset.rvMappingFeedback = kind
     const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
-  }, [notice])
+  }, [notice, mappingConnection])
   useEffect(() => {
     if (!advancedOpen) return
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
@@ -1228,14 +1236,15 @@ export function AttributeMappingPage() {
   const [localId, setLocalId] = useState('')
   const [externalId, setExternalId] = useState('')
   const [notice, setNotice] = useState('')
+  const mappingConnection = useMappingNotificationConnection(connectionId)
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
-    appendNotification(notice, kind)
+    appendNotification({ message: notice, kind, connectionId: mappingConnection.current || undefined, operation: 'Eşleştirme' })
     document.documentElement.dataset.rvMappingFeedback = kind
     const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
-  }, [notice])
+  }, [notice, mappingConnection])
   const connections = useQuery({ queryKey: ['connections', 'attribute-mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
   const autoSelectedMappingPlatform = useRef(false)
   useEffect(() => {
@@ -1329,14 +1338,15 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
   const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false })
   const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }), onSuccess: () => setNotice('Web Color değerleri salt-okunur eşitleme kuyruğuna alındı.'), onError: reason => setNotice(reason instanceof Error ? reason.message : 'Web Color değerleri eşitlenemedi.') })
+  const mappingConnection = useMappingNotificationConnection(connectionId)
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
-    appendNotification(notice, kind)
+    appendNotification({ message: notice, kind, connectionId: mappingConnection.current || undefined, operation: 'Eşleştirme' })
     document.documentElement.dataset.rvMappingFeedback = kind
     const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
-  }, [notice])
+  }, [notice, mappingConnection])
   const localValues = (attribute.values?.filter(item => item.isActive) ?? []).slice().sort((left, right) => left.value.localeCompare(right.value, 'tr-TR', { sensitivity: 'base', numeric: true })); const remoteValues = (references.data?.items.filter(item => item.isActive) ?? []).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true })); const mappingByLocal = new Map((mappings.data ?? []).map(item => [item.localId, item]))
   useEffect(() => { if (mappings.data) setSelections(Object.fromEntries(mappings.data.map(item => [item.localId, item.externalId]))) }, [mappings.data])
   useEffect(() => {
@@ -1434,14 +1444,15 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     }
     setNotice(`${platformLabel} değer eşitlemesi ${job.status.toLocaleLowerCase('tr-TR')} durumunda tamamlandı${job.lastErrorSummary ? `: ${job.lastErrorSummary}` : job.lastErrorCode ? ` (${job.lastErrorCode})` : '.'}`)
   }, [client, connectionId, platformLabel, valueScope, syncJob.data?.job, syncJobId])
+  const mappingConnection = useMappingNotificationConnection(connectionId)
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
-    appendNotification(notice, kind)
+    appendNotification({ message: notice, kind, connectionId: mappingConnection.current || undefined, operation: 'Eşleştirme' })
     document.documentElement.dataset.rvMappingFeedback = kind
     const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
-  }, [notice])
+  }, [notice, mappingConnection])
   const localValues = (attribute.values?.filter(item => item.isActive) ?? []).slice().sort((left, right) => left.value.localeCompare(right.value, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const allRemoteValues = references.data?.items ?? []
   const mappingsByExternal = new Map<string, CatalogMapping[]>()
@@ -1736,14 +1747,15 @@ type BrandMappingSaveInput = { connectionId: string; snapshotId: string; localId
 export function BrandMappingPage() {
   const [confirm, confirmDialog] = useConfirmDialog()
   const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [brandName, setBrandName] = useState(''); const [pickedBrand, setPickedBrand] = useState<BrandReferenceItem | null>(null); const [editingPickedBrand, setEditingPickedBrand] = useState<BrandReferenceItem | null>(null); const [brandEditOpen, setBrandEditOpen] = useState(false); const [editingBrandMappingId, setEditingBrandMappingId] = useState(''); const [brandTransferBusy, setBrandTransferBusy] = useState(false); const [brandTransferBundle, setBrandTransferBundle] = useState<BrandMappingTransferBundle | null>(null); const [brandTransferOpen, setBrandTransferOpen] = useState(false); const [brandTransferSelection, setBrandTransferSelection] = useState({ brands: true, mappings: true })
+  const mappingConnection = useMappingNotificationConnection(connectionId)
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
-    appendNotification(notice, kind)
+    appendNotification({ message: notice, kind, connectionId: mappingConnection.current || undefined, operation: 'Eşleştirme' })
     document.documentElement.dataset.rvMappingFeedback = kind
     const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
-  }, [notice])
+  }, [notice, mappingConnection])
   const [brandPlatformCode, setBrandPlatformCode] = useState<MappingPlatformCode>('TRENDYOL')
   // Card 3 lists saved mappings of a brand-list platform; it keeps the last one card 2 chose when card 2 moves to a platform without a list.
   const [savedBrandPlatformChoice, setSavedBrandPlatformChoice] = useState<MappingPlatformCode>('TRENDYOL')

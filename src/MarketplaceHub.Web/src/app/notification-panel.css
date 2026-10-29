@@ -39,12 +39,17 @@
 .rv-notification-icon .rv-tone-icon, .rv-notification-icon .ui-icon { width: 18px; height: 18px; }
 .rv-notification-history-item.is-read .rv-notification-icon { opacity: .7; }
 
-.rv-notification-card { min-width: 0; padding: 10px 12px; background: var(--rv-color-bg); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.rv-notification-card { min-width: 0; padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .rv-notification-history-item.is-unread .rv-notification-card { border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
 .rv-notification-history-item:hover .rv-notification-card { border-color: var(--rv-color-border-strong); }
 .rv-notification-history-item.is-unread:hover .rv-notification-card { border-color: color-mix(in srgb, var(--rv-color-primary) 75%, transparent); }
-.rv-notification-history-top { display: flex; align-items: center; gap: 8px; }
-.rv-notification-history-top > strong { flex: 1; min-width: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; line-height: 1.35; }
+.rv-notification-history-top { display: flex; align-items: center; gap: 8px; min-height: 18px; }
+/* Where it happened: the marketplace logo and "Pazarama · Ravencia" (or the panel area when no marketplace is involved). */
+.rv-notification-source { display: inline-flex; flex: 1; align-items: center; gap: 6px; min-width: 0; color: var(--rv-color-muted); font-size: 11.5px; font-weight: 500; }
+.rv-notification-source > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-notification-logo { flex: none; box-sizing: border-box; width: 18px; height: 18px; padding: 1px; object-fit: contain; background: #fff; border: 1px solid var(--rv-color-border); border-radius: 5px; }
+.rv-notification-title { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; line-height: 1.35; }
+.rv-notification-count { display: inline-grid; flex: none; box-sizing: border-box; min-width: 24px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-tone); background: color-mix(in srgb, var(--rv-tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--rv-tone) 40%, transparent); border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .rv-notification-history-top time { flex: none; color: var(--rv-color-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .rv-notification-unread-dot { flex: none; width: 7px; height: 7px; background: var(--rv-color-primary); border-radius: 50%; }
 .rv-notification-history-item p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -62,10 +67,22 @@
 .rv-notification-mark-read .ui-icon { width: 14px; height: 14px; }
 @media (prefers-reduced-motion: reduce) { .rv-notification-go .ui-icon, .rv-notification-more .ui-icon { transition: none; } }
 
-.rv-notification-detail { display: grid; gap: 6px; margin: 10px 0 0; padding: 10px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
-.rv-notification-detail > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+/* What the notification is about: "Ürün  MZ054 Siyah Elbise (MZ054YNC)". */
+.rv-notification-history-item p.rv-notification-subject { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; padding: 5px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12.5px; }
+.rv-notification-subject > span { flex: none; color: var(--rv-color-subtle); font-size: 11.5px; }
+.rv-notification-subject > b { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+
+.rv-notification-detail { display: grid; gap: 10px; margin: 10px 0 0; padding: 10px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.rv-notification-detail dl { display: grid; gap: 6px; margin: 0; }
+.rv-notification-detail dl > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.rv-notification-items { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
+.rv-notification-items > span { color: var(--rv-color-subtle); font-size: 12px; }
+.rv-notification-items ul { display: grid; gap: 2px; max-height: 180px; margin: 0; padding: 0 0 0 16px; overflow-y: auto; font-size: 12.5px; }
+.rv-notification-link { display: inline; width: auto; height: auto; min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; border-radius: 0; font: inherit; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--rv-color-primary) 40%, transparent); text-underline-offset: 2px; cursor: pointer; }
+.rv-notification-link:hover { text-decoration-color: currentColor; }
+@media (max-width: 600px) { .rv-notification-detail dl > div { grid-template-columns: 84px minmax(0, 1fr); } }
 .rv-notification-detail dt { color: var(--rv-color-subtle); font-size: 12px; }
-.rv-notification-detail dd { margin: 0; font-size: 12.5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.rv-notification-detail dd { margin: 0; color: var(--rv-color-ink); font-size: 12.5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .rv-notification-detail dd.is-success { color: var(--rv-color-accent); }
 .rv-notification-detail dd.is-error { color: var(--rv-color-danger); }
 .rv-notification-history-item:not(.is-expanded) .rv-notification-detail { display: none; }

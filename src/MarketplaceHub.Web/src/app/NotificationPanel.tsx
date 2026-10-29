@@ -1,30 +1,13 @@
 import { useState } from 'react'
 import { ToneIcon, UiIcon } from '../shared/components'
 import './notification-panel.css'
-import { describeNotification } from '../shared/notification-describe'
+import { describeNotification, presentNotification } from '../shared/notification-describe'
 import { ViewTabIcon, type ViewTabIconName } from '../shared/view-tabs'
-import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, type AppNotification } from '../shared/notifications'
+import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, notificationSubjectLabels, type AppNotification } from '../shared/notifications'
+import { platformLogoClass, platformLogoSource } from '../shared/platform-logos'
 import { formatDateTime, formatIstanbul } from '../shared/format-date'
 
 type Filter = 'ALL' | 'UNREAD' | 'ERROR'
-
-
-// The first sentence is the summary; anything after " · " is the technical detail.
-function notificationPresentation(notification: AppNotification) {
-  const parts = notification.message.split(' · ').map(part => part.trim()).filter(Boolean)
-  const summary = parts.shift() ?? notification.message
-  const text = notification.message.toLocaleLowerCase('tr-TR')
-  const title = /yayın uyarısı/u.test(text) ? 'Yayın Uyarısı' : /iade kabul/u.test(text) ? (notification.kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi')
-    : /iade (?:ret\b|reddi)/u.test(text) ? (notification.kind === 'error' ? 'İade Ret Kararı İletilemedi' : 'İade Ret Kararı İletildi')
-      : text.includes('kuyruğa alındı') ? 'İşlem Kuyruğa Alındı'
-        : text.includes('iptal') ? 'İşlem İptal Edildi'
-          : text.includes('silindi') ? 'Katalog Temizliği Tamamlandı'
-            : text.includes('seçildi') ? 'Katalog Seçimi Tamamlandı'
-              : notification.kind === 'error' ? 'İşlem Başarısız'
-                : notification.kind === 'success' ? 'İşlem Tamamlandı'
-                  : 'İşlem Bilgisi'
-  return { title, summary, extra: parts }
-}
 
 function relativeTime(iso: string) {
   const created = new Date(iso)
@@ -50,21 +33,36 @@ function dayLabel(iso: string) {
 type ItemProps = { notification: AppNotification; expanded: boolean; onToggle: () => void; onOpen: (href: string) => void }
 
 function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProps) {
-  const presentation = notificationPresentation(notification)
+  const presentation = presentNotification(notification)
   const unread = !notification.read
+  const logo = platformLogoSource(presentation.platformCode)
+  const source = [presentation.platformName, presentation.storeName].filter(Boolean).join(' · ') || presentation.area
+  const subject = presentation.items.length <= 1 ? presentation.subject : null
+  const facts = expanded ? describeNotification(notification) : []
   return <article className={`rv-notification-history-item is-${notification.kind} ${unread ? 'is-unread' : 'is-read'}${expanded ? ' is-expanded' : ''}`}>
     <span className="rv-notification-icon" aria-hidden="true"><ToneIcon kind={notification.kind} size={18} /></span>
     <div className="rv-notification-history-copy rv-notification-card">
       <div className="rv-notification-history-top">
-        <strong>{presentation.title}</strong>
-        {unread && <i className="rv-notification-unread-dot" aria-label="Okunmadı" />}<time dateTime={notification.createdAt} title={formatDateTime(notification.createdAt)}>{relativeTime(notification.createdAt)}</time>
+        {source ? <span className="rv-notification-source">
+          {logo && <img className={`rv-notification-logo ${platformLogoClass(presentation.platformCode)}`} src={logo} alt="" aria-hidden="true" />}
+          <span>{source}</span>
+        </span> : <span className="rv-notification-source" />}
+        {unread && <i className="rv-notification-unread-dot" aria-label="Okunmadı" />}
+        <time dateTime={notification.createdAt} title={formatDateTime(notification.createdAt)}>{relativeTime(notification.createdAt)}</time>
       </div>
+      <strong className="rv-notification-title">{presentation.title}{presentation.count > 1 && <b className="rv-notification-count" aria-label={`${presentation.count} kez`}>{presentation.count}×</b>}</strong>
       <p>{presentation.summary}</p>
-      {expanded && <dl className="rv-notification-detail">
-        {describeNotification(notification).map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd className={fact.tone ? `is-${fact.tone}` : undefined}>{fact.value}</dd></div>)}
-        {notification.details?.map((detail, index) => <div key={`${detail.label}:${index}`}><dt>{detail.label}</dt><dd className={detail.tone ? `is-${detail.tone}` : undefined}>{detail.value}</dd></div>)}
-        <div><dt>Zaman</dt><dd>{formatDateTime(notification.createdAt)}</dd></div>
-      </dl>}
+      {subject && <p className="rv-notification-subject"><span>{notificationSubjectLabels[subject.kind]}</span><b>{subject.label}</b></p>}
+      {expanded && <div className="rv-notification-detail">
+        <dl>
+          {facts.map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd className={fact.tone ? `is-${fact.tone}` : undefined}>{fact.href ? <button type="button" className="rv-notification-link" onClick={() => onOpen(fact.href!)}>{fact.value}</button> : fact.value}</dd></div>)}
+          {notification.details?.map((detail, index) => <div key={`${detail.label}:${index}`}><dt>{detail.label}</dt><dd className={detail.tone ? `is-${detail.tone}` : undefined}>{detail.value}</dd></div>)}
+        </dl>
+        {presentation.items.length > 1 && <div className="rv-notification-items">
+          <span>Etkilenen Kayıtlar · {presentation.items.length}</span>
+          <ul>{presentation.items.map((item, index) => <li key={`${item.kind}:${item.id ?? item.label}:${index}`}>{item.href ? <button type="button" className="rv-notification-link" onClick={() => onOpen(item.href!)}>{item.label}</button> : item.label}</li>)}</ul>
+        </div>}
+      </div>}
       <div className="rv-notification-foot">
         {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}><span>{notification.actionLabel ?? 'Sayfaya Git'}</span><UiIcon name="arrowRight" size={14} /></button>}
         <button type="button" className="rv-notification-more" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? 'Ayrıntıyı Gizle' : 'Ayrıntı'}</span><UiIcon name="chevronDown" size={14} /></button>

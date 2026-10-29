@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef } from 'react'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { useToastStack } from '../../shared/components/toast-stack-context'
-import { appendNotification, normalizeNotificationKind } from '../../shared/notifications'
+import { appendNotification, normalizeNotificationKind, type NotificationContext, type NotificationDetail } from '../../shared/notifications'
 import type { ToastInput } from '../../shared/toast-stack'
 
 export const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
@@ -16,6 +16,23 @@ export type OperationFeedback = {
   durationMs?: number
   /** A slot in the toast column: the next feedback with the same key takes this one's place (a running save its result). */
   key?: string
+  /** What the notification history keeps beyond the toast: marketplace, store, the product or order, the failure code. */
+  context?: NotificationContext
+}
+
+// One line per marketplace ("Pazarama: 3 kart kuyruğa alındı") becomes one Ayrıntı row named after the marketplace.
+function feedbackLineDetails(lines: readonly string[] | undefined): NotificationDetail[] {
+  return (lines ?? []).map(line => {
+    const match = /^([^:]{2,32}):\s+(.+)$/su.exec(line.trim())
+    return match ? { label: match[1].trim(), value: match[2].trim() } : { label: 'Sonuç', value: line.trim() }
+  })
+}
+
+/** The toast's notification: its own title, the sentence, and whatever the screen knows about where and what. */
+export function recordOperationFeedback(feedback: OperationFeedback) {
+  const context = feedback.context ?? {}
+  const details = [...feedbackLineDetails(feedback.lines), ...(context.details ?? [])]
+  return appendNotification({ ...context, title: feedback.title ?? context.title, message: feedback.message, kind: feedback.kind, details: details.length > 0 ? details : undefined })
 }
 
 /** How an operation's feedback looks as a toast. */
@@ -43,7 +60,7 @@ export function useOperationFeedbackToasts() {
   useEffect(() => () => stack.dismissWhere(item => item.owner === owner && item.kind === 'pending'), [stack, owner])
   return useMemo(() => ({
     show: (feedback: OperationFeedback) => {
-      appendNotification(feedback.title ? `${feedback.title}: ${feedback.message}` : feedback.message, feedback.kind)
+      recordOperationFeedback(feedback)
       stack.show({ ...operationFeedbackToast(feedback), owner })
     },
     /** Takes away the toast in a key's slot. */
@@ -59,7 +76,7 @@ export function OperationFeedbackToast({ feedback, onClose }: { feedback: Operat
 
   useEffect(() => { onCloseRef.current = onClose }, [onClose])
   useEffect(() => {
-    if (feedback) appendNotification(feedback.title ? `${feedback.title}: ${feedback.message}` : feedback.message, feedback.kind)
+    if (feedback) recordOperationFeedback(feedback)
   }, [feedback])
   useLayoutEffect(() => {
     if (!feedback || feedback.persistent) return
