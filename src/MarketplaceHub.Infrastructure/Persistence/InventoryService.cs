@@ -263,6 +263,16 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         }
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        // A PTT AVM send from the panel also needs the connection's "Manuel Dış Yazmalar" switch (MANUAL_WRITE).
+        if (PttAvmManualWritePolicy.Applies(connection.PlatformCode))
+        {
+            var manualPolicyEnabled = await db.ConnectionSyncPolicies.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Manual)
+                .Select(x => (bool?)x.Enabled)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (PttAvmManualWritePolicy.Decide(masterWritesEnabled: true, manualPolicyEnabled) != PttAvmManualWriteDecision.Allowed)
+                return ServiceResult<Guid>.Fail(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage, 422);
+        }
         var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
         // Pazarama and PTT AVM sends started from the panel are manual: the connection switch is the only gate; the
         // automatic price/stock policies only govern sends the system starts on its own.

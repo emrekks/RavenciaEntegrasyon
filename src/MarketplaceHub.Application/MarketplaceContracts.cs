@@ -342,7 +342,8 @@ public static class MarketplaceSyncPolicyRules
         or MarketplaceExternalWritePolicies.Price
         or MarketplaceExternalWritePolicies.Stock
         or MarketplaceExternalWritePolicies.Shipment
-        or MarketplaceExternalWritePolicies.Return;
+        or MarketplaceExternalWritePolicies.Return
+        or MarketplaceExternalWritePolicies.Manual;
 }
 
 public static class MarketplaceExternalWritePolicies
@@ -351,9 +352,39 @@ public static class MarketplaceExternalWritePolicies
     public const string Stock = "STOCK_WRITE";
     public const string Shipment = "SHIPMENT_WRITE";
     public const string Return = "RETURN_WRITE";
+    // PTT AVM only: the sends a user starts from the panel (price-stock sends, product sends). PTT AVM has no
+    // shipment or return write API, so this is its "Manuel Dış Yazmalar" switch.
+    public const string Manual = "MANUAL_WRITE";
 
+    // The automatic write flows, which the master switch turning off also switches off.
     public static bool IsPolicy(string? resourceType) => resourceType?.Trim().ToUpperInvariant() is
         Price or Stock or Shipment or Return;
+
+    // Every write switch, the PTT AVM manual one included: a permission, not a scheduled read.
+    public static bool IsPermissionPolicy(string? resourceType) =>
+        IsPolicy(resourceType) || resourceType?.Trim().ToUpperInvariant() == Manual;
+}
+
+public enum PttAvmManualWriteDecision
+{
+    Allowed,
+    MasterSwitchOff,
+    PolicyOff
+}
+
+// PTT AVM manual writes need the master write switch and the connection's MANUAL_WRITE policy. A missing policy row
+// is not read as permission (the row is created with the connection and by the data migration).
+public static class PttAvmManualWritePolicy
+{
+    public const string DisabledCode = "EXTERNAL_WRITE_POLICY_DISABLED";
+    public const string DisabledMessage = "PTT AVM manuel dış yazmaları kapalı; Entegrasyonlar → Pazaryerine Yazma bölümünden açın.";
+
+    public static bool Applies(string? platformCode) => string.Equals(platformCode?.Trim(), "PTTAVM", StringComparison.OrdinalIgnoreCase);
+
+    public static PttAvmManualWriteDecision Decide(bool masterWritesEnabled, bool? manualPolicyEnabled) =>
+        !masterWritesEnabled ? PttAvmManualWriteDecision.MasterSwitchOff
+        : manualPolicyEnabled == true ? PttAvmManualWriteDecision.Allowed
+        : PttAvmManualWriteDecision.PolicyOff;
 }
 
 public static class MarketplaceCapabilities
