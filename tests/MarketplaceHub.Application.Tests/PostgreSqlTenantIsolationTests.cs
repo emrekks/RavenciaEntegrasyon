@@ -4477,6 +4477,58 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // T-2 (live 29 Oct 2026): a Hepsiburada claim read without vatRate stored 0% over the order read's 10%.
+    [PostgreSqlFact]
+    public async Task AReadWithoutTheLineVatRateKeepsTheRateAnEarlierReadStored()
+    {
+        var tenant = NewTenant("hb-claim-vat-rate");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        const string externalOrderId = "4100000017";
+        var package = new RemotePackage("hb-package-17", null, "Delivered", fixture.Now.AddDays(-3), null, null, [new RemotePackageAllocation("line-17", 1m, 0m, 1m, 1m, 0m)]);
+        var orderRead = new RemoteOrder(externalOrderId, externalOrderId, fixture.Now.AddDays(-4), fixture.Now.AddDays(-3), "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+            [new RemoteOrderLine("line-17", "SKU-17", null, "Test ürün", 1m, 100m, 10m, "Delivered", """{"id":"line-17","merchantSku":"SKU-17","vatRate":10}""")],
+            [package], "{}");
+        var claimRead = orderRead with
+        {
+            LastModifiedAt = fixture.Now.AddDays(-1),
+            Lines = [new RemoteOrderLine("line-17", "SKU-17", null, "Test ürün", 1m, 100m, null, "ClaimCreated", """{"lineItemId":"line-17","merchantSku":"SKU-17"}""")],
+            Packages = []
+        };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            foreach (var (read, key) in new[] { (orderRead, "hb-order-read"), (claimRead, "hb-claim-read") })
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(package, read, externalOrderId, directOrderResult: read), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""", key, CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var line = await verifyDb.OrderLines.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+            Assert.Equal("ClaimCreated", line.RawStatus);
+            Assert.Equal(10m, line.VatRate);
+            Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("HEPSIBURADA", line.SourceSnapshotJson));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task TrendyolOrderTotals_SumSiblingPackagesReadOnSeparatePages()
     {

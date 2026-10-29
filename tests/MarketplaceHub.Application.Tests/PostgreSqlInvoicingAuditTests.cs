@@ -422,7 +422,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
 
             var item = Assert.Single(preview.Value ?? []);
             Assert.False(item.CanConfirm);
-            Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknown.Message, item.BlockedReason);
+            Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknownFor("TRENDYOL").Message, item.BlockedReason);
             Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknownCode, draft.Error?.Code);
             await using var verification = fixture.CreateContext();
             Assert.False(await verification.Invoices.AnyAsync(invoice => invoice.TenantId == seed.Tenant.Id));
@@ -430,6 +430,48 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         finally
         {
             await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // T-2b: every marketplace's line without a reported VAT rate stops the invoice, not only Trendyol's.
+    [PostgreSqlFact]
+    public async Task ALineWhoseVatRateAnotherMarketplaceDidNotReportBlocksThePreviewAndTheDraft()
+    {
+        foreach (var (platformCode, snapshot) in new[]
+        {
+            ("HEPSIBURADA", """{"lineItemId":"1","merchantSku":"AUDIT-SKU","quantity":1}"""),
+            ("N11", """{"orderLineId":"1","stockCode":"AUDIT-SKU","quantity":1,"price":120}"""),
+            ("PAZARAMA", """{"orderItemId":"1","quantity":1,"product":{"stockCode":"AUDIT-SKU"}}""")
+        })
+        {
+            var seed = NewSeed($"audit-vat-unknown-{platformCode.ToLowerInvariant()}");
+            seed.Marketplace.PlatformCode = platformCode;
+            var line = NewLine(seed.Tenant.Id, seed.Order.Id);
+            line.VatRate = 0m;
+            line.SourceSnapshotJson = snapshot;
+            await SeedAsync(seed, db => db.OrderLines.Add(line));
+
+            try
+            {
+                await using var db = fixture.CreateContext();
+                var service = NewBillingService(db);
+                var preview = await service.PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                    new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+                var draft = await service.CreateDraftAsync(seed.Tenant.Id,
+                    new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), $"audit-vat-unknown-{platformCode}", CancellationToken.None);
+
+                var item = Assert.Single(preview.Value ?? []);
+                Assert.False(item.CanConfirm);
+                Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknownFor(platformCode).Message, item.BlockedReason);
+                Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknownCode, draft.Error?.Code);
+                Assert.Equal(InvoiceIssuePolicy.LineVatRateUnknownFor(platformCode).Message, draft.Error?.Message);
+                await using var verification = fixture.CreateContext();
+                Assert.False(await verification.Invoices.AnyAsync(invoice => invoice.TenantId == seed.Tenant.Id));
+            }
+            finally
+            {
+                await DeleteTenantAsync(seed.Tenant.Id);
+            }
         }
     }
 

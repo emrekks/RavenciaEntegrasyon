@@ -603,6 +603,22 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
+    public void AnOrderLineWithoutKdvOraniLeavesTheRateUnknown()
+    {
+        // The first line of the order loses KdvOrani; the second keeps its 10.
+        var withoutRate = System.Text.RegularExpressions.Regex.Replace(OrderListAnswer, @"<a:KdvOrani>10</a:KdvOrani>(\s*<a:LineItemId>229049580</a:LineItemId>)", "$1");
+        Assert.NotEqual(OrderListAnswer, withoutRate);
+        var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, withoutRate, PttAvmHttpClient.Orders);
+
+        var lines = PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-A1712HP2E-071024").Lines;
+
+        Assert.Null(lines[0].VatRate);
+        Assert.Equal(10m, lines[1].VatRate);
+        Assert.True(InvoiceIssuePolicy.IsLineVatRateUnknown("PTTAVM", lines[0].SourceSnapshotJson));
+        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("PTTAVM", lines[1].SourceSnapshotJson));
+    }
+
+    [Fact]
     public void AnOrderLineOfAVariantCarriesTheVariantBarcode()
     {
         // As the live store answers: UrunBarkod is the model code, VariantBarkod the variant sold.

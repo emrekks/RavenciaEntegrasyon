@@ -227,16 +227,15 @@ public sealed class TrendyolWriteContractTests
     }
 
     [Fact]
-    public void OnlyATrendyolLineWithoutAReportedVatRateCountsAsUnknown()
+    public void ATrendyolLineWithoutAReportedVatRateCountsAsUnknown()
     {
         Assert.True(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatBaseAmount":100}"""));
         Assert.True(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatRate":null}"""));
         Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatRate":0}"""));
         Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", """{"lineId":"1","vatRate":"10"}"""));
-        // Lines stored without a raw snapshot, and other platforms' reported 0% lines, keep their rate.
+        // Lines stored without a raw snapshot keep their rate; Shopify reports no line rate at all.
         Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", null));
         Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("TRENDYOL", "{}"));
-        Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("HEPSIBURADA", """{"lineId":"1"}"""));
         Assert.False(InvoiceIssuePolicy.IsLineVatRateUnknown("SHOPIFY", """{"id":"1"}"""));
     }
 
