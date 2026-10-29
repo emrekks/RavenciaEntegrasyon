@@ -28,6 +28,41 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await db.IntegrationJobs.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
     }
 
+    // W-3: a channel offer with a sale price of zero is refused, on create and on update; a sale price equal to the
+    // list price is a valid offer (every marketplace takes listPrice >= salePrice).
+    [PostgreSqlFact]
+    public async Task ChannelOffer_RefusesAZeroSalePriceAndTakesOneEqualToTheListPrice()
+    {
+        var tenant = NewTenant("offer-zero-sale");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (product, variant) = NewVariant(tenant, "ZERO-1", "8690000000801");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new InventoryService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), fixture.TimeProvider, new ConfigurationBuilder().Build());
+        UpsertChannelOfferCommand Create(decimal list, decimal sale) => new(trendyol.Id, variant.Id, list, sale, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "Toplu ürün fiyat düzenleme");
+
+        var zero = await service.UpsertOfferAsync(tenant.Id, Guid.CreateVersion7(), Create(799.90m, 0m), CancellationToken.None);
+        Assert.False(zero.Succeeded);
+        Assert.True(zero.Error!.FieldErrors!.ContainsKey("salePrice"));
+        Assert.False(await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
+
+        var equal = await service.UpsertOfferAsync(tenant.Id, Guid.CreateVersion7(), Create(799.90m, 799.90m), CancellationToken.None);
+        Assert.True(equal.Succeeded, equal.Error?.Message);
+        Assert.Equal(799.90m, equal.Value!.SalePrice);
+
+        var zeroUpdate = await service.UpdateOfferAsync(tenant.Id, Guid.CreateVersion7(), equal.Value.Id, equal.Value.Version, new(799.90m, 0m, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "Toplu ürün fiyat düzenleme"), CancellationToken.None);
+        Assert.False(zeroUpdate.Succeeded);
+        Assert.Equal(799.90m, (await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == equal.Value.Id)).SalePrice);
+    }
+
     // K1: a manual adjustment reaches every connection with an ACTIVE offer for the variant.
     [PostgreSqlFact]
     public async Task ManualStockAdjustment_QueuesADispatchForEveryConnectionSellingTheVariant()
