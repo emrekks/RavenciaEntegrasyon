@@ -537,7 +537,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var result = await service.EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([gone.Id, partial.Id, suspect.Id], [connection.Id]), "health-bulk", "trace", CancellationToken.None);
         Assert.True(result.Succeeded, result.Error?.Message);
         Assert.Equal(1, result.Value!.Skipped);
-        Assert.Equal([gone.Id, partial.Id].Order(), result.Value.Failed.Where(x => x.Code == "CHANNEL_OFFER_REQUIRED").Select(x => x.ProductId).Order());
+        Assert.Equal(new[] { gone.Id, partial.Id }.Order(), result.Value.Failed.Where(x => x.Code == "CHANNEL_OFFER_REQUIRED").Select(x => x.ProductId).Order());
 
         await transaction.RollbackAsync();
     }
