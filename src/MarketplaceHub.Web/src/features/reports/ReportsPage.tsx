@@ -96,9 +96,13 @@ export function ReportsPage() {
   // A custom range being picked: the picker shows the first day picked until the second one is, and the report keeps
   // the last whole range meanwhile.
   const [draft, setDraft] = useState<{ from: string; to: string } | null>(null)
+  // The preset clicked last: two presets can cover the same days (on 30 October, Bu Ay and Son 30 Gün), and the one
+  // clicked is the one marked.
+  const [pickedPreset, setPickedPreset] = useState('30')
   const presets = periodPresets()
   // The preset the range matches, if any; another range is a custom one, shown on the picker.
-  const activePreset = presets.find(preset => preset.range.from === range.from && preset.range.to === range.to)?.key ?? null
+  const matching = presets.filter(preset => preset.range.from === range.from && preset.range.to === range.to)
+  const activePreset = (matching.find(preset => preset.key === pickedPreset) ?? matching[0])?.key ?? null
   const [platforms, setPlatforms] = useState<string[] | null>(null)
   const [granularity, setGranularity] = useState('')
   const query = reportQuery({ from: range.from, to: range.to, platforms, granularity, includeTest: false })
@@ -127,7 +131,7 @@ export function ReportsPage() {
       <div><p className="eyebrow">Analiz</p><h1>Raporlar</h1><p className="reports-lead">Satış, iade, iptal, kargo ve kârlılık; platform, şehir ve ürün kırılımıyla, önceki dönemle karşılaştırmalı.</p></div>    </div>
     <div className="reports-filters" role="search" aria-label="Rapor filtreleri">
       <div className="reports-field reports-period-field"><span>Dönem</span><div className="reports-period-row">
-        <div className="reports-segmented" role="group" aria-label="Hazır dönemler">{presets.map(preset => <button key={preset.key} type="button" aria-pressed={preset.key === activePreset} onClick={() => { setDraft(null); setRange(preset.range) }}>{preset.label}</button>)}</div>
+        <div className="reports-segmented" role="group" aria-label="Hazır dönemler">{presets.map(preset => <button key={preset.key} type="button" aria-pressed={preset.key === activePreset} onClick={() => { setDraft(null); setPickedPreset(preset.key); setRange(preset.range) }}>{preset.label}</button>)}</div>
         <div className={`reports-period-custom${activePreset ? '' : ' is-active'}`}><DateRangePicker from={draft?.from ?? range.from} to={draft ? draft.to : range.to} label="Özel Dönem"
           onChange={next => { if (next.from && next.to) { setDraft(null); setRange({ from: next.from, to: next.to }) } else setDraft(next) }} /></div>
       </div></div>
