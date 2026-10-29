@@ -8,6 +8,7 @@ import { formatIstanbul } from '../../shared/format-date'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import type { ReturnReasonSummary } from './return-reference-presentation'
 import { bulkApproveConfirmText, bulkApproveFailureText } from './return-bulk-approve'
+import { isActionableReturnLine } from './return-claim-visibility'
 
 export type BulkDecisionLine = {
   id: string
@@ -41,7 +42,7 @@ export type BulkDecisionItem = {
 type Outcome = { id: string; ok: boolean; message: string }
 type RejectReason = { id: string; name: string; evidenceRequired: boolean }
 // The return lines (claim items) of a claim: the ids the stock request has to name.
-type DetailLine = { id: string; orderLineId: string; quantity: number; remainingQuantity: number; status?: string | null; hasInventoryMapping: boolean; title: string; imageUrl: string | null }
+type DetailLine = { id: string; orderLineId: string; quantity: number; remainingQuantity: number; status?: string | null; decisionPending?: boolean; hasInventoryMapping: boolean; title: string; imageUrl: string | null }
 type DetailLines = { lines: DetailLine[] | null }
 
 type ProductGroup = { key: string; lines: { id: string; quantity: number }[]; units: number; mapped: boolean; display: BulkDecisionLine | undefined; fallbackTitle: string; fallbackImage: string | null }
@@ -52,8 +53,6 @@ type Props = {
   onClose: () => void
   onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>, target?: NotificationTarget | null) => void
 }
-
-const isActionable = (line: DetailLine) => !line.status || line.status.toUpperCase() === 'ACTION_REQUIRED'
 
 // Sends one decision per selected return, one after another. Every return keeps its own idempotency
 // key, so a retry can never decide the same claim twice, and one failure never stops the others.
@@ -84,7 +83,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     }))
   })
   const groupsFor = (item: BulkDecisionItem, index: number): ProductGroup[] => {
-    const lines = (details[index]?.data?.lines ?? []).filter(isActionable)
+    const lines = (details[index]?.data?.lines ?? []).filter(isActionableReturnLine)
     const byProduct = new Map<string, DetailLine[]>()
     for (const line of lines) byProduct.set(line.orderLineId, [...(byProduct.get(line.orderLineId) ?? []), line])
     return Array.from(byProduct, ([orderLineId, group]) => {

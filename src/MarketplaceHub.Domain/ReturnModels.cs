@@ -58,6 +58,36 @@ public static class ReturnLineStatusPolicy
     }
 }
 
+// A decision covers the lines the seller chose (Trendyol decides per claim item); the claim's other lines stay
+// open for their own decision. A decision recorded before its lines were kept (null) covers the whole claim.
+public static class ReturnDecisionLinePolicy
+{
+    public static bool Overlaps(IReadOnlyCollection<Guid>? decisionLineIds, IReadOnlyCollection<Guid> lineIds) =>
+        decisionLineIds is not { Count: > 0 } || decisionLineIds.Any(lineIds.Contains);
+
+    // How the decision's own lines stand, when the marketplace reported each of them. Trendyol's claim status is its
+    // first item's status, so the claim-level status (the fallback) can speak for a line the decision did not cover.
+    public static ReturnClaimStatus Outcome(ReturnClaimStatus claimLevel, IReadOnlyCollection<string?> decisionLineStatuses)
+    {
+        if (decisionLineStatuses.Count == 0 || decisionLineStatuses.Any(string.IsNullOrWhiteSpace)) return claimLevel;
+        var statuses = decisionLineStatuses.Select(status => MarketplaceReturnStatus.Canonicalize(status)).Distinct().ToList();
+        if (statuses.Contains(ReturnClaimStatus.ActionRequired)) return ReturnClaimStatus.ActionRequired;
+        return statuses.Count == 1 ? statuses[0] : claimLevel;
+    }
+
+    // Stock comes back only on an approved line: a line approved on its own takes stock while the claim's other lines
+    // still wait, and a rejected or still-waiting line takes none even on an approved claim. A line without its own
+    // status follows the claim.
+    public static bool StockDispositionAllowed(ReturnClaimStatus claimStatus, string? lineRawStatus)
+    {
+        var claimApproved = claimStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+        if (string.IsNullOrWhiteSpace(lineRawStatus)) return claimApproved;
+        var line = MarketplaceReturnStatus.Canonicalize(lineRawStatus);
+        return line is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            || claimApproved && line is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled or ReturnClaimStatus.ActionRequired);
+    }
+}
+
 public static class ReturnClaimStateMachine
 {
     private static readonly IReadOnlyDictionary<ReturnClaimStatus, ReturnClaimStatus[]> Allowed =
@@ -172,6 +202,8 @@ public sealed class ReturnDecision
     public Guid ActorUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+    // The return lines the decision was sent for (ReturnDecisionLinePolicy); null on decisions made before they were kept.
+    public Guid[]? ReturnLineIds { get; set; }
 }
 
 public sealed class ReturnEvidence

@@ -5337,6 +5337,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(96)
                         .HasColumnType("character varying(96)");
 
+                    b.PrimitiveCollection<Guid[]>("ReturnLineIds")
+                        .HasColumnType("uuid[]");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

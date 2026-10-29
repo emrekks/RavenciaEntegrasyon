@@ -11201,6 +11201,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (remoteCargoTrackingLink is not null && !string.Equals(claim.CargoTrackingLink, remoteCargoTrackingLink, StringComparison.Ordinal)) { claim.CargoTrackingLink = remoteCargoTrackingLink; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
+        var lineStatuses = new Dictionary<Guid, string?>();
         foreach (var remoteLine in remoteLines)
         {
             var candidateIds = new[] { remoteLine.ExternalOrderLineId }
@@ -11222,29 +11223,41 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 continue;
             }
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
-            if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus, AcceptDetail = remoteLine.AcceptDetail, MarketplaceNote = remoteLine.Note, Resolved = remoteLine.Resolved, AcceptedBySeller = remoteLine.AcceptedBySeller }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; line.AcceptDetail = remoteLine.AcceptDetail ?? line.AcceptDetail; line.MarketplaceNote = remoteLine.Note ?? line.MarketplaceNote; line.Resolved = remoteLine.Resolved ?? line.Resolved; line.AcceptedBySeller = remoteLine.AcceptedBySeller ?? line.AcceptedBySeller; }
+            if (line is null) db.ReturnLines.Add(line = new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus, AcceptDetail = remoteLine.AcceptDetail, MarketplaceNote = remoteLine.Note, Resolved = remoteLine.Resolved, AcceptedBySeller = remoteLine.AcceptedBySeller }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; line.AcceptDetail = remoteLine.AcceptDetail ?? line.AcceptDetail; line.MarketplaceNote = remoteLine.Note ?? line.MarketplaceNote; line.Resolved = remoteLine.Resolved ?? line.Resolved; line.AcceptedBySeller = remoteLine.AcceptedBySeller ?? line.AcceptedBySeller; }
+            lineStatuses[line.Id] = line.RawStatus;
         }
-        await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, now, cancellationToken);
+        await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, lineStatuses, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    // The latest decision whose outcome is still open: sent (PENDING/SUBMITTED),
+    // A decision whose outcome is still open: sent (PENDING/SUBMITTED),
     // waiting on an unclear marketplace answer (MANUAL_REVIEW with an
-    // EXTERNAL_EFFECT_* code) or closed as unresolved, is settled by the
-    // claim status the marketplace reports.
-    private async Task ReconcileReturnDecisionAsync(Guid tenantId, Guid claimId, ReturnClaimStatus target, string remoteRawStatus, DateTimeOffset now, CancellationToken cancellationToken)
+    // EXTERNAL_EFFECT_* code) or closed as unresolved, is settled by what the
+    // marketplace reports. A decision that names its lines is settled by those
+    // lines (the claim's other lines may still wait for their own decision);
+    // one recorded before its lines were kept is settled by the claim status,
+    // and only when it is the latest, as before.
+    private async Task ReconcileReturnDecisionAsync(Guid tenantId, Guid claimId, ReturnClaimStatus target, string remoteRawStatus, IReadOnlyDictionary<Guid, string?> lineStatuses, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var decision = await db.ReturnDecisions
+        var decisions = await db.ReturnDecisions
             .Where(x => x.TenantId == tenantId && x.ClaimId == claimId
                 && (x.Status == "PENDING" || x.Status == "SUBMITTED"
                     || x.Status == "MANUAL_REVIEW" && x.ErrorCode != null && x.ErrorCode.StartsWith("EXTERNAL_EFFECT_")
                     || x.Status == "FAILED" && x.ErrorCode == "EXTERNAL_EFFECT_UNRESOLVED"))
             .OrderByDescending(x => x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (decision is null || ReconciledReturnDecision(decision.Action, decision.Status, target, remoteRawStatus) is not { } outcome) return;
-        decision.Status = outcome.Status;
-        decision.ErrorCode = outcome.ErrorCode;
-        if (outcome.Status != "SUBMITTED") decision.CompletedAt = now;
+            .ToListAsync(cancellationToken);
+        for (var index = 0; index < decisions.Count; index++)
+        {
+            var decision = decisions[index];
+            if (decision.ReturnLineIds is not { Length: > 0 } && index > 0) continue;
+            var decisionTarget = decision.ReturnLineIds is { Length: > 0 } decisionLineIds
+                ? ReturnDecisionLinePolicy.Outcome(target, decisionLineIds.Select(lineId => lineStatuses.GetValueOrDefault(lineId)).ToList())
+                : target;
+            if (ReconciledReturnDecision(decision.Action, decision.Status, decisionTarget, remoteRawStatus) is not { } outcome) continue;
+            decision.Status = outcome.Status;
+            decision.ErrorCode = outcome.ErrorCode;
+            if (outcome.Status != "SUBMITTED") decision.CompletedAt = now;
+        }
     }
 
     internal static (string Status, string? ErrorCode)? ReconciledReturnDecision(string action, string currentStatus, ReturnClaimStatus target, string remoteRawStatus)
@@ -11273,7 +11286,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (claimId is null) return false;
         var now = timeProvider.GetUtcNow();
         if (!await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId.Value, remote.RawStatus, remote.LastModifiedAt, now, cancellationToken)) return false;
-        await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, now, cancellationToken);
+        await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, new Dictionary<Guid, string?>(), now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }

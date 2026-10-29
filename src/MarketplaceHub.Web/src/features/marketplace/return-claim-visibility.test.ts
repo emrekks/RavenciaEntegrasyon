@@ -7,4 +7,9 @@ describe('return lines', () => {
     expect(isActionableReturnLine({ status: 'ACTION_REQUIRED' })).toBe(true)
     expect(isActionableReturnLine({ status: 'APPROVED' })).toBe(false)
   })
+
+  it('leaves a line to the sent decision that covers it, and only that line', () => {
+    expect(isActionableReturnLine({ status: 'ACTION_REQUIRED', decisionPending: true })).toBe(false)
+    expect(isActionableReturnLine({ status: 'ACTION_REQUIRED', decisionPending: false })).toBe(true)
+  })
 })

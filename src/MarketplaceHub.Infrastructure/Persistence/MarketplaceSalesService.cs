@@ -2108,12 +2108,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // evidence row was not recorded. The write policy is still enforced by
         // ProcessReturnActionInstantAsync enforces the policy before any external
         // request is made. Return decisions are intentionally not queued.
-        var pendingDecision = await db.ReturnDecisions.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW" || (x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey))))
-            .OrderByDescending(x => x.CreatedAt)
-            .Select(x => x.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-        var decisionPending = pendingDecision != Guid.Empty;
+        var openDecisionLines = await OpenReturnDecisions(tenantId, claim.Id, isHepsiburada).Select(x => x.ReturnLineIds).ToListAsync(cancellationToken);
+        var sourceLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        bool HeldByDecision(Guid lineId) => openDecisionLines.Any(lineIds => ReturnDecisionLinePolicy.Overlaps(lineIds, [lineId]));
+        // The claim waits on a sent decision only while every line still open for a decision is covered by one:
+        // a decision on some lines leaves the others free for their own.
+        var decisionPending = openDecisionLines.Count > 0
+            && sourceLines.Where(line => isHepsiburada || ReturnLineStatusPolicy.IsActionable(line.RawStatus)).All(line => HeldByDecision(line.Id));
         var actions = claim.Status switch
         {
             ReturnClaimStatus.Requested when awaitingPreApproval => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
@@ -2134,7 +2135,6 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 .FirstOrDefaultAsync(cancellationToken)
             : null;
         approvedAt ??= claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed ? claim.LastRemoteModifiedAt : null;
-        var sourceLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var orderLineIds = sourceLines.Select(x => x.OrderLineId).ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var dispositions = await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).GroupBy(x => x.ReturnLineId).Select(x => new { ReturnLineId = x.Key, Quantity = x.Sum(y => y.Quantity) }).ToDictionaryAsync(x => x.ReturnLineId, x => x.Quantity, cancellationToken);
@@ -2194,12 +2194,16 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 variant?.ModelCode ?? sourceSnapshot?.ModelCode,
                 string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
                 source is null ? null : ReturnRefundAmounts.LineRefund(line.Quantity, source.UnitPrice, refundRatio),
-                line.AcceptDetail, line.MarketplaceNote, line.Resolved, line.AcceptedBySeller);
+                line.AcceptDetail, line.MarketplaceNote, line.Resolved, line.AcceptedBySeller,
+                HeldByDecision(line.Id), ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus));
         }).ToList();
+        var stockDispositionAvailable = sourceLines.Count == 0
+            ? ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, null)
+            : lines.Any(line => line.StockDispositionAvailable);
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, stockDispositionAvailable, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
             ReturnRefundAmounts.ClaimTotal(lines.Select(line => line.RefundAmount))));
     }
 
@@ -2315,7 +2319,11 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // Lines the marketplace already settled (for example one accepted on Trendyol) are not sent again.
         var actionableLineIds = isHepsiburada ? claimLineIds : claimLines.Where(x => ReturnLineStatusPolicy.IsActionable(x.RawStatus)).Select(x => x.Id).ToList();
         if (actionableLineIds.Count == 0) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "Bu iadenin işlem bekleyen ürün satırı kalmadı.", 409);
-        var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? actionableLineIds.ToArray();
+        // Only an open decision on the same lines holds this one back; the claim's other lines take their own decision.
+        var openDecisionLines = await OpenReturnDecisions(tenantId, claimId, isHepsiburada).Select(x => x.ReturnLineIds).ToListAsync(cancellationToken);
+        // Without a selection the decision takes the waiting lines that no open decision covers yet.
+        var freeLineIds = isHepsiburada ? actionableLineIds : actionableLineIds.Where(lineId => !openDecisionLines.Any(lineIds => ReturnDecisionLinePolicy.Overlaps(lineIds, [lineId]))).ToList();
+        var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? (freeLineIds.Count > 0 ? freeLineIds : actionableLineIds).ToArray();
         if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
         returnLineIds = returnLineIds.Intersect(actionableLineIds).ToArray();
         if (returnLineIds.Length == 0) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "Seçilen ürün satırları pazaryerinde zaten sonuçlanmış.", 409);
@@ -2325,8 +2333,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (isHepsiburada && action == "APPROVE" && finalizedWith is not ("Refund" or "Change")) return Invalid<ReturnDetailView>("finalizedWith", "Hepsiburada talep kabulünde iade veya ürün değişimi seçilmelidir.");
         if ((!isHepsiburada || action != "APPROVE") && !string.IsNullOrWhiteSpace(finalizedWith)) return Invalid<ReturnDetailView>("finalizedWith", "Kabul türü yalnız Hepsiburada talebini kabul ederken gönderilebilir.");
         if (isHepsiburada && action == "APPROVE" && string.Equals(claim.ReasonCode, "MissingInvoice", StringComparison.OrdinalIgnoreCase)) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_MISSING_INVOICE_MANUAL", "Eksik fatura taleplerinin kabul işlemi Hepsiburada panelinden yapılmalıdır.", 409);
-        var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW" || (x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey)))).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
+        if (openDecisionLines.Any(lineIds => ReturnDecisionLinePolicy.Overlaps(lineIds, returnLineIds))) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
         if (action == "REJECT" && !isHepsiburada && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)
             && RejectEvidenceRequired(command.ReasonCode, await CachedIssueReasonsAsync(tenantId, claim.ConnectionId, correlationId, cancellationToken), platformCode))
@@ -2379,7 +2386,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             IdempotencyKey = normalizedKey,
             Status = "PENDING",
             ActorUserId = userId,
-            CreatedAt = now
+            CreatedAt = now,
+            ReturnLineIds = returnLineIds
         };
         db.ReturnDecisions.Add(decision);
 
@@ -2497,13 +2505,17 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             claim.LastRemoteModifiedAt = readback.Value.LastModifiedAt;
             claim.UpdatedAt = timeProvider.GetUtcNow();
             claim.Version++;
-            var confirmed = action == "APPROVE" && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
-                || preApprovalConfirm && (remoteStatus is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
-                    || remoteStatus == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(readback.Value.RawStatus));
-            var conflicting = action == "APPROVE" && remoteStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
-                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || preApprovalConfirm && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
+            // The decision is judged by its own lines: Trendyol's claim status is the first item's, which may be a line
+            // this decision did not cover and that still waits for its own decision.
+            var decisionStatus = ReturnDecisionLinePolicy.Outcome(remoteStatus,
+                lineIds.Select(lineId => readback.Value.Lines.FirstOrDefault(remoteLine => remoteLine.ExternalLineId == lineId)?.RawStatus).ToList());
+            var confirmed = action == "APPROVE" && decisionStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+                || action == "REJECT" && decisionStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
+                || preApprovalConfirm && (decisionStatus is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
+                    || decisionStatus == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(readback.Value.RawStatus));
+            var conflicting = action == "APPROVE" && decisionStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
+                || action == "REJECT" && decisionStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+                || preApprovalConfirm && decisionStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
             if (confirmed) { decision.Status = "SUCCEEDED"; decision.CompletedAt = claim.UpdatedAt; }
             else if (conflicting) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = claim.UpdatedAt; }
         }
@@ -2531,9 +2543,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
             var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken);
             if (claim is null) return NotFound<ReturnDetailView>();
-            if (claim.Status is not (ReturnClaimStatus.Approved or ReturnClaimStatus.Completed)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok disposition yalnız onaylanmış veya tamamlanmış iade için uygulanabilir.", 409);
             var line = await db.ReturnLines.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claimId && x.Id == command.ReturnLineId, cancellationToken);
             if (line is null) return NotFound<ReturnDetailView>();
+            // Decided per line: a line approved on its own takes stock while the claim's other lines still wait.
+            if (!ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok kararı yalnız onaylanan iade ürünlerine uygulanabilir.", 409);
             var already = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == line.Id).SumAsync(x => x.Quantity, cancellationToken);
             if (already + command.Quantity > line.Quantity) return ServiceResult<ReturnDetailView>.Fail("RETURN_QUANTITY_EXCEEDED", "Disposition toplamı iade satırı miktarını aşamaz.", 409);
             var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleAsync(cancellationToken);
@@ -2902,6 +2915,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = Priority(type), TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
     internal static int Priority(string type) => JobPriorityPolicy.ForUser(type);
     private Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
+    // Return decisions whose outcome is still open: waiting to be sent or verified, or sent while the request's effect
+    // is not settled. A sent decision on line-level marketplaces is closed once the marketplace accepted it (the
+    // decided lines are no longer actionable); Hepsiburada decides the whole claim and its sent decision holds the
+    // claim until the claim read confirms it, as before.
+    private IQueryable<ReturnDecision> OpenReturnDecisions(Guid tenantId, Guid claimId, bool sentDecisionHoldsClaim) => db.ReturnDecisions.AsNoTracking()
+        .Where(x => x.TenantId == tenantId && x.ClaimId == claimId
+            && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW"
+                || x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey && (sentDecisionHoldsClaim || effect.CompletedAt == null))));
+
     private Task<bool> IsStageConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "STAGE", cancellationToken);
     private Task<bool> IsProductionConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "PRODUCTION", cancellationToken);
     private async Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) { if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false; var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken); if (settings is null) return false; try { using var document = JsonDocument.Parse(settings); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; } catch (JsonException) { return false; } }
