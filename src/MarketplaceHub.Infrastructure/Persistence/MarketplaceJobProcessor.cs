@@ -4899,7 +4899,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     // The columns the Trendyol invoice check may change on a package (invoice state) and on an order (the
-    // snapshots of a partial return-claim order). Version is listed because the shared merge bumps it.
+    // snapshots and the storefront of a partial return-claim order). Version is listed because the shared merge bumps it.
     internal static readonly IReadOnlySet<string> PackageInvoiceColumns = new HashSet<string>(StringComparer.Ordinal)
     {
         nameof(ShipmentPackage.MarketplaceInvoiceNumber), nameof(ShipmentPackage.MarketplaceInvoiceUrl), nameof(ShipmentPackage.MarketplaceInvoiceStatus),
@@ -4910,7 +4910,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static readonly IReadOnlySet<string> OrderSnapshotColumns = new HashSet<string>(StringComparer.Ordinal)
     {
         nameof(Order.CustomerSnapshotJson), nameof(Order.ShipmentAddressSnapshotJson), nameof(Order.InvoiceAddressSnapshotJson),
-        nameof(Order.LastRemoteModifiedAt), nameof(Order.UpdatedAt), nameof(Order.Version)
+        nameof(Order.LastRemoteModifiedAt), nameof(Order.UpdatedAt), nameof(Order.Version), nameof(Order.StoreFrontCode)
     };
 
     internal static bool OnlyChanges(IEnumerable<string> modifiedProperties, IReadOnlySet<string> allowed) => modifiedProperties.All(allowed.Contains);
@@ -4999,7 +4999,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var entry in orderEntries)
         {
             var order = entry.Entity;
+            var storeFrontCode = order.StoreFrontCode;
             await db.Orders.Where(x => x.TenantId == order.TenantId && x.Id == order.Id).ExecuteUpdateAsync(setters => setters
+                // An order never changes storefront: a storefront an order read stored meanwhile stays.
+                .SetProperty(x => x.StoreFrontCode, x => x.StoreFrontCode ?? storeFrontCode)
                 .SetProperty(x => x.CustomerSnapshotJson, order.CustomerSnapshotJson)
                 .SetProperty(x => x.ShipmentAddressSnapshotJson, order.ShipmentAddressSnapshotJson)
                 .SetProperty(x => x.InvoiceAddressSnapshotJson, order.InvoiceAddressSnapshotJson)
@@ -5175,18 +5178,33 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     cancellationToken);
                 if (order is not null && TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(order.CustomerSnapshotJson))
                 {
-                    order.CustomerSnapshotJson = orderSnapshot.CustomerSnapshotJson;
-                    if (!string.IsNullOrWhiteSpace(orderSnapshot.ShipmentAddressSnapshotJson)
-                        && orderSnapshot.ShipmentAddressSnapshotJson != "{}")
-                        order.ShipmentAddressSnapshotJson = orderSnapshot.ShipmentAddressSnapshotJson;
-                    if (!string.IsNullOrWhiteSpace(orderSnapshot.InvoiceAddressSnapshotJson)
-                        && orderSnapshot.InvoiceAddressSnapshotJson != "{}")
-                        order.InvoiceAddressSnapshotJson = orderSnapshot.InvoiceAddressSnapshotJson;
-                    if (orderSnapshot.LastModifiedAt > order.LastRemoteModifiedAt)
-                        order.LastRemoteModifiedAt = orderSnapshot.LastModifiedAt;
-                    order.UpdatedAt = timeProvider.GetUtcNow();
-                    order.Version++;
-                    telemetryUpdatedCount++;
+                    // The package read fills a claim-built order's customer and addresses, and names its storefront: the one
+                    // the package was found under, else the package's orderCountryCode. The order keeps its RETURN_CLAIM mark:
+                    // its lines are still the claim's, so only the hydration's full order read completes it (and removes the
+                    // mark); without the mark the hydration never ran again and the order kept no storefront.
+                    var storeFrontCode = order.StoreFrontCode
+                        ?? (string.IsNullOrWhiteSpace(orderSnapshot.StoreFrontCode) ? TrendyolWebhookStorefront(orderSnapshot.RawJson) : orderSnapshot.StoreFrontCode.Trim().ToUpperInvariant());
+                    var customerSnapshot = TrendyolJsonMapper.WithReturnClaimReadModelMark(orderSnapshot.CustomerSnapshotJson);
+                    var shipmentAddressSnapshot = !string.IsNullOrWhiteSpace(orderSnapshot.ShipmentAddressSnapshotJson) && orderSnapshot.ShipmentAddressSnapshotJson != "{}"
+                        ? orderSnapshot.ShipmentAddressSnapshotJson
+                        : order.ShipmentAddressSnapshotJson;
+                    var invoiceAddressSnapshot = !string.IsNullOrWhiteSpace(orderSnapshot.InvoiceAddressSnapshotJson) && orderSnapshot.InvoiceAddressSnapshotJson != "{}"
+                        ? orderSnapshot.InvoiceAddressSnapshotJson
+                        : order.InvoiceAddressSnapshotJson;
+                    var lastRemoteModifiedAt = orderSnapshot.LastModifiedAt > order.LastRemoteModifiedAt ? orderSnapshot.LastModifiedAt : order.LastRemoteModifiedAt;
+                    // The mark stays, so the same package read comes back on later sweeps: write only what changed.
+                    if (storeFrontCode != order.StoreFrontCode || customerSnapshot != order.CustomerSnapshotJson || shipmentAddressSnapshot != order.ShipmentAddressSnapshotJson
+                        || invoiceAddressSnapshot != order.InvoiceAddressSnapshotJson || lastRemoteModifiedAt != order.LastRemoteModifiedAt)
+                    {
+                        order.StoreFrontCode = storeFrontCode;
+                        order.CustomerSnapshotJson = customerSnapshot;
+                        order.ShipmentAddressSnapshotJson = shipmentAddressSnapshot;
+                        order.InvoiceAddressSnapshotJson = invoiceAddressSnapshot;
+                        order.LastRemoteModifiedAt = lastRemoteModifiedAt;
+                        order.UpdatedAt = timeProvider.GetUtcNow();
+                        order.Version++;
+                        telemetryUpdatedCount++;
+                    }
                 }
             }
         }

@@ -3463,6 +3463,73 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // A claim-built order (an SA micro-export order outside the order API window) that the hydration cannot read: the
+    // invoice package read fills its customer and address and names its storefront, but the order keeps its RETURN_CLAIM
+    // mark, so it is not taken for a complete domestic order (once the mark went with no storefront, and the report counted
+    // it in Istanbul).
+    [PostgreSqlTheory]
+    [InlineData("""{"orderCountryCode":"SA"}""", null, "SA")]
+    [InlineData("{}", "AE", "AE")]
+    [InlineData("{}", null, null)]
+    public async Task InvoiceReconciliation_CarriesTheStorefrontOfAClaimBuiltOrderAndKeepsItsMark(string packageJson, string? readStorefront, string? expectedStorefront)
+    {
+        var tenant = NewTenant("invoice-claim-storefront");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "TRENDYOL";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "claim-order", isReturnClaim: true, fixture.Now);
+        var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "claim-package", fixture.Now);
+        var remotePackage = new RemotePackage("claim-package", null, "Delivered", fixture.Now, null, null, [],
+            GrossAmount: 100m, NetAmount: 100m, Invoice: new RemotePackageInvoiceObservation("NotInvoiced", null, null, fixture.Now));
+        var snapshot = new RemoteOrder("claim-order", "claim-order", fixture.Now.AddDays(-1), fixture.Now.AddDays(-1), "TRY", 100m, 0m, 100m,
+            """{"customerFirstName":"Ada"}""", """{"city":"İstanbul","district":"Esenyurt"}""", "{}", [], [remotePackage], packageJson, StoreFrontCode: readStorefront);
+        var orderPort = new ReadOnlyOrderTestPort(remotePackage, snapshot, "claim-order",
+            directOrderError: new AdapterError(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Sipariş bulunamadı.", 404, null, null));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ShipmentPackages.Add(package);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<Order> RunAsync(int run)
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderInvoiceReconciliation, "{}", $"invoice-claim-storefront-{run}", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+                await using var verifyDb = fixture.CreateContext();
+                return await verifyDb.Orders.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == orderId);
+            }
+
+            var stored = await RunAsync(0);
+            Assert.Equal(expectedStorefront, stored.StoreFrontCode);
+            Assert.True(MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(stored.CustomerSnapshotJson));
+            Assert.Contains("Ada", stored.CustomerSnapshotJson, StringComparison.Ordinal);
+            Assert.Contains("Esenyurt", stored.ShipmentAddressSnapshotJson, StringComparison.Ordinal);
+            // The invoice check writes the order without a version (beside the order reads).
+            Assert.Equal(1, stored.Version);
+
+            // A later check keeps the storefront and the mark and rewrites nothing.
+            var again = await RunAsync(1);
+            Assert.Equal(stored.UpdatedAt, again.UpdatedAt);
+            Assert.Equal(stored.CustomerSnapshotJson, again.CustomerSnapshotJson);
+            Assert.Equal(expectedStorefront, again.StoreFrontCode);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task InvoiceReconciliation_StopsWithinTimeBudgetAndCheckpointsFinishedOrders()
     {
@@ -7659,7 +7726,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public override DateTimeOffset GetUtcNow() => now;
     }
 
-    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order", RemoteOrder? directOrderResult = null, Action? onPackageRead = null) : IOrderPort
+    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order", RemoteOrder? directOrderResult = null, Action? onPackageRead = null, AdapterError? directOrderError = null) : IOrderPort
     {
         public int OrderReadCalls { get; private set; }
         public List<string> PackageReadCalls { get; } = [];
@@ -7685,6 +7752,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             OrderReadCalls++;
             if (directOrderResult is not null)
                 return Task.FromResult(AdapterResult<RemoteOrder>.Success(directOrderResult));
+            if (directOrderError is not null)
+                return Task.FromResult(AdapterResult<RemoteOrder>.Failure(directOrderError));
             throw new NotSupportedException("Return hydration must defer while the order lane is locked.");
         }
 
@@ -8233,6 +8302,15 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
 public sealed class PostgreSqlFactAttribute : FactAttribute
 {
     public PostgreSqlFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")))
+            Skip = "PostgreSQL integration test requires MARKETPLACEHUB_TEST_CONNECTION pointing to a dedicated test database.";
+    }
+}
+
+public sealed class PostgreSqlTheoryAttribute : TheoryAttribute
+{
+    public PostgreSqlTheoryAttribute()
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")))
             Skip = "PostgreSQL integration test requires MARKETPLACEHUB_TEST_CONNECTION pointing to a dedicated test database.";
