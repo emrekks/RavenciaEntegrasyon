@@ -37,7 +37,7 @@ public sealed partial class MarketplaceJobProcessor
         var unpack = WebhookEventPath.Normalize(eventPath)?.EndsWith("/unpack", StringComparison.Ordinal) == true;
         if (unpack && packageNumber is not null)
         {
-            var unpackedAt = DateTimeOffset.TryParse(FindString(root, "unpackedDate"), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var date) ? date : timeProvider.GetUtcNow();
+            var unpackedAt = HepsiburadaUnpackedAt(root) ?? timeProvider.GetUtcNow();
             var packages = await (from package in db.ShipmentPackages.AsNoTracking()
                                   join order in db.Orders.AsNoTracking() on package.OrderId equals order.Id
                                   where package.TenantId == tenantId && order.ConnectionId == connectionId && package.ExternalPackageId == packageNumber
@@ -153,6 +153,11 @@ public sealed partial class MarketplaceJobProcessor
         }
         if (queued > 0) await db.SaveChangesAsync(cancellationToken);
     }
+
+    // The unpackedDate of an unpack event, in UTC: Hepsiburada writes it in Istanbul time without an offset, as its order
+    // dates (HepsiburadaJsonMapper.TurkeyDate); a value with Z or an offset keeps it.
+    internal static DateTimeOffset? HepsiburadaUnpackedAt(JsonElement root) =>
+        MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.TurkeyDate(FindString(root, "unpackedDate"));
 
     // ("packages", "123") from "packages/123/deliver": the kind and id of an order event path.
     internal static (string Kind, string Id)? HepsiburadaEventReference(string? eventPath)
