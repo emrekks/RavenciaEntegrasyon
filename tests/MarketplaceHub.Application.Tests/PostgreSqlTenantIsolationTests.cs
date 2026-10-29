@@ -5415,8 +5415,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // P-5 (30 Oct 2026 owner decision): a connection keeps its environment and store, with or without data; another
+    // environment or store is a new connection. The name stays editable, and values sent back unchanged pass.
     [PostgreSqlFact]
-    public async Task ConnectionEnvironmentChange_NeedsADataResetAndDropsTheOldCredentialsAndCursors()
+    public async Task ConnectionEnvironmentOrStoreChange_IsRefusedWithOrWithoutData()
     {
         var tenant = NewTenant("connection-environment-change");
         var withData = NewQuestionConnection(tenant);
@@ -5443,13 +5445,20 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var dataProtection = new EphemeralDataProtectionProvider();
             var service = new MarketplaceConnectionService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, fixture.TokenHasher, fixture.TimeProvider, new ConfigurationBuilder().Build());
 
-            var refused = await service.UpdateAsync(tenant.Id, withData.Id, withData.Version, new UpdateConnectionCommand(withData.DisplayName, null, Environment: "PRODUCTION"), CancellationToken.None);
-            Assert.Equal("CONNECTION_DATA_RESET_REQUIRED", refused.Error?.Code);
+            foreach (var connection in new[] { withData, empty })
+            {
+                var environment = await service.UpdateAsync(tenant.Id, connection.Id, connection.Version, new UpdateConnectionCommand(connection.DisplayName, null, Environment: "PRODUCTION"), CancellationToken.None);
+                Assert.Equal("CONNECTION_SCOPE_IMMUTABLE", environment.Error?.Code);
+                Assert.Equal("Ortam ya da mağaza değiştirilemez; yeni bir bağlantı ekleyin.", environment.Error?.Message);
+                var store = await service.UpdateAsync(tenant.Id, connection.Id, connection.Version, new UpdateConnectionCommand(connection.DisplayName, null, ExternalStoreId: "another-seller"), CancellationToken.None);
+                Assert.Equal("CONNECTION_SCOPE_IMMUTABLE", store.Error?.Code);
+            }
 
-            var moved = await service.UpdateAsync(tenant.Id, empty.Id, empty.Version, new UpdateConnectionCommand(empty.DisplayName, null, Environment: "PRODUCTION"), CancellationToken.None);
-            Assert.Null(moved.Error);
-            Assert.False(moved.Value!.HasCredential);
-            Assert.False(await db.SyncCursors.AnyAsync(row => row.TenantId == tenant.Id && row.ConnectionId == empty.Id));
+            var renamed = await service.UpdateAsync(tenant.Id, empty.Id, empty.Version, new UpdateConnectionCommand("Yeni ad", null, Environment: empty.Environment, ExternalStoreId: empty.ExternalStoreId), CancellationToken.None);
+            Assert.Null(renamed.Error);
+            Assert.Equal(("Yeni ad", "STAGE", "seller-empty"), (renamed.Value!.DisplayName, renamed.Value.Environment, renamed.Value.ExternalStoreId));
+            Assert.True(renamed.Value.HasCredential);
+            Assert.True(await db.SyncCursors.AnyAsync(row => row.TenantId == tenant.Id && row.ConnectionId == empty.Id));
         }
         finally
         {

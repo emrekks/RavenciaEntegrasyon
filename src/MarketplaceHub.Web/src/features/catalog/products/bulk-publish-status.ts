@@ -100,13 +100,57 @@ export function summarizeBulkPublishStatus(products: ReadonlyArray<Pick<Product,
   const format = (value: number) => value.toLocaleString('tr-TR')
   if (present.length === 1) {
     const [bucket] = present
-    const label = total > 1 && bucket === 'live' ? `${format(total)}/${format(total)} kayıt yayında` : singleBucketLabels[bucket]
+    const label = total > 1 && bucket === 'live' ? `${format(total)}/${format(total)} Kayıt Yayında` : singleBucketLabels[bucket]
     return { total, counts, label, detail: null, tone: singleBucketTones[bucket], allLive: bucket === 'live' }
   }
 
   const detail = present.map(bucket => `${format(counts[bucket])} ${bucketCountLabels[bucket]}`).join(' · ')
   const tone: BulkPublishStatusTone = counts.error + counts.notFound > 0 ? 'warning' : counts.live + counts.partial + counts.processing + counts.linked > 0 ? 'info' : 'neutral'
-  return { total, counts, label: `${format(counts.live)}/${format(total)} kayıt yayında`, detail, tone, allLive: false }
+  return { total, counts, label: `${format(counts.live)}/${format(total)} Kayıt Yayında`, detail, tone, allLive: false }
+}
+
+// The pill's hover list: per selected model code (product family), how many of its catalog records are live on this
+// connection. Unknown records stay unknown, apart from the missing ones; incomplete models come first.
+export type BulkPublishModelRow = { modelCode: string; live: number; total: number; missing: number; unknown: number }
+export type BulkPublishModelTooltip = { rows: Array<BulkPublishModelRow & { text: string; complete: boolean }>; moreCount: number }
+
+type ModelRecord = Pick<Product, 'platformStatuses' | 'modelCode' | 'title'> & { variants?: ReadonlyArray<{ modelCode?: string | null }> }
+
+function recordModelCode(product: ModelRecord | null) {
+  if (!product) return 'Yüklenmemiş kayıt'
+  return product.modelCode?.trim() || product.variants?.map(variant => variant.modelCode?.trim()).find(Boolean) || product.title.trim() || 'Model kodu yok'
+}
+
+export function summarizeBulkPublishModels(products: ReadonlyArray<ModelRecord | null>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>): BulkPublishModelRow[] {
+  const rows = new Map<string, BulkPublishModelRow>()
+  for (const product of products) {
+    const modelCode = recordModelCode(product)
+    const key = modelCode.toLocaleUpperCase('tr-TR')
+    const row = rows.get(key) ?? { modelCode, live: 0, total: 0, missing: 0, unknown: 0 }
+    const bucket = bulkPublishStatusBucket(product ? productConnectionStatus(product, connection) : null)
+    row.total += 1
+    if (bucket === 'live') row.live += 1
+    else if (bucket === 'unknown') row.unknown += 1
+    else row.missing += 1
+    rows.set(key, row)
+  }
+  return [...rows.values()].sort((left, right) => (right.missing - left.missing) || (right.unknown - left.unknown) || left.modelCode.localeCompare(right.modelCode, 'tr'))
+}
+
+export function bulkPublishModelTooltip(rows: readonly BulkPublishModelRow[], limit = 8): BulkPublishModelTooltip {
+  const format = (value: number) => value.toLocaleString('tr-TR')
+  const shown = rows.slice(0, limit)
+  return {
+    rows: shown.map(row => {
+      const complete = row.live === row.total
+      const parts = [`${format(row.live)}/${format(row.total)} kayıt`]
+      if (complete) parts.push('Tam')
+      if (row.missing) parts.push(`${format(row.missing)} eksik`)
+      if (row.unknown) parts.push(`${format(row.unknown)} bilinmiyor`)
+      return { ...row, complete, text: parts.join(' · ') }
+    }),
+    moreCount: rows.length - shown.length
+  }
 }
 
 // Platform codes are stored upper-case; show the brand names the way they are written.

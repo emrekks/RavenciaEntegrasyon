@@ -1,10 +1,12 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard) : IOperationalDataMaintenanceService
+public sealed partial class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard, ILogger<OperationalDataMaintenanceService> logger) : IOperationalDataMaintenanceService
 {
     // Orders, returns and invoices are reset per connection only (ResetConnectionDataAsync, Entegrasyonlar › Verileri
     // Sıfırla); the settings-wide reset covers the catalog lists.
@@ -27,9 +29,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Contains("PRODUCTS")) await DeleteProductsAsync(tenantId, null, cancellationToken);
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "OPERATIONAL_DATA_RESET", "Tenant", tenantId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
+        AnnounceReset(tenantId, "products", "Tenant", tenantId);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts);
     }
 
@@ -50,7 +53,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         connection.Version++;
         db.AuditLogs.Add(Audit(tenantId, actorUserId, hidden ? "CONNECTION_DATA_HIDDEN" : "CONNECTION_DATA_SHOWN", "PlatformConnection", connectionId.ToString("D"), hidden ? "platform-data-hidden" : "platform-data-shown", correlationId));
         await db.SaveChangesAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<bool>.Ok(hidden);
     }
 
@@ -62,8 +65,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
         // A test environment's invoices (an e-invoice provider's STAGE) are no fiscal record: they go with the connection.
-        var testEnvironment = connection.Environment is "STAGE" or "SANDBOX";
-        if (!testEnvironment && await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
+        // Whether an invoice is a test is the environment of the provider that issued it, not of the connection being
+        // deleted: a live marketplace's orders invoiced through a STAGE provider are tests, a STAGE marketplace's orders
+        // invoiced through the live provider are not.
+        if (await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken, fiscalOnly: true) is > 0 and var issued) return IssuedInvoicesKept(issued);
         var scopes = new HashSet<string>(ConnectionDeleteScopes, StringComparer.Ordinal);
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -80,7 +85,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DEEP_DELETED", "PlatformConnection", connectionId.ToString("D"), $"{connection.PlatformCode}:{connection.ExternalStoreId}", correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true });
     }
 
@@ -106,21 +111,16 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
             await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
             await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
             await DeleteOrdersAsync(tenantId, connectionId, cancellationToken, keepIssued: true, carryStock: true);
-            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "ORDERS", cancellationToken);
         }
         else
         {
-            if (scopes.Contains("RETURNS"))
-            {
-                await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
-                await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "RETURNS", cancellationToken);
-            }
-            if (scopes.Contains("INVOICES"))
-            {
-                await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
-                await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "INVOICES", cancellationToken);
-            }
+            if (scopes.Contains("RETURNS")) await DeleteReturnsAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
+            if (scopes.Contains("INVOICES")) await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken, keepIssued: true);
         }
+        // Every list whose rows went reads again from the start: an order reset takes the returns with it, and with
+        // orders and returns chosen together only the order cursors used to go, so the returns never came back.
+        string[] cursorScopes = scopes.Contains("ORDERS") ? ["ORDERS", "RETURNS", "INVOICES"] : scopes.Intersect(["RETURNS", "INVOICES"]).ToArray();
+        if (cursorScopes.Length > 0) await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, cursorScopes.SelectMany(scope => SalesCursorResources[scope]).ToArray(), cancellationToken);
         if (scopes.Contains("CATEGORIES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: true, cancellationToken);
         else if (scopes.Contains("CATEGORY_ATTRIBUTES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: false, cancellationToken);
         if (scopes.Contains("BRANDS")) await DeleteConnectionBrandDataAsync(tenantId, connectionId, cancellationToken);
@@ -130,14 +130,15 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         {
             await DeleteProductsAsync(tenantId, connectionId, cancellationToken);
             await DeleteConnectionProductArtifactsAsync(tenantId, connectionId, cancellationToken);
-            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "PRODUCTS", cancellationToken);
+            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, ["PRODUCTS"], cancellationToken);
         }
 
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DATA_RESET", "PlatformConnection", connectionId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
+        AnnounceReset(tenantId, "connections", "PlatformConnection", connectionId);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { KeptIssuedInvoices = keptIssued });
     }
 
@@ -198,8 +199,16 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.promotion_offer_files WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         """, cancellationToken);
 
-    private Task DeleteConnectionSyncCursorsAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType"={{resourceType}};
+    // The cursors that hold where a sales list's reading stands: the list itself and its wide re-reads.
+    private static readonly Dictionary<string, string[]> SalesCursorResources = new(StringComparer.Ordinal)
+    {
+        ["ORDERS"] = ["ORDERS", "PACKAGES", HepsiburadaCancellationPolicy.CursorResource, HepsiburadaCancellationPolicy.WideCursorResource],
+        ["RETURNS"] = ["RETURNS", ReturnRereadPolicy.WideCursorResource],
+        ["INVOICES"] = ["INVOICES"],
+    };
+
+    private Task DeleteConnectionSyncCursorsAsync(Guid tenantId, Guid connectionId, string[] resourceTypes, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType" = ANY({{resourceTypes}});
         """, cancellationToken);
 
     private Task DeleteConnectionCategoryDataAsync(Guid tenantId, Guid connectionId, bool includeCategories, CancellationToken cancellationToken) => includeCategories
@@ -278,6 +287,13 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         UPDATE inventory.stock_reservations r SET "SourceId"=c."CarryKey", "Version"=r."Version"+1 FROM carry_order_lines c WHERE r."TenantId"={{tenantId}} AND r."SourceType"='ORDER_LINE' AND r."SourceId"=c."SourceId" AND NOT EXISTS (SELECT 1 FROM inventory.stock_reservations x WHERE x."TenantId"={{tenantId}} AND x."SourceType"='ORDER_LINE' AND x."SourceId"=c."CarryKey" AND x."InventoryItemId"=r."InventoryItemId");
         UPDATE inventory.stock_ledger_entries e SET "SourceId"=c."CarryKey" FROM carry_order_lines c WHERE e."TenantId"={{tenantId}} AND e."SourceType"='ORDER_LINE' AND e."SourceId"=c."SourceId";
         INSERT INTO purge_files SELECT d."FileAssetId" FROM sales.shipment_documents d JOIN sales.shipment_packages p ON p."Id"=d."PackageId" JOIN purge_orders o ON o."Id"=p."OrderId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
+        -- An order's uploaded invoice documents and the invoice references the marketplace reported hold a restricting key
+        -- to the order and its packages: left behind, they failed the whole reset (P-6 reading, 29 Oct 2026).
+        INSERT INTO purge_files SELECT d."FileAssetId" FROM billing.manual_order_invoice_documents d JOIN purge_orders o ON o."Id"=d."OrderId" WHERE d."TenantId"={{tenantId}} AND d."FileAssetId" IS NOT NULL ON CONFLICT DO NOTHING;
+        DELETE FROM billing.manual_order_invoice_delivery_states s USING billing.manual_order_invoice_documents d, purge_orders o WHERE s."TenantId"={{tenantId}} AND d."TenantId"={{tenantId}} AND s."DocumentId"=d."Id" AND d."OrderId"=o."Id";
+        DELETE FROM billing.manual_order_invoice_delivery_states s USING sales.shipment_packages p, purge_orders o WHERE s."TenantId"={{tenantId}} AND p."TenantId"={{tenantId}} AND s."PackageId"=p."Id" AND p."OrderId"=o."Id";
+        DELETE FROM billing.manual_order_invoice_documents d USING purge_orders o WHERE d."TenantId"={{tenantId}} AND d."OrderId"=o."Id";
+        DELETE FROM sales.marketplace_invoice_reference_history h USING purge_orders o WHERE h."TenantId"={{tenantId}} AND h."OrderId"=o."Id";
         DELETE FROM sales.shipment_document_attempts a USING sales.shipment_packages p, purge_orders o WHERE a."TenantId"={{tenantId}} AND a."PackageId"=p."Id" AND p."OrderId"=o."Id";
         DELETE FROM sales.shipment_documents d USING sales.shipment_packages p, purge_orders o WHERE d."TenantId"={{tenantId}} AND d."PackageId"=p."Id" AND p."OrderId"=o."Id";
         DELETE FROM sales.order_status_history h USING purge_orders o WHERE h."TenantId"={{tenantId}} AND h."OrderId"=o."Id";
@@ -317,10 +333,18 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.product_options WHERE "TenantId"={{tenantId}};
         """, cancellationToken);
 
-    private Task DeleteProductsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+    // ImportedOnly (full reset): of the connection's products only those its own import created go. A product created
+    // on the panel, or matched to a panel product by its codes, keeps its row and loses only the link (30 Oct 2026
+    // owner decision). The link of a product an import created is written with the product, so both ids (version 7)
+    // carry the same moment; a product older than its link was there before, and an id without a time keeps the product.
+    // (The link's LastImportedAt does not tell them apart: a sync that matches a panel product by barcode sets it too.)
+    private Task DeleteProductsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool importedOnly = false) => db.Database.ExecuteSqlInterpolatedAsync($$"""
         CREATE TEMP TABLE IF NOT EXISTS purge_products ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_products;
-        INSERT INTO purge_products SELECT p."Id" FROM catalog.products p WHERE p."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR (EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId"={{tenantId}} AND l."ProductId"=p."Id" AND l."ConnectionId"={{connectionId}}) AND NOT EXISTS (SELECT 1 FROM catalog.marketplace_product_links other_link WHERE other_link."TenantId"={{tenantId}} AND other_link."ProductId"=p."Id" AND other_link."ConnectionId"<> {{connectionId}})));
+        INSERT INTO purge_products SELECT p."Id" FROM catalog.products p WHERE p."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR (EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId"={{tenantId}} AND l."ProductId"=p."Id" AND l."ConnectionId"={{connectionId}}
+                AND (NOT {{importedOnly}} OR abs(extract(epoch FROM uuid_extract_timestamp(p."Id") - uuid_extract_timestamp(l."Id"))) <= {{ImportedProductLinkSeconds}}))
+            AND NOT EXISTS (SELECT 1 FROM catalog.marketplace_product_links other_link WHERE other_link."TenantId"={{tenantId}} AND other_link."ProductId"=p."Id" AND other_link."ConnectionId"<> {{connectionId}})
+            AND NOT ({{importedOnly}} AND EXISTS (SELECT 1 FROM catalog.marketplace_variant_links other_variant JOIN catalog.product_variants v ON v."TenantId"=other_variant."TenantId" AND v."Id"=other_variant."VariantId" WHERE other_variant."TenantId"={{tenantId}} AND v."ProductId"=p."Id" AND other_variant."ConnectionId"<> {{connectionId}}))));
         UPDATE sales.order_lines SET "VariantId"=NULL WHERE "TenantId"={{tenantId}} AND "VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId" WHERE v."TenantId"={{tenantId}});
         DELETE FROM catalog.import_decisions WHERE "TenantId"={{tenantId}} AND "CandidateId" IN (SELECT c."Id" FROM catalog.import_match_candidates c WHERE c."TenantId"={{tenantId}} AND (c."ProductId" IN (SELECT "Id" FROM purge_products) OR c."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId")));
         DELETE FROM catalog.import_match_candidates c WHERE c."TenantId"={{tenantId}} AND (c."ProductId" IN (SELECT "Id" FROM purge_products) OR c."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId"));
@@ -383,10 +407,14 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
     // refused. "Issued" is anything that left the draft stages, or got a number, an ETTN or an issue date.
     private static readonly InvoiceStatus[] UnissuedInvoiceStatuses = [InvoiceStatus.Draft, InvoiceStatus.Validating, InvoiceStatus.ValidationFailed, InvoiceStatus.Ready, InvoiceStatus.Rejected, InvoiceStatus.CancelledLocal];
 
-    private Task<int> IssuedInvoicesAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) =>
+    private static readonly string[] TestProviderEnvironments = ["STAGE", "SANDBOX"];
+
+    // FiscalOnly leaves out the invoices a test environment's provider issued.
+    private Task<int> IssuedInvoicesAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool fiscalOnly = false) =>
         db.Invoices.CountAsync(x => x.TenantId == tenantId
             && (connectionId == null || x.ProviderConnectionId == connectionId || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connectionId))
-            && (!UnissuedInvoiceStatuses.Contains(x.Status) || x.IssuedAt != null || x.EttnUuid != null || x.InvoiceNumber != null), cancellationToken);
+            && (!UnissuedInvoiceStatuses.Contains(x.Status) || x.IssuedAt != null || x.EttnUuid != null || x.InvoiceNumber != null)
+            && (!fiscalOnly || !db.PlatformConnections.Any(provider => provider.TenantId == tenantId && provider.Id == x.ProviderConnectionId && TestProviderEnvironments.Contains(provider.Environment))), cancellationToken);
 
     private static ServiceResult<OperationalDataResetView> IssuedInvoicesKept(int count) =>
         ServiceResult<OperationalDataResetView>.Fail("ISSUED_INVOICES_KEPT", $"Seçilen kayıtlar {count} kesilmiş fatura içeriyor; mali kayıtlar silinemez. Faturaları ve bağlı siparişleri seçimden çıkarın.", 409);
@@ -410,8 +438,56 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
           AND NOT EXISTS (SELECT 1 FROM billing.invoice_documents d WHERE d."TenantId"={{tenantId}} AND d."FileAssetId"=f."Id")
           AND NOT EXISTS (SELECT 1 FROM billing.manual_order_invoice_documents d WHERE d."TenantId"={{tenantId}} AND d."FileAssetId"=f."Id")
           AND NOT EXISTS (SELECT 1 FROM sales.return_evidence e WHERE e."TenantId"={{tenantId}} AND e."FileAssetId"=f."Id")
-          AND NOT EXISTS (SELECT 1 FROM sales.shipment_documents s WHERE s."TenantId"={{tenantId}} AND s."FileAssetId"=f."Id");
+          AND NOT EXISTS (SELECT 1 FROM sales.shipment_documents s WHERE s."TenantId"={{tenantId}} AND s."FileAssetId"=f."Id")
+          AND NOT EXISTS (SELECT 1 FROM catalog.import_sessions i WHERE i."TenantId"={{tenantId}} AND i."SourceAssetId"=f."Id");
         """, cancellationToken);
+
+    // The dashboard snapshot is rebuilt after the reset has committed, so a failure there must not turn a finished reset
+    // into an error (P-6, 29 Oct 2026: the worker's refresher wrote the same snapshot row and the request answered 500
+    // after the data was gone). The rebuild runs on a clean change tracker, is tried twice with its own short time limit
+    // instead of the request's, and is otherwise left to the worker, which the reset's outbox event (or the hidden or
+    // deleted connection's own row change) tells to rebuild.
+    internal static readonly TimeSpan DashboardRefreshTimeout = TimeSpan.FromSeconds(10);
+
+    private async Task RefreshDashboardBestEffortAsync(Guid tenantId)
+    {
+        db.ChangeTracker.Clear();
+        for (var attempt = 1; ; attempt++)
+        {
+            using var timeout = new CancellationTokenSource(DashboardRefreshTimeout);
+            try
+            {
+                await dashboard.RebuildTenantAsync(tenantId, timeout.Token);
+                return;
+            }
+            catch (Exception exception) when (exception is DbUpdateException || exception is OperationCanceledException && timeout.IsCancellationRequested)
+            {
+                db.ChangeTracker.Clear();
+                if (attempt < 2 && exception is DbUpdateException) continue;
+                logger.LogWarning(exception, "Sıfırlamadan sonra pano özeti yenilenemedi; worker yenileyecek. TenantId: {TenantId}", tenantId);
+                return;
+            }
+        }
+    }
+
+    // A data change for the worker's dashboard refresher (DashboardSnapshotRefresher) and the open panels: the rows a
+    // reset removes with SQL raise no change events of their own.
+    private void AnnounceReset(Guid tenantId, string resourceType, string aggregateType, Guid aggregateId)
+    {
+        var now = timeProvider.GetUtcNow();
+        db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ResourceType = resourceType,
+            OperationType = "reset",
+            AggregateType = aggregateType,
+            AggregateId = aggregateId,
+            PayloadJson = JsonSerializer.Serialize(new { aggregateType, aggregateId }),
+            CreatedAt = now,
+            NextAttemptAt = now
+        });
+    }
 
     private AuditLog Audit(Guid tenantId, Guid actorUserId, string action, string targetType, string targetId, string reason, string correlationId) => new() { TenantId = tenantId, ActorUserId = actorUserId, Action = action, TargetType = targetType, TargetId = targetId, Reason = reason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() };
     private static ServiceResult<OperationalDataResetView> Invalid(string message) => ServiceResult<OperationalDataResetView>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { ["confirmation"] = [message] });

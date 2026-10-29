@@ -5677,6 +5677,10 @@ small,
   .app-shell.stitch-shell main .connection-settings-fields { grid-template-columns: 1fr; }
 }
 
+/* The store and environment a connection was added for cannot change; the field only shows it. */
+.app-shell.stitch-shell main .connection-settings-fields input[readonly] { color: var(--rv-color-muted); background: var(--rv-color-surface-raised); cursor: default; }
+.app-shell.stitch-shell main .connection-scope-locked { margin-top: var(--rv-space-2); }
+
 /* Keep the fixed topbar stacking context above catalog cards. The notification
    history can grow over the metric row, so its child z-index is not enough if
    the topbar itself remains in the sticky-content layer. */
@@ -7132,6 +7136,12 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 .data-reset-title h2 { margin: 0; font-size: 18px; }
 .data-reset-title p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .data-reset-dialog .drl { max-height: calc(100dvh - 120px); }
+/* A marketplace connection also offers Tam Sıfırlama: the two kinds sit as tabs under the header. */
+.data-reset-dialog.has-modes.workspace-modal { grid-template-rows: auto auto minmax(0, 1fr); }
+.data-reset-dialog.has-modes .drl { max-height: calc(100dvh - 170px); }
+.data-reset-modes { padding: 0 20px; }
+.connection-full-reset-status { margin: 0; padding: 10px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.connection-full-reset-status.is-running { color: var(--rv-color-primary); border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
 
 /* "Temizle" is the same framed button on every page, like the lists' Temizle (.rr-btn): surface fill, strong
    border, 36px, 7px corners. While there is nothing to clear it stays framed and only fades. */

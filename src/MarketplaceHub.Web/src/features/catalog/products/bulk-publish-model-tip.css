@@ -1,0 +1,35 @@
+/* Bulk publish popup: the "Yayın Durumu" pill's per model code tooltip. It sits on the page body, fixed to the screen,
+   its right edge under the pill's right edge (above the pill when there is no room below). */
+.publish-platform-status.has-model-tip { cursor: help; }
+.publish-platform-status.has-model-tip:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+.bulk-publish-model-tip {
+  position: fixed;
+  z-index: calc(var(--rv-z-modal, 1000) + 20);
+  display: grid;
+  gap: 8px;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 12px 14px;
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%));
+  font-size: 13px;
+  line-height: 1.4;
+  transform: translateX(-100%);
+  pointer-events: none;
+  animation: rv-motion-fade var(--rv-motion-fast, .12s) ease-out backwards;
+}
+.bulk-publish-model-tip.is-above { transform: translate(-100%, -100%); }
+.bulk-publish-model-tip > strong { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
+.bulk-publish-model-tip > ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.bulk-publish-model-tip > ul > li { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.bulk-publish-model-tip > ul > li > b { overflow: hidden; min-width: 0; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-publish-model-tip > ul > li > span { flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bulk-publish-model-tip > ul > li.is-complete > span { color: var(--rv-color-accent); }
+.bulk-publish-model-tip > ul > li.is-missing > span { color: var(--rv-color-warning); }
+.bulk-publish-model-tip > ul > li.is-unknown > span { color: var(--rv-color-muted); }
+.bulk-publish-model-tip > small { color: var(--rv-color-muted); font-size: 12px; }

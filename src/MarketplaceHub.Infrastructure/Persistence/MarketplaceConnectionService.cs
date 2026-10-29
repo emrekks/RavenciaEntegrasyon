@@ -307,6 +307,12 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             requestedStoreId = PttAvmStoreId(command.ExternalStoreId);
             if (requestedStoreId is null) return Invalid<ConnectionView>("externalStoreId", PttAvmStoreIdMessage);
         }
+        // A connection keeps the environment and store it was created for (30 Oct 2026 owner decision): another one is a
+        // new connection, so the old store's orders, products and invoices never mix with the new one's.
+        if (requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase))
+            return ScopeImmutable("environment");
+        if (requestedStoreId is not null && !string.Equals(connection.ExternalStoreId, requestedStoreId, StringComparison.Ordinal))
+            return ScopeImmutable("externalStoreId");
         var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson);
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
         var hepsiburadaSettings = connection.PlatformCode == "HEPSIBURADA" ? ReadHepsiburadaSettings(connection) : null;
@@ -316,8 +322,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var pazaramaSettings = connection.PlatformCode == "PAZARAMA" ? ReadPazaramaSettings(connection) : null;
         var pttAvmSettings = connection.PlatformCode == "PTTAVM" ? ReadPttAvmSettings(connection) : null;
         var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? shopifySettings?.ExternalWritesEnabled ?? efaturamSettings?.ExternalWritesEnabled ?? n11Settings?.ExternalWritesEnabled ?? pazaramaSettings?.ExternalWritesEnabled ?? pttAvmSettings?.ExternalWritesEnabled ?? false;
-        if (!elevated && ConnectionSettingsChangePolicy.TouchesProtectedSettings(command, currentExternalWrites, invoiceCreationEnabled, connection.Environment, requestedEnvironment, connection.ExternalStoreId, requestedStoreId))
-            return ServiceResult<ConnectionView>.Fail("PERMISSION_DENIED", "Dış yazma, fatura oluşturma, ortam ve mağaza kapsamını yalnız sahip veya yönetici değiştirebilir.", 403);
+        if (!elevated && ConnectionSettingsChangePolicy.TouchesProtectedSettings(command, currentExternalWrites, invoiceCreationEnabled))
+            return ServiceResult<ConnectionView>.Fail("PERMISSION_DENIED", "Dış yazma ve fatura oluşturma ayarlarını yalnız sahip veya yönetici değiştirebilir.", 403);
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
         if (connection.PlatformCode == "TRENDYOL" && requestedUserAgent is not null && !TrendyolUserAgentPolicy.IsHeaderSafe(requestedUserAgent))
             return Invalid<ConnectionView>("userAgentIdentity", UnsendableUserAgentMessage);
@@ -356,17 +362,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                     MarketplaceCapabilities.PublicationWrite))
                 return ServiceResult<ConnectionView>.Fail("SHOPIFY_WRITE_SCOPES_REQUIRED", "Shopify ürün yayınlama ve fiyat-stok dış yazması için tokenında write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.", 422);
         }
-        var environmentChanged = requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase);
-        var storeScopeChanged = requestedStoreId is not null && !string.Equals(connection.ExternalStoreId, requestedStoreId, StringComparison.Ordinal);
-        // Orders, products, returns and questions of the old environment/store
-        // would mix with the new one's (STAGE orders in production lists); the
-        // data must be reset first.
-        if ((environmentChanged || storeScopeChanged) && await HasConnectionDataAsync(tenantId, id, cancellationToken))
-            return ServiceResult<ConnectionView>.Fail("CONNECTION_DATA_RESET_REQUIRED", "Ortam veya mağaza değiştirilmeden önce bu bağlantının sipariş, ürün, iade, soru ve fatura verilerini Veri Sıfırlama ile temizleyin.", 409);
         var userAgentChanged = currentSettings is not null && requestedUserAgent is not null && !string.Equals(currentSettings.UserAgentIdentity, requestedUserAgent, StringComparison.Ordinal);
         connection.DisplayName = command.DisplayName.Trim();
-        if (requestedEnvironment is not null) connection.Environment = requestedEnvironment;
-        if (requestedStoreId is not null) connection.ExternalStoreId = requestedStoreId;
         if (connection.PlatformCode == "TRENDYOL")
         {
             var current = currentSettings ?? new ConnectionSettings("", false, invoiceCreationEnabled);
@@ -395,7 +392,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
 
-        if (environmentChanged || storeScopeChanged || userAgentChanged)
+        if (userAgentChanged)
         {
             connection.LastTestedAt = null;
             connection.LastSuccessAt = null;
@@ -404,27 +401,15 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken))
             {
                 capability.SupportLevel = CapabilitySupportLevel.Unknown;
-                capability.Environment = connection.Environment;
-                capability.StoreScope = connection.ExternalStoreId;
                 capability.SourceUrl = null;
                 capability.SourceVersion = null;
                 capability.RequiredScope = null;
                 capability.ConstraintsJson = null;
-                capability.EvidenceNote = "Bağlantı kapsamı veya User-Agent değişti; yeniden bağlantı testi gerekiyor.";
+                capability.EvidenceNote = "User-Agent değişti; yeniden bağlantı testi gerekiyor.";
                 capability.FixtureChecksum = null;
                 capability.VerifiedAt = null;
                 capability.Version++;
             }
-        }
-
-        if (environmentChanged || storeScopeChanged)
-        {
-            // The old environment's credentials, read positions and question
-            // import state belong to the old store: none of it carries over.
-            var now = timeProvider.GetUtcNow();
-            foreach (var credential in await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null).ToListAsync(cancellationToken)) { credential.RevokedAt = now; credential.Version++; }
-            db.SyncCursors.RemoveRange(await db.SyncCursors.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken));
-            db.MarketplaceQuestionSyncStates.RemoveRange(await db.MarketplaceQuestionSyncStates.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken));
         }
 
         if ((connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM") && currentExternalWrites && !requestedExternalWrites)
@@ -818,12 +803,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         return capabilityCodes.All(code => CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities.SingleOrDefault(x => x.Code == code), connection, code));
     }
 
-    private async Task<bool> HasConnectionDataAsync(Guid tenantId, Guid id, CancellationToken cancellationToken) =>
-        await db.Orders.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id, cancellationToken)
-        || await db.ReturnClaims.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id, cancellationToken)
-        || await db.MarketplaceQuestions.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id, cancellationToken)
-        || await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id, cancellationToken)
-        || await db.Invoices.AnyAsync(x => x.TenantId == tenantId && x.ProviderConnectionId == id, cancellationToken);
+    internal const string ScopeImmutableMessage = "Ortam ya da mağaza değiştirilemez; yeni bir bağlantı ekleyin.";
+
+    private static ServiceResult<ConnectionView> ScopeImmutable(string field) =>
+        ServiceResult<ConnectionView>.Fail("CONNECTION_SCOPE_IMMUTABLE", ScopeImmutableMessage, 422, new Dictionary<string, string[]> { [field] = [ScopeImmutableMessage] });
 
     private Task<bool> HasCredential(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformCredentials.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null, cancellationToken);
     private async Task DisableExternalWriteAutomationAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
@@ -1056,11 +1039,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 // still works for operations users.
 internal static class ConnectionSettingsChangePolicy
 {
-    public static bool TouchesProtectedSettings(UpdateConnectionCommand command, bool currentExternalWrites, bool currentInvoiceCreation, string currentEnvironment, string? requestedEnvironment, string currentStoreId, string? requestedStoreId) =>
+    // The environment and store are no setting at all: they cannot be changed (MarketplaceConnectionService.ScopeImmutable).
+    public static bool TouchesProtectedSettings(UpdateConnectionCommand command, bool currentExternalWrites, bool currentInvoiceCreation) =>
         command.ExternalWritesEnabled is { } writes && writes != currentExternalWrites
-        || command.InvoiceCreationEnabled is { } invoices && invoices != currentInvoiceCreation
-        || requestedEnvironment is not null && !string.Equals(currentEnvironment, requestedEnvironment, StringComparison.OrdinalIgnoreCase)
-        || requestedStoreId is not null && !string.Equals(currentStoreId, requestedStoreId, StringComparison.Ordinal);
+        || command.InvoiceCreationEnabled is { } invoices && invoices != currentInvoiceCreation;
 }
 
 internal static class ConnectionActivationPolicy

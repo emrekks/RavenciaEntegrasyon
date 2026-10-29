@@ -5,6 +5,7 @@ using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -26,7 +27,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             // 26 Oct 2026: orders, returns and invoices are reset per platform (Entegrasyonlar › Verileri Sıfırla) only.
             foreach (var scope in new[] { "ORDERS", "RETURNS", "INVOICES" })
             {
-                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                var result = await NewService(db)
                     .ResetAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ResetOperationalDataCommand([scope], "Verileri sil"), "corr", CancellationToken.None);
                 Assert.False(result.Succeeded);
                 Assert.Equal(422, result.Error!.Status);
@@ -75,7 +76,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await SeedAsync(seed, db => { db.Orders.Add(other); db.Invoices.AddRange(issued, draft); });
 
             await using var db = fixture.CreateContext();
-            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+            var result = await NewService(db)
                 .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS", "RETURNS", "INVOICES"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
 
             Assert.True(result.Succeeded, result.Error?.Message);
@@ -104,7 +105,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await SeedAsync(seed, db => { db.CommissionTariffs.Add(tariff); db.CommissionTariffRows.Add(row); db.PromotionOfferFiles.Add(offer); db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)); });
 
             await using var db = fixture.CreateContext();
-            var service = new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard());
+            var service = NewService(db);
             var counts = await service.ResetCountsAsync(seed.Tenant.Id, seed.Marketplace.Id, CancellationToken.None);
             Assert.True(counts.Succeeded, counts.Error?.Message);
             Assert.Equal(1, counts.Value!.Items.Single(x => x.Scope == "COMMISSION_TARIFFS").Count);
@@ -164,7 +165,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             });
 
             await using var db = fixture.CreateContext();
-            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+            var result = await NewService(db)
                 .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Provider.Id, seed.Provider.Version, new DeleteConnectionCommand(seed.Provider.DisplayName), "corr", CancellationToken.None);
 
             Assert.Equal(deleted, result.Succeeded);
@@ -176,6 +177,161 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
         finally
         {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // P-6 (29 Oct 2026): the dashboard rebuild after the commit hit the worker's write of the same snapshot row and the
+    // finished reset answered 500. The rebuild is retried once, then left to the worker the reset's outbox event wakes.
+    [PostgreSqlFact]
+    public Task ConnectionReset_SucceedsWhenTheDashboardRebuildConflictsOnce() => ConnectionResetWithFailingDashboardAsync(failures: 1);
+
+    [PostgreSqlFact]
+    public Task ConnectionReset_SucceedsWhenTheDashboardRebuildKeepsFailing() => ConnectionResetWithFailingDashboardAsync(failures: int.MaxValue);
+
+    private async Task ConnectionResetWithFailingDashboardAsync(int failures)
+    {
+        var seed = NewSeed($"dm-dash{Math.Min(failures, 9)}");
+        try
+        {
+            await SeedAsync(seed, _ => { });
+
+            var dashboard = new FailingDashboard(failures);
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db, dashboard)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal(2, dashboard.Calls);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.True(await verification.IntegrationOutboxEvents.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.OperationType == "reset" && x.AggregateId == seed.Marketplace.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // An order with an uploaded invoice document, its delivery to the marketplace and the invoice references the
+    // marketplace reported: their restricting keys failed the whole reset with a 500 (P-6 reading, 29 Oct 2026).
+    [PostgreSqlFact]
+    public async Task OrderReset_RemovesTheUploadedInvoiceDocumentsAndInvoiceReferencesOfTheOrder()
+    {
+        var seed = NewSeed("dm-manual");
+        var pdf = NewFileAsset(seed.Tenant.Id, $"{seed.Tenant.Id:N}/manual.pdf");
+        var document = new ManualOrderInvoiceDocument { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, OrderId = seed.Order.Id, PackageId = seed.Package.Id, ConnectionId = seed.Marketplace.Id, InvoiceNumber = "MAN2026000000001", IssuedAt = fixture.Now.AddDays(-1), IdempotencyKey = $"manual:{Guid.NewGuid():N}", DocumentType = "PDF", DocumentUrl = "https://example.invalid/manual.pdf", FileAssetId = pdf.Id, Status = "ACTIVE", CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        try
+        {
+            await SeedAsync(seed, db =>
+            {
+                db.FileAssets.Add(pdf);
+                db.ManualOrderInvoiceDocuments.Add(document);
+                db.ManualOrderInvoiceDeliveryStates.Add(new ManualOrderInvoiceDeliveryState { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, DocumentId = document.Id, ConnectionId = seed.Marketplace.Id, PackageId = seed.Package.Id, IdempotencyKey = $"manual-delivery:{Guid.NewGuid():N}", RequestHash = "hash", Status = "DELIVERED", AttemptCount = 1, CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
+                db.MarketplaceInvoiceReferenceHistories.Add(new MarketplaceInvoiceReferenceHistory { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, OrderId = seed.Order.Id, PackageId = seed.Package.Id, ConnectionId = seed.Marketplace.Id, InvoiceNumber = "MAN2026000000001", ChangeReason = "MARKETPLACE_REPORTED", ChangedAt = fixture.Now });
+            });
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.ManualOrderInvoiceDocuments.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.ManualOrderInvoiceDeliveryStates.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.MarketplaceInvoiceReferenceHistories.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(OperationalDataMaintenanceService.PurgePendingStatus, (await verification.FileAssets.SingleAsync(x => x.Id == pdf.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // Whether an issued invoice is a test is the environment of the provider that issued it (P-6 reading, 29 Oct 2026):
+    // a live store's orders invoiced through E-Faturam's STAGE go with the store; a STAGE store's orders invoiced
+    // through the live provider are fiscal records and keep the store.
+    [PostgreSqlFact]
+    public Task MarketplaceDelete_TakesTheInvoicesATestProviderIssued() => MarketplaceDeleteAsync(marketplaceEnvironment: "PRODUCTION", providerEnvironment: "STAGE", deleted: true);
+
+    [PostgreSqlFact]
+    public Task MarketplaceDelete_KeepsATestStoresInvoicesTheLiveProviderIssued() => MarketplaceDeleteAsync(marketplaceEnvironment: "STAGE", providerEnvironment: "PRODUCTION", deleted: false);
+
+    private async Task MarketplaceDeleteAsync(string marketplaceEnvironment, string providerEnvironment, bool deleted)
+    {
+        var seed = NewSeed($"dm-mk{marketplaceEnvironment[..2].ToLowerInvariant()}");
+        seed.Marketplace.Environment = marketplaceEnvironment;
+        seed.Provider.Environment = providerEnvironment;
+        try
+        {
+            await SeedAsync(seed, db => db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.Equal(deleted, result.Succeeded);
+            if (!deleted) Assert.Equal("ISSUED_INVOICES_KEPT", result.Error!.Code);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(deleted ? 0 : 1, await verification.Invoices.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(deleted ? 0 : 1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(deleted ? "DELETED" : "ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // With orders and returns chosen together only the order cursor went, so the removed returns never came back.
+    [PostgreSqlFact]
+    public async Task OrderAndReturnReset_ReadsBothListsAgain_AndKeepsTheOtherCursors()
+    {
+        var seed = NewSeed("dm-cursor");
+        SyncCursor Cursor(string resource) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, ResourceType = resource, OpaqueCursor = "page-9", LastSuccessAt = fixture.Now, Version = 1 };
+        try
+        {
+            await SeedAsync(seed, db => db.SyncCursors.AddRange(Cursor("ORDERS"), Cursor("PACKAGES"), Cursor("RETURNS"), Cursor(ReturnRereadPolicy.WideCursorResource), Cursor("PRODUCTS"), Cursor("QUESTIONS")));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS", "RETURNS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            await using var verification = fixture.CreateContext();
+            var left = await verification.SyncCursors.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ResourceType).OrderBy(x => x).ToListAsync();
+            Assert.Equal(["PRODUCTS", "QUESTIONS"], left);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.SyncCursors.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ReturnReset_ReadsTheReturnsAgain_AndKeepsTheOrderCursor()
+    {
+        var seed = NewSeed("dm-retcur");
+        SyncCursor Cursor(string resource) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, ResourceType = resource, OpaqueCursor = "page-9", Version = 1 };
+        try
+        {
+            await SeedAsync(seed, db => db.SyncCursors.AddRange(Cursor("ORDERS"), Cursor("RETURNS"), Cursor(ReturnRereadPolicy.WideCursorResource)));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["RETURNS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(["ORDERS"], await verification.SyncCursors.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ResourceType).ToListAsync());
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.SyncCursors.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
             await DeleteTenantAsync(seed.Tenant.Id);
         }
     }
@@ -197,7 +353,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
 
             await using (var db = fixture.CreateContext())
             {
-                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                var result = await NewService(db)
                     .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
                 Assert.True(result.Succeeded, result.Error?.Message);
             }
@@ -262,7 +418,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await using (var db = fixture.CreateContext())
             {
                 var connectionVersion = await db.PlatformConnections.AsNoTracking().Where(x => x.Id == seed.Marketplace.Id).Select(x => x.Version).SingleAsync();
-                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                var result = await NewService(db)
                     .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, connectionVersion, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
                 Assert.True(result.Succeeded, result.Error?.Message);
             }
@@ -517,6 +673,9 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         await db.DashboardSnapshots.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.WebhookSubscriptions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ShipmentDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceInvoiceReferenceHistories.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ManualOrderInvoiceDeliveryStates.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ManualOrderInvoiceDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.MarketplaceDeliveryStates.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
@@ -530,11 +689,24 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 
+    private OperationalDataMaintenanceService NewService(AppDbContext db, IDashboardReadService? dashboard = null) =>
+        new(db, fixture.TimeProvider, dashboard ?? new NoDashboard(), NullLogger<OperationalDataMaintenanceService>.Instance);
+
     private sealed class NoDashboard : IDashboardReadService
     {
         public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    // The worker's refresher saved the same snapshot row first: the rebuild's save finds a changed version.
+    private sealed class FailingDashboard(int failures) : IDashboardReadService
+    {
+        public int Calls { get; private set; }
+        public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            ++Calls <= failures ? throw new DbUpdateConcurrencyException("The snapshot row changed.") : Task.CompletedTask;
     }
 
     private sealed class RecordingStorage : IPrivateFileStorage

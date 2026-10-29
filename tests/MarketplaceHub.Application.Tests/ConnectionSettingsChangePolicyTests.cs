@@ -7,8 +7,8 @@ namespace MarketplaceHub.Application.Tests;
 // G5: operations users keep editing a connection, but only owners and administrators change what it does on the marketplace.
 public sealed class ConnectionSettingsChangePolicyTests
 {
-    private static bool Touches(UpdateConnectionCommand command, string? environment = null, string? store = null) =>
-        ConnectionSettingsChangePolicy.TouchesProtectedSettings(command, currentExternalWrites: false, currentInvoiceCreation: true, "PRODUCTION", environment, "store-1", store);
+    private static bool Touches(UpdateConnectionCommand command) =>
+        ConnectionSettingsChangePolicy.TouchesProtectedSettings(command, currentExternalWrites: false, currentInvoiceCreation: true);
 
     [Fact]
     public void ANameOrUserAgentEditIsNotAProtectedChange()
@@ -20,16 +20,14 @@ public sealed class ConnectionSettingsChangePolicyTests
     [Fact]
     public void ValuesSentBackUnchangedAreNotAChange()
     {
-        Assert.False(Touches(new UpdateConnectionCommand("Ad", null, Environment: "production", ExternalStoreId: "store-1", ExternalWritesEnabled: false, InvoiceCreationEnabled: true), "PRODUCTION", "store-1"));
+        Assert.False(Touches(new UpdateConnectionCommand("Ad", null, Environment: "production", ExternalStoreId: "store-1", ExternalWritesEnabled: false, InvoiceCreationEnabled: true)));
     }
 
     [Fact]
-    public void WritesInvoicesEnvironmentAndStoreAreProtected()
+    public void WritesAndInvoicesAreProtected()
     {
         Assert.True(Touches(new UpdateConnectionCommand("Ad", null, ExternalWritesEnabled: true)));
         Assert.True(Touches(new UpdateConnectionCommand("Ad", null, InvoiceCreationEnabled: false)));
-        Assert.True(Touches(new UpdateConnectionCommand("Ad", null, Environment: "STAGE"), "STAGE"));
-        Assert.True(Touches(new UpdateConnectionCommand("Ad", null, ExternalStoreId: "store-2"), store: "store-2"));
     }
 
     [Theory]
