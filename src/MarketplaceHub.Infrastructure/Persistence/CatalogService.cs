@@ -1701,6 +1701,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (connection.PlatformCode == "N11" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "N11'de ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
         if (connection.PlatformCode == "PAZARAMA" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Pazarama'da ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
         if (connection.PlatformCode == "PTTAVM" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "PTT AVM'ye ürün göndermek için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+        if (connection.PlatformCode == "PTTAVM" && PttAvmManualWritePolicy.Decide(masterWritesEnabled: true, await db.ConnectionSyncPolicies.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Manual)
+                .Select(x => (bool?)x.Enabled)
+                .SingleOrDefaultAsync(cancellationToken)) != PttAvmManualWriteDecision.Allowed)
+            return ServiceResult<Guid>.Fail(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage, 422);
         var draftResult = connection.PlatformCode == "SHOPIFY"
             ? await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken)
             : await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);

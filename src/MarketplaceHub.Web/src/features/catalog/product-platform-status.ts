@@ -16,7 +16,6 @@ const inProgressStatuses = new Set([
   'UPDATE_SUBMITTED',
   'UPDATE_IN_PROGRESS',
   'APPROVAL_PENDING',
-  'APPROVAL_PARTIAL_PENDING',
   'ARCHIVE_QUEUED',
   'ARCHIVE_ACCEPTED',
   'ARCHIVE_BATCH_SUBMITTED',
@@ -56,7 +55,9 @@ export function productPlatformDisplayState(
   const present = normalized.filter(status => !absentStatuses.has(status))
   if (present.length > 0 && present.every(status => status === 'NOT_FOUND')) return 'missing'
   if (normalized.length > 0 && normalized.every(status => status === 'LIVE')) return 'active'
-  if (normalized.some(status => status === 'LIVE' || status === 'PARTIAL_LIVE')) return 'partial'
+  // Some variants approved and live, the rest still waiting for the marketplace's approval (live 2026-10-30:
+  // MZ054YNC on Pazarama, 12 of 24 LIVE) is partly live, not "being processed".
+  if (normalized.some(status => status === 'LIVE' || status === 'PARTIAL_LIVE' || status === 'APPROVAL_PARTIAL_PENDING')) return 'partial'
   // Some variants failed and the rest did not: partly working, not a whole failure.
   if (normalized.some(status => errorStatuses.has(status))) return normalized.every(status => errorStatuses.has(status)) ? 'error' : 'partial'
   // Some cards are gone and the others are still matched: partly there.
@@ -84,6 +85,7 @@ export function productPlatformDisplayLabel(
   if (state === 'error') return `${platform} yayın işlemi başarısız veya incelemede`
   if (state === 'missing') return `${platform}: Pazaryerinde Bulunamadı`
   if (state === 'active') return `${platform} üzerinde tüm varyantlar yayında${coverage}`
+  if (state === 'partial' && normalized.includes('APPROVAL_PARTIAL_PENDING')) return `${platform}: Kısmen Yayında · Kısmi Onay Bekliyor${coverage}`
   if (state === 'partial') return `${platform} üzerinde ürün kısmen yayında${coverage}`
   if (normalized.includes('ARCHIVED')) return `${platform} ilanı arşivlenmiş${coverage}`
   if (state === 'linked') return `${platform} bağlantısı var${linkedCoverage}`

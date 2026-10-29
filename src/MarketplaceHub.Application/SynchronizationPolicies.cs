@@ -591,9 +591,11 @@ public static class PriceInventoryOutboxPolicy
 {
     // A price-and-stock request writes both values on every marketplace (Trendyol's included), so an
     // automatic send needs both write policies; a send started from the panel is guarded by the
-    // connection switch alone.
-    public static IReadOnlyList<string> RequiredWritePolicies(bool manual) =>
-        manual ? [] : [MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock];
+    // connection switch alone, except on PTT AVM, whose manual sends have their own MANUAL_WRITE switch.
+    public static IReadOnlyList<string> RequiredWritePolicies(bool manual, string? platformCode = null) =>
+        !manual ? [MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock]
+        : PttAvmManualWritePolicy.Applies(platformCode) ? [MarketplaceExternalWritePolicies.Manual]
+        : [];
 
     public static bool IsCurrent(PriceInventoryPushLine line, long projectionVersion, long priceVersion) =>
         line.ProjectionVersion == projectionVersion && line.PriceVersion == priceVersion;

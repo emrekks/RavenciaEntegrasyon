@@ -555,7 +555,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
         var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies
-            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_CARGO_INFO" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "REFERENCE_DATA" || x.ResourceType == "QUESTIONS" || x.ResourceType == "FINANCE" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return || x.ResourceType == ListingVerificationPolicy.ResourceType))
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_CARGO_INFO" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "REFERENCE_DATA" || x.ResourceType == "QUESTIONS" || x.ResourceType == "FINANCE" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return || x.ResourceType == MarketplaceExternalWritePolicies.Manual || x.ResourceType == ListingVerificationPolicy.ResourceType))
             .ToListAsync(cancellationToken);
         var obsoleteProductPolicies = await (from policy in db.ConnectionSyncPolicies
                                              join connection in db.PlatformConnections
@@ -573,6 +573,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         foreach (var connection in operationalConnections)
         {
             var defaultsForConnection = DefaultPolicies(configuration)
+                // MANUAL_WRITE is PTT AVM's "Manuel Dış Yazmalar" switch; the others use SHIPMENT_WRITE/RETURN_WRITE.
+                .Where(defaults => defaults.ResourceType != MarketplaceExternalWritePolicies.Manual || connection.PlatformCode == "PTTAVM")
                 .Where(defaults => connection.PlatformCode switch
                 {
                     "SHOPIFY" => SupportsShopifyPolicy(defaults.ResourceType),
@@ -655,7 +657,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new(MarketplaceExternalWritePolicies.Price, 0, 0, 0),
         new(MarketplaceExternalWritePolicies.Stock, 0, 0, 0),
         new(MarketplaceExternalWritePolicies.Shipment, 0, 0, 0),
-        new(MarketplaceExternalWritePolicies.Return, 0, 0, 0)
+        new(MarketplaceExternalWritePolicies.Return, 0, 0, 0),
+        new(MarketplaceExternalWritePolicies.Manual, 0, 0, 0)
     ];
 
     // The application default of one policy of a platform (after the platform's cadence), or null when the
@@ -795,7 +798,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // (REFERENCE_DATA) and the returned order lines (RETURNS, read only). The write flows are listed so the
     // policies exist (and stay off) for the later phases.
     internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or ListingVerificationPolicy.ResourceType
-        || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
+        || MarketplaceExternalWritePolicies.IsPermissionPolicy(resourceType);
 
     // The reference lists the REFERENCE_DATA policy keeps fresh. Trendyol and Pazarama products name a brand from
     // the marketplace's own list (808k and 104k brands); the other marketplaces take the brand by its name.
@@ -813,8 +816,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             || at <= now - (resource == "CATEGORIES" ? interval + TimeSpan.FromSeconds(jitterSeconds) : brandFreshFor)).ToArray();
     }
 
+    // PTT AVM's manual switch starts on: before it existed, its manual sends were gated by the master switch alone.
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
-        resourceType == "ORDER_CARGO_INFO"
+        resourceType == MarketplaceExternalWritePolicies.Manual
+            ? platformCode == "PTTAVM"
+            : resourceType == "ORDER_CARGO_INFO"
             ? platformCode == "TRENDYOL"
             : !((platformCode is "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") && MarketplaceExternalWritePolicies.IsPolicy(resourceType));
 

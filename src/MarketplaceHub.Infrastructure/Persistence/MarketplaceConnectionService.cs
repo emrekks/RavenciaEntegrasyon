@@ -73,7 +73,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite,
         MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PublicationRead, MarketplaceCapabilities.PublicationWrite
     ];
-    private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "ORDER_INVOICE_RECONCILIATION", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_SHORT", "RETURN_RECONCILE_MEDIUM", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA", "QUESTIONS", "FINANCE", MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock, MarketplaceExternalWritePolicies.Shipment, MarketplaceExternalWritePolicies.Return, ListingVerificationPolicy.ResourceType };
+    private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "ORDER_INVOICE_RECONCILIATION", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_SHORT", "RETURN_RECONCILE_MEDIUM", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA", "QUESTIONS", "FINANCE", MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock, MarketplaceExternalWritePolicies.Shipment, MarketplaceExternalWritePolicies.Return, MarketplaceExternalWritePolicies.Manual, ListingVerificationPolicy.ResourceType };
     private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
     private readonly IDataProtector _webhookProtector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
 
@@ -683,7 +683,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 cursor?.LastFailedCount ?? 0,
                 expectedCadence).ToString().ToUpperInvariant();
             // A write policy is a permission switch, not a scheduled read: it has no cursor to judge.
-            if (MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)) health = "PERMISSION";
+            if (MarketplaceExternalWritePolicies.IsPermissionPolicy(x.ResourceType)) health = "PERMISSION";
             var cursorProgress = MarketplaceCursorProgressPolicy.Classify(
                 cursor?.LastSuccessAt,
                 cursor?.LastCursorAdvancedAt,
@@ -703,10 +703,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken)
     {
         var normalized = resourceType.Trim().ToUpperInvariant(); if (normalized == "PRODUCTS") return ServiceResult<SyncPolicyView>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
-        var minimumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 0 : 30;
-        var maximumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 86_400 : ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds;
-        if (!command.ResetToDefault && (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600)) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
+        var minimumInterval = MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? 0 : 30;
+        var maximumInterval = MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? 86_400 : ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds;
+        if (!command.ResetToDefault && (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600)) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
+        if (normalized == MarketplaceExternalWritePolicies.Manual && connection.PlatformCode != "PTTAVM") return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
         if (command.Enabled && MarketplaceSyncPolicyRules.RequiresExternalWrites(normalized) && !WritesEnabled(connection.SettingsJson))
             return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
         if (command.Enabled && connection.PlatformCode == "HEPSIBURADA")

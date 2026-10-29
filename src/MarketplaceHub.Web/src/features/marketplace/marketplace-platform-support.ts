@@ -33,7 +33,8 @@ const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_RECONCIL
 const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'RETURNS', 'QUESTIONS', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY'])
 
 // PTT AVM: the order reads (new orders, history, open-order status scan), the category tree and the returned lines; its write flows join with their phases.
-const pttAvmReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'RETURNS', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY'])
+// MANUAL_WRITE is PTT AVM's own "Manuel Dış Yazmalar" switch (panel-started price-stock and product sends).
+const pttAvmReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'RETURNS', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'MANUAL_WRITE', 'LISTING_VERIFY'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
   return orderMarketplacePlatformCodes.includes(normalizeMarketplacePlatformCode(platformCode) as typeof orderMarketplacePlatformCodes[number])
@@ -95,6 +96,7 @@ export function supportsSyncPolicy(platformCode: string, resourceType: string) {
   if (platformCode === 'N11') return n11ReadSyncPolicies.has(resourceType)
   if (platformCode === 'PAZARAMA') return pazaramaReadSyncPolicies.has(resourceType)
   if (platformCode === 'PTTAVM') return pttAvmReadSyncPolicies.has(resourceType)
+  if (resourceType === 'MANUAL_WRITE') return false
   return platformCode !== 'HEPSIBURADA' || hepsiburadaReadSyncPolicies.has(resourceType)
 }
 
