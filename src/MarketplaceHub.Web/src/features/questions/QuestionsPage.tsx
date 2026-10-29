@@ -18,7 +18,7 @@ import { Modal } from '../../shared/components'
 import { MessageToast } from '../../shared/components/NoticeToast'
 import './questions-inbox.css'
 import { viewTabLabel } from '../../shared/view-tabs'
-import { formatIstanbul, istanbulDayBoundary } from '../../shared/format-date'
+import { formatIstanbul, istanbulDateKey, istanbulDayBoundary, toDateTimeLocal } from '../../shared/format-date'
 import { scopedStorageKey } from '../../shared/storage-scope'
 import { QuestionReportAction } from './QuestionReportAction'
 import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
@@ -106,13 +106,15 @@ const syncCountKey = () => scopedStorageKey('rv-question-sync-count')
 function rememberedSyncCount() { try { return Math.min(8, Math.max(1, Number(localStorage.getItem(syncCountKey())) || 4)) } catch { return 4 } }
 function rememberSyncCount(count: number) { try { if (count > 0) localStorage.setItem(syncCountKey(), String(count)) } catch { /* storage unavailable */ } }
 
-function formatShortDate(value?: string | null) {
+// The day, month and time are Istanbul's, whatever the browser's clock says.
+export function formatShortDate(value?: string | null, now: Date = new Date()) {
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
-  if (date.getFullYear() !== new Date().getFullYear()) return formatDate(value)
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)} · ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  const [day, time] = toDateTimeLocal(date).split('T')
+  if (day.slice(0, 4) !== istanbulDateKey(now).slice(0, 4)) return formatDate(value)
+  const [, month, dayOfMonth] = day.split('-')
+  return `${dayOfMonth}.${month} · ${time}`
 }
 
 function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : 'Trendyol' }

@@ -77,6 +77,10 @@ describe('commission tariff picks', () => {
     expect(ownChoice({ bands, costPrice: null, choices: priced }, 400)?.remaining).toBeNull()
     expect(ownChoice({ bands, costPrice: 160 }, 400)?.remaining).toBeNull()
     expect(ownChoice({ bands: [{ tier: 1, min: 500, max: null, rate: 20 }], costPrice: 100 }, 450)).toBeNull()
+    // %15 of 33,30 is 4,995: the server rounds it half away from zero to 5,00 (the float product gave 4,99).
+    expect(ownChoice({ bands: [{ tier: 1, min: null, max: null, rate: 15 }], costPrice: null }, 33.3)?.commission).toBe(5)
+    // 10,005 is 10,01 on the server too, not the float's 10,00.
+    expect(ownChoice({ bands: [{ tier: 1, min: null, max: null, rate: 15 }], costPrice: null }, 10.005)?.price).toBe(10.01)
   })
 
   it('writes what a price leaves with its share, and says so when the cost is not entered', () => {

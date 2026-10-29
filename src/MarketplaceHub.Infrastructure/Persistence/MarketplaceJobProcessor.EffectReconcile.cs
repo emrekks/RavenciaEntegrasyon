@@ -118,6 +118,22 @@ public sealed partial class MarketplaceJobProcessor
         TrackReceived();
         await UpsertReturn(tenantId, connectionId, correlationId, remote.Value!, new Dictionary<string, string?>(StringComparer.Ordinal), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+        // A decision on some of the claim's lines is judged by those lines: the claim stays actionable while its other
+        // lines wait for their own decision.
+        var decisionLineIds = await db.ReturnDecisions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IdempotencyKey == effect.IdempotencyKey)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => x.ReturnLineIds)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (decisionLineIds is { Length: > 0 })
+        {
+            var lineStatuses = await db.ReturnLines.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && decisionLineIds.Contains(x.Id))
+                .Select(x => x.RawStatus)
+                .ToListAsync(cancellationToken);
+            if (lineStatuses.Count == decisionLineIds.Length && lineStatuses.All(status => !string.IsNullOrWhiteSpace(status)))
+                return lineStatuses.Any(ReturnLineStatusPolicy.IsActionable) ? EffectVerdict.NotApplied : EffectVerdict.Applied;
+        }
         var status = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.Id).Select(x => x.Status).SingleAsync(cancellationToken);
         return status is ReturnClaimStatus.ActionRequired or ReturnClaimStatus.Requested ? EffectVerdict.NotApplied : EffectVerdict.Applied;
     }

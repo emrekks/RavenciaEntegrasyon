@@ -77,6 +77,29 @@ public sealed class TrendyolAdapterAuditTests
     }
 
     [Fact]
+    public async Task ThePackageStreamScanStopsAtTheMatchingPackageEvenWithoutCargoOrInvoiceFields()
+    {
+        // T-3: a cancelled package carries no cargo provider, tracking number or invoice fields. Its match ends the
+        // scan; the empty fields stay unknown instead of turning the package into "not found" after more pages.
+        var handler = new PagedStream(_ => """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Cancelled","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""");
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var scan = await Client(handler).ScanPackageStreamAsync(Account(), "pkg-1", null, null, end.AddDays(-12), end, "TR", CancellationToken.None);
+
+        Assert.Null(scan.StreamError);
+        Assert.True(scan.Result!.IsSuccess);
+        var package = scan.Result.Value!.Package;
+        Assert.Equal("pkg-1", package.ExternalPackageId);
+        Assert.Equal("ORD-1", scan.Result.Value.ExternalOrderId);
+        Assert.Null(package.CargoProviderExternalId);
+        Assert.Null(package.CargoTrackingNumber);
+        Assert.False(TrendyolJsonMapper.HasInvoiceObservation(package.Invoice));
+        Assert.Equal(MarketplaceInvoiceStatus.Unknown, MarketplaceInvoiceStatePolicy.FromRemote(
+            package.Invoice?.RawStatus, package.RawStatus, package.Invoice?.InvoiceNumber, package.Invoice?.InvoiceUrl));
+        Assert.Equal(1, handler.Requests);
+    }
+
+    [Fact]
     public async Task TheOrderStreamLookupStopsAfterItsPageCap()
     {
         var handler = new EndlessStream();

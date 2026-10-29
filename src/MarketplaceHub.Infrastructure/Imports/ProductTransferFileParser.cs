@@ -176,7 +176,7 @@ public static partial class ProductTransferFileParser
         if (TurkishNumber().IsMatch(cleaned))
             amount = decimal.Parse(cleaned.Replace(".", string.Empty, StringComparison.Ordinal).Replace(',', '.'), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
         else if (AmbiguousThousands().IsMatch(cleaned))
-            return ProductTransferValue.Invalid($"\"{trimmed}\" belirsiz: binlik ayıracı mı, ondalık mı? Binlik için 1234, ondalık için 1,234 yazın.");
+            return ProductTransferValue.Invalid($"\"{trimmed}\" belirsiz: {AmbiguousThousandsAdvice}");
         else if (PlainNumber().IsMatch(cleaned))
             amount = decimal.Parse(cleaned, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
         // A number cell Excel stores in exponent form (1E-3) never comes from a CSV.
@@ -217,6 +217,11 @@ public static partial class ProductTransferFileParser
     // 1.234 / 12.345.678: dots that can only be thousands, or a decimal point with exactly three digits after it.
     [GeneratedRegex(@"^-?\d{1,3}(\.\d{3})+$")]
     private static partial Regex AmbiguousThousands();
+
+    // The same refusal for the CSV product import (ImportFileReader); text is the cell without spaces.
+    internal static bool IsAmbiguousThousands(string text) => AmbiguousThousands().IsMatch(text);
+
+    internal const string AmbiguousThousandsAdvice = "binlik ayıracı mı, ondalık mı? Binlik için 1234, ondalık için 1,234 yazın.";
 
     [GeneratedRegex(@"^-?(\d+(\.\d+)?|\.\d+)$")]
     private static partial Regex PlainNumber();

@@ -213,6 +213,59 @@ public sealed class PazaramaProductWriteTests
     public void An_error_batch_without_lines_applied_nothing() =>
         Assert.Equal("REJECTED", PazaramaProductWriteMapper.BatchStatus(Parse(Batch(3)), "b:x:2", null).Status);
 
+    // The remembered barcodes stand for the rest of a batch Pazarama answered per product; an error batch that names
+    // no product says nothing of any of them, so none counts as sent for approval.
+    [Fact]
+    public void An_error_batch_without_lines_accepts_none_of_the_remembered_barcodes()
+    {
+        var status = PazaramaProductWriteMapper.BatchStatus(Parse(Batch(3)), "b:x:2", ["B1", "B2"]);
+
+        Assert.Equal("REJECTED", status.Status);
+        Assert.Empty(status.Lines);
+    }
+
+    [Fact]
+    public void An_error_batch_that_lists_its_failures_keeps_the_remembered_rest_as_accepted()
+    {
+        var status = PazaramaProductWriteMapper.BatchStatus(Parse(Batch(3, """{"productCode":"B2","errorReason":"Görsel eksik"}""")), "b:x:2", ["B1", "B2"]);
+
+        Assert.Equal("COMPLETED", status.Status);
+        Assert.True(status.Lines.Single(x => x.ExternalKey == "B1").Succeeded);
+        Assert.False(status.Lines.Single(x => x.ExternalKey == "B2").Succeeded);
+    }
+
+    [Fact]
+    public void An_error_batch_that_lists_its_successes_keeps_them()
+    {
+        var status = PazaramaProductWriteMapper.BatchStatus(Parse(Batch(3, results: """{"productCode":"B1"}""")), "b:x:2", ["B1", "B2"]);
+
+        Assert.Equal("COMPLETED", status.Status);
+        Assert.True(Assert.Single(status.Lines).Succeeded);
+    }
+
+    [Fact]
+    public void A_done_batch_without_lines_still_accepts_the_remembered_barcodes()
+    {
+        var status = PazaramaProductWriteMapper.BatchStatus(Parse(Batch(2)), "b:x:2", ["B1", "B2"]);
+
+        Assert.Equal("COMPLETED", status.Status);
+        Assert.All(status.Lines, line => Assert.True(line.Succeeded));
+        Assert.Equal(2, status.Lines.Count);
+    }
+
+    [Theory]
+    [InlineData("PAZARAMA", "PAZARAMA_BATCH_REJECTED")]
+    [InlineData("N11", "N11_TASK_REJECTED")]
+    [InlineData("PTTAVM", "PTTAVM_PRODUCT_REJECTED")]
+    public void A_whole_batch_refusal_closes_the_card_as_rejected(string platform, string code) =>
+        Assert.Equal(code, MarketplaceJobProcessor.WholeBatchRejection(platform, "REJECTED")?.Code);
+
+    [Theory]
+    [InlineData("PAZARAMA", "COMPLETED")]
+    [InlineData("TRENDYOL", "REJECTED")]
+    public void Other_batch_answers_are_not_a_whole_batch_refusal(string platform, string status) =>
+        Assert.Null(MarketplaceJobProcessor.WholeBatchRejection(platform, status));
+
     [Theory]
     [InlineData("""{"success":true}""")]
     [InlineData("""{"data":{"status":9}}""")]

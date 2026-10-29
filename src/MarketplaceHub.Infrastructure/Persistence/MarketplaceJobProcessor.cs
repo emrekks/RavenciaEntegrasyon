@@ -553,12 +553,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma işlemi sürüyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM ürün gönderimi işleniyor." : "Trendyol create batch işlemi sürüyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", runningMessage, TimeSpan.FromSeconds(15), payload.ExternalOperationId);
         }
-        // n11 drops a whole task without per-SKU lines when it rejects it; nothing was created.
-        if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
-            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "N11_TASK_REJECTED", JobExecutionResult.Blocked("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
-        // PTT AVM cancelled the whole send without a per-product answer.
-        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && string.Equals(operationStatus.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
-            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", "PTTAVM_PRODUCT_REJECTED", JobExecutionResult.Blocked("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        if (WholeBatchRejection(platformCode, operationStatus.Status) is { } refusal)
+            return await MarkPublicationResult(tenantId, connectionId, profile, "CREATE_REJECTED", refusal.Code, JobExecutionResult.Blocked(refusal.Code, refusal.Summary, payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         if (!string.Equals(operationStatus.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_BATCH_STATUS_UNKNOWN", "Batch servisi tanınmayan bir durum döndürdü.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
 
         var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
@@ -618,6 +614,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return succeeded == 0
             ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", $"{marketplaceName} ürün yayınındaki tüm varyantlar reddedildi.{reasons}", payload.ExternalOperationId)
             : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", $"{marketplaceName} ürün yayını kısmi başarısızlıkla tamamlandı.{reasons}", payload.ExternalOperationId);
+    }
+
+    // A create batch the marketplace refused as a whole, without a line per product: nothing counts as created.
+    // n11 drops a rejected task without per-SKU lines, PTT AVM cancels the whole send, and Pazarama ends a batch in
+    // error (status 3) without naming any product.
+    internal static (string Code, string Summary)? WholeBatchRejection(string? platformCode, string operationStatus)
+    {
+        if (!string.Equals(operationStatus, "REJECTED", StringComparison.OrdinalIgnoreCase)) return null;
+        return platformCode?.ToUpperInvariant() switch
+        {
+            "N11" => ("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir."),
+            "PTTAVM" => ("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir."),
+            "PAZARAMA" => ("PAZARAMA_BATCH_REJECTED", "Pazarama ürün açma partisini hata durumuyla bitirdi ve hiçbir ürün için sonuç vermedi; ürün açılmış sayılmadı. Nedeni Pazarama satıcı panelindeki parti sonucunda görülebilir."),
+            _ => null
+        };
     }
 
     private async Task<JobExecutionResult> ReconcileProductApproval(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -974,7 +985,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var now = timeProvider.GetUtcNow();
         job.AttemptCount++;
-        if (JobWaitingPolicy.IsWaiting(result) && now - job.CreatedAt < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
+        if (JobWaitingPolicy.IsWaiting(result) && JobLeaseService.AllowanceAge(job, now) < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
         {
             job.MaxAttempts++;
             job.WaitingChecks++;
@@ -11409,6 +11420,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (remoteCargoTrackingLink is not null && !string.Equals(claim.CargoTrackingLink, remoteCargoTrackingLink, StringComparison.Ordinal)) { claim.CargoTrackingLink = remoteCargoTrackingLink; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
+        var lineStatuses = new Dictionary<Guid, string?>();
         foreach (var remoteLine in remoteLines)
         {
             var candidateIds = new[] { remoteLine.ExternalOrderLineId }
@@ -11430,29 +11442,41 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 continue;
             }
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
-            if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus, AcceptDetail = remoteLine.AcceptDetail, MarketplaceNote = remoteLine.Note, Resolved = remoteLine.Resolved, AcceptedBySeller = remoteLine.AcceptedBySeller }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; line.AcceptDetail = remoteLine.AcceptDetail ?? line.AcceptDetail; line.MarketplaceNote = remoteLine.Note ?? line.MarketplaceNote; line.Resolved = remoteLine.Resolved ?? line.Resolved; line.AcceptedBySeller = remoteLine.AcceptedBySeller ?? line.AcceptedBySeller; }
+            if (line is null) db.ReturnLines.Add(line = new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus, AcceptDetail = remoteLine.AcceptDetail, MarketplaceNote = remoteLine.Note, Resolved = remoteLine.Resolved, AcceptedBySeller = remoteLine.AcceptedBySeller }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; line.AcceptDetail = remoteLine.AcceptDetail ?? line.AcceptDetail; line.MarketplaceNote = remoteLine.Note ?? line.MarketplaceNote; line.Resolved = remoteLine.Resolved ?? line.Resolved; line.AcceptedBySeller = remoteLine.AcceptedBySeller ?? line.AcceptedBySeller; }
+            lineStatuses[line.Id] = line.RawStatus;
         }
-        await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, now, cancellationToken);
+        await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, lineStatuses, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    // The latest decision whose outcome is still open: sent (PENDING/SUBMITTED),
+    // A decision whose outcome is still open: sent (PENDING/SUBMITTED),
     // waiting on an unclear marketplace answer (MANUAL_REVIEW with an
-    // EXTERNAL_EFFECT_* code) or closed as unresolved, is settled by the
-    // claim status the marketplace reports.
-    private async Task ReconcileReturnDecisionAsync(Guid tenantId, Guid claimId, ReturnClaimStatus target, string remoteRawStatus, DateTimeOffset now, CancellationToken cancellationToken)
+    // EXTERNAL_EFFECT_* code) or closed as unresolved, is settled by what the
+    // marketplace reports. A decision that names its lines is settled by those
+    // lines (the claim's other lines may still wait for their own decision);
+    // one recorded before its lines were kept is settled by the claim status,
+    // and only when it is the latest, as before.
+    private async Task ReconcileReturnDecisionAsync(Guid tenantId, Guid claimId, ReturnClaimStatus target, string remoteRawStatus, IReadOnlyDictionary<Guid, string?> lineStatuses, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var decision = await db.ReturnDecisions
+        var decisions = await db.ReturnDecisions
             .Where(x => x.TenantId == tenantId && x.ClaimId == claimId
                 && (x.Status == "PENDING" || x.Status == "SUBMITTED"
                     || x.Status == "MANUAL_REVIEW" && x.ErrorCode != null && x.ErrorCode.StartsWith("EXTERNAL_EFFECT_")
                     || x.Status == "FAILED" && x.ErrorCode == "EXTERNAL_EFFECT_UNRESOLVED"))
             .OrderByDescending(x => x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (decision is null || ReconciledReturnDecision(decision.Action, decision.Status, target, remoteRawStatus) is not { } outcome) return;
-        decision.Status = outcome.Status;
-        decision.ErrorCode = outcome.ErrorCode;
-        if (outcome.Status != "SUBMITTED") decision.CompletedAt = now;
+            .ToListAsync(cancellationToken);
+        for (var index = 0; index < decisions.Count; index++)
+        {
+            var decision = decisions[index];
+            if (decision.ReturnLineIds is not { Length: > 0 } && index > 0) continue;
+            var decisionTarget = decision.ReturnLineIds is { Length: > 0 } decisionLineIds
+                ? ReturnDecisionLinePolicy.Outcome(target, decisionLineIds.Select(lineId => lineStatuses.GetValueOrDefault(lineId)).ToList())
+                : target;
+            if (ReconciledReturnDecision(decision.Action, decision.Status, decisionTarget, remoteRawStatus) is not { } outcome) continue;
+            decision.Status = outcome.Status;
+            decision.ErrorCode = outcome.ErrorCode;
+            if (outcome.Status != "SUBMITTED") decision.CompletedAt = now;
+        }
     }
 
     internal static (string Status, string? ErrorCode)? ReconciledReturnDecision(string action, string currentStatus, ReturnClaimStatus target, string remoteRawStatus)
@@ -11481,7 +11505,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (claimId is null) return false;
         var now = timeProvider.GetUtcNow();
         if (!await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId.Value, remote.RawStatus, remote.LastModifiedAt, now, cancellationToken)) return false;
-        await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, now, cancellationToken);
+        await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, new Dictionary<Guid, string?>(), now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
