@@ -67,7 +67,7 @@ vi.mock('../../shared/api', () => ({
   }),
 }))
 
-import { QuestionsPage, questionSyncIsStale, syncSummary } from './QuestionsPage'
+import { formatShortDate, QuestionsPage, questionSyncIsStale, syncSummary } from './QuestionsPage'
 
 const createQuestion = () => ({
   id: 'q-product', connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol Mağazası', externalQuestionId: 'ext-1', kind: 'PRODUCT', status: 'WAITING_FOR_ANSWER',
@@ -515,5 +515,22 @@ describe('QuestionsPage workspace flows', () => {
     await settle()
     expect(container.querySelector('.rv-questions-pagination')?.textContent).toContain('Sayfa 1 / 3')
     expect(button('Önceki').disabled).toBe(true)
+  })
+})
+
+// Audit 29 Oct 2026, W-5: the sync strip's time is Istanbul's even when the browser's clock is on another zone.
+describe('QuestionsPage sync strip time', () => {
+  // A browser on UTC: its local clock reads are the UTC ones.
+  const spies: Array<{ mockRestore: () => void }> = []
+  beforeEach(() => {
+    for (const [local, utc] of [['getFullYear', 'getUTCFullYear'], ['getMonth', 'getUTCMonth'], ['getDate', 'getUTCDate'], ['getHours', 'getUTCHours'], ['getMinutes', 'getUTCMinutes']] as const)
+      spies.push(vi.spyOn(Date.prototype, local).mockImplementation(function (this: Date) { return this[utc]() }))
+  })
+  afterEach(() => { spies.splice(0).forEach(spy => spy.mockRestore()) })
+
+  it('writes the last sync in Istanbul time, not the browser\'s', () => {
+    expect(formatShortDate('2026-10-29T11:05:00Z', new Date('2026-10-29T12:00:00Z'))).toBe('29.10 · 14:05')
+    // 31 December 22:30 UTC is already 1 January in Istanbul: a date of this year, shown without the year.
+    expect(formatShortDate('2026-12-31T22:30:00Z', new Date('2027-01-02T09:00:00Z'))).toBe('01.01 · 01:30')
   })
 })

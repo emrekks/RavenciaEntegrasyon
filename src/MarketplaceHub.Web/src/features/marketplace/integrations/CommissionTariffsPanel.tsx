@@ -6,7 +6,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
-import { onCost, profitText, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
+import { kurus, onCost, profitText, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
 import '../commission-tariffs.css'
 
@@ -67,10 +67,10 @@ export function pickedTier(row: Pick<CommissionTariffRow, 'choices'>, pick: Tari
 // A price of the seller's own, worked out as the server does: the band it falls in, its commission and its profit, with
 // the cargo, fee and VAT rate the server priced the row's bands at (unknown when it priced none).
 export function ownChoice(row: Pick<CommissionTariffRow, 'bands' | 'costPrice' | 'choices'>, price: number): CommissionChoice | null {
-  const rounded = Math.round(price * 100) / 100
+  const rounded = kurus(price)
   const band = row.bands.find(item => (item.min === null || rounded >= item.min) && (item.max === null || rounded <= item.max))
   if (!band || rounded <= 0) return null
-  const commission = Math.round(rounded * band.rate) / 100
+  const commission = kurus(rounded * band.rate / 100)
   const basis = row.choices?.find(choice => choice.costs)?.costs
   const known = row.costPrice && basis ? unitProfit(rounded, commission, row.costPrice, basis) : null
   return { tier: band.tier, price: rounded, rate: band.rate, commission, remaining: known?.profit ?? null, costs: known?.costs ?? null }
