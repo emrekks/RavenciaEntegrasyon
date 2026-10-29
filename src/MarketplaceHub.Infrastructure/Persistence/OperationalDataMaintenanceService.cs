@@ -282,6 +282,13 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         UPDATE inventory.stock_reservations r SET "SourceId"=c."CarryKey", "Version"=r."Version"+1 FROM carry_order_lines c WHERE r."TenantId"={{tenantId}} AND r."SourceType"='ORDER_LINE' AND r."SourceId"=c."SourceId" AND NOT EXISTS (SELECT 1 FROM inventory.stock_reservations x WHERE x."TenantId"={{tenantId}} AND x."SourceType"='ORDER_LINE' AND x."SourceId"=c."CarryKey" AND x."InventoryItemId"=r."InventoryItemId");
         UPDATE inventory.stock_ledger_entries e SET "SourceId"=c."CarryKey" FROM carry_order_lines c WHERE e."TenantId"={{tenantId}} AND e."SourceType"='ORDER_LINE' AND e."SourceId"=c."SourceId";
         INSERT INTO purge_files SELECT d."FileAssetId" FROM sales.shipment_documents d JOIN sales.shipment_packages p ON p."Id"=d."PackageId" JOIN purge_orders o ON o."Id"=p."OrderId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
+        -- An order's uploaded invoice documents and the invoice references the marketplace reported hold a restricting key
+        -- to the order and its packages: left behind, they failed the whole reset (P-6 reading, 29 Oct 2026).
+        INSERT INTO purge_files SELECT d."FileAssetId" FROM billing.manual_order_invoice_documents d JOIN purge_orders o ON o."Id"=d."OrderId" WHERE d."TenantId"={{tenantId}} AND d."FileAssetId" IS NOT NULL ON CONFLICT DO NOTHING;
+        DELETE FROM billing.manual_order_invoice_delivery_states s USING billing.manual_order_invoice_documents d, purge_orders o WHERE s."TenantId"={{tenantId}} AND d."TenantId"={{tenantId}} AND s."DocumentId"=d."Id" AND d."OrderId"=o."Id";
+        DELETE FROM billing.manual_order_invoice_delivery_states s USING sales.shipment_packages p, purge_orders o WHERE s."TenantId"={{tenantId}} AND p."TenantId"={{tenantId}} AND s."PackageId"=p."Id" AND p."OrderId"=o."Id";
+        DELETE FROM billing.manual_order_invoice_documents d USING purge_orders o WHERE d."TenantId"={{tenantId}} AND d."OrderId"=o."Id";
+        DELETE FROM sales.marketplace_invoice_reference_history h USING purge_orders o WHERE h."TenantId"={{tenantId}} AND h."OrderId"=o."Id";
         DELETE FROM sales.shipment_document_attempts a USING sales.shipment_packages p, purge_orders o WHERE a."TenantId"={{tenantId}} AND a."PackageId"=p."Id" AND p."OrderId"=o."Id";
         DELETE FROM sales.shipment_documents d USING sales.shipment_packages p, purge_orders o WHERE d."TenantId"={{tenantId}} AND d."PackageId"=p."Id" AND p."OrderId"=o."Id";
         DELETE FROM sales.order_status_history h USING purge_orders o WHERE h."TenantId"={{tenantId}} AND h."OrderId"=o."Id";

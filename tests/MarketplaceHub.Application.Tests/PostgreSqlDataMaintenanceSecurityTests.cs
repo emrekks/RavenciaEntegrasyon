@@ -213,6 +213,42 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // An order with an uploaded invoice document, its delivery to the marketplace and the invoice references the
+    // marketplace reported: their restricting keys failed the whole reset with a 500 (P-6 reading, 29 Oct 2026).
+    [PostgreSqlFact]
+    public async Task OrderReset_RemovesTheUploadedInvoiceDocumentsAndInvoiceReferencesOfTheOrder()
+    {
+        var seed = NewSeed("dm-manual");
+        var pdf = NewFileAsset(seed.Tenant.Id, $"{seed.Tenant.Id:N}/manual.pdf");
+        var document = new ManualOrderInvoiceDocument { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, OrderId = seed.Order.Id, PackageId = seed.Package.Id, ConnectionId = seed.Marketplace.Id, InvoiceNumber = "MAN2026000000001", IssuedAt = fixture.Now.AddDays(-1), IdempotencyKey = $"manual:{Guid.NewGuid():N}", DocumentType = "PDF", DocumentUrl = "https://example.invalid/manual.pdf", FileAssetId = pdf.Id, Status = "ACTIVE", CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        try
+        {
+            await SeedAsync(seed, db =>
+            {
+                db.FileAssets.Add(pdf);
+                db.ManualOrderInvoiceDocuments.Add(document);
+                db.ManualOrderInvoiceDeliveryStates.Add(new ManualOrderInvoiceDeliveryState { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, DocumentId = document.Id, ConnectionId = seed.Marketplace.Id, PackageId = seed.Package.Id, IdempotencyKey = $"manual-delivery:{Guid.NewGuid():N}", RequestHash = "hash", Status = "DELIVERED", AttemptCount = 1, CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
+                db.MarketplaceInvoiceReferenceHistories.Add(new MarketplaceInvoiceReferenceHistory { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, OrderId = seed.Order.Id, PackageId = seed.Package.Id, ConnectionId = seed.Marketplace.Id, InvoiceNumber = "MAN2026000000001", ChangeReason = "MARKETPLACE_REPORTED", ChangedAt = fixture.Now });
+            });
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.ManualOrderInvoiceDocuments.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.ManualOrderInvoiceDeliveryStates.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.False(await verification.MarketplaceInvoiceReferenceHistories.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(OperationalDataMaintenanceService.PurgePendingStatus, (await verification.FileAssets.SingleAsync(x => x.Id == pdf.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task OrderReset_MarksTheFilesOfRemovedRowsForPurge_AndTheSweepDeletesThem()
     {
@@ -550,6 +586,9 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         await db.DashboardSnapshots.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.WebhookSubscriptions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ShipmentDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceInvoiceReferenceHistories.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ManualOrderInvoiceDeliveryStates.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ManualOrderInvoiceDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.MarketplaceDeliveryStates.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
