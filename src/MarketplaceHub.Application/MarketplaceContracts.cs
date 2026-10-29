@@ -1184,7 +1184,11 @@ public sealed record ReturnLineView(
     string? AcceptDetail = null,
     string? MarketplaceNote = null,
     bool? Resolved = null,
-    bool? AcceptedBySeller = null);
+    bool? AcceptedBySeller = null,
+    // A sent decision whose outcome is still open covers this line; the claim's other lines stay free.
+    bool DecisionPending = false,
+    // Stock can be decided on this line: the line, or the claim when the line has no status of its own, is approved.
+    bool StockDispositionAvailable = false);
 public sealed record ReturnAuditEntryView(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // A return line's status history read live from the marketplace; Error when that read failed for this line.
 public sealed record ReturnLineAuditView(Guid ReturnLineId, string Title, IReadOnlyList<ReturnAuditEntryView> Entries, string? Error);
