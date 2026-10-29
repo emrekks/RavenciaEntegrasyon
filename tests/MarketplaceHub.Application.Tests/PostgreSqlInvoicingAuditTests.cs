@@ -433,9 +433,311 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
-    private InvoicingBillingService NewBillingService(AppDbContext db, IInvoiceProviderPort? provider = null, IDictionary<string, string?>? configuration = null)
+    // Audit 29 Oct 2026 (G-1): a draft the provider refused before creating anything was queued again with the lines and
+    // total it froze on its first day, while the preview showed the order as it is now (a line cancelled since).
+    [PostgreSqlFact]
+    public async Task ConfirmWorkspace_RetryOfARefusedDraftIsRedraftedFromTheOrderAfterALineWasCancelled()
     {
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var protection = new EphemeralDataProtectionProvider();
+        var seed = NewRetrySeed("audit-retry-cancelled-line", out var kept, out var cancelled, out var invoice);
+        kept.UnitPrice = 100m;
+        cancelled.UnitPrice = 50m;
+        cancelled.CancelledQuantity = 1;
+        seed.Order.GrossAmount = seed.Order.NetAmount = 100m;
+        seed.Package.GrossAmount = seed.Package.NetAmount = 100m;
+        invoice.TaxExclusiveTotal = 125m;
+        invoice.TaxTotal = 25m;
+        invoice.PayableTotal = 150m;
+        invoice.Note = InvoiceAmounts.TurkishInvoiceNote(150m);
+        var waitingJob = NewSubmitJob(seed, invoice, JobStatus.RetryScheduled);
+        await SeedRetryAsync(seed, kept, cancelled, invoice, protection, frozenLines: [(kept, 100m), (cancelled, 50m)],
+            attemptOutcome: "FAILED", extra: db => db.IntegrationJobs.Add(waitingJob));
+
+        try
+        {
+            var item = await PreviewAndConfirmRetryAsync(seed, invoice, protection, expectedPayable: 100m);
+            Assert.Equal(("QUEUED", "SUBMIT_RETRY"), (item.Status, item.Action));
+            Assert.NotEqual(invoice.Id, item.InvoiceId);
+
+            await using var verification = fixture.CreateContext();
+            // The refused draft keeps its frozen lines for audit but leaves the order's sale slot and is never sent.
+            var retired = await verification.Invoices.SingleAsync(row => row.Id == invoice.Id);
+            Assert.Equal(("REPLACED", InvoiceStatus.CancelledLocal, false), (retired.SequencePurpose, retired.Status, retired.OrderFiscalGuarded));
+            Assert.Equal(InvoicingBillingService.RedraftedFromOrderCode, retired.LastErrorCode);
+            Assert.Equal(150m, await verification.InvoiceLines.Where(row => row.InvoiceId == invoice.Id).SumAsync(row => row.LineTotal));
+            Assert.Equal(JobStatus.Cancelled, (await verification.IntegrationJobs.SingleAsync(row => row.Id == waitingJob.Id)).Status);
+            Assert.True(await verification.AuditLogs.AnyAsync(log => log.TenantId == seed.Tenant.Id && log.Action == "INVOICE_UNSENT_DRAFT_REDRAFTED"
+                && log.TargetId == invoice.Id.ToString("D")));
+
+            // The one sale invoice of the order carries what the preview showed, and it is the one queued.
+            var sale = await verification.Invoices.SingleAsync(row => row.TenantId == seed.Tenant.Id && row.OrderId == seed.Order.Id && row.SequencePurpose == "SALE");
+            Assert.Equal(item.InvoiceId, sale.Id);
+            Assert.Equal((InvoiceStatus.Submitting, 100m), (sale.Status, sale.PayableTotal));
+            var line = Assert.Single(await verification.InvoiceLines.Where(row => row.InvoiceId == sale.Id).ToListAsync());
+            Assert.Equal((kept.Id, 1m, 100m), (line.OrderLineId!.Value, line.Quantity, line.LineTotal));
+            Assert.True(await verification.InvoicePartySnapshots.AnyAsync(row => row.InvoiceId == sale.Id && row.Role == "RECEIVER"));
+            var job = await verification.IntegrationJobs.SingleAsync(row => row.Id == item.JobId);
+            Assert.Equal((InvoicingJobTypes.InvoiceSubmit, JobStatus.Pending), (job.JobType, job.Status));
+            Assert.Contains(sale.Id.ToString(), job.PayloadJson, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // A refusal for the recipient's data (a missing district, a wrong tax number) is fixed on the marketplace and synced;
+    // the retry must carry the corrected receiver, not the one frozen with the refused draft.
+    [PostgreSqlFact]
+    public async Task ConfirmWorkspace_RetryOfARefusedDraftTakesTheReceiverCorrectedSince()
+    {
+        var protection = new EphemeralDataProtectionProvider();
+        var seed = NewRetrySeed("audit-retry-receiver", out var first, out var second, out var invoice);
+        invoice.Status = InvoiceStatus.Rejected;
+        invoice.LastErrorCode = "EFATURAM_FISCAL_PAYLOAD_INVALID";
+        await SeedRetryAsync(seed, first, second, invoice, protection, frozenLines: [(first, 60m), (second, 60m)], attemptOutcome: "FAILED");
+        await using (var db = fixture.CreateContext())
+            await db.Orders.Where(order => order.Id == seed.Order.Id)
+                .ExecuteUpdateAsync(update => update.SetProperty(order => order.InvoiceAddressSnapshotJson, "{\"city\":\"Istanbul\",\"district\":\"Kadikoy\"}"));
+
+        try
+        {
+            var item = await PreviewAndConfirmRetryAsync(seed, invoice, protection, expectedPayable: 120m);
+            Assert.Equal(("QUEUED", "SUBMIT_RETRY"), (item.Status, item.Action));
+            Assert.NotEqual(invoice.Id, item.InvoiceId);
+
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(InvoiceStatus.CancelledLocal, (await verification.Invoices.SingleAsync(row => row.Id == invoice.Id)).Status);
+            var sale = await verification.Invoices.SingleAsync(row => row.TenantId == seed.Tenant.Id && row.SequencePurpose == "SALE");
+            Assert.Equal((item.InvoiceId, InvoiceStatus.Submitting, 120m), ((Guid?)sale.Id, sale.Status, sale.PayableTotal));
+            var receiver = await verification.InvoicePartySnapshots.SingleAsync(row => row.InvoiceId == sale.Id && row.Role == "RECEIVER");
+            Assert.Contains("Kadikoy", protection.CreateProtector("MarketplaceHub.InvoicePartySnapshot.v1").Unprotect(receiver.ProtectedContent), StringComparison.Ordinal);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // The operator's word after an unknown result is not proof that the provider holds nothing: such a draft is not
+    // redrafted under a new local reference, and its old amount is not sent either.
+    [PostgreSqlFact]
+    public async Task ConfirmWorkspace_RetryAfterAnUnknownResultStopsWhenTheAmountsNoLongerMatchThePreview()
+    {
+        var protection = new EphemeralDataProtectionProvider();
+        var seed = NewRetrySeed("audit-retry-uncertain", out var kept, out var cancelled, out var invoice);
+        cancelled.CancelledQuantity = 1;
+        seed.Order.GrossAmount = seed.Order.NetAmount = 60m;
+        seed.Package.GrossAmount = seed.Package.NetAmount = 60m;
+        invoice.Status = InvoiceStatus.ManualReview;
+        invoice.LastErrorCode = InvoicingBillingService.OperatorConfirmedNoRemoteInvoiceCode;
+        await SeedRetryAsync(seed, kept, cancelled, invoice, protection, frozenLines: [(kept, 60m), (cancelled, 60m)], attemptOutcome: "UNKNOWN");
+
+        try
+        {
+            var item = await PreviewAndConfirmRetryAsync(seed, invoice, protection, expectedPayable: 60m);
+            Assert.Equal(("BLOCKED", "REVIEW"), (item.Status, item.Action));
+
+            await using var verification = fixture.CreateContext();
+            var untouched = await verification.Invoices.SingleAsync(row => row.TenantId == seed.Tenant.Id);
+            Assert.Equal((invoice.Id, InvoiceStatus.ManualReview, invoice.Version, 120m), (untouched.Id, untouched.Status, untouched.Version, untouched.PayableTotal));
+            Assert.False(await verification.IntegrationJobs.AnyAsync(row => row.TenantId == seed.Tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ConfirmWorkspace_RetryOfARefusedDraftWhoseOrderDidNotChangeIsQueuedAsItIs()
+    {
+        var protection = new EphemeralDataProtectionProvider();
+        var seed = NewRetrySeed("audit-retry-unchanged", out var first, out var second, out var invoice);
+        await SeedRetryAsync(seed, first, second, invoice, protection, frozenLines: [(first, 60m), (second, 60m)], attemptOutcome: "FAILED");
+
+        try
+        {
+            var item = await PreviewAndConfirmRetryAsync(seed, invoice, protection, expectedPayable: 120m);
+            Assert.Equal(("QUEUED", "SUBMIT_RETRY", invoice.Id), (item.Status, item.Action, item.InvoiceId));
+
+            await using var verification = fixture.CreateContext();
+            var queued = await verification.Invoices.SingleAsync(row => row.TenantId == seed.Tenant.Id);
+            Assert.Equal((invoice.Id, "SALE", InvoiceStatus.Submitting, 120m), (queued.Id, queued.SequencePurpose, queued.Status, queued.PayableTotal));
+            Assert.Null(queued.LastErrorCode);
+            Assert.Equal([60m, 60m], await verification.InvoiceLines.Where(row => row.InvoiceId == invoice.Id).OrderBy(row => row.LineSequence).Select(row => row.LineTotal).ToListAsync());
+            var job = Assert.Single(await verification.IntegrationJobs.Where(row => row.TenantId == seed.Tenant.Id).ToListAsync());
+            Assert.Equal(item.JobId, job.Id);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ConfirmWorkspace_RetryNeverResendsADraftThatCarriesAProviderNumber()
+    {
+        var protection = new EphemeralDataProtectionProvider();
+        var seed = NewRetrySeed("audit-retry-numbered", out var first, out var second, out var invoice);
+        invoice.InvoiceNumber = "GIB2026000000009";
+        await SeedRetryAsync(seed, first, second, invoice, protection, frozenLines: [(first, 60m), (second, 60m)], attemptOutcome: "FAILED");
+
+        try
+        {
+            var item = await PreviewAndConfirmRetryAsync(seed, invoice, protection, expectedPayable: 120m);
+            Assert.Equal(("BLOCKED", "REVIEW"), (item.Status, item.Action));
+
+            await using var verification = fixture.CreateContext();
+            var untouched = await verification.Invoices.SingleAsync(row => row.TenantId == seed.Tenant.Id);
+            Assert.Equal((invoice.Id, InvoiceStatus.Submitting, "EFATURAM_RATE_LIMITED", invoice.Version), (untouched.Id, untouched.Status, untouched.LastErrorCode, untouched.Version));
+            Assert.False(await verification.IntegrationJobs.AnyAsync(row => row.TenantId == seed.Tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // A Stage order of two lines at 60 TL (120 TL) whose order-level draft the provider refused before creating
+    // anything (rate limit): Submitting with a pre-provider code and no provider reference.
+    private Seed NewRetrySeed(string code, out OrderLine first, out OrderLine second, out Invoice invoice)
+    {
+        var seed = NewSeed(code);
+        seed.Marketplace.Environment = "STAGE";
+        seed.Provider.Environment = "STAGE";
+        first = NewLine(seed.Tenant.Id, seed.Order.Id);
+        first.ExternalLineId = $"{code}-line-1";
+        first.UnitPrice = 60m;
+        second = NewLine(seed.Tenant.Id, seed.Order.Id);
+        second.ExternalLineId = $"{code}-line-2";
+        second.UnitPrice = 60m;
+        invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Submitting);
+        invoice.LastErrorCode = "EFATURAM_RATE_LIMITED";
+        invoice.ExternalReference = null;
+        invoice.InvoiceNumber = null;
+        invoice.IdempotencyKey = $"invoice-workspace-order:{seed.Order.Id:N}";
+        invoice.Version = 3;
+        return seed;
+    }
+
+    // The draft as CreateDraftAsync froze it: lines, one submission attempt and the receiver read from the order.
+    private async Task SeedRetryAsync(Seed seed, OrderLine first, OrderLine second, Invoice invoice, IDataProtectionProvider protection,
+        (OrderLine Line, decimal Total)[] frozenLines, string attemptOutcome, Action<AppDbContext>? extra = null)
+    {
+        var credential = new PlatformCredential
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            ConnectionId = seed.Provider.Id,
+            CredentialType = "EMAIL_PASSWORD",
+            ProtectedPayload = "test-only",
+            MaskedHint = "f***@example.test",
+            CreatedAt = fixture.Now
+        };
+        var lines = frozenLines.Select((frozen, index) => new InvoiceLine
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = invoice.Id,
+            OrderLineId = frozen.Line.Id,
+            LineSequence = index + 1,
+            DescriptionSnapshot = frozen.Line.TitleSnapshot,
+            SkuSnapshot = frozen.Line.Sku,
+            UnitSnapshot = "ADET",
+            Quantity = 1,
+            UnitPrice = frozen.Total / 1.2m,
+            VatRate = 20m,
+            VatAmount = frozen.Total - frozen.Total / 1.2m,
+            LineTotal = frozen.Total
+        }).ToArray();
+        var receiverJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            seed.Order.OrderNumber,
+            seed.Order.CustomerSnapshotJson,
+            seed.Order.InvoiceAddressSnapshotJson,
+            seed.Order.ShipmentAddressSnapshotJson
+        });
+        var receiver = new InvoicePartySnapshot
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = invoice.Id,
+            Role = "RECEIVER",
+            ProtectedContent = protection.CreateProtector("MarketplaceHub.InvoicePartySnapshot.v1").Protect(receiverJson),
+            ContentHash = "frozen-receiver",
+            CreatedAt = fixture.Now.AddDays(-1)
+        };
+        var attempt = new InvoiceSubmissionAttempt
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = invoice.Id,
+            AttemptNumber = 1,
+            RequestHash = "frozen-request",
+            Outcome = attemptOutcome,
+            ErrorCode = attemptOutcome == "FAILED" ? "EFATURAM_RATE_LIMITED" : "INVOICE_SUBMISSION_OUTCOME_UNKNOWN",
+            StartedAt = fixture.Now.AddDays(-1),
+            CompletedAt = fixture.Now.AddDays(-1)
+        };
+        await SeedAsync(seed, db =>
+        {
+            db.OrderLines.AddRange(first, second);
+            db.PlatformCredentials.Add(credential);
+            db.Invoices.Add(invoice);
+            db.InvoiceLines.AddRange(lines);
+            db.InvoicePartySnapshots.Add(receiver);
+            db.InvoiceSubmissionAttempts.Add(attempt);
+            extra?.Invoke(db);
+        });
+    }
+
+    private IntegrationJob NewSubmitJob(Seed seed, Invoice invoice, JobStatus status) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = seed.Tenant.Id,
+        ConnectionId = seed.Provider.Id,
+        JobType = InvoicingJobTypes.InvoiceSubmit,
+        PayloadJson = $$"""{"invoiceId":"{{invoice.Id}}"}""",
+        PayloadHash = "audit-hash",
+        JobDedupKey = $"{InvoicingJobTypes.InvoiceSubmit}:{invoice.Id}:frozen",
+        EffectIdempotencyKey = $"{InvoicingJobTypes.InvoiceSubmit}:{invoice.Id}:frozen",
+        Status = status,
+        AvailableAt = fixture.Now.AddMinutes(5),
+        CorrelationId = "audit-retry-frozen",
+        CreatedAt = fixture.Now.AddDays(-1),
+        Version = 1
+    };
+
+    private async Task<InvoiceWorkspaceConfirmItemResult> PreviewAndConfirmRetryAsync(Seed seed, Invoice invoice, IDataProtectionProvider protection, decimal expectedPayable)
+    {
+        var configuration = new Dictionary<string, string?> { ["FeatureFlags:InvoiceMarketplaceDeliveryWrites"] = "true" };
+        InvoiceWorkspacePreviewItem preview;
+        await using (var db = fixture.CreateContext())
+        {
+            var previewed = await NewBillingService(db, null, configuration, protection).PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            Assert.True(previewed.Succeeded, previewed.Error?.Message);
+            preview = Assert.Single(previewed.Value!);
+            Assert.Equal(invoice.Id, preview.ExistingInvoiceId);
+            Assert.Equal("SUBMIT_RETRY", preview.NextAction);
+            Assert.True(preview.CanConfirm, preview.BlockedReason);
+            Assert.Equal(expectedPayable, preview.PayableTotal);
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var confirmed = await NewBillingService(db, null, configuration, protection).ConfirmWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewConfirmRequest([new(preview.OrderId, preview.PackageId, preview.ProviderConnectionId, preview.PreviewDigest)], true),
+                "audit-retry", "audit-retry", CancellationToken.None);
+            Assert.True(confirmed.Succeeded);
+            return Assert.Single(confirmed.Value!.Items);
+        }
+    }
+
+    private InvoicingBillingService NewBillingService(AppDbContext db, IInvoiceProviderPort? provider = null, IDictionary<string, string?>? configuration = null, IDataProtectionProvider? protection = null)
+    {
+        var dataProtection = protection ?? new EphemeralDataProtectionProvider();
         return new InvoicingBillingService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, null!,
             new ConfigurationBuilder().AddInMemoryCollection(configuration ?? new Dictionary<string, string?>()).Build(), fixture.TimeProvider, provider!);
     }
