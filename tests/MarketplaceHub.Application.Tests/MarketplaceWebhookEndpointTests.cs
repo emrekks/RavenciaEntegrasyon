@@ -15,7 +15,7 @@ public sealed class MarketplaceWebhookEndpointTests
         var service = new RecordingWebhookService();
         var context = NewContext(Array.Empty<byte>(), MarketplaceHub.Api.Marketplace.WebhookBodyReader.MaximumBytes + 1L);
 
-        var result = await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", context, service, KnownGate);
+        var result = await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", context, service, KnownGate, Quota);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status413RequestEntityTooLarge, context.Response.StatusCode);
@@ -32,7 +32,7 @@ public sealed class MarketplaceWebhookEndpointTests
         context.Request.Headers["x-trendyol-signature"] = "signature";
         context.Request.Headers["x-request-id"] = "request-1";
 
-        var result = await MarketplaceEndpoints.ReceiveWebhook(connectionId, "route-token", context, service, KnownGate);
+        var result = await MarketplaceEndpoints.ReceiveWebhook(connectionId, "route-token", context, service, KnownGate, Quota);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
@@ -54,7 +54,7 @@ public sealed class MarketplaceWebhookEndpointTests
         context.Request.Method = "PUT";
         context.Request.Headers[WebhookEventPath.Header] = "forged";
 
-        var result = await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", "/LineItems/B17553DE/Cancel/", context, service, KnownGate);
+        var result = await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", "/LineItems/B17553DE/Cancel/", context, service, KnownGate, Quota);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
@@ -63,7 +63,7 @@ public sealed class MarketplaceWebhookEndpointTests
         var plain = new RecordingWebhookService();
         var plainContext = NewContext(body, body.Length);
         plainContext.Request.Headers[WebhookEventPath.Header] = "forged";
-        await (await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", plainContext, plain, KnownGate)).ExecuteAsync(plainContext);
+        await (await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", plainContext, plain, KnownGate, Quota)).ExecuteAsync(plainContext);
         Assert.False(plain.Headers.ContainsKey(WebhookEventPath.Header));
     }
 
@@ -82,7 +82,7 @@ public sealed class MarketplaceWebhookEndpointTests
         var context = NewContext(body, body.Length);
         context.Request.Method = method;
 
-        await (await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", path, context, new RecordingWebhookService(), KnownGate)).ExecuteAsync(context);
+        await (await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", path, context, new RecordingWebhookService(), KnownGate, Quota)).ExecuteAsync(context);
 
         Assert.Equal(expected, context.Response.StatusCode);
     }
@@ -94,7 +94,7 @@ public sealed class MarketplaceWebhookEndpointTests
         var context = NewContext([], 10 * 1024 * 1024);
         context.Request.Body = new UnreadableStream();
 
-        var result = await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", context, service, new Gate(false));
+        var result = await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", context, service, new Gate(false), Quota);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
@@ -103,10 +103,10 @@ public sealed class MarketplaceWebhookEndpointTests
     }
 
     [Fact]
-    public void WebhookLimits_ChainAPerAddressLimitWithThePerConnectionOne()
+    public void WebhookLimits_LimitEachAddress()
     {
         using var limiter = WebhookRateLimits.Create();
-        // Random connection ids from one address: the per-connection limit alone never applied.
+        // Random connection ids from one address: a per-connection limit alone never applied.
         for (var index = 0; index < WebhookRateLimits.PerAddressPerMinute; index++)
             Assert.True(limiter.AttemptAcquire(Hook(Guid.NewGuid(), "203.0.113.7")).IsAcquired);
 
@@ -115,18 +115,63 @@ public sealed class MarketplaceWebhookEndpointTests
         Assert.True(limiter.AttemptAcquire(Plain("/api/v1/orders", "203.0.113.7")).IsAcquired);
     }
 
+    // A-2 (2026-10-29): the limiter runs before the route token is checked, so it must not hold the connection's
+    // allowance; a sender that knows only the public id would use it up with made-up tokens.
     [Fact]
-    public void WebhookLimits_KeepThePerConnectionLimitAcrossAddresses()
+    public void WebhookLimits_BeforeTheEndpoint_DoNotSpendTheConnectionAllowance()
     {
         using var limiter = WebhookRateLimits.Create();
         var connection = Guid.NewGuid();
-        for (var index = 0; index < WebhookRateLimits.PerConnectionPerMinute; index++)
-            Assert.True(limiter.AttemptAcquire(Hook(connection, $"198.51.100.{index % 200}")).IsAcquired);
+        for (var index = 0; index <= WebhookRateLimits.PerConnectionPerMinute; index++)
+            Assert.True(limiter.AttemptAcquire(Hook(connection, "203.0.113.9")).IsAcquired);
+    }
 
-        Assert.False(limiter.AttemptAcquire(Hook(connection, "198.51.100.250")).IsAcquired);
+    [Fact]
+    public async Task ReceiveWebhook_WithAWrongRouteToken_DoesNotSpendTheConnectionAllowance()
+    {
+        using var quota = new WebhookConnectionQuota();
+        var connection = Guid.CreateVersion7();
+        for (var index = 0; index <= WebhookRateLimits.PerConnectionPerMinute; index++)
+        {
+            var refused = NewContext([], 0);
+            await (await MarketplaceEndpoints.ReceiveWebhook(connection, $"guess-{index}", refused, new RecordingWebhookService(), new Gate(false), quota)).ExecuteAsync(refused);
+            Assert.Equal(StatusCodes.Status404NotFound, refused.Response.StatusCode);
+        }
+
+        var body = Encoding.UTF8.GetBytes("{\"id\":1}");
+        var service = new RecordingWebhookService();
+        var context = NewContext(body, body.Length);
+        await (await MarketplaceEndpoints.ReceiveWebhook(connection, "route-token", context, service, KnownGate, quota)).ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.True(service.Called);
+    }
+
+    [Fact]
+    public async Task ReceiveWebhook_KeepsThePerConnectionLimitForAdmittedDeliveries_WithTheRateLimitedAnswer()
+    {
+        using var quota = new WebhookConnectionQuota();
+        var connection = Guid.CreateVersion7();
+        for (var index = 0; index < WebhookRateLimits.PerConnectionPerMinute; index++) Assert.True(quota.TryTake(connection));
+
+        var service = new RecordingWebhookService();
+        var context = NewContext([], 10 * 1024 * 1024);
+        context.Request.Body = new UnreadableStream();
+        await (await MarketplaceEndpoints.ReceiveWebhookEvent(connection, "route-token", "orders", context, service, KnownGate, quota)).ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, context.Response.StatusCode);
+        Assert.False(service.Called);
+        Assert.False(service.RouteRefusalNoted);
+        context.Response.Body.Position = 0;
+        using var answer = await System.Text.Json.JsonDocument.ParseAsync(context.Response.Body);
+        Assert.Equal("RATE_LIMITED", answer.RootElement.GetProperty("code").GetString());
+        Assert.True(answer.RootElement.GetProperty("retryable").GetBoolean());
+        // Another connection keeps its own allowance.
+        Assert.True(quota.TryTake(Guid.CreateVersion7()));
     }
 
     private static readonly IWebhookRouteGate KnownGate = new Gate(true);
+    private static readonly WebhookConnectionQuota Quota = new();
 
     private static DefaultHttpContext Hook(Guid connection, string address) => Plain($"/api/v1/hooks/{connection:D}/token", address);
 
