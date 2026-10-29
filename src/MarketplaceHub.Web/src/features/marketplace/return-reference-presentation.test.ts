@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatMarketplaceBarcode, isSellerFaultReturn, returnCustomerNote, returnReasonPresentation, shouldShowReturnCountdown } from './return-reference-presentation'
+import { formatMarketplaceBarcode, isSellerFaultReturn, returnCustomerNote, returnReasonPresentation, returnReasonSummary, shouldShowReturnCountdown } from './return-reference-presentation'
 
 describe('return reference presentation', () => {
   it('removes Hepsiburada zero prefixes from alphanumeric codes but preserves numeric barcodes', () => {
@@ -52,5 +52,13 @@ describe('return reference presentation', () => {
     expect(isSellerFaultReturn({ reasonCode: 'Hatalı Ürün' }, 'Hatalı Ürün')).toBe(true)
     expect(isSellerFaultReturn({ reasonCode: 'SMALLSIZE' }, 'Bedeni/Ebatı Küçük Geldi')).toBe(false)
     expect(isSellerFaultReturn({ reasonCode: 'WRONGORDER' }, 'Yanlış sipariş verdim')).toBe(false)
+  })
+
+  it('summarises the customer reason as the list shows it and invents none', () => {
+    expect(returnReasonSummary({ platformCode: 'TRENDYOL', reasonCode: null, reasonText: '  ' })).toBeNull()
+    expect(returnReasonSummary({ platformCode: 'TRENDYOL', reasonCode: 'WRONGITEM', reasonText: '3xl sipariş etmiştim 2xl geldi' }))
+      .toEqual({ label: 'Yanlış ürün gönderildi', note: ['Müşteri Notu', '3xl sipariş etmiştim 2xl geldi'], sellerFault: true })
+    expect(returnReasonSummary({ platformCode: 'HEPSIBURADA', reasonCode: 'Ürünü almaktan vazgeçtim / beğenmedim', reasonText: 'Eşime almıştım' }))
+      .toEqual({ label: 'Ürünü almaktan vazgeçtim / beğenmedim', note: ['Açıklama', 'Eşime almıştım'], sellerFault: false })
   })
 })

@@ -966,3 +966,13 @@
   /* The remove mark on a picture tile is a compact icon button, not a 44px-tall bar (the global min-height stretched it). */
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn { width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 7px; }
 }
+
+/* Product list "Platformlarda Yayınla": the editor's publish step in a popup (ProductPublishPopup). */
+.product-publish-popup-modal { width: min(1180px, 100%); }
+.product-publish-popup-modal > header h2 { margin-bottom: 0; }
+.product-publish-popup-body { min-height: 0; overflow: auto; padding: 20px 24px; }
+.product-publish-popup { display: block; min-width: 0; }
+.product-publish-popup .product-add-workspace { margin: 0; padding: 0; }
+@media (max-width: 760px) {
+  .product-publish-popup-body { padding: 16px; }
+}

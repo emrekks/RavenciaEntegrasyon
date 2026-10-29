@@ -183,6 +183,22 @@ describe('SystemSettingsPage', () => {
     expect(container.querySelector('.app-toast')!.classList.contains('app-toast-success')).toBe(true)
   })
 
+  it('names the default output field Varsayılan Kargo Çıktısı with plain A4 / Sticker options', async () => {
+    await renderPage('/settings?tab=sender')
+    const field = Array.from(container.querySelectorAll('.ss-fld')).find(label => label.querySelector('small')?.textContent === 'Varsayılan Kargo Çıktısı')!
+    const options = Array.from(field.querySelectorAll('option')).map(option => [option.value, option.textContent])
+    expect(options).toEqual([['a4', 'A4'], ['sticker', 'Sticker']])
+  })
+
+  it('label designer has no visible help line under the canvas; the paper still describes its keyboard use', async () => {
+    await renderPage('/settings?tab=designer')
+    expect(container.querySelector('.ss-dz-help')).toBeNull()
+    const paper = container.querySelector('.shipping-designer-paper')!
+    const description = document.getElementById(paper.getAttribute('aria-describedby')!)!
+    expect(description.classList.contains('sr-only')).toBe(true)
+    expect(description.textContent).toContain('ok tuşlarıyla')
+  })
+
   it('label designer preview shows the address block like the print: title, recipient name, then the address', async () => {
     await renderPage('/settings?tab=designer')
     const address = container.querySelector('.preview-content-address')!
