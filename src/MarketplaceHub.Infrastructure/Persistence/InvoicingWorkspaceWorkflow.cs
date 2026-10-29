@@ -350,9 +350,7 @@ public sealed partial class InvoicingBillingService
             : manualDocument is not null ? "Siparişe manuel fatura belgesi eklendi. İkinci mali fatura kesilmedi; aynı belgeyi platforma iletin veya yeni sürümle değiştirin."
             : deliveryBlockedReason is not null ? deliveryBlockedReason
             : existing is null && !MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson)
-                ? string.Equals(marketplace.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-                    ? MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage
-                    : MarketplaceInvoiceCreationPolicy.DisabledMessage
+                ? MarketplaceInvoiceCreationPolicy.DisabledMessage
                 : InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(provider.Environment, marketplace.Environment);
         if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, marketplace.PlatformCode, order.InvoiceAddressSnapshotJson) is { } issueRefusal)
         {

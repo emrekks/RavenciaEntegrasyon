@@ -53,6 +53,12 @@ describe('Hepsiburada marketplace workspace support', () => {
     expect(supportsSyncPolicy('HEPSIBURADA', 'PRODUCTS')).toBe(false)
   })
 
+  it('shows the MANUAL_WRITE switch for PTT AVM only', () => {
+    expect(supportsSyncPolicy('PTTAVM', 'MANUAL_WRITE')).toBe(true)
+    for (const platformCode of ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'])
+      expect(supportsSyncPolicy(platformCode, 'MANUAL_WRITE')).toBe(false)
+  })
+
   it('does not offer immediate runs for read-only sync policies', () => {
     const intervals: Array<[number, string]> = [[0, 'Anında'], [30, '30 saniye'], [60, '1 dakika']]
 

@@ -1294,7 +1294,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
     // A PTT AVM model family of two colour cards (Siyah, Kahverengi) with two sizes each, ready to send but without a
     // PTT AVM price: the price comes from the cards' Trendyol offers, as in a bulk publication.
-    private async Task<(Tenant Tenant, PlatformConnection PttAvm, Product Black, Product Brown, ProductVariant[] Variants)> SeedPttAvmFamilyAsync(string code)
+    // The connection's "Manuel Dış Yazmalar" switch (MANUAL_WRITE) is on unless the test says otherwise.
+    private async Task<(Tenant Tenant, PlatformConnection PttAvm, Product Black, Product Brown, ProductVariant[] Variants)> SeedPttAvmFamilyAsync(string code, bool manualWritesEnabled = true)
     {
         var tenant = NewTenant(code);
         var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
@@ -1324,6 +1325,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await using var seed = fixture.CreateContext();
         seed.Tenants.Add(tenant);
         seed.PlatformConnections.AddRange(pttAvm, trendyol);
+        seed.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ResourceType = MarketplaceExternalWritePolicies.Manual, IntervalSeconds = 0, Enabled = manualWritesEnabled, Version = 1 });
         seed.Categories.Add(category);
         seed.ReferenceSnapshots.Add(snapshot);
         seed.ReferenceItems.Add(leaf);
@@ -1362,6 +1364,26 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var listed = await db.ChannelListingVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.VariantId).ToListAsync();
         Assert.Equal(variants.Select(x => x.Id).Order(), listed.Order());
         Assert.All(jobs, job => Assert.Equal(4, PttAvmProductPayloadRules.Read(PttAvmFamilySend.Read(job.PayloadJson)!.PayloadJson, out _)!.Variants!.Count));
+    }
+
+    // With PTT AVM's "Manuel Dış Yazmalar" switch off, a bulk publication queues nothing for PTT AVM and says why.
+    [PostgreSqlFact]
+    public async Task BulkPublication_ToPttAvmIsRefusedWhileItsManualWriteSwitchIsOff()
+    {
+        var (tenant, pttAvm, black, brown, _) = await SeedPttAvmFamilyAsync("pttavm-bulk-manual-off", manualWritesEnabled: false);
+
+        await using var db = fixture.CreateContext();
+        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(0, result.Value!.Queued);
+        Assert.NotEmpty(result.Value.Failed);
+        Assert.All(result.Value.Failed, failure =>
+        {
+            Assert.Equal(PttAvmManualWritePolicy.DisabledCode, failure.Code);
+            Assert.Equal(PttAvmManualWritePolicy.DisabledMessage, failure.Message);
+        });
+        Assert.False(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.ProductCreate));
     }
 
     // PTT AVM sends the family as one product, so a selected card goes with its family's other cards, as in the editor.

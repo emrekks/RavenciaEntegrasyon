@@ -420,6 +420,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (string.Equals(payload.Phase, "SUBMIT", StringComparison.OrdinalIgnoreCase))
         {
             if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; pazar yeri isteği gönderilmedi."), cancellationToken, payload.PayloadHash);
+            if (PttAvmManualWritePolicy.Applies(platformCode) && !await PttAvmManualWritesAllowedAsync(tenantId, connectionId, cancellationToken))
+                return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", PttAvmManualWritePolicy.DisabledCode, JobExecutionResult.Blocked(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage), cancellationToken, payload.PayloadHash);
             if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             {
                 if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", JobExecutionResult.Blocked("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi doğrulanmadı; ürün aktarımı gönderilmedi."), cancellationToken, payload.PayloadHash);
@@ -1996,9 +1998,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
             // Every platform's request carries price and stock together (Trendyol's too), so an
             // automatic send needs both policies; a manual send is guarded by the connection switch alone.
-            foreach (var writePolicy in PriceInventoryOutboxPolicy.RequiredWritePolicies(payload.Manual))
+            foreach (var writePolicy in PriceInventoryOutboxPolicy.RequiredWritePolicies(payload.Manual, connection.PlatformCode))
+            {
+                if (writePolicy == MarketplaceExternalWritePolicies.Manual)
+                {
+                    if (!await PttAvmManualWritesAllowedAsync(tenantId, connectionId, cancellationToken))
+                        return JobExecutionResult.Blocked(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage);
+                    continue;
+                }
                 if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
                     return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; pazar yeri isteği gönderilmedi." : "Fiyat dış yazma akışı kapalı; pazar yeri isteği gönderilmedi.");
+            }
             var current = hepsiburadaStageManual
                 ? await new PriceInventoryComposer(db).BuildHepsiburadaStageAsync(tenantId, connectionId, cancellationToken, payload.VariantId)
                 : await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);
@@ -10372,6 +10382,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         return connection is not null && (string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || WritesEnabled(connection.SettingsJson));
+    }
+
+    // The PTT AVM MANUAL_WRITE switch, checked after the master switch (the callers check that first). A missing row
+    // refuses the write: it is not read as permission.
+    private async Task<bool> PttAvmManualWritesAllowedAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var enabled = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Manual)
+            .Select(x => (bool?)x.Enabled)
+            .SingleOrDefaultAsync(cancellationToken);
+        return PttAvmManualWritePolicy.Decide(masterWritesEnabled: true, enabled) == PttAvmManualWriteDecision.Allowed;
     }
 
     private async Task<bool> HasHepsiburadaPublicationEvidenceAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)

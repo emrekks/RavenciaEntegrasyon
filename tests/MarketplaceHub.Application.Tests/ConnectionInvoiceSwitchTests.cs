@@ -41,7 +41,7 @@ public sealed class ConnectionInvoiceSwitchTests
 public sealed class PostgreSqlConnectionInvoiceSwitchTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
-    public async Task HepsiburadaInvoiceSwitchReadsAsTheFlowSeesItAndTurnsBothWays_ShopifyCannotBeTurnedOn()
+    public async Task HepsiburadaInvoiceSwitchReadsAsTheFlowSeesItAndTurnsBothWays_ShopifyToo()
     {
         var tenant = new Tenant
         {
@@ -90,9 +90,8 @@ public sealed class PostgreSqlConnectionInvoiceSwitchTests(PostgreSqlTenantIsola
             Assert.True(on.Value!.InvoiceCreationEnabled);
 
             var shopifyOn = await service.UpdateAsync(tenant.Id, shopify.Id, shopify.Version, new UpdateConnectionCommand("Shopify", null, InvoiceCreationEnabled: true), CancellationToken.None);
-            Assert.False(shopifyOn.Succeeded);
-            Assert.Equal("VALIDATION_FAILED", shopifyOn.Error!.Code);
-            Assert.Equal(MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage, shopifyOn.Error.Message);
+            Assert.True(shopifyOn.Succeeded, shopifyOn.Error?.Message);
+            Assert.True(shopifyOn.Value!.InvoiceCreationEnabled);
         }
         finally
         {
