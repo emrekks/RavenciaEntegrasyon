@@ -42,6 +42,8 @@ public static class InvoiceStateMachine
             // (or a return invoice is issued outside the panel) after review.
             [InvoiceStatus.AdjustmentRequired] = [InvoiceStatus.CancellationPending, InvoiceStatus.ManualReview],
             [InvoiceStatus.CancellationPending] = [InvoiceStatus.Cancelled, InvoiceStatus.CancellationRejected],
+            // A refused cancellation can be requested again from the panel.
+            [InvoiceStatus.CancellationRejected] = [InvoiceStatus.CancellationPending],
             [InvoiceStatus.ManualReview] = [InvoiceStatus.Submitting]
         };
 

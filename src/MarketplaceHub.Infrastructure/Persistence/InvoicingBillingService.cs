@@ -1497,8 +1497,13 @@ public sealed partial class InvoicingBillingService(
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış iptal işlemi yapılamaz.", 422);
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
         // The cancellation and the stop of the waiting deliveries are saved in one transaction.
+        // A refused cancellation, or a pending one whose job ended, is requested again; a running one is waited for.
+        if (!InvoiceCancellationOutcomePolicy.CanRequest(invoice.Status, await HasActiveInvoiceJobAsync(tenantId, invoice.Id, cancellationToken)))
+            return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", invoice.Status == InvoiceStatus.CancellationPending
+                ? "Bu faturanın iptal işlemi hâlâ sürüyor. Birkaç dakika bekleyip tekrar deneyin."
+                : "Fatura mevcut durumdan bu işleme geçemez.", 409);
         await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
-        var queued = await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired], InvoiceStatus.CancellationPending, cancellationToken);
+        var queued = await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired, InvoiceStatus.CancellationRejected, InvoiceStatus.CancellationPending], InvoiceStatus.CancellationPending, cancellationToken);
         if (!queued.Succeeded) return queued;
         // A delivery still waiting in the queue would send the link of an invoice that is being cancelled.
         if (await InvoiceAdjustmentTracking.CancelPendingDeliveryJobsAsync(db, tenantId, id, timeProvider.GetUtcNow(), cancellationToken) > 0)
@@ -1646,7 +1651,9 @@ public sealed partial class InvoicingBillingService(
             }
             if (permanentLinkReady && allConnectionsReady) actions.Add("DELIVER");
         }
-        if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.AdjustmentRequired) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
+        if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.AdjustmentRequired or InvoiceStatus.CancellationRejected or InvoiceStatus.CancellationPending)
+            && InvoiceCancellationOutcomePolicy.CanRequest(invoice.Status, invoice.Status == InvoiceStatus.CancellationPending && await HasActiveInvoiceJobAsync(invoice.TenantId, invoice.Id, cancellationToken))
+            && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         if (invoice.Status == InvoiceStatus.CancellationPending && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         return actions;
     }
@@ -1758,6 +1765,14 @@ public sealed partial class InvoicingBillingService(
         && status is InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.CancellationPending;
 
     internal const string OperatorConfirmedNoRemoteInvoiceCode = "OPERATOR_CONFIRMED_NO_REMOTE_INVOICE";
+
+    // A job of this invoice that has not ended: waiting, leased or scheduled for a retry.
+    private Task<bool> HasActiveInvoiceJobAsync(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var needle = invoiceId.ToString();
+        return db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)
+            && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
+    }
 
     private async Task<bool> IsMarketplaceInvoiceCreationDisabledAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken)
     {

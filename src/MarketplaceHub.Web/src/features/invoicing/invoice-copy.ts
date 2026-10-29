@@ -5,7 +5,9 @@ import { invoiceFailureReason } from './invoice-failure-reasons'
 // Turkish text for the codes the invoice pages receive from the server; a code without a text is shown readable, never raw.
 
 /** The invoice detail's actions (InvoiceDetailView.AllowedActions). Delivery goes to the order's own marketplace. */
-export function invoiceDetailActionLabel(action: string) {
+export function invoiceDetailActionLabel(action: string, status?: string) {
+  // A refused cancellation, or a pending one whose job ended, is requested again from the same button.
+  if (action === 'CANCEL' && (status === 'CANCELLATION_REJECTED' || status === 'CANCELLATION_PENDING')) return 'E-Arşiv İptalini Yeniden İste'
   return ({
     SUBMIT: 'E-Faturam’a Gönder',
     STAGE_CAPABILITY_PROBE: 'Test Ortamında Mali Deneme Yap',

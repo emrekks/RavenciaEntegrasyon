@@ -1963,6 +1963,20 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null || invoice.ProviderConnectionId != connectionId || invoice.InvoiceType != "EARSIVFATURA" || string.IsNullOrWhiteSpace(invoice.ExternalReference)) return false;
+        // The provider is read first: after a lost answer, a retry or a cancellation made in the portal, an invoice it
+        // already reports cancelled is closed here and no second cancellation request is sent. An unreadable status
+        // changes nothing; the cancellation request then decides.
+        var current = await provider.QueryStatusAsync(Context(tenantId, connectionId, correlationId, $"cancel-check:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), cancellationToken);
+        if (current.IsSuccess && current.Value!.CanonicalStatus == "CANCELLED")
+        {
+            invoice.Status = InvoiceStatus.Cancelled;
+            invoice.LastErrorCode = null;
+            await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, timeProvider.GetUtcNow(), cancellationToken);
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
         var result = await provider.CancelAsync(Context(tenantId, connectionId, correlationId, $"cancel:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, "OPERATOR_CONFIRMED"), cancellationToken);
         if (result.IsSuccess)
         {
@@ -1976,18 +1990,19 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         else
         {
-            invoice.Status = result.Error!.Class switch
-            {
-                AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx => InvoiceStatus.CancellationPending,
-                AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug => InvoiceStatus.ManualReview,
-                _ => InvoiceStatus.CancellationRejected
-            };
+            invoice.Status = InvoiceCancellationOutcomePolicy.StatusAfterFailure(result.Error!.Class);
             invoice.LastErrorCode = result.Error.Code;
         }
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
-        if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+        if (!result.IsSuccess)
+        {
+            var error = result.Error!;
+            if (InvoiceCancellationOutcomePolicy.RetriesLater(error.Class))
+                throw new JobProcessingException(JobExecutionResult.Retry(error.Code, error.SafeMessage, error.RetryAfter ?? InvoiceCancellationOutcomePolicy.RetryDelay, error.RemoteRequestId));
+            throw JobProcessingException.FromAdapter(error);
+        }
         return true;
     }
 

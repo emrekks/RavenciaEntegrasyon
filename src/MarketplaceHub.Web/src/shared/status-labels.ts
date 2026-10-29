@@ -10,6 +10,7 @@ const statusLabels: Record<string, string> = {
   BLOCKED: 'Engellendi',
   CANCELLED: 'İptal edildi',
   CANCELLATION_PENDING: 'İptal bekliyor',
+  CANCELLATION_REJECTED: 'İptal reddedildi',
   COMPLETED: 'Tamamlandı',
   CONFIRMATION_RETRYABLE: 'Platform doğrulaması bekleniyor',
   CONFIRMED: 'Platformda doğrulandı',

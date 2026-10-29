@@ -10,6 +10,12 @@ describe('invoice copy', () => {
     expect(invoiceDetailActionLabel('SOME_NEW_ACTION')).toBe('Some new action')
   })
 
+  it('offers a refused or stalled e-Archive cancellation again', () => {
+    expect(invoiceDetailActionLabel('CANCEL', 'CANCELLATION_REJECTED')).toBe('E-Arşiv İptalini Yeniden İste')
+    expect(invoiceDetailActionLabel('CANCEL', 'CANCELLATION_PENDING')).toBe('E-Arşiv İptalini Yeniden İste')
+    expect(invoiceDetailActionLabel('CANCEL', 'COMPLETED')).toBe('E-Arşiv İptal İsteği Gönder')
+  })
+
   it('shows Turkish text for the preview codes', () => {
     expect(invoiceEnvironmentLabel('PRODUCTION')).toBe('Canlı')
     expect(invoiceEnvironmentLabel('STAGE')).toBe('Test')
