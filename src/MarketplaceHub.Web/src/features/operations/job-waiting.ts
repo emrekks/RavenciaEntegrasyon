@@ -43,9 +43,13 @@ export function waitingJobDescription(job: Pick<JobLike, 'lastErrorCode'>) {
 }
 
 // Tries the job made against its own budget: waiting checks are left out of both, since they did not use an attempt.
+// A status check that follows a marketplace for days (an approval: one check every few minutes up to 7 days) carries
+// a budget in the thousands that is a time limit, not a try count; "1 / 2017" said nothing, so only the tries show.
 export function jobAttemptsText(job: JobLike) {
   const checks = Math.max(0, job.waitingChecks ?? 0)
   const tries = Math.max(0, job.attemptCount - checks)
   const budget = job.attemptBudget && job.attemptBudget > 0 ? job.attemptBudget : job.maxAttempts
-  return `${tries} / ${budget}`
+  return budget > maxShownAttemptBudget ? `${tries}` : `${tries} / ${budget}`
 }
+
+const maxShownAttemptBudget = 99

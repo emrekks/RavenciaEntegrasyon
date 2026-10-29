@@ -26,6 +26,8 @@ describe('waiting checks', () => {
     expect(jobAttemptsText({ status: 'SUCCEEDED', lastErrorCode: null, attemptCount: 5, maxAttempts: 10, waitingChecks: 4, attemptBudget: 10 })).toBe('1 / 10')
     expect(jobAttemptsText({ status: 'RETRY_SCHEDULED', lastErrorCode: 'PRODUCT_BATCH_PENDING', attemptCount: 3, maxAttempts: 12, waitingChecks: 2, attemptBudget: 10 })).toBe('1 / 10')
     expect(jobAttemptsText({ status: 'DEAD', lastErrorCode: 'X', attemptCount: 6, maxAttempts: 6 })).toBe('6 / 6')
+    // A 7-day approval check (live 2026-10-29: "1 / 2017") shows only its tries.
+    expect(jobAttemptsText({ status: 'SUCCEEDED', lastErrorCode: null, attemptCount: 1, maxAttempts: 2017 })).toBe('1')
   })
 
   it('treats only a queued job the API marks as waiting as waiting', () => {
