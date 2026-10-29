@@ -180,7 +180,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         // back to normal attempt accounting so a permanently busy lock cannot loop forever. A finished
         // slice of a long job (Continue) is progress, not waiting: a large import or a 90-day
         // reconciliation may take more than a day of slices and must not die of its age.
-        if (RefundsAttempt(result, now - job.CreatedAt))
+        if (RefundsAttempt(result, AllowanceAge(job, now)))
         {
             var deferredAttempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
             if (deferredAttempt is not null) db.JobAttempts.Remove(deferredAttempt);
@@ -204,7 +204,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         // young it gives the attempt back by raising the limit, so a long batch or approval is not killed by its own
         // polls. Its attempt row stays, as the record of the check.
         var waiting = JobWaitingPolicy.IsWaiting(result);
-        if (waiting && now - job.CreatedAt < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
+        if (waiting && AllowanceAge(job, now) < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
         {
             job.MaxAttempts++;
             job.WaitingChecks++;
@@ -265,6 +265,11 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
 
     private static readonly TimeSpan MinimumDeferralSpread = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaximumDeferralSpread = TimeSpan.FromMinutes(5);
+
+    // The age the deferral and waiting allowances are measured by: since the job was created, or since an operator
+    // last retried it by hand, whichever is later.
+    internal static TimeSpan AllowanceAge(IntegrationJob job, DateTimeOffset now) =>
+        now - (job.RetriedAt is { } retried && retried > job.CreatedAt ? retried : job.CreatedAt);
 
     internal static bool RefundsAttempt(JobExecutionResult result, TimeSpan jobAge) =>
         result.Kind == JobCompletionKind.Retry && result.RefundAttempt && (result.Continues || jobAge < MaximumDeferralAge);

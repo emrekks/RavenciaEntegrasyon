@@ -350,13 +350,13 @@ public static class MarketplaceEndpoints
     internal static ShipmentView? PickingTarget(IReadOnlyList<ShipmentView> packages) =>
         packages.FirstOrDefault(package => package.Status == "NEW") ?? packages.FirstOrDefault();
 
-    internal static Task<IResult> ReceiveWebhookEvent(Guid connectionPublicId, string routeToken, string? eventPath, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate) =>
-        ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, eventPath);
+    internal static Task<IResult> ReceiveWebhookEvent(Guid connectionPublicId, string routeToken, string? eventPath, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota) =>
+        ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, quota, eventPath);
 
-    internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate) =>
-        await ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, null);
+    internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota) =>
+        await ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, quota, null);
 
-    private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, string? eventPath)
+    private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota, string? eventPath)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         // The address (connection and route token) is checked before anything is read: an unknown one costs no body buffering.
@@ -366,6 +366,8 @@ public static class MarketplaceEndpoints
             await service.NoteRouteRefusedAsync(connectionPublicId, http.RequestAborted);
             return Problem(http, new("WEBHOOK_ROUTE_NOT_FOUND", "Webhook route bulunamadı.", 404));
         }
+        // The connection's allowance is spent by admitted deliveries only (WebhookRateLimits).
+        if (!quota.TryTake(connectionPublicId)) return Problem(http, MarketplaceHub.Api.Security.RateLimitPolicies.Rejected);
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = WebhookBodyReader.MaximumBytes;
         var bodyRead = await WebhookBodyReader.ReadAsync(http.Request.Body, http.Request.ContentLength, http.RequestAborted);

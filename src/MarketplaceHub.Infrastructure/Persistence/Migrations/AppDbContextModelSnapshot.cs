@@ -2157,6 +2157,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(48)")
                         .HasDefaultValue("jobs");
 
+                    b.Property<DateTimeOffset?>("RetriedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -5336,6 +5339,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("ReasonCode")
                         .HasMaxLength(96)
                         .HasColumnType("character varying(96)");
+
+                    b.PrimitiveCollection<Guid[]>("ReturnLineIds")
+                        .HasColumnType("uuid[]");
 
                     b.Property<string>("Status")
                         .IsRequired()

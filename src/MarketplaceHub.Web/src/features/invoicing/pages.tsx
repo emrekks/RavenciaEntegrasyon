@@ -8,6 +8,7 @@ import { newIdempotencyKey } from '../../shared/idempotency'
 import { ValueBadge } from '../../shared/components/ValueBadge'
 import { setManualInvoiceStatus } from './manual-invoice-status'
 import { invoiceDueText } from './invoice-due-text'
+import { invoicePreviewNotice } from './invoice-preview-notice'
 import { Busy, CargoProviderIcon, CountUp, ErrorBox, InvoiceStatusBadge, Modal, UiIcon, DialogSurface } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification, notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
@@ -467,12 +468,13 @@ export function InvoicesPage() {
   async function openInvoicePreview(items: InvoiceWorkspace[]) {
     const targets: InvoicePreviewTarget[] = []
     const missing: string[] = []
+    const manual: string[] = []
     const seenOrders = new Set<string>()
     for (const item of items) {
       if (seenOrders.has(item.orderId)) continue
       seenOrders.add(item.orderId)
       if (item.manualInvoiceDocumentId) {
-        missing.push(`#${item.orderNumber} için manuel fatura belgesi zaten kayıtlı`)
+        manual.push(`#${item.orderNumber}`)
         continue
       }
       if (item.invoiceId) {
@@ -488,7 +490,8 @@ export function InvoicesPage() {
       if (!exactEnvironmentProvider) { missing.push(`#${item.orderNumber} (${item.environment})`); continue }
       targets.push({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: exactEnvironmentProvider.id })
     }
-    if (missing.length) setMessage(`Aynı ortamda etkin ve API bilgileri kayıtlı E-Faturam bağlantısı bulunamadı: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` ve ${missing.length - 4} kayıt daha` : ''}.`, 'error')
+    const notice = invoicePreviewNotice(missing, manual)
+    if (notice) setMessage(notice.text, notice.kind)
     if (targets.length) setPreviewTargets(targets)
   }
   const pageData = query.data
