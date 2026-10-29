@@ -60,8 +60,9 @@ public sealed record ReportPlatformHeatmapView(string PlatformCode, IReadOnlyLis
 
 // The sales map. Cities holds the orders delivered in Turkey only; Countries splits every order by the country it goes
 // to: an order of a Trendyol cross-border storefront (SA, AZ, BG…) by its storefront, since its address is Trendyol's
-// export depot in Istanbul, else by the address's country (Turkey when none is given). The previous period's cities and
-// countries give each its change; AbroadOrders: the orders left out of Cities for going abroad.
+// export depot in Istanbul, else by the address's country (Turkey when none is given). A Trendyol order built from a
+// return claim whose storefront no read has named goes to "Bilinmiyor" (Known false): neither Turkey nor abroad. The
+// previous period's cities and countries give each its change; AbroadOrders: the orders left out of Cities for going abroad.
 public sealed record ReportGeographyView(
     IReadOnlyList<ReportGroupView> Countries,
     IReadOnlyList<ReportGroupView> PreviousCities,

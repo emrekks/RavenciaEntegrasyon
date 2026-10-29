@@ -140,7 +140,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
     return () => { live = false }
   }, [scope, maps])
 
-  const groups = scope === 'turkey' ? data.cities.filter(group => group.known) : data.geography.countries.filter(group => group.key !== 'TR')
+  const groups = scope === 'turkey' ? data.cities.filter(group => group.known) : data.geography.countries.filter(group => group.key !== 'TR' && group.known)
   const previousGroups = scope === 'turkey' ? data.geography.previousCities : data.geography.previousCountries
   const viewOf = (group: ReportGroup) => platform ? group.split.find(part => part.key === platform) : group
   const before = new Map(previousGroups.flatMap(group => { const view = viewOf(group); return view ? [[group.key, view] as const] : [] }))

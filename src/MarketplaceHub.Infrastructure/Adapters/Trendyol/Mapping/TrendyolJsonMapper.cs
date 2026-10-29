@@ -770,7 +770,28 @@ public static class TrendyolJsonMapper
             NullText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider"),
             NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross, CreatedBy: NormalizeCreatedBy(NullText(claim, "createdBy")));
         return new(orderNumber, orderNumber, ordered, modified, NullText(claim, "currencyCode") ?? "TRY", gross, 0, gross,
-            ReturnClaimCustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText());
+            ReturnClaimCustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText(),
+            StoreFrontCode: ClaimStorefront(claim));
+    }
+
+    // The storefront a claim names, if it names one: a storefront code, or the order's country as the order package and
+    // its webhook carry it (orderCountryCode). getClaims is read without a storefront header and its address is Trendyol's
+    // Istanbul export depot for a cross-border order, so a claim naming none leaves the storefront unknown (null), never TR.
+    private static string? ClaimStorefront(JsonElement claim) =>
+        NullText(claim, "storeFrontCode", "storefrontCode", "orderCountryCode")?.Trim().ToUpperInvariant() is { Length: 2 } code
+            && TrendyolReadStorefronts.Codes.Contains(code, StringComparer.Ordinal)
+            ? code
+            : null;
+
+    // A customer snapshot read for a claim-built order whose storefront is still unknown keeps the RETURN_CLAIM mark, so
+    // the order hydration still completes it and the report keeps its country unknown.
+    public static string WithReturnClaimReadModelMark(string customerSnapshotJson)
+    {
+        JsonObject snapshot;
+        try { snapshot = JsonNode.Parse(customerSnapshotJson) as JsonObject ?? new JsonObject(); }
+        catch (JsonException) { snapshot = new JsonObject(); }
+        snapshot["_ravenciaReadModelSource"] = "RETURN_CLAIM";
+        return snapshot.ToJsonString();
     }
 
     public static bool IsReturnClaimReadModelSnapshot(string? customerSnapshotJson)

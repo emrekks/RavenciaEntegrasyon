@@ -400,7 +400,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
 
     // City, district and a one-way customer key from the order's JSON snapshots, read in the database. A snapshot that
     // is not valid JSON reads as empty. The customer key is the store's own customer id, else the e-mail, else the
-    // last ten digits of the phone, each as an MD5 digest; the text itself is never returned.
+    // last ten digits of the phone, each as an MD5 digest; the text itself is never returned. ClaimBuilt: the customer
+    // snapshot still carries the return-claim mark (TrendyolJsonMapper.IsReturnClaimReadModelSnapshot).
     private async Task<Dictionary<Guid, ReportOrderExtra>> OrderExtrasAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
     {
         if (orderIds.Length == 0) return [];
@@ -426,7 +427,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                    CASE WHEN customer_id IS NOT NULL AND customer_id <> '0' THEN 'i:' || md5("ConnectionId"::text || ':' || customer_id)
                         WHEN email LIKE '%_@_%' THEN 'e:' || md5(email)
                         WHEN length(phone) >= 10 THEN 'p:' || md5(right(phone, 10))
-                   END AS "CustomerKey"
+                   END AS "CustomerKey",
+                   coalesce(c->>'_ravenciaReadModelSource' = 'RETURN_CLAIM'
+                       OR (c->>'claimId' IS NOT NULL AND c->>'claimDate' IS NOT NULL
+                           AND (c->>'orderOutboundPackageId' IS NOT NULL OR c->>'orderShipmentPackageId' IS NOT NULL)), false) AS "ClaimBuilt"
             FROM keys
             """;
         var rows = await db.Database.SqlQueryRaw<ReportOrderExtra>(sql,
