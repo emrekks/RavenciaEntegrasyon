@@ -30,16 +30,14 @@ public static class ProductApprovalReconciliationPolicy
 
     // How long a still-pending approval waits for its next check, after 30 days of live approvals (29.10.2026): n11
     // and Shopify settle at the first check, Hepsiburada within 5-10 minutes, Trendyol in about 2 hours, Pazarama in
-    // hours to days (a person reviews it). So the first quarter hour is checked every 5 minutes, the first hour every
-    // 15, the first six hours every 30 (a Trendyol approval shows within half an hour), the first two days every 2 hours
-    // (a Pazarama review often ends on the second day) and then every 6: about 25 checks on the first day instead of 50.
-    // The card's refresh still checks at once. The last check is never planned past the deadline, which closes the
-    // reconciliation.
+    // hours to days (a person reviews it). So the first hour is checked every 15 minutes, the first six hours every 30 (a
+    // Trendyol approval shows within half an hour), the first two days every 2 hours (a Pazarama review often ends on
+    // the second day) and then every 6: about 23 checks on the first day instead of 50. The card's refresh still checks
+    // at once. The last check is never planned past the deadline, which closes the reconciliation.
     public static TimeSpan PendingRecheckDelay(DateTimeOffset startedAt, DateTimeOffset deadlineAt, DateTimeOffset now)
     {
         var pendingFor = now - startedAt;
-        var delay = pendingFor < TimeSpan.FromMinutes(15) ? TimeSpan.FromMinutes(5)
-            : pendingFor < TimeSpan.FromHours(1) ? TimeSpan.FromMinutes(15)
+        var delay = pendingFor < TimeSpan.FromHours(1) ? TimeSpan.FromMinutes(15)
             : pendingFor < TimeSpan.FromHours(6) ? TimeSpan.FromMinutes(30)
             : pendingFor < TimeSpan.FromHours(48) ? TimeSpan.FromHours(2)
             : TimeSpan.FromHours(6);

@@ -47,8 +47,8 @@ public sealed class ProductApprovalReconciliationPolicyTests
     }
 
     [Theory]
-    [InlineData(0, 5)]
-    [InlineData(14, 5)]
+    [InlineData(0, 15)]
+    [InlineData(14, 15)]
     [InlineData(15, 15)]
     [InlineData(59, 15)]
     [InlineData(60, 30)]
