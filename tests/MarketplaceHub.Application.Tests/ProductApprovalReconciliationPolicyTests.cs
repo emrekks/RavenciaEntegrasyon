@@ -55,7 +55,9 @@ public sealed class ProductApprovalReconciliationPolicyTests
     [InlineData(5 * 60 + 59, 30)]
     [InlineData(6 * 60, 120)]
     [InlineData(23 * 60 + 59, 120)]
-    [InlineData(24 * 60, 6 * 60)]
+    [InlineData(24 * 60, 120)]
+    [InlineData(48 * 60 - 1, 120)]
+    [InlineData(48 * 60, 6 * 60)]
     [InlineData(5 * 24 * 60, 6 * 60)]
     public void APendingApprovalIsCheckedLessOftenTheLongerItWaits(int pendingMinutes, int expectedMinutes)
     {
