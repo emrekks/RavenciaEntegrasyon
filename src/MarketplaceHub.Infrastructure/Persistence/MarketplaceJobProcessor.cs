@@ -972,7 +972,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var now = timeProvider.GetUtcNow();
         job.AttemptCount++;
-        if (JobWaitingPolicy.IsWaiting(result) && now - job.CreatedAt < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
+        if (JobWaitingPolicy.IsWaiting(result) && JobLeaseService.AllowanceAge(job, now) < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
         {
             job.MaxAttempts++;
             job.WaitingChecks++;

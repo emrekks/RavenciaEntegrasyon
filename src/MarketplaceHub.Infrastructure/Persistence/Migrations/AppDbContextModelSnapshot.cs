@@ -2157,6 +2157,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(48)")
                         .HasDefaultValue("jobs");
 
+                    b.Property<DateTimeOffset?>("RetriedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
