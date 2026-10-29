@@ -596,6 +596,36 @@ public static class PriceInventoryOutboxPolicy
         var revisionHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(revision)));
         return $"price-inventory:{connectionId:N}:revision:{revisionHash}";
     }
+
+    // Q-1/K-1: a job queued, running or succeeded still stands for its values, so the same values are not
+    // queued again. A job that ended without getting them through (blocked, dead, cancelled, manual review)
+    // gives up its dedup key ("...:retired:{id}") so they can be sent again; before, it kept the key until
+    // retention removed it, and the reconcile scan and the panel's send took it as already sent.
+    public static bool HoldsDedupKey(JobStatus status) =>
+        status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled or JobStatus.Succeeded;
+
+    public static string RetiredDedupKey(string dedup, Guid jobId) => $"{dedup}:retired:{jobId:N}";
+
+    // Codes of a job that stopped before its request: the automatic send checks the same switches first.
+    private static readonly string[] PreSendStopCodes = ["EXTERNAL_WRITES_DISABLED", "EXTERNAL_WRITE_POLICY_DISABLED", "CONNECTION_NOT_FOUND"];
+
+    // The marketplace answered and refused these very values; sent again they would be refused again.
+    private static readonly string[] RefusedValueCodes = ["PRICE_INVENTORY_REJECTED", "PRICE_INVENTORY_PARTIAL_FAILURE"];
+
+    public static readonly TimeSpan AutomaticResendAfter = TimeSpan.FromHours(1);
+
+    // The automatic send (a stock dispatch, the reconcile scan every 15 minutes) retires a failed job of the
+    // same values on its own terms: at once when the job stopped before its request (a cancelled job, a
+    // switch or policy that was off), an hour after it ended otherwise, so a failure that has not cleared
+    // (an expired key, an outage) costs one job an hour instead of one every scan; never when the
+    // marketplace refused the values, which wait for a new value or the panel's send.
+    public static bool AutomaticSendMayRetire(JobStatus status, string? lastErrorCode, DateTimeOffset? completedAt, DateTimeOffset now)
+    {
+        if (HoldsDedupKey(status)) return false;
+        if (status == JobStatus.Cancelled || status == JobStatus.Blocked && PreSendStopCodes.Contains(lastErrorCode, StringComparer.Ordinal)) return true;
+        if (RefusedValueCodes.Contains(lastErrorCode, StringComparer.Ordinal)) return false;
+        return completedAt is null || now - completedAt.Value >= AutomaticResendAfter;
+    }
 }
 
 public sealed record TrendyolStorefrontActivity(DateTimeOffset? LastOrderAt, DateTimeOffset? LastProbedAt, DateTimeOffset? PausedUntil = null);
@@ -968,6 +998,11 @@ public enum ExternalEffectOutcome { Applied, NotApplied, Unresolved, Wait }
 // an action the marketplace cannot confirm within 30 minutes is closed as unresolved.
 public static class ExternalEffectReconcilePolicy
 {
+    // A closed record's outcome: APPLIED when a read confirmed it, UNRESOLVED when it was closed without any
+    // read telling (Q-2: that is not "applied"). A record closed by a successful send carries none.
+    public const string AppliedOutcome = "APPLIED";
+    public const string UnresolvedOutcome = "UNRESOLVED";
+
     public static readonly TimeSpan MinimumAgeForNotApplied = TimeSpan.FromMinutes(2);
     public static readonly TimeSpan UnresolvedAfter = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan FirstCheckDelay = TimeSpan.FromSeconds(15);

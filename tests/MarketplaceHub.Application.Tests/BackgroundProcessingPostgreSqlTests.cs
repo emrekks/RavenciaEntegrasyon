@@ -211,6 +211,42 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await transaction.RollbackAsync();
     }
 
+    // Q-1/K-1: a failed price/stock write that gave up its key guards nothing and goes after the failed retention;
+    // one still holding its key is kept for the guard retention.
+    [PostgreSqlFact]
+    public async Task ARetiredPriceStockJobGoesAfterTheFailedRetention()
+    {
+        var aged = DateTimeOffset.UtcNow.AddDays(-40);
+        var tenant = NewTenant("bg-retired-push");
+        IntegrationJob Push(string dedup)
+        {
+            var job = NewJob(tenant.Id, MarketplaceJobTypes.PriceInventorySync);
+            job.JobDedupKey = dedup;
+            job.Status = JobStatus.Dead;
+            job.AttemptCount = job.MaxAttempts;
+            job.LastErrorCode = "REMOTE_5XX";
+            job.CreatedAt = aged;
+            job.CompletedAt = aged;
+            return job;
+        }
+        var dedup = $"price-inventory:{Guid.NewGuid():N}:revision:ABC";
+        var holding = Push($"price-inventory:{Guid.NewGuid():N}:revision:DEF");
+        var retired = Push(dedup);
+        retired.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, retired.Id);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.IntegrationJobs.AddRange(holding, retired);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await new JobRetentionService(db, fixture.TimeProvider).PurgeAsync(TimeSpan.FromDays(14), TimeSpan.FromDays(30), TimeSpan.FromDays(90), maximumBatches: 1_000, CancellationToken.None);
+
+        Assert.Equal([holding.Id], await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync());
+        await transaction.RollbackAsync();
+    }
+
     // An old list snapshot nothing uses goes with its items; the current one and a fresh one still being built stay.
     [PostgreSqlFact]
     public async Task OldReferenceSnapshotsGoWithTheirItemsWhileTheCurrentAndAFreshOneStay()
