@@ -10,6 +10,15 @@ describe('product platform list status', () => {
       .toBe('Ravencia Canlı bağlantısı var (35/35 varyant)')
   })
 
+  it('shows half-approved cards as partly live awaiting approval, not processing', () => {
+    const state = productPlatformDisplayState(['APPROVAL_PARTIAL_PENDING', 'APPROVAL_PARTIAL_PENDING'], false, 12)
+
+    expect(state).toBe('partial')
+    expect(productPlatformDisplayLabel('Pazarama', ['APPROVAL_PARTIAL_PENDING'], 12, 24, state))
+      .toBe('Pazarama: Kısmen Yayında · Kısmi Onay Bekliyor (12/24)')
+    expect(productPlatformDisplayState(['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING'], false, 3)).toBe('processing')
+  })
+
   it('shows partial marketplace matching as linked with its coverage', () => {
     const state = productPlatformDisplayState(['PARTIAL_LINKED'], false, 2)
 
