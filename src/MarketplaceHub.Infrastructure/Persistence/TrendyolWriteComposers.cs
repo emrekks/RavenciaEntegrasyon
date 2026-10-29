@@ -159,11 +159,12 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         // by an import) need not equal the panel's.
         // A link the marketplace refused twice as an unknown code is left out of a bulk or product send: it would only
         // be refused again. A send for that one variant still goes; a code a scan missed is still sent.
-        if (variantId is null) published.RemoveAll(row => row.Link is not null && MarketplaceVariantLinkHealth.SkipsBulkPush(row.Link.HealthStatus));
+        // A code the marketplace no longer knows (NOT_FOUND) gets no send at all, a variant-scoped one included.
+        var skippedByHealth = published.RemoveAll(row => row.Link is not null && MarketplaceVariantLinkHealth.SkipsPush(row.Link.HealthStatus, variantScoped: variantId is not null));
         var rows = published.Select(row => new GenericPriceInventoryRow(row.Offer, row.Variant, row.Inventory,
                 isHepsiburada ? row.ListingBarcode : row.Link?.ExternalBarcode ?? row.ListingBarcode,
                 row.Link?.ExternalSku ?? row.ListingSku, row.Link?.ExternalId, row.Link?.ExternalSku is not null,
-                isShopify ? row.Link?.ExternalId : null))
+                isShopify ? MarketplaceVariantLinkHealth.RemoteVariantId(row.Link?.ExternalId) : null))
             .ToList();
         // An imported variant has no listing rows: it goes by the marketplace codes its link carries.
         var publishedVariantIds = published.Select(row => row.Variant.Id).ToHashSet();
@@ -186,10 +187,11 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         {
             // Hepsiburada needs the hbSku beside the merchant SKU; a link that holds the merchant SKU instead stays out.
             if (isHepsiburada && !HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.Link.ExternalId)) continue;
-            if (variantId is null && MarketplaceVariantLinkHealth.SkipsBulkPush(row.Link.HealthStatus)) continue;
+            if (MarketplaceVariantLinkHealth.SkipsPush(row.Link.HealthStatus, variantScoped: variantId is not null)) { skippedByHealth++; continue; }
             rows.Add(new(row.Offer, row.Variant, row.Inventory, row.Link.ExternalBarcode ?? (isShopify ? row.Link.ExternalId : row.Link.ExternalSku!), row.Link.ExternalSku, row.Link.ExternalId, true,
                 isShopify ? row.Link.ExternalId : null));
         }
+        if (rows.Count == 0 && skippedByHealth > 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş ya da pazar yerinden içe aktarılmış varyant ve ACTIVE teklif gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
@@ -302,8 +304,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                                && (variantId == null || offer.VariantId == variantId)
                                && (productId == null || variant.ProductId == productId)
                           orderby variant.Id
-                          select new { Offer = offer, Variant = variant, Inventory = inventory, StockCode = remoteLink.ExternalId })
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, StockCode = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
             .ToListAsync(cancellationToken);
+        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped: variantId is not null)) > 0 && rows.Count == 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "N11 fiyat-stok gönderimi için N11 stok koduna bağlı varyant ve ACTIVE N11 teklifi gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
@@ -343,8 +346,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                                && (variantId == null || offer.VariantId == variantId)
                                && (productId == null || variant.ProductId == productId)
                           orderby variant.Id
-                          select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = remoteLink.ExternalId })
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
             .ToListAsync(cancellationToken);
+        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped: variantId is not null)) > 0 && rows.Count == 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Pazarama fiyat-stok gönderimi için Pazarama barkoduna bağlı varyant ve ACTIVE Pazarama teklifi gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
@@ -404,8 +408,10 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
                                && (scope == null || scope.Contains(variant.ProductId))
                           orderby variant.ProductId, variant.SortOrder, variant.Id
-                          select new { Offer = offer, Variant = variant, Inventory = inventory, Code = remoteLink.ExternalId })
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, Code = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
             .ToListAsync(cancellationToken);
+        // A code PTT AVM no longer knows is left out; one twice refused stays out of product and bulk sends.
+        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped: variantId is not null)) > 0 && rows.Count == 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PTT AVM fiyat-stok gönderimi için PTT AVM'ye bağlı varyant ve ACTIVE PTT AVM teklifi gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);

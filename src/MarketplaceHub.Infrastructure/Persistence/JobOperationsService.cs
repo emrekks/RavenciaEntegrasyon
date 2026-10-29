@@ -813,6 +813,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (dedupKey.StartsWith("scheduled:stock-reconcile-daily:", StringComparison.Ordinal)) return "STOCK_RECONCILE_DAILY";
         if (dedupKey.StartsWith("scheduled:reference:", StringComparison.Ordinal)) return "REFERENCE_DATA";
         if (dedupKey.StartsWith("scheduled:finance:", StringComparison.Ordinal)) return "FINANCE";
+        if (dedupKey.StartsWith("scheduled:listing-verify:", StringComparison.Ordinal)) return ListingVerificationPolicy.ResourceType;
         return null;
     }
 

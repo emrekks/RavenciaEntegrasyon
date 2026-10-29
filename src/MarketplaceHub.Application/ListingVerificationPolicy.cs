@@ -112,6 +112,35 @@ public static class ListingVerificationPolicy
             ? $"{PlatformName(platformCode)}: {products:N0} ürün pazaryerinde bulunamadı."
             : $"{PlatformName(platformCode)}: {products:N0} ürün ({variants:N0} varyant) pazaryerinde bulunamadı.";
 
-    // Where the summary leads: the products page filtered to the connection's codes the marketplace no longer knows.
-    public static string NotFoundHref(Guid connectionId) => $"/products?platform={connectionId:D}:NOT_FOUND";
+    // Where the summary leads: the products page filtered to the platform's products the marketplace no longer knows
+    // (the page's platform filter takes "<PLATFORM>:NOT_FOUND").
+    public static string NotFoundHref(string platformCode) => $"/products?platform={platformCode.Trim().ToUpperInvariant()}:NOT_FOUND";
+}
+
+// The position of a connection's verification, kept as JSON in its LISTING_VERIFY_STATE cursor: the run in progress
+// (its job, start, next page and counts) and the runs completed so far. An unreadable cursor starts afresh.
+public sealed record ListingVerificationState(
+    Guid? RunJobId = null,
+    DateTimeOffset? StartedAt = null,
+    string? Next = null,
+    int Pages = 0,
+    int Received = 0,
+    int CompletedRuns = 0,
+    DateTimeOffset? LastCompletedAt = null)
+{
+    private static readonly System.Text.Json.JsonSerializerOptions Options = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    public static ListingVerificationState Parse(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return System.Text.Json.JsonSerializer.Deserialize<ListingVerificationState>(json, Options) ?? new(); }
+        catch (System.Text.Json.JsonException) { return new(); }
+    }
+
+    public string ToJson() => System.Text.Json.JsonSerializer.Serialize(this, Options);
+
+    // A new run of this job: position and counts reset, the completed-run tally kept.
+    public ListingVerificationState Begin(Guid jobId, DateTimeOffset now) => this with { RunJobId = jobId, StartedAt = now.ToUniversalTime(), Next = null, Pages = 0, Received = 0 };
+
+    public ListingVerificationState Complete(DateTimeOffset now) => this with { RunJobId = null, Next = null, CompletedRuns = CompletedRuns + 1, LastCompletedAt = now.ToUniversalTime() };
 }

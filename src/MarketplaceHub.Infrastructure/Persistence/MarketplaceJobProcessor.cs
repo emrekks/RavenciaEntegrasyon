@@ -121,6 +121,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 else if (jobType == MarketplaceJobTypes.StageTestOrder) directResult = await CreateStageTestOrder(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.OrderReconciliation && platform == "TRENDYOL") directResult = await ReconcileTrendyolOrderWindows(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.ExternalEffectReconcile) directResult = await ReconcileExternalEffect(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+                else if (jobType == MarketplaceJobTypes.ListingVerify) directResult = await VerifyListings(tenantId, connectionId.Value, correlationId, jobId, cancellationToken);
+                else if (jobType == MarketplaceJobTypes.ListingLookup) directResult = await RunListingLookups(tenantId, connectionId.Value, correlationId, jobId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.OrderInvoiceReconciliation && platform == "TRENDYOL")
                     directResult = (await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken)).Unfinished
                         ? JobExecutionResult.Continue("Fatura kontrolü kaldığı siparişten birkaç saniye içinde devam edecek.")
@@ -234,6 +236,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         MarketplaceJobTypes.CommonLabel => "COMMON_LABEL",
         MarketplaceJobTypes.CapabilityProbe => "CAPABILITY_PROBE",
         MarketplaceJobTypes.StageTestOrder => "STAGE_TEST_ORDER",
+        MarketplaceJobTypes.ListingVerify => ListingVerificationPolicy.ResourceType,
+        MarketplaceJobTypes.ListingLookup => "LISTING_LOOKUP",
         _ => null
     };
 
@@ -592,6 +596,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             listing.ActualStatus = line.Succeeded ? (isShopify ? "LIVE" : "CREATE_ACCEPTED") : "CREATE_REJECTED";
             listing.RejectionCode = rejection;
             if (line.Succeeded) succeeded++;
+            if (line.Succeeded && isShopify) await EnsureLiveListingLink(tenantId, connectionId, listing, ShopifyVariantIdOrNull(line.ExternalId), createIfMissing: true, cancellationToken);
             if (states.TryGetValue(listing.VariantId, out var state))
             {
                 state.ActualStatus = listing.ActualStatus;
@@ -1187,7 +1192,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "SHOPIFY_PUBLICATION_PARTIAL", JobExecutionResult.ManualReview("SHOPIFY_PUBLICATION_PARTIAL", $"Shopify'da bu kartın varyantlarının hepsi etkin bir üründe değil: {string.Join(", ", missing)}."), cancellationToken);
         }
 
-        foreach (var listing in candidates)
+        foreach (var (listing, index) in candidates.Select((listing, index) => (listing, index)))
         {
             listing.ActualStatus = "LIVE";
             listing.RejectionCode = null;
@@ -1197,6 +1202,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 state.LastRejectionCode = null;
                 state.Version++;
             }
+            // The variant link (not the product link): Shopify answered this SKU's own variant id.
+            await EnsureLiveListingLink(tenantId, connectionId, listing, ShopifyVariantIdOrNull(remote[index].ExternalVariantId), createIfMissing: true, cancellationToken);
         }
         profile.ActualStatus = candidates.Count == listings.Count ? "LIVE" : "PARTIAL_FAILURE";
         profile.LastRejectionCode = null;
@@ -1387,10 +1394,79 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         link.Version++;
     }
 
+    // The marketplace answered the variant live: its link exists and reads healthy again, whatever a scan or a refused
+    // price/stock line said before (the panel trusts a broken link over a live listing).
     private async Task UpsertMarketplaceVariantLink(Guid tenantId, Guid connectionId, Guid variantId, string externalVariantId, CancellationToken cancellationToken)
     {
-        var variantLink = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken);
-        if (variantLink is null) db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = externalVariantId, Version = 1 });
+        var now = timeProvider.GetUtcNow();
+        var variantLink = db.MarketplaceVariantLinks.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
+            ?? await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken);
+        if (variantLink is null)
+        {
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = externalVariantId, LastSeenAt = now, Version = 1 });
+            return;
+        }
+        HealLiveLink(variantLink, now);
+    }
+
+    private void HealLiveLink(MarketplaceVariantLink link, DateTimeOffset now)
+    {
+        var wasBroken = link.HealthStatus is not null;
+        MarketplaceVariantLinkHealth.MarkSeen(link, now);
+        if (wasBroken && db.Entry(link).State != EntityState.Added) link.Version++;
+    }
+
+    // A listing variant the marketplace answered live. Its existing link is healed; a Shopify publication without a link
+    // gets one (Shopify keeps no import link for panel publications) under the variant id Shopify answered, or, until
+    // Shopify names it, under a placeholder that carries the listing's codes and is never sent as a variant id.
+    private async Task EnsureLiveListingLink(Guid tenantId, Guid connectionId, ChannelListingVariant listing, string? remoteVariantId, bool createIfMissing, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var remoteId = string.IsNullOrWhiteSpace(remoteVariantId) ? null : Short(remoteVariantId, 256);
+        var link = db.MarketplaceVariantLinks.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == listing.VariantId)
+            ?? await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == listing.VariantId, cancellationToken);
+        if (link is null)
+        {
+            if (!createIfMissing) return;
+            var own = string.IsNullOrWhiteSpace(listing.ExternalSku) ? listing.ExternalBarcode : listing.ExternalSku;
+            var code = remoteId ?? (string.IsNullOrWhiteSpace(own) ? null : MarketplaceVariantLinkHealth.ListingPlaceholderPrefix + Short(own, 240));
+            if (code is null || await ExternalIdTaken(tenantId, connectionId, code, null, cancellationToken)) return;
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                VariantId = listing.VariantId,
+                ExternalId = code,
+                ExternalSku = string.IsNullOrWhiteSpace(listing.ExternalSku) ? null : Short(listing.ExternalSku, 160),
+                ExternalBarcode = string.IsNullOrWhiteSpace(listing.ExternalBarcode) ? null : Short(listing.ExternalBarcode, 160),
+                LastSeenAt = now,
+                HealthChangedAt = now,
+                Version = 1
+            });
+            return;
+        }
+        if (remoteId is not null && MarketplaceVariantLinkHealth.IsListingPlaceholder(link.ExternalId) && !await ExternalIdTaken(tenantId, connectionId, remoteId, link.Id, cancellationToken))
+        {
+            link.ExternalId = remoteId;
+            link.Version++;
+        }
+        HealLiveLink(link, now);
+    }
+
+    private async Task<bool> ExternalIdTaken(Guid tenantId, Guid connectionId, string externalId, Guid? exceptLinkId, CancellationToken cancellationToken) =>
+        db.MarketplaceVariantLinks.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalId && x.Id != exceptLinkId)
+        || await db.MarketplaceVariantLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalId && x.Id != exceptLinkId, cancellationToken);
+
+    // Shopify answers a variant as a gid ("gid://shopify/ProductVariant/44791234567890"); the links keep the numeric id an
+    // import stores. Anything else is not a Shopify variant id.
+    internal static string? ShopifyVariantIdOrNull(string? value)
+    {
+        var id = value?.Trim();
+        if (string.IsNullOrEmpty(id)) return null;
+        const string prefix = "gid://shopify/ProductVariant/";
+        if (id.StartsWith(prefix, StringComparison.Ordinal)) id = id[prefix.Length..];
+        return id.Length > 0 && id.All(char.IsAsciiDigit) ? id : null;
     }
 
     // Hepsiburada addresses a variant by its hbSku (HBCV…). Links an earlier import keyed by the merchant SKU (the
@@ -1429,7 +1505,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // One update per catalog page: a link whose code (its id, or the marketplace stock code or barcode beside it) is on
     // the page was seen now, and a broken one is healthy again. Matching more codes than the link's own only errs
     // towards "seen", never towards a false break.
-    private async Task MarkVariantLinksSeen(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> page, CancellationToken cancellationToken)
+    // heal: false (an observing verification run) records only when the code was seen and leaves its health alone.
+    private async Task MarkVariantLinksSeen(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> page, CancellationToken cancellationToken, bool heal = true)
     {
         var codes = page.SelectMany(product => product.Variants.SelectMany(variant => new[] { variant.ExternalVariantId, variant.Sku, variant.Barcode }))
             .Where(code => !string.IsNullOrWhiteSpace(code))
@@ -1438,9 +1515,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .ToArray();
         if (codes.Length == 0) return;
         var now = timeProvider.GetUtcNow();
-        await db.MarketplaceVariantLinks
+        var seen = db.MarketplaceVariantLinks
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
-                && (codes.Contains(x.ExternalId) || x.ExternalSku != null && codes.Contains(x.ExternalSku) || x.ExternalBarcode != null && codes.Contains(x.ExternalBarcode)))
+                && (codes.Contains(x.ExternalId) || x.ExternalSku != null && codes.Contains(x.ExternalSku) || x.ExternalBarcode != null && codes.Contains(x.ExternalBarcode)));
+        if (!heal)
+        {
+            await seen.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastSeenAt, now), cancellationToken);
+            return;
+        }
+        await seen
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.LastSeenAt, now)
                 .SetProperty(x => x.HealthChangedAt, x => x.HealthStatus != null ? now : x.HealthChangedAt)
@@ -1453,8 +1536,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // A code saved by hand after the scan began is left alone until the next scan.
     private async Task MarkMissingVariantLinks(Guid tenantId, Guid connectionId, string platformCode, DateTimeOffset scanStartedAt, CancellationToken cancellationToken)
     {
-        var links = db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
-            && (x.HealthStatus == null || x.HealthStatus == MarketplaceVariantLinkHealth.Suspect || x.HealthStatus == MarketplaceVariantLinkHealth.Unverified));
+        // Archived panel variants and publications still on their way are never judged (VerifiableVariantLinks).
+        var links = VerifiableVariantLinks(tenantId, connectionId);
         var healthy = await links.CountAsync(cancellationToken);
         if (healthy == 0) return;
         var seen = await links.CountAsync(x => x.LastSeenAt >= scanStartedAt, cancellationToken);
@@ -1865,6 +1948,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 var status = payload.Archived ? "ARCHIVED" : "LIVE"; listing.ActualStatus = status; listing.RejectionCode = null;
                 if (states.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = status; state.LastRejectionCode = null; state.Version++; }
+                if (!payload.Archived) await EnsureLiveListingLink(tenantId, connectionId, listing, null, createIfMissing: false, cancellationToken);
                 succeeded++;
             }
             else if (result.Value!.Status is "NOT_FOUND" or "PENDING_APPROVAL" || (payload.Archived && result.Value.Status == "APPROVED") || (!payload.Archived && result.Value.Status == "ARCHIVED")) pending++;
@@ -2022,6 +2106,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await RecordPushedVariantLinkHealth(tenantId, connectionId, unknownCodes, confirmedCodes, payload.SubmittedAt, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
+        // A code refused as unknown is looked up at the marketplace by itself: a well-formed answer without it breaks
+        // the link at once, one with it heals the link, and anything else leaves the strikes above to decide.
+        await QueueListingLookupsForRefusedCodes(tenantId, connectionId, unknownCodes.Keys.ToArray(), cancellationToken);
         if (failed == 0) return JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
@@ -2228,6 +2315,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // carries one part per piece, so each barcode is judged by the part that carried it.
         var outcomeOf = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.LineOutcomes(payload.ExternalOperationId!, payload.PayloadJson);
         var success = 0; var failed = 0;
+        var unknownCodes = new Dictionary<Guid, string>();
+        var confirmedCodes = new List<Guid>();
         foreach (var line in payload.Lines)
         {
             lineByBarcode.TryGetValue(line.Barcode, out var remote);
@@ -2239,6 +2328,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (priceOk) offer.LastPriceHash = line.PriceHash;
             if (stockOk) offer.LastStockProjectionVersion = line.ProjectionVersion;
             if (priceOk || stockOk) offer.Version++;
+            // Only Pazarama's own answer for the barcode speaks for the code, as on the other marketplaces.
+            if (priceOk && stockOk && remote is { Succeeded: true }) confirmedCodes.Add(line.VariantId);
+            else if (remote is { Succeeded: false, Retryable: false } && MarketplaceVariantLinkHealth.MeansUnknownCode(remote.ErrorCode, remote.Status))
+                unknownCodes[line.VariantId] = remote.Status is { Length: > 0 } refusal && !string.Equals(refusal, "REJECTED", StringComparison.OrdinalIgnoreCase) ? refusal : remote.ErrorCode ?? "Pazaryeri kodu tanımadı.";
             if (priceOk && stockOk) { success++; continue; }
             failed++;
             var issueCode = SafeCode(code ?? notSentCode) ?? "PRICE_INVENTORY_LINE_REJECTED";
@@ -2246,6 +2339,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{issueCode}", issueCode, $"Pazarama {what} güncellemesini almadı: {line.Barcode}{(remote?.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.", cancellationToken);
         }
         await db.SaveChangesAsync(cancellationToken);
+        if (unknownCodes.Count > 0 || confirmedCodes.Count > 0)
+        {
+            await RecordPushedVariantLinkHealth(tenantId, connectionId, unknownCodes, confirmedCodes, payload.SubmittedAt, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        await QueueListingLookupsForRefusedCodes(tenantId, connectionId, unknownCodes.Keys.ToArray(), cancellationToken);
         if (failed == 0) return JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }

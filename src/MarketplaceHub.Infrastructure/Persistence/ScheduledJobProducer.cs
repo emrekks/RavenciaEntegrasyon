@@ -24,6 +24,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         {
             await ReferenceSnapshotBackfill.QueueMissingAsync(db, timeProvider, configuration, cancellationToken);
             db.ChangeTracker.Clear();
+            // Live Shopify publications without a variant link get one, so the link verification can judge them.
+            await ShopifyListingLinkBackfill.EnsureAsync(db, timeProvider, cancellationToken);
+            db.ChangeTracker.Clear();
         }
     }
 
@@ -79,7 +82,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
             // The cheap due check first: a policy queued less than its (shortest possible) interval ago is skipped
             // before any of the lookups below. Daily policies run only inside their afternoon window.
-            if (!MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
+            // The nightly link verification keeps its own window and catch-up (ListingVerificationPolicy); a run queued
+            // within the last hour is not looked at again.
+            var isListingVerify = row.Policy.ResourceType == ListingVerificationPolicy.ResourceType;
+            if (isListingVerify && row.Policy.LastScheduledAt is { } verifyQueuedAt && now - verifyQueuedAt < ListingVerificationPolicy.RetrySpacing) continue;
+            if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
             // Questions are rare; a connection without a new question for a while is asked less often.
             if (row.Policy.ResourceType == "QUESTIONS")
             {
@@ -145,12 +152,17 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var latest = row.Policy.LastScheduledAt ?? await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-            if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
+            if (isListingVerify)
+            {
+                if (!ListingVerificationPolicy.IsDue(now, await ListingVerifyCompletedAtAsync(row.Policy.TenantId, row.Connection.Id, cancellationToken), latest, jitterSeconds)) continue;
+            }
+            else if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
             // A hot order read of a connection without any order yet runs at once, whatever its interval.
             if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
                 && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) continue;
 
-            var bucket = now.ToUnixTimeSeconds() / interval;
+            // A verification run that did not complete is queued again within the same day, so its key changes hourly.
+            var bucket = now.ToUnixTimeSeconds() / (isListingVerify ? 3600 : interval);
             var jobs = new List<(string Dedup, string PayloadJson)>();
             if (row.Policy.ResourceType == "REFERENCE_DATA")
             {
@@ -231,6 +243,16 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         DailyScheduleWindowPolicy.Applies(intervalSeconds)
             ? DailyScheduleWindowPolicy.IsDue(now, latest, intervalSeconds, jitterSeconds)
             : latest is not { } last || last.AddSeconds(intervalSeconds + jitterSeconds) <= now;
+
+    // When the connection's last verification run completed (its state cursor), null before the first.
+    internal async Task<DateTimeOffset?> ListingVerifyCompletedAtAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var state = await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == ListingVerificationPolicy.StateCursorResource)
+            .Select(x => x.OpaqueCursor)
+            .FirstOrDefaultAsync(cancellationToken);
+        return ListingVerificationState.Parse(state).LastCompletedAt;
+    }
 
     internal Task<bool> ConnectionsWithoutPoliciesExistAsync(CancellationToken cancellationToken) =>
         db.PlatformConnections.AsNoTracking().AnyAsync(connection => (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
@@ -513,7 +535,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
         var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies
-            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_CARGO_INFO" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "REFERENCE_DATA" || x.ResourceType == "QUESTIONS" || x.ResourceType == "FINANCE" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return))
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_CARGO_INFO" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "REFERENCE_DATA" || x.ResourceType == "QUESTIONS" || x.ResourceType == "FINANCE" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return || x.ResourceType == ListingVerificationPolicy.ResourceType))
             .ToListAsync(cancellationToken);
         var obsoleteProductPolicies = await (from policy in db.ConnectionSyncPolicies
                                              join connection in db.PlatformConnections
@@ -608,6 +630,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
         new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
         new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:DailyJitterSeconds", 900)),
+        // The nightly link verification of every connection (03:00-06:00 Istanbul, ListingVerificationPolicy).
+        new(ListingVerificationPolicy.ResourceType, ListingVerificationPolicy.DefaultIntervalSeconds, 0, configuration.GetValue("MarketplaceSync:ListingVerify:JitterSeconds", ListingVerificationPolicy.DefaultJitterSeconds)),
         new(MarketplaceExternalWritePolicies.Price, 0, 0, 0),
         new(MarketplaceExternalWritePolicies.Stock, 0, 0, 0),
         new(MarketplaceExternalWritePolicies.Shipment, 0, 0, 0),
@@ -667,6 +691,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 : current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
             "REFERENCE_DATA" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 60),
             "FINANCE" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
+            ListingVerificationPolicy.ResourceType => current.IntervalSeconds == ListingVerificationPolicy.DefaultIntervalSeconds && current.OverlapSeconds == 0 && current.JitterSeconds == ListingVerificationPolicy.DefaultJitterSeconds,
             _ => false
         };
     }
@@ -698,6 +723,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "STOCK_RECONCILE_MEDIUM" => 71,
         "STOCK_RECONCILE_DAILY" => 72,
         "FINANCE" => 80,
+        ListingVerificationPolicy.ResourceType => 90,
         _ => 100
     };
 
@@ -719,12 +745,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or "ORDER_RECONCILE_SHORT"
         or "ORDER_RECONCILE_MEDIUM"
         or "ORDER_RECONCILE_DAILY"
-        or "ORDER_INVOICE_RECONCILIATION";
+        or "ORDER_INVOICE_RECONCILIATION"
+        or ListingVerificationPolicy.ResourceType;
 
     internal static bool SupportsShopifyPolicy(string resourceType) =>
         IsShopifyReadPolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
-    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS"
+    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS" or ListingVerificationPolicy.ResourceType
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // n11 flows join as their integration phases go live. Stock reconciliation carries
@@ -733,21 +760,21 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // RETURNS reads claims through the SOAP ReturnService; RETURN_WRITE sends approvals only.
     internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA"
             or "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" or "RETURNS" or "QUESTIONS"
-            or "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
+            or "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY" or ListingVerificationPolicy.ResourceType
         || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment or MarketplaceExternalWritePolicies.Return;
 
     // Pazarama runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the
     // open-order status scan (ORDER_LIFECYCLE), because the order list has no change filter, plus the
     // category/attribute/brand references and the daily money movements of the recent orders (FINANCE, production
     // stores only). The write flows are listed so the policies exist (and stay off) for the later phases.
-    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or "QUESTIONS" or "FINANCE"
+    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or "QUESTIONS" or "FINANCE" or ListingVerificationPolicy.ResourceType
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // PTT AVM runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the open-order
     // status scan (ORDER_LIFECYCLE), because the order list has no change filter, plus the daily category tree
     // (REFERENCE_DATA) and the returned order lines (RETURNS, read only). The write flows are listed so the
     // policies exist (and stay off) for the later phases.
-    internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS"
+    internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or ListingVerificationPolicy.ResourceType
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // The reference lists the REFERENCE_DATA policy keeps fresh. Trendyol and Pazarama products name a brand from
@@ -792,6 +819,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "REFERENCE_DATA" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.ReferenceSync), $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         "QUESTIONS" => (MarketplaceJobTypes.QuestionSync, $"scheduled:questions:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, kind = (string?)null })),
         "FINANCE" when platformCode == "TRENDYOL" => (MarketplaceJobTypes.TrendyolFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        ListingVerificationPolicy.ResourceType => (MarketplaceJobTypes.ListingVerify, $"scheduled:listing-verify:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "FINANCE" when platformCode == "PAZARAMA" => (MarketplaceJobTypes.PazaramaFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         _ => null
     };
