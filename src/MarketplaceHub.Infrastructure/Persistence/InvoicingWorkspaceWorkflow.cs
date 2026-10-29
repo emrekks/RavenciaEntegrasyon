@@ -663,6 +663,9 @@ public sealed partial class InvoicingBillingService
         var attempts = await db.InvoiceSubmissionAttempts.Where(item => item.TenantId == tenantId && item.InvoiceId == invoice.Id).ToListAsync(cancellationToken);
         if (attempts.Any(item => item.Outcome == "SUCCEEDED"))
             return ServiceResult<bool>.Fail("INVOICE_REMOTE_REFERENCE_EXISTS", "Bu fatura için başarılı bir gönderim kaydı var; yeniden gönderilemez.", 409);
+        // E-Faturam took the request (2xx) and only its answer was lost: the invoice may exist, so its result is awaited.
+        if (invoice.LastErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode || attempts.Any(item => item.ErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode))
+            return ServiceResult<bool>.Fail("INVOICE_PROVIDER_ANSWER_AWAITED", "E-Faturam bu fatura isteğini kabul etti ancak yanıtı okunamadı; fatura oluşmuş olabilir. Sonuç E-Faturam'dan okunana kadar yeniden gönderim açılamaz.", 409);
         var now = timeProvider.GetUtcNow();
         var needle = invoice.Id.ToString();
         var activeJob = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)

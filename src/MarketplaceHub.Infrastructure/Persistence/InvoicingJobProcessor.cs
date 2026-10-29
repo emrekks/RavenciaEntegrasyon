@@ -295,7 +295,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 if (InvoiceSubmissionOutcomePolicy.IsOutcomeUnknown(error))
                 {
                     MarkSubmissionUnknown(invoice, attempt, error.Code);
+                    attempt.ErrorClass = error.Class.ToString();
                     attempt.RemoteRequestId = error.RemoteRequestId;
+                    // An unreadable 2xx answer may still name the invoice: its UUID is kept and the invoice is read by it,
+                    // which settles the result (accepted, refused or still pending) without sending anything again.
+                    if (result.Value is { } partial && !string.IsNullOrWhiteSpace(partial.ExternalReference))
+                    {
+                        attempt.ExternalReference = partial.ExternalReference;
+                        invoice.ExternalReference = partial.ExternalReference;
+                        invoice.EttnUuid ??= partial.EttnUuid;
+                        invoice.InvoiceNumber ??= partial.InvoiceNumber;
+                        await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-submit", correlationId, CancellationToken.None);
+                    }
                     await db.SaveChangesAsync(CancellationToken.None);
                     throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_OUTCOME_UNKNOWN", "Sağlayıcı yanıtı mali faturanın oluşup oluşmadığını kesinleştirmedi. Aynı fatura yeniden gönderilmedi.", error.RemoteRequestId));
                 }
@@ -417,7 +428,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var result = await provider.QueryStatusAsync(Context(tenantId, connectionId, correlationId, $"reconcile:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), cancellationToken);
         if (!result.IsSuccess)
         {
-            invoice.LastErrorCode = result.Error!.Code;
+            // An invoice whose creation answer could not be read keeps saying so (E-Faturam's answer is awaited) until
+            // a read settles it; the failed read is on the job.
+            if (!(invoice.Status == InvoiceStatus.UnknownResult && invoice.LastErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode))
+                invoice.LastErrorCode = result.Error!.Code;
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);

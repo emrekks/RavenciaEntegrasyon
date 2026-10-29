@@ -4,6 +4,15 @@ import { invoiceFailureReason } from './invoice-failure-reasons'
 
 // Turkish text for the codes the invoice pages receive from the server; a code without a text is shown readable, never raw.
 
+// E-Faturam took the creation request (2xx) but its answer could not be read: the invoice may exist, so its result is
+// awaited from E-Faturam and nothing is resent or confirmed absent meanwhile (InvoiceSubmissionOutcomePolicy).
+export const providerAnswerAwaitedCode = 'EFATURAM_SUBMIT_ANSWER_UNREADABLE'
+export const providerAnswerAwaitedStatus = 'FATURA_CEVAP_BEKLENIYOR'
+
+export function invoiceAwaitsProviderAnswer(status: string | null | undefined, errorCode: string | null | undefined) {
+  return ['FATURA_BELIRSIZ', 'UNKNOWN_RESULT'].includes(status?.trim().toUpperCase() ?? '') && errorCode === providerAnswerAwaitedCode
+}
+
 /** The invoice detail's actions (InvoiceDetailView.AllowedActions). Delivery goes to the order's own marketplace. */
 export function invoiceDetailActionLabel(action: string, status?: string) {
   // A refused cancellation, or a pending one whose job ended, is requested again from the same button.

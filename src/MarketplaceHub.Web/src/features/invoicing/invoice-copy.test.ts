@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { invoiceConfirmResultLabel, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { invoiceGlyphKind } from './invoice-state-glyph'
 
 import { invoiceStatusLabel, invoiceStatusTone } from '../../shared/status-labels'
 
@@ -8,6 +9,15 @@ describe('invoice copy', () => {
     expect(invoiceDetailActionLabel('DELIVER')).toBe('Pazaryerine Fatura Linkini İlet')
     expect(invoiceDetailActionLabel('CANCEL')).toBe('E-Arşiv İptal İsteği Gönder')
     expect(invoiceDetailActionLabel('SOME_NEW_ACTION')).toBe('Some new action')
+  })
+
+  it('shows an unreadable E-Faturam answer as awaited, not as an uncertain result', () => {
+    expect(invoiceAwaitsProviderAnswer('FATURA_BELIRSIZ', 'EFATURAM_SUBMIT_ANSWER_UNREADABLE')).toBe(true)
+    expect(invoiceAwaitsProviderAnswer('UNKNOWN_RESULT', 'EFATURAM_SUBMIT_ANSWER_UNREADABLE')).toBe(true)
+    expect(invoiceAwaitsProviderAnswer('FATURA_BELIRSIZ', 'INVOICE_SUBMISSION_TRANSPORT_UNKNOWN')).toBe(false)
+    expect(invoiceStatusLabel(providerAnswerAwaitedStatus)).toBe('E-Faturam Cevap Bekleniyor')
+    expect(invoiceStatusTone(providerAnswerAwaitedStatus)).toBe('warning')
+    expect(invoiceGlyphKind(providerAnswerAwaitedStatus)).toBe('sending')
   })
 
   it('offers a refused or stalled e-Archive cancellation again', () => {

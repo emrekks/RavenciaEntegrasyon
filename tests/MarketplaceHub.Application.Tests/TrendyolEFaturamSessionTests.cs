@@ -5,6 +5,8 @@ using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -63,6 +65,26 @@ public sealed class TrendyolEFaturamSessionTests
         Assert.True(InvoiceSubmissionOutcomePolicy.IsOutcomeUnknown(new(AdapterErrorClass.Remote5xx, "EFATURAM_SERVER_ERROR", "x", 503, null, null)));
         Assert.True(InvoiceSubmissionOutcomePolicy.IsOutcomeUnknown(new(AdapterErrorClass.TransientNetwork, "EFATURAM_TIMEOUT", "x", null, null, null)));
         Assert.False(InvoiceSubmissionOutcomePolicy.IsOutcomeUnknown(new(AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", "x", 403, null, null)));
+    }
+
+    // G-5 (29 Oct 2026): a 2xx answer to the creation request that cannot be read is an unknown outcome, never a failure,
+    // and the UUID it carries is kept.
+    [Fact]
+    public void Unreadable_creation_answer_is_an_unknown_outcome_that_keeps_the_uuid()
+    {
+        const string uuid = "4f1e2d3c-1111-4222-8333-944455566677";
+        Assert.True(InvoiceSubmissionOutcomePolicy.IsOutcomeUnknown(TrendyolEFaturamErrorMapper.UnreadableSubmissionAnswer("req-1")));
+
+        var missingNumber = TrendyolEFaturamJsonMapper.PartialOutgoingInvoice($$"""{"invoiceUuid":"{{uuid}}","invoiceId":null,"status":"10"}""", "req-1");
+        Assert.Equal(uuid, missingNumber!.ExternalReference);
+        Assert.Equal(uuid, missingNumber.EttnUuid);
+        Assert.Null(missingNumber.InvoiceNumber);
+
+        var notJson = TrendyolEFaturamJsonMapper.PartialOutgoingInvoice($$"""{"invoiceUuid":"{{uuid}}","invoiceId":"GIB2026""", null);
+        Assert.Equal(uuid, notJson!.ExternalReference);
+
+        Assert.Null(TrendyolEFaturamJsonMapper.PartialOutgoingInvoice("<html>ok</html>", null));
+        Assert.Null(TrendyolEFaturamJsonMapper.PartialOutgoingInvoice("""{"invoiceUuid":"not-a-uuid"}""", null));
     }
 
     [Fact]
