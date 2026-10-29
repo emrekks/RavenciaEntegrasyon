@@ -505,20 +505,24 @@ function variantAxisParts(signature: string | null | undefined) {
   return axes.length ? axes : parts.slice(0, 2)
 }
 
-// The variant stock table opens under its row. What falls below the list's scroll box or below the window (a row
-// near the bottom of the screen) is cut off, so it opens above when there is more visible room there, and is never
-// taller than the room it has.
+// The variant stock table is placed on the window, not inside the list's scroll box (which cut off every colour past the
+// box's edge): under its row, or above it when the window has more room there, as tall as all its colours need and
+// only scrolling when the window itself is too short for them.
 function placeVariantTip(anchor: HTMLElement) {
   const tip = anchor.querySelector<HTMLElement>('.rr-vtip')
-  const box = anchor.closest('.rr-tblwrap')?.getBoundingClientRect()
-  if (!tip || !box) return
+  if (!tip) return
+  const edge = 8, offset = 6
   const own = anchor.getBoundingClientRect()
-  const below = Math.min(box.bottom, window.innerHeight) - own.bottom - 12
-  const above = own.top - Math.max(box.top, 0) - 12
-  const needed = Math.min(tip.scrollHeight || 260, 260)
+  Object.assign(tip.style, { position: 'fixed', transform: 'none', right: 'auto', bottom: 'auto', maxHeight: 'none' })
+  const needed = tip.scrollHeight || 260
+  const below = window.innerHeight - own.bottom - offset - edge
+  const above = own.top - offset - edge
   const up = below < needed && above > below
+  const height = Math.max(96, Math.min(needed, up ? above : below))
   anchor.toggleAttribute('data-up', up)
-  tip.style.maxHeight = `${Math.max(96, Math.min(260, up ? above : below))}px`
+  tip.style.maxHeight = `${height}px`
+  tip.style.top = `${up ? own.top - offset - height : own.bottom + offset}px`
+  tip.style.left = `${Math.max(edge, Math.min(own.left, window.innerWidth - tip.offsetWidth - edge))}px`
 }
 
 export function ProductsPage() {
