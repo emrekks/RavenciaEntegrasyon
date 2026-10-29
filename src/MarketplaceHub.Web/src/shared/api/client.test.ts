@@ -154,3 +154,33 @@ describe('an expired security token', () => {
     expect(issued).toBe(1)
   })
 })
+
+describe('a request that lands while a new version starts', () => {
+  const jsonResponse = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  it('sends a write with an Idempotency-Key again after the proxy answered 502, and returns the real answer', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/v1/auth/csrf') return jsonResponse(200, { token: 'gw' })
+      calls += 1
+      return calls === 1 ? new Response('Bad Gateway', { status: 502 }) : jsonResponse(202, { jobId: 'j1' })
+    }))
+    const result = hubApi<{ jobId: string }>('/products/p1/publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': 'k1' }, body: '{}' })
+    await vi.advanceTimersByTimeAsync(2000)
+    await expect(result).resolves.toEqual({ jobId: 'j1' })
+    expect(calls).toBe(2)
+    vi.useRealTimers()
+  })
+
+  it('does not send a write without an Idempotency-Key again', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/v1/auth/csrf') return jsonResponse(200, { token: 'gw' })
+      calls += 1
+      return new Response('Bad Gateway', { status: 502 })
+    }))
+    await expect(hubApi('/products/p1', { method: 'PUT', body: '{}' })).rejects.toMatchObject({ status: 502 })
+    expect(calls).toBe(1)
+  })
+})

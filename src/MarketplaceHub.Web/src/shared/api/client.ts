@@ -129,8 +129,27 @@ export function automaticReadInit(init?: RequestInit): RequestInit | undefined {
   return method === 'GET' || method === 'HEAD' ? backgroundPollInit(init) : init
 }
 
+// A new version replaces the API in a few seconds; a request that lands in that gap gets 502/503/504 from the proxy (or
+// no answer at all) and was never handled. A write carrying an Idempotency-Key is safe to send again, so it is, after
+// 2, 4 and 6 seconds; the server answers a repeat of a request it did handle with the first result.
+const restartRetryDelaysMs = [2000, 4000, 6000]
+const restartStatuses = new Set([502, 503, 504])
+async function fetchThroughRestart(url: string, init?: RequestInit): Promise<Response> {
+  const repeatable = new Headers(init?.headers).has('Idempotency-Key')
+  for (let attempt = 0; ; attempt++) {
+    const last = !repeatable || attempt >= restartRetryDelaysMs.length
+    try {
+      const response = await fetchWithCsrf(url, init)
+      if (last || !restartStatuses.has(response.status)) return response
+    } catch (error) {
+      if (last || !(error instanceof TypeError)) throw error
+    }
+    await new Promise(resolve => setTimeout(resolve, restartRetryDelaysMs[attempt]))
+  }
+}
+
 export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchWithCsrf(`/api/v1${path}`, automaticReadInit(init))
+  const response = await fetchThroughRestart(`/api/v1${path}`, automaticReadInit(init))
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as ApiProblem
     if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
