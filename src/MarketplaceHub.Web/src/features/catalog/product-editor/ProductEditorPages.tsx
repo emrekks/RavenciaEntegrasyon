@@ -38,7 +38,8 @@ import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { publicationJobPollInterval } from '../publication-job-poll'
-import { publicationJobInline } from '../publication-job-inline'
+import { isRefreshJobRunning, publicationJobInline } from '../publication-job-inline'
+import { statusLabel } from '../../../shared/status-labels'
 import { familyCardsInPanelOrder } from '../family-card-order'
 import { productPublicationTargets, productSaveFeedback,publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
@@ -796,6 +797,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     staleTime: 0,
     retry: false
   })
+  // The job the card's refresh started (a status check or a product lookup): the icon turns while it runs, a stop
+  // button sits beside it, and when it ends the card's, its family's and the variants' states are read again.
+  const [refreshJobId, setRefreshJobId] = useState<string | null>(null)
   const refreshPublication = useMutation({
     mutationFn: async () => {
       if (!productId) throw new Error('Ürün kaydı bulunamadı.')
@@ -805,7 +809,8 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
         body: '{}'
       })
     },
-    onSuccess: async () => {
+    onSuccess: async accepted => {
+      setRefreshJobId(accepted?.jobId ?? null)
       // The refresh checks every colour card of the family: their statuses are read again too, not only this card's
       // (live 2026-10-28: all eight MZ054YNC cards LIVE on the server, the card showed "1/8 renk" from cached siblings).
       await Promise.all([statusKey, ...otherFamilyIds.map(id => ['publication-status', id, card.connection.id])]
@@ -822,7 +827,8 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const lookupKey = lookupKeys ? cardLookupKey(card.connection.platformCode, lookupKeys) : null
   const lookupProduct = useMutation({
     mutationFn: () => hubApi<AcceptedJob>(`/connections/${card.connection.id}/product-sync-jobs?${new URLSearchParams({ lookup: lookupKey ?? '', includeArchived: 'true' }).toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
-    onSuccess: async () => {
+    onSuccess: async accepted => {
+      setRefreshJobId(accepted?.jobId ?? null)
       await client.invalidateQueries({ queryKey: statusKey })
       onFeedback({ title: 'Ürün Pazaryerinde Aranıyor', message: `${platformName} mağazasında ${lookupKey} aranıyor; bulunursa varyantlar eşleştirilir ve durum güncellenir. Ürün bilgileri değiştirilmez.`, kind: 'info' })
     },
@@ -852,9 +858,24 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       staleTime: 0
     }))
   })
+  const refreshJob = useCardRefreshJob(refreshJobId, async job => {
+    await Promise.all([statusKey, ...otherFamilyIds.map(id => ['publication-status', id, card.connection.id]), ['product', productId]]
+      .map(queryKey => client.invalidateQueries({ queryKey })))
+    const status = job?.status.trim().toUpperCase()
+    if (status && status !== 'SUCCEEDED' && status !== 'CANCELLED')
+      onFeedback({ title: 'Sorgu Tamamlanamadı', message: `${platformName}: ${job?.lastErrorSummary?.trim() || statusLabel(status)}`, kind: 'error', persistent: true, context: { operation: 'Yayın durumu sorgulama', code: job?.lastErrorCode ?? undefined } })
+  }, {
+    onCancelled: () => onFeedback({ title: 'Sorgu Durduruldu', message: `${platformName} sorgusu durduruldu.`, kind: 'info' }),
+    onCancelFailed: message => onFeedback({ title: 'Sorgu Durdurulamadı', message: `${platformName}: sorgu durdurulamadı — ${message}`, kind: 'error', persistent: true })
+  })
+  const refreshBusy = refreshJob.running || refreshPublication.isPending || lookupProduct.isPending
   const ownLive = isPublicationLive(publication.data?.actualStatus)
   const familyLiveCount = (ownLive ? 1 : 0) + familyStatuses.filter(status => isPublicationLive(status.data?.actualStatus)).length
   const familyTotal = otherFamilyIds.length + 1
+  // On PTT AVM one request carries the whole family: a colour card the family's send carried has no record of its own
+  // until the status refresh takes it into that send, so it refreshes (not looks up) once a sibling is out there.
+  const pttAvmFamilySent = card.mode === 'PUBLISH' && card.connection.platformCode.trim().toUpperCase() === 'PTTAVM'
+    && familyStatuses.some(status => Boolean(status.data?.profileId) && Boolean(status.data?.actualStatus) && status.data?.actualStatus !== 'UNKNOWN')
   // Matched variants are the truth when they exist: every variant matched = live and not selectable; some = partly
   // live and selectable (Yayınla then sends only the cards none of whose variants is matched here).
   const linkedTotal = variantLinks?.total ?? 0
@@ -1006,9 +1027,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can open the publication issues */}
-      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}><i aria-hidden="true" />{displayedPublicationLabel}</button> : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning && !hasRequiredPublicationBlock ? jobView.message : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN'
-        ? <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>
-        : productId && card.mode !== 'READ_ONLY' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} mağazasında ürünü ara`} title={lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`} disabled={!lookupKey || lookupProduct.isPending || publication.isPending} onClick={() => lookupProduct.mutate()}><UiIcon name="refresh" /></button>}{jobRunning && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
+      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}><i aria-hidden="true" />{displayedPublicationLabel}</button> : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning && !hasRequiredPublicationBlock ? jobView.message : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
+        ? <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} yayın durumu sorgulanıyor` : `${card.name} yayın durumunu güncelle`} aria-busy={refreshBusy} title={refreshBusy ? 'Platformdaki durum sorgulanıyor…' : 'Platformdaki mevcut durumu yeniden sorgula'} disabled={refreshBusy || isPublicationStatusJobRunning(publication.data?.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>
+        : productId && card.mode !== 'READ_ONLY' && <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} mağazasında ürün aranıyor` : `${card.name} mağazasında ürünü ara`} aria-busy={refreshBusy} title={refreshBusy ? `${card.name} mağazasında ${lookupKey} aranıyor…` : lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`} disabled={!lookupKey || refreshBusy || publication.isPending} onClick={() => lookupProduct.mutate()}><UiIcon name="refresh" /></button>}{refreshJob.running && !(jobRunning && publication.data?.lastJobId === refreshJobId) && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={refreshJob.cancel.isPending ? `${card.name} sorgusu durduruluyor` : `${card.name} sorgusunu durdur`} title="Sorguyu Durdur" disabled={refreshJob.cancel.isPending} onClick={() => refreshJob.cancel.mutate()}><i aria-hidden="true" /></button>}{jobRunning &&<button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
     {valueMappingFixes.length > 0 && readinessCategoryScope && <button type="button" className="publish-platform-fix-mappings" onClick={() => setValueFixOpen(true)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${valueMappingFixes.length} değer`}>{valueMappingFixes.length}</span></button>}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
@@ -1054,6 +1075,37 @@ function usePublicationJobInline(jobId: string | null | undefined, productId: st
     onError: reason => notify.onCancelFailed(reason instanceof Error ? reason.message : 'bilinmeyen hata.')
   })
   return { view: enabled ? publicationJobInline(job.data?.job) : { state: 'hidden' as const }, cancel }
+}
+// The job a card's refresh started, read until it ends; onSettled runs once when it does (or when it can no longer be read).
+function useCardRefreshJob(jobId: string | null, onSettled: (job: PublicationJobDetail['job'] | undefined) => void | Promise<void>, notify: { onCancelled: () => void; onCancelFailed: (message: string) => void }) {
+  const client = useQueryClient()
+  const queryKey = ['publication-job', jobId ?? ''] as const
+  const job = useQuery({
+    queryKey,
+    queryFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    enabled: Boolean(jobId),
+    refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+    retry: false
+  })
+  const running = Boolean(jobId) && !job.isError && (job.isPending || isRefreshJobRunning(job.data?.job))
+  const settledJobId = useRef<string | null>(null)
+  const settle = useEffectEvent(() => { void onSettled(job.data?.job) })
+  useEffect(() => {
+    if (!jobId || running || settledJobId.current === jobId) return
+    settledJobId.current = jobId
+    settle()
+  }, [jobId, running])
+  const cancel = useMutation({
+    mutationFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
+    onSuccess: result => {
+      client.setQueryData(queryKey, result)
+      notify.onCancelled()
+    },
+    onError: reason => notify.onCancelFailed(reason instanceof Error ? reason.message : 'bilinmeyen hata.')
+  })
+  return { running, cancel }
 }
 // Variant option helpers: pure functions of a draft row, shared by the variant media and filter memos.
 function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {

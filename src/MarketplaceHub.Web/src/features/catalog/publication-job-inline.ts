@@ -38,3 +38,10 @@ export function publicationJobInline(job: PublicationJobSnapshot | null | undefi
   const label = job.progressLabel?.trim() || 'Yayın işlemi'
   return { state: 'running', message: `${label}: ${summary || progress || statusLabel(status)}` }
 }
+
+// The job a card's refresh started (a status check or a product lookup) is running until it ends; a status check that
+// only waits for the marketplace's approval has done its part (the card says "Onay bekliyor"), so the icon stops.
+export function isRefreshJobRunning(job: Pick<PublicationJobSnapshot, 'jobType' | 'status' | 'lastErrorCode'> | null | undefined) {
+  if (!job) return false
+  return !isSettledPublicationJob(job.status) && !isApprovalWaitJob(job)
+}

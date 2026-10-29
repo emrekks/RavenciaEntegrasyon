@@ -898,9 +898,13 @@
 .publish-platform-fact-publication .publish-tracking-stop > i { display: block; width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
 .publish-platform-fact-publication > small.publish-platform-job-note { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .publish-platform-fact-publication > small.publish-platform-job-note.is-muted { color: var(--rv-color-muted); }
+/* A refresh (status check or product lookup) in progress turns its icon until the job ends; the stop button sits beside it. */
+.publish-platform-fact-publication .publish-tracking-action.is-spinning:disabled { cursor: progress; opacity: 1; }
+.publish-platform-fact-publication .publish-tracking-action.is-spinning > svg { animation: rv-publish-status-spin .9s linear infinite; }
 @keyframes rv-publish-status-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .publish-platform-fact-publication .publish-platform-status.is-working > i { border-style: dotted; border-right-color: currentColor; animation: none; }
+  .publish-platform-fact-publication .publish-tracking-action.is-spinning > svg { animation: none; }
 }
 .app-shell.stitch-shell main .variant-row-actions > .variant-platform-status.variant-row-action::after {
   border-color: var(--rv-color-surface);
