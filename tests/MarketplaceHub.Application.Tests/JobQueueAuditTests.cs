@@ -64,6 +64,27 @@ public sealed class JobQueueAuditTests
         Assert.False(JobLeaseService.RefundsAttempt(JobExecutionResult.Retry("REMOTE_TIMEOUT"), TimeSpan.FromMinutes(1)));
     }
 
+    // Q-4 (29 Oct): a manual retry gives an older job one attempt; a busy lock or quota wait right after it used that
+    // attempt because the day of free deferrals counted from the job's creation, and the job died without running.
+    [Fact]
+    public void AManualRetryStartsTheDeferralAndWaitingAllowancesAgain()
+    {
+        var now = new DateTimeOffset(2026, 10, 29, 12, 0, 0, TimeSpan.Zero);
+        var job = new IntegrationJob { JobType = MarketplaceJobTypes.WebhookIngest, PayloadJson = "{}", PayloadHash = "h", JobDedupKey = "d", EffectIdempotencyKey = "e", CorrelationId = "c", CreatedAt = now.AddDays(-2) };
+        var busy = JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY");
+
+        Assert.False(JobLeaseService.RefundsAttempt(busy, JobLeaseService.AllowanceAge(job, now)));
+
+        job.RetriedAt = now.AddMinutes(-1);
+        Assert.Equal(TimeSpan.FromMinutes(1), JobLeaseService.AllowanceAge(job, now));
+        Assert.True(JobLeaseService.RefundsAttempt(busy, JobLeaseService.AllowanceAge(job, now)));
+        Assert.True(JobLeaseService.AllowanceAge(job, now) < JobWaitingPolicy.FreeWaitingWindow(job.JobType));
+
+        // A retry stamped before the creation (clock skew) never makes a job older than it is.
+        job.RetriedAt = now.AddDays(-3);
+        Assert.Equal(TimeSpan.FromDays(2), JobLeaseService.AllowanceAge(job, now));
+    }
+
     [Fact]
     public void AReturnDecisionReadBackSerializesWithReturnReadsAndPackageChecksWithOrderReads()
     {

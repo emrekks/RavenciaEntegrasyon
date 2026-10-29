@@ -354,6 +354,17 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             // At list price, as Trendyol's sales report shows returns.
             Assert.Equal(110m, before.Summary.ReturnedListAmount);
             Assert.Equal(1, before.Summary.ReturnClaims);
+            Assert.Equal(350m, before.Summary.NetRevenue);
+            // The overview reads the same rule (owner, 29 Oct 2026: a micro-export return keeps its revenue, Trendyol only
+            // takes the fee off the payout): the same revenue, returned amount and kept units on both pages.
+            var overviewBefore = await OverviewAsync(tenant.Id);
+            Assert.Equal(before.Summary.NetRevenue, overviewBefore.Sum(x => x.Amount));
+            Assert.Equal(before.Summary.ReturnedAmount, overviewBefore.Sum(x => x.ReturnedAmount));
+            Assert.Equal(before.Summary.KeptQuantity, overviewBefore.Sum(x => x.ProductQuantity));
+            Assert.Equal(before.Summary.Orders, overviewBefore.Sum(x => x.OrderCount));
+            Assert.Equal(1, overviewBefore.Sum(x => x.ReturnedOrderCount));
+            // The Romanian order's package was sent and its sale kept, so it counts as a package.
+            Assert.Equal(1, overviewBefore.Sum(x => x.PackageCount));
 
             await using (var refund = fixture.CreateContext())
             {
@@ -383,6 +394,11 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             Assert.Equal(400m, after.Summary.ReturnedAmount);
             Assert.Equal(410m, after.Summary.ReturnedListAmount);
             Assert.Equal(2, after.Summary.ReturnClaims);
+            Assert.Equal(50m, after.Summary.NetRevenue);
+            var overviewAfter = await OverviewAsync(tenant.Id);
+            Assert.Equal(after.Summary.NetRevenue, overviewAfter.Sum(x => x.Amount));
+            Assert.Equal(after.Summary.ReturnedAmount, overviewAfter.Sum(x => x.ReturnedAmount));
+            Assert.Equal(after.Summary.KeptQuantity, overviewAfter.Sum(x => x.ProductQuantity));
         }
         finally
         {
@@ -437,6 +453,14 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         var result = await new ReportsService(db, new FixedClock(Now)).SalesAsync(tenantId, new ReportSalesQuery(Day, Day, null, null, null, includeTest), CancellationToken.None);
         Assert.True(result.Succeeded, result.Error?.Message);
         return result.Value!;
+    }
+
+    private async Task<IReadOnlyList<DashboardPerformanceRowView>> OverviewAsync(Guid tenantId)
+    {
+        await using var db = fixture.CreateContext();
+        var result = await new DashboardReadService(db, new FixedClock(Now)).PerformanceAsync(tenantId, Day, Day, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        return result.Value!.Current;
     }
 
     private static Tenant NewTenant(string code) => new()

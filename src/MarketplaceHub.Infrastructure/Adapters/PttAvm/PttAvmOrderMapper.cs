@@ -70,7 +70,7 @@ public static class PttAvmOrderMapper
             var barcode = Value(line, "VariantBarkod") is { } variantBarcode && !variantBarcode.Contains(',', StringComparison.Ordinal) ? variantBarcode : Value(line, "UrunBarkod");
             var title = Value(line, "Urun") ?? barcode ?? lineId;
             var cancelled = raw == "Cancelled" ? quantity.Value : 0;
-            lines.Add(new(lineId, barcode ?? Value(line, "UrunId") ?? lineId, barcode, title, quantity.Value, decimal.Round(lineGross / quantity.Value, 4), Number(line, "KdvOrani") ?? 0, raw, LineSnapshot(line), cancelled));
+            lines.Add(new(lineId, barcode ?? Value(line, "UrunId") ?? lineId, barcode, title, quantity.Value, decimal.Round(lineGross / quantity.Value, 4), Number(line, "KdvOrani"), raw, LineSnapshot(line), cancelled));
             // The allocation counts only what is still active: a cancelled line's units are cancelled, not allocated, so the
             // package check (active + cancelled <= ordered) holds when other lines go on. A returned line was delivered first.
             allocations.Add(new(lineId, quantity.Value - cancelled, cancelled, Shipped(raw) ? quantity.Value : 0, raw is "Delivered" or "Returned" ? quantity.Value : 0, raw is "Returned" ? quantity.Value : 0));

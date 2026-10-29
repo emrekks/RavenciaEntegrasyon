@@ -155,7 +155,7 @@ public sealed class ExternalEffectSweep(AppDbContext db, TimeProvider timeProvid
     private async Task CloseUnresolvedAsync(ExternalEffectRecord effect, DateTimeOffset now, string summary, CancellationToken cancellationToken)
     {
         effect.CompletedAt = now;
-        effect.Outcome = "UNRESOLVED";
+        effect.Outcome = ExternalEffectReconcilePolicy.UnresolvedOutcome;
         // A return action's decision must not stay "in progress" forever: it fails with the code the next claim
         // read can still upgrade to success, as when the verification job closes the record.
         if (effect.Action?.StartsWith("RETURN_", StringComparison.Ordinal) == true)

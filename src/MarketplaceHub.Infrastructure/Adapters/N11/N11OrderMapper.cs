@@ -65,7 +65,7 @@ public static class N11OrderMapper
                 var barcode = Text(line, "barcode");
                 var sku = Text(line, "stockCode") ?? barcode ?? "";
                 var title = Text(line, "productName") ?? sku;
-                lines.Add(new(lineId, sku, barcode, title, quantity, price, Decimal(line, "vatRate") ?? 0, Text(line, "orderItemLineItemStatusName") ?? "", line.GetRawText()));
+                lines.Add(new(lineId, sku, barcode, title, quantity, price, Decimal(line, "vatRate"), Text(line, "orderItemLineItemStatusName") ?? "", line.GetRawText()));
                 allocations.Add(new(lineId, quantity, 0, 0, 0, 0));
                 gross += price * quantity;
                 if (Decimal(line, "sellerInvoiceAmount") is { } invoiceAmount) net += invoiceAmount;

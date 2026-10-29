@@ -25,7 +25,7 @@ import './jobs-responsive.css'
 import './jobs-sade.css'
 import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
 import { useRememberedTabCounts } from '../../shared/tab-counts'
-import { formatDateTime, formatIstanbul } from '../../shared/format-date'
+import { formatDateTime, formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { jobAttemptDuration } from './job-duration'
@@ -165,11 +165,11 @@ function fallbackJobChange(job: JobSummary): JobChange {
   return { label: 'Yapılan Değişiklik', value: jobPresentation(job.jobType).action, detail: 'İşlem isteği sisteme kaydedildi.' }
 }
 
-function formatJobTime(value: string) {
+// "Bugün" is the Istanbul day, as the time beside it, whatever the browser's clock says.
+export function formatJobTime(value: string, now: Date = new Date()) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return { time: '—', day: '—' }
-  const now = new Date()
-  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
+  const sameDay = istanbulDateKey(date) === istanbulDateKey(now)
   return {
     time: formatIstanbul(date, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
     day: sameDay ? 'Bugün' : formatIstanbul(date, { day: '2-digit', month: '2-digit', year: 'numeric' })

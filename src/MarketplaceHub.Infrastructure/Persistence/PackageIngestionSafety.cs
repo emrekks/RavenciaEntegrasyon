@@ -12,10 +12,21 @@ public sealed record NormalizedPackageAllocation(
 
 public static class PackageLineProjectionPolicy
 {
+    // The lines follow the allocations of the event each current package's status came from, named by the
+    // package's status time. A package without a status time from the marketplace (PTT AVM) stores the time its
+    // status was first seen instead (audit S4), which names no event: while the read in hand still reports the
+    // status the package holds, the read's event is the one that status came from (audit 29 Oct S-1: no PTT AVM
+    // line was projected, so a cancelled line kept its stock and a delivered one read as not shipped).
     public static IReadOnlyDictionary<Guid, NormalizedPackageAllocation> Recalculate(
         IReadOnlyCollection<ShipmentPackage> packages,
-        IReadOnlyCollection<PackageLineAllocation> allocations)
+        IReadOnlyCollection<PackageLineAllocation> allocations,
+        IReadOnlyCollection<RemotePackage>? read = null)
     {
+        var readWithoutStatusTime = (read ?? [])
+            .Where(remote => remote.StatusTimeUnknown && !string.IsNullOrWhiteSpace(remote.ExternalPackageId))
+            .GroupBy(remote => remote.ExternalPackageId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(remote => remote.OccurredAt).First(), StringComparer.Ordinal);
+
         var packageByExternalId = packages
             .Where(package => !string.IsNullOrWhiteSpace(package.ExternalPackageId))
             .GroupBy(package => package.ExternalPackageId, StringComparer.Ordinal)
@@ -43,7 +54,10 @@ public static class PackageLineProjectionPolicy
 
         foreach (var package in currentPackages)
         {
-            var currentEventId = EventId(package.ExternalPackageId, package.StatusOccurredAt);
+            var currentEventId = readWithoutStatusTime.TryGetValue(package.ExternalPackageId, out var remote)
+                && string.Equals(remote.RawStatus, package.RawStatus, StringComparison.Ordinal)
+                    ? EventId(remote.ExternalPackageId, remote.OccurredAt)
+                    : EventId(package.ExternalPackageId, package.StatusOccurredAt);
             foreach (var allocation in allocations.Where(allocation =>
                          allocation.PackageId == package.Id
                          && allocation.SourceEventId == currentEventId))

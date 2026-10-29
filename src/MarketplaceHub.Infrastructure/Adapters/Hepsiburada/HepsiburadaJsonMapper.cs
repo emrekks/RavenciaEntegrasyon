@@ -427,7 +427,11 @@ internal static class HepsiburadaJsonMapper
         }
         if (lines.GroupBy(line => line.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
             throw new JsonException("Hepsiburada listing sonuçlarında yinelenen SKU var.");
-        return new($"LISTING_INVENTORY:{uploadId}", status, lines);
+        // Done lists the refused SKUs alone, so a SKU it leaves out was applied. A failed upload says nothing of the SKUs
+        // it leaves out: without any it is refused whole, with some those it leaves out stay unconfirmed. An error state
+        // that names no SKU is refused whole as well.
+        if (lines.Count == 0 && normalized is "FAILED" or "PARTIAL_SUCCESS" or "COMPLETED_WITH_ERRORS") return new($"LISTING_INVENTORY:{uploadId}", "REJECTED", []);
+        return new($"LISTING_INVENTORY:{uploadId}", status, lines, UnlistedLinesUnconfirmed: normalized == "FAILED");
     }
 
     public static RemoteOperationStatus ProductImportStatus(JsonElement root, string trackingId)
@@ -1002,7 +1006,8 @@ internal static class HepsiburadaJsonMapper
                 First(Text(line, "productName", "ProductName", "name", "Name"), Text(entry, "productName", "ProductName", "name", "Name"), Text(root, "productName", "ProductName", "name", "Name")) ?? sku,
                 quantity.Value,
                 unitPrice ?? 0m,
-                Decimal(line, "vatRate", "VatRate") ?? Decimal(root, "vatRate", "VatRate") ?? 0m,
+                // Live claims carry no VAT rate; a missing one is unknown, not 0%, and keeps the order line's rate (T-2).
+                Decimal(line, "vatRate", "VatRate") ?? Decimal(root, "vatRate", "VatRate"),
                 "ClaimCreated",
                 line.GetRawText()));
         }
@@ -1550,7 +1555,7 @@ internal static class HepsiburadaJsonMapper
         // product's own barcode is "productBarcode".
         var productBarcode = Text(line, "productBarcode", "ProductBarcode");
         var barcode = string.IsNullOrWhiteSpace(productBarcode) ? Text(line, "barcode", "Barcode") : productBarcode;
-        return new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, snapshot, cancelled);
+        return new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate"), status, snapshot, cancelled);
     }
 
     // Every identity a line is known by (id, lineItemId, orderLineId) leads to its ExternalLineId, so a package

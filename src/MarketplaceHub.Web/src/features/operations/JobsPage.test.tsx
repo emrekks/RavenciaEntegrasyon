@@ -57,7 +57,7 @@ vi.mock('../../shared/api', () => {
   return { ...mocked, hubPoll: mocked.hubApi }
 })
 
-import { JobsPage } from './pages'
+import { formatJobTime, JobsPage } from './pages'
 
 const me = { id: 'user-1', email: 'ops@example.test', displayName: 'Operasyon', role: 'OWNER', state: 'ACTIVE', tenantId: 'tenant-1' } as unknown as Me
 
@@ -258,5 +258,23 @@ describe('JobsPage platform filter', () => {
     await settle()
     expect(currentSearch).toBe('')
     expect(pageRequests().at(-1)!.get('platform')).toBeNull()
+  })
+})
+
+// Audit 29 Oct 2026, W-5: "Bugün" is the Istanbul day even when the browser's clock is on another zone.
+describe('JobsPage day label', () => {
+  // A browser on UTC: its local clock reads are the UTC ones.
+  const spies: Array<{ mockRestore: () => void }> = []
+  beforeEach(() => {
+    for (const [local, utc] of [['getFullYear', 'getUTCFullYear'], ['getMonth', 'getUTCMonth'], ['getDate', 'getUTCDate'], ['getHours', 'getUTCHours'], ['getMinutes', 'getUTCMinutes']] as const)
+      spies.push(vi.spyOn(Date.prototype, local).mockImplementation(function (this: Date) { return this[utc]() }))
+  })
+  afterEach(() => { spies.splice(0).forEach(spy => spy.mockRestore()) })
+
+  it('calls only a job of the Istanbul day today', () => {
+    // 01:00 in Istanbul (22:00 UTC the day before): a job at 23:30 Istanbul time was yesterday.
+    const now = new Date('2026-10-28T22:00:00Z')
+    expect(formatJobTime('2026-10-28T20:30:00Z', now)).toEqual({ time: '23:30:00', day: '28.10.2026' })
+    expect(formatJobTime('2026-10-28T21:30:00Z', now)).toEqual({ time: '00:30:00', day: 'Bugün' })
   })
 })

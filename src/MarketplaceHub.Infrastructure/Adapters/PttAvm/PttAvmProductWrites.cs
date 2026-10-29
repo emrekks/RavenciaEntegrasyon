@@ -48,6 +48,9 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
     internal async Task<AdapterResult<RemoteOperationRef>> CreateVariantProductAsync(PttAvmRequestContext account, PttAvmProductPayloadRules.ProductDraft draft, CancellationToken cancellationToken)
     {
         var variantList = await VariantListAsync(account, refresh: true, cancellationToken);
+        // A list read only in part may leave this model out, and a model left out reads as one without variants.
+        if (!variantList.IsSuccess && variantList.Error!.Code == VariantListIncompleteCode)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PTT AVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı ({variantList.Error.SafeMessage}); silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
         if (!variantList.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(variantList.Error!, variantList.RateLimit);
         var current = await ReadProductPageAsync(account, null, draft.Barcode, cancellationToken);
         if (!current.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(current.Error!, current.RateLimit);

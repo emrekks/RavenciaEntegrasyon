@@ -6,6 +6,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -107,22 +108,56 @@ public sealed partial class InvoicingBillingService
 
                 // Checked before the in-progress rule: a submission the provider refused before creating
                 // anything sits in Submitting with an error code and is retryable, not in progress.
+                Guid? redraftedInvoiceId = null;
                 if (invoice is not null && InvoicingBillingService.CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference))
                 {
-                    invoice.IncludeInternetSalesInfo = request.IncludeInternetSalesInfo;
-                    invoice.UpdatedAt = timeProvider.GetUtcNow();
-                    invoice.Version++;
-                    await db.SaveChangesAsync(cancellationToken);
-                    var queuedRetry = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit-retry", correlationId, bulk, cancellationToken);
-                    if (!queuedRetry.Succeeded)
+                    // A provider number or ETTN means the provider may hold the invoice: it is reconciled, never sent again.
+                    if (!string.IsNullOrWhiteSpace(invoice.EttnUuid) || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
                     {
                         await transaction.RollbackAsync(cancellationToken);
-                        results.Add(new(confirmation.PackageId, invoice.Id, null, "BLOCKED", "SUBMIT", queuedRetry.Error!.Message));
+                        results.Add(new(confirmation.PackageId, invoice.Id, null, "BLOCKED", "REVIEW", "Faturanın sağlayıcıda numarası veya ETTN'si var; yeniden gönderilmedi. Durumu uzlaştırın."));
                         continue;
                     }
-                    await transaction.CommitAsync(cancellationToken);
-                    results.Add(new(confirmation.PackageId, invoice.Id, queuedRetry.Value, "QUEUED", "SUBMIT_RETRY", "Sağlayıcıdan kesin ret alınmış mevcut fatura güvenli biçimde tekrar sıraya alındı."));
-                    continue;
+
+                    // The preview is computed from the order as it is now; the refused draft froze the lines, totals and
+                    // receiver of its own day (a line cancelled since, a tax number corrected since). Sent as it is, the
+                    // provider would issue what the order no longer says.
+                    var (amountsDiffer, receiverDiffers) = await UnsentDraftDriftAsync(tenantId, invoice, preview, cancellationToken);
+                    if (amountsDiffer || receiverDiffers)
+                    {
+                        if (await ProviderRefusedEveryAttemptAsync(tenantId, invoice, cancellationToken))
+                        {
+                            // Never created at the provider: the draft is set aside and drafted again below from the
+                            // order, checked against the preview like any new draft.
+                            await RetireUnsentDraftAsync(tenantId, invoice, preview.PayableTotal, correlationId, cancellationToken);
+                            redraftedInvoiceId = invoice.Id;
+                            invoice = null;
+                        }
+                        else if (amountsDiffer)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            results.Add(new(confirmation.PackageId, invoice.Id, null, "BLOCKED", "REVIEW", "Kayıtlı fatura tutarları güncel önizlemeyle eşleşmiyor ve önceki gönderimin sonucu kesin değil; fatura eski tutarla gönderilmedi. Sağlayıcıdaki durumu uzlaştırın."));
+                            continue;
+                        }
+                    }
+
+                    if (invoice is not null)
+                    {
+                        invoice.IncludeInternetSalesInfo = request.IncludeInternetSalesInfo;
+                        invoice.UpdatedAt = timeProvider.GetUtcNow();
+                        invoice.Version++;
+                        await db.SaveChangesAsync(cancellationToken);
+                        var queuedRetry = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit-retry", correlationId, bulk, cancellationToken);
+                        if (!queuedRetry.Succeeded)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            results.Add(new(confirmation.PackageId, invoice.Id, null, "BLOCKED", "SUBMIT", queuedRetry.Error!.Message));
+                            continue;
+                        }
+                        await transaction.CommitAsync(cancellationToken);
+                        results.Add(new(confirmation.PackageId, invoice.Id, queuedRetry.Value, "QUEUED", "SUBMIT_RETRY", "Sağlayıcıdan kesin ret alınmış mevcut fatura güvenli biçimde tekrar sıraya alındı."));
+                        continue;
+                    }
                 }
 
                 if (invoice is not null && invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending)
@@ -145,7 +180,8 @@ public sealed partial class InvoicingBillingService
                     if (!created.Succeeded)
                     {
                         await transaction.RollbackAsync(cancellationToken);
-                        results.Add(new(confirmation.PackageId, null, null, "BLOCKED", "CREATE", created.Error!.Message));
+                        if (redraftedInvoiceId is not null) db.ChangeTracker.Clear();
+                        results.Add(new(confirmation.PackageId, redraftedInvoiceId, null, "BLOCKED", "CREATE", created.Error!.Message));
                         continue;
                     }
                     invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == created.Value!.Id, cancellationToken);
@@ -153,7 +189,8 @@ public sealed partial class InvoicingBillingService
                     if (invoice.TaxExclusiveTotal != preview.TaxExclusiveTotal || invoice.DiscountTotal != preview.DiscountTotal || invoice.TaxTotal != preview.TaxTotal || invoice.PayableTotal != preview.PayableTotal)
                     {
                         await transaction.RollbackAsync(cancellationToken);
-                        results.Add(new(confirmation.PackageId, null, null, "BLOCKED", "REFRESH_PREVIEW", "Oluşturulan fatura tutarları önizlemeyle eşleşmedi; fatura kesilmedi. Önizlemeyi yenileyip tekrar deneyin."));
+                        if (redraftedInvoiceId is not null) db.ChangeTracker.Clear();
+                        results.Add(new(confirmation.PackageId, redraftedInvoiceId, null, "BLOCKED", "REFRESH_PREVIEW", "Oluşturulan fatura tutarları önizlemeyle eşleşmedi; fatura kesilmedi. Önizlemeyi yenileyip tekrar deneyin."));
                         continue;
                     }
                 }
@@ -163,8 +200,14 @@ public sealed partial class InvoicingBillingService
                     var validated = await ValidateAsync(tenantId, invoice.Id, invoice.Version, cancellationToken);
                     if (!validated.Succeeded || validated.Value!.Status != InvoiceStatus.Ready.ToString().ToUpperInvariant())
                     {
-                        await transaction.CommitAsync(cancellationToken);
-                        results.Add(new(confirmation.PackageId, invoice.Id, null, "VALIDATION_FAILED", "REVIEW", validated.Succeeded ? InvoiceIssuePolicy.DescribeValidationCode(validated.Value!.LastErrorCode) : validated.Error!.Message));
+                        // A redraft that fails validation is undone: the refused draft stays retryable instead of a new one stuck in review.
+                        if (redraftedInvoiceId is not null)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            db.ChangeTracker.Clear();
+                        }
+                        else await transaction.CommitAsync(cancellationToken);
+                        results.Add(new(confirmation.PackageId, redraftedInvoiceId ?? invoice.Id, null, "VALIDATION_FAILED", "REVIEW", validated.Succeeded ? InvoiceIssuePolicy.DescribeValidationCode(validated.Value!.LastErrorCode) : validated.Error!.Message));
                         continue;
                     }
                     invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == invoice.Id, cancellationToken);
@@ -174,11 +217,14 @@ public sealed partial class InvoicingBillingService
                 if (!queued.Succeeded)
                 {
                     await transaction.RollbackAsync(cancellationToken);
-                    results.Add(new(confirmation.PackageId, invoice.Id, null, "BLOCKED", "SUBMIT", queued.Error!.Message));
+                    if (redraftedInvoiceId is not null) db.ChangeTracker.Clear();
+                    results.Add(new(confirmation.PackageId, redraftedInvoiceId ?? invoice.Id, null, "BLOCKED", "SUBMIT", queued.Error!.Message));
                     continue;
                 }
                 await transaction.CommitAsync(cancellationToken);
-                results.Add(new(confirmation.PackageId, invoice.Id, queued.Value, "QUEUED", "CREATE_AND_SUBMIT", "Fatura sağlayıcıya güvenli kuyruğa alındı. Kabul ve PDF hazır olduğunda platform iletimi başlayacak."));
+                results.Add(redraftedInvoiceId is null
+                    ? new(confirmation.PackageId, invoice.Id, queued.Value, "QUEUED", "CREATE_AND_SUBMIT", "Fatura sağlayıcıya güvenli kuyruğa alındı. Kabul ve PDF hazır olduğunda platform iletimi başlayacak.")
+                    : new(confirmation.PackageId, invoice.Id, queued.Value, "QUEUED", "SUBMIT_RETRY", "Sağlayıcıya ulaşmamış fatura güncel siparişten yeniden kuruldu ve önizlemedeki tutarla tekrar sıraya alındı."));
             }
             catch (DbUpdateException)
             {
@@ -313,7 +359,7 @@ public sealed partial class InvoicingBillingService
         else if (existing is null && activeLines.Any(line => InvoiceIssuePolicy.IsLineVatRateUnknown(marketplace.PlatformCode, line.SourceSnapshotJson)))
         {
             canCreate = false;
-            blockedReason = InvoiceIssuePolicy.LineVatRateUnknown.Message;
+            blockedReason = InvoiceIssuePolicy.LineVatRateUnknownFor(marketplace.PlatformCode).Message;
         }
         var nextAction = manualDocument is not null ? "MANUAL_DOCUMENT_PRESENT" : existing is null ? "CREATE_AND_SUBMIT"
             : ExistingInvoiceNextAction(existing.Status, existing.LastErrorCode, existing.ExternalReference);
@@ -398,6 +444,87 @@ public sealed partial class InvoicingBillingService
         InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending => "WAIT",
         _ => "REVIEW"
     };
+
+    internal const string RedraftedFromOrderCode = "INVOICE_REDRAFTED_FROM_ORDER";
+
+    // Whether a draft that was never sent still says what the preview says: its document type, totals and lines,
+    // and the order's party data frozen in its receiver.
+    private async Task<(bool AmountsDiffer, bool ReceiverDiffers)> UnsentDraftDriftAsync(Guid tenantId, Invoice invoice, InvoiceWorkspacePreviewItem preview, CancellationToken cancellationToken)
+    {
+        var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id).OrderBy(x => x.LineSequence).ToListAsync(cancellationToken);
+        var amountsDiffer = invoice.InvoiceType != preview.InvoiceType || invoice.Currency != preview.Currency
+            || invoice.TaxExclusiveTotal != preview.TaxExclusiveTotal || invoice.DiscountTotal != preview.DiscountTotal || invoice.TaxTotal != preview.TaxTotal || invoice.PayableTotal != preview.PayableTotal
+            || lines.Count != preview.Lines.Count
+            || lines.Zip(preview.Lines).Any(pair => pair.First.DescriptionSnapshot != pair.Second.Description || pair.First.SkuSnapshot != pair.Second.Sku
+                || pair.First.Quantity != pair.Second.Quantity || pair.First.UnitPrice != pair.Second.UnitPrice || pair.First.DiscountAmount != pair.Second.DiscountAmount
+                || pair.First.VatRate != pair.Second.VatRate || pair.First.VatAmount != pair.Second.VatAmount || pair.First.LineTotal != pair.Second.Total);
+
+        var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => new { x.CustomerSnapshotJson, x.InvoiceAddressSnapshotJson, x.ShipmentAddressSnapshotJson }).SingleAsync(cancellationToken);
+        var receiver = await db.InvoicePartySnapshots.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Role == "RECEIVER", cancellationToken);
+        bool receiverDiffers;
+        try
+        {
+            using var snapshot = JsonDocument.Parse(receiver is null ? "{}" : _partyProtector.Unprotect(receiver.ProtectedContent));
+            receiverDiffers = SnapshotString(snapshot.RootElement, "CustomerSnapshotJson") != order.CustomerSnapshotJson
+                || SnapshotString(snapshot.RootElement, "InvoiceAddressSnapshotJson") != order.InvoiceAddressSnapshotJson
+                || SnapshotString(snapshot.RootElement, "ShipmentAddressSnapshotJson") != order.ShipmentAddressSnapshotJson;
+        }
+        catch (Exception exception) when (exception is CryptographicException or JsonException)
+        {
+            // Submit stops on an unreadable receiver anyway; a fresh one from the order is the way out.
+            receiverDiffers = true;
+        }
+        return (amountsDiffer, receiverDiffers);
+    }
+
+    // Only a refusal proves the provider created nothing. An unknown or unfinished attempt, or the operator's word after
+    // one, may have left an invoice there under this draft's local reference, so such a draft is never redrafted.
+    private async Task<bool> ProviderRefusedEveryAttemptAsync(Guid tenantId, Invoice invoice, CancellationToken cancellationToken) =>
+        string.IsNullOrWhiteSpace(invoice.ExternalReference) && string.IsNullOrWhiteSpace(invoice.EttnUuid) && string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+        && invoice.LastErrorCode != OperatorConfirmedNoRemoteInvoiceCode
+        && !await db.InvoiceSubmissionAttempts.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id
+            && (x.Outcome != "FAILED" || x.ErrorCode == OperatorConfirmedNoRemoteInvoiceCode), cancellationToken);
+
+    // Sets a never-sent draft aside so the order's one fiscal slot can take a draft built from the order as it is now.
+    // Its frozen lines and receiver stay for audit (they are immutable); it leaves the sale slot like a replaced
+    // invoice, and a submission still waiting for it is stopped. A running one fails on the version change.
+    private async Task RetireUnsentDraftAsync(Guid tenantId, Invoice invoice, decimal previewPayable, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var needle = invoice.Id.ToString();
+        var waiting = await db.IntegrationJobs
+            .Where(job => job.TenantId == tenantId && (job.JobType == InvoicingJobTypes.InvoiceSubmit || job.JobType == InvoicingJobTypes.StageCapabilityProbe)
+                && job.PayloadJson.Contains(needle) && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
+            .ToListAsync(cancellationToken);
+        foreach (var job in waiting)
+        {
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.LastErrorCode = RedraftedFromOrderCode;
+            job.LastErrorSummary = "Fatura güncel siparişten yeniden kurulduğu için eski taslağın gönderimi durduruldu.";
+            job.Version++;
+        }
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = tenantId,
+            Action = "INVOICE_UNSENT_DRAFT_REDRAFTED",
+            TargetType = "Invoice",
+            TargetId = invoice.Id.ToString("D"),
+            Reason = string.Create(CultureInfo.InvariantCulture, $"pre-provider:{invoice.LastErrorCode}:payable:{invoice.PayableTotal:0.00}->{previewPayable:0.00}"),
+            CorrelationId = correlationId,
+            CreatedAt = now
+        });
+        invoice.SequencePurpose = "REPLACED";
+        invoice.IdempotencyKey = $"replaced:{invoice.Id:N}";
+        invoice.OrderFiscalGuarded = false;
+        invoice.Status = InvoiceStatus.CancelledLocal;
+        invoice.LastErrorCode = RedraftedFromOrderCode;
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+    }
 
     // The operator saw this invoice on the platform's own seller panel; the platform cannot report which invoice a package holds, so this is the proof.
     public async Task<ServiceResult<bool>> ConfirmMarketplaceDeliveredAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)

@@ -11,7 +11,8 @@ namespace MarketplaceHub.Api.Security;
 //   - "auth-step": second factor, password change and authenticator changes, 10 per
 //     minute per session (per network without one), so a sign-in burst does not use up the second step;
 //   - global: every API and SignalR request, RateLimits:PerNetworkPerMinute (default 1800) per minute,
-//     webhooks excepted; they have their own chain (WebhookRateLimits) and a concurrency cap;
+//     webhooks excepted; they have their own address limit and a concurrency cap here, and a connection
+//     limit the endpoint takes after the route check (WebhookRateLimits);
 //   - media: product image content (the public links marketplaces fetch while a bulk publish runs, and the
 //     panel's thumbnails) does not use up the global allowance: it has its own, generous one,
 //     RateLimits:MediaPerNetworkPerMinute (default 6000), so an office behind one NAT browsing products
@@ -28,10 +29,13 @@ public static class RateLimitPolicies
     public const string MediaPerNetworkSetting = "RateLimits:MediaPerNetworkPerMinute";
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
+    // The refusal every limit answers with, also the webhook endpoint's own connection limit.
+    public static readonly MarketplaceHub.Application.ServiceError Rejected = new("RATE_LIMITED", "Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.", StatusCodes.Status429TooManyRequests);
+
     public static void Configure(RateLimiterOptions options, IConfiguration configuration)
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.OnRejected = (context, _) => new ValueTask(ApiProblems.WriteAsync(context.HttpContext, "RATE_LIMITED", "Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.", StatusCodes.Status429TooManyRequests));
+        options.OnRejected = (context, _) => new ValueTask(ApiProblems.WriteAsync(context.HttpContext, Rejected));
         options.AddPolicy(AuthEndpoints.SignInRateLimit, context => FixedWindow($"sign-in:{ClientNetwork.PartitionKey(context)}", SignInPerMinute));
         options.AddPolicy(AuthEndpoints.StepRateLimit, context => FixedWindow(StepPartition(context), StepsPerMinute));
         var perNetwork = configuration.GetValue<int?>(PerNetworkSetting) is int configured && configured > 0 ? configured : DefaultPerNetworkPerMinute;

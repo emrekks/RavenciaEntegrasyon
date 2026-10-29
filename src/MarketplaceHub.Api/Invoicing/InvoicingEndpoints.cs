@@ -408,7 +408,8 @@ public static class InvoicingEndpoints
     // G10: the public invoice links have no expiry on purpose. The marketplaces keep the link they were given (Trendyol's
     // invoiceLink, the n11 .pdf form) and show it to the buyer for as long as the order is listed; an expiring link would
     // leave the buyer without the invoice. A link is withdrawn by removing it (link revocation clears the stored URL),
-    // and every opening is logged here so a leaked link's use can be traced. The token (a bearer secret) is never logged.
+    // and every opening is logged here so a leaked link's use can be traced. The token (a bearer secret) is never logged:
+    // not here, and not in the request path every event of the request carries (SecretPathEnricher masks it).
     private static void LogPublicInvoiceDocumentOpened(HttpContext http, string kind, Guid tenantId, Guid documentId) =>
         http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.InvoiceLinks")
             .LogInformation("Public {Kind} invoice document {DocumentId} of tenant {TenantId} opened from {ClientNetwork} (pdf alias: {PdfAlias}).",
