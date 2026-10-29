@@ -65,6 +65,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var previousOrderIds = previousOrders.Select(x => x.Id).ToArray();
         var previousOrderExtras = await OrderExtrasAsync(tenantId, previousOrderIds, cancellationToken);
         var previousLineExtras = await LineExtrasAsync(tenantId, previousOrderIds, cancellationToken);
+        // Only the carriers of its packages: its platform cargo is costed at the carrier's tariff, as the period's is.
+        var previousCarriers = await PackageCarriersAsync(tenantId, allowedIds, previous, cancellationToken);
 
         // Uploaded commission tariffs whose weeks touch the period or the previous one: the fallback rate for a line that
         // carries none.
@@ -81,7 +83,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
             new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
         var previousFinance = await FinanceAsync(tenantId, allowed, previousOrders, previous, cancellationToken);
         var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, previousOrderExtras, previousLines,
-            previousLineExtras, previousClaims, [], names, query.IncludeTest, tariffs, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken),
+            previousLineExtras, previousClaims, previousCarriers, names, query.IncludeTest, tariffs, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken),
             new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, previousOrders, cancellationToken)));
         var stockVariants = ReportBuilder.StockCandidates(input);
         var stock = stockVariants.Length == 0
@@ -386,9 +388,20 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                       }).ToListAsync(cancellationToken);
     }
 
+    // The carrier of each current package of the period's orders and nothing else, in one narrow read: rows holding only
+    // OrderId and CargoProvider, for the platform cargo estimate (ReportCosts), which reads no other field of the
+    // previous period's packages.
+    private async Task<List<ReportPackageRow>> PackageCarriersAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken) =>
+        await (from row in PeriodOrders(tenantId, allowedIds, period)
+               join package in MarketplaceSalesService.CurrentShipmentPackages(db) on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { package.TenantId, package.OrderId }
+               where package.CargoProviderExternalId != null && package.CargoProviderExternalId != ""
+               select new ReportPackageRow { OrderId = package.OrderId, CargoProvider = package.CargoProviderExternalId })
+            .ToListAsync(cancellationToken);
+
     // City, district and a one-way customer key from the order's JSON snapshots, read in the database. A snapshot that
     // is not valid JSON reads as empty. The customer key is the store's own customer id, else the e-mail, else the
-    // last ten digits of the phone, each as an MD5 digest; the text itself is never returned.
+    // last ten digits of the phone, each as an MD5 digest; the text itself is never returned. ClaimBuilt: the customer
+    // snapshot still carries the return-claim mark (TrendyolJsonMapper.IsReturnClaimReadModelSnapshot).
     private async Task<Dictionary<Guid, ReportOrderExtra>> OrderExtrasAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
     {
         if (orderIds.Length == 0) return [];
@@ -414,7 +427,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                    CASE WHEN customer_id IS NOT NULL AND customer_id <> '0' THEN 'i:' || md5("ConnectionId"::text || ':' || customer_id)
                         WHEN email LIKE '%_@_%' THEN 'e:' || md5(email)
                         WHEN length(phone) >= 10 THEN 'p:' || md5(right(phone, 10))
-                   END AS "CustomerKey"
+                   END AS "CustomerKey",
+                   coalesce(c->>'_ravenciaReadModelSource' = 'RETURN_CLAIM'
+                       OR (c->>'claimId' IS NOT NULL AND c->>'claimDate' IS NOT NULL
+                           AND (c->>'orderOutboundPackageId' IS NOT NULL OR c->>'orderShipmentPackageId' IS NOT NULL)), false) AS "ClaimBuilt"
             FROM keys
             """;
         var rows = await db.Database.SqlQueryRaw<ReportOrderExtra>(sql,

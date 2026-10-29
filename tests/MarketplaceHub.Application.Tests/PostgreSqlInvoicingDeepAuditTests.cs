@@ -145,6 +145,209 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // G-3 (29 Oct 2026): a retried cancellation reads the provider first; an invoice already cancelled there is closed
+    // without a second request, and its links are marked for removal.
+    [PostgreSqlFact]
+    public async Task CancellationReadsTheProviderFirstAndClosesAnInvoiceAlreadyCancelledThere()
+    {
+        var seed = NewSeed("g3-read-first", InvoiceStatus.CancellationPending);
+        var delivered = NewDeliveryState(seed, "CONFIRMED");
+        await SeedAsync(seed, db => db.MarketplaceDeliveryStates.Add(delivered));
+        try
+        {
+            var provider = new ScriptedProvider { RemoteStatus = "CANCELLED" };
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null, provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceCancellation, InvoicePayload(seed), "g3-read-first", CancellationToken.None)).Succeeded);
+
+            Assert.Equal(0, provider.CancelCalls);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(InvoiceStatus.Cancelled, (await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id)).Status);
+            Assert.Equal(InvoiceAdjustmentTracking.RevocationRequiredStatus, (await verification.MarketplaceDeliveryStates.SingleAsync(item => item.Id == delivered.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // G-3: a refused session, missing access, "not found" or a conflict says nothing about the invoice; the cancellation
+    // stays pending and the job is tried again instead of the invoice landing in a final "cancellation refused".
+    [PostgreSqlFact]
+    public async Task CancellationKeepsWaitingAndRetriesAfterAnAnswerThatIsNotARefusal()
+    {
+        (AdapterErrorClass Class, string Code, int Status)[] answers =
+        [
+            (AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", 401),
+            (AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", 403),
+            (AdapterErrorClass.NotFound, "EFATURAM_RESOURCE_NOT_FOUND", 404),
+            (AdapterErrorClass.BusinessConflict, "EFATURAM_CONFLICT", 409)
+        ];
+        foreach (var answer in answers)
+        {
+            var seed = NewSeed($"g3-retry-{answer.Status}", InvoiceStatus.CancellationPending);
+            await SeedAsync(seed);
+            try
+            {
+                var provider = new ScriptedProvider { RemoteStatus = "ACCEPTED", CancelError = new(answer.Class, answer.Code, "E-Faturam isteği tamamlanmadı.", answer.Status, null, null) };
+                JobExecutionResult result;
+                await using (var db = fixture.CreateContext())
+                    result = await NewProcessor(db, null, provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceCancellation, InvoicePayload(seed), "g3-retry", CancellationToken.None);
+
+                Assert.Equal(JobCompletionKind.Retry, result.Kind);
+                Assert.Equal(1, provider.CancelCalls);
+                await using var verification = fixture.CreateContext();
+                var invoice = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+                Assert.Equal(InvoiceStatus.CancellationPending, invoice.Status);
+                Assert.Equal(answer.Code, invoice.LastErrorCode);
+            }
+            finally
+            {
+                await DeleteTenantAsync(seed.Tenant.Id);
+            }
+        }
+    }
+
+    // G-3: the provider's own refusal stays a refusal, and the panel can ask for the cancellation again; a pending one
+    // only once its job has ended.
+    [PostgreSqlFact]
+    public async Task ARefusedCancellationCanBeRequestedAgainFromThePanel()
+    {
+        var seed = NewSeed("g3-request-again", InvoiceStatus.CancellationPending);
+        seed.Provider.SettingsJson = JsonSerializer.Serialize(new { ExternalWritesEnabled = true });
+        await SeedAsync(seed);
+        try
+        {
+            var provider = new ScriptedProvider { RemoteStatus = "ACCEPTED", CancelError = new(AdapterErrorClass.Validation, "EFATURAM_REQUEST_REJECTED", "E-Faturam isteği reddetti.", 400, null, null) };
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(JobCompletionKind.Blocked, (await NewProcessor(db, null, provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceCancellation, InvoicePayload(seed), "g3-refused", CancellationToken.None)).Kind);
+
+            long version;
+            await using (var db = fixture.CreateContext())
+            {
+                var refused = await db.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
+                Assert.Equal(InvoiceStatus.CancellationRejected, refused.Status);
+                var service = NewBillingService(db, OpenWrites);
+                Assert.Contains("CANCEL", (await service.GetAsync(seed.Tenant.Id, seed.Invoice.Id, CancellationToken.None)).Value!.AllowedActions);
+                var queued = await service.EnqueueCancellationAsync(seed.Tenant.Id, seed.Invoice.Id, refused.Version, "g3-again", "g3-again", CancellationToken.None);
+                Assert.True(queued.Succeeded, queued.Error?.Message);
+                version = (await db.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id)).Version;
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(InvoiceStatus.CancellationPending, (await db.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id)).Status);
+                // The new request's job has not run yet: a third request waits for it.
+                var whileRunning = await NewBillingService(db, OpenWrites).EnqueueCancellationAsync(seed.Tenant.Id, seed.Invoice.Id, version, "g3-third", "g3-third", CancellationToken.None);
+                Assert.Equal("INVOICE_STATE_INVALID", whileRunning.Error?.Code);
+                await db.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceCancellation)
+                    .ExecuteUpdateAsync(setter => setter.SetProperty(job => job.Status, JobStatus.Dead));
+                var afterJobEnded = await NewBillingService(db, OpenWrites).EnqueueCancellationAsync(seed.Tenant.Id, seed.Invoice.Id, version, "g3-fourth", "g3-fourth", CancellationToken.None);
+                Assert.True(afterJobEnded.Succeeded, afterJobEnded.Error?.Message);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // G-5 (29 Oct 2026): E-Faturam answers the creation request with 2xx but the answer cannot be read. The invoice may
+    // exist: the result is unknown (never "failed"), the UUID the answer carried is kept and the invoice is read by it,
+    // and the operator cannot confirm it absent to send it again.
+    [PostgreSqlFact]
+    public async Task AnUnreadableCreationAnswerKeepsTheUuidAndQueuesAReadInsteadOfFailing()
+    {
+        const string uuid = "4f1e2d3c-1111-4222-8333-944455566677";
+        var seed = NewUnsentSeed("g5-uuid");
+        await SeedAsync(seed);
+        try
+        {
+            var provider = new ScriptedProvider
+            {
+                SubmitResult = new(false, new(uuid, null, uuid, "UNKNOWN", "req-g5"), new(AdapterErrorClass.ContractViolation, InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode, "Yanıt okunamadı.", null, null, "req-g5"), null)
+            };
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, UnverifiedRead(), provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceSubmit, InvoicePayload(seed), "g5-uuid", CancellationToken.None);
+                Assert.Equal("INVOICE_SUBMISSION_OUTCOME_UNKNOWN", result.ErrorCode);
+            }
+
+            await using (var verification = fixture.CreateContext())
+            {
+                var invoice = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+                Assert.Equal(InvoiceStatus.UnknownResult, invoice.Status);
+                Assert.Equal(InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode, invoice.LastErrorCode);
+                Assert.Equal((uuid, uuid), (invoice.ExternalReference, invoice.EttnUuid));
+                var attempt = await verification.InvoiceSubmissionAttempts.SingleAsync(item => item.InvoiceId == seed.Invoice.Id);
+                Assert.Equal(("UNKNOWN", uuid), (attempt.Outcome, attempt.ExternalReference));
+                Assert.True(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceReconcile));
+            }
+
+            await AgeInvoiceAsync(seed);
+            await using var refusal = fixture.CreateContext();
+            Assert.False((await NewBillingService(refusal, OpenWrites).ConfirmNoRemoteInvoiceAsync(seed.Tenant.Id, seed.Order.Id, "g5-confirm", CancellationToken.None)).Succeeded);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // G-5: without a UUID nothing can be read yet, and the "no invoice at the provider, send again" confirmation stays shut.
+    [PostgreSqlFact]
+    public async Task AnUnreadableCreationAnswerWithoutAUuidCannotBeConfirmedAbsent()
+    {
+        var seed = NewUnsentSeed("g5-no-uuid");
+        await SeedAsync(seed);
+        try
+        {
+            var provider = new ScriptedProvider
+            {
+                SubmitResult = AdapterResult<InvoiceSubmissionResult>.Failure(new(AdapterErrorClass.ContractViolation, InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode, "Yanıt okunamadı.", null, null, null))
+            };
+            await using (var db = fixture.CreateContext())
+                await NewProcessor(db, UnverifiedRead(), provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceSubmit, InvoicePayload(seed), "g5-no-uuid", CancellationToken.None);
+
+            await AgeInvoiceAsync(seed);
+            await using var db2 = fixture.CreateContext();
+            var invoice = await db2.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.Equal(InvoiceStatus.UnknownResult, invoice.Status);
+            Assert.Null(invoice.ExternalReference);
+            var confirmed = await NewBillingService(db2, OpenWrites).ConfirmNoRemoteInvoiceAsync(seed.Tenant.Id, seed.Order.Id, "g5-confirm", CancellationToken.None);
+            Assert.Equal("INVOICE_PROVIDER_ANSWER_AWAITED", confirmed.Error?.Code);
+            Assert.Equal(1, provider.SubmitCalls);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // An invoice in Submitting on a Pazarama order that the provider has not seen yet.
+    private Seed NewUnsentSeed(string code)
+    {
+        var seed = NewSeed(code, InvoiceStatus.Submitting, "PAZARAMA");
+        seed.Invoice.ExternalReference = null;
+        seed.Invoice.InvoiceNumber = null;
+        // An e-Archive names the package's carrier and shipping date.
+        seed.Invoice.PackageId = seed.Package.Id;
+        return seed;
+    }
+
+    // Pazarama answers every read before a write with UNVERIFIED.
+    private static RecordingMarketplace UnverifiedRead() => new()
+    {
+        Status = AdapterResult<InvoiceDeliveryStatus>.Success(new("read", MarketplaceInvoiceStatePolicy.Unverified, IsTerminal: true))
+    };
+
+    // The confirmation waits two minutes after the last change; the test moves the change back instead of waiting.
+    private async Task AgeInvoiceAsync(Seed seed)
+    {
+        await using var db = fixture.CreateContext();
+        await db.Invoices.Where(item => item.Id == seed.Invoice.Id).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.UpdatedAt, fixture.Now.AddMinutes(-10)));
+        await db.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id).ExecuteUpdateAsync(setter => setter.SetProperty(job => job.Status, JobStatus.Succeeded));
+    }
+
     // A worker leases the job between the cancellation's read of the waiting deliveries and its save.
     private sealed class LeaseJobBeforeCancellationSave(PostgreSqlTenantIsolationFixture fixture, Guid jobId) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
     {
@@ -469,6 +672,36 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
             }
             return Status ?? throw new InvalidOperationException("No status scripted.");
         }
+    }
+
+    private static string InvoicePayload(Seed seed) => JsonSerializer.Serialize(new { invoiceId = seed.Invoice.Id });
+
+    // The provider's status read answers RemoteStatus; a cancellation answers CancelError, or a pending acceptance.
+    private sealed class ScriptedProvider : IInvoiceProviderPort
+    {
+        public string RemoteStatus { get; init; } = "ACCEPTED";
+        public AdapterError? CancelError { get; init; }
+        public AdapterResult<InvoiceSubmissionResult>? SubmitResult { get; init; }
+        public int CancelCalls { get; private set; }
+        public int SubmitCalls { get; private set; }
+
+        public Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync(AdapterContext context, InvoiceSubmission submission, CancellationToken cancellationToken)
+        {
+            SubmitCalls++;
+            return Task.FromResult(SubmitResult ?? throw new InvalidOperationException("No submission answer scripted."));
+        }
+
+        public Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<InvoiceRemoteStatus>.Success(new(reference.ExternalReference, RemoteStatus, RemoteStatus, null, null, RemoteStatus != "PENDING")));
+        public Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken)
+        {
+            CancelCalls++;
+            return Task.FromResult(CancelError is { } error
+                ? AdapterResult<InvoiceCancellationResult>.Failure(error)
+                : AdapterResult<InvoiceCancellationResult>.Success(new(command.ExternalReference, "CANCELLATION_SUBMITTED", "PENDING", false)));
+        }
+        public Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class CancelledProvider : IInvoiceProviderPort

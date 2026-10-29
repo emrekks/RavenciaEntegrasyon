@@ -10,6 +10,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeProvider timeProvider, IConfiguration configuration) : IInventoryService
 {
+    private const string SalePriceRequired = "Satış fiyatı sıfırdan büyük olmalıdır.";
+
     public async Task<PageResult<InventoryItemView>> ListAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
         var afterId = Decode(after);
@@ -158,6 +160,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         var connectionExists = await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.ConnectionId, cancellationToken);
         var variantExists = await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.VariantId, cancellationToken);
         if (!connectionExists || !variantExists) return Invalid<ChannelOfferView>(!connectionExists ? "connectionId" : "variantId", "Bağlantı veya varyant bulunamadı.");
+        // W-3: no marketplace takes a sale price of zero (every composer refuses it), so it is not stored either.
+        if (command.SalePrice <= 0) return Invalid<ChannelOfferView>("salePrice", SalePriceRequired);
         if (command.ListPrice < 0 || command.SalePrice < 0 || command.ListPrice < command.SalePrice) return Invalid<ChannelOfferView>("salePrice", "Fiyatlar negatif olamaz ve liste fiyatı satış fiyatından küçük olamaz.");
         var currency = command.Currency.Trim().ToUpperInvariant();
         try { _ = Money.Create(command.SalePrice, currency); } catch (ArgumentException) { return Invalid<ChannelOfferView>("currency", "Currency üç büyük harften oluşmalıdır."); }
@@ -193,6 +197,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         var offer = await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (offer is null) return NotFound<ChannelOfferView>();
         if (offer.Version != expectedVersion) return ServiceResult<ChannelOfferView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{offer.Version}.", 412);
+        if (command.SalePrice <= 0) return Invalid<ChannelOfferView>("salePrice", SalePriceRequired);
         if (command.ListPrice < 0 || command.SalePrice < 0 || command.ListPrice < command.SalePrice) return Invalid<ChannelOfferView>("salePrice", "Fiyatlar negatif olamaz ve listPrice salePrice değerinden küçük olamaz.");
         var currency = command.Currency.Trim().ToUpperInvariant();
         try { _ = Money.Create(command.SalePrice, currency); } catch (ArgumentException) { return Invalid<ChannelOfferView>("currency", "Currency üç büyük harften oluşmalıdır."); }

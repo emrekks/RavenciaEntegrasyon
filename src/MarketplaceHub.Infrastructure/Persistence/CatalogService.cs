@@ -1120,15 +1120,21 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         }
         // Changed and removed links go first, so two variants swapping codes never meet the unique index half done.
         var added = new List<MarketplaceVariantLink>();
+        var readdressed = new HashSet<(Guid TenantId, Guid ConnectionId, Guid VariantId)>();
         foreach (var ((variantId, connectionId), code) in wanted)
         {
             var existing = links.FirstOrDefault(x => x.ConnectionId == connectionId && x.VariantId == variantId);
             if (existing is not null && string.Equals(existing.ExternalId, code, StringComparison.Ordinal)) continue;
+            // K-3: what was sent went to the old code (or, without a link, the fallback code); the new one gets it again.
+            readdressed.Add((tenantId, connectionId, variantId));
             if (existing is not null) db.MarketplaceVariantLinks.Remove(existing);
             // A typed code is unverified until an import reads it; the change time keeps a scan or push that began
             // before it from judging the new code.
             if (code is not null) added.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = code, HealthStatus = MarketplaceVariantLinkHealth.Unverified, HealthChangedAt = timeProvider.GetUtcNow(), Version = 1 });
         }
+        if (readdressed.Count > 0)
+            foreach (var offer in await ChannelOfferSendMarks.Candidates(db, readdressed).ToListAsync(cancellationToken))
+                if (readdressed.Contains((offer.TenantId, offer.ConnectionId, offer.VariantId))) ChannelOfferSendMarks.Reset(offer);
         try
         {
             await db.SaveChangesAsync(cancellationToken);

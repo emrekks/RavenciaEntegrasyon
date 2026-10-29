@@ -532,7 +532,7 @@ public static class InvoicingEndpoints
 
     internal static readonly HashSet<string> ManualInvoiceStatusPlatforms = new(["SHOPIFY", "N11", "PTTAVM", "PAZARAMA"], StringComparer.OrdinalIgnoreCase);
 
-    private static async Task<IResult> UpdateInvoiceWorkspaceManualStatusAsync(InvoiceWorkspaceManualStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    internal static async Task<IResult> UpdateInvoiceWorkspaceManualStatusAsync(InvoiceWorkspaceManualStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
@@ -558,8 +558,15 @@ public static class InvoicingEndpoints
             package.Version++;
             db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "INVOICE_WORKSPACE_STATUS_MANUAL", TargetType = "ShipmentPackage", TargetId = package.Id.ToString("D"), Reason = status, CorrelationId = http.TraceIdentifier, CreatedAt = now });
         }
+        // "Fatura Bekliyor" on an n11, Pazarama or PTT AVM package whose invoice was cancelled reopens it for a new
+        // invoice: these marketplaces cannot report that the cancelled invoice's link no longer counts.
+        var reopenedCount = status == "PENDING"
+            ? await MarketplaceInvoiceReopen.ReopenAsync(db, tenant.TenantId,
+                packages.Select(package => (package, packagePlatforms.Single(item => item.Id == package.Id).PlatformCode)).ToList(),
+                tenant.UserId, http.TraceIdentifier, now, http.RequestAborted)
+            : 0;
         await db.SaveChangesAsync(http.RequestAborted);
-        return Results.Ok(new { status, updatedCount = packages.Count });
+        return Results.Ok(new { status, updatedCount = packages.Count, reopenedCount });
     }
 
     private static async Task<IResult> UpdateInvoiceWorkspaceHiddenAsync(InvoiceWorkspaceHiddenCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
@@ -623,7 +630,7 @@ public static class InvoicingEndpoints
         return Results.Ok(new InvoiceWorkspaceConfirmResult(items));
     }
 
-    private sealed record InvoiceWorkspaceManualStatusCommand(IReadOnlyList<Guid> PackageIds, string Status);
+    internal sealed record InvoiceWorkspaceManualStatusCommand(IReadOnlyList<Guid> PackageIds, string Status);
     private sealed record InvoiceWorkspaceHiddenCommand(IReadOnlyList<Guid> PackageIds, bool Hidden);
 
     private static string? DetectInvoiceMimeType(byte[] bytes) => bytes.Length >= 5 && bytes[..5].SequenceEqual("%PDF-"u8.ToArray()) ? "application/pdf"

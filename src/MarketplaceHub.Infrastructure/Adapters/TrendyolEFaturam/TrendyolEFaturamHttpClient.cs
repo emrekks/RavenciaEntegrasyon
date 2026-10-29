@@ -89,7 +89,13 @@ public sealed class TrendyolEFaturamHttpClient(
         var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, endpoint, payload, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<InvoiceSubmissionResult>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<InvoiceSubmissionResult>.Success(TrendyolEFaturamJsonMapper.OutgoingInvoice(response.Value!.Body, response.Value.RemoteRequestId), response.RateLimit); }
-        catch (JsonException) { return AdapterResult<InvoiceSubmissionResult>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit); }
+        catch (JsonException)
+        {
+            // A 2xx answer means the provider took the request; one that cannot be read leaves the invoice's existence
+            // unknown, never failed. The UUID it does carry comes back with the error so the invoice can be read by it.
+            return new(false, TrendyolEFaturamJsonMapper.PartialOutgoingInvoice(response.Value!.Body, response.Value.RemoteRequestId),
+                TrendyolEFaturamErrorMapper.UnreadableSubmissionAnswer(response.Value.RemoteRequestId), response.RateLimit);
+        }
     }
 
     public async Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken)

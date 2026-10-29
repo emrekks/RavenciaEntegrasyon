@@ -100,6 +100,9 @@ internal sealed class ReportOrderExtra
     public string? ShippingTown { get; init; }
     public string? CustomerKey { get; init; }
     public string? CountryCode { get; init; }
+    // The order was built from a return claim and no full order read has completed it yet (the RETURN_CLAIM mark,
+    // TrendyolJsonMapper.IsReturnClaimReadModelSnapshot).
+    public bool ClaimBuilt { get; init; }
 }
 
 internal sealed class ReportLineRow
@@ -201,6 +204,16 @@ public static class ReportBuckets
         static string? Code(string? value) => value?.Trim().ToUpperInvariant() is { Length: 2 } code && code.All(char.IsAsciiLetterUpper) ? code : null;
         return Code(storeFrontCode) is { } storefront && storefront != Turkey ? storefront : Code(addressCountryCode) ?? Turkey;
     }
+
+    // A Trendyol order built from a return claim whose storefront no read has named: getClaims carries no storefront and a
+    // cross-border order's address is Trendyol's Istanbul export depot, so where it went is unknown (not Turkey, not abroad).
+    public const string UnknownCountry = TurkishProvinces.Unknown;
+
+    public static string Country(string platformCode, string? storeFrontCode, string? addressCountryCode, bool claimBuilt) =>
+        platformCode == "TRENDYOL" && string.IsNullOrWhiteSpace(storeFrontCode) && claimBuilt ? UnknownCountry : Country(storeFrontCode, addressCountryCode);
+
+    // An order that went to another country; an unknown country is neither Turkey nor abroad.
+    public static bool Abroad(string country) => country != Turkey && country != UnknownCountry;
 
     private static readonly Dictionary<string, string> CountryNames = new(StringComparer.Ordinal)
     {
@@ -367,7 +380,7 @@ internal static class ReportBuilder
                 order => input.Channels.TryGetValue(order.Order.ConnectionId, out var channel) && channel.IsTest, null, null), null);
         var cities = CityGroups(orders);
         var geography = new ReportGeographyView(CountryGroups(orders), CityGroups(previousOrders), CountryGroups(previousOrders),
-            orders.Count(order => order.Country != ReportBuckets.Turkey));
+            orders.Count(order => ReportBuckets.Abroad(order.Country)));
         var brands = LineGroups(lines, line => line.Row.BrandId is { } id && input.Names.Brands.TryGetValue(id, out var name) ? name : null);
         var categories = LineGroups(lines, line => line.Row.CategoryId is { } id && input.Names.Categories.TryGetValue(id, out var name) ? name : null);
 
@@ -482,7 +495,7 @@ internal static class ReportBuilder
                 }).ToList();
             }
             var extras = input.OrderExtras.GetValueOrDefault(order.Id);
-            var country = ReportBuckets.Country(order.StoreFrontCode, extras?.CountryCode);
+            var country = ReportBuckets.Country(platform, order.StoreFrontCode, extras?.CountryCode, extras?.ClaimBuilt == true);
             var domestic = country == ReportBuckets.Turkey;
             var city = extras is null || !domestic ? null : ReportBuckets.Province(extras.CityName, extras.City, extras.ShippingCity, extras.Province);
             var district = extras is null || city is null ? null : ReportBuckets.District(extras.DistrictName, extras.District, extras.ShippingDistrict, extras.Town, extras.ShippingTown);
@@ -810,8 +823,10 @@ internal static class ReportBuilder
                 .Select(x => $"{x.Key} {Count(x.Count())}");
             notes.Add($"{Count(summary.OrdersWithoutCity)} siparişin adresinde il okunamadı ({string.Join(", ", platforms)}); şehir tablosunda \"Bilinmiyor\" altında.");
         }
-        if (orders.Where(x => x.Country != ReportBuckets.Turkey).GroupBy(x => x.Country).OrderByDescending(x => x.Count()).Select(x => $"{ReportBuckets.CountryName(x.Key)} {Count(x.Count())}").ToList() is { Count: > 0 } abroad)
-            notes.Add($"{Count(orders.Count(x => x.Country != ReportBuckets.Turkey))} sipariş yurt dışına gitti ({string.Join(", ", abroad)}); Trendyol yurt dışı vitrin siparişlerinin adresi İstanbul'daki ihracat deposu olduğundan il dağılımına girmez, Dünya haritasında ülkesinde gösterilir.");
+        if (orders.Where(x => ReportBuckets.Abroad(x.Country)).GroupBy(x => x.Country).OrderByDescending(x => x.Count()).Select(x => $"{ReportBuckets.CountryName(x.Key)} {Count(x.Count())}").ToList() is { Count: > 0 } abroad)
+            notes.Add($"{Count(orders.Count(x => ReportBuckets.Abroad(x.Country)))} sipariş yurt dışına gitti ({string.Join(", ", abroad)}); Trendyol yurt dışı vitrin siparişlerinin adresi İstanbul'daki ihracat deposu olduğundan il dağılımına girmez, Dünya haritasında ülkesinde gösterilir.");
+        if (orders.Count(x => x.Country == ReportBuckets.UnknownCountry) is var unknownCountry and > 0)
+            notes.Add($"{Count(unknownCountry)} Trendyol siparişi iade kaydından kuruldu ve vitrini henüz okunamadı; ülkesi bilinmediği için il dağılımına ve yurt dışı siparişlere girmez, ülke tablosunda \"Bilinmiyor\" altında.");
         if (summary.OtherCurrencyOrders > 0)
             notes.Add($"{Count(summary.OtherCurrencyOrders)} sipariş TRY dışında bir para biriminde; tutarlara girmez, yalnız adetlerde sayılır.");
         notes.Add(commission.CoveredRevenue <= 0

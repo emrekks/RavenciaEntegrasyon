@@ -257,7 +257,7 @@ internal static class ReportCosts
         // The service fees and the withholding tax of the Trendyol orders Trendyol has not settled yet.
         foreach (var store in financeOrders.Where(order => !settled.Contains(order.Order.Id)).GroupBy(order => order.Order.ConnectionId))
         {
-            var serviceFee = Round(store.Count() * PlatformServiceFeePerOrder + store.Where(order => order.Country != ReportBuckets.Turkey).Sum(order => order.Kept) * InternationalServiceFeeRate);
+            var serviceFee = Round(store.Count() * PlatformServiceFeePerOrder + store.Where(order => ReportBuckets.Abroad(order.Country)).Sum(order => order.Kept) * InternationalServiceFeeRate);
             var stoppage = Round(store.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(VatFree) * StoppageRate);
             Line(MarketplaceFinanceCategories.ServiceFee).Estimate(serviceFee);
             Line(MarketplaceFinanceCategories.Stoppage).Estimate(stoppage);

@@ -106,6 +106,44 @@ public sealed class TrendyolCatalogMapperTests
         Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(projection.CustomerSnapshotJson));
         Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"claimId":"claim-1","claimDate":"2026-07-03T09:12:00Z","orderOutboundPackageId":"3968176322"}"""));
         Assert.False(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"customerFirstName":"Ada","customerLastName":"Yılmaz"}"""));
+        // The claim names no storefront: unknown, not TR.
+        Assert.Null(projection.StoreFrontCode);
+    }
+
+    // getClaims is read without a storefront header; a storefront the claim names itself builds the order in it.
+    [Theory]
+    [InlineData("\"orderCountryCode\": \"sa\",", "SA")]
+    [InlineData("\"storeFrontCode\": \"AZ\",", "AZ")]
+    [InlineData("\"orderCountryCode\": \"TR\",", "TR")]
+    [InlineData("\"orderCountryCode\": \"XX\",", null)]
+    [InlineData("", null)]
+    public void ReturnClaimProjection_TakesTheStorefrontTheClaimNames(string field, string? expected)
+    {
+        var payload = $$"""
+        {
+          {{field}}
+          "orderNumber": "11376153333",
+          "claimId": "claim-1",
+          "orderDate": 1782998302000,
+          "claimDate": 1783069920000,
+          "orderOutboundPackageId": "3968176322"
+        }
+        """;
+
+        var projection = TrendyolJsonMapper.OrderFromReturnClaim(payload);
+
+        Assert.NotNull(projection);
+        Assert.Equal(expected, projection.StoreFrontCode);
+    }
+
+    [Fact]
+    public void ReturnClaimMark_IsAddedToAReadCustomerSnapshot()
+    {
+        var marked = TrendyolJsonMapper.WithReturnClaimReadModelMark("""{"customerFirstName":"Ada"}""");
+
+        Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(marked));
+        Assert.Contains("Ada", marked, StringComparison.Ordinal);
+        Assert.Equal(marked, TrendyolJsonMapper.WithReturnClaimReadModelMark(marked));
     }
 
     [Theory]

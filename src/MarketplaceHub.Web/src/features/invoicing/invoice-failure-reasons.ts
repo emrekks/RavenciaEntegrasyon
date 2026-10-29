@@ -12,6 +12,8 @@ export function invoiceFailureReason(code: string | null) {
     INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'Fatura sağlayıcısı ve pazaryeri farklı ortamlarda. Platform iletimi engellendi.',
     REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.',
     INVOICE_SUBMISSION_OUTCOME_UNKNOWN: 'Sağlayıcıya gönderim sonucu alınamadı. Faturanın portalda oluşup oluşmadığını kontrol edin; oluşmadıysa yeniden gönderebilirsiniz.',
+    PTTAVM_INVOICE_LINK_REPLACE_IN_SELLER_PANEL: 'PTT AVM’de sipariş önceki (iptal edilen) faturayla işaretli; yeni fatura linki API ile gönderilmedi. Linki PTT AVM satıcı panelinde eskisinin yerine yükleyip “Pazaryerinde Gördüm, Tamamla”yı seçin.',
+    EFATURAM_SUBMIT_ANSWER_UNREADABLE: 'E-Faturam fatura isteğini kabul etti ama yanıtı okunamadı; fatura oluşmuş olabilir. Sonuç E-Faturam’dan okunana kadar yeniden gönderilmez.',
     INVOICE_SUBMISSION_CANCELLED: 'Gönderim sırasında bağlantı kesildi. Faturanın portalda oluşup oluşmadığını kontrol edin.',
     INVOICE_SUBMISSION_TRANSPORT_UNKNOWN: 'Sağlayıcıdan yanıt alınamadı. Faturanın portalda oluşup oluşmadığını kontrol edin.',
     REMOTE_INVOICE_NOT_PRESENT: 'Pazaryeri iletilen faturayı göstermedi; iletim yeniden denenecek.',

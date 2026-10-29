@@ -70,6 +70,9 @@ internal static class ReportOrderProfit
             var id = order.Order.Id;
             var store = order.Order.ConnectionId;
             var domestic = order.Country == ReportBuckets.Turkey;
+            // An order whose country is unknown (ReportBuckets.UnknownCountry) is neither: no domestic VAT or withholding, no
+            // international fee.
+            var abroad = ReportBuckets.Abroad(order.Country);
             var trendyol = order.PlatformCode == "TRENDYOL";
             var keptVatFree = domestic ? order.Lines.Sum(ReportCosts.VatFree) : 0m;
             var costs = new List<ReportOrderProfitCostView>();
@@ -104,11 +107,11 @@ internal static class ReportOrderProfit
                     : estimated > 0 ? "Mağazanın güncel kargo tarifesinden; fatura kesilince kesin tutar yansır" : "Kargo faturasından"));
                 var settledFees = settled.Contains(id);
                 serviceFee = Round(settledFees ? fees.GetValueOrDefault((id, MarketplaceFinanceCategories.ServiceFee))
-                    : ReportCosts.PlatformServiceFeePerOrder + (domestic ? 0m : order.Kept * ReportCosts.InternationalServiceFeeRate));
+                    : ReportCosts.PlatformServiceFeePerOrder + (abroad ? order.Kept * ReportCosts.InternationalServiceFeeRate : 0m));
                 stoppage = Round(settledFees ? fees.GetValueOrDefault((id, MarketplaceFinanceCategories.Stoppage)) : keptVatFree * ReportCosts.StoppageRate);
                 vatFees = settledFees ? domesticFee.GetValueOrDefault(id) : ReportCosts.PlatformServiceFeePerOrder;
-                costs.Add(new("serviceFee", domestic ? "Hizmet Bedeli" : "Hizmet Bedeli (Uluslararası Dahil)", serviceFee, !settledFees,
-                    settledFees ? "Trendyol cari hesabından" : domestic ? "Sipariş başına 10,99 ₺ + KDV" : "10,99 ₺ + KDV ve satışın %6'sı"));
+                costs.Add(new("serviceFee", abroad ? "Hizmet Bedeli (Uluslararası Dahil)" : "Hizmet Bedeli", serviceFee, !settledFees,
+                    settledFees ? "Trendyol cari hesabından" : abroad ? "10,99 ₺ + KDV ve satışın %6'sı" : "Sipariş başına 10,99 ₺ + KDV"));
                 costs.Add(new("stoppage", "Stopaj", stoppage, !settledFees, settledFees ? "Trendyol cari hesabından" : "KDV hariç satışın %1'i"));
             }
             else
@@ -149,7 +152,7 @@ internal static class ReportOrderProfit
                 ? Round(amount - knownCost - orderCommission - cargoCost - serviceFee - stoppage - paymentFee - other - vat) : null;
             var state = order.Back > 0 && order.Kept == 0m ? "RETURNED" : order.Back > 0 ? "PARTLY_RETURNED" : "SOLD";
             views.Add(new ReportOrderProfitView(id, order.Order.OrderNumber, order.PlatformCode, input.Channels.TryGetValue(store, out var channel) ? channel.DisplayName : "",
-                order.Order.StoreFrontCode, !domestic, order.Order.RealAt, state, amount, productCost, profit,
+                order.Order.StoreFrontCode, abroad, order.Order.RealAt, state, amount, productCost, profit,
                 profit is { } p && productCost is > 0 ? Math.Round(p / productCost.Value * 100m, 2) : null,
                 profit is { } q && amount > 0 ? Math.Round(q / amount * 100m, 2) : null,
                 costs,

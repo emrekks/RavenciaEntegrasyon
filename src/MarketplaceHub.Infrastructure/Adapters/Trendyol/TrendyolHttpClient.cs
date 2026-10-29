@@ -503,7 +503,12 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             // Micro-export packages belong to their destination storefront.
             // Keep searching after an empty TR response, but stop as soon as
             // the exact package ID is found under one of the supported codes.
-            if (v2Package is not null) break;
+            if (v2Package is not null)
+            {
+                // The storefront it was found under is its order's, as for an order read (GetAsync).
+                if (v2Package.OrderSnapshot is { } snapshot) v2Package = v2Package with { OrderSnapshot = snapshot with { StoreFrontCode = storeFrontCode } };
+                break;
+            }
         }
         var v2RateLimit = v2Response?.RateLimit;
         var v2ReadError = v2Response?.IsSuccess == true ? null : v2LookupError;

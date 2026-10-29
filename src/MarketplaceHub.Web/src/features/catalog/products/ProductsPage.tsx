@@ -19,7 +19,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFi
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
-import { quickPriceTarget } from '../quick-price-edit'
+import { quickEditOfferPrices, quickPriceTarget } from '../quick-price-edit'
 import { bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
@@ -119,7 +119,7 @@ function productVariantDisplayGroups(variants: Variant[]) {
   })).sort((left, right) => left.label.localeCompare(right.label, 'tr', { sensitivity: 'base' }))
 }
 type QuickEditMode = 'stock' | 'price' | 'both'
-function ProductQuickEditModal({ products, connections, mode = 'both', onChanged, onClose, onResult }: { products: Product[]; connections: MarketplaceConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onClose: () => void; onResult?: (title: string, message: string, kind: 'success' | 'error') => void }) {
+function ProductQuickEditModal({ products, connections, mode = 'both', onChanged, onClose, onResult }: { products: Product[]; connections: MarketplaceConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onClose: () => void; onResult?: (title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext) => void }) {
   const contextProduct = products[0]
   const contextTitle = contextProduct?.title || 'Toplu düzenleme'
   const contextModelCode = contextProduct ? contextProduct.modelCode || contextProduct.variants.find(variant => variant.modelCode)?.modelCode || '—' : null
@@ -193,12 +193,14 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     const priceRequested = mode !== 'stock' && (listPrice !== '' || salePrice !== ''); const stockRequested = stockAmount !== ''
     if (!priceRequested && !stockRequested) { const message = 'Uygulanacak fiyat veya stok değerini girin.'; setNotice(message); onResult?.('Değer Girilmedi', message, 'error'); return }
     const list = listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
-    if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale < 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.('Geçersiz Değer', message, 'error'); return }
+    if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale <= 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.('Geçersiz Değer', message, 'error'); return }
     setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
     // Every selected variant is attempted; a failure is recorded and the rest still go out. Stock is sent as an
     // absolute value against the stock this dialog opened with, so a change made meanwhile is refused, not undone.
     const failures: Array<{ sku: string; message: string }> = []
     const stockUpdates: VariantStockSet[] = []
+    // Variants whose first sale price was taken from the list price typed (no sale price given, none on the offer).
+    const saleDefaulted: Array<{ sku: string; currency: string }> = []
     let anyStale = false
     try {
       for (const item of sortedVariants.filter(value => targetSelectionSet.has(value.variant.id))) {
@@ -207,11 +209,12 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           try {
             const target = quickPriceTarget(variant, priceConnectionId, connections.length)
             if (target.kind === 'blocked') throw new Error(target.reason)
-            const nextSale = sale ?? variant.salePrice ?? variant.listPrice ?? 0; const nextList = list ?? variant.listPrice ?? nextSale
-            if (nextList < nextSale) throw new Error('liste fiyatı satış fiyatından küçük olamaz.')
-            const body = { connectionId: target.kind === 'create' ? target.connectionId : '', variantId: variant.id, listPrice: nextList, salePrice: nextSale, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Toplu ürün fiyat düzenleme' }
+            const prices = quickEditOfferPrices(variant, list, sale)
+            if (!prices.ok) throw new Error(prices.message)
+            const body = { connectionId: target.kind === 'create' ? target.connectionId : '', variantId: variant.id, listPrice: prices.listPrice, salePrice: prices.salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Toplu ürün fiyat düzenleme' }
             if (target.kind === 'update') await hubApi(`/channel-offers/${target.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.offerVersion}"` }, body: JSON.stringify(body) })
             else await sendWithVersionedIdempotencyKey(offerCreateKey(variant.id), key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
+            if (prices.saleDefaulted) saleDefaulted.push({ sku: variant.sku, currency: variant.currency || 'TRY' })
           } catch (error) {
             if (isStaleStockError(error)) anyStale = true
             failures.push({ sku: variant.sku, message: `fiyat: ${error instanceof Error ? error.message : 'kaydedilemedi'}` })
@@ -232,6 +235,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
       setSaving(false)
     }
     const summary = bulkEditSummary(targetSelection.length, failures)
+    // The defaulted sale price is a decision the person did not type: it stays in the notifications to be checked.
+    if (saleDefaulted.length && list != null) onResult?.('Satış Fiyatı Liste Fiyatına Eşitlendi', `Satış fiyatı girilmediği için ${saleDefaulted.length} varyantın satış fiyatı liste fiyatına (${formatMoney(list, saleDefaulted[0].currency)}) eşitlendi: ${saleDefaulted.slice(0, 10).map(item => item.sku).join(', ')}${saleDefaulted.length > 10 ? ` ve ${saleDefaulted.length - 10} varyant daha` : ''}. Satış fiyatını kontrol edin.`, 'info', { record: true })
     if (!failures.length) { onResult?.('Hızlı Düzenleme Uygulandı', summary, 'success'); onClose(); return }
     const staleHint = anyStale ? ' Değişen değerler yenilendi; kontrol edip yeniden uygulayın.' : ''
     setNotice(`Başarısız: ${summary}${staleHint}`); onResult?.('Hızlı Düzenleme Tamamlanamadı', summary, 'error')
@@ -279,7 +284,7 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
   const priceTarget = quickPriceTarget(variant, priceConnectionId, connectionCount)
   async function savePrice() {
     const salePrice = Number(price); if (savingPrice || price === '' || salePrice === (variant.salePrice ?? variant.listPrice ?? 0)) return
-    if (!Number.isFinite(salePrice) || salePrice < 0) { setPriceError('Fiyat sıfır veya pozitif bir sayı olmalıdır.'); return }
+    if (!Number.isFinite(salePrice) || salePrice <= 0) { setPriceError('Fiyat sıfırdan büyük olmalıdır.'); return }
     if (priceTarget.kind === 'blocked') { setPriceError(priceTarget.reason); return }
     const listPrice = Math.max(variant.listPrice ?? salePrice, salePrice)
     const body = { connectionId: priceTarget.kind === 'create' ? priceTarget.connectionId : '', variantId: variant.id, listPrice, salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Hızlı varyant fiyat düzenleme' }

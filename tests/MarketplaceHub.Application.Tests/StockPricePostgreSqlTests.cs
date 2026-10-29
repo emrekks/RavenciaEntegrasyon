@@ -1,3 +1,4 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -25,6 +26,41 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await using var db = fixture.CreateContext();
         await db.JobAttempts.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
         await db.IntegrationJobs.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+    }
+
+    // W-3: a channel offer with a sale price of zero is refused, on create and on update; a sale price equal to the
+    // list price is a valid offer (every marketplace takes listPrice >= salePrice).
+    [PostgreSqlFact]
+    public async Task ChannelOffer_RefusesAZeroSalePriceAndTakesOneEqualToTheListPrice()
+    {
+        var tenant = NewTenant("offer-zero-sale");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (product, variant) = NewVariant(tenant, "ZERO-1", "8690000000801");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new InventoryService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), fixture.TimeProvider, new ConfigurationBuilder().Build());
+        UpsertChannelOfferCommand Create(decimal list, decimal sale) => new(trendyol.Id, variant.Id, list, sale, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "Toplu ürün fiyat düzenleme");
+
+        var zero = await service.UpsertOfferAsync(tenant.Id, Guid.CreateVersion7(), Create(799.90m, 0m), CancellationToken.None);
+        Assert.False(zero.Succeeded);
+        Assert.True(zero.Error!.FieldErrors!.ContainsKey("salePrice"));
+        Assert.False(await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
+
+        var equal = await service.UpsertOfferAsync(tenant.Id, Guid.CreateVersion7(), Create(799.90m, 799.90m), CancellationToken.None);
+        Assert.True(equal.Succeeded, equal.Error?.Message);
+        Assert.Equal(799.90m, equal.Value!.SalePrice);
+
+        var zeroUpdate = await service.UpdateOfferAsync(tenant.Id, Guid.CreateVersion7(), equal.Value.Id, equal.Value.Version, new(799.90m, 0m, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "Toplu ürün fiyat düzenleme"), CancellationToken.None);
+        Assert.False(zeroUpdate.Succeeded);
+        Assert.Equal(799.90m, (await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == equal.Value.Id)).SalePrice);
     }
 
     // K1: a manual adjustment reaches every connection with an ACTIVE offer for the variant.
@@ -99,6 +135,169 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Single(pushes);
         Assert.Contains(valid.Id.ToString(), pushes[0], StringComparison.OrdinalIgnoreCase);
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
+    }
+
+    // Q-3: the scan walks every ACTIVE offer over its passes instead of the same first batch. Offers whose stock was
+    // sent and whose stock row was observed a moment ago (but whose price never went out) were never candidates; a
+    // stock-lagging offer goes first; the walk keeps its place and starts over at the end.
+    [PostgreSqlFact]
+    public async Task StockReconcile_WalksEveryActiveOfferAcrossPasses()
+    {
+        var tenant = NewTenant("stock-reconcile-walk");
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var product = NewVariant(tenant, "WALK-0", "8690000000400").Product;
+        var variants = Enumerable.Range(1, 5).Select(index => NewVariant(tenant, $"WALK-{index}", $"869000000040{index}", product.Id).Variant).ToArray();
+        var lagging = variants[^1];
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(variants);
+            foreach (var variant in variants)
+            {
+                var inventory = NewInventory(tenant, variant, 3m);
+                inventory.ProjectionVersion = 4;
+                inventory.ReconciledAt = fixture.Now;
+                seed.InventoryItems.Add(inventory);
+                var offer = NewOffer(tenant, n11, variant);
+                offer.LastStockProjectionVersion = variant == lagging ? 3 : 4;
+                seed.ChannelOffers.Add(offer);
+                seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = variant.Id, ExternalId = variant.Sku });
+            }
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<List<string>> ScanAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FeatureFlags:ExternalWrites"] = "true",
+                ["MarketplaceSync:StockReconciliation:BatchSize"] = "2"
+            }).Build();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, configuration, fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, n11.Id, MarketplaceJobTypes.StockReconciliation, "{\"lookbackHours\":1}", "stock-reconcile-walk", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+            return await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync).OrderBy(x => x.CreatedAt).Select(x => x.PayloadJson).ToListAsync();
+        }
+        bool Queued(IEnumerable<string> payloads, ProductVariant variant) => payloads.Any(payload => payload.Contains(variant.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+
+        // A budget of two: one slot for the stock-lagging offer (still lagging while its job waits), one for the walk.
+        var first = await ScanAsync();
+        Assert.Equal(2, first.Count);
+        Assert.True(Queued(first, lagging));
+        Assert.Equal(3, (await ScanAsync()).Count);
+        Assert.Equal(4, (await ScanAsync()).Count);
+        var fourth = await ScanAsync();
+        Assert.Equal(5, fourth.Count);
+        Assert.All(variants, variant => Assert.True(Queued(fourth, variant), variant.Sku));
+        // Everything queued: a further pass wraps around and opens nothing beside the queued jobs.
+        Assert.Equal(5, (await ScanAsync()).Count);
+        await using var check = fixture.CreateContext();
+        var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == n11.Id && x.ResourceType == "STOCK_RECONCILIATION");
+        Assert.Contains("stock-reconcile-v1", cursor.OpaqueCursor);
+        Assert.True(await check.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenant.Id).AllAsync(x => x.ReconciledAt != null));
+    }
+
+    // K-2: "update prices and stock" takes the marketplace number read at the page read. An order the panel took from
+    // stock after that read is not in the number, so it comes off again; an order held as a reservation from before
+    // the read is already off the number, so it is added back (its reservation takes it later). The change is a
+    // stock ledger row and a dispatch to the connections selling the variant.
+    [PostgreSqlFact]
+    public async Task CatalogStockUpdate_CountsOrdersAfterTheReadAndReservationsBeforeIt()
+    {
+        var tenant = NewTenant("catalog-stock-orders");
+        var shopify = NewConnection(tenant, "SHOPIFY", writesEnabled: true);
+        var (product, ordered) = NewVariant(tenant, "K2-ORDERED", "8690000000501");
+        var reserved = NewVariant(tenant, "K2-RESERVED", "8690000000502", product.Id).Variant;
+        var orderedInventory = NewInventory(tenant, ordered, 10m);
+        orderedInventory.ProjectionVersion = 2;
+        orderedInventory.Version = 2;
+        var reservedInventory = NewInventory(tenant, reserved, 0m);
+        reservedInventory.Reserved = 2m;
+        reservedInventory.ProjectionVersion = 3;
+        reservedInventory.Version = 3;
+        var reservationSource = Guid.CreateVersion7().ToString("D");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(ordered, reserved);
+            seed.InventoryItems.AddRange(orderedInventory, reservedInventory);
+            seed.ChannelOffers.AddRange(NewOffer(tenant, shopify, ordered), NewOffer(tenant, shopify, reserved));
+            seed.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, ProductId = product.Id, ExternalId = "k2-product", LastImportedProductVersion = product.Version, SyncStatus = "SYNCED", Version = 1 });
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = ordered.Id, ExternalId = "k2-ordered" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = reserved.Id, ExternalId = "k2-reserved" });
+            // Two units of an order the panel could not take from stock an hour ago: held as a reservation.
+            seed.StockReservations.Add(new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = reservedInventory.Id, SourceType = "ORDER_LINE", SourceId = reservationSource, Quantity = 2m, Status = ReservationStatus.Active, Version = 1 });
+            seed.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = reservedInventory.Id, MovementType = "ORDER_RESERVED", QuantityDelta = -2m, SourceType = "ORDER_LINE", SourceId = reservationSource, SourceEventId = $"k2:{reservationSource}", IdempotencyKey = $"k2-reserved:{reservationSource}", OccurredAt = DateTimeOffset.UtcNow.AddHours(-1), RecordedAt = DateTimeOffset.UtcNow.AddHours(-1), CorrelationId = "k2" });
+            await seed.SaveChangesAsync();
+        }
+
+        RemoteCatalogVariant Remote(string id, string sku, string barcode, decimal stock) => new(id, sku, barcode, null, new Dictionary<string, string>(), false, 120m, 150m, 20m, stock, "TRY", "{}");
+        var port = new CatalogReadPort(
+            new RemoteCatalogProduct("k2-product", null, "Ürün", "", null, null, null, null, [], [Remote("k2-ordered", "K2-ORDERED", "8690000000501", 12m), Remote("k2-reserved", "K2-RESERVED", "8690000000502", 8m)], "{}"),
+            async () =>
+            {
+                // While the page is being read, an order takes two units of the first variant from stock in the panel.
+                await using var orders = fixture.CreateContext();
+                var item = await orders.InventoryItems.SingleAsync(x => x.Id == orderedInventory.Id);
+                item.OnHand -= 2m;
+                item.Available = item.OnHand;
+                item.ProjectionVersion++;
+                item.Version++;
+                var source = Guid.CreateVersion7().ToString("D");
+                orders.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = item.Id, MovementType = "ORDER_RECEIVED", QuantityDelta = -2m, SourceType = "ORDER_LINE", SourceId = source, SourceEventId = $"k2:{source}", IdempotencyKey = $"k2-received:{source}", OccurredAt = DateTimeOffset.UtcNow, RecordedAt = DateTimeOffset.UtcNow, CorrelationId = "k2" });
+                await orders.SaveChangesAsync();
+            });
+
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, shopify.Id, MarketplaceJobTypes.ShopifyProductSync, "{\"full\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":true}", "catalog-stock-orders", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using var check = fixture.CreateContext();
+        var orderedAfter = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == orderedInventory.Id);
+        var reservedAfter = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == reservedInventory.Id);
+        Assert.Equal(10m, orderedAfter.OnHand);
+        Assert.Equal(10m, orderedAfter.Available);
+        Assert.Equal(10m, reservedAfter.OnHand);
+        Assert.Equal(8m, reservedAfter.Available);
+        var imports = await check.StockLedgerEntries.AsNoTracking()
+            .Where(x => x.TenantId == tenant.Id && x.MovementType == MarketplaceStockImportPolicy.MovementType)
+            .ToDictionaryAsync(x => x.InventoryItemId, x => x.QuantityDelta);
+        Assert.Equal(2m, imports[orderedInventory.Id]);
+        Assert.Equal(10m, imports[reservedInventory.Id]);
+        var dispatched = await check.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.StockProjectionDispatch)
+            .Select(x => x.PayloadJson)
+            .ToListAsync();
+        Assert.Contains(dispatched, payload => payload.Contains(ordered.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(dispatched, payload => payload.Contains(reserved.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class CatalogReadPort(RemoteCatalogProduct snapshot, Func<Task> duringRead) : IProductPort
+    {
+        public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
+        {
+            await duringRead();
+            return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(new([snapshot], null, false, 1));
+        }
+
+        public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     // Q-1/K-1: a price/stock job of the same values that ended without getting them through no longer counts as
@@ -573,6 +772,126 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.DoesNotContain(cleared.Value!.Variants.Single(x => x.VariantId == small.Id).Codes, code => code.ConnectionId == hepsiburada.Id);
             Assert.Equal("HBCV00001ABCD", cleared.Value.Variants.Single(x => x.VariantId == medium.Id).Codes.Single(code => code.ConnectionId == hepsiburada.Id).ExternalId);
         }
+    }
+
+    // K-3: a variant's marketplace code typed anew (a changed Shopify variant id, a first code where none was) makes
+    // its offer on that connection unsent; the offer of a code left as it was keeps its marks.
+    [PostgreSqlFact]
+    public async Task ProductMarketplaceCodes_ChangedCodeMakesTheOfferUnsent()
+    {
+        var tenant = NewTenant("marketplace-code-unsent");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var (product, changed) = NewVariant(tenant, "MOVE-S", "8690000000601");
+        var added = NewVariant(tenant, "MOVE-M", "8690000000602", product.Id).Variant;
+        var kept = NewVariant(tenant, "MOVE-L", "8690000000603", product.Id).Variant;
+        ChannelOffer SentOffer(ProductVariant variant)
+        {
+            var offer = NewOffer(tenant, shopify, variant);
+            offer.LastPriceHash = "SENT";
+            offer.LastStockProjectionVersion = 1;
+            return offer;
+        }
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(changed, added, kept);
+            seed.ChannelOffers.AddRange(SentOffer(changed), SentOffer(added), SentOffer(kept));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = changed.Id, ExternalId = "44791234560001" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = kept.Id, ExternalId = "44791234560003" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CatalogService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+            var saved = await service.UpdateProductMarketplaceCodesAsync(tenant.Id, product.Id, new([
+                new(changed.Id, shopify.Id, "44791234560009"),
+                new(added.Id, shopify.Id, "44791234560002"),
+                new(kept.Id, shopify.Id, "44791234560003")]), CancellationToken.None);
+            Assert.True(saved.Succeeded, saved.Error?.Message);
+        }
+
+        await using var check = fixture.CreateContext();
+        var offers = await check.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.VariantId);
+        Assert.Null(offers[changed.Id].LastPriceHash);
+        Assert.Null(offers[changed.Id].LastStockProjectionVersion);
+        Assert.Null(offers[added.Id].LastPriceHash);
+        Assert.Null(offers[added.Id].LastStockProjectionVersion);
+        Assert.Equal("SENT", offers[kept.Id].LastPriceHash);
+        Assert.Equal(1, offers[kept.Id].LastStockProjectionVersion);
+    }
+
+    // K-3: any save that points a link elsewhere (an import or rekey changing its id or a held code, or moving it to
+    // another variant) makes the offers of the old and new variant unsent. A health update, a placeholder taking the
+    // marketplace's own id, a first code recorded, and marks the same save writes itself all leave the marks.
+    [PostgreSqlFact]
+    public async Task VariantLinkReaddressed_MakesTheOfferUnsentInTheSameSave()
+    {
+        var tenant = NewTenant("link-readdressed");
+        var hepsiburada = NewConnection(tenant, "HEPSIBURADA");
+        var product = NewVariant(tenant, "LINK-0", "8690000000700").Product;
+        var variants = Enumerable.Range(1, 7).Select(index => NewVariant(tenant, $"LINK-{index}", $"869000000070{index}", product.Id).Variant).ToArray();
+        var (rekeyed, moved, movedTo, barcodeChanged, healthOnly, placeholder, seeded) = (variants[0], variants[1], variants[2], variants[3], variants[4], variants[5], variants[6]);
+        MarketplaceVariantLink Link(ProductVariant variant, string externalId, string? barcode = null) =>
+            new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = variant.Id, ExternalId = externalId, ExternalBarcode = barcode };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(hepsiburada);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(variants);
+            foreach (var variant in variants)
+            {
+                var offer = NewOffer(tenant, hepsiburada, variant);
+                offer.LastPriceHash = "SENT";
+                offer.LastStockProjectionVersion = 4;
+                seed.ChannelOffers.Add(offer);
+            }
+            seed.MarketplaceVariantLinks.AddRange(
+                Link(rekeyed, "LINK-1"), Link(moved, "HBCV0000MOVED"), Link(barcodeChanged, "HBCV0000BARC", "8690000000704"),
+                Link(healthOnly, "HBCV0000HEALTH"), Link(placeholder, MarketplaceVariantLinkHealth.ListingPlaceholderPrefix + "LINK-6"), Link(seeded, "HBCV0000SEED"));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var links = await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.VariantId);
+            links[rekeyed.Id].ExternalId = "HBCV0000REKEY";
+            links[moved.Id].VariantId = movedTo.Id;
+            links[barcodeChanged.Id].ExternalBarcode = "8690000000799";
+            links[healthOnly.Id].LastSeenAt = DateTimeOffset.UtcNow;
+            links[healthOnly.Id].ExternalBarcode = "8690000000705";
+            links[placeholder.Id].ExternalId = "HBCV0000PLACE";
+            links[seeded.Id].ExternalId = "HBCV0000SEED2";
+            var seededOffer = await db.ChannelOffers.SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == seeded.Id);
+            seededOffer.LastPriceHash = "SEEDED";
+            seededOffer.LastStockProjectionVersion = 5;
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = fixture.CreateContext();
+        var offers = await check.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.VariantId);
+        foreach (var unsent in new[] { rekeyed, moved, movedTo, barcodeChanged })
+        {
+            Assert.Null(offers[unsent.Id].LastPriceHash);
+            Assert.Null(offers[unsent.Id].LastStockProjectionVersion);
+        }
+        Assert.Equal("SENT", offers[healthOnly.Id].LastPriceHash);
+        Assert.Equal("SENT", offers[placeholder.Id].LastPriceHash);
+        Assert.Equal(4, offers[placeholder.Id].LastStockProjectionVersion);
+        Assert.Equal("SEEDED", offers[seeded.Id].LastPriceHash);
+        Assert.Equal(5, offers[seeded.Id].LastStockProjectionVersion);
+
+        // Removing a link leaves its offer without the address the marks named.
+        await using (var db = fixture.CreateContext())
+        {
+            db.MarketplaceVariantLinks.Remove(await db.MarketplaceVariantLinks.SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == healthOnly.Id));
+            await db.SaveChangesAsync();
+        }
+        Assert.Null((await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == healthOnly.Id)).LastPriceHash);
     }
 
     // A PTT AVM product with variants is kept by its model code and lists only its colour and size values: the

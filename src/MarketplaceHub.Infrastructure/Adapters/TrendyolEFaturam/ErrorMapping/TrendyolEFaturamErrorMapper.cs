@@ -38,5 +38,7 @@ internal static class TrendyolEFaturamErrorMapper
 
     public static AdapterError Configuration() => new(AdapterErrorClass.Authentication, "EFATURAM_CONFIGURATION_UNAVAILABLE", "E-Faturam bağlantısı veya şifreli credential kullanılamıyor.", null, null, null);
     public static AdapterError Unsupported(string message) => new(AdapterErrorClass.NotSupported, "CAPABILITY_NOT_VERIFIED", message, null, null, null);
+    public static AdapterError UnreadableSubmissionAnswer(string? remoteRequestId) => new(AdapterErrorClass.ContractViolation, InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode,
+        "E-Faturam fatura isteğini kabul etti ancak yanıtı okunamadı; faturanın oluşup oluşmadığı E-Faturam'dan okunana kadar yeniden gönderilmez.", null, null, remoteRequestId);
     public static AdapterError Contract() => new(AdapterErrorClass.ContractViolation, "EFATURAM_CONTRACT_INVALID", "E-Faturam yanıtı doğrulanmış sözleşmeyle eşleşmedi.", null, null, null);
 }
