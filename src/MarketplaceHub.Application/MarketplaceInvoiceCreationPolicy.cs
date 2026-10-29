@@ -6,27 +6,23 @@ public static class MarketplaceInvoiceCreationPolicy
 {
     public const string DisabledErrorCode = "INVOICE_CREATION_DISABLED";
     public const string DisabledMessage = "Fatura oluşturma bu bağlantı ayarlarında kapalı. Entegrasyonlar bölümünden açın.";
-    public const string UnsupportedFiscalProviderMessage = "Shopify için mali fatura sağlayıcısı sözleşmesi henüz doğrulanmadı; güvenli biçimde fatura oluşturma kapalı.";
 
-    // The per-connection "Faturalama" switch. Every marketplace connection carries it; Shopify's stays off because
-    // its fiscal provider contract is not verified, so a request to turn it on is refused instead of being stored
-    // as a value the invoicing flow would ignore.
+    // The per-connection "Faturalama" switch. Every marketplace connection carries it and the seller turns it on and off.
     public static string? UpdateRefusal(string? platformCode, bool? requested)
     {
         if (requested is null) return null;
-        if (!ActiveIntegrationScope.IsMarketplace(platformCode)) return "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.";
-        return requested == true && string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? UnsupportedFiscalProviderMessage : null;
+        return ActiveIntegrationScope.IsMarketplace(platformCode) ? null : "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.";
     }
 
     public static bool IsEnabled(string? platformCode, string? settingsJson)
     {
-        // Shopify fiscal submission is intentionally fail-closed until the
-        // configured provider contract for Shopify orders is verified.
-        if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)) return false;
         // N11 (SaveLinkSellerInvoice) and Pazarama (order/invoice-link) take an invoice link per order;
         // their connections store InvoiceCreationEnabled=false by default, so fiscal submission starts
-        // only after the seller enables it on the connection.
-        if (!ActiveIntegrationScope.IsMarketplace(platformCode) || string.IsNullOrWhiteSpace(settingsJson)) return true;
+        // only after the seller enables it on the connection. Shopify was locked off until 30 October 2026: a
+        // Shopify connection invoices only once the seller has turned the switch on (no stored value reads as off).
+        var shopify = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase);
+        if (!ActiveIntegrationScope.IsMarketplace(platformCode)) return true;
+        if (string.IsNullOrWhiteSpace(settingsJson)) return !shopify;
 
         try
         {
@@ -37,7 +33,7 @@ public static class MarketplaceInvoiceCreationPolicy
                 if (string.Equals(property.Name, "InvoiceCreationEnabled", StringComparison.OrdinalIgnoreCase))
                     return property.Value.ValueKind == JsonValueKind.True;
             }
-            return true;
+            return !shopify;
         }
         catch (JsonException)
         {

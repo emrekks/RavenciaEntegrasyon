@@ -125,12 +125,11 @@ describe('integration settings parity', () => {
     expect(JSON.parse(save.body!)).toMatchObject({ invoiceCreationEnabled: true })
   })
 
-  it('Shopify shows the Faturalama switch locked off instead of a switch that would snap back', async () => {
+  it('Shopify shows a Faturalama switch the seller can turn on', async () => {
     await renderFor('SHOPIFY')
     openSection('Faturalama')
     const toggle = container.querySelector<HTMLInputElement>('.invoice-creation-setting-panel input[role="switch"]')!
-    expect(toggle.disabled).toBe(true)
-    expect(toggle.checked).toBe(false)
-    expect(container.textContent).toContain('sözleşmesi henüz doğrulanmadı')
+    expect(toggle.disabled).toBe(false)
+    expect(container.textContent).not.toContain('sözleşmesi henüz doğrulanmadı')
   })
 })

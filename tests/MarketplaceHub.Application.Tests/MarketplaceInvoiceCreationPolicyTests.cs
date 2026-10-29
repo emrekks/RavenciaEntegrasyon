@@ -14,9 +14,10 @@ public sealed class MarketplaceInvoiceCreationPolicyTests
     }
 
     [Fact]
-    public void ShopifyFiscalCreationRemainsDisabledUntilProviderContractIsVerified()
+    public void ShopifyStaysOffUntilTheSellerTurnsItOn()
     {
         Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("SHOPIFY", "{}"));
+        Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled("SHOPIFY", "{\"InvoiceCreationEnabled\":true}"));
     }
 
     [Theory]
@@ -41,21 +42,13 @@ public sealed class MarketplaceInvoiceCreationPolicyTests
     [InlineData("N11")]
     [InlineData("PAZARAMA")]
     [InlineData("PTTAVM")]
-    public void EveryMarketplaceButShopifyMayTurnInvoiceCreationOnAndOff(string platformCode)
+    [InlineData("SHOPIFY")]
+    public void EveryMarketplaceMayTurnInvoiceCreationOnAndOff(string platformCode)
     {
         Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal(platformCode, true));
         Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal(platformCode, false));
         Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal(platformCode, null));
         Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled(platformCode, "{\"ExternalWritesEnabled\":true,\"InvoiceCreationEnabled\":true}"));
-    }
-
-    // Shopify's switch cannot be turned on: the invoicing flow would ignore it, so the request is refused instead.
-    [Fact]
-    public void ShopifyInvoiceCreationCannotBeTurnedOnButMayBeKeptOff()
-    {
-        Assert.Equal(MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage, MarketplaceInvoiceCreationPolicy.UpdateRefusal("SHOPIFY", true));
-        Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal("SHOPIFY", false));
-        Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("SHOPIFY", "{\"ExternalWritesEnabled\":true,\"InvoiceCreationEnabled\":true}"));
     }
 
     [Fact]
