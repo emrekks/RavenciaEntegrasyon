@@ -312,7 +312,19 @@ main .rr.rr-dashboard > * { min-width: 0; }
 }
 /* the period buttons share the width equally and keep their labels in the middle */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg > button { justify-content: center; padding-inline: 12px; text-align: center; }
+/* The label is centred on its capitals and digits: its box is trimmed to cap height and baseline, so the flex centring
+   no longer leaves Inter's tall ascender on top (the text sat 0.75 px high: 7.75 px above the capitals, 9.25 px below
+   the baseline; trimmed 8.55 / 8.45). Browsers without text-box keep the old placement. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg > button { display: flex; align-items: center; justify-content: center; padding-block: 0; padding-inline: 12px; line-height: 1; text-align: center; white-space: nowrap; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg > button > span { text-box: trim-both cap alphabetic; }
+/* phones: six periods share the row, so the labels keep the width and the padding gives way */
+@media (max-width: 760px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg > button { min-width: 0; padding-inline: 2px; font-size: 12px; }
+}
+@media (max-width: 360px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg { gap: 1px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg > button { font-size: 11px; }
+}
 /* phones: the four performance cards sit two by two inside the panel instead of a strip cut off at the right edge */
 @media (max-width: 760px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid.rr-kgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }

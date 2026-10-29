@@ -29,6 +29,25 @@ public sealed class DashboardPerformanceTests
     }
 
     [Fact]
+    public void Yesterday_is_a_whole_Istanbul_day_compared_with_the_whole_day_before()
+    {
+        // The panel's "Dün" button asks for from = to = yesterday; just after midnight it is still a whole day.
+        foreach (var now in new[] { Now, new DateTimeOffset(2026, 10, 19, 21, 5, 0, TimeSpan.Zero) })
+        {
+            var period = DashboardPerformancePeriod.Resolve(new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 19), now, Istanbul).Value!;
+
+            Assert.False(period.PartialDay);
+            Assert.Equal(new DateTimeOffset(2026, 10, 18, 21, 0, 0, TimeSpan.Zero), period.CurrentStart);
+            Assert.Equal(new DateTimeOffset(2026, 10, 19, 21, 0, 0, TimeSpan.Zero), period.CurrentEnd);
+            Assert.Equal(new DateOnly(2026, 10, 18), period.PreviousFrom);
+            Assert.Equal(new DateOnly(2026, 10, 18), period.PreviousTo);
+            Assert.Equal(new DateTimeOffset(2026, 10, 17, 21, 0, 0, TimeSpan.Zero), period.PreviousStart);
+            Assert.Equal(new DateTimeOffset(2026, 10, 18, 21, 0, 0, TimeSpan.Zero), period.PreviousEnd);
+            Assert.Equal(TimeSpan.Zero, period.CurrentStart.Offset);
+        }
+    }
+
+    [Fact]
     public void Last_seven_days_including_today_compare_with_the_seven_whole_days_before()
     {
         var period = DashboardPerformancePeriod.Resolve(new DateOnly(2026, 10, 14), new DateOnly(2026, 10, 20), Now, Istanbul).Value!;
