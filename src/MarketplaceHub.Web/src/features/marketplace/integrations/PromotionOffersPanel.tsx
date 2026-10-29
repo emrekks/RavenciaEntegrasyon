@@ -204,7 +204,7 @@ export function keepOffer<T extends OfferRow>(row: T, filter: OfferFilter, price
   })
 }
 
-// The filter panel: the fields are typed first and applied with Filtrele (Enter too); Filtreleri Temizle empties them.
+// The filter panel: the fields are typed first and applied with Filtrele (Enter too); Temizle empties them.
 function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; rows: OfferRow[]; columns: Array<[string, string]>; onApply: (filter: OfferFilter) => void }) {
   const [draft, setDraft] = useState(value)
   const set = (key: keyof OfferFilter) => (event: { target: { value: string } }) => setDraft(current => ({ ...current, [key]: event.target.value }))
@@ -229,7 +229,7 @@ function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; r
     <select className="commission-filter-band" value={draft.column} onChange={set('column')} aria-label="Kolon seçimi">
       <option value="">Kolon Seçimi</option>{columns.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
     </select>
-    <button type="button" className="commission-filter-clear" onClick={() => { setDraft(noOfferFilter); onApply(noOfferFilter) }}>Filtreleri Temizle</button>
+    <button type="button" className="commission-filter-clear" onClick={() => { setDraft(noOfferFilter); onApply(noOfferFilter) }}>Temizle</button>
     <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
     {draft.column && <div className="commission-filter-profit">
       <span className="commission-filter-range">

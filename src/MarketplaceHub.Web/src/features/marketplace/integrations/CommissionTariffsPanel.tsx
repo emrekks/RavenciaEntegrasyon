@@ -267,7 +267,7 @@ export function filterQuery(filter: TariffFilter): Record<string, string> {
   return query
 }
 
-// Which products the list shows: the fields are typed first and applied with Filtrele (Enter too); Filtreleri Temizle
+// Which products the list shows: the fields are typed first and applied with Filtrele (Enter too); Temizle
 // empties them and shows every product again.
 function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets: { categories: string[]; brands: string[] } | undefined; onApply: (filter: TariffFilter) => void }) {
   const [draft, setDraft] = useState(value)
@@ -293,7 +293,7 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
     <select className="commission-filter-band" value={draft.profitTier ?? ''} onChange={set('profitTier')} aria-label="Fiyat aralığı">
       <option value="">Kolon Seçimi</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
     </select>
-    <button type="button" className="commission-filter-clear" onClick={clear}>Filtreleri Temizle</button>
+    <button type="button" className="commission-filter-clear" onClick={clear}>Temizle</button>
     <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
     {draft.profitTier && <div className="commission-filter-profit">
       <span className="commission-filter-range">
