@@ -972,7 +972,8 @@
 }
 
 /* Product list "Platformlarda Yayınla": the editor's publish step in a popup (ProductPublishPopup). */
-.product-publish-popup-modal { width: min(1180px, 100%); }
+/* Two platform cards a row fit in 980px; 1180px filled the screen. */
+.product-publish-popup-modal { width: min(980px, 100%); }
 .product-publish-popup-modal > header h2 { margin-bottom: 0; }
 /* The same space above the cards and below the Yayınla bar: the body has no bottom padding and the steps add none, so
    the bar sits --popup-gap above the popup's edge both while it sticks and at the end of the list. */
