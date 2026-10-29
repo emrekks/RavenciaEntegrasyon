@@ -117,10 +117,13 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var since = now - window;
         var codes = (platforms ?? []).Select(code => code.Trim().ToUpperInvariant()).Where(code => code.Length > 0).Distinct().ToArray();
         var anyPlatform = codes.Length == 0;
+        // A waiting check (the marketplace was still processing) is not a failed attempt.
+        var waitingCodes = JobWaitingPolicy.Codes.ToArray();
         var attempts = await db.Database.SqlQuery<JobAttemptMetricRow>($"""
             SELECT job."JobType" AS "JobType",
                    count(*)::int AS "Attempts",
-                   count(*) FILTER (WHERE attempt."CompletedAt" IS NOT NULL AND NOT attempt."Succeeded")::int AS "Failed",
+                   count(*) FILTER (WHERE attempt."CompletedAt" IS NOT NULL AND NOT attempt."Succeeded"
+                       AND NOT coalesce(attempt."ErrorCode" = ANY({waitingCodes}), false))::int AS "Failed",
                    avg(wait.seconds) AS "AverageWaitSeconds",
                    percentile_cont(0.95) WITHIN GROUP (ORDER BY wait.seconds) AS "P95WaitSeconds",
                    avg(run.seconds) AS "AverageDurationSeconds",
@@ -397,12 +400,15 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var attempts = await db.JobAttempts.AsNoTracking()
             .Where(x => x.TenantId == job.TenantId && x.JobId == job.Id)
             .OrderByDescending(x => x.AttemptNumber)
-            .Select(x => new JobAttemptDetailView(x.AttemptNumber, x.StartedAt, x.CompletedAt, x.Succeeded, x.ErrorCode, x.ErrorSummary))
+            .Select(x => new JobAttemptDetailView(x.AttemptNumber, x.StartedAt, x.CompletedAt, x.Succeeded, x.ErrorCode, x.ErrorSummary, "FAILED"))
             .ToListAsync(cancellationToken);
-        var failure = attempts.Where(x => !x.Succeeded).ToList();
-        var failureTimes = failure.Count == 0
-            ? null
-            : new FailureTime(failure.Min(x => x.StartedAt), failure.Max(x => x.CompletedAt ?? x.StartedAt));
+        attempts = attempts.Select(x => x with { Outcome = AttemptOutcome(job, x) }).ToList();
+        // A waiting check (the marketplace was still processing) and a run still in progress are not errors.
+        var failure = attempts.Where(x => x.Outcome == "FAILED").ToList();
+        var failureTimes = new FailureTime(
+            failure.Count == 0 ? null : failure.Min(x => x.StartedAt),
+            failure.Count == 0 ? null : failure.Max(x => x.CompletedAt ?? x.StartedAt),
+            attempts.Count(x => x.Outcome == "WAITING"));
         var currentOrder = await OrderContext(job, cancellationToken);
         var invoice = await InvoiceContext(job, cancellationToken);
         var relatedJobs = await db.IntegrationJobs.AsNoTracking()
@@ -859,18 +865,40 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     {
         if (jobs.Count == 0) return [];
         var jobIds = jobs.Select(x => x.Id).ToArray();
-        return (await db.JobAttempts.AsNoTracking()
-            .Where(x => x.TenantId == jobs.First().TenantId && jobIds.Contains(x.JobId) && !x.Succeeded)
+        var waitingCodes = JobWaitingPolicy.Codes.ToArray();
+        // Only finished attempts count: a run in progress has not failed. A waiting check (the marketplace was still
+        // processing) is counted apart and is not an error time.
+        var rows = (await db.JobAttempts.AsNoTracking()
+            .Where(x => x.TenantId == jobs.First().TenantId && jobIds.Contains(x.JobId) && !x.Succeeded && x.CompletedAt != null)
             .GroupBy(x => x.JobId)
             .Select(group => new
             {
                 JobId = group.Key,
-                FirstFailedAt = group.Min(x => x.StartedAt),
-                LastFailedAt = group.Max(x => x.CompletedAt ?? x.StartedAt)
+                FirstFailedAt = group.Min(x => x.ErrorCode != null && waitingCodes.Contains(x.ErrorCode) ? null : (DateTimeOffset?)x.StartedAt),
+                LastFailedAt = group.Max(x => x.ErrorCode != null && waitingCodes.Contains(x.ErrorCode) ? null : x.CompletedAt),
+                Waiting = group.Count(x => x.ErrorCode != null && waitingCodes.Contains(x.ErrorCode))
             })
             .ToListAsync(cancellationToken))
-            .ToDictionary(x => x.JobId, x => new FailureTime(x.FirstFailedAt, x.LastFailedAt));
+            .ToDictionary(x => x.JobId);
+        var result = new Dictionary<Guid, FailureTime>();
+        foreach (var job in jobs)
+        {
+            if (!rows.TryGetValue(job.Id, out var row)) continue;
+            // A job that ran out of attempts on a waiting check ended there: that last check is its failure.
+            result[job.Id] = job.Status == JobStatus.Dead && row.LastFailedAt is null && row.Waiting > 0 && JobWaitingPolicy.IsWaitingCode(job.LastErrorCode)
+                ? new FailureTime(job.CompletedAt, job.CompletedAt, row.Waiting - 1)
+                : new FailureTime(row.FirstFailedAt, row.LastFailedAt, row.Waiting);
+        }
+        return result;
     }
+
+    // An attempt as the job screens show it: a waiting check is not a failure, unless it is the last attempt of a job
+    // that ran out of attempts on it.
+    private static string AttemptOutcome(IntegrationJob job, JobAttemptDetailView attempt) => JobWaitingPolicy.AttemptOutcome(
+        attempt.CompletedAt is not null,
+        attempt.Succeeded,
+        attempt.ErrorCode,
+        job.Status == JobStatus.Dead && attempt.AttemptNumber == job.AttemptCount);
 
     // Jobs of the shared Trendyol job types also run for n11 connections, so the marketplace shown to
     // the operator comes from the connection when the job type does not name one.
@@ -892,7 +920,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null,
         Math.Max(1, batchCount), x.ProgressCurrent, x.ProgressTotal, x.ProgressPercent, x.ProgressLabel,
         x.ProgressReceived, x.ProgressProcessed, x.ProgressSkipped, x.ProgressFailed,
-        lastAttemptStartedAt, x.HeartbeatAt);
+        lastAttemptStartedAt, x.HeartbeatAt,
+        failure?.WaitingChecks ?? 0,
+        Math.Max(1, x.MaxAttempts - x.WaitingChecks),
+        x.Status is JobStatus.Pending or JobStatus.RetryScheduled && JobWaitingPolicy.IsWaitingCode(x.LastErrorCode));
 
     private static JobChangeView? Change(IntegrationJob job)
     {
@@ -972,7 +1003,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         return HepsiburadaStageCertificationPolicy.OperationIdForDisplay(payloadJson);
     }
 
-    private sealed record FailureTime(DateTimeOffset FirstFailedAt, DateTimeOffset LastFailedAt);
+    private sealed record FailureTime(DateTimeOffset? FirstFailedAt, DateTimeOffset? LastFailedAt, int WaitingChecks = 0);
 
     private static bool TryParseStatus(string value, out JobStatus status) => Enum.TryParse(value.Replace("_", string.Empty, StringComparison.Ordinal), true, out status);
     private static string Wire(JobStatus status) => status switch

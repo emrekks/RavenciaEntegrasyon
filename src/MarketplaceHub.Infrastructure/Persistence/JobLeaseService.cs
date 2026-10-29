@@ -200,6 +200,15 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         }
 
         var kind = result.Kind;
+        // A waiting check (the marketplace is still processing what it accepted) is not a failed try: while the job is
+        // young it gives the attempt back by raising the limit, so a long batch or approval is not killed by its own
+        // polls. Its attempt row stays, as the record of the check.
+        var waiting = JobWaitingPolicy.IsWaiting(result);
+        if (waiting && now - job.CreatedAt < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
+        {
+            job.MaxAttempts++;
+            job.WaitingChecks++;
+        }
         if (kind == JobCompletionKind.Retry && job.AttemptCount >= job.MaxAttempts) kind = JobCompletionKind.Dead;
         job.Status = kind switch
         {
@@ -211,7 +220,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         };
         job.CompletedAt = kind == JobCompletionKind.Retry ? null : now;
         job.AvailableAt = kind == JobCompletionKind.Retry
-            ? now.Add(EffectiveRetryDelay(job, result))
+            ? now.Add(waiting ? WaitingRetryDelay(job, result) : EffectiveRetryDelay(job, result))
             : job.AvailableAt;
         job.LastErrorCode = result.ErrorCode;
         job.LastErrorSummary = result.ErrorSummary;
@@ -260,7 +269,18 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     internal static bool RefundsAttempt(JobExecutionResult result, TimeSpan jobAge) =>
         result.Kind == JobCompletionKind.Retry && result.RefundAttempt && (result.Continues || jobAge < MaximumDeferralAge);
 
-    private static TimeSpan EffectiveRetryDelay(IntegrationJob job, JobExecutionResult result)
+    // A waiting check runs again when its processor asked, not on the failure backoff (which grew a 15-second batch
+    // poll to minutes after three checks). An approval check keeps its own cadence below; every other wait slows down
+    // only after a few checks (JobWaitingPolicy.Delay), and never waits longer than an hour.
+    internal static TimeSpan WaitingRetryDelay(IntegrationJob job, JobExecutionResult result)
+    {
+        if (job.JobType == MarketplaceJobTypes.ProductApprovalReconcile || job.JobType is InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.ManualOrderInvoiceDelivery)
+            return EffectiveRetryDelay(job, result);
+        var delay = JobWaitingPolicy.Delay(result.RetryAfter, job.WaitingChecks);
+        return delay > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : delay;
+    }
+
+    internal static TimeSpan EffectiveRetryDelay(IntegrationJob job, JobExecutionResult result)
     {
         var requested = result.RetryAfter;
         if (job.JobType is InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.ManualOrderInvoiceDelivery)

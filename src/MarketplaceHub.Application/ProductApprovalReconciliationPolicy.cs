@@ -43,6 +43,20 @@ public static class ProductApprovalReconciliationPolicy
         return untilDeadline < delay ? (untilDeadline > TimeSpan.FromMinutes(1) ? untilDeadline : TimeSpan.FromMinutes(1)) : delay;
     }
 
+    // How many list requests one walk of a marketplace's approved and unapproved lists may take to answer a
+    // connection's waiting barcodes, or 0 when asking each barcode on its own is cheaper. Asked one at a time, every
+    // waiting barcode costs at least one request; the walk needs about one page of 100 per hundred products the
+    // panel knows on the connection (linked ones on the approved list, unsettled ones on the unapproved list) plus
+    // the last page of each list and one page-0 probe. The walk is used only when that estimate is below the
+    // per-barcode cost and is stopped at that cost, so a store with more products than the panel knows can at worst
+    // spend one round's per-barcode cost on the walk before the barcodes it did not reach are asked on their own.
+    public static int ListWalkBudget(int waitingBarcodes, int linkedVariants, int unsettledListings)
+    {
+        if (waitingBarcodes < 2) return 0;
+        var estimate = (Math.Max(0, linkedVariants) + 99) / 100 + (Math.Max(0, unsettledListings) + 99) / 100 + 3;
+        return estimate < waitingBarcodes ? waitingBarcodes : 0;
+    }
+
     // A variant this reconciliation already found approved (listed LIVE, with its product and variant links) is not
     // read again on later checks: only the barcodes still waiting are asked about.
     public static bool IsSettledLive(string? listingStatus, bool hasProductLink, bool hasVariantLink) =>

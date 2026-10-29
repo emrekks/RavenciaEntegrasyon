@@ -18,7 +18,7 @@ public sealed class MarketplacePortRouter(
     N11HttpClient n11,
     PazaramaHttpClient pazarama,
     PttAvmHttpClient pttAvm)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IProductFamilyStatusPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IWebhookRegistrationPort, IReturnPort, IReturnAuditPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort, IQuestionPort, IOrderFinancePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IProductFamilyStatusPort, IProductApprovalSnapshotPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IWebhookRegistrationPort, IReturnPort, IReturnAuditPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort, IQuestionPort, IOrderFinancePort
 {
     // The same answer the adapters give when they cannot load the connection: a connection removed while its
     // job waited fails as an adapter result, not as an exception out of the router.
@@ -65,6 +65,7 @@ public sealed class MarketplacePortRouter(
     public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) => Route(context, (IProductPort port) => port.GetOperationAsync(context, externalOperationId, cancellationToken), cancellationToken);
     public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Route(context, (IProductPort port) => port.GetPublicationStatusAsync(context, barcode, cancellationToken), cancellationToken);
     public Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<FamilyVariantQuery> variants, CancellationToken cancellationToken) => Route(context, (IProductFamilyStatusPort port) => port.GetFamilyPublicationStatusAsync(context, parentBarcode, variants, cancellationToken), cancellationToken);
+    public Task<AdapterResult<ProductApprovalSnapshot>> ReadApprovalSnapshotAsync(AdapterContext context, int maxRequests, CancellationToken cancellationToken) => Route(context, (IProductApprovalSnapshotPort port) => port.ReadApprovalSnapshotAsync(context, maxRequests, cancellationToken), cancellationToken);
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => Route(context, (IProductPort port) => port.ArchiveAsync(context, payloadJson, cancellationToken), cancellationToken);
     public Task<AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>> ReturnLineAuditsAsync(AdapterContext context, string externalLineId, CancellationToken cancellationToken) => Route(context, (IReturnAuditPort port) => port.ReturnLineAuditsAsync(context, externalLineId, cancellationToken), cancellationToken);
     public Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Route(context, (IProductVisualLookupPort port) => port.FindByBarcodeAsync(context, barcode, cancellationToken), cancellationToken);

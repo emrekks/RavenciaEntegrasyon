@@ -76,7 +76,9 @@ public sealed record JobAttemptDetailView(
     DateTimeOffset? CompletedAt,
     bool Succeeded,
     string? ErrorCode,
-    string? ErrorSummary);
+    string? ErrorSummary,
+    // SUCCEEDED, FAILED, WAITING (the marketplace was still processing; JobWaitingPolicy) or RUNNING.
+    string Outcome = "FAILED");
 
 public sealed record JobSummaryView(
     Guid Id,
@@ -107,7 +109,12 @@ public sealed record JobSummaryView(
     int ProgressSkipped = 0,
     int ProgressFailed = 0,
     DateTimeOffset? LastAttemptStartedAt = null,
-    DateTimeOffset? HeartbeatAt = null);
+    DateTimeOffset? HeartbeatAt = null,
+    // Attempts that were waiting checks (JobWaitingPolicy), the job's own attempt budget without the attempts those
+    // checks gave back, and whether the job now only waits for the marketplace to finish.
+    int WaitingChecks = 0,
+    int AttemptBudget = 0,
+    bool Waiting = false);
 
 public sealed record JobOrderContextView(
     Guid OrderId,

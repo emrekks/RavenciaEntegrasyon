@@ -614,6 +614,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (payload is null || payload.JobId == Guid.Empty || payload.ProductId == Guid.Empty || payload.ProfileId == Guid.Empty || string.IsNullOrWhiteSpace(payload.PayloadHash) || payload.DeadlineAt <= payload.StartedAt)
             return JobExecutionResult.Blocked("PRODUCT_APPROVAL_PAYLOAD_INVALID", "Ürün onay uzlaştırma işi zorunlu alanları eksik.");
 
+        // Pazarama lists every product's approval state on two lists: one walk of them answers all of the connection's
+        // waiting cards at once, instead of each card's job asking per barcode.
+        var connectionPlatform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (string.Equals(connectionPlatform, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && products is IProductApprovalSnapshotPort snapshotPort)
+            return await ReconcileConnectionApprovals(tenantId, connectionId, payload, correlationId, snapshotPort, cancellationToken);
+        return await ReconcileProductApprovalCore(tenantId, connectionId, payload, correlationId, null, cancellationToken);
+    }
+
+    // One card's approval check. listed holds statuses already read from the marketplace's lists (Pazarama); a barcode
+    // not in it is asked on its own, as before.
+    private async Task<JobExecutionResult> ReconcileProductApprovalCore(Guid tenantId, Guid connectionId, ProductApprovalReconciliationJobPayload payload, string correlationId, IReadOnlyDictionary<string, RemotePublicationStatus>? listed, CancellationToken cancellationToken)
+    {
         var job = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile, cancellationToken);
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.ProfileId && x.ProductId == payload.ProductId && x.ConnectionId == connectionId, cancellationToken);
         if (job is null || profile is null) return JobExecutionResult.Blocked("PRODUCT_APPROVAL_STATE_MISSING", "Onay uzlaştırma işi veya listing profile bulunamadı.");
@@ -706,6 +718,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (!familyStatuses.TryGetValue(barcode, out var familyStatus))
                     return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_CONTRACT_INVALID", $"{marketplaceName} ürün durum yanıtı istenen {keyLabel} için sonuç içermiyor."), cancellationToken);
                 remoteByBarcode.Add(barcode, familyStatus);
+                continue;
+            }
+            if (listed is not null && listed.TryGetValue(barcode, out var listedStatus))
+            {
+                remoteByBarcode.Add(barcode, listedStatus with { Barcode = barcode });
                 continue;
             }
             TrackRequest();
@@ -869,6 +886,128 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return rejected == listings.Count
             ? JobExecutionResult.Blocked("PRODUCT_APPROVAL_REJECTED", $"{marketplaceName} ürün onayı tüm varyantlar için reddedildi.")
             : JobExecutionResult.Blocked("PRODUCT_APPROVAL_PARTIAL_REJECTION", $"{marketplaceName} ürün onayı bazı varyantlar için reddedildi.");
+    }
+
+    // How many of a connection's other waiting approval checks one run settles with the lists it read.
+    internal const int ConnectionApprovalSiblingLimit = 200;
+
+    // Pazarama keeps every product's approval state on its approved and unapproved lists. The approval check that runs
+    // walks those lists once (ProductApprovalReconciliationPolicy.ListWalkBudget decides whether that is cheaper than
+    // asking per barcode) and settles with them its own card and every other card of the connection still waiting for
+    // approval, each through the same per-card rules (identity checks, the family's shared group code, the profile's
+    // LIVE / partial / rejected roll-up and the card's own deadline). A card the lists did not show is asked on its own,
+    // as before. Every settled card's job is completed or rescheduled on its own schedule with a check recorded, so the
+    // youngest waiting card sets the pace and the others are read along with it instead of each calling Pazarama.
+    // Jobs queued before this change carry the same per-card payload and are settled the same way.
+    private async Task<JobExecutionResult> ReconcileConnectionApprovals(Guid tenantId, Guid connectionId, ProductApprovalReconciliationJobPayload payload, string correlationId, IProductApprovalSnapshotPort snapshotPort, CancellationToken cancellationToken)
+    {
+        var siblings = await db.IntegrationJobs
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile && x.Id != payload.JobId
+                && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount < x.MaxAttempts)
+            .OrderBy(x => x.CreatedAt)
+            .Take(ConnectionApprovalSiblingLimit)
+            .ToListAsync(cancellationToken);
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var waiting = new List<(IntegrationJob Job, ProductApprovalReconciliationJobPayload Payload)>();
+        foreach (var sibling in siblings)
+        {
+            ProductApprovalReconciliationJobPayload? parsed = null;
+            try { parsed = JsonSerializer.Deserialize<ProductApprovalReconciliationJobPayload>(sibling.PayloadJson, options); }
+            catch (JsonException) { }
+            // A card whose payload does not hold runs on its own and is refused there.
+            if (parsed is null || parsed.JobId != sibling.Id || parsed.ProductId == Guid.Empty || parsed.ProfileId == Guid.Empty || string.IsNullOrWhiteSpace(parsed.PayloadHash) || parsed.DeadlineAt <= parsed.StartedAt) continue;
+            if (parsed.ProfileId == payload.ProfileId) continue;
+            waiting.Add((sibling, parsed));
+        }
+
+        var profileIds = waiting.Select(x => x.Payload.ProfileId).Append(payload.ProfileId).Distinct().ToArray();
+        var waitingBarcodes = await db.ChannelListingVariants.AsNoTracking()
+            .CountAsync(x => x.TenantId == tenantId && profileIds.Contains(x.ProfileId) && x.ActualStatus != "LIVE" && x.ActualStatus != "CREATE_REJECTED" && x.ActualStatus != "UPDATE_REJECTED", cancellationToken);
+        var linkedVariants = await db.MarketplaceVariantLinks.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        var unsettledListings = await db.MarketplaceListingStates.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ActualStatus != "LIVE", cancellationToken);
+        var budget = ProductApprovalReconciliationPolicy.ListWalkBudget(waitingBarcodes, linkedVariants, unsettledListings);
+        if (budget == 0) return await ReconcileProductApprovalCore(tenantId, connectionId, payload, correlationId, null, cancellationToken);
+
+        TrackRequest();
+        var snapshot = await snapshotPort.ReadApprovalSnapshotAsync(Context(tenantId, connectionId, correlationId, $"product-approval-lists:{connectionId:N}"), budget, cancellationToken);
+        if (!snapshot.IsSuccess)
+        {
+            TrackResultFailure(snapshot.Error);
+            var adapterResult = JobExecutionResult.FromAdapterError(snapshot.Error!);
+            // A quota or network refusal: this check waits like any other read. Anything else leaves this card to its
+            // per-barcode lookup, which reports its own answer.
+            if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
+            return await ReconcileProductApprovalCore(tenantId, connectionId, payload, correlationId, null, cancellationToken);
+        }
+
+        var listed = snapshot.Value!.ByBarcode;
+        var result = await ReconcileProductApprovalCore(tenantId, connectionId, payload, correlationId, listed, cancellationToken);
+        if (result.Kind == JobCompletionKind.Retry && !JobWaitingPolicy.IsWaiting(result)) return result;
+        foreach (var (sibling, siblingPayload) in waiting)
+        {
+            var settled = await ReconcileProductApprovalCore(tenantId, connectionId, siblingPayload, sibling.CorrelationId, listed, cancellationToken);
+            // A per-barcode lookup the lists did not answer was refused for quota or network: the remaining cards run
+            // on their own schedule instead.
+            if (settled.Kind == JobCompletionKind.Retry && !JobWaitingPolicy.IsWaiting(settled)) break;
+            await RecordSiblingApprovalCheck(sibling, settled, cancellationToken);
+        }
+        return result;
+    }
+
+    // Records on a card's own job the check another card's run made for it: one attempt, completed now, and the job
+    // finished or planned for its next check, as the lease service would have done had the job run itself.
+    private async Task RecordSiblingApprovalCheck(IntegrationJob job, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        job.AttemptCount++;
+        if (JobWaitingPolicy.IsWaiting(result) && now - job.CreatedAt < JobWaitingPolicy.FreeWaitingWindow(job.JobType))
+        {
+            job.MaxAttempts++;
+            job.WaitingChecks++;
+        }
+        var kind = result.Kind == JobCompletionKind.Retry && job.AttemptCount >= job.MaxAttempts ? JobCompletionKind.Dead : result.Kind;
+        job.Status = kind switch
+        {
+            JobCompletionKind.Succeeded => JobStatus.Succeeded,
+            JobCompletionKind.Retry => JobStatus.RetryScheduled,
+            JobCompletionKind.Blocked => JobStatus.Blocked,
+            JobCompletionKind.ManualReview => JobStatus.ManualReview,
+            _ => JobStatus.Dead
+        };
+        job.StartedAt ??= now;
+        job.CompletedAt = kind == JobCompletionKind.Retry ? null : now;
+        if (kind == JobCompletionKind.Retry)
+            job.AvailableAt = now.Add(result.RetryAfter is { } delay && delay > TimeSpan.Zero ? delay : TimeSpan.FromMinutes(5));
+        job.LastErrorCode = kind == JobCompletionKind.Dead && result.Kind == JobCompletionKind.Retry ? result.ErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED" : result.ErrorCode;
+        job.LastErrorSummary = result.ErrorSummary;
+        job.Version++;
+        var attempt = new JobAttempt
+        {
+            Id = Guid.NewGuid(),
+            TenantId = job.TenantId,
+            JobId = job.Id,
+            AttemptNumber = job.AttemptCount,
+            StartedAt = now,
+            CompletedAt = now,
+            Succeeded = kind == JobCompletionKind.Succeeded,
+            ErrorCode = job.LastErrorCode,
+            ErrorSummary = result.ErrorSummary is null ? "Bağlantının bekleyen ürünleriyle birlikte tek liste okumasında kontrol edildi." : $"{result.ErrorSummary} Bağlantının bekleyen ürünleriyle birlikte tek liste okumasında kontrol edildi."
+        };
+        db.JobAttempts.Add(attempt);
+        var outboxEvent = JobLeaseService.NewJobEvent(job, now);
+        db.IntegrationOutboxEvents.Add(outboxEvent);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The job changed meanwhile (an operator cancelled or retried it): it keeps that change; the card's
+            // listing state this check wrote stands, as it is what the marketplace answered.
+            db.Entry(job).State = EntityState.Detached;
+            db.Entry(attempt).State = EntityState.Detached;
+            db.Entry(outboxEvent).State = EntityState.Detached;
+        }
     }
 
     private async Task<JobExecutionResult> ReconcileHepsiburadaProductApproval(Guid tenantId, Guid connectionId, ProductApprovalReconciliationJobPayload payload, ChannelListingProfile profile, IReadOnlyList<ChannelListingVariant> listings, IReadOnlyDictionary<Guid, MarketplaceListingState> states, string correlationId, CancellationToken cancellationToken)

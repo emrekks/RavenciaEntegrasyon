@@ -690,6 +690,17 @@ public interface IProductFamilyStatusPort
     Task<AdapterResult<IReadOnlyList<RemotePublicationStatus>>> GetFamilyPublicationStatusAsync(AdapterContext context, string parentBarcode, IReadOnlyList<FamilyVariantQuery> variants, CancellationToken cancellationToken);
 }
 
+// A marketplace whose own product lists carry the approval state (Pazarama's approved and unapproved lists) answers
+// many products' publication status from one walk of those lists instead of one lookup per barcode. The walk stops
+// after maxRequests list requests; Complete says it reached the end of both lists. A barcode it did not list is not
+// in the snapshot (unknown, never "missing"): the caller asks for it on its own.
+public interface IProductApprovalSnapshotPort
+{
+    Task<AdapterResult<ProductApprovalSnapshot>> ReadApprovalSnapshotAsync(AdapterContext context, int maxRequests, CancellationToken cancellationToken);
+}
+
+public sealed record ProductApprovalSnapshot(IReadOnlyDictionary<string, RemotePublicationStatus> ByBarcode, bool Complete, int Requests);
+
 // A family variant asked about: its barcode and the colour and size it was sent with (null when not known), and whether
 // the send's tracking result accepted it (a succeeded product job of the publication carried it; the card did not refuse it).
 public sealed record FamilyVariantQuery(string Barcode, string? Color, string? Size, bool SendAccepted = false);

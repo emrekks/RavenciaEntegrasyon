@@ -2179,6 +2179,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
+                    b.Property<int>("WaitingChecks")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "CreatedAt", "Id")

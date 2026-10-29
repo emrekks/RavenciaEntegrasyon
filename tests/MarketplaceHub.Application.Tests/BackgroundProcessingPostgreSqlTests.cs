@@ -374,6 +374,66 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // A marketplace still processing an accepted batch is not a failed try: the checks keep their attempt rows but
+    // give the attempt back, run again when the processor asked, and real failures still use up the budget.
+    [PostgreSqlFact]
+    public async Task WaitingChecksKeepTheirRowsButDoNotUseUpTheAttempts()
+    {
+        var tenant = NewTenant("bg-wait");
+        var job = NewJob(tenant.Id, "TEST_WAITING_CHECK");
+        job.MaxAttempts = 2;
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.Add(job);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task RunAsync(JobExecutionResult result)
+            {
+                await using var db = fixture.CreateContext();
+                var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+                await db.IntegrationJobs.Where(x => x.Id == job.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AvailableAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+                var lease = await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: job.Id);
+                Assert.NotNull(lease);
+                Assert.True(await leases.CompleteAsync(job.Id, lease.LeaseToken, result, CancellationToken.None));
+            }
+
+            for (var check = 0; check < 3; check++)
+                await RunAsync(JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "N11 ürün açma görevi işleniyor.", TimeSpan.FromSeconds(15), "task-1"));
+
+            await using (var afterChecks = fixture.CreateContext())
+            {
+                var stored = await afterChecks.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == job.Id);
+                Assert.Equal(JobStatus.RetryScheduled, stored.Status);
+                Assert.Equal(3, stored.AttemptCount);
+                Assert.Equal(3, stored.WaitingChecks);
+                Assert.Equal(5, stored.MaxAttempts);
+                // The processor's 15 seconds, not the failure backoff that grew to minutes after the third check.
+                Assert.True(stored.AvailableAt - DateTimeOffset.UtcNow < TimeSpan.FromSeconds(30));
+                var rows = await afterChecks.JobAttempts.AsNoTracking().Where(x => x.JobId == job.Id).ToListAsync();
+                Assert.Equal(3, rows.Count);
+                Assert.All(rows, row => Assert.Equal("PRODUCT_BATCH_PENDING", row.ErrorCode));
+            }
+
+            await RunAsync(JobExecutionResult.Retry("REMOTE_TIMEOUT", "Zaman aşımı."));
+            await RunAsync(JobExecutionResult.Retry("REMOTE_TIMEOUT", "Zaman aşımı."));
+
+            await using var verification = fixture.CreateContext();
+            var final = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == job.Id);
+            // Two real failures use up the job's own budget of two.
+            Assert.Equal(JobStatus.Dead, final.Status);
+            Assert.Equal(5, final.AttemptCount);
+            Assert.Equal(2, final.MaxAttempts - final.WaitingChecks);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     private async Task CleanupAsync(Guid tenantId)
     {
         await using var cleanup = fixture.CreateContext();

@@ -25,6 +25,9 @@ public sealed class IntegrationJob
     public DateTimeOffset? HeartbeatAt { get; set; }
     public int AttemptCount { get; set; }
     public int MaxAttempts { get; set; } = JobRetryPolicy.DefaultMaxAttempts;
+    // Waiting checks (a marketplace still processing an accepted request) that did not use up an attempt: each one
+    // raised MaxAttempts by one, so MaxAttempts - WaitingChecks is the job's own attempt budget.
+    public int WaitingChecks { get; set; }
     public string? LastErrorCode { get; set; }
     public string? LastErrorSummary { get; set; }
     public required string CorrelationId { get; set; }

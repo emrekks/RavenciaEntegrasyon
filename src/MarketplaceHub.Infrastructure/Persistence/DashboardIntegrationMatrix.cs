@@ -81,9 +81,11 @@ public static class DashboardIntegrationMatrix
     {
         var jobTypes = Kinds.SelectMany(x => x.JobTypes).Distinct().ToArray();
         var policyCodes = PolicyBlockCodes;
+        // A retry that only waits for the marketplace to finish what it accepted (a batch, an approval) is no problem.
+        var waitingCodes = JobWaitingPolicy.Codes.ToArray();
         return db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && connectionIds.Contains(x.ConnectionId) && x.CreatedAt >= since && jobTypes.Contains(x.JobType)
-                && (Failed.Contains(x.Status) || Retrying.Contains(x.Status))
+                && (Failed.Contains(x.Status) || Retrying.Contains(x.Status) && (x.LastErrorCode == null || !waitingCodes.Contains(x.LastErrorCode)))
                 && !(x.Status == JobStatus.Blocked && x.LastErrorCode != null && (policyCodes.Contains(x.LastErrorCode) || x.LastErrorCode.EndsWith("_DISABLED"))))
             .GroupBy(x => new { x.ConnectionId, x.JobType })
             .Select(g => g.OrderByDescending(x => x.CreatedAt).Select(x => new ProblemRow(x.ConnectionId, x.JobType, x.Status, x.CreatedAt, x.LastErrorSummary)).First());

@@ -5,9 +5,10 @@ import { DialogSurface, UiIcon } from '../../../shared/components'
 import { notificationLinks } from '../../../shared/notifications'
 import { platformLogoSource } from '../../../shared/platform-logos'
 import { jobPresentation } from '../../operations/job-presentation'
+import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobLabel } from '../../operations/job-waiting'
 import { publicationJobPollInterval } from '../publication-job-poll'
 
-type JobAttempt = { attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }
+type JobAttempt = { attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }
 type JobChange = { label: string; value: string; detail: string | null }
 export type PublicationJobDialogDetail = {
   job: {
@@ -15,6 +16,7 @@ export type PublicationJobDialogDetail = {
     createdAt: string; startedAt: string | null; completedAt: string | null; nextRetryAt: string | null; heartbeatAt: string | null
     progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null
     lastErrorCode: string | null; lastErrorSummary: string | null
+    waiting?: boolean; waitingChecks?: number; attemptBudget?: number
   }
   attempts?: JobAttempt[]
   change?: JobChange | null
@@ -40,6 +42,17 @@ export function publicationJobProgress(job: PublicationJobDialogDetail['job']) {
   return parts.length ? parts.join(' · ') : null
 }
 
+const attemptClass = { SUCCEEDED: 'is-ok', FAILED: 'is-failed', WAITING: 'is-running', RUNNING: 'is-running' } as const
+
+// A failed try shows the marketplace's answer; a waiting check says it was checked and what it waits for.
+function attemptText(attempt: JobAttempt) {
+  const outcome = jobAttemptOutcome(attempt)
+  if (outcome === 'SUCCEEDED') return 'Başarılı'
+  if (outcome === 'RUNNING') return 'Sürüyor'
+  if (outcome === 'WAITING') return `${jobAttemptResultLabel(attempt)}${attempt.errorSummary ? ` · ${attempt.errorSummary}` : ''}`
+  return `${attempt.errorSummary ?? 'Başarısız'}${attempt.errorCode ? ` (${attempt.errorCode})` : ''}`
+}
+
 const when = (value: string | null | undefined) => value
   ? new Date(value).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Istanbul' })
   : null
@@ -56,17 +69,21 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
   const presentation = job ? jobPresentation(job.jobType) : null
   const logo = platformLogoSource(platformCode)
   const progress = job ? publicationJobProgress(job) : null
-  const hasError = Boolean(job && status !== 'SUCCEEDED' && (job.lastErrorCode || job.lastErrorSummary))
+  // A job that only waits for the marketplace to finish (a batch task, an approval) has no error to show.
+  const waiting = Boolean(job && isWaitingJob({ status, waiting: job.waiting }))
+  const statusText = job && waiting ? waitingJobLabel(job) : publicationJobStatusLabel(status)
+  const hasError = Boolean(job && status !== 'SUCCEEDED' && !waiting && (job.lastErrorCode || job.lastErrorSummary))
   const attempts = detail.data?.attempts ?? []
   const facts: Array<[string, string | null]> = job ? [
-    ['Durum', publicationJobStatusLabel(status)],
+    ['Durum', statusText],
     ['İşlem', presentation ? `${presentation.area} · ${presentation.action}` : job.jobType],
     ['İlerleme', progress],
-    ['Deneme', `${job.attemptCount} / ${job.maxAttempts}`],
+    ['Deneme', jobAttemptsText(job)],
+    ['Durum Kontrolü', job.waitingChecks ? String(job.waitingChecks) : null],
     ['Oluşturuldu', when(job.createdAt)],
     ['Başladı', when(job.startedAt)],
     ['Bitti', when(job.completedAt)],
-    ['Sonraki Deneme', status === 'RETRY_SCHEDULED' ? when(job.nextRetryAt) : null],
+    [waiting ? 'Sonraki Kontrol' : 'Sonraki Deneme', status === 'RETRY_SCHEDULED' ? when(job.nextRetryAt) : null],
     ['Son Sinyal', status === 'LEASED' ? when(job.heartbeatAt) : null],
     ['İş No', job.id],
     ['Korelasyon No', job.correlationId]
@@ -77,7 +94,7 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
       <header>
         <div className="publication-job-head">
           {logo && <img className="publication-job-logo" src={logo} alt="" aria-hidden="true" />}
-          <div><p className="eyebrow">{storeName && storeName !== platformName ? `${platformName} · ${storeName}` : platformName}</p><h2 id="publication-job-title">{presentation ? `${platformName} ${presentation.action}` : 'Yayın İşi'}</h2>{job && <span className={`publication-job-status is-${statusTones[status] ?? 'info'}`}>{publicationJobStatusLabel(status)}</span>}</div>
+          <div><p className="eyebrow">{storeName && storeName !== platformName ? `${platformName} · ${storeName}` : platformName}</p><h2 id="publication-job-title">{presentation ? `${platformName} ${presentation.action}` : 'Yayın İşi'}</h2>{job && <span className={`publication-job-status is-${waiting ? 'info' : statusTones[status] ?? 'info'}`}>{statusText}</span>}</div>
         </div>
         <button type="button" className="modal-close" onClick={onClose} aria-label="İş ayrıntısını kapat"><UiIcon name="close" /></button>
       </header>
@@ -90,9 +107,9 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
               <dl className="publication-job-facts">{facts.filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
               {attempts.length > 0 && <section className="publication-job-attempts" aria-label="Denemeler">
                 <h3>Denemeler</h3>
-                <ol>{attempts.map(attempt => <li key={attempt.attemptNumber} className={attempt.succeeded ? 'is-ok' : attempt.completedAt ? 'is-failed' : 'is-running'}>
+                <ol>{attempts.map(attempt => <li key={attempt.attemptNumber} className={attemptClass[jobAttemptOutcome(attempt)]}>
                   <span>{attempt.attemptNumber}. Deneme · {when(attempt.startedAt)}</span>
-                  <small>{attempt.succeeded ? 'Başarılı' : attempt.completedAt ? `${attempt.errorSummary ?? 'Başarısız'}${attempt.errorCode ? ` (${attempt.errorCode})` : ''}` : 'Sürüyor'}</small>
+                  <small>{attemptText(attempt)}</small>
                 </li>)}</ol>
               </section>}
             </>}
