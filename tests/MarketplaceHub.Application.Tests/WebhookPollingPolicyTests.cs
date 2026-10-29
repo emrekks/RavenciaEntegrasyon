@@ -198,21 +198,6 @@ public sealed class PlatformHistoryLimitsTests
     }
 }
 
-public sealed class OrderBaselinePercentTests
-{
-    [Fact]
-    public void WindowByWindowHistoryReadReportsHowFarItCame()
-    {
-        const string baseline = """{"Version":"v","Mode":0,"AnchorEnd":"2026-10-18T00:00:00+00:00","StartAt":"2026-07-20T00:00:00+00:00","WindowIndex":3,"NextCursor":null}""";
-        const string incremental = """{"Version":"v","Mode":1,"AnchorEnd":"2026-10-18T00:00:00+00:00","StartAt":"2026-10-17T00:00:00+00:00","WindowIndex":0,"NextCursor":null}""";
-
-        Assert.Equal(42, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent(baseline));
-        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent(incremental));
-        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent("{bozuk"));
-        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent(null));
-    }
-}
-
 public sealed class WebhookEventPathTests
 {
     [Theory]

@@ -185,8 +185,6 @@ public static class MarketplaceEndpoints
         api.MapPost("/returns/{id:guid}/stock-dispositions", async (Guid id, ReturnDispositionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? WithEtag(http, await service.ApplyDispositionAsync(tenant.TenantId, tenant.UserId, id, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version) : MissingContext(http));
         api.MapPost("/files/return-evidence", UploadReturnEvidenceAsync).DisableAntiforgery();
 
-        api.MapGet("/data-freshness", async (HttpContext http, IDataFreshnessService service) => Tenant(http) is { } tenant ? Results.Ok(await service.FreshnessAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
-        api.MapGet("/connections/{id:guid}/initial-import", async (Guid id, HttpContext http, IDataFreshnessService service) => Tenant(http) is { } tenant ? Result(await service.InitialImportAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireSameOriginFetch();
         api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) =>
         {
