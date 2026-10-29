@@ -788,15 +788,16 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         catch (JsonException) { return false; }
     }
 
-    private static string DisableStoredWrites(string settingsJson)
+    // Only the write switch is turned off: the connection's other settings (the invoice switch, the Trendyol
+    // User-Agent, n11's shipment template) stay as the seller set them. Dropping InvoiceCreationEnabled would read
+    // back as "on" for every platform.
+    internal static string DisableStoredWrites(string settingsJson)
     {
         try
         {
-            using var document = JsonDocument.Parse(settingsJson);
-            var userAgent = document.RootElement.TryGetProperty("UserAgentIdentity", out var value) && value.ValueKind == JsonValueKind.String
-                ? value.GetString() ?? ""
-                : "";
-            return JsonSerializer.Serialize(new { UserAgentIdentity = userAgent, ExternalWritesEnabled = false });
+            if (System.Text.Json.Nodes.JsonNode.Parse(settingsJson) is not System.Text.Json.Nodes.JsonObject settings) return settingsJson;
+            settings["ExternalWritesEnabled"] = false;
+            return settings.ToJsonString();
         }
         catch (JsonException) { return settingsJson; }
     }

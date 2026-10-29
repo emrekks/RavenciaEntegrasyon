@@ -34,6 +34,37 @@ public sealed class MarketplaceInvoiceCreationPolicyTests
         Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled("TRENDYOL_EFATURAM", "{\"InvoiceCreationEnabled\":false}"));
     }
 
+    // Every marketplace connection carries the Faturalama switch both ways, Hepsiburada included.
+    [Theory]
+    [InlineData("TRENDYOL")]
+    [InlineData("HEPSIBURADA")]
+    [InlineData("N11")]
+    [InlineData("PAZARAMA")]
+    [InlineData("PTTAVM")]
+    public void EveryMarketplaceButShopifyMayTurnInvoiceCreationOnAndOff(string platformCode)
+    {
+        Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal(platformCode, true));
+        Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal(platformCode, false));
+        Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal(platformCode, null));
+        Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled(platformCode, "{\"ExternalWritesEnabled\":true,\"InvoiceCreationEnabled\":true}"));
+    }
+
+    // Shopify's switch cannot be turned on: the invoicing flow would ignore it, so the request is refused instead.
+    [Fact]
+    public void ShopifyInvoiceCreationCannotBeTurnedOnButMayBeKeptOff()
+    {
+        Assert.Equal(MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage, MarketplaceInvoiceCreationPolicy.UpdateRefusal("SHOPIFY", true));
+        Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal("SHOPIFY", false));
+        Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("SHOPIFY", "{\"ExternalWritesEnabled\":true,\"InvoiceCreationEnabled\":true}"));
+    }
+
+    [Fact]
+    public void TheInvoiceSwitchBelongsToMarketplaceConnectionsOnly()
+    {
+        Assert.NotNull(MarketplaceInvoiceCreationPolicy.UpdateRefusal("TRENDYOL_EFATURAM", false));
+        Assert.Null(MarketplaceInvoiceCreationPolicy.UpdateRefusal("TRENDYOL_EFATURAM", null));
+    }
+
     [Fact]
     public void InvalidMarketplaceSettingsFailClosed()
     {
