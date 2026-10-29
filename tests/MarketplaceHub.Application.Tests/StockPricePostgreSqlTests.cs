@@ -1,3 +1,4 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -162,6 +163,106 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == n11.Id && x.ResourceType == "STOCK_RECONCILIATION");
         Assert.Contains("stock-reconcile-v1", cursor.OpaqueCursor);
         Assert.True(await check.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenant.Id).AllAsync(x => x.ReconciledAt != null));
+    }
+
+    // K-2: "update prices and stock" takes the marketplace number read at the page read. An order the panel took from
+    // stock after that read is not in the number, so it comes off again; an order held as a reservation from before
+    // the read is already off the number, so it is added back (its reservation takes it later). The change is a
+    // stock ledger row and a dispatch to the connections selling the variant.
+    [PostgreSqlFact]
+    public async Task CatalogStockUpdate_CountsOrdersAfterTheReadAndReservationsBeforeIt()
+    {
+        var tenant = NewTenant("catalog-stock-orders");
+        var shopify = NewConnection(tenant, "SHOPIFY", writesEnabled: true);
+        var (product, ordered) = NewVariant(tenant, "K2-ORDERED", "8690000000501");
+        var reserved = NewVariant(tenant, "K2-RESERVED", "8690000000502", product.Id).Variant;
+        var orderedInventory = NewInventory(tenant, ordered, 10m);
+        orderedInventory.ProjectionVersion = 2;
+        orderedInventory.Version = 2;
+        var reservedInventory = NewInventory(tenant, reserved, 0m);
+        reservedInventory.Reserved = 2m;
+        reservedInventory.ProjectionVersion = 3;
+        reservedInventory.Version = 3;
+        var reservationSource = Guid.CreateVersion7().ToString("D");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(ordered, reserved);
+            seed.InventoryItems.AddRange(orderedInventory, reservedInventory);
+            seed.ChannelOffers.AddRange(NewOffer(tenant, shopify, ordered), NewOffer(tenant, shopify, reserved));
+            seed.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, ProductId = product.Id, ExternalId = "k2-product", LastImportedProductVersion = product.Version, SyncStatus = "SYNCED", Version = 1 });
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = ordered.Id, ExternalId = "k2-ordered" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = reserved.Id, ExternalId = "k2-reserved" });
+            // Two units of an order the panel could not take from stock an hour ago: held as a reservation.
+            seed.StockReservations.Add(new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = reservedInventory.Id, SourceType = "ORDER_LINE", SourceId = reservationSource, Quantity = 2m, Status = ReservationStatus.Active, Version = 1 });
+            seed.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = reservedInventory.Id, MovementType = "ORDER_RESERVED", QuantityDelta = -2m, SourceType = "ORDER_LINE", SourceId = reservationSource, SourceEventId = $"k2:{reservationSource}", IdempotencyKey = $"k2-reserved:{reservationSource}", OccurredAt = DateTimeOffset.UtcNow.AddHours(-1), RecordedAt = DateTimeOffset.UtcNow.AddHours(-1), CorrelationId = "k2" });
+            await seed.SaveChangesAsync();
+        }
+
+        RemoteCatalogVariant Remote(string id, string sku, string barcode, decimal stock) => new(id, sku, barcode, null, new Dictionary<string, string>(), false, 120m, 150m, 20m, stock, "TRY", "{}");
+        var port = new CatalogReadPort(
+            new RemoteCatalogProduct("k2-product", null, "Ürün", "", null, null, null, null, [], [Remote("k2-ordered", "K2-ORDERED", "8690000000501", 12m), Remote("k2-reserved", "K2-RESERVED", "8690000000502", 8m)], "{}"),
+            async () =>
+            {
+                // While the page is being read, an order takes two units of the first variant from stock in the panel.
+                await using var orders = fixture.CreateContext();
+                var item = await orders.InventoryItems.SingleAsync(x => x.Id == orderedInventory.Id);
+                item.OnHand -= 2m;
+                item.Available = item.OnHand;
+                item.ProjectionVersion++;
+                item.Version++;
+                var source = Guid.CreateVersion7().ToString("D");
+                orders.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = item.Id, MovementType = "ORDER_RECEIVED", QuantityDelta = -2m, SourceType = "ORDER_LINE", SourceId = source, SourceEventId = $"k2:{source}", IdempotencyKey = $"k2-received:{source}", OccurredAt = DateTimeOffset.UtcNow, RecordedAt = DateTimeOffset.UtcNow, CorrelationId = "k2" });
+                await orders.SaveChangesAsync();
+            });
+
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, shopify.Id, MarketplaceJobTypes.ShopifyProductSync, "{\"full\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":true}", "catalog-stock-orders", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using var check = fixture.CreateContext();
+        var orderedAfter = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == orderedInventory.Id);
+        var reservedAfter = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == reservedInventory.Id);
+        Assert.Equal(10m, orderedAfter.OnHand);
+        Assert.Equal(10m, orderedAfter.Available);
+        Assert.Equal(10m, reservedAfter.OnHand);
+        Assert.Equal(8m, reservedAfter.Available);
+        var imports = await check.StockLedgerEntries.AsNoTracking()
+            .Where(x => x.TenantId == tenant.Id && x.MovementType == MarketplaceStockImportPolicy.MovementType)
+            .ToDictionaryAsync(x => x.InventoryItemId, x => x.QuantityDelta);
+        Assert.Equal(2m, imports[orderedInventory.Id]);
+        Assert.Equal(10m, imports[reservedInventory.Id]);
+        var dispatched = await check.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.StockProjectionDispatch)
+            .Select(x => x.PayloadJson)
+            .ToListAsync();
+        Assert.Contains(dispatched, payload => payload.Contains(ordered.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(dispatched, payload => payload.Contains(reserved.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class CatalogReadPort(RemoteCatalogProduct snapshot, Func<Task> duringRead) : IProductPort
+    {
+        public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
+        {
+            await duringRead();
+            return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(new([snapshot], null, false, 1));
+        }
+
+        public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     // Q-1/K-1: a price/stock job of the same values that ended without getting them through no longer counts as

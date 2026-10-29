@@ -29,6 +29,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private const int MaxBrandReferenceItems = 2_000_000;
     // The job types that have their own handler class; built here when the processor is made without DI.
     private readonly IReadOnlyList<IJobHandler> jobHandlers = handlers?.ToArray() ?? [new MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler(questions)];
+    // When the marketplace stock of the model group being finalized was read (K-2); null outside a catalog import.
+    private DateTimeOffset? catalogStockReadAt;
     private int telemetryRequestCount;
     private int telemetryReceivedCount;
     private int telemetryChangedCount;
@@ -5551,6 +5553,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     cancellationToken);
             }
             TrackRequest();
+            // A staged snapshot is stamped with the moment its page read began: the stock it carries is no newer.
+            var pageReadAt = timeProvider.GetUtcNow();
             var result = await products.ListCatalogAsync(
                 Context(tenantId, connectionId, correlationId, $"product-sync:{nextCursor ?? "0"}"),
                 new(nextCursor, 100),
@@ -5595,7 +5599,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     SnapshotJson = snapshotJson,
                     ReceivedOrder = receivedOrderStart + index,
                     State = "STAGED",
-                    CreatedAt = timeProvider.GetUtcNow()
+                    CreatedAt = pageReadAt
                 });
             }
             if (stagedRows.Count > 0)
@@ -5742,6 +5746,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
                 .Select(MergeCatalogSnapshots)
                 .ToList();
+            catalogStockReadAt = stagingRows.Min(row => row.CreatedAt);
             try
             {
                 if (isHepsiburada) await RekeyHepsiburadaVariantLinks(tenantId, connectionId, snapshotGroups, cancellationToken);
@@ -5831,6 +5836,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             finally
             {
+                catalogStockReadAt = null;
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();
@@ -8086,13 +8092,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var reconciliationWasMissing = inventory.ReconciledAt is null;
                 var seedInitialOnHand = InventoryAuthorityPolicy.ShouldSeedInitialOnHand(inventory);
                 var applyQuantityToOnHand = (!observeOnly || forceStockUpdate) && (forceStockUpdate || applyRemoteQuantityToOnHand || seedInitialOnHand);
-                var projectionChanged = applyQuantityToOnHand && inventory.OnHand != observedRemoteQuantity;
+                var targetOnHand = applyQuantityToOnHand ? await MarketplaceStockTargetAsync(tenantId, inventory, observedRemoteQuantity, now, cancellationToken) : inventory.OnHand;
+                var projectionChanged = applyQuantityToOnHand && inventory.OnHand != targetOnHand;
                 var observationChanged = inventory.ObservedRemoteQuantity != observedRemoteQuantity;
                 if (projectionChanged)
                 {
-                    inventory.OnHand = observedRemoteQuantity;
+                    // K-2: the change goes through the stock ledger and reaches every connection selling the variant,
+                    // like any other stock movement.
+                    var readAt = MarketplaceStockReadAt(now);
+                    var delta = targetOnHand - inventory.OnHand;
+                    inventory.OnHand = targetOnHand;
                     inventory.Available = InventoryProjection.Available(inventory.OnHand, inventory.Reserved);
                     inventory.ProjectionVersion++;
+                    var eventId = $"catalog-stock:{connectionId:N}:{inventory.Id:N}:v{inventory.ProjectionVersion}";
+                    db.StockLedgerEntries.Add(new StockLedgerEntry
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        InventoryItemId = inventory.Id,
+                        MovementType = MarketplaceStockImportPolicy.MovementType,
+                        QuantityDelta = delta,
+                        SourceType = MarketplaceStockImportPolicy.SourceType,
+                        SourceId = connectionId.ToString("D"),
+                        SourceEventId = eventId,
+                        IdempotencyKey = eventId,
+                        OccurredAt = readAt,
+                        RecordedAt = now,
+                        CorrelationId = $"catalog-import:{connectionId:N}"
+                    });
+                    await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(variant.Id, inventory.ProjectionVersion, eventId)], now, cancellationToken);
                 }
                 inventory.ObservedRemoteQuantity = observedRemoteQuantity;
                 inventory.ObservedRemoteAt = now;
@@ -8183,6 +8211,30 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 EffectiveAt = now
             });
         }
+    }
+
+    // When the marketplace stock being written was read: the earliest page read of the model group being finalized,
+    // else the write itself. An earlier moment is the safe side (more panel movements count as after the read).
+    private DateTimeOffset MarketplaceStockReadAt(DateTimeOffset now) =>
+        catalogStockReadAt is { } readAt && readAt < now ? readAt.ToUniversalTime() : now;
+
+    private async Task<decimal> MarketplaceStockTargetAsync(Guid tenantId, InventoryItem inventory, decimal remoteQuantity, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var readAt = MarketplaceStockReadAt(now);
+        var orderReserved = await db.StockReservations.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.InventoryItemId == inventory.Id && x.SourceType == "ORDER_LINE" && x.Status == ReservationStatus.Active)
+            .SumAsync(x => (decimal?)x.Quantity, cancellationToken) ?? 0m;
+        var afterRead = await db.StockLedgerEntries.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.InventoryItemId == inventory.Id && x.RecordedAt > readAt
+                && (MarketplaceStockImportPolicy.OnHandMovementTypes.Contains(x.MovementType) || MarketplaceStockImportPolicy.ReservationMovementTypes.Contains(x.MovementType)))
+            .GroupBy(x => MarketplaceStockImportPolicy.ReservationMovementTypes.Contains(x.MovementType))
+            .Select(group => new { Reservation = group.Key, Delta = group.Sum(x => x.QuantityDelta) })
+            .ToListAsync(cancellationToken);
+        return MarketplaceStockImportPolicy.TargetOnHand(
+            remoteQuantity,
+            orderReserved,
+            afterRead.Where(x => x.Reservation).Sum(x => x.Delta),
+            afterRead.Where(x => !x.Reservation).Sum(x => x.Delta));
     }
 
     private async Task UpsertShopifyInventoryObservations(Guid tenantId, Guid connectionId, Guid variantId, RemoteCatalogVariant remote, DateTimeOffset observedAt, CancellationToken cancellationToken)

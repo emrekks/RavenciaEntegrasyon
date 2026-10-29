@@ -6,6 +6,19 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class InventoryPolicyTests
 {
+    // K-2: the marketplace number (read earlier) plus the order units held as reservations at the read, plus the
+    // on-hand movements recorded after it.
+    [Theory]
+    [InlineData(10, 0, 0, 0, 10)]   // nothing happened in the panel
+    [InlineData(10, 0, 0, -2, 8)]   // an order after the read took 2 from stock
+    [InlineData(8, 2, 0, 0, 10)]    // 2 reserved before the read: off the number already, taken from stock later
+    [InlineData(10, 2, -2, 0, 10)]  // reserved after the read: the number still holds them
+    [InlineData(8, 0, 2, -2, 8)]    // reserved before, taken from stock after the read
+    [InlineData(10, 0, 0, 3, 13)]   // a cancellation (or restock) after the read
+    [InlineData(1, 0, 0, -5, 0)]    // never below zero
+    public void MarketplaceStockTargetCountsPanelMovementsAroundTheRead(decimal remote, decimal reservedNow, decimal reservationLedgerAfter, decimal onHandLedgerAfter, decimal expected) =>
+        Assert.Equal(expected, MarketplaceStockImportPolicy.TargetOnHand(remote, reservedNow, reservationLedgerAfter, onHandLedgerAfter));
+
     [Fact]
     public void ShippedQuantityConsumesReservationWithoutReleasingMoreThanOrdered()
     {

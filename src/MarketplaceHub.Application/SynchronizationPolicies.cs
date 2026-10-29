@@ -459,6 +459,29 @@ public static class InventoryAuthorityPolicy
         && inventory.ProjectionVersion == 1;
 }
 
+// K-2: the panel's on-hand stock taken from a marketplace stock number. The number was read at one moment (the page
+// read of the import) and is written later. The marketplace number already lacks the units of every order that was
+// in the panel at the read, while the panel takes them from on-hand at once (ORDER_RECEIVED) or, when stock fell
+// short, holds them as a reservation it takes from on-hand later. So:
+//   on-hand = remote + order units reserved at the read (taken again later; adding them keeps them from counting twice)
+//           + on-hand movements recorded after the read (orders, cancellations, manual changes, return restock),
+// which the remote number cannot contain yet. Reservations are rebuilt to the read by their own ledger rows
+// (ORDER_RESERVED / ORDER_RESERVATION_RELEASED carry minus the reserved change).
+public static class MarketplaceStockImportPolicy
+{
+    public const string MovementType = "MARKETPLACE_STOCK_IMPORT";
+    public const string SourceType = "MARKETPLACE_CATALOG";
+
+    public static readonly string[] OnHandMovementTypes = ["ORDER_RECEIVED", "MANUAL_ADJUSTMENT", "RETURN_PASS"];
+    public static readonly string[] ReservationMovementTypes = ["ORDER_RESERVED", "ORDER_RESERVATION_RELEASED"];
+
+    public static decimal TargetOnHand(decimal remoteQuantity, decimal orderReservedNow, decimal reservationLedgerAfterRead, decimal onHandLedgerAfterRead)
+    {
+        var reservedAtRead = Math.Max(0m, orderReservedNow + reservationLedgerAfterRead);
+        return decimal.Round(Math.Max(0m, Math.Max(0m, remoteQuantity) + reservedAtRead + onHandLedgerAfterRead), 4, MidpointRounding.ToEven);
+    }
+}
+
 public static class ProductImportMergePolicy
 {
     public static bool PreserveLocalChanges(long productVersion, long lastImportedProductVersion) =>
