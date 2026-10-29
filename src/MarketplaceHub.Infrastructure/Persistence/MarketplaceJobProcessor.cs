@@ -9318,7 +9318,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 linked.UpdatedAt = now;
                 if (db.Entry(linked).State != EntityState.Added) linked.Version++;
             }
-        var projectedLineQuantities = PackageLineProjectionPolicy.Recalculate(packagesByExternalId.Values.ToList(), allocationsByKey.Values.ToList());
+        var projectedLineQuantities = PackageLineProjectionPolicy.Recalculate(packagesByExternalId.Values.ToList(), allocationsByKey.Values.ToList(), remote.Packages);
         foreach (var line in lines.Values)
         {
             if (!projectedLineQuantities.TryGetValue(line.Id, out var projection)) continue;

@@ -2665,6 +2665,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 // The event keeps its deterministic name, so a replay is still known.
                 Assert.Equal(PackageIngestionSafety.EventId(packageNumber, deliveredEventAt), history[1].SourceEventId);
                 Assert.Equal(seenAt, history[1].OccurredAt);
+                // Audit 29 Oct S-1: the line follows the event that was applied, not one named by the seen time.
+                var line = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lineId);
+                Assert.Equal(1m, line.ShippedQuantity);
+                Assert.Equal(1m, line.DeliveredQuantity);
             }
 
             // The next read sees the same status: nothing changes and the time stays where it was first seen.
@@ -2676,12 +2680,152 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.Equal(version, package.Version);
                 Assert.Equal(2, await check.OrderStatusHistory.CountAsync(x => x.PackageId == packageId));
                 Assert.Equal(2, await check.PackageLineAllocations.CountAsync(x => x.PackageId == packageId));
+                var line = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lineId);
+                Assert.Equal(1m, line.DeliveredQuantity);
             }
         }
         finally
         {
             await DeleteInvoiceTestTenantAsync(tenant.Id);
         }
+    }
+
+    // Audit 29 Oct S-1: a PTT AVM package stores the time its status was first seen, so that time names no event.
+    // A cancellation still reaches the line (and so the stock), and a line a read left unprojected since 24 Oct is
+    // projected again by the next read of the same status.
+    [PostgreSqlFact]
+    public async Task OrderSync_WithoutAStatusTimeProjectsTheAppliedEventOntoTheLines()
+    {
+        var tenant = NewTenant("status-time-unknown-lines");
+        var connection = NewQuestionConnection(tenant);
+        var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
+        var seenAt = fixture.Now.AddDays(-1);
+        var createdEventAt = orderedAt.AddSeconds(2);
+        var deliveredEventAt = orderedAt.AddSeconds(5);
+        var cancelledEventAt = orderedAt.AddSeconds(6);
+        const string cancelledOrderId = "11697864101";
+        const string cancelledPackage = "order:PTT-CANCEL-1";
+        const string deliveredOrderId = "11697864102";
+        const string deliveredPackage = "order:PTT-DELIVERED-1";
+        var cancelledLineId = Guid.CreateVersion7();
+        var deliveredLineId = Guid.CreateVersion7();
+
+        void Seed(AppDbContext db, string externalOrderId, string packageNumber, Guid lineId, string rawStatus, ShipmentPackageStatus status, DateTimeOffset eventAt, decimal shipped, decimal delivered) =>
+            SeedUnprojectedPackage(db, tenant.Id, connection.Id, externalOrderId, packageNumber, lineId, rawStatus, status, orderedAt, seenAt, eventAt, new RemotePackageAllocation("line-1", 1m, 0m, shipped, delivered, 0m));
+
+        async Task SyncAsync(string externalOrderId, string packageNumber, string rawStatus, DateTimeOffset eventAt, RemotePackageAllocation allocation)
+        {
+            var remotePackage = new RemotePackage(packageNumber, null, rawStatus, eventAt, null, null, [allocation], GrossAmount: 100m, NetAmount: 100m, StatusTimeUnknown: true);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, orderedAt, eventAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, rawStatus, CancelledQuantity: allocation.CancelledQuantity)], [remotePackage], "{}");
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "status-time-unknown-lines", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            Seed(seedDb, cancelledOrderId, cancelledPackage, cancelledLineId, "Created", ShipmentPackageStatus.New, createdEventAt, 0m, 0m);
+            Seed(seedDb, deliveredOrderId, deliveredPackage, deliveredLineId, "Delivered", ShipmentPackageStatus.Delivered, deliveredEventAt, 1m, 1m);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            // The customer cancels: PTT AVM's mapper sends the cancelled units as cancelled, none allocated.
+            await SyncAsync(cancelledOrderId, cancelledPackage, "Cancelled", cancelledEventAt, new RemotePackageAllocation("line-1", 0m, 1m, 0m, 0m, 0m));
+            // A delivered order read again with the status it already holds.
+            await SyncAsync(deliveredOrderId, deliveredPackage, "Delivered", deliveredEventAt, new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+
+            await using var check = fixture.CreateContext();
+            var cancelledLine = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == cancelledLineId);
+            Assert.Equal(1m, cancelledLine.CancelledQuantity);
+            Assert.Equal(0m, cancelledLine.ShippedQuantity);
+            Assert.Equal(ShipmentPackageStatus.Cancelled, (await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ExternalPackageId == cancelledPackage)).Status);
+            var deliveredLine = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == deliveredLineId);
+            Assert.Equal(0m, deliveredLine.CancelledQuantity);
+            Assert.Equal(1m, deliveredLine.ShippedQuantity);
+            Assert.Equal(1m, deliveredLine.DeliveredQuantity);
+            // The repair is a projection only: the replay writes no history row and no allocation.
+            Assert.Equal(1, await check.OrderStatusHistory.CountAsync(x => x.TenantId == tenant.Id && x.OrderId == deliveredLine.OrderId));
+            Assert.Equal(1, await check.PackageLineAllocations.CountAsync(x => x.TenantId == tenant.Id && x.OrderLineId == deliveredLineId));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // Audit 29 Oct S-1 data fix: closed PTT AVM orders are not read again, so the migration projects the lines the
+    // reads since 24 October left at 0 from the allocations already stored. Other marketplaces are left alone.
+    [PostgreSqlFact]
+    public async Task ProjectPttAvmPackageLinesMigration_ProjectsTheStoredEventOfPttAvmPackagesOnly()
+    {
+        var tenant = NewTenant("ptt-line-projection-fix");
+        var ptt = NewQuestionConnection(tenant);
+        ptt.PlatformCode = "PTTAVM";
+        var trendyol = NewQuestionConnection(tenant);
+        var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
+        var seenAt = fixture.Now.AddDays(-1);
+        var cancelledLineId = Guid.CreateVersion7();
+        var deliveredLineId = Guid.CreateVersion7();
+        var projectedLineId = Guid.CreateVersion7();
+        var trendyolLineId = Guid.CreateVersion7();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(ptt, trendyol);
+            SeedUnprojectedPackage(seedDb, tenant.Id, ptt.Id, "PTT-FIX-1", "order:PTT-FIX-1", cancelledLineId, "Cancelled", ShipmentPackageStatus.Cancelled, orderedAt, seenAt, orderedAt.AddSeconds(6), new RemotePackageAllocation("line-1", 0m, 1m, 0m, 0m, 0m));
+            SeedUnprojectedPackage(seedDb, tenant.Id, ptt.Id, "PTT-FIX-2", "order:PTT-FIX-2", deliveredLineId, "Delivered", ShipmentPackageStatus.Delivered, orderedAt, seenAt, orderedAt.AddSeconds(5), new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+            // A package from before 24 October: its status time names its event, so the order sync projects it and the
+            // migration does not.
+            SeedUnprojectedPackage(seedDb, tenant.Id, ptt.Id, "PTT-FIX-3", "order:PTT-FIX-3", projectedLineId, "Delivered", ShipmentPackageStatus.Delivered, orderedAt, orderedAt.AddSeconds(5), orderedAt.AddSeconds(5), new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+            SeedUnprojectedPackage(seedDb, tenant.Id, trendyol.Id, "TY-FIX-1", "TY-FIX-1", trendyolLineId, "Delivered", ShipmentPackageStatus.Delivered, orderedAt, seenAt, orderedAt.AddSeconds(5), new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m));
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            var migration = new MarketplaceHub.Infrastructure.Persistence.Migrations.ProjectPttAvmPackageLines();
+            await using (var db = fixture.CreateContext())
+                foreach (var operation in migration.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>())
+                    await db.Database.ExecuteSqlRawAsync(operation.Sql);
+
+            await using var check = fixture.CreateContext();
+            var lines = await check.OrderLines.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+            Assert.Equal((1m, 0m, 0m, 2L), (lines[cancelledLineId].CancelledQuantity, lines[cancelledLineId].ShippedQuantity, lines[cancelledLineId].DeliveredQuantity, lines[cancelledLineId].Version));
+            Assert.Equal((0m, 1m, 1m, 2L), (lines[deliveredLineId].CancelledQuantity, lines[deliveredLineId].ShippedQuantity, lines[deliveredLineId].DeliveredQuantity, lines[deliveredLineId].Version));
+            // Neither the package whose status time names its event nor another marketplace's line is touched.
+            Assert.Equal((0m, 1L), (lines[projectedLineId].DeliveredQuantity, lines[projectedLineId].Version));
+            Assert.Equal((0m, 1L), (lines[trendyolLineId].DeliveredQuantity, lines[trendyolLineId].Version));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // A package as the reads since 24 October left it: the status stored at seenAt, the allocations and the status row
+    // under the event the read named (eventAt), the line not projected.
+    private static void SeedUnprojectedPackage(AppDbContext db, Guid tenantId, Guid connectionId, string externalOrderId, string packageNumber, Guid lineId, string rawStatus, ShipmentPackageStatus status, DateTimeOffset orderedAt, DateTimeOffset seenAt, DateTimeOffset eventAt, RemotePackageAllocation allocation)
+    {
+        var orderId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenantId, connectionId, orderId, externalOrderId, isReturnClaim: false, seenAt);
+        order.OrderedAt = orderedAt;
+        order.LastRemoteModifiedAt = eventAt;
+        db.Orders.Add(order);
+        db.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenantId, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = rawStatus, Version = 1 });
+        db.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenantId, ConnectionId = connectionId, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = status, RawStatus = rawStatus, StatusOccurredAt = seenAt, CreatedAt = seenAt, UpdatedAt = seenAt, Version = 1 });
+        db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = allocation.AllocatedQuantity, CancelledQuantity = allocation.CancelledQuantity, ShippedQuantity = allocation.ShippedQuantity, DeliveredQuantity = allocation.DeliveredQuantity, SourceEventId = PackageIngestionSafety.EventId(packageNumber, eventAt) });
+        db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = orderId, PackageId = packageId, CanonicalStatus = status.ToString().ToUpperInvariant(), RawStatus = rawStatus, SourceEventId = PackageIngestionSafety.EventId(packageNumber, eventAt), OccurredAt = seenAt, RecordedAt = seenAt });
     }
 
     [PostgreSqlFact]
