@@ -341,6 +341,9 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Five summary cards (Stok Adeti joined): one row of five on desktop, three over two on tablet, two per row with the
    last one full width on phone, like the orders summary. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+/* Every card starts its label, figure and note on the same lines: grid rows no longer stretch to fill the card, and the
+   Düşük Stoklu button no longer centres its content (measured live: labels sat 0-3px apart, figures 6px). */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * { align-content: start; }
 @media (max-width: 1024px) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * { grid-column: span 2; }

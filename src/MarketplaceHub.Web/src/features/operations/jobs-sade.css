@@ -40,8 +40,10 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span { display: inline-flex; align-items: center; gap: 6px; color: var(--rv-color-muted) !important; font-size: 13px; font-weight: 400; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary strong { color: var(--rv-color-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary i { width: 7px; height: 7px; border-radius: 50%; }
-.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar-actions { display: flex; align-items: center; gap: 8px; }
-.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-search { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 300px; height: 36px; min-height: 36px; padding: 0 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+/* The search and refresh take their own width: beside the status counts they end at the right edge, and when the counts
+   fill the row they wrap to the left edge (a 440px box aligned to its end left the search 36px in). */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar-actions { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-start; gap: 8px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-search { display: flex; align-items: center; gap: 8px; box-sizing: border-box; flex: 0 0 360px; width: 360px; height: 36px; min-height: 36px; padding: 0 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-search:focus-within { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-search svg { flex: none; width: 15px; height: 15px; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-search input { flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0; color: var(--rv-color-ink); background: none; border: 0; box-shadow: none; font-size: 14px; outline: none; }

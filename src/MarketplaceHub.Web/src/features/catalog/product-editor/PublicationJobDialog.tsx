@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 import { hubPoll } from '../../../shared/api'
 import { DialogSurface, UiIcon } from '../../../shared/components'
@@ -89,7 +90,8 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
     ['Korelasyon No', job.correlationId]
   ] : []
 
-  return <div className="workspace-modal-backdrop publication-job-backdrop" role="presentation" onMouseDown={onClose}>
+  // Portaled into main: rendered inside the publish card, the sticky Yayınla footer later in the page covered it.
+  return createPortal(<div className="workspace-modal-backdrop publication-job-backdrop" role="presentation" onMouseDown={onClose}>
     <DialogSurface as="section" onClose={onClose} className="workspace-modal publication-job-modal" aria-labelledby="publication-job-title" onMouseDown={event => event.stopPropagation()}>
       <header>
         <div className="publication-job-head">
@@ -116,5 +118,5 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
       </div>
       <footer><Link className="button-link secondary" to={notificationLinks.job(jobId)} onClick={onClose}>İşlem Takibinde Aç</Link><button type="button" onClick={onClose}>Kapat</button></footer>
     </DialogSurface>
-  </div>
+  </div>, document.querySelector('main') ?? document.body)
 }
