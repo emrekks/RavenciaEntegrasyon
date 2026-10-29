@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bulkStatusResultMessage, runInChunks } from './bulk-status-run'
+import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from './bulk-status-run'
 
 describe('bulk status run', () => {
   it('sends every chunk in order and reports progress', async () => {
@@ -23,5 +23,23 @@ describe('bulk status run', () => {
   it('reports a failure of the first chunk as a plain error', async () => {
     const result = await runInChunks(['a'], 500, () => Promise.reject(new Error('Yetki yok.')))
     expect(bulkStatusResultMessage('Aktif', result)).toEqual({ title: 'Ürün Durumları Güncellenemedi', message: 'Yetki yok.', kind: 'error' })
+  })
+})
+
+describe('bulk status plan', () => {
+  const statuses: Record<string, string> = { a: 'ACTIVE', b: 'ACTIVE', c: 'DRAFT', d: 'ARCHIVED' }
+  const statusOf = (id: string) => statuses[id]
+
+  it('leaves out records already in the target status', () => {
+    expect(bulkStatusPlan(['a', 'b', 'c', 'd'], statusOf, 'ACTIVE')).toEqual({ targetIds: ['c', 'd'], alreadyIds: ['a', 'b'] })
+    expect(bulkStatusPlan(['a', 'b', 'c', 'd'], statusOf, 'ARCHIVED')).toEqual({ targetIds: ['a', 'b', 'c'], alreadyIds: ['d'] })
+  })
+
+  it('has nothing to send when every selected record is already there', () => {
+    expect(bulkStatusPlan(['a', 'b'], statusOf, 'ACTIVE').targetIds).toEqual([])
+  })
+
+  it('keeps a record whose status is unknown', () => {
+    expect(bulkStatusPlan(['a', 'x'], statusOf, 'ACTIVE')).toEqual({ targetIds: ['x'], alreadyIds: ['a'] })
   })
 })

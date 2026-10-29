@@ -576,3 +576,7 @@
 .app-shell.stitch-shell main .panel-attribute-modal-card :is(.panel-attribute-title-pencil, .panel-attribute-title-edit > button):hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-title-edit { display: flex; align-items: center; gap: 4px; margin: 0; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-title-edit > input { flex: 1; min-width: 0; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-primary); border-radius: 7px; font-size: 16px; font-weight: 600; }
+/* Saved category mappings: a name not loaded yet waits quietly (never the raw id first); one that cannot be found is
+   shown muted as "Kategori #<id>". */
+.app-shell.stitch-shell main section.mapping-page .mapping-saved-table :is(.mapping-saved-loading, .mapping-saved-fallback) { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main section.mapping-page .mapping-saved-table .mapping-saved-loading { animation: rv-motion-fade var(--rv-motion-base, .2s) ease-out 120ms backwards; }

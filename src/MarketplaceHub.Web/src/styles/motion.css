@@ -77,6 +77,10 @@
 :where([role="dialog"][aria-modal="true"]) { animation: rv-motion-dialog var(--rv-motion-base) var(--rv-ease-spring) backwards; }
 :where([role="dialog"][aria-modal="true"][class*="drawer"], [role="dialog"][aria-modal="true"][class*="sheet"]) { animation: rv-motion-drawer var(--rv-motion-base) var(--rv-ease-out) backwards; }
 :where([class*="backdrop"], [class*="overlay"], [class*="scrim"]) { animation: rv-motion-fade var(--rv-motion-base) ease-out backwards; }
+/* A window whose dialog element is its own full-screen backdrop (the panel attribute windows on Eşleştirmeler): the
+   darkening only fades, and the card inside rises and grows; a backdrop never scales (owner, 30 Oct 2026). */
+:where([role="dialog"][aria-modal="true"].panel-attribute-modal) { animation: rv-motion-fade var(--rv-motion-base) ease-out backwards; }
+:where(.panel-attribute-modal > .panel-attribute-modal-card) { animation: rv-motion-dialog var(--rv-motion-base) var(--rv-ease-spring) backwards; }
 :where([role="menu"], [role="listbox"], .rv-popover, .rr-menu, .rr-pop) { animation: rv-motion-pop var(--rv-motion-base) var(--rv-ease-spring) backwards; transform-origin: top; }
 
 /* A loading message fades in, so a quick load does not flash it. */
