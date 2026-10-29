@@ -284,6 +284,8 @@ tiplerle (`PRODUCT_SYNC`, `PRICE_INVENTORY_SYNC`, `SHIPMENT_ACTION`, `INVOICE_MA
 - **Varyantlar (22 Ekim 2026, canlı mağazadan):** İlk eşleştirmede 198 üründen 25'i eşleşti; eşleşmeyen 172 barkod panelin
   model kodlarıydı. PTT AVM bu ürünleri model olarak tutuyor, `StokKontrolListesi` varyantlarını vermiyor.
   - Varyantlar `GetProductsWithVariants(page, size)` ile okunur; sayfalar **1'den** başlar (canlı: "Page 0'dan büyük olmalıdır").
+    Yanıttaki `TotalPage`'e kadar her sayfa okunur (29 Ekim, M-1); 100 sayfa sınırını aşan ya da sınırda bitmeyen liste
+    eksik sayılır, önbelleğe yazılmaz; aile gönderimi bu durumda `PTTAVM_REMOTE_VARIANT_UNREADABLE` ile durur.
   - Bu servis varyantı barkodsuz verir: `VariantId`, `VariantName` ("S"), `Quantity`, `PriceDifference`, `Limit`.
     Varyant `FK4530/7101` kimliğiyle, `FK4530-S` stok koduyla, `FK4530` model koduyla okunur.
   - **Eşleme (22 Ekim, değişti):** beden adı ve başlıktaki renkle tahmin yapılmaz. "Ürün Eşleme" modelin panel
