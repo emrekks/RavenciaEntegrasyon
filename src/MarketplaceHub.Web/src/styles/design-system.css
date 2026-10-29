@@ -2590,6 +2590,13 @@ button,
   font-family: var(--rv-font-ui);
   font-size: var(--rv-font-size-md);
 }
+/* Before the first click Chrome only previews the saved password, drawn with its own smaller form font; the font is
+   forced back on the autofilled field itself (not only its first line) so the dots keep their size. */
+.rv-auth-control input:-webkit-autofill,
+.rv-auth-control input:autofill {
+  font-family: var(--rv-font-ui) !important;
+  font-size: var(--rv-font-size-md) !important;
+}
 
 .rv-auth-label-row button {
   color: var(--rv-color-primary);
