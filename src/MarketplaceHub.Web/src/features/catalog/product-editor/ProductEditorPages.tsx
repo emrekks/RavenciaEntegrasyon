@@ -1031,8 +1031,8 @@ function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup
 }
 // The product list's "Platformlarda Yayınla" opens the editor's publish step in a popup: the same cards, checks and
 // Yayınla, without the page heading, the step bar or the leave-page guard (the popup closes instead of navigating).
-function EditorShell({ publishOnly, className, title, children }: { publishOnly: boolean; className: string; title: string; children: ReactNode }) {
-  return publishOnly ? <div className={`${className} product-publish-popup`}>{children}</div> : <Page className={className} title={title} eyebrow="Katalog">{children}</Page>
+function EditorShell({ publishOnly, className, title, eyebrow = 'Katalog', meta, children }: { publishOnly: boolean; className: string; title: string; eyebrow?: string; meta?: ReactNode; children: ReactNode }) {
+  return publishOnly ? <div className={`${className} product-publish-popup`}>{children}</div> : <Page className={className} title={title} eyebrow={eyebrow} meta={meta}>{children}</Page>
 }
 
 export function NewProductPage({ editProductId, publishOnly = false }: { editProductId?: string; publishOnly?: boolean } = {}) {
@@ -2360,7 +2360,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const publicationErrors: Array<{ platformName: string; message: string }> = []
       const updates: MarketplaceUpdateOutcome[] = []
       // The steps after the product (media, stock, channel prices, publication) can take a while; the progress toast names them.
-      if (!editProductId) showFeedback('Ürün Oluşturuldu', 'Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true })
+      if (!editProductId) showFeedback('Ürün Oluşturuldu', 'Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true, key: productSaveToastKey })
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
       const productMediaChanged = editProductId
         ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
@@ -2421,7 +2421,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       for (const [connectionIndex, connectionId] of publicationConnectionIds.entries()) {
         const platformName = connectionPlatformName(connectionId)
         const progress = publicationConnectionIds.length > 1 ? ` (${connectionIndex + 1}/${publicationConnectionIds.length})` : ''
-        showFeedback(platformUpdate ? 'Güncelleme Kuyruğa Alınıyor' : 'Yayın Kuyruğa Alınıyor', platformUpdate ? `${platformName}: güncelleme işleri kuyruğa alınıyor${progress}…` : `${platformName}: yayın işleri kuyruğa alınıyor${progress}…`, 'info', { persistent: true })
+        showFeedback(platformUpdate ? 'Güncelleme Kuyruğa Alınıyor' : 'Yayın Kuyruğa Alınıyor', platformUpdate ? `${platformName}: güncelleme işleri kuyruğa alınıyor${progress}…` : `${platformName}: yayın işleri kuyruğa alınıyor${progress}…`, 'info', { persistent: true, key: productSaveToastKey })
         const update: MarketplaceUpdateOutcome = { platformName, queued: { productInformation: false, priceInventory: false } }
         try {
           if (platformUpdate) {
@@ -2744,7 +2744,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   if (duplicateProductId && productToCopy.isLoading) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><div className="panel" role="status">Kaynak ürünün bilgileri forma hazırlanıyor…</div></Page>
   if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorToast title="Kopyalanacak Ürün Yüklenemedi" error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere Dön</Link></Page>
 
-  return <EditorShell publishOnly={publishOnly} className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"}>
+  return <EditorShell publishOnly={publishOnly} className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? productToEdit.data?.title || 'Ürün Düzenle' : 'Yeni Ürün Ekle'} eyebrow={editProductId ? 'Ürün Düzenle' : 'Katalog'} meta={editProductId && productToEdit.data?.modelCode ? <p className="product-page-heading-meta">Model Kodu: <b>{productToEdit.data.modelCode}</b></p> : undefined}>
     {!publishOnly && <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />}
     {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}

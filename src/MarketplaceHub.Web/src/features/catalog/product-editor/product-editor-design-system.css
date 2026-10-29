@@ -979,3 +979,8 @@
 @media (max-width: 760px) {
   .product-publish-popup-body { --popup-gap: 16px; padding-inline: 16px; }
 }
+
+/* Editing a product: the heading names it (one line, the full name on hover) with its model code under it. */
+.app-shell.stitch-shell main .product-edit-page .product-page-heading-title h1 { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .product-edit-page .product-page-heading-meta { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .product-edit-page .product-page-heading-meta b { color: var(--rv-color-ink); font-weight: 600; }
