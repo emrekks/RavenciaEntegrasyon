@@ -1027,8 +1027,8 @@
 .publication-job-attempts li.is-failed small { color: var(--rv-color-danger); }
 .publication-job-attempts li.is-ok small { color: var(--rv-color-accent); }
 .publication-job-modal > footer { display: flex; justify-content: flex-end; gap: 10px; }
-/* html body outranks the shared `html body :is(.rv-modal, .workspace-modal) > footer > button` 44px rule: both 36px. */
-html body .publication-job-modal > footer > :is(a, button) { box-sizing: border-box; height: 36px; min-height: 0; display: inline-flex; align-items: center; padding-block: 0; }
+/* Both footer buttons 34px. Portaled into main, the dialog also meets the app-shell 44px button rule, so .app-shell is in the selector. */
+html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizing: border-box; height: 34px; min-height: 0; display: inline-flex; align-items: center; padding: 0 14px; font-size: 14px; }
 @media (max-width: 760px) {
   .publication-job-body { padding: 16px; }
   .publication-job-facts { grid-template-columns: 1fr; }
