@@ -2328,10 +2328,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (priceOk) offer.LastPriceHash = line.PriceHash;
             if (stockOk) offer.LastStockProjectionVersion = line.ProjectionVersion;
             if (priceOk || stockOk) offer.Version++;
-            // Only Pazarama's own answer for the barcode speaks for the code, as on the other marketplaces.
+            // Only Pazarama's own answer for the barcode speaks for the code, as on the other marketplaces. Its error code
+            // only names the request that refused (PAZARAMA_PRICE_REJECTED, …), so Pazarama's message alone is judged.
             if (priceOk && stockOk && remote is { Succeeded: true }) confirmedCodes.Add(line.VariantId);
-            else if (remote is { Succeeded: false, Retryable: false } && MarketplaceVariantLinkHealth.MeansUnknownCode(remote.ErrorCode, remote.Status))
-                unknownCodes[line.VariantId] = remote.Status is { Length: > 0 } refusal && !string.Equals(refusal, "REJECTED", StringComparison.OrdinalIgnoreCase) ? refusal : remote.ErrorCode ?? "Pazaryeri kodu tanımadı.";
+            else if (remote is { Succeeded: false, Retryable: false, Status: { Length: > 0 } } && MarketplaceVariantLinkHealth.MeansUnknownCode(null, remote.Status))
+                unknownCodes[line.VariantId] = remote.Status!;
             if (priceOk && stockOk) { success++; continue; }
             failed++;
             var issueCode = SafeCode(code ?? notSentCode) ?? "PRICE_INVENTORY_LINE_REJECTED";

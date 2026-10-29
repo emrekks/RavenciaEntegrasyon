@@ -40,6 +40,11 @@ public sealed partial class MarketplaceJobProcessor
         var runJobId = jobId ?? Guid.CreateVersion7();
         var cursor = await Cursor(tenantId, connectionId, ListingVerificationPolicy.StateCursorResource, cancellationToken);
         var state = ListingVerificationState.Parse(cursor.OpaqueCursor);
+        // A second run (a manual start beside the scheduled one) does not restart a run still under way: it is folded into it.
+        if (state.RunJobId is { } runningJob && runningJob != runJobId && state.StartedAt is not null
+            && await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == runningJob
+                && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken))
+            return JobExecutionResult.SuccessWithNote("LISTING_VERIFY_ALREADY_RUNNING", "Bu bağlantının ürün doğrulama taraması zaten sürüyor; bu çalıştırma ona katıldı.");
         if (state.RunJobId != runJobId || state.StartedAt is null) state = state.Begin(runJobId, timeProvider.GetUtcNow());
         var observe = ListingVerificationPolicy.ObservesOnly(connection.PlatformCode, state.CompletedRuns);
         var sliceStarted = timeProvider.GetUtcNow();
