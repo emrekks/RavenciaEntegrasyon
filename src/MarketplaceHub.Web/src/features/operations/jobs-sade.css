@@ -104,8 +104,11 @@
 .app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) > p { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; margin: 0; padding: 0 12px 0 0; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) > p:nth-child(even) { padding: 0 0 0 12px; border-left: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) > p:nth-child(-n + 2) { border-top: 0; }
-.app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) small { color: var(--rv-color-muted); font-size: 12px; text-transform: none; }
-.app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) strong { min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+/* The label stays on one line and the value wraps in its own column instead of being cut ("4e7d96b2…"); an odd
+   last row (Korelasyon No) takes the whole width. */
+.app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) small { flex: none; color: var(--rv-color-muted); font-size: 12px; text-transform: none; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) strong { min-width: 0; padding-block: 9px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; line-height: 1.35; text-align: right; overflow-wrap: anywhere; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) > p:last-child:nth-child(odd) { grid-column: 1 / -1; padding: 0; border-left: 0; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section table { width: 100%; border-collapse: collapse; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section th { height: 34px; padding: 0 10px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 0; font-size: 12px; font-weight: 500; text-align: left; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section td { padding: 8px 10px; border: 0; border-top: 1px solid var(--rv-color-border); font-size: 13px; vertical-align: top; }
