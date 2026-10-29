@@ -16,7 +16,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // - A guard is not needed forever when its key can never come back: stock dispatches and price/stock writes
 //   carry the projection and price versions in their keys, so they go after the guard retention (90 days).
 //   A guard job that never sent anything (cancelled before its first run, or blocked before the send because
-//   the connection was off or writes were disabled) guards nothing and goes after the failed retention.
+//   the connection was off or writes were disabled) guards nothing and goes after the failed retention, and so
+//   does a failed price/stock write that gave up its key ("...:retired:{id}") when the same values were queued again.
 public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvider)
 {
     public const int BatchSize = 2_000;
@@ -81,6 +82,9 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
                         OR ("JobType" = ANY({VersionedGuardJobTypes}::text[])
                           AND ("JobDedupKey" LIKE 'stock-projection:%:v%' OR "JobDedupKey" LIKE 'price-inventory:%:revision:%')
                           AND coalesce("CompletedAt", "CreatedAt") < {guardCutoff})
+                        OR ("JobType" = ANY({VersionedGuardJobTypes}::text[])
+                          AND "JobDedupKey" LIKE 'price-inventory:%:retired:%'
+                          AND coalesce("CompletedAt", "CreatedAt") < {failedCutoff})
                         OR ("JobType" = ANY({EffectGuardJobTypes}::text[])
                           AND (("Status" = 'CANCELLED' AND "AttemptCount" = 0)
                             OR ("Status" = 'BLOCKED' AND "LastErrorCode" = ANY({PreSendBlockCodes}::text[])))

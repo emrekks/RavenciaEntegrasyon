@@ -2012,7 +2012,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.PriceInventorySync, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
                 db.ExternalEffectRecords.Add(effect);
             }
-            else effect.CompletedAt = null;
+            // A record left by an earlier job of the same values (one that gave up its key) is opened again.
+            else { effect.CompletedAt = null; effect.Outcome = null; }
             await db.SaveChangesAsync(cancellationToken);
             TrackRequest();
             var submit = await inventoryPrice.PushPriceAndInventoryAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey) with { Operation = hepsiburadaStageManual ? IntegrationOperation.Manual : IntegrationOperation.Automatic }, payload.PayloadJson, cancellationToken);
@@ -10179,8 +10180,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         var draft = build.Value!;
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
-        if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken)) return JobExecutionResult.Success();
-        var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
+        var now = timeProvider.GetUtcNow();
+        // A failed job of the same values gives up its key in the same save as the new job (Q-1/K-1).
+        var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null)
+        {
+            if (!PriceInventoryOutboxPolicy.AutomaticSendMayRetire(existing.Status, existing.LastErrorCode, existing.CompletedAt, now)) return JobExecutionResult.Success();
+            existing.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, existing.Id); existing.Version++;
+        }
+        var id = Guid.CreateVersion7();
         var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId));
         var writeDelay = await ExternalWriteDelaySecondsAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken);
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
@@ -11317,6 +11325,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı; pazar yeri isteği gönderilmedi."));
         var effect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ShipmentAction && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
         if (effect is not null && effect.CompletedAt is null) throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki paket aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi."));
+        if (effect is not null && effect.Outcome == ExternalEffectReconcilePolicy.UnresolvedOutcome) return await VerifyUnresolvedShipmentEffect(tenantId, connectionId, effect, correlationId, cancellationToken);
         if (effect is not null && effect.CompletedAt is not null) return true;
         // The record carries what the action changes, like the instant actions do, so an unclear outcome is
         // verified by reading the marketplace instead of waiting a week to be closed as unresolved.
@@ -11342,6 +11351,22 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (readback.IsSuccess) await UpsertOrder(tenantId, connectionId, readback.Value!, cancellationToken);
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
         return true;
+    }
+
+    // Q-2: a record closed as unresolved was sent once with an outcome no read could confirm. A retry must not
+    // send it again (a second split or picking) nor take it as done: where an order read can judge the action
+    // (picking, a carrier change) it reads once and succeeds only when the read shows the action applied;
+    // everything else stays in manual review for a look at the marketplace panel.
+    private async Task<bool> VerifyUnresolvedShipmentEffect(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken)
+    {
+        if (effect.Action is "PICKING" or "CHANGE_CARGO_PROVIDER" && await PackageEffectVerdictAsync(tenantId, connectionId, effect, correlationId, cancellationToken) == EffectVerdict.Applied)
+        {
+            effect.Outcome = ExternalEffectReconcilePolicy.AppliedOutcome;
+            await ResolveIssue(tenantId, $"external-effect:{effect.Id}", cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_UNRESOLVED", "Önceki paket aksiyonunun sonucu doğrulanamadan kapatıldı; tekrar gönderilmedi. Pazaryeri panelinden kontrol edin."));
     }
 
     // The action an open shipment effect is verified by, only where the verification job can judge it: picking
@@ -11444,6 +11469,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ReturnAction && x.IdempotencyKey == decision.IdempotencyKey, cancellationToken);
         if (existingEffect is not null && existingEffect.CompletedAt is null) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "EXTERNAL_EFFECT_AMBIGUOUS"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "Önceki iade aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi.")); }
+        // Q-2: a record closed as unresolved does not make the decision submitted. The claim is read once, and
+        // that read settles the decision only when it shows the action's outcome; otherwise the job stays in
+        // manual review and nothing is sent again.
+        if (existingEffect is not null && existingEffect.Outcome == ExternalEffectReconcilePolicy.UnresolvedOutcome)
+        {
+            TrackRequest();
+            var check = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:verify"), claim.ExternalClaimId, cancellationToken);
+            if (check.IsSuccess) { TrackReceived(); await UpsertReturn(tenantId, connectionId, correlationId, check.Value!, new(StringComparer.Ordinal), cancellationToken); }
+            else TrackResultFailure(check.Error);
+            if (decision.Status == "SUCCEEDED") return true;
+            throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_UNRESOLVED", "Önceki iade aksiyonunun sonucu doğrulanamadan kapatıldı; tekrar gönderilmedi. Pazaryeri panelinden kontrol edin."));
+        }
         if (existingEffect is not null && existingEffect.CompletedAt is not null)
         {
             decision.Status = "SUBMITTED"; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);

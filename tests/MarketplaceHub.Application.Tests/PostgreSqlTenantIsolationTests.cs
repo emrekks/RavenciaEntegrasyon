@@ -4310,6 +4310,150 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // Q-2: a manual retry of a shipment action whose effect was closed as unresolved neither sends it again nor
+    // succeeds unread. A split (no read can judge it) stays in manual review; a picking succeeds only once the
+    // order read shows the package picked.
+    [PostgreSqlFact]
+    public async Task ShipmentActionRetry_DoesNotTakeAnUnresolvedEffectAsApplied()
+    {
+        var tenant = NewTenant("shipment-unresolved-effect");
+        var connection = NewQuestionConnection(tenant);
+        RemoteOrder RemoteWith(string rawStatus, int minutesAgo)
+        {
+            var package = new RemotePackage("unresolved-package", null, rawStatus, fixture.Now.AddMinutes(-minutesAgo), null, null,
+                [new RemotePackageAllocation("unresolved-line", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 100m, NetAmount: 100m);
+            return new RemoteOrder("unresolved-order", "unresolved-order", fixture.Now.AddDays(-1), fixture.Now.AddMinutes(-minutesAgo), "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("unresolved-line", "SKU-1", "SKU-1", "Test ürün", 1m, 100m, 10m, rawStatus)], [package], "{}");
+        }
+        // Its ExecutePackageActionAsync throws: nothing here may send the action again.
+        var port = new SwitchableOrderPort(RemoteWith("Created", 10));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<JobExecutionResult> RunAsync(string jobType, string payload)
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, port, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                return await processor.ProcessAsync(tenant.Id, connection.Id, jobType, payload, "shipment-unresolved-effect", CancellationToken.None);
+            }
+            async Task<(string Payload, Guid EffectId)> ReviewedActionAsync(string action, string? effectAction)
+            {
+                await using var db = fixture.CreateContext();
+                var packageId = await db.ShipmentPackages.Where(x => x.TenantId == tenant.Id && x.ExternalPackageId == "unresolved-package").Select(x => x.Id).SingleAsync();
+                var job = NewJob(tenant.Id);
+                job.ConnectionId = connection.Id;
+                job.JobType = MarketplaceJobTypes.ShipmentAction;
+                job.Status = JobStatus.ManualReview;
+                job.PayloadJson = JsonSerializer.Serialize(new ShipmentActionJobPayload(job.Id, packageId, action, "{}"));
+                var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = fixture.Now.AddDays(-8), CompletedAt = fixture.Now.AddDays(-1), Outcome = "UNRESOLVED", ConnectionId = connection.Id, TargetId = packageId, Action = effectAction };
+                db.IntegrationJobs.Add(job);
+                db.ExternalEffectRecords.Add(effect);
+                await db.SaveChangesAsync();
+                return (job.PayloadJson, effect.Id);
+            }
+
+            Assert.True((await RunAsync(MarketplaceJobTypes.OrderSync, """{"externalOrderId":"unresolved-order","full":false}""")).Succeeded);
+
+            var (split, _) = await ReviewedActionAsync("SPLIT", null);
+            var splitResult = await RunAsync(MarketplaceJobTypes.ShipmentAction, split);
+            Assert.Equal(JobCompletionKind.ManualReview, splitResult.Kind);
+            Assert.Equal("EXTERNAL_EFFECT_UNRESOLVED", splitResult.ErrorCode);
+
+            var (picking, pickingEffectId) = await ReviewedActionAsync("PICKING", "PICKING");
+            var stillNew = await RunAsync(MarketplaceJobTypes.ShipmentAction, picking);
+            Assert.Equal(JobCompletionKind.ManualReview, stillNew.Kind);
+            port.Order = RemoteWith("Picking", 1);
+            Assert.True((await RunAsync(MarketplaceJobTypes.ShipmentAction, picking)).Succeeded);
+            await using (var db = fixture.CreateContext())
+                Assert.Equal("APPLIED", (await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == pickingEffectId)).Outcome);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.JobAttempts.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // Q-2: a manual retry of a return action whose effect was closed as unresolved does not mark the decision
+    // submitted. It reads the claim once (never sends again): a claim still waiting keeps the job in manual
+    // review and the decision failed; an accepted claim settles the decision and the job succeeds.
+    [PostgreSqlFact]
+    public async Task ReturnActionRetry_DoesNotTakeAnUnresolvedEffectAsSubmitted()
+    {
+        var tenant = NewTenant("return-unresolved-effect");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "unresolved-return-order", isReturnClaim: false, fixture.Now);
+        var orderLine = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "unresolved-return-line", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1, UnitPrice = 100, VatRate = 20, RawStatus = "Delivered" };
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "unresolved-claim", fixture.Now, hasCargo: false);
+        claim.Status = ReturnClaimStatus.ActionRequired;
+        claim.RawStatus = "WaitingInAction";
+        var key = $"return-unresolved-{Guid.NewGuid():N}";
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = key, Status = "FAILED", ErrorCode = "EXTERNAL_EFFECT_UNRESOLVED", ActorUserId = Guid.CreateVersion7(), CreatedAt = fixture.Now.AddDays(-8), CompletedAt = fixture.Now.AddDays(-1) };
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(orderLine);
+            seedDb.ReturnClaims.Add(claim);
+            seedDb.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = "unresolved-return-line", Quantity = 1, RawStatus = "WaitingInAction" });
+            seedDb.ReturnDecisions.Add(decision);
+            seedDb.ExternalEffectRecords.Add(new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = MarketplaceJobTypes.ReturnAction, IdempotencyKey = key, CreatedAt = fixture.Now.AddDays(-8), CompletedAt = fixture.Now.AddDays(-1), Outcome = "UNRESOLVED", ConnectionId = connection.Id, TargetId = claim.Id, Action = "RETURN_APPROVE" });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<JobExecutionResult> RetryAsync(ReadOnlyReturnTestPort port)
+            {
+                await using var db = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    db, null!, null!, null!, null!, null!, null!, null!, port, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                return await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnAction, $$"""{"decisionId":"{{decision.Id}}"}""", "return-unresolved-effect", CancellationToken.None);
+            }
+            async Task<ReturnDecision> DecisionAsync()
+            {
+                await using var db = fixture.CreateContext();
+                return await db.ReturnDecisions.AsNoTracking().SingleAsync(x => x.Id == decision.Id);
+            }
+
+            // Its ExecuteAsync throws: the retry may read the claim, never send the decision again.
+            var waiting = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "WaitingInAction", externalOrderId: order.ExternalOrderId);
+            var stillWaiting = await RetryAsync(waiting);
+            Assert.Equal(JobCompletionKind.ManualReview, stillWaiting.Kind);
+            Assert.Equal("EXTERNAL_EFFECT_UNRESOLVED", stillWaiting.ErrorCode);
+            Assert.Equal(["unresolved-claim"], waiting.ReadCalls);
+            Assert.Equal("FAILED", (await DecisionAsync()).Status);
+
+            Assert.True((await RetryAsync(new ReadOnlyReturnTestPort(fixture.Now.AddMinutes(1), rawStatus: "Accepted", externalOrderId: order.ExternalOrderId))).Succeeded);
+            Assert.Equal("SUCCEEDED", (await DecisionAsync()).Status);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.ReturnDecisions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.ReturnLines.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.OrderLines.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
     private sealed class SwitchableOrderPort(RemoteOrder order) : IOrderPort
     {
         public RemoteOrder Order { get; set; } = order;

@@ -1644,7 +1644,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             if (existing.CompletedAt is null) return Verifying<ShipmentView>();
             var replayOrderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
             if (replayOrderNumber is null) return NotFound<ShipmentView>();
-            return string.IsNullOrWhiteSpace(existing.ExpectedValue)
+            // A change closed as unresolved was never confirmed (Q-2): the package is shown as it is, not with that carrier.
+            return string.IsNullOrWhiteSpace(existing.ExpectedValue) || existing.Outcome == ExternalEffectReconcilePolicy.UnresolvedOutcome
                 ? ServiceResult<ShipmentView>.Ok(Map(package, replayOrderNumber))
                 : await ProjectCargoProviderAsync(tenantId, package, existing.ExpectedValue, replayOrderNumber, correlationId, cancellationToken);
         }

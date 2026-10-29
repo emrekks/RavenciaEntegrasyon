@@ -268,7 +268,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
+        var existing = await StandingPriceInventoryJobAsync(tenantId, dedup, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, null, manual));
@@ -340,7 +340,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
+        var existing = await StandingPriceInventoryJobAsync(tenantId, dedup, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
@@ -349,6 +349,18 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
+    }
+
+    // Q-1/K-1: a queued, running or succeeded job of the same values is the answer to a send from the panel. A
+    // failed one (blocked, dead, cancelled, manual review) gives up its key, saved with the new job, so the
+    // values are sent again instead of the failed job being returned as if it had been queued.
+    private async Task<IntegrationJob?> StandingPriceInventoryJobAsync(Guid tenantId, string dedup, CancellationToken cancellationToken)
+    {
+        var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is null || PriceInventoryOutboxPolicy.HoldsDedupKey(existing.Status)) return existing;
+        existing.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, existing.Id);
+        existing.Version++;
+        return null;
     }
 
     // A missing policy row means the flow was never switched off, the same rule the worker applies.

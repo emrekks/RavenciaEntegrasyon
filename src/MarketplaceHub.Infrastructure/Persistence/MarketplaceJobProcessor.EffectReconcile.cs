@@ -50,7 +50,7 @@ public sealed partial class MarketplaceJobProcessor
         {
             case ExternalEffectOutcome.Applied:
                 effect.CompletedAt = now;
-                effect.Outcome = "APPLIED";
+                effect.Outcome = ExternalEffectReconcilePolicy.AppliedOutcome;
                 if (decision is not null) { decision.Status = "SUBMITTED"; decision.ErrorCode = null; }
                 await ResolveIssue(tenantId, $"external-effect:{effect.Id}", cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
@@ -64,7 +64,7 @@ public sealed partial class MarketplaceJobProcessor
                 return JobExecutionResult.Success();
             case ExternalEffectOutcome.Unresolved:
                 effect.CompletedAt = now;
-                effect.Outcome = "UNRESOLVED";
+                effect.Outcome = ExternalEffectReconcilePolicy.UnresolvedOutcome;
                 // The decision must not stay "in progress" forever: it fails
                 // with a code the next claim read can still upgrade to success.
                 if (decision is not null) { decision.Status = "FAILED"; decision.ErrorCode = "EXTERNAL_EFFECT_UNRESOLVED"; decision.CompletedAt = now; }
