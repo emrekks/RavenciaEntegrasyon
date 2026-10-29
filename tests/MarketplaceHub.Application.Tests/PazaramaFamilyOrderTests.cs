@@ -223,6 +223,8 @@ public sealed class PazaramaFamilyOrderPostgreSqlTests(PostgreSqlTenantIsolation
         {
             await using var db = fixture.CreateContext();
             await db.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            // Adding a job writes its outbox event.
+            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.ProductVariants.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.Products.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
