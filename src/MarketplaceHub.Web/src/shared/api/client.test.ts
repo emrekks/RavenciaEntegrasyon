@@ -134,3 +134,23 @@ describe('errors a repeat cannot fix', () => {
     expect(isPermanentRequestError(new TypeError('Failed to fetch'))).toBe(false)
   })
 })
+
+describe('an expired security token', () => {
+  it('is renewed once for requests refused together, so their retries match the one cookie the server holds', async () => {
+    // The server keeps the last token it issued (the cookie) and refuses any other.
+    let issued = 0
+    let cookie = 'expired'
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/auth/csrf') { cookie = `fresh-${++issued}`; return new Response(JSON.stringify({ token: cookie }), { status: 200 }) }
+      const sent = new Headers(init?.headers).get('X-CSRF-TOKEN')
+      if (sent !== cookie) return new Response(JSON.stringify({ code: 'REQUEST_VERIFICATION_FAILED' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ jobId: url }), { status: 202, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const jobs = await Promise.all(['a', 'b', 'c'].map(id => hubApi<{ jobId: string }>(`/connections/${id}/product-sync-jobs`, { method: 'POST', body: '{}' })))
+
+    expect(jobs.map(job => job.jobId)).toEqual(['/api/v1/connections/a/product-sync-jobs', '/api/v1/connections/b/product-sync-jobs', '/api/v1/connections/c/product-sync-jobs'])
+    expect(issued).toBe(1)
+  })
+})

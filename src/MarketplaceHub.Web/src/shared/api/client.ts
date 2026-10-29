@@ -62,26 +62,33 @@ export function backgroundPollInit(init?: RequestInit): RequestInit | undefined 
 export function hubPoll<T>(path: string, init?: RequestInit): Promise<T> {
   return hubApi<T>(path, backgroundPollInit(init))
 }
-async function csrf(forceRefresh = false) {
-  if (forceRefresh) csrfToken = null
-  if (csrfToken) return csrfToken
-  const response = await fetch('/api/v1/auth/csrf', { credentials: 'same-origin', cache: 'no-store' })
-  if (!response.ok) throw new Error('Güvenlik anahtarı alınamadı.')
-  csrfToken = (await response.json() as { token: string }).token
-  return csrfToken
+// Every fetch of a token sets a new cookie, so several requests renewing at once (a product import sends one per
+// store) would each overwrite the cookie the others' tokens match. One renewal is shared, and a request refused with
+// a token that was already replaced takes the new one instead of renewing again.
+let csrfRenewal: Promise<string> | null = null
+async function csrf(refusedToken?: string) {
+  if (csrfToken && csrfToken !== refusedToken) return csrfToken
+  csrfRenewal ??= (async () => {
+    const response = await fetch('/api/v1/auth/csrf', { credentials: 'same-origin', cache: 'no-store' })
+    if (!response.ok) throw new Error('Güvenlik anahtarı alınamadı.')
+    csrfToken = (await response.json() as { token: string }).token
+    return csrfToken
+  })().finally(() => { csrfRenewal = null })
+  return csrfRenewal
 }
 
-async function fetchWithCsrf(url: string, init?: RequestInit, retried = false): Promise<Response> {
+async function fetchWithCsrf(url: string, init?: RequestInit, refusedToken?: string): Promise<Response> {
   const method = init?.method?.toUpperCase() ?? 'GET'
+  const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(method)
   const headers = new Headers(init?.headers)
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) headers.set('X-CSRF-TOKEN', await csrf(retried))
+  const token = mutating ? await csrf(refusedToken) : undefined
+  if (token) headers.set('X-CSRF-TOKEN', token)
   if (init?.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const response = await fetch(url, { ...init, headers, credentials: 'same-origin' })
-  if (response.status === 400 && !retried && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+  if (response.status === 400 && refusedToken === undefined && mutating) {
     const problem = await response.clone().json().catch(() => ({})) as ApiProblem
     if (problem.code === 'REQUEST_VERIFICATION_FAILED' || problem.type?.endsWith('/request-verification')) {
-      csrfToken = null
-      return fetchWithCsrf(url, init, true)
+      return fetchWithCsrf(url, init, token ?? '')
     }
   }
   return response
