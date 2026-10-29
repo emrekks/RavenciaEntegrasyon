@@ -13,6 +13,13 @@
 .cs-workspace .cs-head-copy { min-width: 0; }
 .cs-workspace .cs-head-copy h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.3; }
 .cs-workspace .cs-head-copy p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
+/* The title is a connection switcher in the settings window: it reads as the heading, with a chevron and a frame on hover. */
+.cs-workspace .cs-switcher { position: relative; display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
+html body .cs-workspace .cs-switcher select { box-sizing: border-box; appearance: none; -webkit-appearance: none; width: auto; max-width: 100%; height: 32px; min-height: 0; margin: 0 0 0 -8px; padding: 0 30px 0 8px; color: var(--rv-color-ink); background: transparent; border: 1px solid transparent; border-radius: 7px; box-shadow: none; font: inherit; font-size: 18px; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; cursor: pointer; }
+html body .cs-workspace .cs-switcher select:hover { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
+html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+.cs-workspace .cs-switcher > svg { position: absolute; right: 9px; width: 16px; height: 16px; color: var(--rv-color-muted); pointer-events: none; }
+.cs-workspace .cs-switcher option { font-size: 14px; font-weight: 400; color: var(--rv-color-ink); background: var(--rv-color-surface); }
 .cs-workspace .cs-grow { flex: 1; }
 .cs-workspace .cs-title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .cs-workspace .cs-tags-row { display: flex; flex-wrap: wrap; gap: 6px; }
