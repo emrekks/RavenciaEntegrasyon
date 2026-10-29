@@ -32,6 +32,68 @@ public static class TrendyolEFaturamCanonicalPayload
         catch (JsonException) { return ("", false); }
     }
 
+    /// <summary>
+    /// The recipient name exactly as <see cref="Create"/> sends it (name and surname), so the invoice preview shows the
+    /// person or company the invoice is issued to: the invoice address before the account holder. Null when the
+    /// snapshots cannot be read or hold no usable name.
+    /// </summary>
+    public static string? ResolveRecipientName(string customerSnapshotJson, string invoiceAddressSnapshotJson, string invoiceType)
+    {
+        try
+        {
+            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerSnapshotJson) ? "{}" : customerSnapshotJson);
+            using var addressSnapshot = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressSnapshotJson) ? "{}" : invoiceAddressSnapshotJson);
+            using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
+            var addressRoot = normalizedAddress.RootElement;
+            var (_, isCorporate) = RecipientTaxIdentity(customer.RootElement, addressRoot, invoiceType);
+            return RecipientName(customer.RootElement, addressRoot, UnwrapAddress(addressRoot), isCorporate) is var (name, surname)
+                ? string.Join(' ', new[] { name, surname }.Where(part => !string.IsNullOrWhiteSpace(part)))
+                : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    // Trendyol order feeds store invoiceAddress as the snapshot root, while other marketplace/local snapshots may wrap it
+    // in invoiceAddress or address. Accept both shapes so valid recipient details reach the fiscal payload.
+    private static JsonElement UnwrapAddress(JsonElement addressRoot)
+    {
+        var address = addressRoot;
+        for (var depth = 0; depth < 3; depth++)
+        {
+            if (!TryGetObjectProperty(address, out var wrappedAddress, "invoiceAddress", "invoice", "address")) break;
+            address = wrappedAddress;
+        }
+        return address;
+    }
+
+    // E-Faturam requires recipientInfo.name. Hepsiburada stores the recipient's full name as `name` on the flat
+    // invoice-address snapshot, rather than splitting it into firstName/lastName. Null when no name of two letters is found.
+    private static (string Name, string? Surname)? RecipientName(JsonElement customer, JsonElement addressRoot, JsonElement address, bool isCorporate)
+    {
+        var recipientFirstName = isCorporate
+            ? null
+            : NullText(address, "firstName")
+                ?? NullText(addressRoot, "firstName")
+                ?? NullText(customer, "customerFirstName", "firstName");
+        var recipientName = isCorporate
+            ? NullText(address, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "firstName")
+                ?? NullText(addressRoot, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "firstName")
+                ?? NullText(customer, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "customerName", "customerFirstName", "firstName")
+            : recipientFirstName
+                ?? NullText(address, "name", "fullName", "recipientName")
+                ?? NullText(addressRoot, "name", "fullName", "recipientName")
+                ?? NullText(customer, "name", "fullName", "recipientName", "customerName");
+        if (recipientName is not { Length: >= 2 }) return null;
+        var recipientSurname = isCorporate
+            ? null
+            : NullText(address, "lastName", "surname", "familyName")
+                ?? NullText(addressRoot, "lastName", "surname", "familyName")
+                ?? NullText(customer, "customerLastName", "lastName", "surname", "familyName");
+        if (!isCorporate && recipientSurname is null && recipientFirstName is null)
+            (recipientName, recipientSurname) = SplitFullName(recipientName);
+        return (recipientName, recipientSurname);
+    }
+
     private static (string TaxId, bool IsCorporate) RecipientTaxIdentity(JsonElement customer, JsonElement addressRoot, string invoiceType)
     {
         var taxId = FindTaxId(addressRoot);
@@ -55,47 +117,16 @@ public static class TrendyolEFaturamCanonicalPayload
         var addressSnapshot = ParseSnapshot(order, "InvoiceAddressSnapshotJson");
         try
         {
-            // Trendyol order feeds store invoiceAddress as the snapshot root,
-            // while other marketplace/local snapshots may wrap it in invoiceAddress
-            // or address. Accept both shapes so valid recipient details reach the fiscal payload.
             using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
             var addressRoot = normalizedAddress.RootElement;
-            var address = addressRoot;
-            for (var depth = 0; depth < 3; depth++)
-            {
-                if (!TryGetObjectProperty(address, out var wrappedAddress, "invoiceAddress", "invoice", "address")) break;
-                address = wrappedAddress;
-            }
+            var address = UnwrapAddress(addressRoot);
             var invoiceType = RequiredText(root, "InvoiceType");
             var (taxId, isCorporate) = RecipientTaxIdentity(customer.RootElement, addressRoot, invoiceType);
             if (!ValidTaxId(taxId))
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
-            // E-Faturam requires recipientInfo.name. Hepsiburada stores the
-            // recipient's full name as `name` on the flat invoice-address snapshot,
-            // rather than splitting it into firstName/lastName.
-            var recipientFirstName = isCorporate
-                ? null
-                : NullText(address, "firstName")
-                    ?? NullText(addressRoot, "firstName")
-                    ?? NullText(customer.RootElement, "customerFirstName", "firstName");
-            var recipientName = isCorporate
-                ? NullText(address, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "firstName")
-                    ?? NullText(addressRoot, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "firstName")
-                    ?? NullText(customer.RootElement, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "customerName", "customerFirstName", "firstName")
-                : recipientFirstName
-                    ?? NullText(address, "name", "fullName", "recipientName")
-                    ?? NullText(addressRoot, "name", "fullName", "recipientName")
-                    ?? NullText(customer.RootElement, "name", "fullName", "recipientName", "customerName");
-            if (recipientName is not { Length: >= 2 })
-                throw new JsonException("EFATURAM_RECIPIENT_NAME_REQUIRED");
-            var recipientSurname = isCorporate
-                ? null
-                : NullText(address, "lastName", "surname", "familyName")
-                    ?? NullText(addressRoot, "lastName", "surname", "familyName")
-                    ?? NullText(customer.RootElement, "customerLastName", "lastName", "surname", "familyName");
-            if (!isCorporate && recipientSurname is null && recipientFirstName is null)
-                (recipientName, recipientSurname) = SplitFullName(recipientName);
+            var (recipientName, recipientSurname) = RecipientName(customer.RootElement, addressRoot, address, isCorporate)
+                ?? throw new JsonException("EFATURAM_RECIPIENT_NAME_REQUIRED");
 
             var lines = RequiredArray(root, "Lines").EnumerateArray().Select(line =>
             {

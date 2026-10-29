@@ -261,7 +261,9 @@ public sealed partial class InvoicingBillingService
         if (!corporate) taxIdentity = "11111111111";
         else if (!TurkishTaxIdentity.IsValid(taxIdentity))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("EFATURAM_CORPORATE_TAX_ID_REQUIRED", "Kurumsal müşteri için geçerli 10 haneli vergi numarası veya 11 haneli T.C. kimlik numarası eksik ya da kontrol hanesi hatalı.", 422);
-        var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
+        // The name the invoice is issued to (the invoice address before the account holder), as E-Faturam receives it.
+        var customerName = TrendyolEFaturamCanonicalPayload.ResolveRecipientName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, invoiceType)
+            ?? InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         string? deliveryCarrierName = null;
         DateTimeOffset? deliverySentAt = null;
         string? deliveryBlockedReason = null;
