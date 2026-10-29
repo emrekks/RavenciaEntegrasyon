@@ -737,8 +737,21 @@ function placePublishIssueTooltip(event: { currentTarget: HTMLElement }) {
   const fitsBelow = window.innerHeight - rect.bottom >= height + 16
   tooltip.dataset.placement = !fitsBelow && rect.top >= height + 16 ? 'top' : 'bottom'
 }
-function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
+// A card with no publication record of its own (matched by an import, or never sent) is refreshed by looking the
+// product up on the marketplace: Trendyol and n11 by model code, Pazarama and PTT AVM by barcode, Shopify by barcode or
+// stock code. Hepsiburada looks a single product up by its Hepsiburada product id, which the editor does not hold.
+export function cardLookupKey(platformCode: string, keys: { modelCode: string; barcode: string; sku: string }) {
+  const code = platformCode.trim().toUpperCase()
+  const value = code === 'TRENDYOL' || code === 'N11' ? keys.modelCode
+    : code === 'PAZARAMA' || code === 'PTTAVM' ? keys.barcode
+      : code === 'SHOPIFY' ? keys.barcode || keys.sku
+        : ''
+  return value.trim() || null
+}
+
+function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, lookupKeys, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
   familyProductIds?: string[] | null
+  lookupKeys?: { modelCode: string; barcode: string; sku: string }
   // How many of the family's variants are already matched to a listing on this marketplace (imported or published).
   variantLinks?: { linked: number; total: number }
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
@@ -791,6 +804,19 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       // Several cards refused in one go (a family, repeated clicks) collapse into one notice listing the products.
       const failure = notificationError(reason, 'Pazaryeri yanıt vermedi.')
       onFeedback({ title: 'Yayın Durumu Sorgulanamadı', message: `${platformName} yayın durumu sorgulanamadı: ${failure.message}`, kind: 'error', persistent: true, context: { operation: 'Yayın durumu sorgulama', code: failure.code, groupKey: `publication-refresh-failed:${card.connection.id}:${failure.code ?? failure.message}`, groupMessage: `{count} ürün için ${platformName} yayın durumu sorgulanamadı.` } })
+    }
+  })
+
+  const lookupKey = lookupKeys ? cardLookupKey(card.connection.platformCode, lookupKeys) : null
+  const lookupProduct = useMutation({
+    mutationFn: () => hubApi<AcceptedJob>(`/connections/${card.connection.id}/product-sync-jobs?${new URLSearchParams({ lookup: lookupKey ?? '', includeArchived: 'true' }).toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: statusKey })
+      onFeedback({ title: 'Ürün Pazaryerinde Aranıyor', message: `${platformName} mağazasında ${lookupKey} aranıyor; bulunursa varyantlar eşleştirilir ve durum güncellenir. Ürün bilgileri değiştirilmez.`, kind: 'info' })
+    },
+    onError: reason => {
+      const failure = notificationError(reason, 'Pazaryeri yanıt vermedi.')
+      onFeedback({ title: 'Ürün Aranamadı', message: `${platformName} mağazasında ürün aranamadı: ${failure.message}`, kind: 'error', persistent: true, context: { operation: 'Ürün arama', code: failure.code } })
     }
   })
 
@@ -966,7 +992,9 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
       <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can open the publication issues */}
-      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}><i aria-hidden="true" />{displayedPublicationLabel}</button> : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning && !hasRequiredPublicationBlock ? jobView.message : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}{jobRunning && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
+      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}><i aria-hidden="true" />{displayedPublicationLabel}</button> : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning && !hasRequiredPublicationBlock ? jobView.message : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined} onMouseEnter={placePublishIssueTooltip} onFocus={placePublishIssueTooltip}><i aria-hidden="true" />{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{hasRequiredPublicationBlock && <span className="publish-issue-tooltip" role="tooltip"><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 8).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 8 && <li>Ve {blockedIssues.length - 8} eksik daha.</li>}</ul></span>}{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN'
+        ? <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>
+        : productId && card.mode !== 'READ_ONLY' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} mağazasında ürünü ara`} title={lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`} disabled={!lookupKey || lookupProduct.isPending || publication.isPending} onClick={() => lookupProduct.mutate()}><UiIcon name="refresh" /></button>}{jobRunning && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
     {valueMappingFixes.length > 0 && readinessCategoryScope && <button type="button" className="publish-platform-fix-mappings" onClick={() => setValueFixOpen(true)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${valueMappingFixes.length} değer`}>{valueMappingFixes.length}</span></button>}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
@@ -3018,6 +3046,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               key={card.connection.id}
               productId={editProductId}
               familyProductIds={productToEdit.data?.familyProductIds}
+              lookupKeys={{ modelCode: form.modelCode, barcode: variantRows[0]?.barcode || form.barcode, sku: variantRows[0]?.sku || form.baseSku }}
               variantLinks={{ total: variantRows.length, linked: variantRows.filter(row => row.platformStatuses?.some(status => status.connectionId === card.connection.id && status.isMatched)).length }}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}

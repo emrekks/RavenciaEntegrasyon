@@ -582,7 +582,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var key = keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!;
             var line = resultByKey[key];
             var rejection = line.Succeeded ? null : SafeCode(line.ErrorCode ?? "REMOTE_VALIDATION_FAILED");
-            listing.ActualStatus = line.Succeeded ? "CREATE_ACCEPTED" : "CREATE_REJECTED";
+            // Shopify writes and publishes the product in the same call and has no approval step: an accepted SKU is
+            // live, as the card (profile) is. Leaving it CREATE_ACCEPTED counted none of the card's variants as live.
+            listing.ActualStatus = line.Succeeded ? (isShopify ? "LIVE" : "CREATE_ACCEPTED") : "CREATE_REJECTED";
             listing.RejectionCode = rejection;
             if (line.Succeeded) succeeded++;
             if (states.TryGetValue(listing.VariantId, out var state))

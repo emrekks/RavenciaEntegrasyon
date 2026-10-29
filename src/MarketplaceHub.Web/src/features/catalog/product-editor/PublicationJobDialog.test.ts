@@ -15,3 +15,16 @@ describe('publication job popup', () => {
     expect(publicationJobProgress({ ...job, progressPercent: null, progressTotal: null, progressLabel: null })).toBeNull()
   })
 })
+
+describe('a card refreshed without a publication record', () => {
+  it('looks the product up by the key each marketplace takes', async () => {
+    const { cardLookupKey } = await import('./ProductEditorPages')
+    const keys = { modelCode: 'MZ035YNC', barcode: '8681234567890', sku: 'MZ035YNC-01' }
+    expect(cardLookupKey('TRENDYOL', keys)).toBe('MZ035YNC')
+    expect(cardLookupKey('N11', keys)).toBe('MZ035YNC')
+    expect(cardLookupKey('PAZARAMA', keys)).toBe('8681234567890')
+    expect(cardLookupKey('PTTAVM', keys)).toBe('8681234567890')
+    expect(cardLookupKey('SHOPIFY', { ...keys, barcode: '' })).toBe('MZ035YNC-01')
+    expect(cardLookupKey('HEPSIBURADA', keys)).toBeNull()
+  })
+})

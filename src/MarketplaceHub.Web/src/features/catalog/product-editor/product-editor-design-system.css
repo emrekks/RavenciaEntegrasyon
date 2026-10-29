@@ -986,7 +986,8 @@
 .app-shell.stitch-shell main .product-edit-page .product-page-heading-meta b { color: var(--rv-color-ink); font-weight: 600; }
 
 /* A card's publication status opens its API job (PublicationJobDialog): the pill stays a pill, only pointing. */
-.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button { min-height: 0; margin: 0; font: inherit; line-height: inherit; cursor: pointer; box-shadow: none; }
+/* Same type as every other status pill (12px, 650, 1.2); a button would otherwise take the 16px of the global rule. */
+.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button { min-height: 0; margin: 0; font-family: inherit; font-size: 12px; font-weight: 650; line-height: 1.2; letter-spacing: normal; text-transform: none; cursor: pointer; box-shadow: none; }
 .app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:hover { border-color: var(--rv-color-border-strong); filter: brightness(.97); }
 .app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 
