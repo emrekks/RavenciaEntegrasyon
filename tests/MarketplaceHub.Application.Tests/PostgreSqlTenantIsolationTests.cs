@@ -1360,6 +1360,107 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task AConnectionInUseThatCarriesAnErrorIsRetestedOnTheRecoveryLadder()
+    {
+        var tenant = NewTenant("connection-recover");
+        var lastWeek = fixture.Now.AddDays(-7);
+        PlatformConnection Connection(string store, string status, string? code, DateTimeOffset? testedAt)
+        {
+            var connection = NewQuestionConnection(tenant);
+            connection.PlatformCode = "PAZARAMA";
+            connection.Environment = "PRODUCTION";
+            connection.ApiVersion = "V1";
+            connection.ExternalStoreId = store;
+            connection.Status = status;
+            connection.LastErrorCode = code;
+            connection.LastTestedAt = testedAt;
+            connection.LastSuccessAt = lastWeek;
+            return connection;
+        }
+        // Sync reads were refused from 20 minutes ago on (the last one 2 minutes ago): a quarter hour after the first, due.
+        var refusedBySync = Connection("recover-1", "ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", lastWeek);
+        // Refused for the first time 5 minutes ago: not yet.
+        var refusedJustNow = Connection("recover-2", "ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", lastWeek);
+        // Waiting for the seller's activation, its test failed 20 minutes ago: due (and it stays VERIFIED).
+        var verifiedFailedTest = Connection("recover-3", "VERIFIED", "PAZARAMA_GATEWAY_BLOCKED", fixture.Now.AddMinutes(-20));
+        // Two retests already failed, the last 5 hours ago: the six-hour step is not over.
+        var onSixHourStep = Connection("recover-4", "ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", fixture.Now.AddHours(-5));
+        // Disabled by the seller, or healthy: never tested on its own.
+        var disabled = Connection("recover-5", "DISABLED", "PAZARAMA_CREDENTIALS_REJECTED", fixture.Now.AddHours(-3));
+        var healthy = Connection("recover-6", "ACTIVE", null, lastWeek);
+        var connections = new[] { refusedBySync, refusedJustNow, verifiedFailedTest, onSixHourStep, disabled, healthy };
+        // Never PENDING: the lease tests in the same database take any pending job.
+        IntegrationJob Job(PlatformConnection owner, string jobType, string dedup, DateTimeOffset createdAt) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = owner.Id,
+            JobType = jobType,
+            PayloadJson = "{}",
+            PayloadVersion = 1,
+            PayloadHash = "test-payload-hash",
+            JobDedupKey = dedup,
+            EffectIdempotencyKey = $"effect-{Guid.NewGuid():N}",
+            Priority = 1,
+            Status = JobStatus.Blocked,
+            AvailableAt = createdAt,
+            AttemptCount = 1,
+            CorrelationId = $"corr-{Guid.NewGuid():N}",
+            CreatedAt = createdAt,
+            CompletedAt = createdAt,
+            Version = 1
+        };
+        JobAttempt Attempt(IntegrationJob job, int number, DateTimeOffset startedAt) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            JobId = job.Id,
+            AttemptNumber = number,
+            StartedAt = startedAt,
+            CompletedAt = startedAt.AddSeconds(1),
+            Succeeded = false,
+            ErrorCode = "PAZARAMA_CREDENTIALS_REJECTED"
+        };
+        var syncOfRefused = Job(refusedBySync, MarketplaceJobTypes.PazaramaOrderSync, $"scheduled:orders:{refusedBySync.Id:N}:1", fixture.Now.AddMinutes(-21));
+        var syncOfJustRefused = Job(refusedJustNow, MarketplaceJobTypes.PazaramaOrderSync, $"scheduled:orders:{refusedJustNow.Id:N}:1", fixture.Now.AddMinutes(-6));
+        var recoveryPrefix = $"scheduled:connection-recover:{onSixHourStep.Id:N}:";
+        var firstRetest = Job(onSixHourStep, MarketplaceJobTypes.PazaramaConnectionTest, $"{recoveryPrefix}1", fixture.Now.AddHours(-6).AddMinutes(-20));
+        var secondRetest = Job(onSixHourStep, MarketplaceJobTypes.PazaramaConnectionTest, $"{recoveryPrefix}2", fixture.Now.AddHours(-5));
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.AddRange(connections);
+        db.PlatformCredentials.AddRange(connections.Select(owner => new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = owner.Id, CredentialType = "CLIENT_CREDENTIALS", ProtectedPayload = "protected", MaskedHint = "test", CreatedAt = lastWeek.AddDays(-1), Version = 1 }));
+        db.IntegrationJobs.AddRange(syncOfRefused, syncOfJustRefused, firstRetest, secondRetest);
+        db.JobAttempts.AddRange(
+            Attempt(syncOfRefused, 1, fixture.Now.AddMinutes(-20)),
+            Attempt(syncOfRefused, 2, fixture.Now.AddMinutes(-2)),
+            Attempt(syncOfJustRefused, 1, fixture.Now.AddMinutes(-5)));
+        await db.SaveChangesAsync();
+        var producer = new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build());
+
+        await producer.RetestFailedOperationalConnectionsAsync(fixture.Now, CancellationToken.None);
+        // A retest waiting for the connection is not doubled.
+        await producer.RetestFailedOperationalConnectionsAsync(fixture.Now, CancellationToken.None);
+
+        var queued = await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id && x.Status == JobStatus.Pending).ToListAsync();
+        Assert.Equal(new[] { refusedBySync.Id, verifiedFailedTest.Id }.Order(), queued.Select(job => job.ConnectionId!.Value).Order());
+        Assert.All(queued, job =>
+        {
+            Assert.Equal(MarketplaceJobTypes.PazaramaConnectionTest, job.JobType);
+            Assert.StartsWith($"scheduled:connection-recover:{job.ConnectionId:N}:", job.JobDedupKey);
+            Assert.True(ConnectionAutoRecoveryPolicy.IsRecoveryPayload(job.PayloadJson));
+            Assert.Equal(1, job.MaxAttempts);
+        });
+        // Queuing a retest changes no connection: a VERIFIED one is not activated, a disabled one stays disabled.
+        var statuses = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Status);
+        Assert.Equal("VERIFIED", statuses[verifiedFailedTest.Id]);
+        Assert.Equal("DISABLED", statuses[disabled.Id]);
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task OperationalIssueRetention_ResolvesIssuesNotSeenForAMonthAndKeepsTheRest()
     {
         var tenant = NewTenant("issue-retention");

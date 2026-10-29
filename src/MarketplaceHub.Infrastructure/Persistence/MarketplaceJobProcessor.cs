@@ -46,9 +46,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
         using var quotaLane = TrendyolQuotaLane.Enter(isBackground: !UsesForegroundQuota(jobType));
-        var connectionState = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => new { x.PlatformCode, x.Status }).SingleOrDefaultAsync(cancellationToken);
+        var connectionState = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => new { x.PlatformCode, x.Status, x.LastErrorCode }).SingleOrDefaultAsync(cancellationToken);
         var platform = connectionState?.PlatformCode;
         if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
+        // An automatic recovery test runs only while the connection still qualifies: one the seller disabled, hid or
+        // deleted meanwhile, or one a test has already cleared, is not tested on its own.
+        if (IsConnectionTestJob(jobType) && ConnectionAutoRecoveryPolicy.IsRecoveryPayload(payloadJson)
+            && !ConnectionAutoRecoveryPolicy.IsEligible(connectionState?.Status, connectionState?.LastErrorCode))
+            return JobExecutionResult.SuccessWithNote("CONNECTION_RECOVERY_NOT_NEEDED", "Bağlantı artık otomatik yeniden test kapsamında değil; test çalıştırılmadı.");
         var currentJobIsBootstrap = jobId is { } currentJobId
             && await db.IntegrationJobs.AsNoTracking().Where(x => x.Id == currentJobId).Select(x => x.JobDedupKey).AnyAsync(x => x.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix), cancellationToken);
         if (!currentJobIsBootstrap && IsBootstrapManagedJob(jobType)
@@ -262,8 +267,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Only an Authentication-class adapter error is a blocked result that also
     // backs the connection off (JobExecutionResult.FromAdapterError). The
     // connection test records its own outcome.
+    internal static bool IsConnectionTestJob(string jobType) =>
+        jobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest;
+
     internal static bool IsConnectionAuthenticationFailure(string jobType, JobExecutionResult result) =>
-        jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest)
+        !IsConnectionTestJob(jobType)
         && result.Kind == JobCompletionKind.Blocked
         && result.BackOffConnection
         && !string.IsNullOrWhiteSpace(result.ErrorCode);

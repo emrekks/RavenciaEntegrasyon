@@ -148,6 +148,98 @@ public sealed class ConnectionRetestPolicyTests
     }
 }
 
+public sealed class ConnectionAutoRecoveryPolicyTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 29, 12, 0, 0, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData("ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", true)]
+    [InlineData("VERIFIED", "N11_ACCESS_DENIED", true)]
+    [InlineData("ACTIVE", "PAZARAMA_GATEWAY_BLOCKED", true)]
+    [InlineData("ACTIVE", "SHOPIFY_REQUIRED_READ_SCOPE", true)]
+    [InlineData("ACTIVE", "TRENDYOL_REMOTE_ERROR", true)]
+    // A healthy connection is never touched.
+    [InlineData("ACTIVE", null, false)]
+    [InlineData("ACTIVE", " ", false)]
+    [InlineData("VERIFIED", null, false)]
+    // The seller's own states: disabled, hidden or deleted connections are never tested and never activated.
+    [InlineData("DISABLED", "PAZARAMA_CREDENTIALS_REJECTED", false)]
+    [InlineData("HIDDEN", "PAZARAMA_CREDENTIALS_REJECTED", false)]
+    [InlineData("DELETED", "PAZARAMA_CREDENTIALS_REJECTED", false)]
+    // A draft waits for its first test; ConnectionRetestPolicy owns it.
+    [InlineData("DRAFT", "PAZARAMA_GATEWAY_BLOCKED", false)]
+    [InlineData(null, "PAZARAMA_CREDENTIALS_REJECTED", false)]
+    public void OnlyConnectionsInUseThatCarryAnErrorQualify(string? status, string? code, bool eligible) =>
+        Assert.Equal(eligible, ConnectionAutoRecoveryPolicy.IsEligible(status, code));
+
+    [Fact]
+    public void ThePauseGrowsFromAQuarterHourToAnHourToSixHours()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(15), ConnectionAutoRecoveryPolicy.PauseAfter(0));
+        Assert.Equal(TimeSpan.FromHours(1), ConnectionAutoRecoveryPolicy.PauseAfter(1));
+        Assert.Equal(TimeSpan.FromHours(6), ConnectionAutoRecoveryPolicy.PauseAfter(2));
+        Assert.Equal(TimeSpan.FromHours(6), ConnectionAutoRecoveryPolicy.PauseAfter(40));
+        Assert.Equal(TimeSpan.FromMinutes(15), ConnectionAutoRecoveryPolicy.PauseAfter(-1));
+    }
+
+    [Fact]
+    public void TheFirstRetestComesAQuarterHourAfterTheErrorWasFirstSeen()
+    {
+        // A sync read was refused 14 minutes ago and no test has run since: not yet.
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", 0, null, Now.AddMinutes(-14), Now));
+        Assert.True(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", 0, null, Now.AddMinutes(-15), Now));
+        // The seller's own test failed five minutes ago: the quarter hour counts from it.
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", 0, Now.AddMinutes(-5), Now.AddHours(-3), Now));
+        Assert.True(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", 0, Now.AddMinutes(-16), Now.AddHours(-3), Now));
+        // No trace of when the error began (older than the attempt history): it is old, so the retest is due.
+        Assert.True(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "PAZARAMA_CREDENTIALS_REJECTED", 0, null, null, Now));
+    }
+
+    [Fact]
+    public void LaterRetestsWaitAnHourThenSixHoursAfterTheLastProbe()
+    {
+        // One retest already failed 50 minutes ago: the second waits a full hour.
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "N11_CREDENTIALS_REJECTED", 1, Now.AddMinutes(-50), null, Now));
+        Assert.True(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "N11_CREDENTIALS_REJECTED", 1, Now.AddMinutes(-60), null, Now));
+        // From the third on, every six hours.
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("VERIFIED", "N11_CREDENTIALS_REJECTED", 2, Now.AddHours(-5), null, Now));
+        Assert.True(ConnectionAutoRecoveryPolicy.ShouldRetest("VERIFIED", "N11_CREDENTIALS_REJECTED", 2, Now.AddHours(-6), null, Now));
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "N11_CREDENTIALS_REJECTED", 9, Now.AddHours(-5).AddMinutes(-59), null, Now));
+        Assert.True(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", "N11_CREDENTIALS_REJECTED", 9, Now.AddHours(-7), null, Now));
+    }
+
+    [Fact]
+    public void NoScheduleEverRetestsAConnectionThatDoesNotQualify()
+    {
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("DISABLED", "PAZARAMA_CREDENTIALS_REJECTED", 0, null, Now.AddDays(-3), Now));
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("ACTIVE", null, 0, null, null, Now));
+        Assert.False(ConnectionAutoRecoveryPolicy.ShouldRetest("DRAFT", "PAZARAMA_GATEWAY_BLOCKED", 5, Now.AddDays(-1), null, Now));
+    }
+
+    [Fact]
+    public void AFailedTestIsOneNewerThanTheLastPassingTest()
+    {
+        Assert.Equal(Now, ConnectionAutoRecoveryPolicy.FailedTestAt(Now, Now.AddDays(-1)));
+        Assert.Null(ConnectionAutoRecoveryPolicy.FailedTestAt(Now, Now));
+        Assert.Null(ConnectionAutoRecoveryPolicy.FailedTestAt(null, Now));
+        Assert.Equal(Now, ConnectionAutoRecoveryPolicy.FailedTestAt(Now, null));
+        Assert.Equal(Now, ConnectionAutoRecoveryPolicy.Latest(Now, Now.AddHours(-1)));
+        Assert.Equal(Now, ConnectionAutoRecoveryPolicy.Latest(null, Now));
+        Assert.Null(ConnectionAutoRecoveryPolicy.Latest(null, null));
+    }
+
+    [Theory]
+    [InlineData("""{"connectionId":"0192f1d8-0000-7000-8000-000000000001","trigger":"auto-recovery"}""", true)]
+    [InlineData("""{"connectionId":"0192f1d8-0000-7000-8000-000000000001"}""", false)]
+    [InlineData("""{"trigger":"manual"}""", false)]
+    [InlineData("{}", false)]
+    [InlineData("[]", false)]
+    [InlineData("{bozuk", false)]
+    [InlineData(null, false)]
+    public void OnlyTheRecoveryPayloadIsRecognised(string? payload, bool recovery) =>
+        Assert.Equal(recovery, ConnectionAutoRecoveryPolicy.IsRecoveryPayload(payload));
+}
+
 public sealed class QuestionCadencePolicyTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
