@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
@@ -6,7 +6,8 @@ import { DialogSurface, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import type { MarketplaceConnection, Product } from '../shared'
-import { bulkPublishPlatformName, summarizeBulkPublishStatus, type BulkPublishStatusSummary } from './bulk-publish-status'
+import { bulkPublishModelTooltip, bulkPublishPlatformName, summarizeBulkPublishModels, summarizeBulkPublishStatus, type BulkPublishModelTooltip, type BulkPublishStatusSummary } from './bulk-publish-status'
+import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
 
 type BulkPublicationFailure = { productId: string; productTitle: string; connectionId: string; code: string; message: string }
@@ -51,6 +52,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     return productIds.map(id => byId.get(id) ?? null)
   }, [productIds, products])
   const summaries = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords ? summarizeBulkPublishStatus(selectedRecords, connection) : null])), [connections, selectedRecords])
+  const modelTips = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords?.length ? bulkPublishModelTooltip(summarizeBulkPublishModels(selectedRecords, connection)) : null])), [connections, selectedRecords])
   const locked = running || Boolean(result)
   const close = () => { if (!running) onClose() }
 
@@ -87,7 +89,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
         <header><div><p className="eyebrow">Toplu İşlem</p><h2 id="bulk-publish-title">Platformlarda Yayınla</h2><p>Seçili {cardCount.toLocaleString('tr-TR')} ürün kartı ({productIds.length.toLocaleString('tr-TR')} katalog kaydı) seçtiğiniz pazar yerlerine gönderilir. Zaten yayında ya da işlemde olanlar atlanır.</p></div><button type="button" className="modal-close" onClick={close} disabled={running} aria-label="Yayın penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Toplu ürün yayınlama"><div className="product-publish-layout"><div className="product-publish-main">
           {connections.length
-            ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}</div>
+            ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} modelTip={modelTips.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}</div>
             : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p></div>}
           {error && <div className="publish-platform-warning" role="alert"><UiIcon name="alert" /><div><strong>Yayın İşleri Oluşturulamadı</strong><p>{error}</p></div></div>}
           {result && <div className="publish-platform-warning" role="status" aria-live="polite"><UiIcon name="check" /><div><strong>{result.queued} kuyruğa alındı · {result.skipped} atlandı · {result.failed.length} gönderilemedi</strong>{result.failed.length > 0 && <ul>{result.failed.map(item => <li key={`${item.productId}:${item.connectionId}`}><b>{item.productTitle}</b> · {connectionName(item.connectionId)}: {item.message}</li>)}</ul>}</div></div>}
@@ -102,9 +104,10 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     document.querySelector('main') ?? document.body)
 }
 
-function BulkPublishPlatformCard({ connection, summary, selected, locked, onToggle }: {
+function BulkPublishPlatformCard({ connection, summary, modelTip, selected, locked, onToggle }: {
   connection: MarketplaceConnection
   summary: BulkPublishStatusSummary | null
+  modelTip: BulkPublishModelTooltip | null
   selected: boolean
   locked: boolean
   onToggle: () => void
@@ -125,7 +128,33 @@ function BulkPublishPlatformCard({ connection, summary, selected, locked, onTogg
       <div><dt>Mağaza</dt><dd title={connection.externalStoreId ? `Mağaza no: ${connection.externalStoreId}` : undefined}>{connection.displayName || connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{platformName}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
-      <div className="publish-platform-fact-publication"><dt>Yayın Durumu</dt><dd id={statusId}>{summary ? <span className={`publish-platform-status status-${summary.tone}`} title={summary.detail ?? undefined}><i aria-hidden="true" />{summary.label}</span> : '—'}</dd>{summary?.detail && <small>{summary.detail}</small>}</div>
+      <div className="publish-platform-fact-publication"><dt>Yayın Durumu</dt><dd id={statusId}>{summary ? <BulkPublishStatusPill summary={summary} modelTip={modelTip} platformName={storeName} tipId={`${statusId}-models`} /> : '—'}</dd>{summary?.detail && <small>{summary.detail}</small>}</div>
     </dl>
   </article>
+}
+
+// The "Yayın Durumu" pill: on hover or keyboard focus a tooltip lists each selected model code's live records on this
+// store, the incomplete ones first. It is drawn on the page body, fixed to the screen, so the card and the popup's
+// scrolling body never clip it.
+function BulkPublishStatusPill({ summary, modelTip, platformName, tipId }: { summary: BulkPublishStatusSummary; modelTip: BulkPublishModelTooltip | null; platformName: string; tipId: string }) {
+  const pillRef = useRef<HTMLSpanElement>(null)
+  const [place, setPlace] = useState<{ top: number; left: number; above: boolean } | null>(null)
+  const hasTip = Boolean(modelTip?.rows.length)
+  const show = () => {
+    const rect = pillRef.current?.getBoundingClientRect()
+    if (!rect || !hasTip) return
+    const spaceBelow = window.innerHeight - rect.bottom
+    const above = spaceBelow < 300 && rect.top > spaceBelow
+    setPlace({ top: above ? rect.top - 8 : rect.bottom + 8, left: Math.min(window.innerWidth - 16, Math.max(rect.right, 16 + 320)), above })
+  }
+  const hide = () => setPlace(null)
+  return <>
+    {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-static-element-interactions -- tooltip trigger: focusable so keyboards can read the per model list, Escape hides it */}
+    <span ref={pillRef} className={`publish-platform-status status-${summary.tone}${hasTip ? ' has-model-tip' : ''}`} tabIndex={hasTip ? 0 : undefined} aria-describedby={place ? tipId : undefined} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide} onKeyDown={event => { if (event.key === 'Escape' && place) { event.stopPropagation(); hide() } }}><i aria-hidden="true" />{summary.label}</span>
+    {place && modelTip && createPortal(<div id={tipId} role="tooltip" className={`bulk-publish-model-tip${place.above ? ' is-above' : ''}`} style={{ top: place.top, left: place.left }}>
+      <strong>{platformName} · Model Kodlarına Göre</strong>
+      <ul>{modelTip.rows.map(row => <li key={row.modelCode} className={row.complete ? 'is-complete' : row.missing ? 'is-missing' : 'is-unknown'}><b>{row.modelCode}</b><span>{row.text}</span></li>)}</ul>
+      {modelTip.moreCount > 0 && <small>ve {modelTip.moreCount.toLocaleString('tr-TR')} model daha</small>}
+    </div>, document.body)}
+  </>
 }

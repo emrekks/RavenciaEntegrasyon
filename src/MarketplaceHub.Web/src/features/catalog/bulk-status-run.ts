@@ -24,3 +24,14 @@ export function bulkStatusResultMessage(statusLabel: string, result: ChunkRunRes
   if (!result.doneIds.length) return { title: 'Ürün Durumları Güncellenemedi', message: reason, kind: 'error' }
   return { title: 'Ürün Durumları Kısmen Güncellendi', message: `${result.doneIds.length} ürün “${statusLabel}” olarak güncellendi; kalan ${result.remainingIds.length} ürün güncellenemedi: ${reason}`, kind: 'error' }
 }
+
+// Which selected records a Satışa Aç / Satışa Kapat would change: those already in the target status are left out, so
+// no no-op update is sent. A record whose status the list does not hold stays in: unknown is never read as "already".
+export type BulkStatusPlan = { targetIds: string[]; alreadyIds: string[] }
+
+export function bulkStatusPlan(ids: readonly string[], statusOf: (id: string) => string | null | undefined, target: 'ACTIVE' | 'ARCHIVED'): BulkStatusPlan {
+  const targetIds: string[] = []
+  const alreadyIds: string[] = []
+  for (const id of ids) (statusOf(id)?.trim().toUpperCase() === target ? alreadyIds : targetIds).push(id)
+  return { targetIds, alreadyIds }
+}
