@@ -8388,20 +8388,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private static string SerializeOrderSyncState(OrderSyncState state) => JsonSerializer.Serialize(state);
 
-    // How far a window-by-window order history read has come; null when no such read is under way.
-    internal static int? OrderBaselinePercent(string? opaqueCursor)
-    {
-        if (string.IsNullOrWhiteSpace(opaqueCursor)) return null;
-        try
-        {
-            var state = JsonSerializer.Deserialize<OrderSyncState>(opaqueCursor);
-            if (state is not { Mode: OrderSyncMode.Baseline } || state.AnchorEnd <= state.StartAt) return null;
-            var windows = (state.AnchorEnd - state.StartAt).Ticks / (OrderStreamWindowSpan.Ticks + TimeSpan.TicksPerMillisecond) + 1;
-            return (int)Math.Clamp(state.WindowIndex * 100L / windows, 0, 99);
-        }
-        catch (JsonException) { return null; }
-    }
-
     private async Task<bool> IngestWebhook(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         string raw; string externalMessageId; string resourceType;

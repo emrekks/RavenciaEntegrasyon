@@ -15,7 +15,6 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path === '/connections/c1/credential' && method === 'PUT') { apiState.version += 1; return undefined }
     if (path === '/connections/c1') return connection()
     if (path.endsWith('/sync-policies') || path.endsWith('/capabilities')) return []
-    if (path.endsWith('/initial-import')) return { running: false, parts: [] }
     if (path.endsWith('/instant-notifications')) return { supported: false }
     return []
   }
