@@ -43,6 +43,7 @@ builder.Host.UseSerilog((_, configuration) => configuration
     .MinimumLevel.Override("Microsoft.AspNetCore.Hosting.Diagnostics", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
     .Enrich.FromLogContext()
+    .Enrich.With<SecretPathEnricher>()
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BreakGlassService>();
@@ -79,6 +80,7 @@ builder.Services.AddHttpClient(PublicNetwork.ClientName, client =>
 // Sign-in, the steps after it, a per-network ceiling and the webhook limits (see RateLimitPolicies).
 builder.Services.AddRateLimiter(options => RateLimitPolicies.Configure(options, builder.Configuration));
 builder.Services.AddScoped<IWebhookRouteGate, WebhookRouteGate>();
+builder.Services.AddSingleton<WebhookConnectionQuota>();
 
 var app = builder.Build();
 var isAdministrativeCommand = args.Any(argument => argument is "migrate" or "bootstrap" or "healthcheck");
