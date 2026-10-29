@@ -165,6 +165,163 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
         }
     }
 
+    // G-4 (29 Oct 2026): an n11 order whose invoice was cancelled kept the cancelled invoice's link as "invoiced" and
+    // refused every new invoice. "Fatura Bekliyor" reopens it: the link removal ends, the cancelled invoice leaves the sale
+    // slot, and a later order read bringing the old link back no longer counts.
+    [PostgreSqlFact]
+    public async Task G4_FaturaBekliyorReopensAnN11OrderWhoseInvoiceWasCancelled()
+    {
+        var seed = NewSeed("g4-n11-reopen", "N11", null);
+        seed.Package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+        seed.Package.MarketplaceInvoiceUrl = "https://example.com/g4/old-invoice.pdf";
+        var cancelled = NewInvoice(seed, InvoiceStatus.Cancelled);
+        var link = NewRevocationState(seed, cancelled);
+        await SeedAsync(seed, db => { db.Invoices.Add(cancelled); db.MarketplaceDeliveryStates.Add(link); });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.False((await NewBillingService(db).CreateDraftAsync(seed.Tenant.Id, new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null), "g4-before", CancellationToken.None)).Succeeded);
+
+            Assert.Equal(1, await SetManualStatusAsync(seed, "PENDING"));
+            await using (var verification = fixture.CreateContext())
+            {
+                var state = await verification.MarketplaceDeliveryStates.SingleAsync(item => item.Id == link.Id);
+                Assert.Equal((MarketplaceInvoiceLinkRevocationPolicy.Removed, MarketplaceInvoiceReopenPolicy.ReopenedCode), (state.Status, state.ErrorCode));
+                Assert.Equal("REPLACED", (await verification.Invoices.SingleAsync(item => item.Id == cancelled.Id)).SequencePurpose);
+                var package = await verification.ShipmentPackages.SingleAsync(item => item.Id == seed.Package.Id);
+                Assert.Equal((MarketplaceInvoiceStatus.NotInvoiced, "PENDING", (string?)null), (package.MarketplaceInvoiceStatus, package.ManualInvoiceStatus, package.MarketplaceInvoiceUrl));
+            }
+
+            // An order read brings the cancelled invoice's link back: it no longer counts.
+            await using (var db = fixture.CreateContext())
+                await db.ShipmentPackages.Where(item => item.Id == seed.Package.Id).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.MarketplaceInvoiceStatus, MarketplaceInvoiceStatus.Invoiced));
+            Guid draftId;
+            await using (var db = fixture.CreateContext())
+            {
+                var created = await NewBillingService(db).CreateDraftAsync(seed.Tenant.Id, new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null), "g4-after", CancellationToken.None);
+                Assert.True(created.Succeeded, created.Error?.Code);
+                draftId = created.Value!.Id;
+                await db.Invoices.Where(item => item.Id == draftId).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.Status, InvoiceStatus.Submitting));
+                // The draft's receiver (with its carrier) was sealed by another test key; without it the order and its
+                // package are read directly.
+                await db.Invoices.Where(item => item.Id == draftId).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.PackageId, seed.Package.Id));
+                await db.InvoicePartySnapshots.Where(item => item.InvoiceId == draftId).ExecuteDeleteAsync();
+            }
+
+            // The new invoice passes the fiscal pre-check and reaches the provider.
+            var provider = new RefusingProvider();
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, new UnverifiedMarketplace(), provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceSubmit,
+                    JsonSerializer.Serialize(new { invoiceId = draftId }), "g4-submit", CancellationToken.None);
+                Assert.Equal(RefusingProvider.Code, result.ErrorCode);
+            }
+            Assert.Equal(1, provider.SubmitCalls);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // G-4: an invoice the marketplace shows without a cancelled invoice of this panel behind it is never set aside.
+    [PostgreSqlFact]
+    public async Task G4_FaturaBekliyorLeavesAnInvoiceFromElsewhereInPlace()
+    {
+        var seed = NewSeed("g4-elsewhere", "N11", null);
+        seed.Package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+        await SeedAsync(seed);
+        try
+        {
+            Assert.Equal(0, await SetManualStatusAsync(seed, "PENDING"));
+            await using var db = fixture.CreateContext();
+            Assert.Equal(MarketplaceInvoiceStatus.Invoiced, (await db.ShipmentPackages.SingleAsync(item => item.Id == seed.Package.Id)).MarketplaceInvoiceStatus);
+            Assert.Equal("MARKETPLACE_INVOICE_ALREADY_PRESENT", (await NewBillingService(db).CreateDraftAsync(seed.Tenant.Id, new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null), "g4-elsewhere", CancellationToken.None)).Error?.Code);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // G-4: PTT AVM still flags the lines invoiced (IsInvoice) after the cancelled invoice and does not document what a
+    // second link does. The new invoice is issued, but its link is not sent: the seller replaces it in the PTT AVM panel.
+    [PostgreSqlFact]
+    public async Task G4_PttAvmReopenedOrderGetsItsNewLinkReplacedInTheSellerPanel()
+    {
+        var seed = NewSeed("g4-pttavm-reopen", "PTTAVM", null);
+        seed.Package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+        var cancelled = NewInvoice(seed, InvoiceStatus.Cancelled);
+        var link = NewRevocationState(seed, cancelled);
+        await SeedAsync(seed, db => { db.Invoices.Add(cancelled); db.MarketplaceDeliveryStates.Add(link); });
+        try
+        {
+            Assert.Equal(1, await SetManualStatusAsync(seed, "PENDING"));
+            var replacement = NewInvoice(seed, InvoiceStatus.MarketplacePending);
+            replacement.InvoiceNumber = "GIB2026000000002";
+            var asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Classification = "INVOICE_DOCUMENT", RelativePath = "g4/invoice.pdf", MimeType = "application/pdf", SizeBytes = 10, Sha256 = new string('A', 64), Status = "ACTIVE", CreatedAt = fixture.Now };
+            await using (var db = fixture.CreateContext())
+            {
+                db.Invoices.Add(replacement);
+                db.FileAssets.Add(asset);
+                db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, InvoiceId = replacement.Id, DocumentType = "PDF", FileAssetId = asset.Id, Sha256 = asset.Sha256, CreatedAt = fixture.Now });
+                await db.SaveChangesAsync();
+            }
+
+            var marketplace = new InvoicedMarketplace();
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, marketplace, configuration: new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.example.test" })
+                    .ProcessAsync(seed.Tenant.Id, seed.Marketplace.Id, InvoicingJobTypes.MarketplaceDelivery,
+                        JsonSerializer.Serialize(new { invoiceId = replacement.Id, packageId = seed.Package.Id }), "g4-ptt-deliver", CancellationToken.None);
+                Assert.Equal(MarketplaceInvoiceReopenPolicy.PttAvmManualReplacementCode, result.ErrorCode);
+            }
+            Assert.Equal(0, marketplace.Deliveries);
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.Invoices.SingleAsync(item => item.Id == replacement.Id);
+            Assert.Equal((InvoiceStatus.ManualReview, MarketplaceInvoiceReopenPolicy.PttAvmManualReplacementCode), (stored.Status, stored.LastErrorCode));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private MarketplaceDeliveryState NewRevocationState(Seed seed, Invoice invoice) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = seed.Tenant.Id,
+        InvoiceId = invoice.Id,
+        ConnectionId = seed.Marketplace.Id,
+        PackageId = seed.Package.Id,
+        AttemptNumber = 2,
+        ExternalIdempotencyKey = $"delivery:{invoice.Id:N}:{seed.Package.Id:N}",
+        RequestHash = "g4-hash",
+        DeliveryType = "LINK",
+        Status = MarketplaceInvoiceLinkRevocationPolicy.Required,
+        ExternalReference = seed.Package.ExternalPackageId,
+        CreatedAt = fixture.Now.AddDays(-1),
+        UpdatedAt = fixture.Now.AddDays(-1),
+        Version = 1
+    };
+
+    // The workspace's hand-set status for one package; returns how many packages it reopened.
+    private async Task<int> SetManualStatusAsync(Seed seed, string status)
+    {
+        await using var db = fixture.CreateContext();
+        var http = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection()
+                .AddSingleton<ITenantContextAccessor>(new TenantAccessor(new(Guid.NewGuid(), seed.Tenant.Id, "OWNER")))
+                .BuildServiceProvider()
+        };
+        http.Request.Headers["Idempotency-Key"] = $"g4:{Guid.NewGuid():N}";
+        var result = await InvoicingEndpoints.UpdateInvoiceWorkspaceManualStatusAsync(new([seed.Package.Id], status), http, db, fixture.TimeProvider);
+        var value = (result as IValueHttpResult)?.Value;
+        Assert.Equal(StatusCodes.Status200OK, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        return JsonDocument.Parse(JsonSerializer.Serialize(value)).RootElement.GetProperty("reopenedCount").GetInt32();
+    }
+
     // W2: the same key after a finished (failed) job queues a new job; while a job waits, it is answered with that job.
     [PostgreSqlFact]
     public async Task W2_ManualDeliveryRetriedAfterAFailedJobIsQueuedAgain()
@@ -254,8 +411,8 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
     private MarketplaceSalesService NewSalesService(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
 
-    private InvoicingJobProcessor NewProcessor(AppDbContext db, IInvoiceMarketplacePort marketplace) =>
-        new(db, null!, marketplace, null!, fixture.TimeProvider, new ConfigurationBuilder().Build(), new EphemeralDataProtectionProvider());
+    private InvoicingJobProcessor NewProcessor(AppDbContext db, IInvoiceMarketplacePort marketplace, IInvoiceProviderPort? provider = null, IDictionary<string, string?>? configuration = null) =>
+        new(db, provider!, marketplace, null!, fixture.TimeProvider, new ConfigurationBuilder().AddInMemoryCollection(configuration ?? new Dictionary<string, string?>()).Build(), new EphemeralDataProtectionProvider());
 
     private sealed record Seed(Tenant Tenant, PlatformConnection Marketplace, PlatformConnection Provider, Order Order, ShipmentPackage Package, LegalEntityProfile Profile, InvoicePolicy Policy);
 
@@ -391,6 +548,7 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
         await db.MarketplaceDeliveries.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.MarketplaceDeliveryStates.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceDocuments.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.FileAssets.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceSubmissionAttempts.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoicePartySnapshots.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoiceLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
@@ -420,6 +578,38 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
             Calls++;
             return Task.FromResult(AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, MarketplaceInvoiceStatePolicy.Unverified, true)));
         }
+    }
+
+    // PTT AVM's read once every live line says IsInvoice=true; counts the deliveries it is asked for.
+    private sealed class InvoicedMarketplace : IInvoiceMarketplacePort
+    {
+        public int Deliveries { get; private set; }
+
+        public Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
+        {
+            Deliveries++;
+            throw new InvalidOperationException("A delivery must not be sent.");
+        }
+
+        public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, "INVOICED", true)));
+    }
+
+    // The provider refuses every invoice it is sent: the test only needs to see that one reached it.
+    private sealed class RefusingProvider : IInvoiceProviderPort
+    {
+        public const string Code = "EFATURAM_REQUEST_REJECTED";
+        public int SubmitCalls { get; private set; }
+
+        public Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync(AdapterContext context, InvoiceSubmission submission, CancellationToken cancellationToken)
+        {
+            SubmitCalls++;
+            return Task.FromResult(AdapterResult<InvoiceSubmissionResult>.Failure(new(AdapterErrorClass.Validation, Code, "E-Faturam isteği reddetti.", 400, null, null)));
+        }
+        public Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class TenantAccessor(TenantContext context) : ITenantContextAccessor

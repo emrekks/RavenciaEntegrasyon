@@ -4,7 +4,7 @@ using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 
-public static class TrendyolEFaturamJsonMapper
+public static partial class TrendyolEFaturamJsonMapper
 {
     public static InvoiceSubmissionResult OutgoingInvoice(string json, string? remoteRequestId)
     {
@@ -15,6 +15,28 @@ public static class TrendyolEFaturamJsonMapper
         var status = RequiredText(root, "status");
         return new(uuid, invoiceId, uuid, status, remoteRequestId);
     }
+
+    // What an unreadable creation answer still tells: its invoiceUuid (with the number and status when present), read from
+    // the JSON where it parses and from the raw text where it does not. Null when no UUID can be found.
+    public static InvoiceSubmissionResult? PartialOutgoingInvoice(string json, string? remoteRequestId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object && Text(root, "invoiceUuid") is { } uuid && Guid.TryParse(uuid, out _))
+                return new(uuid, Text(root, "invoiceId") is { Length: > 0 } number ? number : null, uuid, Text(root, "status") ?? "UNKNOWN", remoteRequestId);
+            return null;
+        }
+        catch (JsonException)
+        {
+            var match = RawInvoiceUuid().Match(json);
+            return match.Success ? new(match.Groups[1].Value, null, match.Groups[1].Value, "UNKNOWN", remoteRequestId) : null;
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex("\"invoiceUuid\"\\s*:\\s*\"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\"")]
+    private static partial System.Text.RegularExpressions.Regex RawInvoiceUuid();
 
     public static InvoiceRemoteStatus InvoiceStatus(string json, string externalReference)
     {

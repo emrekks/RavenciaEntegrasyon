@@ -178,6 +178,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 if (packages.Any(item => MarketplaceInvoiceStatePolicy.IsManuallyUploaded(item.ManualInvoiceStatus)))
                     await BlockFiscalSubmission(invoice, "PLATFORM_INVOICE_ALREADY_PRESENT",
                         "Sipariş fatura yüklendi olarak işaretlenmiş. Yeni mali kesim yapılmadı.", cancellationToken);
+                // A package the seller reopened after a cancelled invoice (n11, Pazarama, PTT AVM): what the marketplace
+                // still shows is that cancelled invoice's link, not an invoice the order holds.
+                var reopenedPackageIds = await MarketplaceInvoiceReopen.ReopenedPackageIdsAsync(db, tenantId, packages.Select(item => item.Id).ToArray(), cancellationToken);
 
                 foreach (var targetPackage in packages)
                 {
@@ -193,7 +196,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     if (MarketplaceInvoiceStatePolicy.IsUnverified(observation.RawStatus))
                     {
                         // n11 / PTT AVM: no API invoice says nothing about the seller panel, so the package keeps its state.
-                        if (MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(targetPackage.MarketplaceInvoiceStatus, targetPackage.ManualInvoiceStatus))
+                        if (MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(targetPackage.MarketplaceInvoiceStatus, targetPackage.ManualInvoiceStatus)
+                            && !MarketplaceInvoiceReopen.Overrides(targetPackage, reopenedPackageIds))
                             await BlockFiscalSubmission(invoice, "PLATFORM_INVOICE_ALREADY_PRESENT",
                                 "Siparişte pazaryeri faturası var veya fatura yüklendi olarak işaretlenmiş. Yeni mali kesim yapılmadı.", cancellationToken);
                         continue;
@@ -220,7 +224,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     targetPackage.UpdatedAt = observedAt;
                     targetPackage.Version++;
 
-                    if (!explicitlyNotInvoiced)
+                    var reopenedPresent = targetPackage.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received
+                        && MarketplaceInvoiceReopen.Overrides(targetPackage, reopenedPackageIds);
+                    if (!explicitlyNotInvoiced && !reopenedPresent)
                     {
                         await db.SaveChangesAsync(cancellationToken);
                         var present = targetPackage.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
@@ -295,7 +301,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 if (InvoiceSubmissionOutcomePolicy.IsOutcomeUnknown(error))
                 {
                     MarkSubmissionUnknown(invoice, attempt, error.Code);
+                    attempt.ErrorClass = error.Class.ToString();
                     attempt.RemoteRequestId = error.RemoteRequestId;
+                    // An unreadable 2xx answer may still name the invoice: its UUID is kept and the invoice is read by it,
+                    // which settles the result (accepted, refused or still pending) without sending anything again.
+                    if (result.Value is { } partial && !string.IsNullOrWhiteSpace(partial.ExternalReference))
+                    {
+                        attempt.ExternalReference = partial.ExternalReference;
+                        invoice.ExternalReference = partial.ExternalReference;
+                        invoice.EttnUuid ??= partial.EttnUuid;
+                        invoice.InvoiceNumber ??= partial.InvoiceNumber;
+                        await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-submit", correlationId, CancellationToken.None);
+                    }
                     await db.SaveChangesAsync(CancellationToken.None);
                     throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_OUTCOME_UNKNOWN", "Sağlayıcı yanıtı mali faturanın oluşup oluşmadığını kesinleştirmedi. Aynı fatura yeniden gönderilmedi.", error.RemoteRequestId));
                 }
@@ -417,7 +434,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var result = await provider.QueryStatusAsync(Context(tenantId, connectionId, correlationId, $"reconcile:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), cancellationToken);
         if (!result.IsSuccess)
         {
-            invoice.LastErrorCode = result.Error!.Code;
+            // An invoice whose creation answer could not be read keeps saying so (E-Faturam's answer is awaited) until
+            // a read settles it; the failed read is on the job.
+            if (!(invoice.Status == InvoiceStatus.UnknownResult && invoice.LastErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode))
+                invoice.LastErrorCode = result.Error!.Code;
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);
@@ -1048,11 +1068,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var latestMarketplaceInvoice = beforeDelivery.Value!;
         var observedAt = timeProvider.GetUtcNow();
         var unverified = MarketplaceInvoiceStatePolicy.IsUnverified(latestMarketplaceInvoice.RawStatus);
+        // The seller reopened the package after a cancelled invoice (n11, Pazarama, PTT AVM): the invoice it shows is
+        // that cancelled one's link, which this delivery replaces.
+        var reopened = MarketplaceInvoiceReopen.Overrides(package, await MarketplaceInvoiceReopen.ReopenedPackageIdsAsync(db, tenantId, [package.Id], cancellationToken));
         if (unverified)
         {
             // n11 / PTT AVM cannot show a seller-panel invoice: the package keeps its state, and a link is sent only
             // while nothing local (an observed invoice or a hand-set "uploaded") says the order already holds one.
-            if (MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(package.MarketplaceInvoiceStatus, package.ManualInvoiceStatus))
+            if (MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(package.MarketplaceInvoiceStatus, package.ManualInvoiceStatus) && !reopened)
             {
                 invoice.Status = InvoiceStatus.ManualReview;
                 invoice.LastErrorCode = "PLATFORM_INVOICE_ALREADY_PRESENT";
@@ -1119,6 +1142,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 }
 
                 var presentButDifferent = package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
+                // The invoice shown is the cancelled one's link on a reopened package. PTT AVM's read (IsInvoice per line)
+                // cannot tell a second link from the first and its answer to one is not documented, so the seller puts
+                // the new link in place in the seller panel; nothing is sent.
+                if (reopened && presentButDifferent && !MarketplaceInvoiceReopenPolicy.ApiReplacesLink(platformCode))
+                {
+                    invoice.Status = InvoiceStatus.ManualReview;
+                    invoice.LastErrorCode = MarketplaceInvoiceReopenPolicy.PttAvmManualReplacementCode;
+                    invoice.UpdatedAt = observedAt;
+                    invoice.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode, MarketplaceInvoiceReopenPolicy.PttAvmManualReplacementMessage));
+                }
                 invoice.Status = InvoiceStatus.ManualReview;
                 invoice.LastErrorCode = presentButDifferent ? "PLATFORM_INVOICE_ALREADY_PRESENT" : "PLATFORM_INVOICE_STATUS_NOT_CLEAR";
                 invoice.UpdatedAt = observedAt;
@@ -1587,6 +1622,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     // instead of waiting for the next order read (n11 and PTT AVM read back only invoices sent through the API).
     private void RecordConfirmedDelivery(ShipmentPackage package, string? invoiceNumber, string? invoiceLink, DateTimeOffset at)
     {
+        // A hand-set "Fatura Bekliyor" (a package reopened after a cancelled invoice) is answered by this invoice.
+        if (string.Equals(package.ManualInvoiceStatus, "PENDING", StringComparison.OrdinalIgnoreCase))
+        {
+            package.ManualInvoiceStatus = null;
+            package.UpdatedAt = at;
+            package.Version++;
+        }
         if (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced) return;
         MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(db, package, invoiceNumber, invoiceLink, at, "DELIVERY_CONFIRMED");
         package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
@@ -1963,6 +2005,20 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null || invoice.ProviderConnectionId != connectionId || invoice.InvoiceType != "EARSIVFATURA" || string.IsNullOrWhiteSpace(invoice.ExternalReference)) return false;
+        // The provider is read first: after a lost answer, a retry or a cancellation made in the portal, an invoice it
+        // already reports cancelled is closed here and no second cancellation request is sent. An unreadable status
+        // changes nothing; the cancellation request then decides.
+        var current = await provider.QueryStatusAsync(Context(tenantId, connectionId, correlationId, $"cancel-check:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), cancellationToken);
+        if (current.IsSuccess && current.Value!.CanonicalStatus == "CANCELLED")
+        {
+            invoice.Status = InvoiceStatus.Cancelled;
+            invoice.LastErrorCode = null;
+            await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, timeProvider.GetUtcNow(), cancellationToken);
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
         var result = await provider.CancelAsync(Context(tenantId, connectionId, correlationId, $"cancel:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, "OPERATOR_CONFIRMED"), cancellationToken);
         if (result.IsSuccess)
         {
@@ -1976,18 +2032,19 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         else
         {
-            invoice.Status = result.Error!.Class switch
-            {
-                AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx => InvoiceStatus.CancellationPending,
-                AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug => InvoiceStatus.ManualReview,
-                _ => InvoiceStatus.CancellationRejected
-            };
+            invoice.Status = InvoiceCancellationOutcomePolicy.StatusAfterFailure(result.Error!.Class);
             invoice.LastErrorCode = result.Error.Code;
         }
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
-        if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+        if (!result.IsSuccess)
+        {
+            var error = result.Error!;
+            if (InvoiceCancellationOutcomePolicy.RetriesLater(error.Class))
+                throw new JobProcessingException(JobExecutionResult.Retry(error.Code, error.SafeMessage, error.RetryAfter ?? InvoiceCancellationOutcomePolicy.RetryDelay, error.RemoteRequestId));
+            throw JobProcessingException.FromAdapter(error);
+        }
         return true;
     }
 
