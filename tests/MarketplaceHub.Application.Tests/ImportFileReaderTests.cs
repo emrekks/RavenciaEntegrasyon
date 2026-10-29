@@ -47,6 +47,47 @@ public sealed class ImportFileReaderTests
         Assert.Equal("P-1", rows[1].Values["sku"]);
     }
 
+    // Turkish Excel saves 1250 formatted "#.##0" as "1.250"; read as a decimal point it became 1,25 TL and a stock of
+    // "1.000" one unit. A lone dot with three digits after it is refused, as in the product file transfer.
+    [Theory]
+    [InlineData("1.250")]
+    [InlineData("1.000")]
+    [InlineData("12.345.678")]
+    [InlineData("-1.250")]
+    public void ThousandsOnlyNumbers_AreRejectedNotGuessed(string number)
+    {
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Ürün"] = "title", ["SKU"] = "sku", ["Satış Fiyatı"] = "salePrice", ["Stok"] = "stock", ["Desi"] = "desi" };
+        foreach (var column in new[] { "Satış Fiyatı", "Stok", "Desi" })
+        {
+            var cells = new[] { "Satış Fiyatı", "Stok", "Desi" }.Select(name => name == column ? number : "5");
+            var row = Assert.Single(ImportFileReader.ReadCsv(new MemoryStream(Encoding.UTF8.GetBytes($"Ürün;SKU;Satış Fiyatı;Stok;Desi\nKazak;K-1;{string.Join(';', cells)}\n")), mappings));
+
+            var error = Assert.Single(row.Errors);
+            Assert.StartsWith($"{column}: \"{number}\" belirsiz", error, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("1.234,50", "1234.50")]
+    [InlineData("1,234.50", "1234.50")]
+    [InlineData("1234.5", "1234.5")]
+    [InlineData("1234,5", "1234.5")]
+    [InlineData("12.5", "12.5")]
+    [InlineData("1250", "1250")]
+    [InlineData("1,250", "1.250")]
+    public void UnambiguousNumbers_AreReadAsBefore(string number, string expected)
+    {
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Ürün"] = "title", ["SKU"] = "sku", ["Satış Fiyatı"] = "salePrice" };
+        var row = Assert.Single(ImportFileReader.ReadCsv(new MemoryStream(Encoding.UTF8.GetBytes($"Ürün;SKU;Satış Fiyatı\nKazak;K-1;{number}\n")), mappings));
+
+        Assert.Empty(row.Errors);
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ImportJobProcessor.ParseDecimal(row.Values["salePrice"]));
+    }
+
+    [Fact]
+    public void A_thousands_like_text_outside_the_number_columns_is_kept() =>
+        Assert.Empty(Assert.Single(Read(Encoding.UTF8.GetBytes("Ürün;SKU\nKazak;1.250\n"))).Errors);
+
     [Fact]
     public void TabDelimitedFile_IsRecognised()
     {

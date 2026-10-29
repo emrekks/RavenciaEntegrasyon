@@ -570,7 +570,8 @@ public sealed class ImportJobProcessor(
     private static decimal ParseNonNegative(string? value) => ParseDecimal(value) is decimal parsed ? Math.Max(0, decimal.Round(parsed, 4)) : 0;
     private static decimal? ParsePrice(string? value) => ParseDecimal(value) is decimal parsed && parsed >= 0 ? decimal.Round(parsed, 4) : null;
 
-    // Accepts "1234.5", "1234,5", "1.234,50" and "1,234.50".
+    // Accepts "1234.5", "1234,5", "1.234,50" and "1,234.50". A CSV "1.250" never gets here: ImportFileReader refuses
+    // the row; an XLSX number cell is written with a decimal point.
     internal static decimal? ParseDecimal(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
