@@ -101,6 +101,69 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
     }
 
+    // Q-3: the scan walks every ACTIVE offer over its passes instead of the same first batch. Offers whose stock was
+    // sent and whose stock row was observed a moment ago (but whose price never went out) were never candidates; a
+    // stock-lagging offer goes first; the walk keeps its place and starts over at the end.
+    [PostgreSqlFact]
+    public async Task StockReconcile_WalksEveryActiveOfferAcrossPasses()
+    {
+        var tenant = NewTenant("stock-reconcile-walk");
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var product = NewVariant(tenant, "WALK-0", "8690000000400").Product;
+        var variants = Enumerable.Range(1, 5).Select(index => NewVariant(tenant, $"WALK-{index}", $"869000000040{index}", product.Id).Variant).ToArray();
+        var lagging = variants[^1];
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(variants);
+            foreach (var variant in variants)
+            {
+                var inventory = NewInventory(tenant, variant, 3m);
+                inventory.ProjectionVersion = 4;
+                inventory.ReconciledAt = fixture.Now;
+                seed.InventoryItems.Add(inventory);
+                var offer = NewOffer(tenant, n11, variant);
+                offer.LastStockProjectionVersion = variant == lagging ? 3 : 4;
+                seed.ChannelOffers.Add(offer);
+                seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = variant.Id, ExternalId = variant.Sku });
+            }
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<List<string>> ScanAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FeatureFlags:ExternalWrites"] = "true",
+                ["MarketplaceSync:StockReconciliation:BatchSize"] = "2"
+            }).Build();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, configuration, fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, n11.Id, MarketplaceJobTypes.StockReconciliation, "{\"lookbackHours\":1}", "stock-reconcile-walk", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+            return await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync).OrderBy(x => x.CreatedAt).Select(x => x.PayloadJson).ToListAsync();
+        }
+        bool Queued(IEnumerable<string> payloads, ProductVariant variant) => payloads.Any(payload => payload.Contains(variant.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+
+        // A budget of two: one slot for the stock-lagging offer (still lagging while its job waits), one for the walk.
+        var first = await ScanAsync();
+        Assert.Equal(2, first.Count);
+        Assert.True(Queued(first, lagging));
+        Assert.Equal(3, (await ScanAsync()).Count);
+        Assert.Equal(4, (await ScanAsync()).Count);
+        var fourth = await ScanAsync();
+        Assert.Equal(5, fourth.Count);
+        Assert.All(variants, variant => Assert.True(Queued(fourth, variant), variant.Sku));
+        // Everything queued: a further pass wraps around and opens nothing beside the queued jobs.
+        Assert.Equal(5, (await ScanAsync()).Count);
+        await using var check = fixture.CreateContext();
+        var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == n11.Id && x.ResourceType == "STOCK_RECONCILIATION");
+        Assert.Contains("stock-reconcile-v1", cursor.OpaqueCursor);
+        Assert.True(await check.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenant.Id).AllAsync(x => x.ReconciledAt != null));
+    }
+
     // Q-1/K-1: a price/stock job of the same values that ended without getting them through no longer counts as
     // sent. The reconcile scan retires its key and queues them again (at once after a pre-send stop, an hour after
     // any other failure), while a job still queued is left alone and no second one is opened beside it.
