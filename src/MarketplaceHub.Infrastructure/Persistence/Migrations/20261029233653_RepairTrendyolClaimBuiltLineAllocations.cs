@@ -21,7 +21,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
             // line takes ShippedQuantity = DeliveredQuantity = OrderedQuantity (Version + 1), as its allocated siblings
             // hold. Only when every condition holds:
             //   - a Trendyol connection; the order no longer carries the return-claim mark;
-            //   - the line has no allocation in any package; ordered > 0, nothing cancelled, returned, shipped or delivered;
+            //   - the line has no allocation in any package; ordered > 0, nothing cancelled, returned, shipped or delivered,
+            //     and Trendyol reports the line itself Delivered;
             //   - the order has exactly one package, Delivered (status and raw status), whose existing allocations all
             //     carry one event id and that id names the package.
             // Stock is not touched: it follows the lines' ordered and cancelled quantities, which do not change, so no
@@ -44,7 +45,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                   WHERE p."Status" = 'Delivered' AND p."RawStatus" = 'Delivered'
                     AND ev.event_id LIKE p."ExternalPackageId" || ':%'
                     AND l."OrderedQuantity" > 0 AND l."CancelledQuantity" = 0 AND l."ReturnedQuantity" = 0
-                    AND l."ShippedQuantity" = 0 AND l."DeliveredQuantity" = 0
+                    AND l."ShippedQuantity" = 0 AND l."DeliveredQuantity" = 0 AND l."RawStatus" = 'Delivered'
                     AND NOT EXISTS (SELECT 1 FROM sales.package_line_allocations a WHERE a."TenantId" = l."TenantId" AND a."OrderLineId" = l."Id")
                     AND NOT COALESCE(CASE WHEN pg_input_is_valid(o."CustomerSnapshotJson", 'jsonb') THEN
                           o."CustomerSnapshotJson"::jsonb->>'_ravenciaReadModelSource' = 'RETURN_CLAIM'
