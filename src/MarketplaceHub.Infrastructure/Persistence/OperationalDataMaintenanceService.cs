@@ -65,8 +65,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
         // A test environment's invoices (an e-invoice provider's STAGE) are no fiscal record: they go with the connection.
-        var testEnvironment = connection.Environment is "STAGE" or "SANDBOX";
-        if (!testEnvironment && await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) is > 0 and var issued) return IssuedInvoicesKept(issued);
+        // Whether an invoice is a test is the environment of the provider that issued it, not of the connection being
+        // deleted: a live marketplace's orders invoiced through a STAGE provider are tests, a STAGE marketplace's orders
+        // invoiced through the live provider are not.
+        if (await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken, fiscalOnly: true) is > 0 and var issued) return IssuedInvoicesKept(issued);
         var scopes = new HashSet<string>(ConnectionDeleteScopes, StringComparer.Ordinal);
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -394,10 +396,14 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
     // refused. "Issued" is anything that left the draft stages, or got a number, an ETTN or an issue date.
     private static readonly InvoiceStatus[] UnissuedInvoiceStatuses = [InvoiceStatus.Draft, InvoiceStatus.Validating, InvoiceStatus.ValidationFailed, InvoiceStatus.Ready, InvoiceStatus.Rejected, InvoiceStatus.CancelledLocal];
 
-    private Task<int> IssuedInvoicesAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) =>
+    private static readonly string[] TestProviderEnvironments = ["STAGE", "SANDBOX"];
+
+    // FiscalOnly leaves out the invoices a test environment's provider issued.
+    private Task<int> IssuedInvoicesAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool fiscalOnly = false) =>
         db.Invoices.CountAsync(x => x.TenantId == tenantId
             && (connectionId == null || x.ProviderConnectionId == connectionId || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connectionId))
-            && (!UnissuedInvoiceStatuses.Contains(x.Status) || x.IssuedAt != null || x.EttnUuid != null || x.InvoiceNumber != null), cancellationToken);
+            && (!UnissuedInvoiceStatuses.Contains(x.Status) || x.IssuedAt != null || x.EttnUuid != null || x.InvoiceNumber != null)
+            && (!fiscalOnly || !db.PlatformConnections.Any(provider => provider.TenantId == tenantId && provider.Id == x.ProviderConnectionId && TestProviderEnvironments.Contains(provider.Environment))), cancellationToken);
 
     private static ServiceResult<OperationalDataResetView> IssuedInvoicesKept(int count) =>
         ServiceResult<OperationalDataResetView>.Fail("ISSUED_INVOICES_KEPT", $"Seçilen kayıtlar {count} kesilmiş fatura içeriyor; mali kayıtlar silinemez. Faturaları ve bağlı siparişleri seçimden çıkarın.", 409);

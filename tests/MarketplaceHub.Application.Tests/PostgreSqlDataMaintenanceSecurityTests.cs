@@ -249,6 +249,41 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // Whether an issued invoice is a test is the environment of the provider that issued it (P-6 reading, 29 Oct 2026):
+    // a live store's orders invoiced through E-Faturam's STAGE go with the store; a STAGE store's orders invoiced
+    // through the live provider are fiscal records and keep the store.
+    [PostgreSqlFact]
+    public Task MarketplaceDelete_TakesTheInvoicesATestProviderIssued() => MarketplaceDeleteAsync(marketplaceEnvironment: "PRODUCTION", providerEnvironment: "STAGE", deleted: true);
+
+    [PostgreSqlFact]
+    public Task MarketplaceDelete_KeepsATestStoresInvoicesTheLiveProviderIssued() => MarketplaceDeleteAsync(marketplaceEnvironment: "STAGE", providerEnvironment: "PRODUCTION", deleted: false);
+
+    private async Task MarketplaceDeleteAsync(string marketplaceEnvironment, string providerEnvironment, bool deleted)
+    {
+        var seed = NewSeed($"dm-mk{marketplaceEnvironment[..2].ToLowerInvariant()}");
+        seed.Marketplace.Environment = marketplaceEnvironment;
+        seed.Provider.Environment = providerEnvironment;
+        try
+        {
+            await SeedAsync(seed, db => db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.Equal(deleted, result.Succeeded);
+            if (!deleted) Assert.Equal("ISSUED_INVOICES_KEPT", result.Error!.Code);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(deleted ? 0 : 1, await verification.Invoices.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(deleted ? 0 : 1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(deleted ? "DELETED" : "ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task OrderReset_MarksTheFilesOfRemovedRowsForPurge_AndTheSweepDeletesThem()
     {
