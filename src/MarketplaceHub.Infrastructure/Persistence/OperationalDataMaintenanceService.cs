@@ -1,10 +1,12 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard) : IOperationalDataMaintenanceService
+public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard, ILogger<OperationalDataMaintenanceService> logger) : IOperationalDataMaintenanceService
 {
     // Orders, returns and invoices are reset per connection only (ResetConnectionDataAsync, Entegrasyonlar › Verileri
     // Sıfırla); the settings-wide reset covers the catalog lists.
@@ -27,9 +29,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (scopes.Contains("PRODUCTS")) await DeleteProductsAsync(tenantId, null, cancellationToken);
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "OPERATIONAL_DATA_RESET", "Tenant", tenantId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
+        AnnounceReset(tenantId, "products", "Tenant", tenantId);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts);
     }
 
@@ -50,7 +53,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         connection.Version++;
         db.AuditLogs.Add(Audit(tenantId, actorUserId, hidden ? "CONNECTION_DATA_HIDDEN" : "CONNECTION_DATA_SHOWN", "PlatformConnection", connectionId.ToString("D"), hidden ? "platform-data-hidden" : "platform-data-shown", correlationId));
         await db.SaveChangesAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<bool>.Ok(hidden);
     }
 
@@ -80,7 +83,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DEEP_DELETED", "PlatformConnection", connectionId.ToString("D"), $"{connection.PlatformCode}:{connection.ExternalStoreId}", correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true });
     }
 
@@ -135,9 +138,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
 
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DATA_RESET", "PlatformConnection", connectionId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
+        AnnounceReset(tenantId, "connections", "PlatformConnection", connectionId);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { KeptIssuedInvoices = keptIssued });
     }
 
@@ -412,6 +416,53 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
           AND NOT EXISTS (SELECT 1 FROM sales.return_evidence e WHERE e."TenantId"={{tenantId}} AND e."FileAssetId"=f."Id")
           AND NOT EXISTS (SELECT 1 FROM sales.shipment_documents s WHERE s."TenantId"={{tenantId}} AND s."FileAssetId"=f."Id");
         """, cancellationToken);
+
+    // The dashboard snapshot is rebuilt after the reset has committed, so a failure there must not turn a finished reset
+    // into an error (P-6, 29 Oct 2026: the worker's refresher wrote the same snapshot row and the request answered 500
+    // after the data was gone). The rebuild runs on a clean change tracker, is tried twice with its own short time limit
+    // instead of the request's, and is otherwise left to the worker, which the reset's outbox event (or the hidden or
+    // deleted connection's own row change) tells to rebuild.
+    internal static readonly TimeSpan DashboardRefreshTimeout = TimeSpan.FromSeconds(10);
+
+    private async Task RefreshDashboardBestEffortAsync(Guid tenantId)
+    {
+        db.ChangeTracker.Clear();
+        for (var attempt = 1; ; attempt++)
+        {
+            using var timeout = new CancellationTokenSource(DashboardRefreshTimeout);
+            try
+            {
+                await dashboard.RebuildTenantAsync(tenantId, timeout.Token);
+                return;
+            }
+            catch (Exception exception) when (exception is DbUpdateException || exception is OperationCanceledException && timeout.IsCancellationRequested)
+            {
+                db.ChangeTracker.Clear();
+                if (attempt < 2 && exception is DbUpdateException) continue;
+                logger.LogWarning(exception, "Sıfırlamadan sonra pano özeti yenilenemedi; worker yenileyecek. TenantId: {TenantId}", tenantId);
+                return;
+            }
+        }
+    }
+
+    // A data change for the worker's dashboard refresher (DashboardSnapshotRefresher) and the open panels: the rows a
+    // reset removes with SQL raise no change events of their own.
+    private void AnnounceReset(Guid tenantId, string resourceType, string aggregateType, Guid aggregateId)
+    {
+        var now = timeProvider.GetUtcNow();
+        db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ResourceType = resourceType,
+            OperationType = "reset",
+            AggregateType = aggregateType,
+            AggregateId = aggregateId,
+            PayloadJson = JsonSerializer.Serialize(new { aggregateType, aggregateId }),
+            CreatedAt = now,
+            NextAttemptAt = now
+        });
+    }
 
     private AuditLog Audit(Guid tenantId, Guid actorUserId, string action, string targetType, string targetId, string reason, string correlationId) => new() { TenantId = tenantId, ActorUserId = actorUserId, Action = action, TargetType = targetType, TargetId = targetId, Reason = reason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() };
     private static ServiceResult<OperationalDataResetView> Invalid(string message) => ServiceResult<OperationalDataResetView>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { ["confirmation"] = [message] });

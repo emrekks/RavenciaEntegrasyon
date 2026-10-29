@@ -5,6 +5,7 @@ using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -26,7 +27,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             // 26 Oct 2026: orders, returns and invoices are reset per platform (Entegrasyonlar › Verileri Sıfırla) only.
             foreach (var scope in new[] { "ORDERS", "RETURNS", "INVOICES" })
             {
-                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                var result = await NewService(db)
                     .ResetAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ResetOperationalDataCommand([scope], "Verileri sil"), "corr", CancellationToken.None);
                 Assert.False(result.Succeeded);
                 Assert.Equal(422, result.Error!.Status);
@@ -75,7 +76,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await SeedAsync(seed, db => { db.Orders.Add(other); db.Invoices.AddRange(issued, draft); });
 
             await using var db = fixture.CreateContext();
-            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+            var result = await NewService(db)
                 .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS", "RETURNS", "INVOICES"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
 
             Assert.True(result.Succeeded, result.Error?.Message);
@@ -104,7 +105,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await SeedAsync(seed, db => { db.CommissionTariffs.Add(tariff); db.CommissionTariffRows.Add(row); db.PromotionOfferFiles.Add(offer); db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)); });
 
             await using var db = fixture.CreateContext();
-            var service = new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard());
+            var service = NewService(db);
             var counts = await service.ResetCountsAsync(seed.Tenant.Id, seed.Marketplace.Id, CancellationToken.None);
             Assert.True(counts.Succeeded, counts.Error?.Message);
             Assert.Equal(1, counts.Value!.Items.Single(x => x.Scope == "COMMISSION_TARIFFS").Count);
@@ -164,7 +165,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             });
 
             await using var db = fixture.CreateContext();
-            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+            var result = await NewService(db)
                 .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Provider.Id, seed.Provider.Version, new DeleteConnectionCommand(seed.Provider.DisplayName), "corr", CancellationToken.None);
 
             Assert.Equal(deleted, result.Succeeded);
@@ -173,6 +174,38 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             Assert.Equal(deleted ? 0 : 1, await verification.Invoices.CountAsync(x => x.TenantId == seed.Tenant.Id));
             Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
             Assert.Equal(deleted ? "DELETED" : "ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Provider.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // P-6 (29 Oct 2026): the dashboard rebuild after the commit hit the worker's write of the same snapshot row and the
+    // finished reset answered 500. The rebuild is retried once, then left to the worker the reset's outbox event wakes.
+    [PostgreSqlFact]
+    public Task ConnectionReset_SucceedsWhenTheDashboardRebuildConflictsOnce() => ConnectionResetWithFailingDashboardAsync(failures: 1);
+
+    [PostgreSqlFact]
+    public Task ConnectionReset_SucceedsWhenTheDashboardRebuildKeepsFailing() => ConnectionResetWithFailingDashboardAsync(failures: int.MaxValue);
+
+    private async Task ConnectionResetWithFailingDashboardAsync(int failures)
+    {
+        var seed = NewSeed($"dm-dash{Math.Min(failures, 9)}");
+        try
+        {
+            await SeedAsync(seed, _ => { });
+
+            var dashboard = new FailingDashboard(failures);
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db, dashboard)
+                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal(2, dashboard.Calls);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.True(await verification.IntegrationOutboxEvents.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.OperationType == "reset" && x.AggregateId == seed.Marketplace.Id));
         }
         finally
         {
@@ -197,7 +230,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
 
             await using (var db = fixture.CreateContext())
             {
-                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                var result = await NewService(db)
                     .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
                 Assert.True(result.Succeeded, result.Error?.Message);
             }
@@ -262,7 +295,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await using (var db = fixture.CreateContext())
             {
                 var connectionVersion = await db.PlatformConnections.AsNoTracking().Where(x => x.Id == seed.Marketplace.Id).Select(x => x.Version).SingleAsync();
-                var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard())
+                var result = await NewService(db)
                     .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, connectionVersion, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
                 Assert.True(result.Succeeded, result.Error?.Message);
             }
@@ -530,11 +563,24 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 
+    private OperationalDataMaintenanceService NewService(AppDbContext db, IDashboardReadService? dashboard = null) =>
+        new(db, fixture.TimeProvider, dashboard ?? new NoDashboard(), NullLogger<OperationalDataMaintenanceService>.Instance);
+
     private sealed class NoDashboard : IDashboardReadService
     {
         public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    // The worker's refresher saved the same snapshot row first: the rebuild's save finds a changed version.
+    private sealed class FailingDashboard(int failures) : IDashboardReadService
+    {
+        public int Calls { get; private set; }
+        public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) =>
+            ++Calls <= failures ? throw new DbUpdateConcurrencyException("The snapshot row changed.") : Task.CompletedTask;
     }
 
     private sealed class RecordingStorage : IPrivateFileStorage
