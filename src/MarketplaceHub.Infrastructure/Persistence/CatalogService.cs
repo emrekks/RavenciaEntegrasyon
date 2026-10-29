@@ -1571,26 +1571,43 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var connectionIds = (command.ConnectionIds ?? []).Distinct().ToList();
         if (productIds.Count == 0 || connectionIds.Count == 0) return Invalid<BulkPublicationResult>("productIds", "En az bir ürün ve bir platform seçin.");
         if (productIds.Count > 1000) return Invalid<BulkPublicationResult>("productIds", "Tek seferde en fazla 1000 ürün kartı yayınlanabilir.");
-        var products = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
-        var connectionCount = await db.PlatformConnections.AsNoTracking().CountAsync(x => x.TenantId == tenantId && connectionIds.Contains(x.Id), cancellationToken);
-        if (products.Count != productIds.Count || connectionCount != connectionIds.Count) return Invalid<BulkPublicationResult>("productIds", "Seçilen ürün veya platform bulunamadı.");
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
+        var selectedIds = productIds.ToHashSet();
+        var selected = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).Select(x => new { x.Id, x.PlatformCode }).ToListAsync(cancellationToken);
+        if (selected.Count != productIds.Count || connections.Count != connectionIds.Count) return Invalid<BulkPublicationResult>("productIds", "Seçilen ürün veya platform bulunamadı.");
+        // PTT AVM and Shopify send a model family as one product that carries every colour card, so a selected card goes
+        // with the cards of its family, as in the editor: each card gets a job of its own that follows the family's send.
+        var familyIds = new HashSet<Guid>();
+        if (connections.Any(x => SendsModelFamily(x.PlatformCode)))
+            foreach (var product in selected.Where(product => !familyIds.Contains(product.Id)))
+                familyIds.UnionWith(await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken));
+        familyIds.ExceptWith(selectedIds);
+        var products = familyIds.Count == 0 ? selected
+            : [.. selected, .. await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status != ProductStatus.Archived).ToListAsync(cancellationToken)];
+        var cardIds = products.Select(x => x.Id).ToList();
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var variantIds = variants.Select(x => x.Id).ToList();
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
         var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).Select(x => new { x.ConnectionId, x.VariantId }).ToListAsync(cancellationToken);
-        var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && connectionIds.Contains(x.ConnectionId)).ToListAsync(cancellationToken);
+        var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId) && connectionIds.Contains(x.ConnectionId)).ToListAsync(cancellationToken);
         var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>();
-        foreach (var product in products.OrderBy(x => x.Title, StringComparer.OrdinalIgnoreCase))
+        // Every card is priced and given its listing profile before any is queued: a PTT AVM or Shopify family request
+        // needs the price of every card of the family, so a card queued before its siblings were priced was refused
+        // (live 2026-10-29: MZ053TCD, eight cards; seven refused with CHANNEL_OFFER_REQUIRED, only the last went out).
+        var ready = new List<(Product Product, Guid ConnectionId)>();
+        foreach (var product in products.OrderBy(x => x.Title, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.CreatedAt).ThenBy(x => x.Id))
         {
             var productVariants = variants.Where(x => x.ProductId == product.Id).ToList();
             foreach (var connectionId in connectionIds)
             {
+                // A family card the user did not select goes only where the family is one product.
+                if (!selectedIds.Contains(product.Id) && !SendsModelFamily(connections.Single(x => x.Id == connectionId).PlatformCode)) continue;
                 // A card already on this marketplace (a variant matched there, live, or still being published) is left as it is.
                 var profile = profiles.FirstOrDefault(x => x.ProductId == product.Id && x.ConnectionId == connectionId);
                 if (productVariants.Any(variant => links.Any(link => link.VariantId == variant.Id && link.ConnectionId == connectionId))
                     || profile?.ActualStatus?.Trim().ToUpperInvariant() is "LIVE" or "ACTIVE" or "ON_SALE" || IsPlatformUpdateInProgress(profile?.ActualStatus))
                 {
-                    skipped++;
+                    if (selectedIds.Contains(product.Id)) skipped++;
                     continue;
                 }
                 // The marketplace price follows the general price, as in the editor; VAT and its policy come from the
@@ -1621,14 +1638,21 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 else if (!trackedProfile.Enabled) { trackedProfile.Enabled = true; trackedProfile.Version++; }
                 await db.SaveChangesAsync(cancellationToken);
                 db.ChangeTracker.Clear();
-                var enqueued = await EnqueuePublicationAsync(tenantId, product.Id, connectionId, $"{idempotencyKey}:{product.Id:N}:{connectionId:N}", correlationId, cancellationToken);
-                db.ChangeTracker.Clear();
-                if (enqueued.Succeeded) queued++;
-                else failed.Add(new(product.Id, product.Title, connectionId, enqueued.Error!.Code, enqueued.Error.Message));
+                ready.Add((product, connectionId));
             }
+        }
+        foreach (var (product, connectionId) in ready)
+        {
+            var enqueued = await EnqueuePublicationAsync(tenantId, product.Id, connectionId, $"{idempotencyKey}:{product.Id:N}:{connectionId:N}", correlationId, cancellationToken);
+            db.ChangeTracker.Clear();
+            if (enqueued.Succeeded) queued++;
+            else failed.Add(new(product.Id, product.Title, connectionId, enqueued.Error!.Code, enqueued.Error.Message));
         }
         return ServiceResult<BulkPublicationResult>.Ok(new(queued, skipped, failed));
     }
+
+    // The marketplaces where one product carries a model family's every colour card (one request sends them all).
+    private static bool SendsModelFamily(string platformCode) => platformCode is "PTTAVM" or "SHOPIFY";
 
     public async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
@@ -1830,7 +1854,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (platformCode is not ("SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM")) return result;
         var product = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         var familyIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
-        var siblings = await db.ChannelListingProfiles.AsNoTracking()
+        // On PTT AVM a card the family's send carried may have no listing profile at all: it is taken into that send.
+        var siblings = platformCode == "PTTAVM" ? familyIds.Where(id => id != productId).ToList() : await db.ChannelListingProfiles.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && familyIds.Contains(x.ProductId) && x.ProductId != productId)
             .Select(x => x.ProductId)
             .ToListAsync(cancellationToken);
@@ -1853,6 +1878,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (connection is null || refusal is not null)
             return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", refusal ?? "Bağlantı bulunamadı; yayın durumu sorgulanamadı.", 422);
         var platformName = PublicationStatusRefreshPolicy.PlatformName(connection.PlatformCode);
+        if (connection.PlatformCode == "PTTAVM" && await AdoptPttAvmFamilySendAsync(tenantId, productId, connectionId, cancellationToken) is { } adoptionRefusal)
+            return adoptionRefusal;
 
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.Products.AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken))
@@ -1972,6 +1999,68 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             db.ChangeTracker.Clear();
             return ServiceResult<Guid>.Fail("PUBLICATION_REFRESH_CONFLICT", "Yayın durumu aynı anda yenilendi. Sayfayı yenileyip tekrar deneyin.", 409);
         }
+    }
+
+    // A PTT AVM colour card without a publication of its own (no listing variant on this connection) whose variants
+    // the family's latest send carried and finished (PttAvmFamilySend.Carrying) is taken into that send, as the job of
+    // its own would have followed it: profile, listing variants and listing states record the send (BATCH_SUBMITTED,
+    // the send's payload hash), and the check the refresh then queues reads every variant's state from PTT AVM. Nothing
+    // is assumed about PTT AVM: the card's state stays the send's until that check reads it. Any other card is left as
+    // it is. Runs in the refresh's transaction; a refusal is returned while the family is being sent.
+    private async Task<ServiceResult<Guid>?> AdoptPttAvmFamilySendAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        if (product is null || product.Status == ProductStatus.Archived) return null;
+        var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
+        if (profile is not null && await db.ChannelListingVariants.AnyAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id, cancellationToken)) return null;
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        if (variants.Count == 0 || variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || string.IsNullOrWhiteSpace(x.Sku))) return null;
+
+        var familyKeys = (await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken)).Select(id => id.ToString("N")).ToList();
+        var prefix = $"product-create:{connectionId:N}:";
+        var jobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductCreate
+                && x.JobDedupKey.StartsWith(prefix) && familyKeys.Contains(x.JobDedupKey.Substring(prefix.Length, 32)))
+            .Select(x => new { x.Status, x.PayloadJson, x.CreatedAt })
+            .ToListAsync(cancellationToken);
+        if (jobs.Any(x => x.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled))
+            return ServiceResult<Guid>.Fail("PUBLICATION_WRITE_IN_PROGRESS", "Model ailesi PTT AVM'ye gönderiliyor. Gönderim tamamlandıktan sonra durumu yenileyin.", 409);
+        var send = PttAvmFamilySend.Carrying(variants.Select(x => x.Barcode!.Trim()).ToList(), jobs.Select(x => (x.PayloadJson, x.Status == JobStatus.Succeeded, x.CreatedAt)));
+        if (send is null) return null;
+
+        if (profile is null)
+        {
+            profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, ConnectionId = connectionId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED", Version = 1 };
+            db.ChannelListingProfiles.Add(profile);
+        }
+        else
+        {
+            profile.DesiredStatus = "LIVE";
+            profile.ActualStatus = "BATCH_SUBMITTED";
+            profile.LastRejectionCode = null;
+            profile.Version++;
+        }
+        var variantIds = variants.Select(x => x.Id).ToArray();
+        var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        foreach (var variant in variants)
+        {
+            db.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProfileId = profile.Id, VariantId = variant.Id, ExternalSku = variant.Sku.Trim(), ExternalBarcode = variant.Barcode!.Trim(), DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED" });
+            if (!states.TryGetValue(variant.Id, out var state))
+            {
+                state = new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED", Version = 1 };
+                db.MarketplaceListingStates.Add(state);
+            }
+            else state.Version++;
+            state.DesiredStatus = "LIVE";
+            state.ActualStatus = "BATCH_SUBMITTED";
+            state.LastRejectionCode = null;
+            state.PayloadHash = send.PayloadHash;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return null;
     }
 
     public async Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
