@@ -24,6 +24,58 @@ public sealed class TrendyolAdapterAuditTests
         Assert.Null(TrendyolHttpClient.RetryAfterDelay(null, now));
     }
 
+    // 11738971444 as Trendyol reads it: the package's own totals are taken as they are.
+    [Fact]
+    public void PackageAmountsAreThePackagesOwnTotals()
+    {
+        const string json = """
+        {"content":[{"id":"4268578123","orderNumber":"11738971444","status":"Delivered","lastModifiedDate":1760000000000,
+          "grossAmount":1598.00,"totalDiscount":80.98,"totalTyDiscount":0.00,"totalPrice":1517.02,"lines":[
+          {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10},
+          {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10}
+        ]}]}
+        """;
+
+        var order = Assert.Single(TrendyolJsonMapper.Orders(json).Items);
+
+        Assert.Equal((1598m, 80.98m, 1517.02m), (order.GrossAmount, order.DiscountAmount, order.NetAmount));
+        var package = Assert.Single(order.Packages);
+        Assert.Equal((1598m, 80.98m, 1517.02m), (package.GrossAmount, package.DiscountAmount, package.NetAmount));
+    }
+
+    // A package that leaves its totals out takes the sum of its lines (per-unit amount, discount and price times the
+    // quantity); a net still unknown is the sale less the discount, never 0.
+    [Fact]
+    public void PackageAmountsTheReadLeavesOutAreTheSumOfTheLines()
+    {
+        const string json = """
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[
+          {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":2,"amount":775.00,"discount":20.00,"price":755.00,"vatRate":10},
+          {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10}
+        ]}]}
+        """;
+
+        var order = Assert.Single(TrendyolJsonMapper.Orders(json).Items);
+
+        Assert.Equal((2349m, 80.49m, 2268.51m), (order.GrossAmount, order.DiscountAmount, order.NetAmount));
+    }
+
+    // A line without Trendyol's discount field: the package discount is not made up from the other lines' discounts.
+    [Fact]
+    public void PackageDiscountIsNotSummedWhenALineDoesNotStateIt()
+    {
+        const string json = """
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"grossAmount":1598.00,"lines":[
+          {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10},
+          {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":799.00,"price":758.51,"vatRate":10}
+        ]}]}
+        """;
+
+        var order = Assert.Single(TrendyolJsonMapper.Orders(json).Items);
+
+        Assert.Equal((1598m, 0m, 1598m), (order.GrossAmount, order.DiscountAmount, order.NetAmount));
+    }
+
     [Fact]
     public void ALineWithoutAVatRateNeverTakesTheVatBaseAmountAsTheRate()
     {

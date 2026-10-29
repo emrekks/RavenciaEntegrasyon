@@ -9219,6 +9219,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 }
             }
             var packageObservation = remotePackage with { Allocations = packageAllocations };
+            // The amounts are not a status: a fresh detailed read refreshes them also when its status event is
+            // already recorded or refused, so the order totals below are rebuilt from what the marketplace says now.
+            if (package is not null && usesTrendyolPackageStatuses && orderIsFresh && PackageAmountPolicy.Apply(package, remotePackage))
+            {
+                package.UpdatedAt = now;
+                if (db.Entry(package).State != EntityState.Added) package.Version++;
+                telemetryUpdatedCount++;
+            }
             if (package is not null) await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
             // An observation that left the status unchanged writes no history row (below); its replay is still
@@ -9250,9 +9258,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     package.Status = target;
                     package.RawStatus = remotePackage.RawStatus;
                     package.StatusOccurredAt = statusAt;
-                    package.GrossAmount = remotePackage.GrossAmount;
-                    package.DiscountAmount = remotePackage.DiscountAmount;
-                    package.NetAmount = remotePackage.NetAmount;
+                    PackageAmountPolicy.Apply(package, remotePackage);
 
                     foreach (var remoteAllocation in packageObservation.Allocations)
                     {
@@ -9371,7 +9377,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
-                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = statusAt, RecordedAt = now }); knownEventIds.Add(eventId);
+                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; PackageAmountPolicy.Apply(package, remotePackage); package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = statusAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
             // A Hepsiburada package first seen through a status observation (a webhook, a shipping list) was stored

@@ -96,11 +96,40 @@ public static class OrderAmountProjectionPolicy
             .Where(package => !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus))
             .ToList();
         if (current.Count == 0) return null;
+        // Trendyol's payment-pending package "0" is the same order before its real package exists; once the real
+        // package is stored it would count the order twice (live 29 Oct 2026: 11763229493 showed 1.798 for 899).
+        if (current.Any(package => !IsPaymentPlaceholder(package.ExternalPackageId)))
+            current = current.Where(package => !IsPaymentPlaceholder(package.ExternalPackageId)).ToList();
         if (current.Any(package => package.GrossAmount == 0 && package.NetAmount == 0 && !packagesInRead.Contains(package.ExternalPackageId)))
             return null;
         var billable = current.Where(package => package.Status != ShipmentPackageStatus.Cancelled).ToList();
         if (billable.Count == 0) billable = current;
         return (billable.Sum(package => package.GrossAmount), billable.Sum(package => package.DiscountAmount), billable.Sum(package => package.NetAmount));
+    }
+
+    private static bool IsPaymentPlaceholder(string? externalPackageId) =>
+        string.Equals(externalPackageId?.Trim(), "0", StringComparison.Ordinal);
+}
+
+// The amounts a stored package keeps. Only a detailed package read that named amounts says what they are; a status
+// observation (webhook, status list) or a read without amounts says nothing about them, so the stored ones stay.
+// The amounts are not a status: a fresh detailed read refreshes them even when its status event was already
+// recorded, so a package first built from a return claim (gross only, discount unknown) takes the order read's
+// discount and net when the order is hydrated (live 30 Oct 2026: 141 Trendyol orders kept "İndirim 0").
+public static class PackageAmountPolicy
+{
+    public static bool Carries(RemotePackage remote) =>
+        !remote.IsStatusObservation && (remote.GrossAmount != 0 || remote.NetAmount != 0);
+
+    public static bool Apply(ShipmentPackage package, RemotePackage remote)
+    {
+        if (!Carries(remote)) return false;
+        if (package.GrossAmount == remote.GrossAmount && package.DiscountAmount == remote.DiscountAmount && package.NetAmount == remote.NetAmount)
+            return false;
+        package.GrossAmount = remote.GrossAmount;
+        package.DiscountAmount = remote.DiscountAmount;
+        package.NetAmount = remote.NetAmount;
+        return true;
     }
 }
 

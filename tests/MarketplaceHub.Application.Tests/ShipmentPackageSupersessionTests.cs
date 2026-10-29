@@ -134,6 +134,33 @@ public sealed class ShipmentPackageSupersessionTests
         Assert.Equal((200m, 0m, 200m), OrderAmountProjectionPolicy.FromPackages([cancelled], new HashSet<string>(StringComparer.Ordinal)));
     }
 
+    // 11763229493: the payment-pending package "0" and the real package are the same order; it counts once.
+    [Fact]
+    public void Order_totals_leave_out_the_trendyol_payment_placeholder_once_the_real_package_is_stored()
+    {
+        var placeholder = Package("0", ShipmentPackageStatus.PaymentPending, "Awaiting", gross: 899m, net: 865.01m);
+        var real = Package("4287472684", ShipmentPackageStatus.New, "Created", gross: 899m, net: 865.01m);
+
+        Assert.Equal((899m, 33.99m, 865.01m), OrderAmountProjectionPolicy.FromPackages([placeholder, real], new HashSet<string>(["4287472684"], StringComparer.Ordinal)));
+        Assert.Equal((899m, 33.99m, 865.01m), OrderAmountProjectionPolicy.FromPackages([placeholder], new HashSet<string>(["0"], StringComparer.Ordinal)));
+    }
+
+    [Fact]
+    public void Package_amounts_change_only_with_a_detailed_read_that_names_them()
+    {
+        var package = Package("P1", ShipmentPackageStatus.Delivered, "Delivered", gross: 1598m, net: 1598m);
+        RemotePackage Remote(decimal gross, decimal discount, decimal net, bool observation = false) =>
+            new("P1", null, "Delivered", DateTimeOffset.UnixEpoch, null, null, [], gross, discount, net, IsStatusObservation: observation);
+
+        Assert.False(PackageAmountPolicy.Apply(package, Remote(0m, 0m, 0m)));
+        Assert.False(PackageAmountPolicy.Apply(package, Remote(1598m, 80.98m, 1517.02m, observation: true)));
+        Assert.Equal((1598m, 0m, 1598m), (package.GrossAmount, package.DiscountAmount, package.NetAmount));
+
+        Assert.True(PackageAmountPolicy.Apply(package, Remote(1598m, 80.98m, 1517.02m)));
+        Assert.Equal((1598m, 80.98m, 1517.02m), (package.GrossAmount, package.DiscountAmount, package.NetAmount));
+        Assert.False(PackageAmountPolicy.Apply(package, Remote(1598m, 80.98m, 1517.02m)));
+    }
+
     [Fact]
     public void Order_totals_are_not_rebuilt_from_a_stored_package_without_amounts()
     {

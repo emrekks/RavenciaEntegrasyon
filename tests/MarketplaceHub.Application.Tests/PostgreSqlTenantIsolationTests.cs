@@ -2812,6 +2812,149 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // 11738971444: built from a return claim (sale 1.598, discount 0), then completed by the order read. The Delivered
+    // event was already recorded, so the package kept the claim's amounts and the order totals rebuilt from it showed
+    // "İndirim 0". The order read's amounts are not a status: they replace the claim's.
+    [PostgreSqlFact]
+    public async Task TrendyolOrderRead_ReplacesTheClaimBuiltPackageAmountsWhenTheStatusIsAlreadyRecorded()
+    {
+        var tenant = NewTenant("ty-claim-amounts");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        const string externalOrderId = "11738971444";
+        const string packageNumber = "4268578123";
+        var deliveredAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-4).ToUnixTimeSeconds());
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: true, fixture.Now);
+        order.GrossAmount = 1598m;
+        order.NetAmount = 1598m;
+        order.LastRemoteModifiedAt = DateTimeOffset.UnixEpoch;
+        var eventId = PackageIngestionSafety.EventId(packageNumber, deliveredAt);
+        var claimLines = new[] { Guid.CreateVersion7(), Guid.CreateVersion7() };
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            for (var index = 0; index < claimLines.Length; index++)
+                seedDb.OrderLines.Add(new OrderLine { Id = claimLines[index], TenantId = tenant.Id, OrderId = orderId, ExternalLineId = $"line-{index + 1}", Sku = $"SKU-{index + 1}", TitleSnapshot = "Bluz", OrderedQuantity = 1m, DeliveredQuantity = 1m, ShippedQuantity = 1m, UnitPrice = 799m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 1598m, DiscountAmount = 0m, NetAmount = 1598m, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = deliveredAt, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+            foreach (var lineId in claimLines)
+                seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = eventId });
+            seedDb.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, PackageId = packageId, CanonicalStatus = "DELIVERED", RawStatus = "Delivered", SourceEventId = eventId, OccurredAt = deliveredAt, RecordedAt = fixture.Now });
+            await seedDb.SaveChangesAsync();
+        }
+
+        async Task SyncAsync(RemotePackage remotePackage)
+        {
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, deliveredAt.AddDays(-2), deliveredAt, "TRY", 1598m, 80.98m, 1517.02m, """{"customerFirstName":"Test"}""", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Bluz", 1m, 758.51m, 10m, "Delivered"), new RemoteOrderLine("line-2", "SKU-2", null, "Bluz", 1m, 758.51m, 10m, "Delivered")], [remotePackage], "{}");
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "claim-amounts", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        var allocations = new[] { new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m), new RemotePackageAllocation("line-2", 1m, 0m, 1m, 1m, 0m) };
+        try
+        {
+            await SyncAsync(new RemotePackage(packageNumber, null, "Delivered", deliveredAt, null, null, allocations, 1598m, 80.98m, 1517.02m));
+            await using (var check = fixture.CreateContext())
+            {
+                var stored = await check.Orders.AsNoTracking().SingleAsync(x => x.Id == orderId);
+                Assert.Equal((1598m, 80.98m, 1517.02m), (stored.GrossAmount, stored.DiscountAmount, stored.NetAmount));
+                var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
+                Assert.Equal((1598m, 80.98m, 1517.02m), (package.GrossAmount, package.DiscountAmount, package.NetAmount));
+                Assert.Equal(1, await check.OrderStatusHistory.CountAsync(x => x.TenantId == tenant.Id));
+            }
+
+            // A later status observation without amounts (a webhook, a status list) leaves the known totals alone.
+            await SyncAsync(new RemotePackage(packageNumber, null, "Delivered", deliveredAt.AddHours(1), null, null, allocations, IsStatusObservation: true));
+            await using (var check = fixture.CreateContext())
+            {
+                var stored = await check.Orders.AsNoTracking().SingleAsync(x => x.Id == orderId);
+                Assert.Equal((1598m, 80.98m, 1517.02m), (stored.GrossAmount, stored.DiscountAmount, stored.NetAmount));
+            }
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // The repair of the orders the claim-built amounts left wrong: only a completed Trendyol order with one package,
+    // discount 0, net = gross and lines that carry Trendyol's amount, discount and price takes its lines' totals.
+    [PostgreSqlFact]
+    public async Task RepairTrendyolClaimBuiltOrderAmountsMigration_TakesTheLineTotalsOfTheClaimBuiltOrdersOnly()
+    {
+        var tenant = NewTenant("ty-claim-amount-repair");
+        var trendyol = NewQuestionConnection(tenant);
+        var shopify = NewQuestionConnection(tenant);
+        shopify.PlatformCode = "SHOPIFY";
+        const string line = """{"amount":799.00,"discount":40.49,"price":758.51}""";
+        var repaired = Guid.CreateVersion7();
+        var stillClaim = Guid.CreateVersion7();
+        var alreadyRight = Guid.CreateVersion7();
+        var twoPackages = Guid.CreateVersion7();
+        var otherMarketplace = Guid.CreateVersion7();
+        var noDiscountField = Guid.CreateVersion7();
+
+        void Seed(AppDbContext db, Guid connectionId, Guid orderId, bool isReturnClaim, decimal gross, decimal discount, decimal net, string snapshot, int packages = 1)
+        {
+            var order = NewInvoiceTestOrder(tenant.Id, connectionId, orderId, orderId.ToString("N"), isReturnClaim, fixture.Now);
+            (order.GrossAmount, order.DiscountAmount, order.NetAmount) = (gross, discount, net);
+            db.Orders.Add(order);
+            for (var index = 1; index <= 2; index++)
+                db.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, ExternalLineId = $"line-{index}", Sku = "SKU", TitleSnapshot = "Bluz", OrderedQuantity = 1m, UnitPrice = 758.51m, VatRate = 10m, RawStatus = "Delivered", SourceSnapshotJson = snapshot, Version = 1 });
+            for (var index = 1; index <= packages; index++)
+                db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connectionId, OrderId = orderId, ExternalPackageId = $"{orderId:N}-{index}", GrossAmount = gross, DiscountAmount = discount, NetAmount = net, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = fixture.Now, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        }
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(trendyol, shopify);
+            Seed(seedDb, trendyol.Id, repaired, false, 799m, 0m, 799m, line);
+            Seed(seedDb, trendyol.Id, stillClaim, true, 799m, 0m, 799m, line);
+            Seed(seedDb, trendyol.Id, alreadyRight, false, 1598m, 80.98m, 1517.02m, line);
+            Seed(seedDb, trendyol.Id, twoPackages, false, 799m, 0m, 799m, line, packages: 2);
+            Seed(seedDb, shopify.Id, otherMarketplace, false, 799m, 0m, 799m, line);
+            Seed(seedDb, trendyol.Id, noDiscountField, false, 799m, 0m, 799m, """{"amount":799.00,"price":758.51}""");
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            var migration = new MarketplaceHub.Infrastructure.Persistence.Migrations.RepairTrendyolClaimBuiltOrderAmounts();
+            for (var run = 0; run < 2; run++)
+                await using (var db = fixture.CreateContext())
+                    foreach (var operation in migration.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>())
+                        await db.Database.ExecuteSqlRawAsync(operation.Sql);
+
+            await using var check = fixture.CreateContext();
+            var orders = await check.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+            var packages = await check.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+            // Repaired once: the second run finds discount above 0 and changes nothing.
+            Assert.Equal((1598m, 80.98m, 1517.02m, 2L), (orders[repaired].GrossAmount, orders[repaired].DiscountAmount, orders[repaired].NetAmount, orders[repaired].Version));
+            var package = Assert.Single(packages, x => x.OrderId == repaired);
+            Assert.Equal((1598m, 80.98m, 1517.02m, 2L), (package.GrossAmount, package.DiscountAmount, package.NetAmount, package.Version));
+            foreach (var untouched in new[] { stillClaim, twoPackages, otherMarketplace, noDiscountField })
+            {
+                Assert.Equal((799m, 0m, 799m, 1L), (orders[untouched].GrossAmount, orders[untouched].DiscountAmount, orders[untouched].NetAmount, orders[untouched].Version));
+                Assert.All(packages.Where(x => x.OrderId == untouched), x => Assert.Equal((799m, 0m, 1L), (x.GrossAmount, x.DiscountAmount, x.Version)));
+            }
+            Assert.Equal((1598m, 80.98m, 1L), (orders[alreadyRight].GrossAmount, orders[alreadyRight].DiscountAmount, orders[alreadyRight].Version));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     // A package as the reads since 24 October left it: the status stored at seenAt, the allocations and the status row
     // under the event the read named (eventAt), the line not projected.
     private static void SeedUnprojectedPackage(AppDbContext db, Guid tenantId, Guid connectionId, string externalOrderId, string packageNumber, Guid lineId, string rawStatus, ShipmentPackageStatus status, DateTimeOffset orderedAt, DateTimeOffset seenAt, DateTimeOffset eventAt, RemotePackageAllocation allocation)

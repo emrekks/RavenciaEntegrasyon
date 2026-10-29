@@ -72,10 +72,7 @@ public static class TrendyolJsonMapper
                         || rawLines.ValueKind != JsonValueKind.Array
                         || rawLines.GetArrayLength() == 0))
                     issues.Add(new("ORDER_PACKAGE_LINES_MISSING", externalPackageId, $"Sipariş paketi {externalPackageId} alındı ancak eşlenebilir ürün satırı bulunamadı."));
-                var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
-                var discount = Decimal(package, "packageTotalDiscount");
-                if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
-                var net = Decimal(package, "packageTotalPrice", "totalPrice");
+                var (gross, discount, net) = PackageAmounts(package, lines);
                 // Trendyol's Yeni tab is driven by the top-level package status.
                 // For newly created packages shipmentPackageStatus may already be
                 // ReadyToShip while status is still Created; the latter is the
@@ -117,6 +114,40 @@ public static class TrendyolJsonMapper
             }
         }
         return new(rows, next, hasMore, null, issues);
+    }
+
+    // The package's sale, discount and net as Trendyol states them on the package; a total the package leaves out is
+    // the sum of its lines (each line's amount, discount and price are per unit), and a net still unknown is the sale
+    // less the discount. Only fields Trendyol sent are summed: a line without them leaves that total at the package's.
+    internal static (decimal Gross, decimal Discount, decimal Net) PackageAmounts(JsonElement package, IReadOnlyList<RemoteOrderLine> lines)
+    {
+        decimal? LineSum(params string[] names)
+        {
+            if (lines.Count == 0) return null;
+            var sum = 0m;
+            foreach (var line in lines)
+            {
+                using var snapshot = JsonDocument.Parse(line.SourceSnapshotJson);
+                if (!TryDecimal(snapshot.RootElement, out var value, names)) return null;
+                sum += value * line.Quantity;
+            }
+            return sum;
+        }
+
+        var gross = TryDecimal(package, out var packageGross, "packageGrossAmount", "grossAmount")
+            ? packageGross
+            : LineSum("amount", "lineGrossAmount") ?? Decimal(package, "packageTotalPrice");
+        decimal discount;
+        if (TryDecimal(package, out var packageDiscount, "packageTotalDiscount") && packageDiscount != 0)
+            discount = packageDiscount;
+        else if (HasAnyProperty(package, "packageTotalDiscount", "packageSellerDiscount", "totalDiscount", "packageTyDiscount", "totalTyDiscount"))
+            discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
+        else
+            discount = LineSum("discount", "lineTotalDiscount") ?? 0m;
+        var net = TryDecimal(package, out var packageNet, "packageTotalPrice", "totalPrice")
+            ? packageNet
+            : Math.Max(0m, gross - discount);
+        return (gross, discount, net);
     }
 
     // G30: a line without vatRate keeps its place in the package. When every line that has a rate agrees, that is the
