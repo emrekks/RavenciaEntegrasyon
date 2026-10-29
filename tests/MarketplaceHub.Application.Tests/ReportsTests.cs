@@ -406,6 +406,47 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         }
     }
 
+    // A Hepsiburada store shipping with Aras: the previous period's order is costed at Aras's desi table as the period's
+    // is, not at hepsiJET's barem for an order below 400 TL (the previous period once read no package at all).
+    [PostgreSqlFact]
+    public async Task The_previous_periods_platform_cargo_reads_its_packages_carrier()
+    {
+        var tenant = NewTenant("rep-prev-cargo");
+        var hepsiburada = NewConnection(tenant.Id, "HEPSIBURADA", "PRODUCTION");
+        var today = NewOrder(tenant.Id, hepsiburada.Id, "h-today", Noon, 150m, "DELIVERED", "{}", "{}");
+        var todayLine = NewLine(today, "h-today-1", 150m, 1m, "{}", null);
+        var yesterday = NewOrder(tenant.Id, hepsiburada.Id, "h-yesterday", Noon.AddDays(-1), 150m, "DELIVERED", "{}", "{}");
+        var yesterdayLine = NewLine(yesterday, "h-yesterday-1", 150m, 1m, "{}", null);
+        try
+        {
+            await using (var seed = fixture.CreateContext())
+            {
+                seed.Tenants.Add(tenant);
+                seed.PlatformConnections.Add(hepsiburada);
+                seed.Orders.AddRange(today, yesterday);
+                seed.OrderLines.AddRange(todayLine, yesterdayLine);
+                seed.ShipmentPackages.AddRange(
+                    NewPackage(today, "pkg-today", 150m, ShipmentPackageStatus.Delivered, "Aras Kargo"),
+                    NewPackage(yesterday, "pkg-yesterday", 150m, ShipmentPackageStatus.Delivered, "Aras Kargo"));
+                await seed.SaveChangesAsync();
+            }
+
+            var report = await ReportAsync(tenant.Id, includeTest: false);
+
+            // One desi with Aras: 89.92 + 20 % VAT (hepsiJET's barem would be 43.99 + VAT).
+            var cargo = Assert.IsType<ReportCargoCostView>(report.Costs.Cargo);
+            Assert.Equal(107.90m, cargo.PlatformEstimated);
+            var previous = Assert.IsType<ReportPreviousAccountView>(report.PreviousAccount);
+            var previousCargo = Assert.IsType<ReportCargoCostView>(previous.Costs.Cargo);
+            Assert.Equal(1, previousCargo.PlatformOrders);
+            Assert.Equal(107.90m, previousCargo.PlatformEstimated);
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task<ReportSalesView> ReportAsync(Guid tenantId, bool includeTest)
     {
         await using var db = fixture.CreateContext();
