@@ -2249,7 +2249,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     }
     // Whether the product itself had edits to write: the result says "Ürün bilgileri kaydedildi" only then.
     const productChangedAtSubmit = editorDirty
-    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(editProductId ? 'Ürün Kaydediliyor' : 'Ürün Oluşturuluyor', editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
+    // The pending toast names what this press does: publishing (Yayınla), updating the stores, or only saving.
+    const publishing = !saveAndStay && !createOnly && !platformUpdate && selectedChannelIds.length > 0
+    const storeCount = `${selectedChannelIds.length} platforma`
+    const [pendingTitle, pendingMessage] = platformUpdate
+      ? ['Platformlar Güncelleniyor', 'Ürün kaydediliyor ve seçili mağazalarda güncelleniyor…']
+      : publishing
+        ? editProductId
+          ? ['Ürün Yayınlanıyor', productChangedAtSubmit ? `Ürün kaydediliyor ve ${storeCount} gönderiliyor…` : `Ürün ${storeCount} gönderiliyor…`]
+          : ['Ürün Oluşturuluyor', `Ürün oluşturuluyor ve ${storeCount} gönderiliyor…`]
+        : editProductId ? ['Ürün Kaydediliyor', 'Ürün değişiklikleri kaydediliyor…'] : ['Ürün Oluşturuluyor', 'Ürün oluşturuluyor…']
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
     try {
       let submitRequirements = requirements.data ?? []
       if (form.categoryId && !requirements.data) {
