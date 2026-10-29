@@ -300,8 +300,9 @@ public sealed record ReportCostProductView(Guid? VariantId, string Title, string
 // profitOnCost or margin; Search matches the order number or a line's title, barcode or stock code.
 public sealed record ReportOrderProfitQuery(DateOnly? From, DateOnly? To, IReadOnlyList<string>? PlatformCodes, string? Search, string? Sort, bool Descending, int Page, int PageSize);
 
-// One charge of an order: Estimated when it is not the marketplace's own figure yet, Source where it comes from.
-public sealed record ReportOrderProfitCostView(string Key, string Label, decimal Amount, bool Estimated, string? Source);
+// One charge of an order: Estimated when it is not the marketplace's own figure yet, Source where it comes from. Amount
+// null: unknown (a Trendyol cargo with no invoice and no tariff to estimate it at), and so the order's profit.
+public sealed record ReportOrderProfitCostView(string Key, string Label, decimal? Amount, bool Estimated, string? Source);
 
 // One line: the kept units and their paid amount, the commission rate and amount the marketplace sent (null: none), the
 // variant's current cost and VAT rate.
@@ -309,14 +310,17 @@ public sealed record ReportOrderProfitLineView(Guid? VariantId, Guid? ProductId,
     decimal Amount, decimal? CommissionRate, decimal? Commission, decimal? CostPrice, decimal VatRate, string? ImageUrl = null, string? Options = null);
 
 // Amount: what the customer kept paying (returned units out). Cost: the kept units' product cost (null when a line has
-// none, and so Profit). ProfitOnCost = Profit / Cost, Margin = Profit / Amount, in per cent. State: SOLD,
+// none, and so Profit; Profit is null too when a charge is unknown). ProfitOnCost = Profit / Cost, Margin = Profit / Amount, in per cent. State: SOLD,
 // PARTLY_RETURNED or RETURNED. MicroExport: an order of a storefront abroad.
 public sealed record ReportOrderProfitView(Guid OrderId, string OrderNumber, string PlatformCode, string StoreName, string? StoreFront, bool MicroExport,
     DateTimeOffset OrderedAt, string State, decimal Amount, decimal? Cost, decimal? Profit, decimal? ProfitOnCost, decimal? Margin,
     IReadOnlyList<ReportOrderProfitCostView> Costs, IReadOnlyList<ReportOrderProfitLineView> Lines);
 
-// A page of orders and the totals of every order the filter keeps (MissingCost: orders whose profit is unknown).
-public sealed record ReportOrderProfitPage(IReadOnlyList<ReportOrderProfitView> Items, int TotalCount, int Page, int PageSize, decimal Amount, decimal Profit, int MissingCost);
+// A page of orders and the totals of every order the filter keeps. Amount: all of them. Profit, ProfitAmount (their
+// amount) and Margin = Profit / ProfitAmount: only the ProfitOrders whose profit is known (Profit null when none is).
+// MissingCost: orders with a line without a product cost; MissingCargo: orders whose cargo is unknown.
+public sealed record ReportOrderProfitPage(IReadOnlyList<ReportOrderProfitView> Items, int TotalCount, int Page, int PageSize, decimal Amount, decimal? Profit, int MissingCost,
+    decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCargo);
 
 public interface IReportsService
 {
