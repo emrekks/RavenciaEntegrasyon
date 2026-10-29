@@ -99,3 +99,19 @@ export function returnReasonPresentation(item: { reasonCode?: string | null; rea
   const explanation = text && normalizeReason(text) !== normalizeReason(label) ? text : null
   return { label, explanation }
 }
+
+export type ReturnReasonSummary = { label: string; note: [string, string] | null; sellerFault: boolean }
+
+/**
+ * The reason the customer gave, as the returns list shows it: the reason's name, Trendyol's customer note or another
+ * marketplace's explanation, and whether it is the seller's fault. Null when the marketplace sent no reason at all,
+ * so a view says nothing instead of showing an invented one.
+ */
+export function returnReasonSummary(item: { platformCode?: string | null; reasonCode?: string | null; reasonText?: string | null }): ReturnReasonSummary | null {
+  if (!item.reasonCode?.trim() && !item.reasonText?.trim()) return null
+  const presentation = returnReasonPresentation(item)
+  const trendyol = item.platformCode?.toUpperCase() === 'TRENDYOL'
+  const customerNote = trendyol ? returnCustomerNote(presentation.label, item.reasonText) : null
+  const note: [string, string] | null = customerNote ? ['Müşteri Notu', customerNote] : !trendyol && presentation.explanation ? ['Açıklama', presentation.explanation] : null
+  return { label: presentation.label, note, sellerFault: isSellerFaultReturn(item, presentation.label) }
+}
