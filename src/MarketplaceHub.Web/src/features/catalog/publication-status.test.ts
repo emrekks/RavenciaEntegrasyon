@@ -117,6 +117,17 @@ describe('PTT AVM family retry', () => {
     expect(isSkippedByPublish('TRENDYOL', 'CREATE_REJECTED', 'FAILED', false)).toBe(false)
     expect(isSkippedByPublish('PTTAVM', 'UNKNOWN', null, true)).toBe(false)
   })
+
+  it('sends a live card again when the marketplace no longer knows one of its variants, unless a send is running', () => {
+    expect(isSkippedByPublish('TRENDYOL', 'LIVE', 'SUCCEEDED', false, true)).toBe(false)
+    expect(isSkippedByPublish('TRENDYOL', 'LIVE', 'SUCCEEDED', false, false)).toBe(true)
+    expect(isSkippedByPublish('TRENDYOL', 'QUEUED', 'PENDING', false, true)).toBe(true)
+  })
+
+  it('names a card the marketplace no longer knows Bulunamadı in red', () => {
+    expect(publicationStatusLabel('NOT_FOUND')).toBe('Bulunamadı')
+    expect(publicationStatusTone('NOT_FOUND')).toBe('danger')
+  })
 })
 
 describe('approval wait job', () => {

@@ -454,6 +454,95 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ProductViews_ReadAVariantTheMarketplaceNoLongerKnowsAsMissingAndSendItAgain()
+    {
+        var tenant = NewTenant("listing-health");
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Listing health test", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", Version = 1 };
+        var created = fixture.Now;
+        Product NewProduct(string title, ProductStatus status = ProductStatus.Active)
+        {
+            created = created.AddSeconds(1);
+            return new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = "Listing health test", Status = status, CreatedAt = created, UpdatedAt = created, Version = 1 };
+        }
+        ProductVariant NewVariant(Product product, int order)
+        {
+            var sku = $"HEALTH-{Guid.NewGuid():N}";
+            return new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, SortOrder = order, Sku = sku, SkuNormalized = sku, OptionSignature = $"Beden={order}", CreatedAt = created, UpdatedAt = created, Version = 1 };
+        }
+        MarketplaceVariantLink Link(ProductVariant variant, string? health) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = variant.Sku, HealthStatus = health };
+        ChannelListingProfile LiveProfile(Product product) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, ConnectionId = connection.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "LIVE", Version = 1 };
+        ChannelListingVariant LiveListing(ChannelListingProfile profile, ProductVariant variant) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProfileId = profile.Id, VariantId = variant.Id, DesiredStatus = "LIVE", ActualStatus = "LIVE" };
+
+        // Every published variant gone; one of two gone; a SUSPECT link (one miss only); an archived product; a family
+        // send's LIVE listing with no link of its own.
+        var gone = NewProduct("Gone card");
+        var partial = NewProduct("Partial card");
+        var suspect = NewProduct("Suspect card");
+        var archived = NewProduct("Archived card", ProductStatus.Archived);
+        var familySend = NewProduct("Family send card");
+        var goneVariants = new[] { NewVariant(gone, 0), NewVariant(gone, 1) };
+        var partialVariants = new[] { NewVariant(partial, 0), NewVariant(partial, 1) };
+        var suspectVariant = NewVariant(suspect, 0);
+        var archivedVariant = NewVariant(archived, 0);
+        var familySendVariant = NewVariant(familySend, 0);
+        var goneProfile = LiveProfile(gone);
+        var partialProfile = LiveProfile(partial);
+        var familySendProfile = LiveProfile(familySend);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Products.AddRange(gone, partial, suspect, archived, familySend);
+        db.ProductVariants.AddRange([.. goneVariants, .. partialVariants, suspectVariant, archivedVariant, familySendVariant]);
+        db.MarketplaceVariantLinks.AddRange(
+            Link(goneVariants[0], MarketplaceVariantLinkHealth.NotFound), Link(goneVariants[1], MarketplaceVariantLinkHealth.Rejected),
+            Link(partialVariants[0], null), Link(partialVariants[1], MarketplaceVariantLinkHealth.NotFound),
+            Link(suspectVariant, MarketplaceVariantLinkHealth.Suspect),
+            Link(archivedVariant, MarketplaceVariantLinkHealth.NotFound));
+        db.ChannelListingProfiles.AddRange(goneProfile, partialProfile, familySendProfile);
+        db.ChannelListingVariants.AddRange(
+            LiveListing(goneProfile, goneVariants[0]), LiveListing(goneProfile, goneVariants[1]),
+            LiveListing(partialProfile, partialVariants[0]), LiveListing(partialProfile, partialVariants[1]),
+            LiveListing(familySendProfile, familySendVariant));
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+        ProductPlatformStatusView StatusOf(ProductView view) => Assert.Single(view.PlatformStatuses!, x => x.Platform == connection.DisplayName);
+        async Task<ProductView> View(Product product) => (await service.GetProductAsync(tenant.Id, product.Id, CancellationToken.None)).Value!;
+
+        var goneStatus = StatusOf(await View(gone));
+        Assert.Equal(("NOT_FOUND", 0, 2), (goneStatus.Status, goneStatus.MatchedVariantCount, goneStatus.MissingVariantCount));
+        var partialView = await View(partial);
+        var partialStatus = StatusOf(partialView);
+        Assert.Equal(("PARTIAL_LIVE", 1, 1), (partialStatus.Status, partialStatus.MatchedVariantCount, partialStatus.MissingVariantCount));
+        var missingVariantStatus = Assert.Single(partialView.Variants.Single(x => x.Id == partialVariants[1].Id).PlatformStatuses!);
+        Assert.True(missingVariantStatus.IsMissing);
+        Assert.False(missingVariantStatus.IsMatched);
+        Assert.Equal("NOT_FOUND", missingVariantStatus.Status);
+        Assert.Equal(("LINKED", 0), (StatusOf(await View(suspect)).Status, StatusOf(await View(suspect)).MissingVariantCount));
+        Assert.Equal(0, StatusOf(await View(archived)).MissingVariantCount);
+        var familySendVariantStatus = Assert.Single((await View(familySend)).Variants.Single().PlatformStatuses!);
+        Assert.True(familySendVariantStatus.IsMatched);
+        Assert.False(familySendVariantStatus.IsMissing);
+
+        async Task<Guid[]> Filtered(string platform) => (await service.ListProductsAsync(tenant.Id, 50, null, null, null, platform, null, null, CancellationToken.None)).Items.Select(x => x.Id).Order().ToArray();
+        Assert.Equal([gone.Id], await Filtered("TRENDYOL:NOT_FOUND"));
+        Assert.Contains(partial.Id, await Filtered("TRENDYOL:PARTIAL"));
+        Assert.DoesNotContain(gone.Id, await Filtered("TRENDYOL:PASSIVE"));
+        Assert.DoesNotContain(partial.Id, await Filtered("TRENDYOL:ACTIVE"));
+        Assert.Contains(suspect.Id, await Filtered("TRENDYOL:ACTIVE"));
+
+        // The gone and partial cards are not skipped as already live: they reach the price check (no offer here).
+        var result = await service.EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([gone.Id, partial.Id, suspect.Id], [connection.Id]), "health-bulk", "trace", CancellationToken.None);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(1, result.Value!.Skipped);
+        Assert.Equal([gone.Id, partial.Id].Order(), result.Value.Failed.Where(x => x.Code == "CHANNEL_OFFER_REQUIRED").Select(x => x.ProductId).Order());
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task ProductVariantAttributesAndDefaultPrices_RoundTripThroughProductUpdateAndReload()
     {
         var tenant = NewTenant("product-price-defaults");

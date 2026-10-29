@@ -1,4 +1,9 @@
-export type ProductPlatformDisplayState = 'active' | 'linked' | 'partial' | 'processing' | 'error' | 'inactive'
+// missing: every variant once matched or published there is one the marketplace no longer knows (server NOT_FOUND).
+export type ProductPlatformDisplayState = 'active' | 'linked' | 'partial' | 'processing' | 'error' | 'missing' | 'inactive'
+
+// A record with nothing there (no match, no publication) says nothing about the others: a family whose published cards
+// are all gone and whose other cards were never sent reads "Bulunamadı", not "kısmen".
+const absentStatuses = new Set(['UNLINKED', 'UNKNOWN'])
 
 const inProgressStatuses = new Set([
   'QUEUED',
@@ -48,10 +53,14 @@ export function productPlatformDisplayState(
 ): ProductPlatformDisplayState {
   const normalized = normalizedStatuses(statuses)
   if (isChecking || normalized.some(status => inProgressStatuses.has(status))) return 'processing'
+  const present = normalized.filter(status => !absentStatuses.has(status))
+  if (present.length > 0 && present.every(status => status === 'NOT_FOUND')) return 'missing'
   if (normalized.length > 0 && normalized.every(status => status === 'LIVE')) return 'active'
   if (normalized.some(status => status === 'LIVE' || status === 'PARTIAL_LIVE')) return 'partial'
   // Some variants failed and the rest did not: partly working, not a whole failure.
   if (normalized.some(status => errorStatuses.has(status))) return normalized.every(status => errorStatuses.has(status)) ? 'error' : 'partial'
+  // Some cards are gone and the others are still matched: partly there.
+  if (normalized.includes('NOT_FOUND')) return 'partial'
 
   // A catalog import/mapping confirms that the local variants are connected
   // to marketplace variants; publication state remains a separate status.
@@ -73,6 +82,7 @@ export function productPlatformDisplayLabel(
 
   if (state === 'processing') return `${platform} yayın durumu güncelleniyor`
   if (state === 'error') return `${platform} yayın işlemi başarısız veya incelemede`
+  if (state === 'missing') return `${platform}: Pazaryerinde Bulunamadı`
   if (state === 'active') return `${platform} üzerinde tüm varyantlar yayında${coverage}`
   if (state === 'partial') return `${platform} üzerinde ürün kısmen yayında${coverage}`
   if (normalized.includes('ARCHIVED')) return `${platform} ilanı arşivlenmiş${coverage}`

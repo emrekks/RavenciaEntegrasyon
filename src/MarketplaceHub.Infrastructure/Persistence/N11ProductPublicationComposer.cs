@@ -95,11 +95,13 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // A variant already live on n11 (live state and an n11 variant link) is not sent again: publishing a partly refused
-        // card sends only its other variants, under the same productMainId so n11 keeps them in one product.
+        // card sends only its other variants, under the same productMainId so n11 keeps them in one product. A variant whose
+        // link n11 no longer knows (NOT_FOUND or REJECTED) is not live there and goes again.
         var cardVariantIds = variants.Select(x => x.Id).ToArray();
         var liveVariantIds = await (from state in db.MarketplaceListingStates.AsNoTracking()
                                     join link in db.MarketplaceVariantLinks.AsNoTracking() on new { state.TenantId, state.ConnectionId, state.VariantId } equals new { link.TenantId, link.ConnectionId, link.VariantId }
                                     where state.TenantId == tenantId && state.ConnectionId == connectionId && cardVariantIds.Contains(state.VariantId) && state.ActualStatus == "LIVE"
+                                        && link.HealthStatus != MarketplaceVariantLinkHealth.NotFound && link.HealthStatus != MarketplaceVariantLinkHealth.Rejected
                                     select state.VariantId).ToListAsync(cancellationToken);
         variants = variants.Where(x => !liveVariantIds.Contains(x.Id)).ToList();
         if (variants.Count == 0) return Fail("PRODUCT_ALREADY_LIVE", "Kartın bütün varyantları N11'de zaten yayında.", status: 409);

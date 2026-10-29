@@ -459,17 +459,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var variantsByProductForPlatform = allVariants
                 .GroupBy(variant => variant.ProductId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
-            var platformVariantIds = allVariants.Select(variant => variant.Id).ToArray();
-            var matchedVariantIds = platformVariantIds.Length == 0
-                ? new HashSet<Guid>()
-                : await PlatformMatchedVariantIds(tenantId, platformFilterCode)
-                    .Where(variantId => platformVariantIds.Contains(variantId))
-                    .ToHashSetAsync(cancellationToken);
+            var (matchedVariantIds, missingVariantIds) = await PlatformVariantStatesAsync(tenantId, platformFilterCode, allProducts, allVariants, cancellationToken);
             var matchingFamilyKeys = allProducts
                 .GroupBy(product => ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
                 .Where(group => PlatformFilterMatchesFamily(
                     group.SelectMany(product => variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []).Select(variant => variant.Id),
                     matchedVariantIds,
+                    missingVariantIds,
                     platformFilterState))
                 .Select(group => group.Key)
                 .ToHashSet(StringComparer.Ordinal);
@@ -1588,7 +1584,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var variantIds = variants.Select(x => x.Id).ToList();
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
-        var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).Select(x => new { x.ConnectionId, x.VariantId }).ToListAsync(cancellationToken);
+        var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus }).ToListAsync(cancellationToken);
         var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId) && connectionIds.Contains(x.ConnectionId)).ToListAsync(cancellationToken);
         var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>();
         // Every card is priced and given its listing profile before any is queued: a PTT AVM or Shopify family request
@@ -1603,9 +1599,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 // A family card the user did not select goes only where the family is one product.
                 if (!selectedIds.Contains(product.Id) && !SendsModelFamily(connections.Single(x => x.Id == connectionId).PlatformCode)) continue;
                 // A card already on this marketplace (a variant matched there, live, or still being published) is left as it is.
+                // One with a variant the marketplace no longer knows (Bulunamadı, Kısmen Yayında) goes again, unless a send
+                // of it is still running.
                 var profile = profiles.FirstOrDefault(x => x.ProductId == product.Id && x.ConnectionId == connectionId);
-                if (productVariants.Any(variant => links.Any(link => link.VariantId == variant.Id && link.ConnectionId == connectionId))
-                    || profile?.ActualStatus?.Trim().ToUpperInvariant() is "LIVE" or "ACTIVE" or "ON_SALE" || IsPlatformUpdateInProgress(profile?.ActualStatus))
+                var cardLinks = links.Where(link => link.ConnectionId == connectionId && productVariants.Any(variant => variant.Id == link.VariantId)).ToList();
+                var hasMissingVariant = cardLinks.Any(link => ProductListingHealth.CountsAsMissing(link.HealthStatus, product.Status == ProductStatus.Archived, profile?.ActualStatus));
+                if (IsPlatformUpdateInProgress(profile?.ActualStatus)
+                    || !hasMissingVariant && (cardLinks.Count > 0 || profile?.ActualStatus?.Trim().ToUpperInvariant() is "LIVE" or "ACTIVE" or "ON_SALE"))
                 {
                     if (selectedIds.Contains(product.Id)) skipped++;
                     continue;
@@ -1651,6 +1651,25 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<BulkPublicationResult>.Ok(new(queued, skipped, failed));
     }
 
+    // Whether a variant of the card is one the marketplace no longer knows there (ProductListingHealth.CountsAsMissing).
+    private async Task<bool> HasMissingVariantAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var product = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.Status }).SingleOrDefaultAsync(cancellationToken);
+        if (product is null || product.Status == ProductStatus.Archived) return false;
+        var brokenHealth = await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId
+                && (link.HealthStatus == MarketplaceVariantLinkHealth.NotFound || link.HealthStatus == MarketplaceVariantLinkHealth.Rejected)
+                && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == link.VariantId && variant.ProductId == productId))
+            .Select(link => link.HealthStatus)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (brokenHealth is null) return false;
+        var profileStatus = await db.ChannelListingProfiles.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId)
+            .Select(x => x.ActualStatus)
+            .FirstOrDefaultAsync(cancellationToken);
+        return ProductListingHealth.CountsAsMissing(brokenHealth, productArchived: false, profileStatus);
+    }
+
     // The marketplaces where one product carries a model family's every colour card (one request sends them all).
     private static bool SendsModelFamily(string platformCode) => platformCode is "PTTAVM" or "SHOPIFY";
 
@@ -1687,7 +1706,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         // earlier request): a resend goes out again. The adapter reads PTT AVM first and adds only the variants it lacks,
         // and sends nothing when it holds them all.
         var isPttAvm = connection.PlatformCode == "PTTAVM";
-        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: !isPttAvm, cancellationToken))
+        // A card whose variant the marketplace no longer knows goes again even when its payload did not change: the
+        // earlier send succeeded, but what it created is gone.
+        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: !isPttAvm && !await HasMissingVariantAsync(tenantId, productId, connectionId, cancellationToken), cancellationToken))
         {
             await transaction.CommitAsync(cancellationToken);
             return ServiceResult<Guid>.Ok(existing.Id);
@@ -2218,7 +2239,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).ToListAsync(cancellationToken);
         var variantLinks = await db.MarketplaceVariantLinks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId))
-            .Select(x => new { x.ConnectionId, x.VariantId })
+            .Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus })
             .ToListAsync(cancellationToken);
         var profileIds = profiles.Select(x => x.Id).ToArray();
         var listingVariants = await db.ChannelListingVariants.AsNoTracking()
@@ -2305,14 +2326,29 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var productVariantIds = productVariants.Select(x => x.Id).ToHashSet();
             var productProfiles = profiles.Where(x => x.ProductId == product.Id).ToList();
             var productLinks = variantLinks.Where(x => productVariantIds.Contains(x.VariantId)).ToList();
+            // The variants the marketplace no longer knows, per connection: neither matched nor live there.
+            var productArchived = product.Status == ProductStatus.Archived;
+            var missingLinks = productLinks
+                .Where(x => ProductListingHealth.CountsAsMissing(x.HealthStatus, productArchived, productProfiles.FirstOrDefault(profile => profile.ConnectionId == x.ConnectionId)?.ActualStatus))
+                .Select(x => (x.VariantId, x.ConnectionId))
+                .ToHashSet();
             var variantViews = productVariants.Select(variant =>
             {
                 inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
-                var linkedConnectionIds = productLinks.Where(x => x.VariantId == variant.Id).Select(x => x.ConnectionId).ToHashSet();
+                var linkedConnectionIds = productLinks.Where(x => x.VariantId == variant.Id && !missingLinks.Contains((x.VariantId, x.ConnectionId))).Select(x => x.ConnectionId).ToHashSet();
                 var listingConnectionIds = listingVariants
                     .Where(x => x.VariantId == variant.Id)
                     .Select(x => productProfiles.FirstOrDefault(profile => profile.Id == x.ProfileId)?.ConnectionId)
                     .OfType<Guid>()
+                    .Where(connectionId => !missingLinks.Contains((variant.Id, connectionId)))
+                    .ToHashSet();
+                // Present on a connection: a healthy link, or a LIVE listing (a family send lists colour cards that get
+                // no link of their own; live 2026-10-29 MZ053TCD on PTT AVM: 24 LIVE variants, 9 links).
+                var liveListingConnectionIds = listingVariants
+                    .Where(x => x.VariantId == variant.Id && x.ActualStatus == "LIVE")
+                    .Select(x => productProfiles.FirstOrDefault(profile => profile.Id == x.ProfileId)?.ConnectionId)
+                    .OfType<Guid>()
+                    .Where(connectionId => !missingLinks.Contains((variant.Id, connectionId)))
                     .ToHashSet();
                 var variantPlatformStatuses = connections
                     .OrderBy(connection => connection.Value.PlatformCode)
@@ -2322,12 +2358,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                         var connectionId = connection.Key;
                         var profile = productProfiles.FirstOrDefault(x => x.ConnectionId == connectionId);
                         var isLinked = linkedConnectionIds.Contains(connectionId) || listingConnectionIds.Contains(connectionId);
+                        var isMissing = missingLinks.Contains((variant.Id, connectionId));
                         offerByVariantConnection.TryGetValue((variant.Id, connectionId), out var channelOffer);
                         return new ProductVariantPlatformStatusView(
                             connection.Value.DisplayName,
                             connection.Value.PlatformCode,
                             isLinked,
-                            profile?.ActualStatus ?? (isLinked ? "LINKED" : "UNLINKED"),
+                            isMissing ? ProductListingHealth.NotFound : profile?.ActualStatus ?? (isLinked ? "LINKED" : "UNLINKED"),
                             connectionId,
                             channelOffer?.Id,
                             channelOffer?.ListPrice,
@@ -2338,7 +2375,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                             channelOffer?.RoundingMode,
                             channelOffer?.SafetyStock,
                             channelOffer?.Version,
-                            linkedConnectionIds.Contains(connectionId));
+                            linkedConnectionIds.Contains(connectionId) || liveListingConnectionIds.Contains(connectionId),
+                            isMissing);
                     })
                     .ToList();
                 return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice, variantAttributesByVariant.GetValueOrDefault(variant.Id), variant.ProductId);
@@ -2355,11 +2393,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                     {
                         foreach (var listing in listingVariants.Where(x => x.ProfileId == profile.Id && x.ActualStatus == "LIVE")) linkedVariantIds.Add(listing.VariantId);
                     }
+                    // A variant the marketplace no longer knows is not matched there, even with a LIVE listing behind it.
+                    var missingVariantCount = linkedVariantIds.RemoveWhere(variantId => missingLinks.Contains((variantId, connectionId)));
 
                     var matchedVariantCount = linkedVariantIds.Count;
-                    var status = profile?.ActualStatus ?? (matchedVariantCount == productVariantIds.Count && productVariantIds.Count > 0 ? "LINKED" : matchedVariantCount > 0 ? "PARTIAL_LINKED" : "UNLINKED");
+                    var status = ProductListingHealth.Status(profile?.ActualStatus, matchedVariantCount, missingVariantCount, productVariantIds.Count);
                     var connection = connections[connectionId];
-                    return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode);
+                    return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode, missingVariantCount);
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -2629,33 +2669,54 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     }
 
-    private IQueryable<Guid> PlatformMatchedVariantIds(Guid tenantId, string platformCode) =>
-        db.MarketplaceVariantLinks
-            .Where(link => link.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId
-                    && connection.PlatformCode == platformCode
-                    && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
-            .Select(link => link.VariantId)
-            .Concat(db.ChannelListingVariants
-                .Where(listing => listing.TenantId == tenantId
-                    && db.ChannelListingProfiles.Any(profile => profile.TenantId == tenantId && profile.Id == listing.ProfileId && profile.Enabled
-                        && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId
-                            && connection.PlatformCode == platformCode
-                            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))
-                .Select(listing => listing.VariantId))
-            .Distinct();
+    // The catalog's variants matched on a marketplace (a variant link or a listing on one of its active connections) and
+    // those the marketplace no longer knows (a NOT_FOUND or REJECTED link, as the product views count them). A missing
+    // variant is matched only through another connection of the same marketplace where it still holds.
+    private async Task<(HashSet<Guid> Matched, HashSet<Guid> Missing)> PlatformVariantStatesAsync(Guid tenantId, string platformCode, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken)
+    {
+        if (variants.Count == 0) return ([], []);
+        var variantIds = variants.Select(variant => variant.Id).ToArray();
+        var connectionIds = db.PlatformConnections
+            .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == platformCode && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+            .Select(connection => connection.Id);
+        var links = await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(link => link.TenantId == tenantId && connectionIds.Contains(link.ConnectionId) && variantIds.Contains(link.VariantId))
+            .Select(link => new { link.VariantId, link.ConnectionId, link.HealthStatus })
+            .ToListAsync(cancellationToken);
+        var listings = await (from listing in db.ChannelListingVariants.AsNoTracking()
+                              join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
+                              where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && variantIds.Contains(listing.VariantId)
+                              select new { listing.VariantId, profile.ConnectionId }).Distinct().ToListAsync(cancellationToken);
+        var brokenLinks = links.Where(link => MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus)).ToList();
+        var archivedProfiles = new HashSet<(Guid ProductId, Guid ConnectionId)>();
+        if (brokenLinks.Count > 0)
+        {
+            var brokenVariantIds = brokenLinks.Select(link => link.VariantId).ToHashSet();
+            var brokenProductIds = variants.Where(variant => brokenVariantIds.Contains(variant.Id)).Select(variant => variant.ProductId).Distinct().ToArray();
+            var archived = await db.ChannelListingProfiles.AsNoTracking()
+                .Where(profile => profile.TenantId == tenantId && profile.Enabled && profile.ActualStatus == "ARCHIVED" && brokenProductIds.Contains(profile.ProductId) && connectionIds.Contains(profile.ConnectionId))
+                .Select(profile => new { profile.ProductId, profile.ConnectionId })
+                .ToListAsync(cancellationToken);
+            archivedProfiles = archived.Select(profile => (profile.ProductId, profile.ConnectionId)).ToHashSet();
+        }
+        var productByVariant = variants.ToDictionary(variant => variant.Id, variant => variant.ProductId);
+        var archivedProductIds = products.Where(product => product.Status == ProductStatus.Archived).Select(product => product.Id).ToHashSet();
+        var missingLinks = brokenLinks
+            .Where(link => productByVariant.TryGetValue(link.VariantId, out var productId)
+                && ProductListingHealth.CountsAsMissing(link.HealthStatus, archivedProductIds.Contains(productId), archivedProfiles.Contains((productId, link.ConnectionId)) ? "ARCHIVED" : null))
+            .Select(link => (link.VariantId, link.ConnectionId))
+            .ToHashSet();
+        var matched = links.Where(link => !missingLinks.Contains((link.VariantId, link.ConnectionId))).Select(link => link.VariantId)
+            .Concat(listings.Where(listing => !missingLinks.Contains((listing.VariantId, listing.ConnectionId))).Select(listing => listing.VariantId))
+            .ToHashSet();
+        var missing = missingLinks.Select(link => link.VariantId).Where(variantId => !matched.Contains(variantId)).ToHashSet();
+        return (matched, missing);
+    }
 
-    private static bool PlatformFilterMatchesFamily(IEnumerable<Guid> familyVariantIds, IReadOnlySet<Guid> matchedVariantIds, string platformState)
+    private static bool PlatformFilterMatchesFamily(IEnumerable<Guid> familyVariantIds, IReadOnlySet<Guid> matchedVariantIds, IReadOnlySet<Guid> missingVariantIds, string platformState)
     {
         var variantIds = familyVariantIds.Distinct().ToArray();
-        var matchedCount = variantIds.Count(matchedVariantIds.Contains);
-        return platformState switch
-        {
-            "ACTIVE" => variantIds.Length > 0 && matchedCount == variantIds.Length,
-            "PARTIAL" => matchedCount > 0 && matchedCount < variantIds.Length,
-            "PASSIVE" => matchedCount == 0,
-            _ => true
-        };
+        return ProductListingHealth.MatchesFilter(platformState, variantIds.Length, variantIds.Count(matchedVariantIds.Contains), variantIds.Count(missingVariantIds.Contains));
     }
 
     internal static bool TryProductPlatformFilter(string value, out string platformCode, out string platformState)
@@ -2664,7 +2725,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         platformCode = parts.Length == 2 ? parts[0].ToUpperInvariant() : string.Empty;
         platformState = parts.Length == 2 ? parts[1].ToUpperInvariant() : string.Empty;
         return platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM"
-            && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE";
+            && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE" or ProductListingHealth.NotFound;
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));

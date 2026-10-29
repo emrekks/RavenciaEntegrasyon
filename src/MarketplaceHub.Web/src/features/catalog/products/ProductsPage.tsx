@@ -453,12 +453,13 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   const variantSizes = [...new Set(variantDisplayGroups.flatMap(item => item.values.map(value => value.label)))]
   const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
   // Every marketplace is listed, those without a match greyed out. The dot is green when every variant is live or
-  // connected there, yellow when only some are (or some failed), red when all failed and cycles while it updates.
+  // connected there, yellow when only some are (or some failed), red when all failed or the marketplace no longer
+  // knows any of them (Bulunamadı), and cycles while it updates.
   const platformMarks = (['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY'] as const).map(code => {
     const card = platformCards.find(item => item.platformCode === code)
     const name = code === 'N11' ? 'N11' : code === 'PTTAVM' ? 'PTT AVM' : code.charAt(0) + code.slice(1).toLocaleLowerCase('tr-TR')
     const linkedTone = card && card.variantCount > 0 && card.matchedVariantCount < card.variantCount ? 'part' : 'on'
-    const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', inactive: 'none' } as Record<string, string>)[card.state] ?? 'none' : 'none'
+    const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none' } as Record<string, string>)[card.state] ?? 'none' : 'none'
     return { code, state, label: card?.label ?? `${name} ürün eşleşmesi bulunamadı` }
   })
   const [ringTone, ringProgress] = ({ ACTIVE: ['ok', 1], DRAFT: ['prog', 0.3], ARCHIVED: ['off', 0], MIXED: ['bad', 0.66] } as Record<string, [RingTone, number]>)[status] ?? ['off', 0]

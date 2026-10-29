@@ -57,6 +57,12 @@ describe('bulk publish platform status', () => {
     expect(summarizeBulkPublishStatus([product(entry('LIVE')), product(entry('REJECTED'))], trendyol)).toMatchObject({ label: '1/2 kayıt yayında', detail: '1 yayında · 1 hatalı veya incelemede', tone: 'warning' })
   })
 
+  it('names records the marketplace no longer knows Bulunamadı', () => {
+    expect(bulkPublishStatusBucket(entry('NOT_FOUND', { missingVariantCount: 4 }))).toBe('notFound')
+    expect(summarizeBulkPublishStatus([product(entry('NOT_FOUND'))], trendyol)).toMatchObject({ label: 'Bulunamadı', tone: 'danger', allLive: false })
+    expect(summarizeBulkPublishStatus([product(entry('LIVE')), product(entry('NOT_FOUND'))], trendyol)).toMatchObject({ label: '1/2 kayıt yayında', detail: '1 yayında · 1 pazaryerinde bulunamadı', tone: 'warning' })
+  })
+
   it('writes platform names the way the brands do', () => {
     expect(bulkPublishPlatformName('PTTAVM')).toBe('PttAVM')
     expect(bulkPublishPlatformName('N11')).toBe('n11')

@@ -82,4 +82,19 @@ describe('product platform list status', () => {
     expect(productPlatformDisplayState(['LINKED', 'UPDATE_REJECTED'], false, 2)).toBe('partial')
     expect(productPlatformDisplayState(['UPDATE_REJECTED', 'CREATE_REJECTED'], false, 2)).toBe('error')
   })
+
+  it('says Bulunamadı when every published card is gone from the marketplace', () => {
+    const state = productPlatformDisplayState(['NOT_FOUND'], false, 0)
+
+    expect(state).toBe('missing')
+    expect(productPlatformDisplayLabel('Trendyol', ['NOT_FOUND'], 0, 3, state)).toBe('Trendyol: Pazaryerinde Bulunamadı')
+    // A family card never sent there does not make a gone one partly live.
+    expect(productPlatformDisplayState(['NOT_FOUND', 'UNLINKED'], false, 0)).toBe('missing')
+  })
+
+  it('shows a family with some cards gone and others live as partly live', () => {
+    expect(productPlatformDisplayState(['NOT_FOUND', 'LIVE'], false, 3)).toBe('partial')
+    expect(productPlatformDisplayState(['NOT_FOUND', 'LINKED'], false, 3)).toBe('partial')
+    expect(productPlatformDisplayState(['NOT_FOUND', 'QUEUED'], false, 0)).toBe('processing')
+  })
 })

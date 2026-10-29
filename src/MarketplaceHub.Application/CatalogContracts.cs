@@ -68,16 +68,22 @@ public sealed record ProductVariantPlatformStatusView(
     string? RoundingMode = null,
     decimal? SafetyStock = null,
     long? OfferVersion = null,
-    // Matched to a listing the marketplace holds (a variant link). IsLinked also counts a variant only queued for
-    // publication there, which may never have arrived.
-    bool IsMatched = false);
+    // Present at the marketplace: a variant link, or a LIVE listing of the panel's own send (a family send lists colour
+    // cards that get no link of their own), unless the link is broken (IsMissing). IsLinked also counts a variant only
+    // queued for publication there, which may never have arrived.
+    bool IsMatched = false,
+    // The marketplace no longer knows the variant (its link is NOT_FOUND or REJECTED): it is neither matched nor live
+    // there. Never set from a missing link or a SUSPECT/UNVERIFIED one.
+    bool IsMissing = false);
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,
     int MatchedVariantCount = 0,
     int VariantCount = 0,
     bool IsChecking = false,
-    string PlatformCode = "TRENDYOL");
+    string PlatformCode = "TRENDYOL",
+    // Variants the marketplace no longer knows (link NOT_FOUND or REJECTED); they are not in MatchedVariantCount.
+    int MissingVariantCount = 0);
 public sealed record ProductView(
     Guid Id,
     string Title,

@@ -31,11 +31,15 @@ export type Variant = Versioned & {
   priceVersion: number | null; offerVersion: number | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null
   mediaUrls?: string[]; options?: Record<string, string>; platformStatuses?: VariantPlatformStatus[]; attributes?: ProductAttributeAssignment[]
 }
-export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean }
+// missingVariantCount: variants the marketplace no longer knows (link NOT_FOUND or REJECTED), not in matchedVariantCount.
+export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean; missingVariantCount?: number }
 export type VariantPlatformStatus = {
   platform: string; platformCode: string; isLinked: boolean; status?: string
-  // Matched to a listing the marketplace holds; isLinked also counts a variant only queued for publication there.
+  // Present at the marketplace (a variant link or a LIVE listing); isLinked also counts a variant only queued for
+  // publication there.
   isMatched?: boolean
+  // The marketplace no longer knows the variant (its link is NOT_FOUND or REJECTED): neither matched nor live there.
+  isMissing?: boolean
   connectionId?: string | null; offerId?: string | null; listPrice?: number | null; salePrice?: number | null
   currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null
   safetyStock?: number | null; offerVersion?: number | null
