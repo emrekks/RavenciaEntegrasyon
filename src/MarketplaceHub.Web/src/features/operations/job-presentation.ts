@@ -47,6 +47,8 @@ const catalogue: Record<string, JobPresentation> = {
   PRODUCT_UPDATE: job('Ürün', 'product', SEND, 'Ürün Güncelleme', 'Ürün bilgilerinde yapılan değişiklikler platformdaki ürüne iletilir.'),
   PRODUCT_ARCHIVE: job('Ürün', 'product', SEND, 'Ürünü Satışa Kapatma', 'Ürün platformda satışa kapatılır veya arşive alınır.'),
   PRODUCT_APPROVAL_RECONCILE: job('Ürün', 'product', READ, 'Ürün Onay Durumu Kontrolü', 'Platforma gönderilen ürünlerin onay ve yayın durumu okunarak panelde güncellenir.'),
+  LISTING_VERIFY: job('Ürün', 'product', READ, 'Günlük Yayın Doğrulaması', 'Mağazadaki bütün ürünler okunur; paneldeki varyantların pazaryerinde hâlâ durup durmadığı kontrol edilir. Ürün bilgisi, fiyat ve stok değiştirilmez.'),
+  LISTING_LOOKUP: job('Ürün', 'product', READ, 'Varyant Pazaryerinde Aranıyor', 'Görülmeyen ya da stok gönderiminde tanınmayan varyantlar barkodla tek tek aranır; pazaryeri açıkça yok derse Bulunamadı olarak işaretlenir.'),
   PRICE_INVENTORY_SYNC: job('Fiyat ve Stok', 'price', SEND, 'Fiyat ve Stok Gönderme', 'Güncel fiyat ve stok bilgileri platforma iletilir. Dış yazma kapalıysa gönderim yapılmaz.'),
   STOCK_PROJECTION_DISPATCH: job('Fiyat ve Stok', 'price', PANEL, 'Stok Gönderim Hazırlığı', 'Stok değişiklikleri platforma gönderilmek üzere sıraya alınır. Bu adım platforma veri göndermez; gönderim ayrı bir Fiyat ve Stok Gönderme işiyle yapılır.'),
   STOCK_RECONCILIATION: job('Fiyat ve Stok', 'price', PANEL, 'Stok Mutabakatı', 'Paneldeki stok, platforma en son gönderilen değerlerle karşılaştırılır; fark varsa yeni gönderim hazırlanır.'),
