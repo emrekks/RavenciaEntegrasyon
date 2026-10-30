@@ -96,7 +96,8 @@ public sealed class PriceStockSendLogPostgreSqlTests(PostgreSqlTenantIsolationFi
     }
 
     [PostgreSqlFact]
-    public async Task A_newer_price_before_the_answer_marks_every_row_superseded()
+    // Audit 30 Oct 2026 item 4: one line changing while the batch is polled no longer throws away the answer of the others.
+    public async Task A_newer_price_before_the_answer_supersedes_only_that_line()
     {
         var seed = await Seed();
         await Submit(seed);
@@ -105,11 +106,22 @@ public sealed class PriceStockSendLogPostgreSqlTests(PostgreSqlTenantIsolationFi
 
         var result = await Poll(seed, new RemoteOperationStatus(OperationId, "COMPLETED", []));
 
-        Assert.Equal("PRICE_INVENTORY_SUPERSEDED", result.ErrorCode);
+        Assert.True(result.Succeeded, result.ErrorSummary);
+        Assert.Equal("PRICE_INVENTORY_LINES_SUPERSEDED", result.ErrorCode);
         await using var check = fixture.CreateContext();
-        Assert.All(await Rows(check, seed), row => Assert.Equal(PriceStockSendResults.Superseded, row.Result));
-        // The answer was not applied: no offer is marked as sent.
-        Assert.All(await check.ChannelOffers.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), offer => Assert.Null(offer.LastPriceHash));
+        var rows = await Rows(check, seed);
+        Assert.Equal(PriceStockSendResults.Superseded, rows.Single(x => x.OfferId == seed.Lines[0].OfferId).Result);
+        Assert.Equal(PriceStockSendResults.Applied, rows.Single(x => x.OfferId == seed.Lines[1].OfferId).Result);
+        var offers = await check.ChannelOffers.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id);
+        // The changed line keeps the marketplace's answer for what it sent, but its price mark does not move: the newer
+        // price is still sent. Its stock did not change, so its stock mark moves on.
+        var changed = offers[seed.Lines[0].OfferId];
+        Assert.Null(changed.LastPriceHash);
+        Assert.Equal(seed.Lines[0].ProjectionVersion, changed.LastStockProjectionVersion);
+        Assert.Equal(seed.Lines[0].SalePrice, changed.LastSentSalePrice);
+        // The other line is recorded as usual.
+        Assert.Equal(seed.Lines[1].PriceHash, offers[seed.Lines[1].OfferId].LastPriceHash);
+        Assert.Equal(seed.Lines[1].ProjectionVersion, offers[seed.Lines[1].OfferId].LastStockProjectionVersion);
     }
 
     [PostgreSqlFact]

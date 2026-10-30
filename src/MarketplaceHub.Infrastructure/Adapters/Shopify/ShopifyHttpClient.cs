@@ -570,7 +570,9 @@ public sealed partial class ShopifyHttpClient(
                 var quantity = DecimalOrNull(item, "quantity");
                 var salePrice = DecimalOrNull(item, "salePrice");
                 var listPrice = DecimalOrNull(item, "listPrice");
-                if (string.IsNullOrWhiteSpace(barcode) || quantity is null || quantity < 0 || quantity != decimal.Truncate(quantity.Value) || quantity > int.MaxValue || salePrice is null || salePrice <= 0 || listPrice is null || listPrice < salePrice)
+                // A stock change alone carries no prices: the variant's price is left as it is.
+                var priced = salePrice is not null || listPrice is not null;
+                if (string.IsNullOrWhiteSpace(barcode) || quantity is null || quantity < 0 || quantity != decimal.Truncate(quantity.Value) || quantity > int.MaxValue || priced && (salePrice is null || salePrice <= 0 || listPrice is null || listPrice < salePrice))
                 {
                     results.Add(new(barcode ?? "", false, null, "SHOPIFY_PRICE_INVENTORY_LINE_INVALID", false, "REJECTED"));
                     continue;
@@ -629,12 +631,15 @@ public sealed partial class ShopifyHttpClient(
                 var productId = variant.GetProperty("product").GetProperty("id").GetString()!;
                 var inventoryItemId = inventoryItem.GetProperty("id").GetString()!;
                 var locationId = activeLevels[0].GetProperty("location").GetProperty("id").GetString()!;
-                var priceMutation = await QueryAsync(shop, "mutation($productId:ID!,$variants:[ProductVariantsBulkInput!]!){productVariantsBulkUpdate(productId:$productId,variants:$variants){userErrors{field message}}}", new { productId, variants = new[] { new { id = variantId, price = salePrice.Value.ToString("0.00##", CultureInfo.InvariantCulture), compareAtPrice = listPrice.Value > salePrice.Value ? listPrice.Value.ToString("0.00##", CultureInfo.InvariantCulture) : null } } }, cancellationToken);
-                if (!priceMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(priceMutation.Error!, priceMutation.RateLimit);
-                if (HasUserErrors(priceMutation.Value!.RootElement.GetProperty("productVariantsBulkUpdate"), out var priceError))
+                if (priced)
                 {
-                    results.Add(new(barcode, false, null, "SHOPIFY_PRICE_REJECTED", false, priceError));
-                    continue;
+                    var priceMutation = await QueryAsync(shop, "mutation($productId:ID!,$variants:[ProductVariantsBulkInput!]!){productVariantsBulkUpdate(productId:$productId,variants:$variants){userErrors{field message}}}", new { productId, variants = new[] { new { id = variantId, price = salePrice!.Value.ToString("0.00##", CultureInfo.InvariantCulture), compareAtPrice = listPrice!.Value > salePrice.Value ? listPrice.Value.ToString("0.00##", CultureInfo.InvariantCulture) : null } } }, cancellationToken);
+                    if (!priceMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(priceMutation.Error!, priceMutation.RateLimit);
+                    if (HasUserErrors(priceMutation.Value!.RootElement.GetProperty("productVariantsBulkUpdate"), out var priceError))
+                    {
+                        results.Add(new(barcode, false, null, "SHOPIFY_PRICE_REJECTED", false, priceError));
+                        continue;
+                    }
                 }
                 var stockMutation = await SetAvailableQuantityAsync(shop, context, barcode, inventoryItemId, locationId, (int)quantity.Value, compareQuantity, cancellationToken);
                 if (!stockMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(stockMutation.Error!, stockMutation.RateLimit);

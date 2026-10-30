@@ -402,7 +402,8 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
                 db.InventoryItems.AddRange(inStockItem, shortStockItem);
             });
 
-            // The open order arrives: 3 units from 10 on hand, and 3 units from 2 on hand with 1 held as a reservation.
+            // The open order arrives: 3 units from 10 on hand, and 3 units from 2 on hand with 1 left as the line's
+            // shortfall (no reservation is held, owner decision of 30 Oct 2026).
             var (firstOrder, firstLines) = NewOpenOrder(seed, inStock, shortStock);
             await using (var db = fixture.CreateContext())
             {
@@ -413,7 +414,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
                 await db.SaveChangesAsync();
             }
             await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
-            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 1m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 0m);
 
             await using (var db = fixture.CreateContext())
             {
@@ -427,10 +428,10 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
                 Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
                 // The reset changes no stock: the units the order took stay taken until its lines come back.
                 var carryKey = OrderInventoryStockPolicy.ResetCarryKey(seed.Marketplace.Id, firstOrder.ExternalOrderId, "line-b");
-                Assert.Equal(carryKey, (await verification.StockReservations.AsNoTracking().SingleAsync(x => x.InventoryItemId == shortStockItem.Id)).SourceId);
+                Assert.Equal(carryKey, (await verification.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.InventoryItemId == shortStockItem.Id && x.MovementType == OrderInventoryStockPolicy.ShortfallMovementType)).SourceId);
             }
             await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
-            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 1m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 0m);
 
             // The next sync imports the same order under new ids.
             var (secondOrder, secondLines) = NewOpenOrder(seed, inStock, shortStock);
@@ -444,12 +445,12 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             }
 
             await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
-            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 1m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 0m);
             await using var after = fixture.CreateContext();
-            var reservation = await after.StockReservations.AsNoTracking().SingleAsync(x => x.InventoryItemId == shortStockItem.Id);
-            Assert.Equal(ReservationStatus.Active, reservation.Status);
-            Assert.Equal(1m, reservation.Quantity);
-            Assert.Equal(secondLines[1].Id.ToString("D"), reservation.SourceId);
+            Assert.False(await after.StockReservations.AsNoTracking().AnyAsync(x => x.InventoryItemId == shortStockItem.Id));
+            var shortfall = await after.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.InventoryItemId == shortStockItem.Id && x.MovementType == OrderInventoryStockPolicy.ShortfallMovementType);
+            Assert.Equal(1m, shortfall.QuantityDelta);
+            Assert.Equal(secondLines[1].Id.ToString("D"), shortfall.SourceId);
             var itemIds = new[] { inStockItem.Id, shortStockItem.Id };
             Assert.False(await after.StockLedgerEntries.AnyAsync(x => itemIds.Contains(x.InventoryItemId) && x.SourceId.StartsWith(OrderInventoryStockPolicy.ResetCarryPrefix)));
             Assert.Equal(2, await after.StockLedgerEntries.CountAsync(x => itemIds.Contains(x.InventoryItemId) && x.MovementType == "ORDER_STOCK_BASELINE"));

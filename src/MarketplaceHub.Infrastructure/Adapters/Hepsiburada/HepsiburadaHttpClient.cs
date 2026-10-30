@@ -1229,8 +1229,12 @@ public sealed partial class HepsiburadaHttpClient(
                     || string.IsNullOrWhiteSpace(hbSku) || hbSku != hbSku.Trim() || hbSku.Any(char.IsWhiteSpace)
                     || !merchantSkus.Add(merchantSku) || !hbSkus.Add(hbSku)) return false;
                 // A listing Hepsiburada fulfils (isFulfilledByHB) goes without a stock: its stock is Hepsiburada's.
-                if (item.TryGetProperty("availableStock", out var stockValue) && (!stockValue.TryGetInt32(out var stock) || stock < 0)) return false;
-                if (!item.TryGetProperty("price", out var priceValue) || !priceValue.TryGetDecimal(out var price) || price <= 0 || decimal.Round(price, 2) != price) return false;
+                // A stock change alone goes without a price; a line carries at least one of the two.
+                var hasStock = item.TryGetProperty("availableStock", out var stockValue);
+                if (hasStock && (!stockValue.TryGetInt32(out var stock) || stock < 0)) return false;
+                var hasPrice = item.TryGetProperty("price", out var priceValue);
+                if (hasPrice && (!priceValue.TryGetDecimal(out var price) || price <= 0 || decimal.Round(price, 2) != price)) return false;
+                if (!hasStock && !hasPrice) return false;
             }
             return true;
         }
@@ -1242,7 +1246,7 @@ public sealed partial class HepsiburadaHttpClient(
         var items = document.RootElement.GetProperty("items").EnumerateArray().Select(item => new XElement("listing",
             new XElement("HepsiburadaSku", item.GetProperty("hepsiburadaSku").GetString()),
             new XElement("MerchantSku", item.GetProperty("merchantSku").GetString()),
-            new XElement("Price", item.GetProperty("price").GetDecimal().ToString("0.00", CultureInfo.GetCultureInfo("tr-TR"))),
+            item.TryGetProperty("price", out var price) ? new XElement("Price", price.GetDecimal().ToString("0.00", CultureInfo.GetCultureInfo("tr-TR"))) : null,
             item.TryGetProperty("availableStock", out var stock) ? new XElement("AvailableStock", stock.GetInt32().ToString(CultureInfo.InvariantCulture)) : null));
         return new XDocument(new XElement("listings", items)).ToString(SaveOptions.DisableFormatting);
     }

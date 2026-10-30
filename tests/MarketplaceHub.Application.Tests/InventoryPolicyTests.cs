@@ -93,27 +93,41 @@ public sealed class InventoryPolicyTests
         Assert.Equal(0m, cancelledAfterShipment);
     }
 
+    // Owner decision (30 Oct 2026): a line first read already shipped or delivered still takes its units from stock;
+    // before, its shipped units became the baseline and stock never moved (11 Trendyol lines on 28 and 30 Oct).
     [Fact]
-    public void FirstObservationOfHistoricalShipmentUsesExistingPhysicalStockAsBaseline()
+    public void FirstReadOfAShippedLineTakesItsUnitsFromStock()
     {
-        var baseline = OrderInventoryStockPolicy.InitialBaselineQuantity(0m, 1m);
-        var delta = OrderInventoryStockPolicy.OnHandDelta(
-            baseline,
-            receivedLedgerDelta: 0m,
-            targetCommittedQuantity: OrderInventoryStockPolicy.TargetCommittedQuantity(1m, 0m, 1m));
+        var baseline = OrderInventoryStockPolicy.InitialBaselineQuantity(0m);
+        var target = OrderInventoryStockPolicy.TargetCommittedQuantity(1m, 0m, 1m);
 
-        Assert.Equal(1m, baseline);
-        Assert.Equal(0m, delta);
+        Assert.Equal(0m, baseline);
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(-1m, 0m), OrderInventoryStockPolicy.Plan(baseline, 0m, 0m, target, onHand: 3m, negativeStockAllowed: false));
     }
 
     [Fact]
-    public void PartiallyShippedOrderConsumesOnlyStockNotAlreadyInTheBaseline()
+    public void PartiallyShippedLegacyLineConsumesOnlyStockNotAlreadyInTheBaseline()
     {
         var target = OrderInventoryStockPolicy.TargetCommittedQuantity(2m, 0m, 1m);
-        var baseline = OrderInventoryStockPolicy.InitialBaselineQuantity(1m, 1m);
+        var baseline = OrderInventoryStockPolicy.InitialBaselineQuantity(1m);
 
         Assert.Equal(2m, target);
-        Assert.Equal(-1m, OrderInventoryStockPolicy.OnHandDelta(baseline, 0m, target));
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(-1m, 0m), OrderInventoryStockPolicy.Plan(baseline, 0m, 0m, target, 5m, false));
+    }
+
+    // Owner decision (30 Oct 2026): no reservations. Stock short of the order gives what it has (never below zero), the
+    // rest is the line's shortfall; a cancellation releases the shortfall first and gives back only what was taken.
+    [Fact]
+    public void ShortStockTakesWhatItHasAndKeepsTheRestAsShortfall()
+    {
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(-1m, 2m), OrderInventoryStockPolicy.Plan(0m, 0m, 0m, 3m, onHand: 1m, negativeStockAllowed: false));
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(0m, 1m), OrderInventoryStockPolicy.Plan(0m, 0m, 0m, 1m, onHand: 0m, negativeStockAllowed: false));
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(-1m, 0m), OrderInventoryStockPolicy.Plan(0m, 0m, 0m, 1m, onHand: 0m, negativeStockAllowed: true));
+        // Read again: nothing more is taken, even after stock was refilled.
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(0m, 0m), OrderInventoryStockPolicy.Plan(0m, 2m, -1m, 3m, onHand: 10m, negativeStockAllowed: false));
+        // One unit cancelled: it comes off the shortfall; all cancelled: the one taken unit comes back.
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(0m, -1m), OrderInventoryStockPolicy.Plan(0m, 2m, -1m, 2m, onHand: 10m, negativeStockAllowed: false));
+        Assert.Equal(new OrderInventoryStockPolicy.StockMovement(1m, -2m), OrderInventoryStockPolicy.Plan(0m, 2m, -1m, 0m, onHand: 10m, negativeStockAllowed: false));
     }
 
     [Fact]

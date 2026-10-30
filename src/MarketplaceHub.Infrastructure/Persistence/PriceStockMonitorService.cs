@@ -116,10 +116,14 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
             policy.Enabled = false;
             policy.Version++;
         }
-        // A job already sending (leased) cannot be taken back; its submit checks the policies first and stops there.
-        var jobs = await db.IntegrationJobs
+        // Only the automatic pipeline stops: its dispatches, reconcile scans and automatic pushes not yet sent. A send
+        // started from the panel keeps its own gate (checked again when it goes), and a batch already submitted is polled
+        // to its end so its outcome and send log rows are recorded. A job already sending (leased) cannot be taken back;
+        // its submit checks the policies first and stops there.
+        var queued = await db.IntegrationJobs
             .Where(x => x.TenantId == tenantId && PipelineJobTypes.Contains(x.JobType) && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
+        var jobs = queued.Where(job => PriceStockEmergencyStopPolicy.Cancels(job.JobType, job.PayloadJson)).ToList();
         foreach (var job in jobs)
         {
             job.Status = JobStatus.Cancelled;
@@ -142,5 +146,23 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         });
         await db.SaveChangesAsync(cancellationToken);
         return new PriceStockEmergencyStopView(connectionsStopped, policies.Count, jobs.Count);
+    }
+}
+
+// Which queued price/stock jobs the emergency stop cancels: the automatic ones that have not reached the marketplace.
+internal static class PriceStockEmergencyStopPolicy
+{
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    public static bool Cancels(string jobType, string payloadJson)
+    {
+        // A dispatch and a reconcile scan only ever start automatic sends.
+        if (jobType is MarketplaceJobTypes.StockProjectionDispatch or MarketplaceJobTypes.StockReconciliation) return true;
+        if (jobType != MarketplaceJobTypes.PriceInventorySync) return false;
+        PriceInventoryJobPayload? payload;
+        try { payload = System.Text.Json.JsonSerializer.Deserialize<PriceInventoryJobPayload>(payloadJson, JsonOptions); }
+        catch (System.Text.Json.JsonException) { return false; }
+        // A job whose payload cannot be read is left to its own checks rather than guessed at.
+        return payload is { Automatic: true } && string.Equals(payload.Phase?.Trim(), "SUBMIT", StringComparison.OrdinalIgnoreCase);
     }
 }

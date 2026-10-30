@@ -391,13 +391,47 @@ public static class OrderInventoryStockPolicy
         return Math.Max(active, shipped);
     }
 
-    // Shipments recorded before order-time stock deduction already reduced
-    // physical stock. Treat them as the opening baseline, not as a new debit.
-    public static decimal InitialBaselineQuantity(decimal legacyShippedQuantity, decimal observedShippedQuantity)
+    // Shipments recorded before order-time stock deduction (ORDER_SHIPPED rows) already reduced physical stock: they are
+    // the opening baseline, not a new debit. Nothing else is: a line read for the first time takes its units from stock
+    // whatever its status, an order first read as shipped or delivered included (owner decision, 30 Oct 2026; before, a
+    // line first read shipped took its shipped units as baseline and never left stock).
+    public static decimal InitialBaselineQuantity(decimal legacyShippedQuantity)
     {
-        if (legacyShippedQuantity < 0 || observedShippedQuantity < 0)
-            throw new ArgumentOutOfRangeException(nameof(legacyShippedQuantity));
-        return Math.Max(legacyShippedQuantity, observedShippedQuantity);
+        if (legacyShippedQuantity < 0) throw new ArgumentOutOfRangeException(nameof(legacyShippedQuantity));
+        return legacyShippedQuantity;
+    }
+
+    // An order line's shortfall: the units it should have taken from stock when stock had none to give. A marker row of
+    // this type (no on-hand change) keeps them, so they are neither taken later nor given back by a cancellation.
+    public const string ShortfallMovementType = "ORDER_STOCK_SHORTFALL";
+
+    // The units a line counts as taken: its baseline, its shortfall and what its ORDER_RECEIVED rows took (negative deltas).
+    public static decimal Committed(decimal baselineQuantity, decimal shortfallQuantity, decimal receivedLedgerDelta) =>
+        Math.Max(0m, baselineQuantity + Math.Max(0m, shortfallQuantity) - receivedLedgerDelta);
+
+    public sealed record StockMovement(decimal OnHandDelta, decimal ShortfallDelta);
+
+    // Owner decision (30 Oct 2026), no reservations: an order takes its units from on-hand when read, never below zero
+    // unless the connection allows negative stock; what stock cannot give is the shortfall (reported only). When fewer
+    // units are owed (a cancellation) the shortfall goes first (it took nothing), then the taken units come back.
+    public static StockMovement Plan(decimal baselineQuantity, decimal shortfallQuantity, decimal receivedLedgerDelta, decimal targetCommittedQuantity, decimal onHand, bool negativeStockAllowed)
+    {
+        if (baselineQuantity < 0 || targetCommittedQuantity < 0) throw new ArgumentOutOfRangeException(nameof(baselineQuantity));
+        var shortfall = Math.Max(0m, shortfallQuantity);
+        var committed = Committed(baselineQuantity, shortfall, receivedLedgerDelta);
+        if (targetCommittedQuantity > committed)
+        {
+            var needed = targetCommittedQuantity - committed;
+            var taken = negativeStockAllowed ? needed : Math.Min(needed, Math.Max(0m, onHand));
+            return new(-taken, needed - taken);
+        }
+        if (targetCommittedQuantity < committed)
+        {
+            var released = committed - targetCommittedQuantity;
+            var fromShortfall = Math.Min(released, shortfall);
+            return new(released - fromShortfall, -fromShortfall);
+        }
+        return new(0m, 0m);
     }
 
     // Ledger deltas use the stock direction: negative means stock was consumed,
@@ -588,8 +622,10 @@ public static class StockProjectionOutboxPolicy
 
     // A price edit of an offer queues the same dispatch as a stock change; its key is the offer's price version, so a
     // later stock change of the variant (its own projection version) never takes the place of the price edit.
-    public static string PriceChangeDedupKey(Guid connectionId, Guid variantId, long priceVersion) =>
-        $"price-change:{connectionId:N}:{variantId:N}:p{priceVersion}";
+    // offerVersion: a save of the offer that changed no price (its safety stock, its status) is a change of its own, so
+    // the key names the offer's version too and a new save is never taken for an earlier dispatch of the same price.
+    public static string PriceChangeDedupKey(Guid connectionId, Guid variantId, long priceVersion, long? offerVersion = null) =>
+        offerVersion is { } version ? $"price-change:{connectionId:N}:{variantId:N}:p{priceVersion}:v{version}" : $"price-change:{connectionId:N}:{variantId:N}:p{priceVersion}";
 }
 
 // Owner decision A (30 Oct 2026): an automatic price/stock send needs the connection's master switch and both

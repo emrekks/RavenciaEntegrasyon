@@ -9,6 +9,26 @@ namespace MarketplaceHub.Application;
 // - PTT AVM refuses the same request within five minutes.
 // - Pazarama may answer a batch up to four hours late, so its batch is waited for eight.
 // The pipeline (outbox, dispatch gates, monitoring) may use these helpers; they read no state of their own.
+// What a save of a channel offer changed. Price: a value the outbound price is made of (list and sale price, currency,
+// VAT rate and inclusion, rounding); only that is a new price version and a price send. SafetyStock: the quantity sent
+// (available less safety stock) changed, a stock send. Status: the offer was switched on or off.
+public sealed record ChannelOfferChange(bool Price, bool SafetyStock, bool Status)
+{
+    public bool Any => Price || SafetyStock || Status;
+}
+
+public static class ChannelOfferChangePolicy
+{
+    public static ChannelOfferChange Classify(ChannelOffer offer, decimal listPrice, decimal salePrice, string currency, decimal vatRate, string vatInclusion, string roundingMode, decimal safetyStock, string status) => new(
+        offer.ListPrice != listPrice || offer.SalePrice != salePrice
+            || !string.Equals(offer.Currency?.Trim(), currency, StringComparison.OrdinalIgnoreCase)
+            || offer.VatRate != vatRate
+            || !string.Equals(offer.VatInclusion?.Trim(), vatInclusion, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(offer.RoundingMode?.Trim(), roundingMode, StringComparison.OrdinalIgnoreCase),
+        offer.SafetyStock != safetyStock,
+        !string.Equals(offer.Status, status, StringComparison.Ordinal));
+}
+
 public static class PriceInventorySendPolicy
 {
     public static readonly TimeSpan DefaultPollDeadline = TimeSpan.FromHours(4);
@@ -63,6 +83,15 @@ public static class PriceInventorySendPolicy
         }
         offer.LastSentAt = sentAt.ToUniversalTime();
     }
+
+    // Whether a polled line's stock still is the offer's current one: the same stock projection and, when the line names
+    // it, the same safety stock (a safety stock edit clears the stock mark; the answer of an older send must not set it
+    // back). A line queued before lines carried the safety stock is judged by the projection alone.
+    public static bool StockCurrent(PriceInventoryPushLine line, long projectionVersion, decimal safetyStock) =>
+        line.ProjectionVersion == projectionVersion && (line.SafetyStock is null || line.SafetyStock == safetyStock);
+
+    // Whether a polled line's price still is the offer's current one.
+    public static bool PriceCurrent(PriceInventoryPushLine line, long priceVersion) => line.PriceVersion == priceVersion;
 
     public static void ClearSent(ChannelOffer offer)
     {

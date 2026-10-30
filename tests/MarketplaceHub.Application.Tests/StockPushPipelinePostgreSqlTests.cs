@@ -60,7 +60,7 @@ public sealed class StockPushPipelinePostgreSqlTests(PostgreSqlTenantIsolationFi
         var dispatches = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.StockProjectionDispatch).ToListAsync();
         var dispatch = Assert.Single(dispatches);
         Assert.Equal(open.Id, dispatch.ConnectionId);
-        Assert.Equal(StockProjectionOutboxPolicy.PriceChangeDedupKey(open.Id, variant.Id, 2), dispatch.JobDedupKey);
+        Assert.Equal(StockProjectionOutboxPolicy.PriceChangeDedupKey(open.Id, variant.Id, 2, 2), dispatch.JobDedupKey);
     }
 
     // B: switching the automatic price and stock writes on marks every offer of the connection as sent at its current
