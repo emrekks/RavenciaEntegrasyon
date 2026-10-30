@@ -453,6 +453,61 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         Assert.False(await db.ChannelOffers.AnyAsync(offer => offer.TenantId == tenant.Id));
     }
 
+    // Toplu KDV Ata: the selected cards take the rate and KDV Dahil mi; a card that already has them is not touched,
+    // an existing marketplace offer keeps its own VAT, and another workspace's card cannot be reached.
+    [PostgreSqlFact]
+    public async Task BulkVat_SetsTheCardsVatAndLeavesOffersAndOtherWorkspacesAlone()
+    {
+        var tenant = NewTenant("bulk-vat");
+        var otherTenant = NewTenant("bulk-vat-other");
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Bulk VAT test", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", Version = 1 };
+        Product NewProduct(Guid tenantId, string title, decimal? vatRate = null, string? vatInclusion = null) =>
+            new() { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = title, Description = "Bulk VAT test", VatRate = vatRate, VatInclusion = vatInclusion, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var emptyCard = NewProduct(tenant.Id, "Card without VAT");
+        var otherRateCard = NewProduct(tenant.Id, "Card with 20", 20m, "EXCLUDED");
+        var sameCard = NewProduct(tenant.Id, "Card already at 10", 10m, "INCLUDED");
+        var foreignCard = NewProduct(otherTenant.Id, "Another workspace's card", 20m, "INCLUDED");
+        var sku = $"VAT-{Guid.NewGuid():N}";
+        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = otherRateCard.Id, SortOrder = 0, Sku = sku, SkuNormalized = sku, OptionSignature = "Renk=Test", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 120m, SalePrice = 100m, Currency = "TRY", VatRate = 20m, VatInclusion = "EXCLUDED", RoundingMode = "HALF_EVEN", SafetyStock = 0, Status = "ACTIVE", PriceVersion = 1, Version = 1 };
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.AddRange(tenant, otherTenant);
+        db.PlatformConnections.Add(connection);
+        db.Products.AddRange(emptyCard, otherRateCard, sameCard, foreignCard);
+        db.ProductVariants.Add(variant);
+        db.ChannelOffers.Add(offer);
+        await db.SaveChangesAsync();
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+
+        var result = await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id, otherRateCard.Id, sameCard.Id, emptyCard.Id], 10m, " included "), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(2, result.Value!.UpdatedCount);
+        Assert.Equal(1, result.Value.UnchangedCount);
+        db.ChangeTracker.Clear();
+        var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.All(cards.Values, card => { Assert.Equal(10m, card.VatRate); Assert.Equal("INCLUDED", card.VatInclusion); });
+        Assert.Equal(2, cards[emptyCard.Id].Version);
+        Assert.Equal(2, cards[otherRateCard.Id].Version);
+        Assert.Equal(1, cards[sameCard.Id].Version);
+        var storedOffer = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offer.Id);
+        Assert.Equal(20m, storedOffer.VatRate);
+        Assert.Equal("EXCLUDED", storedOffer.VatInclusion);
+        Assert.Equal(1, storedOffer.PriceVersion);
+
+        var foreign = await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id, foreignCard.Id], 1m, "EXCLUDED"), CancellationToken.None);
+        Assert.Equal("BULK_PRODUCT_NOT_FOUND", foreign.Error?.Code);
+        Assert.Equal(20m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == foreignCard.Id)).VatRate);
+        Assert.Equal(10m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == emptyCard.Id)).VatRate);
+
+        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], null, "INCLUDED"), CancellationToken.None)).Error?.Code);
+        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], 101m, "INCLUDED"), CancellationToken.None)).Error?.Code);
+        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], 10m, "SOMETIMES"), CancellationToken.None)).Error?.Code);
+        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], 10m, null), CancellationToken.None)).Error?.Code);
+        Assert.Equal("BULK_PRODUCT_LIMIT", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([], 10m, "INCLUDED"), CancellationToken.None)).Error?.Code);
+    }
+
     [PostgreSqlFact]
     public async Task ProductViews_ReadAVariantTheMarketplaceNoLongerKnowsAsMissingAndSendItAgain()
     {
