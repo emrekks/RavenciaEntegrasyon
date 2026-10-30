@@ -156,8 +156,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync or MarketplaceJobTypes.PttAvmReferenceSync => await SyncReferenceJob(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
-                    MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
-                    MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
+                    MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync => await SyncOrdersAndMatchLines(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
+                    MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderRecoverySync => await SyncOrdersAndMatchLines(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync or MarketplaceJobTypes.PttAvmOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => connectionState?.PlatformCode == "TRENDYOL"
                         && await ReconcileTrendyolCargoInfo(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -3230,6 +3230,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private const string HepsiburadaPackageSyncStateVersion = "hepsiburada-packages-v2";
     private sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
+
+    // A finished order read also matches the connection's lines that still have no panel variant
+    // (RematchUnmatchedOrderLines): the variant or its link may have been created after the line was read.
+    private async Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
+    {
+        var synced = await SyncOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
+        if (synced) await RematchUnmatchedOrderLines(tenantId, connectionId, cancellationToken);
+        return synced;
+    }
 
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
@@ -8909,8 +8918,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         public Dictionary<Guid, Dictionary<string, ShipmentPackage>> PackagesByOrder { get; } = [];
         public Dictionary<Guid, HashSet<string>> EventIdsByOrder { get; } = [];
         public Dictionary<string, PackageLineAllocation> AllocationsByKey { get; } = new(StringComparer.Ordinal);
-        public Dictionary<string, Guid> VariantIdsByKey { get; } = new(StringComparer.Ordinal);
+        public OrderLineVariantCandidates VariantCandidates { get; set; } = OrderLineVariantCandidates.Empty;
         public List<(OrderLine Line, DateTimeOffset ModifiedAt)> ReservationSources { get; } = [];
+        // Lines read before that found their variant only now (OrderLineLateMatchStockPolicy).
+        public List<OrderLine> LateMatchedLines { get; } = [];
     }
 
     private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
@@ -9011,9 +9022,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var group in history.GroupBy(x => x.OrderId)) batch.EventIdsByOrder[group.Key] = group.Select(x => x.SourceEventId).ToHashSet(StringComparer.Ordinal);
         }
 
-        var variantIds = await ResolveOrderLineVariantIds(tenantId, connectionId, remotes.SelectMany(x => x.Lines).ToList(), cancellationToken);
-        foreach (var pair in variantIds) batch.VariantIdsByKey[pair.Key] = pair.Value;
+        batch.VariantCandidates = await LoadOrderLineVariantCandidates(tenantId, connectionId, OrderLineCodesOf(platformCode, remotes.SelectMany(x => x.Lines)), cancellationToken);
         foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false, persistFinancialObservations: isShopify);
+        await AdoptLateMatchedLineStock(tenantId, connectionId, batch.LateMatchedLines, cancellationToken);
         await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Unchanged && !trackedBefore.Contains(entry.Entity)).ToList())
@@ -9196,7 +9207,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var allocationsByKey = batch is not null
             ? batch.AllocationsByKey.Where(x => packageIds.Contains(x.Value.PackageId)).ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
             : (await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken)).ToDictionary(x => AllocationKey(x.PackageId, x.OrderLineId, x.SourceEventId), StringComparer.Ordinal);
-        var variantIdsByKey = batch?.VariantIdsByKey ?? await ResolveOrderLineVariantIds(tenantId, connectionId, remote.Lines, cancellationToken);
+        var variantCandidates = batch?.VariantCandidates ?? await LoadOrderLineVariantCandidates(tenantId, connectionId, OrderLineCodesOf(platformCode, remote.Lines), cancellationToken);
+        var lateMatchedLines = batch?.LateMatchedLines ?? [];
         if (batch is not null)
         {
             batch.LinesByOrder[order.Id] = existingLines;
@@ -9214,13 +9226,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") line = linesBySnapshot.GetValueOrDefault(remoteLine.SourceSnapshotJson);
             if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); existingLines.Add(line); telemetryInsertedCount++; }
 
-            if (line.VariantId is null)
+            if (line.VariantId is null
+                && variantCandidates.Match(OrderLineVariantMatcher.Codes(platformCode, remoteLine.Sku, remoteLine.Barcode, remoteLine.SourceSnapshotJson)).VariantId is { } matchedVariantId)
             {
-                var barcodeKey = VariantLookupKey(remoteLine.Barcode, true);
-                var skuKey = VariantLookupKey(remoteLine.Sku, false);
-                line.VariantId = barcodeKey is not null && variantIdsByKey.TryGetValue(barcodeKey, out var barcodeVariant)
-                    ? barcodeVariant
-                    : skuKey is not null && variantIdsByKey.TryGetValue(skuKey, out var skuVariant) ? skuVariant : null;
+                line.VariantId = matchedVariantId;
+                // A line stored by an earlier read takes its stock as a late match (OrderLineLateMatchStockPolicy).
+                if (db.Entry(line).State != EntityState.Added) lateMatchedLines.Add(line);
             }
             var orderedQuantity = db.Entry(line).State == EntityState.Added
                 ? remoteLine.Quantity
@@ -9598,7 +9609,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // Every marketplace's order moves panel stock, Shopify's included: a sale on one channel lowers
         // the stock the others are sent.
         if (batch is null)
+        {
+            await AdoptLateMatchedLineStock(tenantId, connectionId, lateMatchedLines, cancellationToken);
             await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
+        }
         else
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
@@ -10049,84 +10063,217 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         state.Version++;
     }
 
-    private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
+    // The variant links and panel variants an order read's lines may name, read once per read.
+    private sealed record OrderLineVariantCandidates(IReadOnlyCollection<OrderLineLinkCandidate> Links, IReadOnlyCollection<OrderLinePanelCandidate> Variants)
     {
-        var result = await ResolveOrderLineVariantIdsByPanelCodes(tenantId, remoteLines, cancellationToken);
-        // The marketplace's own codes on this connection's variant links come first: a seller need not use the
-        // panel's barcode or stock code on every marketplace, and a code the link names is this marketplace's.
-        var codes = remoteLines.SelectMany(line => new[] { line.Barcode, line.Sku })
-            .Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!.Trim()).Distinct(StringComparer.Ordinal).ToArray();
-        if (codes.Length == 0) return result;
-        var links = await db.MarketplaceVariantLinks.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
-                && ((x.ExternalBarcode != null && codes.Contains(x.ExternalBarcode)) || (x.ExternalSku != null && codes.Contains(x.ExternalSku)) || codes.Contains(x.ExternalId)))
-            .OrderBy(x => x.Id)
+        public static readonly OrderLineVariantCandidates Empty = new([], []);
+        public OrderLineVariantMatch Match(OrderLineCodes codes) => OrderLineVariantMatcher.Match(codes, Links, Variants);
+    }
+
+    private static List<OrderLineCodes> OrderLineCodesOf(string? platformCode, IEnumerable<RemoteOrderLine> lines) =>
+        lines.Select(line => OrderLineVariantMatcher.Codes(platformCode, line.Sku, line.Barcode, line.SourceSnapshotJson)).ToList();
+
+    private async Task<OrderLineVariantCandidates> LoadOrderLineVariantCandidates(Guid tenantId, Guid connectionId, IReadOnlyCollection<OrderLineCodes> lines, CancellationToken cancellationToken)
+    {
+        // Links are compared trimmed and upper-cased (OrderLineVariantMatcher.LinkKey); panel keys in every stored
+        // form, since a stored key may still be in a legacy form until the variant is saved again (K1).
+        var linkCodes = OrderLineVariantMatcher.LinkLookupCodes(lines);
+        var panelKeys = OrderLineVariantMatcher.PanelLookupKeys(lines);
+        if (linkCodes.Length == 0 && panelKeys.Length == 0) return OrderLineVariantCandidates.Empty;
+        List<OrderLineLinkCandidate> links = linkCodes.Length == 0
+            ? []
+            : await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                    && ((x.ExternalBarcode != null && linkCodes.Contains(x.ExternalBarcode.Trim().ToUpper()))
+                        || (x.ExternalSku != null && linkCodes.Contains(x.ExternalSku.Trim().ToUpper()))
+                        || linkCodes.Contains(x.ExternalId.Trim().ToUpper())))
+                .OrderBy(x => x.Id)
+                .Select(x => new OrderLineLinkCandidate(x.VariantId, x.ExternalId, x.ExternalBarcode, x.ExternalSku))
+                .ToListAsync(cancellationToken);
+        List<OrderLinePanelCandidate> variants = panelKeys.Length == 0
+            ? []
+            : await db.ProductVariants.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && (panelKeys.Contains(x.SkuNormalized) || (x.BarcodeNormalized != null && panelKeys.Contains(x.BarcodeNormalized))))
+                .OrderBy(x => x.Id)
+                .Select(x => new OrderLinePanelCandidate(x.Id, x.SkuNormalized, x.BarcodeNormalized))
+                .ToListAsync(cancellationToken);
+        return new OrderLineVariantCandidates(links, variants);
+    }
+
+    // A line that finds its variant only after it was stored (OrderLineLateMatchStockPolicy): when its order has
+    // already shipped, been delivered, returned or cancelled, the line's stock baseline is what it commits, so its first
+    // projection takes nothing from stock and later changes move stock from there. A line that already has stock
+    // movements, a reservation or the carry rows of a reset under its marketplace ids is left to ProjectOrderReservations.
+    private async Task AdoptLateMatchedLineStock(Guid tenantId, Guid connectionId, IReadOnlyCollection<OrderLine> lines, CancellationToken cancellationToken)
+    {
+        var candidates = lines.Where(line => line.VariantId is not null).DistinctBy(line => line.Id).ToList();
+        if (candidates.Count == 0) return;
+        var orderIds = candidates.Select(line => line.OrderId).Distinct().ToArray();
+        var orders = db.Orders.Local.Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id))
+            .ToDictionary(x => x.Id, x => (x.DerivedStatus, x.ExternalOrderId));
+        var unloaded = orderIds.Where(id => !orders.ContainsKey(id)).ToArray();
+        if (unloaded.Length > 0)
+            foreach (var row in await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && unloaded.Contains(x.Id)).Select(x => new { x.Id, x.DerivedStatus, x.ExternalOrderId }).ToListAsync(cancellationToken))
+                orders[row.Id] = (row.DerivedStatus, row.ExternalOrderId);
+        var settled = candidates.Where(line => orders.TryGetValue(line.OrderId, out var order) && OrderLineLateMatchStockPolicy.OrderHasSettled(order.DerivedStatus)).ToList();
+        if (settled.Count == 0) return;
+        var variantIds = settled.Select(line => line.VariantId!.Value).Distinct().ToArray();
+        var itemByVariant = (await db.InventoryItems.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+                .Select(x => new { x.Id, x.VariantId })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(x => x.VariantId, x => x.Id);
+        foreach (var item in db.InventoryItems.Local.Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))) itemByVariant.TryAdd(item.VariantId, item.Id);
+        var sourceKeys = settled.ToDictionary(line => line.Id, line => new[] { line.Id.ToString("D"), OrderInventoryStockPolicy.ResetCarryKey(connectionId, orders[line.OrderId].ExternalOrderId, line.ExternalLineId) });
+        var sourceIds = sourceKeys.Values.SelectMany(keys => keys).Distinct(StringComparer.Ordinal).ToArray();
+        var recorded = (await db.StockLedgerEntries.AsNoTracking().Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && sourceIds.Contains(x.SourceId)).Select(x => x.SourceId).Distinct().ToListAsync(cancellationToken))
+            .Concat(await db.StockReservations.AsNoTracking().Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && sourceIds.Contains(x.SourceId)).Select(x => x.SourceId).Distinct().ToListAsync(cancellationToken))
+            .Concat(db.StockLedgerEntries.Local.Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && sourceIds.Contains(x.SourceId)).Select(x => x.SourceId))
+            .ToHashSet(StringComparer.Ordinal);
+        var now = timeProvider.GetUtcNow();
+        foreach (var line in settled)
+        {
+            if (!itemByVariant.TryGetValue(line.VariantId!.Value, out var itemId) || sourceKeys[line.Id].Any(recorded.Contains)) continue;
+            var sourceId = line.Id.ToString("D");
+            db.StockLedgerEntries.Add(new StockLedgerEntry
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                InventoryItemId = itemId,
+                MovementType = "ORDER_STOCK_BASELINE",
+                QuantityDelta = OrderLineLateMatchStockPolicy.AdoptedBaseline(line.OrderedQuantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity),
+                SourceType = "ORDER_LINE",
+                SourceId = sourceId,
+                SourceEventId = $"baseline:{sourceId}",
+                IdempotencyKey = $"order-stock-baseline:{itemId:N}:{sourceId}",
+                OccurredAt = now,
+                RecordedAt = now,
+                CorrelationId = $"order:{line.OrderId:N}"
+            });
+            recorded.Add(sourceId);
+        }
+    }
+
+    internal const string UnmatchedOrderLineIssueCode = "ORDER_LINE_VARIANT_UNMATCHED";
+    private const int OrderLineRematchBatchSize = 2000;
+
+    internal sealed record OrderLineRematchOutcome(int Examined, int Matched, int Unmatched);
+
+    // An order line is matched when a read stores it, and a delivered order is rarely read again: a line imported
+    // before its panel variant or variant link existed (a catalog built after the orders, a variant added later) would
+    // stay without stock effect for good. Every order sync of the connection matches its unmatched lines again against
+    // the panel as it is now (the same OrderLineVariantMatcher), takes their stock like a late read would
+    // (OrderLineLateMatchStockPolicy, ProjectOrderReservations) and keeps one open issue per code no variant answers,
+    // so the owner can create or map it. Idempotent: a matched line is never looked at again.
+    internal async Task<OrderLineRematchOutcome> RematchUnmatchedOrderLines(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var platformCode = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (platformCode is null) return new(0, 0, 0);
+        var rows = await (from line in db.OrderLines
+                          join order in db.Orders on new { line.TenantId, line.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                          where line.TenantId == tenantId && order.ConnectionId == connectionId && line.VariantId == null
+                          orderby line.Id
+                          select new { Line = line, order.OrderNumber, order.LastRemoteModifiedAt })
+            .Take(OrderLineRematchBatchSize)
             .ToListAsync(cancellationToken);
-        if (links.Count == 0) return result;
-        foreach (var line in remoteLines)
+        var issuePrefix = $"order-line-variant-unmatched:{connectionId:N}:";
+        var codes = rows.ToDictionary(row => row.Line.Id, row => OrderLineVariantMatcher.Codes(platformCode, row.Line.Sku, row.Line.Barcode, row.Line.SourceSnapshotJson));
+        var candidates = rows.Count == 0 ? OrderLineVariantCandidates.Empty : await LoadOrderLineVariantCandidates(tenantId, connectionId, codes.Values, cancellationToken);
+        var matched = new List<(OrderLine Line, DateTimeOffset ModifiedAt)>();
+        var unmatched = new List<(OrderLine Line, string OrderNumber, OrderLineMatchKind Kind)>();
+        foreach (var row in rows)
         {
-            var barcode = line.Barcode?.Trim();
-            var sku = line.Sku?.Trim();
-            var byBarcode = string.IsNullOrEmpty(barcode) ? null : OrderLineLink(links, barcode, preferBarcode: true);
-            var bySku = string.IsNullOrEmpty(sku) ? null : OrderLineLink(links, sku, preferBarcode: false);
-            if (byBarcode is not null && VariantLookupKey(barcode, true) is { } barcodeKey) result[barcodeKey] = byBarcode.Value;
-            if (bySku is not null && VariantLookupKey(sku, false) is { } skuKey) result[skuKey] = bySku.Value;
+            var match = candidates.Match(codes[row.Line.Id]);
+            if (match.VariantId is { } variantId)
+            {
+                row.Line.VariantId = variantId;
+                row.Line.Version++;
+                matched.Add((row.Line, row.LastRemoteModifiedAt));
+            }
+            else unmatched.Add((row.Line, row.OrderNumber, match.Kind));
         }
-        return result;
+        if (matched.Count > 0)
+        {
+            await AdoptLateMatchedLineStock(tenantId, connectionId, matched.Select(x => x.Line).ToList(), cancellationToken);
+            await ProjectOrderReservations(tenantId, connectionId, matched, cancellationToken);
+        }
+
+        var openKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var group in unmatched.GroupBy(x => UnmatchedOrderLineIssueKey(codes[x.Line.Id]), StringComparer.Ordinal))
+        {
+            var key = issuePrefix + group.Key;
+            openKeys.Add(key);
+            await RecordUnmatchedOrderLineIssue(tenantId, key, UnmatchedOrderLineSummary(platformCode, codes[group.First().Line.Id], group.First().Line.TitleSnapshot, group.Select(x => x.OrderNumber).ToList(), group.Any(x => x.Kind == OrderLineMatchKind.Ambiguous)), cancellationToken);
+        }
+        // Issues of codes that now match (or whose lines are gone) are resolved; with more unmatched lines than one
+        // pass reads, only the codes this pass matched are.
+        var resolvable = rows.Count < OrderLineRematchBatchSize
+            ? await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Code == UnmatchedOrderLineIssueCode && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(issuePrefix)).ToListAsync(cancellationToken)
+            : await QueryResolvableIssues(matched.Select(x => issuePrefix + UnmatchedOrderLineIssueKey(codes[x.Line.Id])).Distinct(StringComparer.Ordinal).ToArray());
+        var now = timeProvider.GetUtcNow();
+        foreach (var issue in resolvable.Where(issue => !openKeys.Contains(issue.DedupeKey)))
+        {
+            issue.Status = IssueStatus.Resolved;
+            issue.ResolvedAt = now;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return new(rows.Count, matched.Count, unmatched.Count);
+
+        Task<List<OperationalIssue>> QueryResolvableIssues(string[] keys) => keys.Length == 0
+            ? Task.FromResult(new List<OperationalIssue>())
+            : db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && keys.Contains(x.DedupeKey)).ToListAsync(cancellationToken);
     }
 
-    // The link whose barcode (for a line's barcode) or stock code (for its stock code) is the code, else whose id
-    // is; a code two links share names no variant.
-    private static Guid? OrderLineLink(IReadOnlyList<MarketplaceVariantLink> links, string code, bool preferBarcode)
+    private static string UnmatchedOrderLineIssueKey(OrderLineCodes codes) =>
+        codes.DisplayCode is { } code && CatalogKeyNormalizer.Key(code, 120) is { Length: > 0 } key ? key : "-";
+
+    internal static string UnmatchedOrderLineSummary(string platformCode, OrderLineCodes codes, string? title, IReadOnlyList<string> orderNumbers, bool ambiguous)
     {
-        foreach (var match in new Func<MarketplaceVariantLink, bool>[]
-                 {
-                     link => string.Equals(preferBarcode ? link.ExternalBarcode : link.ExternalSku, code, StringComparison.Ordinal),
-                     link => string.Equals(preferBarcode ? link.ExternalSku : link.ExternalBarcode, code, StringComparison.Ordinal),
-                     link => string.Equals(link.ExternalId, code, StringComparison.Ordinal)
-                 })
+        var numbers = orderNumbers.Where(number => !string.IsNullOrWhiteSpace(number)).Distinct(StringComparer.Ordinal).ToList();
+        var orders = numbers.Count <= 5 ? string.Join(", ", numbers) : $"{string.Join(", ", numbers.Take(5))} ve {numbers.Count - 5} sipariş daha";
+        var code = codes.DisplayCode is { } displayCode ? $"{displayCode} kodlu" : "kodsuz";
+        var product = string.IsNullOrWhiteSpace(title) ? "" : $" ({title.Trim()})";
+        var marketplace = platformCode switch
         {
-            var variants = links.Where(match).Select(link => link.VariantId).Distinct().ToList();
-            if (variants.Count == 1) return variants[0];
-            if (variants.Count > 1) return null;
-        }
-        return null;
+            "TRENDYOL" => "Trendyol",
+            "HEPSIBURADA" => "Hepsiburada",
+            "N11" => "n11",
+            "PAZARAMA" => "Pazarama",
+            "PTTAVM" => "PTT AVM",
+            "SHOPIFY" => "Shopify",
+            _ => platformCode
+        };
+        return ambiguous
+            ? $"Eşleşmeyen sipariş satırı: {marketplace} siparişi {orders} içindeki {code} ürün{product} paneldeki birden fazla varyanta uyuyor; hangisi olduğu belirsiz olduğu için satır stoğu etkilemiyor. Kodların bir varyanta özgü olmasını sağlayın."
+            : $"Eşleşmeyen sipariş satırı: {marketplace} siparişi {orders} içindeki {code} ürün{product} paneldeki hiçbir varyanta eşlenemedi; satır stoğu etkilemiyor. Bu kodla bir varyant oluşturun ya da pazaryeri ürününü bir varyanta eşleyin.";
     }
 
-    private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIdsByPanelCodes(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
+    // One issue per unmatched code of a connection. A pass that finds the same lines again only keeps it alive (the
+    // retention resolves issues not seen for days) at most hourly; a new order with the code, or an issue resolved
+    // meanwhile, reopens it.
+    private async Task RecordUnmatchedOrderLineIssue(Guid tenantId, string key, string summary, CancellationToken cancellationToken)
     {
-        // Stored keys may still be in a legacy form ("ABC_01" instead of "ABC-01") until the variant is saved
-        // again, so query every stored form like the other catalog lookups (K1). The result is keyed by the
-        // shared key (Key is idempotent over the legacy forms), and a row already stored under the shared key
-        // wins over a legacy row of the same code.
-        var skuKeys = remoteLines.SelectMany(line => CatalogLookupKeys(line.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
-        var barcodeKeys = remoteLines.SelectMany(line => CatalogLookupKeys(line.Barcode, 160)).Distinct(StringComparer.Ordinal).ToArray();
-        if (skuKeys.Length == 0 && barcodeKeys.Length == 0) return new Dictionary<string, Guid>(StringComparer.Ordinal);
-        var rows = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (skuKeys.Contains(x.SkuNormalized) || barcodeKeys.Contains(x.BarcodeNormalized)))
-            .OrderBy(x => x.Id)
-            .ToListAsync(cancellationToken);
-        var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        foreach (var row in rows.OrderBy(x => IsSharedCatalogKey(x.SkuNormalized) ? 0 : 1).ThenBy(x => x.Id))
+        var now = timeProvider.GetUtcNow();
+        var issue = db.OperationalIssues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.DedupeKey == key)
+            ?? await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken);
+        if (issue is null)
         {
-            var skuKey = VariantLookupKey(row.SkuNormalized, false);
-            if (skuKey is not null) result.TryAdd(skuKey, row.Id);
+            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = UnmatchedOrderLineIssueCode, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
+            return;
         }
-        foreach (var row in rows.OrderBy(x => IsSharedCatalogKey(x.BarcodeNormalized) ? 0 : 1).ThenBy(x => x.Id))
+        if (issue.Status == IssueStatus.Resolved || !string.Equals(issue.Summary, summary, StringComparison.Ordinal))
         {
-            var barcodeKey = VariantLookupKey(row.BarcodeNormalized, true);
-            if (barcodeKey is not null) result.TryAdd(barcodeKey, row.Id);
+            issue.Status = IssueStatus.Open;
+            issue.ResolvedAt = null;
+            issue.Code = UnmatchedOrderLineIssueCode;
+            issue.Summary = summary;
+            issue.LastSeenAt = now;
+            issue.OccurrenceCount++;
         }
-        return result;
-    }
-
-    private static bool IsSharedCatalogKey(string? stored) =>
-        !string.IsNullOrEmpty(stored) && string.Equals(stored, NormalizeCatalogKey(stored, 160), StringComparison.Ordinal);
-
-    private static string? VariantLookupKey(string? value, bool barcode)
-    {
-        var normalized = NormalizeCatalogKey(value, 160);
-        return string.IsNullOrWhiteSpace(normalized) ? null : (barcode ? "b:" : "s:") + normalized;
+        else if (now - issue.LastSeenAt >= TimeSpan.FromHours(1)) issue.LastSeenAt = now;
     }
 
     private static string AllocationKey(Guid packageId, Guid orderLineId, string sourceEventId) => $"{packageId:D}:{orderLineId:D}:{sourceEventId}";

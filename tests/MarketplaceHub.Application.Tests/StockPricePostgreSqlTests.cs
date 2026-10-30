@@ -1041,6 +1041,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var other = NewConnection(tenant, "PAZARAMA");
         var (product, linked) = NewVariant(tenant, "PANEL-1", "8690000000134");
         var panelMatch = NewVariant(tenant, "N11-STOK-9", "8690000000141", product.Id).Variant;
+        var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, ExternalOrderId = "n11-link-codes", OrderNumber = "n11-link-codes", Currency = "TRY", OrderedAt = fixture.Now, LastRemoteModifiedAt = fixture.Now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = "NEW", CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        OrderLine Line(string externalLineId, string sku, string barcode) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = externalLineId, Sku = sku, Barcode = barcode, TitleSnapshot = "Ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 20m, RawStatus = "Created" };
+        var linkedLine = Line("line-1", "N11-STOK-9", "N11-BARKOD-9");
+        var panelLine = Line("line-2", "PANEL-ONLY", "8690000000141");
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
@@ -1050,20 +1054,20 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             seed.MarketplaceVariantLinks.AddRange(
                 new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = linked.Id, ExternalId = "N11-STOK-9", ExternalBarcode = "N11-BARKOD-9", ExternalSku = "N11-STOK-9" },
                 new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = other.Id, VariantId = panelMatch.Id, ExternalId = "N11-BARKOD-9" });
+            seed.Orders.Add(order);
+            seed.OrderLines.AddRange(linkedLine, panelLine);
             await seed.SaveChangesAsync();
         }
 
         await using var db = fixture.CreateContext();
         var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-        var resolve = typeof(MarketplaceJobProcessor).GetMethod("ResolveOrderLineVariantIds", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var lines = new List<RemoteOrderLine> { new("line-1", "N11-STOK-9", "N11-BARKOD-9", "Ürün", 1m, 100m, 20m, "Created"), new("line-2", "PANEL-ONLY", "8690000000141", "Ürün", 1m, 100m, 20m, "Created") };
-        var keys = await (Task<Dictionary<string, Guid>>)resolve.Invoke(processor, [tenant.Id, n11.Id, lines, CancellationToken.None])!;
+        Assert.Equal(2, (await processor.RematchUnmatchedOrderLines(tenant.Id, n11.Id, CancellationToken.None)).Matched);
 
+        await using var verify = fixture.CreateContext();
         // The n11 stock code is also a panel SKU of another variant; the n11 link wins on its own connection.
-        Assert.Equal(linked.Id, keys["s:N11-STOK-9"]);
-        Assert.Equal(linked.Id, keys["b:N11-BARKOD-9"]);
+        Assert.Equal(linked.Id, (await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == linkedLine.Id)).VariantId);
         // A code no link of this connection names still resolves by the panel's codes.
-        Assert.Equal(panelMatch.Id, keys["b:8690000000141"]);
+        Assert.Equal(panelMatch.Id, (await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == panelLine.Id)).VariantId);
     }
 
     // K6: an order line that cannot take its units from physical stock keeps them reserved, also under a
