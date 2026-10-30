@@ -1059,3 +1059,8 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 /* The bulk publish footer's "Tümünü Seç": a quiet outline button beside the purple Yayınla. */
 .app-shell.stitch-shell main .publish-selection-footer > button.publish-select-all { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 14px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-weight: 600; }
 .app-shell.stitch-shell main .publish-selection-footer > button.publish-select-all:hover:not(:disabled) { background: var(--rv-color-surface-raised); }
+
+/* "Yayın Kuyruğunda", "Trendyol'a gönderildi"…: the status pill wraps onto a second line instead of being cut off by the
+   refresh and stop buttons beside it; those keep their size. */
+.app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status { flex: 0 1 auto; min-width: 0; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; text-align: left; }
+.app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-tracking-action { flex: none; }
