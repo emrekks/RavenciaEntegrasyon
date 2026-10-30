@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { Fragment, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
@@ -267,6 +267,34 @@ export function filterQuery(filter: TariffFilter): Record<string, string> {
   return query
 }
 
+// A filter card's field as the other filter cards draw it: its label above the input or list.
+export function FilterField({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return <label className={['commission-field', className].filter(Boolean).join(' ')}><span>{label}</span>{children}</label>
+}
+
+// A range field: one label over the least and the most value, each still named on its own for a screen reader.
+export function FilterRange({ label, inputMode, min, max, onMin, onMax, minLabel, maxLabel }: {
+  label: string; inputMode: 'numeric' | 'decimal'; min: string; max: string
+  onMin: (event: ChangeEvent<HTMLInputElement>) => void; onMax: (event: ChangeEvent<HTMLInputElement>) => void; minLabel: string; maxLabel: string
+}) {
+  return <div className="commission-field" role="group" aria-label={label}>
+    <span>{label}</span>
+    <span className="commission-filter-range">
+      <input type="text" inputMode={inputMode} placeholder="Min" value={min} onChange={onMin} aria-label={minLabel} />
+      <i aria-hidden="true">–</i>
+      <input type="text" inputMode={inputMode} placeholder="Max" value={max} onChange={onMax} aria-label={maxLabel} />
+    </span>
+  </div>
+}
+
+// Temizle and Filtrele, closing the card on the right as on the other filter cards.
+export function FilterActions({ onClear }: { onClear: () => void }) {
+  return <div className="commission-filter-actions">
+    <button type="button" className="secondary commission-filter-clear" onClick={onClear}>Temizle</button>
+    <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
+  </div>
+}
+
 // Which products the list shows: the fields are typed first and applied with Filtrele (Enter too); Temizle
 // empties them and shows every product again.
 function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets: { categories: string[]; brands: string[] } | undefined; onApply: (filter: TariffFilter) => void }) {
@@ -276,38 +304,25 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
   const clear = () => { setDraft(noFilter); onApply(noFilter) }
   const noFacts = facets !== undefined && facets.categories.length === 0 && facets.brands.length === 0
   return <form className="commission-filters" onSubmit={apply} aria-label="Ürün filtreleri">
-    <input type="search" placeholder="Ürün adı" value={draft.name} onChange={set('name')} aria-label="Ürün adı" />
-    <input type="search" placeholder="Barkod" value={draft.barcode} onChange={set('barcode')} aria-label="Barkod" />
-    <input type="search" placeholder="Model kodu" value={draft.model} onChange={set('model')} aria-label="Model kodu" />
-    <span className="commission-filter-range">
-      <input type="text" inputMode="numeric" placeholder="Min stok" value={draft.minStock} onChange={set('minStock')} aria-label="En az stok" />
-      <i aria-hidden="true">–</i>
-      <input type="text" inputMode="numeric" placeholder="Max stok" value={draft.maxStock} onChange={set('maxStock')} aria-label="En çok stok" />
-    </span>
-    <select value={draft.category} onChange={set('category')} aria-label="Kategori" disabled={!facets?.categories.length}>
-      <option value="">Kategori</option>{facets?.categories.map(item => <option key={item} value={item}>{item}</option>)}
-    </select>
-    <select value={draft.brand} onChange={set('brand')} aria-label="Marka" disabled={!facets?.brands.length}>
-      <option value="">Marka</option>{facets?.brands.map(item => <option key={item} value={item}>{item}</option>)}
-    </select>
-    <select className="commission-filter-band" value={draft.profitTier ?? ''} onChange={set('profitTier')} aria-label="Fiyat aralığı">
-      <option value="">Kolon Seçimi</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
-    </select>
-    <button type="button" className="commission-filter-clear" onClick={clear}>Temizle</button>
-    <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
+    <FilterField label="Ürün Adı"><input type="search" value={draft.name} onChange={set('name')} /></FilterField>
+    <FilterField label="Barkod"><input type="search" value={draft.barcode} onChange={set('barcode')} /></FilterField>
+    <FilterField label="Model Kodu"><input type="search" value={draft.model} onChange={set('model')} /></FilterField>
+    <FilterRange label="Stok" inputMode="numeric" min={draft.minStock} max={draft.maxStock} onMin={set('minStock')} onMax={set('maxStock')} minLabel="En az stok" maxLabel="En çok stok" />
+    <FilterField label="Kategori"><select value={draft.category} onChange={set('category')} disabled={!facets?.categories.length}>
+      <option value="">Tümü</option>{facets?.categories.map(item => <option key={item} value={item}>{item}</option>)}
+    </select></FilterField>
+    <FilterField label="Marka"><select value={draft.brand} onChange={set('brand')} disabled={!facets?.brands.length}>
+      <option value="">Tümü</option>{facets?.brands.map(item => <option key={item} value={item}>{item}</option>)}
+    </select></FilterField>
+    <FilterField label="Kolon Seçimi" className="commission-filter-band"><select value={draft.profitTier ?? ''} onChange={set('profitTier')}>
+      <option value="">Seçilmedi</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
+    </select></FilterField>
     {draft.profitTier && <div className="commission-filter-profit">
-      <span className="commission-filter-range">
-        <input type="text" inputMode="decimal" placeholder="Min kâr tutarı" value={draft.minProfit ?? ''} onChange={set('minProfit')} aria-label="En az kâr tutarı (₺)" />
-        <i aria-hidden="true">–</i>
-        <input type="text" inputMode="decimal" placeholder="Max kâr tutarı" value={draft.maxProfit ?? ''} onChange={set('maxProfit')} aria-label="En çok kâr tutarı (₺)" />
-      </span>
-      <span className="commission-filter-range">
-        <input type="text" inputMode="decimal" placeholder="Min kâr oranı" value={draft.minShare ?? ''} onChange={set('minShare')} aria-label="En az kâr oranı (%)" />
-        <i aria-hidden="true">–</i>
-        <input type="text" inputMode="decimal" placeholder="Max kâr oranı" value={draft.maxShare ?? ''} onChange={set('maxShare')} aria-label="En çok kâr oranı (%)" />
-      </span>
+      <FilterRange label="Kâr Tutarı (₺)" inputMode="decimal" min={draft.minProfit ?? ''} max={draft.maxProfit ?? ''} onMin={set('minProfit')} onMax={set('maxProfit')} minLabel="En az kâr tutarı (₺)" maxLabel="En çok kâr tutarı (₺)" />
+      <FilterRange label="Kâr Oranı (%)" inputMode="decimal" min={draft.minShare ?? ''} max={draft.maxShare ?? ''} onMin={set('minShare')} onMax={set('maxShare')} minLabel="En az kâr oranı (%)" maxLabel="En çok kâr oranı (%)" />
     </div>}
     {noFacts && <p className="commission-filter-note">Kategori ve marka bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
+    <FilterActions onClear={clear} />
   </form>
 }
 
@@ -350,7 +365,7 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
   const active = bulk.kind !== ''
   return <div className="commission-bulk" ref={ref}>
     <button type="button" className={`commission-bulk-trigger${active ? ' is-active' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      {active && <em>Filtre aktif</em>}Toplu Seçim <UiIcon name="chevronDown" size={14} />
+      {active && <em>Filtre Aktif</em>}Toplu Seçim <UiIcon name="chevronDown" size={14} />
     </button>
     {open && <div className="commission-bulk-popover" role="dialog" aria-label="Toplu seçim">
       <label><span>Kolon</span>

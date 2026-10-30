@@ -59,4 +59,23 @@ export const scenarios = [
       await page.locator('.shopify-invoice-status-modal').waitFor()
     },
   },
+  // Promosyon Kârlılık Analizi: the commission tariff with its filter card (dark and light), Toplu Seçim open, and Plus.
+  { name: 'promotions', path: '/promotions', widths: [375, 1280] },
+  {
+    name: 'promotions-light', path: '/promotions', widths: [375, 1280],
+    act: async page => {
+      await page.locator('.commission-filters').waitFor()
+      await page.locator('.rv-topbar-theme').click()
+      await page.locator('html[data-theme="light"]').waitFor()
+    },
+  },
+  {
+    name: 'promotions-bulk', path: '/promotions', widths: [375, 1280],
+    act: async page => {
+      await page.locator('.commission-bulk-trigger').click()
+      await page.locator('.commission-bulk-popover select').first().selectOption('1')
+      await page.locator('.commission-bulk-popover').waitFor()
+    },
+  },
+  { name: 'promotions-plus', path: '/promotions?tab=plus', widths: [375, 1280] },
 ]
