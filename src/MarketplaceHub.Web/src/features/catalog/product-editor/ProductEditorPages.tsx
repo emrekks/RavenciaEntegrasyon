@@ -11,6 +11,7 @@ import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
+import { revealFieldError } from './field-error-reveal'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { appendNotification, notificationError, productNotificationSubject } from '../../../shared/notifications'
 import { toggleProductAttributeValue } from '../attribute-selection'
@@ -1221,6 +1222,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [staleProductVersion, setStaleProductVersion] = useState<number | null>(null)
   const allowReseedUntil = useRef(0)
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({})
+  // A save refused with a field message scrolls to that field, frames it red and shakes it.
+  const lastFieldReveal = useRef(0)
+  useEffect(() => {
+    if (!Object.values(fieldErrors).some(Boolean)) return
+    const frame = requestAnimationFrame(() => { lastFieldReveal.current = Date.now(); revealFieldError(document.getElementById('product-creation-form')) })
+    return () => cancelAnimationFrame(frame)
+  }, [fieldErrors])
   const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds }), [attributeSelections, attributeTextValues, familyMediaOrder, form, mediaFiles.length, removedVariantIds, variantRows])
   // A new product compares with the empty form it opened with; a copy and an edit with the form right after seeding.
   const editorDirty = seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
@@ -2348,6 +2356,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   function handleInvalid(event: FormEvent<HTMLFormElement>) {
     const target = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
     const message = target.validationMessage || 'Lütfen zorunlu alanları doldurun.'
+    // Only the first refused field of one save is brought into view.
+    if (Date.now() - lastFieldReveal.current > 600) { lastFieldReveal.current = Date.now(); revealFieldError(null, target) }
     setError(new Error(message))
     setNotice(message)
     showFeedback('Zorunlu Alan Eksik', message, 'error')
