@@ -191,3 +191,7 @@
 .unit-profit-modal .unit-profit-total strong { font-size: 18px; font-variant-numeric: tabular-nums; }
 .unit-profit-modal .unit-profit-total small { font-size: 11px; font-weight: 500; opacity: .8; }
 .unit-profit-modal .unit-profit-total.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+/* The whole left cell opens and closes the model's sizes, not only the round button: the button's hit area is
+   stretched over the cell while it keeps its round look. */
+.app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand:has(> .commission-model-toggle) { position: relative; cursor: pointer; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand > .commission-model-toggle::after { content: ""; position: absolute; inset: 0; }
