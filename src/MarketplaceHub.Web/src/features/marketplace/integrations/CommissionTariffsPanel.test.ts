@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandRange, commissionTariffPlatforms, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitText, bandRange, commissionTariffPlatforms, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -144,5 +144,14 @@ describe('commission tariff profit range', () => {
     expect(filterQuery({ ...noFilter, profitTier: '2', minProfit: '−20' })).toEqual({ profitTier: '2', minProfit: '-20' })
     expect(filterQuery({ ...noFilter, profitTier: '4' })).toEqual({})
     expect(filterQuery({ ...noFilter, minProfit: '100' })).toEqual({})
+  })
+})
+
+describe('bandLimitText', () => {
+  it('states the top band from its lower limit and the others up to their upper limit', () => {
+    expect(bandLimitText([{ tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('464,63 ₺ ve üzeri')
+    expect(bandLimitText([{ tier: 2, min: 432.27, max: 464.62, rate: 15.8 }])).toBe('464,62 ₺ ve altı')
+    expect(bandLimitText([{ tier: 1, min: 463.13, max: null, rate: 21.5 }, { tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('463,13 – 464,63 ₺ ve üzeri')
+    expect(bandLimitText([undefined])).toBeNull()
   })
 })
