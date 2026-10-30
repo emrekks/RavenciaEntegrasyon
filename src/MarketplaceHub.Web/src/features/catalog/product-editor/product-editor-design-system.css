@@ -219,6 +219,8 @@
 @layer features {
   .variant-marketplace-codes-button { margin-left: auto; }
   .marketplace-codes-modal { width: min(760px, 100%); }
+  /* Product editor dialog footers: compact 34 px buttons. */
+  :is(.marketplace-codes-modal, .variant-code-confirm-modal, .variant-bulk-edit-modal, .variant-media-picker-modal, .variant-option-edit-modal) > footer button { min-height: 0; height: 34px; padding-block: 0; }
   /* Variant option text: read only, changed through the pencil (Varyant Düzenleme). */
   .variant-option-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .variant-option-cell > .variant-option-text { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
