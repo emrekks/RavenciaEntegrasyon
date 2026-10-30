@@ -107,8 +107,11 @@ public sealed class StockPushPipelinePostgreSqlTests(PostgreSqlTenantIsolationFi
         foreach (var (connection, variant, _) in variants)
         {
             await using var db = fixture.CreateContext();
+            var offer = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id);
+            Assert.True(offer.LastPriceHash == PriceInventoryComposer.CurrentPriceHash(connection.PlatformCode, offer) && offer.LastStockProjectionVersion == 5,
+                $"{connection.PlatformCode}: mark {offer.LastPriceHash}/{offer.LastStockProjectionVersion}, current {PriceInventoryComposer.CurrentPriceHash(connection.PlatformCode, offer)}/5");
             var build = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, connection.Id, CancellationToken.None, automatic: true);
-            Assert.False(build.Succeeded, connection.PlatformCode);
+            Assert.False(build.Succeeded, $"{connection.PlatformCode}: {string.Join(", ", build.Value?.Lines.Select(line => $"{line.Barcode} {line.PriceHash} v{line.ProjectionVersion}") ?? [])}");
             Assert.Equal("NO_EXTERNAL_CHANGES", build.Error!.Code);
         }
 

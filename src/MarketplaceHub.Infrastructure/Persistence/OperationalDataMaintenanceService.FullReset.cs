@@ -186,7 +186,10 @@ public sealed partial class OperationalDataMaintenanceService
             WHERE i."TenantId"={{tenantId}} AND i."Status"<>'Resolved'
               AND (strpos(i."DedupeKey", CAST({{connectionId}} AS text)) > 0
                 OR EXISTS (SELECT 1 FROM purge_orders o WHERE strpos(i."DedupeKey", o."Id"::text) > 0)
-                OR EXISTS (SELECT 1 FROM purge_invoices p WHERE strpos(i."DedupeKey", p."Id"::text) > 0));
+                OR EXISTS (SELECT 1 FROM purge_invoices p WHERE strpos(i."DedupeKey", p."Id"::text) > 0)
+                -- An order shortfall issue is keyed by its order line (N format); with the line gone it holds no reservation.
+                OR i."Code"='STOCK_ORDER_CONSUMPTION_BLOCKED' AND i."DedupeKey" LIKE 'stock-order-consumption:%'
+                   AND NOT EXISTS (SELECT 1 FROM inventory.stock_reservations r WHERE r."TenantId"=i."TenantId" AND r."SourceType"='ORDER_LINE' AND r."Status"='Active' AND replace(r."SourceId", '-', '') = substring(i."DedupeKey" FROM 25)));
             """, cancellationToken);
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "CONNECTION_FULL_RESET", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = jobId is { } id ? $"job:{id:D}" : "full-reset", CorrelationId = jobId?.ToString("D") ?? Guid.CreateVersion7().ToString("D"), CreatedAt = timeProvider.GetUtcNow() });
