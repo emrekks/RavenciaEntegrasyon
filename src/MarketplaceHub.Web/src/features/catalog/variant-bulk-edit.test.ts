@@ -15,15 +15,15 @@ describe('variant bulk numeric editing', () => {
   })
 
   it('requires whole-number stock and non-negative values', () => {
-    expect(variantBulkEditIssue('stock', 2.5, rows)).toBe('Stok değeri tam sayı olmalıdır.')
-    expect(variantBulkEditIssue('costPrice', -1, rows)).toBe('Sıfır veya daha büyük geçerli bir değer girin.')
+    expect(variantBulkEditIssue('stock', 2.5)).toBe('Stok değeri tam sayı olmalıdır.')
+    expect(variantBulkEditIssue('costPrice', -1)).toBe('Sıfır veya daha büyük geçerli bir değer girin.')
   })
 
-  it('preserves the sale/list-price relationship for every targeted row', () => {
-    expect(variantBulkEditIssue('salePrice', 110, rows)).toMatch(/liste fiyatını aşamaz/)
-    expect(variantBulkEditIssue('listPrice', 85, rows)).toMatch(/satış fiyatının altında olamaz/)
-    expect(variantBulkEditIssue('salePrice', 95, rows)).toBeNull()
-    expect(variantBulkEditIssue('listPrice', 100, rows)).toBeNull()
+  it('leaves the sale/list-price comparison to save', () => {
+    expect(variantBulkEditIssue('salePrice', 110)).toBeNull()
+    expect(variantBulkEditIssue('listPrice', 85)).toBeNull()
+    expect(variantBulkEditIssue('salePrice', 95)).toBeNull()
+    expect(variantBulkEditIssue('listPrice', 100)).toBeNull()
   })
 })
 
