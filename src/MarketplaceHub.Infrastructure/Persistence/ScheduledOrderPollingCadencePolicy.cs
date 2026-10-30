@@ -10,9 +10,10 @@ public static class ScheduledOrderPollingCadencePolicy
     // Owner decision (30 Oct 2026): the order reads that no notification replaces run every two minutes at most, so a
     // new order takes its stock off the panel within about two minutes. Measured per pass on live: Hepsiburada 2 requests
     // for new orders and 22 for the open-order scan (limit 600/min), N11 1 (600/min), Pazarama 1 (60/min), Shopify 1
-    // (2/s). Trendyol keeps its three minutes: its order endpoints share a 30-requests-a-minute quota (40% kept for
-    // new-order reads and user actions) with recovery, cargo, invoice and reconciliation reads, each new-order pass takes
-    // 4 requests spaced five seconds apart in the shared orders lane, and its notifications bring new orders anyway.
+    // (2/s). Trendyol too (owner, same day: "2 yapalım onu da diğerleri gibi"): its order endpoints share 30 requests a
+    // minute, 40% (12) kept for new-order reads and user actions; a new-order pass takes 4 requests, so two minutes is
+    // 2 a minute, and the week before showed no rate-limit refusal. Trendyol, Hepsiburada and Shopify read at this pace
+    // only while their notifications are unhealthy; healthy notifications stretch the read to the 8-minute safety net.
     public const int UnnotifiedOrderIntervalSeconds = 120;
 
     public static int ForEnvironment(int intervalSeconds, string? environment) =>
@@ -75,9 +76,10 @@ public static class ScheduledOrderPollingCadencePolicy
             return (resourceType == "ORDERS" ? 120 : 900, Math.Min(jitterSeconds, 30));
         }
 
-        // New orders of Hepsiburada, N11 and Pazarama every two minutes at most; Hepsiburada's and Pazarama's open-order
-        // scans bring cancellations (stock back to the panel) and keep the same pace. A shorter configured cadence stays.
-        if (platformCode?.ToUpperInvariant() is "HEPSIBURADA" or "N11" or "PAZARAMA" && resourceType == "ORDERS"
+        // New orders of Trendyol, Hepsiburada, N11 and Pazarama every two minutes at most; Hepsiburada's and Pazarama's
+        // open-order scans bring cancellations (stock back to the panel) and keep the same pace. A shorter configured
+        // cadence stays.
+        if (platformCode?.ToUpperInvariant() is "TRENDYOL" or "HEPSIBURADA" or "N11" or "PAZARAMA" && resourceType == "ORDERS"
             || platformCode?.ToUpperInvariant() is "HEPSIBURADA" or "PAZARAMA" && resourceType == "ORDER_LIFECYCLE")
         {
             return (Math.Min(intervalSeconds, UnnotifiedOrderIntervalSeconds), jitterSeconds);

@@ -23,8 +23,8 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     [InlineData("TRENDYOL", "ORDER_RECONCILE_DAILY", 86_400, 900, 86_400, 900)]
     [InlineData("SHOPIFY", "ORDERS", 60, 5, 120, 30)]
     [InlineData("SHOPIFY", "ORDERS", 180, 5, 120, 30)]
-    // Owner decision 30 Oct 2026: new orders without notifications every two minutes; Trendyol keeps three (quota).
-    [InlineData("TRENDYOL", "ORDERS", 180, 5, 180, 5)]
+    // Owner decision 30 Oct 2026: new orders without (healthy) notifications every two minutes, Trendyol included.
+    [InlineData("TRENDYOL", "ORDERS", 180, 5, 120, 5)]
     [InlineData("HEPSIBURADA", "ORDERS", 180, 5, 120, 5)]
     [InlineData("N11", "ORDERS", 180, 5, 120, 5)]
     [InlineData("PAZARAMA", "ORDERS", 180, 5, 120, 5)]
@@ -85,6 +85,7 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     // The live policy rows still at an application default move to the new cadence on the worker's defaults pass
     // (startup and hourly); a policy the user saved keeps its values.
     [Theory]
+    [InlineData("TRENDYOL", "ORDERS", 180, 600, 5, 120, 5)]
     [InlineData("HEPSIBURADA", "ORDERS", 180, 600, 5, 120, 5)]
     [InlineData("N11", "ORDERS", 180, 600, 5, 120, 5)]
     [InlineData("PAZARAMA", "ORDERS", 180, 600, 5, 120, 5)]
@@ -103,6 +104,11 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     }
 
     [Fact]
-    public void TrendyolKeepsItsThreeMinuteOrderReadDefault() =>
-        Assert.Equal((180, 600, 5), ScheduledJobProducer.DefaultPolicyValues(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TRENDYOL", "ORDERS"));
+    public void TrendyolReadsAtTwoMinutesOnlyWhileItsNotificationsAreUnhealthy()
+    {
+        Assert.Equal((120, 600, 5), ScheduledJobProducer.DefaultPolicyValues(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TRENDYOL", "ORDERS"));
+        Assert.True(ScheduledJobProducer.ShouldUpgradeToDefault(new MarketplaceHub.Domain.ConnectionSyncPolicy { ResourceType = "ORDERS", IntervalSeconds = 180, OverlapSeconds = 600, JitterSeconds = 5 }, "TRENDYOL"));
+        Assert.Equal(480, MarketplaceHub.Application.WebhookPollingPolicy.EffectiveOrderIntervalSeconds("TRENDYOL", 120, healthy: true));
+        Assert.Equal(120, MarketplaceHub.Application.WebhookPollingPolicy.EffectiveOrderIntervalSeconds("TRENDYOL", 120, healthy: false));
+    }
 }
