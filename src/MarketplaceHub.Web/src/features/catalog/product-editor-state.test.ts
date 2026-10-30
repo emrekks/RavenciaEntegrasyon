@@ -61,8 +61,8 @@ describe('product editor state', () => {
     expect(editorVat({ vatRate: 20, vatInclusion: 'EXCLUDED' }, { vatRate: 10, vatInclusion: 'INCLUDED' })).toEqual({ vatRate: '20', vatIncluded: 'EXCLUDED' })
     expect(editorVat({ vatRate: null, vatInclusion: null }, { vatRate: 1, vatInclusion: 'INCLUDED' })).toEqual({ vatRate: '1', vatIncluded: 'INCLUDED' })
     expect(editorVat({ vatRate: 0, vatInclusion: 'INCLUDED' }, { vatRate: 10, vatInclusion: 'INCLUDED' })).toEqual({ vatRate: '0', vatIncluded: 'INCLUDED' })
-    expect(editorVat({ vatRate: null }, { vatRate: null })).toEqual({ vatRate: '', vatIncluded: 'INCLUDED' })
-    expect(editorVat(undefined, undefined)).toEqual({ vatRate: '', vatIncluded: 'INCLUDED' })
+    expect(editorVat({ vatRate: null }, { vatRate: null })).toEqual({ vatRate: '10', vatIncluded: 'INCLUDED' })
+    expect(editorVat(undefined, undefined)).toEqual({ vatRate: '10', vatIncluded: 'INCLUDED' })
   })
 
   it('requires a KDV Oranı between 0 and 100', () => {

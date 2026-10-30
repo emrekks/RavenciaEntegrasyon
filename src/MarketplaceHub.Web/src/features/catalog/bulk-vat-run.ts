@@ -1,14 +1,15 @@
 // Toplu KDV Ata: KDV Oranı and KDV Dahil mi for every selected product card. Only the cards change; an existing
 // marketplace listing keeps the VAT it has. The selection goes out in chunks of 500 (see runInChunks).
 import type { ChunkRunResult } from './bulk-status-run'
+import { TURKISH_VAT_RATES } from './product-editor-state'
 
-export const bulkVatRateOptions = ['1', '10', '20'] as const
+export { TURKISH_VAT_RATES as bulkVatRateOptions } from './product-editor-state'
 export type BulkVatInclusion = 'INCLUDED' | 'EXCLUDED'
 export type BulkVatResponse = { updatedCount: number; unchangedCount: number }
 
 // The rate the dialog sends: one of the offered rates, never a guess. Empty ("Seçin") or anything else is null.
 export function bulkVatRate(value: string): number | null {
-  return (bulkVatRateOptions as readonly string[]).includes(value.trim()) ? Number(value.trim()) : null
+  return TURKISH_VAT_RATES.includes(value.trim()) ? Number(value.trim()) : null
 }
 
 export function bulkVatResultMessage(result: ChunkRunResult, counts: BulkVatResponse): { title: string; message: string; kind: 'success' | 'error' } {
