@@ -130,6 +130,8 @@
 
 @layer features {
   .rich-text-mode-note { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 600; }
+  /* The editor title and its mode note each stay on one line instead of breaking into two-line columns. */
+  .rich-text-editor-head > div:first-child > :is(strong, .rich-text-mode-note) { white-space: nowrap; }
 }
 
 @layer features {
