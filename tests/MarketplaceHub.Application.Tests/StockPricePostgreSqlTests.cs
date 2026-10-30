@@ -1385,7 +1385,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     }
 
     // A colour card no marketplace has priced takes the VAT of its family's other card instead of asking for one, and a
-    // card deleted since the list loaded it is reported on its own while the rest still goes out.
+    // card deleted since the list loaded it is reported on its own while the rest still goes out. The general price
+    // matches the sibling's (PTT AVM sells a family's variants at one price).
     [PostgreSqlFact]
     public async Task BulkPublication_TakesTheFamilysVatAndReportsADeletedCardWithoutRefusingTheOthers()
     {
@@ -1394,7 +1395,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await using (var setup = fixture.CreateContext())
         {
             await setup.ChannelOffers.Where(x => x.TenantId == tenant.Id && blackVariantIds.Contains(x.VariantId)).ExecuteDeleteAsync();
-            await setup.Products.Where(x => x.Id == black.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.DefaultSalePrice, 300m).SetProperty(p => p.DefaultListPrice, 300m));
+            await setup.Products.Where(x => x.Id == black.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.DefaultSalePrice, 120m).SetProperty(p => p.DefaultListPrice, 150m));
         }
         var deletedId = Guid.CreateVersion7();
 
@@ -1407,7 +1408,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(2, result.Value.Queued);
         var blackOffers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id && blackVariantIds.Contains(x.VariantId)).ToListAsync();
         Assert.Equal(2, blackOffers.Count);
-        Assert.All(blackOffers, offer => Assert.Equal((300m, 20m), (offer.SalePrice, offer.VatRate)));
+        Assert.All(blackOffers, offer => Assert.Equal((120m, 150m, 20m), (offer.SalePrice, offer.ListPrice, offer.VatRate)));
     }
 
     // A card the family's finished send carried without a job of its own (the MZ053TCD state on live) is taken into
