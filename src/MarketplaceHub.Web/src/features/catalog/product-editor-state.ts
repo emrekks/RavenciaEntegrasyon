@@ -98,12 +98,16 @@ export function editorFieldErrors(error: unknown): EditorFieldErrors {
   return result
 }
 
+// Turkey's VAT rates since 10 July 2023 (8 and 18 became 10 and 20); 0 is for exempt goods.
+export const TURKISH_VAT_RATES = ['0', '1', '10', '20']
+export const DEFAULT_VAT_RATE = '10'
+
 type VatSource = { vatRate?: number | null; vatInclusion?: string | null }
 // KDV Oranı and KDV Dahil mi as the editor opens them: the product card's own VAT, else its primary offer's. A card
-// with neither opens with KDV Oranı empty: the field asks for a rate instead of defaulting to one.
+// with neither opens at the usual %10, which the user can change before saving.
 export function editorVat(product: VatSource | undefined, primaryOffer: VatSource | undefined): { vatRate: string; vatIncluded: string } {
   const source = product?.vatRate != null ? product : primaryOffer?.vatRate != null ? primaryOffer : undefined
-  return { vatRate: source?.vatRate == null ? '' : String(source.vatRate), vatIncluded: source?.vatInclusion === 'EXCLUDED' ? 'EXCLUDED' : 'INCLUDED' }
+  return { vatRate: source?.vatRate == null ? DEFAULT_VAT_RATE : String(source.vatRate), vatIncluded: source?.vatInclusion === 'EXCLUDED' ? 'EXCLUDED' : 'INCLUDED' }
 }
 
 export const VAT_RATE_REQUIRED_MESSAGE = 'KDV oranı zorunludur.'

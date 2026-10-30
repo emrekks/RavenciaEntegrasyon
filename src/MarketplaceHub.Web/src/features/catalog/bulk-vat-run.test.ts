@@ -7,7 +7,8 @@ describe('bulk VAT', () => {
     expect(bulkVatRate(' 20 ')).toBe(20)
     expect(bulkVatRate('1')).toBe(1)
     expect(bulkVatRate('')).toBeNull()
-    expect(bulkVatRate('0')).toBeNull()
+    expect(bulkVatRate('0')).toBe(0)
+    expect(bulkVatRate('8')).toBeNull()
     expect(bulkVatRate('18')).toBeNull()
   })
 

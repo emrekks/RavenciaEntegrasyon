@@ -5,10 +5,11 @@ import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { RrIcon, RrModal } from '../../marketplace/returns-ui'
 import { runInChunks, type ChunkRunResult } from '../bulk-status-run'
+import { DEFAULT_VAT_RATE } from '../product-editor-state'
 import { bulkVatRate, bulkVatRateOptions, bulkVatResultMessage, type BulkVatInclusion, type BulkVatResponse } from '../bulk-vat-run'
 
 export function BulkVatDialog({ productIds, cardCount, onClose, onDone }: { productIds: string[]; cardCount: number; onClose: () => void; onDone: (outcome: { title: string; message: string; kind: 'success' | 'error' }, result: ChunkRunResult) => Promise<void> | void }) {
-  const [rate, setRate] = useState('')
+  const [rate, setRate] = useState(DEFAULT_VAT_RATE)
   const [inclusion, setInclusion] = useState<BulkVatInclusion>('INCLUDED')
   const [rateError, setRateError] = useState('')
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
