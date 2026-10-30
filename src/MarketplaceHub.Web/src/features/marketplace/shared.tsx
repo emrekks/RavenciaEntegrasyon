@@ -64,7 +64,10 @@ export const invoiceFailureText: Record<string, string> = { 'Fatura İletilemedi
 export function ReturnInvoiceRing({ status, isMicroExport }: { status: string; isMicroExport: boolean }) {
   const base = invoiceStatusDisplayLabel(status, false)
   const label = invoiceStatusDisplayLabel(status, isMicroExport)
-  const [tone, progress] = invoiceRing[base] ?? ['off', 0]
+  const [baseTone, progress] = invoiceRing[base] ?? ['off', 0]
+  // Micro-export invoices read blue while they are pending, so they stand apart from the domestic ones; done stays
+  // green and a failure stays red.
+  const tone: RingTone = isMicroExport && baseTone !== 'ok' && baseTone !== 'bad' ? 'move' : baseTone
   // Short states ("Faturası Mevcut") stay on one line; long ones break only between word pairs, so
   // "Mikro İhracat Faturası Bekliyor" takes two lines in the narrow column instead of three.
   const words = label.split(' ')
