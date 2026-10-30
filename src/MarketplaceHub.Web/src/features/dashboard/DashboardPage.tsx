@@ -12,6 +12,7 @@ import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { smoothPath } from './smooth-path'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
@@ -96,7 +97,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
   const max = niceStep(Math.max(1, ...points.map(value), ...previous.map(value))) * 5
   const x = (index: number, length = points.length) => L + (length > 1 ? index / (length - 1) : 0) * (W - L - R)
   const y = (value: number) => T + (1 - value / max) * (H - T - B)
-  const line = (series: DayPoint[]) => series.map((point, index) => `${index ? 'L' : 'M'}${x(index, series.length).toFixed(1)} ${y(value(point)).toFixed(1)}`).join(' ')
+  const line = (series: DayPoint[]) => smoothPath(series.map((point, index) => [x(index, series.length), y(value(point))]))
   const labelStep = Math.max(1, Math.round(points.length / 6))
   useLayoutEffect(() => {
     const tip = tipRef.current, chart = chartRef.current
