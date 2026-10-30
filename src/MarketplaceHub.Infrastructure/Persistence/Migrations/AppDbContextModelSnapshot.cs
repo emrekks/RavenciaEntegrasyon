@@ -4545,14 +4545,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("JobId");
 
-                    b.HasIndex("TenantId", "ConnectionId", "CreatedAt")
-                        .IsDescending(false, false, true);
-
                     b.HasIndex("TenantId", "CreatedAt", "Id")
                         .IsDescending(false, true, true);
 
-                    b.HasIndex("TenantId", "VariantId", "CreatedAt")
-                        .IsDescending(false, false, true);
+                    b.HasIndex("TenantId", "ConnectionId", "CreatedAt", "Id")
+                        .IsDescending(false, false, true, true);
+
+                    b.HasIndex("TenantId", "VariantId", "CreatedAt", "Id")
+                        .IsDescending(false, false, true, true);
 
                     b.ToTable("price_stock_send_log", "integration");
                 });

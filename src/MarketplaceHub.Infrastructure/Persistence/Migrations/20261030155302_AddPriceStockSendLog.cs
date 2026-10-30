@@ -59,11 +59,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 column: "JobId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_price_stock_send_log_TenantId_ConnectionId_CreatedAt",
+                name: "IX_price_stock_send_log_TenantId_ConnectionId_CreatedAt_Id",
                 schema: "integration",
                 table: "price_stock_send_log",
-                columns: new[] { "TenantId", "ConnectionId", "CreatedAt" },
-                descending: new[] { false, false, true });
+                columns: new[] { "TenantId", "ConnectionId", "CreatedAt", "Id" },
+                descending: new[] { false, false, true, true });
 
             migrationBuilder.CreateIndex(
                 name: "IX_price_stock_send_log_TenantId_CreatedAt_Id",
@@ -73,11 +73,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 descending: new[] { false, true, true });
 
             migrationBuilder.CreateIndex(
-                name: "IX_price_stock_send_log_TenantId_VariantId_CreatedAt",
+                name: "IX_price_stock_send_log_TenantId_VariantId_CreatedAt_Id",
                 schema: "integration",
                 table: "price_stock_send_log",
-                columns: new[] { "TenantId", "VariantId", "CreatedAt" },
-                descending: new[] { false, false, true });
+                columns: new[] { "TenantId", "VariantId", "CreatedAt", "Id" },
+                descending: new[] { false, false, true, true });
         }
 
         /// <inheritdoc />

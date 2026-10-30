@@ -418,8 +418,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             // The log page reads a tenant's rows newest first (also the retention's per-tenant walk); a product's history
             // and a store's rows the same way; the poll finds its job's rows.
             entity.HasIndex(x => new { x.TenantId, x.CreatedAt, x.Id }).IsDescending(false, true, true);
-            entity.HasIndex(x => new { x.TenantId, x.VariantId, x.CreatedAt }).IsDescending(false, false, true);
-            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.CreatedAt }).IsDescending(false, false, true);
+            entity.HasIndex(x => new { x.TenantId, x.VariantId, x.CreatedAt, x.Id }).IsDescending(false, false, true, true);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.CreatedAt, x.Id }).IsDescending(false, false, true, true);
             entity.HasIndex(x => x.JobId);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

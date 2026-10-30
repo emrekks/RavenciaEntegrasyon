@@ -88,7 +88,7 @@ public static class PriceStockSendLogPolicy
             JobId = jobId,
             VariantId = line.VariantId,
             OfferId = line.OfferId,
-            Barcode = Cut(line.Barcode, MaxBarcodeLength)!,
+            Barcode = Cut(line.Barcode, MaxBarcodeLength) ?? "",
             StockCode = Cut(line.MerchantSku ?? line.HepsiburadaSku ?? line.ExternalVariantId, MaxBarcodeLength),
             PreviousQuantity = sameCode ? confirmed!.Quantity : null,
             PreviousSalePrice = sameCode ? confirmed!.SalePrice : null,

@@ -39,7 +39,8 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
         {
             if (!JobListCursor.TryDecode(request.After, out var afterCreatedAt, out var afterId))
                 return ServiceResult<PageResult<PriceStockSendLogView>>.Fail("SEND_LOG_CURSOR_INVALID", "Listenin devamı okunamadı. Listeyi yenileyip tekrar deneyin.", 400);
-            query = query.Where(x => x.CreatedAt < afterCreatedAt || (x.CreatedAt == afterCreatedAt && x.Id.CompareTo(afterId) < 0));
+            // The first condition bounds the index scan; the second keeps the same order as the page.
+            query = query.Where(x => x.CreatedAt <= afterCreatedAt && (x.CreatedAt < afterCreatedAt || x.Id.CompareTo(afterId) < 0));
         }
         var limit = request.EffectiveLimit;
         var rows = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
