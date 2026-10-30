@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactM
 import { copyText } from '../../shared/copy-text'
 import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { ValueBadge } from '../../shared/components/ValueBadge'
@@ -363,6 +363,8 @@ export function InvoicesPage() {
   const query = useQuery({
     queryKey: ['invoice-workspace-page', pageNumber, pageSize, tab, searchFilter, sortOrder, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, Boolean(provider?.hasCredential)],
     queryFn: () => hubApi<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`),
+    // A filter change keeps the current rows on screen while the next page loads, so the open column popover stays open.
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000
   })
   const confirmDelivered = useMutation({
