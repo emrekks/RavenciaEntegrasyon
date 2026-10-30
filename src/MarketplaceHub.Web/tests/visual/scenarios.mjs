@@ -29,6 +29,13 @@ export const scenarios = [
     },
   },
   {
+    name: 'product-platform-update', path: '/products/p1', widths: [375, 1280],
+    act: async page => {
+      await page.locator('.platform-update-settings').click()
+      await page.locator('.platform-update-modal .publish-selection-footer').waitFor()
+    },
+  },
+  {
     name: 'orders-shopify-invoice-status', path: '/orders', widths: [375, 1280],
     act: async page => {
       await page.locator('tr', { hasText: '#1048' }).locator('.rr-inv-trigger').click()

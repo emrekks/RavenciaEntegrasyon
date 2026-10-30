@@ -26,6 +26,7 @@ import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
+import { PlatformUpdateDialog } from './PlatformUpdateDialog'
 import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
@@ -3219,30 +3220,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       </div>,
       document.querySelector('main') ?? document.body
     )}
-    {platformUpdateDialogOpen && createPortal(
-      <div className="workspace-modal-backdrop platform-update-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPlatformUpdateDialogOpen(false) }}>
-        <DialogSurface as="section" onClose={() => { setPlatformUpdateDialogOpen(false) }} className="workspace-modal platform-update-modal" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>
-          <header><div><p className="eyebrow">Ürün Güncelleme</p><h2 id="platform-update-title">Platformlarda Güncelle</h2><p>Önce paneldeki ürün değişiklikleri kaydedilir, ardından seçtiğiniz mağazalara ayrı işler gönderilir.</p></div><button type="button" className="modal-close" onClick={() => setPlatformUpdateDialogOpen(false)} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
-          <div className="platform-update-modal-body">
-            <fieldset className="platform-update-targets"><legend>Güncellenecek Platformlar</legend>
-              {productUpdateTargets.length ? productUpdateTargets.map(({ connection, capabilities }) => {
-                const selected = platformUpdateConnectionIds.includes(connection.id)
-                const writable = capabilities.writable && connection.status.trim().toUpperCase() === 'ACTIVE'
-                return <label className={`platform-update-target${selected ? ' is-selected' : ''}${!writable ? ' is-disabled' : ''}`} key={connection.id}>
-                  <input type="checkbox" checked={selected} disabled={!writable} onChange={() => setPlatformUpdateConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} />
-                  <span className="platform-update-target-copy"><strong>{connection.displayName}</strong><small>{connection.platformCode} · Mağaza {connection.externalStoreId || '—'}</small></span>
-                </label>
-              }) : <p className="platform-update-empty">Aktif ürün yazma bağlantısı bulunamadı.</p>}
-            </fieldset>
-            <label className="platform-update-content-toggle"><input type="checkbox" checked={platformUpdateProductInformation} disabled={!platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.content))} onChange={event => setPlatformUpdateProductInformation(event.target.checked)} /><span><strong>Ürün bilgilerini de güncelle</strong><small>Açıkken ad, açıklama, kategori özellikleri, desi/teslimat bilgileri ve görseller seçilen platformun desteklediği alanlarla gönderilir. Kapalıyken yalnız fiyat ve stok gönderilir.</small></span></label>
-            <p className="platform-update-scope"><strong>{platformUpdateConnectionIds.filter(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE')).length}</strong> platform seçili · Değişiklikler önce kaydedilir, sonra kuyruğa alınır.</p>
-            {platformUpdateProductInformation && <p className="platform-update-capability-note">Kategori özellikleri yalnız ilgili platform destekliyorsa gönderilir. Shopify şu anda salt okunur olduğundan seçilemez.</p>}
-          </div>
-          <footer><button type="button" className="secondary" onClick={() => setPlatformUpdateDialogOpen(false)}>Vazgeç</button><button type="button" onClick={confirmPlatformUpdate} disabled={submitting || !platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'))}>{submitting ? 'Güncelleniyor…' : 'Güncelle'}</button></footer>
-        </DialogSurface>
-      </div>,
-      document.querySelector('main') ?? document.body
-    )}
+    {platformUpdateDialogOpen && <PlatformUpdateDialog
+      targets={productUpdateTargets}
+      selectedIds={platformUpdateConnectionIds}
+      onToggle={connectionId => setPlatformUpdateConnectionIds(ids => ids.includes(connectionId) ? ids.filter(id => id !== connectionId) : [...ids, connectionId])}
+      productInformation={platformUpdateProductInformation}
+      onProductInformationChange={setPlatformUpdateProductInformation}
+      submitting={submitting}
+      onClose={() => setPlatformUpdateDialogOpen(false)}
+      onConfirm={confirmPlatformUpdate} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
     {variantMediaModal && <VariantMediaPickerModal
       mode={variantMediaModal.mode}
