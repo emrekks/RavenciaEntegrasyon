@@ -18,6 +18,9 @@ internal static class CommissionTariffEndpoints
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
         api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync);
+        // The seller's saved picks: read by every role, replaced (PUT, the operational roles) after each change on the page.
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync);
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync);
         // Promotion offers (Plus, advantage label, flash): the latest file of each kind, the kind told by its columns.
         api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync);
         api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery();
@@ -73,7 +76,23 @@ internal static class CommissionTariffEndpoints
         var result = await service.ExportAsync(tenant.TenantId, connectionId, tariffId, request, http.RequestAborted);
         if (!result.Succeeded) return ApiProblems.Of(http, result.Error!);
         http.Response.Headers.CacheControl = "no-store";
-        return Results.File(result.Value!.Content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.Value.FileName);
+        // How many rows carry a pick, and whether the file is the uploaded one or written again from the stored rows.
+        http.Response.Headers["X-Picked-Rows"] = result.Value!.Rows.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        http.Response.Headers["X-Tariff-File"] = result.Value.FromSourceFile ? "original" : "rebuilt";
+        return Results.File(result.Value.Content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.Value.FileName);
+    }
+
+    private static async Task<IResult> SelectionAsync(Guid connectionId, Guid tariffId, HttpContext http, ICommissionTariffService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        http.Response.Headers.CacheControl = "no-store";
+        return Result(await service.SelectionAsync(tenant.TenantId, connectionId, tariffId, http.RequestAborted));
+    }
+
+    private static async Task<IResult> SaveSelectionAsync(Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, HttpContext http, ICommissionTariffService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        return Result(await service.SaveSelectionAsync(tenant.TenantId, tenant.UserId, connectionId, tariffId, request, http.RequestAborted));
     }
 
     private static async Task<IResult> ListAsync(Guid connectionId, HttpContext http, ICommissionTariffService service)

@@ -23,7 +23,8 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         await content.CopyToAsync(buffer, cancellationToken);
         if (buffer.Length is 0 or > MaximumFileBytes)
             return ServiceResult<CommissionTariffUploadResult>.Fail("COMMISSION_TARIFF_FILE_SIZE", "Tarife dosyası boş olamaz ve en fazla 10 MiB olabilir.", 413);
-        var hash = Convert.ToHexString(SHA256.HashData(buffer.ToArray()));
+        var bytes = buffer.ToArray();
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
         var now = timeProvider.GetUtcNow();
         ParsedCommissionTariffFile parsed;
         try
@@ -46,8 +47,18 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         {
             var existing = await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash && x.PeriodStart == period.PeriodStart)
                 .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
-            // The same file again fills the category, brand and stock of rows stored before they were read.
-            if (existing is { } existingId) { backfilled += await FillFactsAsync(tenantId, existingId, period.Rows, cancellationToken); continue; }
+            // The same file again fills the category, brand and stock of rows stored before they were read, and keeps the
+            // file itself when a tariff stored before files were kept has none.
+            if (existing is { } existingId)
+            {
+                backfilled += await FillFactsAsync(tenantId, existingId, period.Rows, cancellationToken);
+                if (!await db.CommissionTariffSourceFiles.AnyAsync(x => x.TenantId == tenantId && x.TariffId == existingId, cancellationToken))
+                {
+                    db.CommissionTariffSourceFiles.Add(new CommissionTariffSourceFile { TariffId = existingId, TenantId = tenantId, Content = bytes });
+                    backfilled++;
+                }
+                continue;
+            }
             alreadyUploaded = false;
             var tariff = new CommissionTariff
             {
@@ -67,6 +78,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             foreach (var row in period.Rows) { row.TenantId = tenantId; row.TariffId = tariff.Id; }
             db.CommissionTariffs.Add(tariff);
             db.CommissionTariffRows.AddRange(period.Rows);
+            db.CommissionTariffSourceFiles.Add(new CommissionTariffSourceFile { TariffId = tariff.Id, TenantId = tenantId, Content = bytes });
             created.Add(tariff);
             imported += period.Rows.Count;
         }
@@ -259,28 +271,22 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
 
     private static string Like(string term) => $"%{CatalogService.EscapeLike(term)}%";
 
-    // The seller's picks written out as an Excel sheet: one row per product picked, its new price, band, commission and
-    // the charges and the profit it leaves (UnitProfit). Products picked for no band are left out.
+    // The seller's picks as Trendyol's own tariff workbook, ready to be uploaded back on Trendyol's Ürün Komisyon
+    // Tarifeleri page: the uploaded file with each picked row's new price in "YENİ TSF (FİYAT GÜNCELLE)" and the tariff's
+    // period in "Tarife Seçimi", every other row left empty there (no change). Without the uploaded file (a tariff
+    // stored before files were kept) the workbook is written again from the stored rows in Trendyol's column order.
+    // Without picks in the request the saved picks are written, so the file holds what the page shows.
     public async Task<ServiceResult<CommissionTariffExportFile>> ExportAsync(Guid tenantId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken)
     {
         var tariff = await db.CommissionTariffs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken);
         if (tariff is null) return ServiceResult<CommissionTariffExportFile>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
-        var bulk = request.Bulk?.Trim().ToLowerInvariant() switch { "recommended" => "amount", var value => value };
-        if (bulk is not (null or "" or "tier" or "amount" or "rate") || bulk == "tier" && request.Tier is not (>= 1 and <= 4)
-            || request.MinRate is < -1000 or > 100 || request.MinAmount is < -10_000_000 or > 10_000_000
-            || request.MaxRate is < -1000 or > 100 || request.MaxAmount is < -10_000_000 or > 10_000_000)
-            return ServiceResult<CommissionTariffExportFile>.Fail("COMMISSION_TARIFF_EXPORT_INVALID", "Toplu seçim geçersiz.", 400);
-        if (request.Choices is { Count: > 50_000 } || request.Choices?.Any(x => x.Tier is not (null or (>= 1 and <= 4)) || x.Price is <= 0 or > 10_000_000) == true)
-            return ServiceResult<CommissionTariffExportFile>.Fail("COMMISSION_TARIFF_EXPORT_INVALID", "Seçimlerden biri geçersiz.", 400);
+        if (request.Bulk is null && request.Choices is null) request = Request(await SelectionViewAsync(tenantId, tariffId, cancellationToken));
+        if (Invalid(request, out var bulk) is { } invalid) return ServiceResult<CommissionTariffExportFile>.Fail(invalid.Code, invalid.Message, invalid.Status);
         var picks = (request.Choices ?? []).GroupBy(x => x.RowId).ToDictionary(x => x.Key, x => x.Last());
         var rows = await db.CommissionTariffRows.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId)
             .OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).ToListAsync(cancellationToken);
         var facts = await ProfitFactsAsync(tenantId, connectionId, rows, cancellationToken);
-        var sheet = new List<IReadOnlyList<object?>>
-        {
-            new object?[] { "Barkod", "Satıcı Stok Kodu", "Model Kodu", "Ürün", "Beden", "Güncel Satış Fiyatı", "Komisyona Esas Fiyat", "Güncel Bant", "Seçilen Bant", "Yeni Fiyat",
-                "Komisyon Oranı (%)", "Komisyon", "Ürün Maliyeti", "Kargo", "Hizmet Bedeli", "Stopaj", "Net KDV", "Kâr" }
-        };
+        var chosen = new Dictionary<Guid, (decimal Price, decimal Rate)>();
         foreach (var row in rows)
         {
             var fact = facts(row);
@@ -288,17 +294,87 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             if (picks.TryGetValue(row.Id, out var pick))
                 choice = pick.Price is { } own ? CommissionTariffChoices.PricedAt(row, own, fact) : pick.Tier is { } tier ? CommissionTariffChoices.Of(row, fact).FirstOrDefault(x => x.Tier == tier) : null;
             else choice = string.IsNullOrEmpty(bulk) ? null : CommissionTariffChoices.Pick(CommissionTariffChoices.Of(row, fact), bulk, request.Tier, request.MinRate, request.MinAmount, request.MaxRate, request.MaxAmount);
-            if (choice is null) continue;
-            var current = row.BasisPrice is { } basis ? CommissionTariffBands.BandFor(row, basis) : null;
-            sheet.Add(new object?[]
-            {
-                row.Barcode, row.SellerSku, row.ModelCode, row.ProductName, row.Size, row.CurrentSalePrice, row.BasisPrice,
-                current is null ? null : $"{current.Tier}. bant", $"{choice.Tier}. bant", choice.Price, choice.Rate, choice.Commission, fact.Cost, choice.Costs?.Cargo, choice.Costs?.ServiceFee, choice.Costs?.Stoppage, choice.Costs?.NetVat, choice.Remaining
-            });
+            if (choice is not null) chosen[row.Id] = (choice.Price, choice.Rate);
         }
-        var content = SimpleXlsxWriter.Write([new SimpleXlsxSheet("Seçimler", sheet, [16, 18, 16, 48, 10, 16, 18, 12, 12, 14, 16, 14, 14, 12, 14, 12, 12, 14])]);
+        var days = TrendyolTariffWorkbook.PeriodDays(tariff.PeriodStart, tariff.PeriodEnd);
         var name = $"komisyon-tarifesi-secimler-{tariff.PeriodStart.ToOffset(CommissionTariffFileParser.TurkeyOffset):yyyyMMdd}.xlsx";
-        return ServiceResult<CommissionTariffExportFile>.Ok(new(content, name, sheet.Count - 1));
+        var source = await db.CommissionTariffSourceFiles.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId).Select(x => x.Content).SingleOrDefaultAsync(cancellationToken);
+        if (source is not null)
+        {
+            var prices = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in rows) if (chosen.TryGetValue(row.Id, out var pick)) prices.TryAdd(row.Barcode, pick.Price);
+            try
+            {
+                if (TrendyolTariffWorkbook.Fill(source, tariff.PeriodText, days, prices) is { } filled)
+                    return ServiceResult<CommissionTariffExportFile>.Ok(new(filled.Content, name, filled.Filled));
+            }
+            catch (Exception exception) when (exception is InvalidDataException or System.Xml.XmlException)
+            {
+                // A kept file that no longer reads is written again from the rows below.
+            }
+        }
+        var written = TrendyolTariffWorkbook.Write(days, rows, tariff.PeriodText, chosen);
+        return ServiceResult<CommissionTariffExportFile>.Ok(new(written.Content, name, written.Filled, FromSourceFile: false));
+    }
+
+    public async Task<ServiceResult<CommissionTariffSelectionView>> SelectionAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken)
+    {
+        if (!await db.CommissionTariffs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken))
+            return ServiceResult<CommissionTariffSelectionView>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
+        return ServiceResult<CommissionTariffSelectionView>.Ok(await SelectionViewAsync(tenantId, tariffId, cancellationToken));
+    }
+
+    // The saved picks replaced as a whole (the page sends its whole state after each change). Saves of one tariff run
+    // one at a time (the tariff's row is locked), so two quick saves never mix.
+    public async Task<ServiceResult<CommissionTariffSelectionView>> SaveSelectionAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken)
+    {
+        if (!await db.CommissionTariffs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken))
+            return ServiceResult<CommissionTariffSelectionView>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
+        if (Invalid(request, out var bulk) is { } invalid) return ServiceResult<CommissionTariffSelectionView>.Fail(invalid.Code, invalid.Message, invalid.Status);
+        var choices = (request.Choices ?? []).GroupBy(x => x.RowId).Select(x => x.Last()).ToList();
+        var ids = choices.Select(x => x.RowId).ToArray();
+        var known = ids.Length == 0 ? [] : (await db.CommissionTariffRows.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId && ids.Contains(x.Id)).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var now = timeProvider.GetUtcNow();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""SELECT 1 FROM catalog.commission_tariffs WHERE "TenantId"={tenantId} AND "Id"={tariffId} FOR UPDATE""", cancellationToken);
+        await db.CommissionTariffPicks.Where(x => x.TenantId == tenantId && x.TariffId == tariffId).ExecuteDeleteAsync(cancellationToken);
+        var selection = await db.CommissionTariffSelections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.TariffId == tariffId, cancellationToken);
+        if (selection is null) db.CommissionTariffSelections.Add(selection = new CommissionTariffSelection { TariffId = tariffId, TenantId = tenantId });
+        selection.BulkKind = string.IsNullOrEmpty(bulk) ? null : bulk;
+        selection.BulkTier = bulk == "tier" ? request.Tier : null;
+        (selection.MinRate, selection.MinAmount, selection.MaxRate, selection.MaxAmount) = selection.BulkKind is null ? (null, null, null, null) : (request.MinRate, request.MinAmount, request.MaxRate, request.MaxAmount);
+        selection.UpdatedAt = now;
+        selection.UpdatedBy = userId;
+        db.CommissionTariffPicks.AddRange(choices.Where(x => known.Contains(x.RowId))
+            .Select(x => new CommissionTariffPick { TariffId = tariffId, RowId = x.RowId, TenantId = tenantId, Tier = x.Price is null ? x.Tier : null, Price = x.Price is { } price ? decimal.Round(price, 2, MidpointRounding.AwayFromZero) : null }));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        db.ChangeTracker.Clear();
+        return ServiceResult<CommissionTariffSelectionView>.Ok(await SelectionViewAsync(tenantId, tariffId, cancellationToken));
+    }
+
+    private async Task<CommissionTariffSelectionView> SelectionViewAsync(Guid tenantId, Guid tariffId, CancellationToken cancellationToken)
+    {
+        var selection = await db.CommissionTariffSelections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.TariffId == tariffId, cancellationToken);
+        var picks = await db.CommissionTariffPicks.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId)
+            .OrderBy(x => x.RowId).Select(x => new CommissionTariffChoice(x.RowId, x.Tier, x.Price)).ToListAsync(cancellationToken);
+        return new(selection?.BulkKind, selection?.BulkTier, selection?.MinRate, selection?.MinAmount, selection?.MaxRate, selection?.MaxAmount, picks, selection?.UpdatedAt);
+    }
+
+    private static CommissionTariffExportRequest Request(CommissionTariffSelectionView view) =>
+        new(view.Bulk ?? string.Empty, view.Tier, view.Choices, view.MinRate, view.MinAmount, view.MaxRate, view.MaxAmount);
+
+    // The error of picks that cannot be kept or written, with the bulk kind read ("recommended" is the old "amount").
+    private static ServiceError? Invalid(CommissionTariffExportRequest request, out string? bulk)
+    {
+        bulk = request.Bulk?.Trim().ToLowerInvariant() switch { "recommended" => "amount", var value => value };
+        if (bulk is not (null or "" or "tier" or "amount" or "rate") || bulk == "tier" && request.Tier is not (>= 1 and <= 4)
+            || request.MinRate is < -1000 or > 100 || request.MinAmount is < -10_000_000 or > 10_000_000
+            || request.MaxRate is < -1000 or > 100 || request.MaxAmount is < -10_000_000 or > 10_000_000)
+            return new("COMMISSION_TARIFF_EXPORT_INVALID", "Toplu seçim geçersiz.", 400);
+        if (request.Choices is { Count: > 50_000 } || request.Choices?.Any(x => x.Tier is not (null or (>= 1 and <= 4)) || x.Price is <= 0 or > 10_000_000) == true)
+            return new("COMMISSION_TARIFF_EXPORT_INVALID", "Seçimlerden biri geçersiz.", 400);
+        return null;
     }
 
     // What each row's profit needs, from the panel's variant with the row's barcode (else its seller SKU): its cost and

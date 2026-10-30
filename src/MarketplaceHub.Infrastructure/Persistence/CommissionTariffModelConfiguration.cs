@@ -31,6 +31,28 @@ internal static class CommissionTariffModelConfiguration
             entity.HasIndex(x => new { x.TariffId, x.SellerSku });
             entity.HasOne<CommissionTariff>().WithMany().HasForeignKey(x => new { x.TenantId, x.TariffId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
+        builder.Entity<CommissionTariffSourceFile>(entity =>
+        {
+            entity.ToTable("commission_tariff_source_files", "catalog"); entity.HasKey(x => x.TariffId);
+            entity.HasOne<CommissionTariff>().WithOne().HasForeignKey<CommissionTariffSourceFile>(x => new { x.TenantId, x.TariffId }).HasPrincipalKey<CommissionTariff>(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<CommissionTariffSelection>(entity =>
+        {
+            entity.ToTable("commission_tariff_selections", "catalog"); entity.HasKey(x => x.TariffId);
+            entity.Property(x => x.BulkKind).HasMaxLength(16);
+            entity.Property(x => x.MinRate).HasPrecision(19, 4); entity.Property(x => x.MinAmount).HasPrecision(19, 4);
+            entity.Property(x => x.MaxRate).HasPrecision(19, 4); entity.Property(x => x.MaxAmount).HasPrecision(19, 4);
+            entity.HasOne<CommissionTariff>().WithOne().HasForeignKey<CommissionTariffSelection>(x => new { x.TenantId, x.TariffId }).HasPrincipalKey<CommissionTariff>(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<CommissionTariffPick>(entity =>
+        {
+            entity.ToTable("commission_tariff_picks", "catalog"); entity.HasKey(x => new { x.TariffId, x.RowId });
+            entity.Property(x => x.Price).HasPrecision(19, 4);
+            entity.HasIndex(x => x.RowId);
+            // A pick goes with its tariff and with its row (a data reset deletes the rows first).
+            entity.HasOne<CommissionTariff>().WithMany().HasForeignKey(x => new { x.TenantId, x.TariffId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<CommissionTariffRow>().WithMany().HasForeignKey(x => x.RowId).OnDelete(DeleteBehavior.Cascade);
+        });
         builder.Entity<PromotionOfferFile>(entity =>
         {
             entity.ToTable("promotion_offer_files", "catalog"); entity.HasKey(x => x.Id);
