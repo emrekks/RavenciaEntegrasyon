@@ -26,6 +26,7 @@ import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
+import { PlatformUpdateDialog } from './PlatformUpdateDialog'
 import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
@@ -1666,6 +1667,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setMediaFiles(next)
     showFeedback('Görsel Sırası Değişti', 'Yüklenen görsel sırası güncellendi. Kalıcı olması için ürünü kaydedin.', 'info')
   }
+  // An uploaded image not saved yet leaves the variants that were given it too; their image count kept it before.
+  function removeUploadedMedia(id: string) {
+    setMediaFiles(files => files.filter(file => file.id !== id))
+    setVariantRows(rows => rows.map(row => row.mediaRefs.includes(`file|${id}`) ? { ...row, mediaRefs: row.mediaRefs.filter(reference => reference !== `file|${id}`) } : row))
+  }
   function clearAllMedia() {
     setMediaFiles([])
     updateField('mediaUrls', '')
@@ -1750,6 +1756,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         body: JSON.stringify({ mediaIds: item.mediaIds })
       })
       setFamilyMediaOrder(current => current.filter(url => mediaImageKey(url) !== mediaImageKey(item.url)))
+      // The variants that showed the image drop it too: the rows are not seeded again, so their count stayed.
+      const removeVariantReference = (reference: string) => !reference.startsWith('url|') || mediaImageKey(reference.slice(4)) !== mediaImageKey(item.url)
+      initialEditVariantMediaRefs.current = Object.fromEntries(Object.entries(initialEditVariantMediaRefs.current).map(([variantId, references]) => [variantId, references.filter(removeVariantReference)]))
+      setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
       await productToEdit.refetch()
       await client.invalidateQueries({ queryKey: ['products'] })
       showFeedback('Aile Görseli Kaldırıldı', 'Renk ailesi görseli kaldırıldı.', 'success')
@@ -2680,11 +2690,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))))]
   const familyMediaUrls = productToEdit.data?.familyMediaUrls ?? []
   const familyMediaItems = productToEdit.data?.familyMediaItems ?? familyMediaUrls.map(url => ({ url, mediaIds: [], sourceProductTitles: [] }))
-  const familyOnlyMediaItems = familyMediaItems.filter(item => !mediaUrls.some(current => mediaImageKey(current) === mediaImageKey(item.url)))
+  // The card's own saved pictures the draft no longer holds ("Tümünü Temizle", a removed tile) go on the next save; the
+  // family list still carries them until then, so they leave the gallery now instead of after Kaydet.
+  const draftMediaKeys = new Set(mediaUrls.map(mediaImageKey))
+  const pendingRemovalMediaKeys = new Set(editProductId ? (productToEdit.data?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)) : [])
+  const familyOnlyMediaItems = familyMediaItems.filter(item => !draftMediaKeys.has(mediaImageKey(item.url)) && !pendingRemovalMediaKeys.has(mediaImageKey(item.url)))
   const defaultFamilyOrder = productToEdit.data?.familyOrderedMediaUrls?.length
     ? productToEdit.data.familyOrderedMediaUrls
     : [...mediaUrls, ...familyMediaItems.map(item => item.url)]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
+    .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url)))
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen Görsel · ${item.file.name}`, file: item.file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
@@ -2964,7 +2979,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               <figcaption>{isProductMedia ? `${ownIndex === 0 ? 'Ana görsel' : `${ownIndex + 1}. görsel`} · sürükle` : 'Renk varyantı görseli · sürükle'}</figcaption>
             </figure>
           })}
-          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} mediaIndex={index} mediaCount={mediaFiles.length} onMove={target => reorderUploadedMedia(index, target)} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => setMediaFiles(files => files.filter(file => file.id !== item.id))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
+          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} mediaIndex={index} mediaCount={mediaFiles.length} onMove={target => reorderUploadedMedia(index, target)} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
         </div>}
       </section>
 
@@ -3219,30 +3234,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       </div>,
       document.querySelector('main') ?? document.body
     )}
-    {platformUpdateDialogOpen && createPortal(
-      <div className="workspace-modal-backdrop platform-update-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPlatformUpdateDialogOpen(false) }}>
-        <DialogSurface as="section" onClose={() => { setPlatformUpdateDialogOpen(false) }} className="workspace-modal platform-update-modal" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>
-          <header><div><p className="eyebrow">Ürün Güncelleme</p><h2 id="platform-update-title">Platformlarda Güncelle</h2><p>Önce paneldeki ürün değişiklikleri kaydedilir, ardından seçtiğiniz mağazalara ayrı işler gönderilir.</p></div><button type="button" className="modal-close" onClick={() => setPlatformUpdateDialogOpen(false)} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
-          <div className="platform-update-modal-body">
-            <fieldset className="platform-update-targets"><legend>Güncellenecek Platformlar</legend>
-              {productUpdateTargets.length ? productUpdateTargets.map(({ connection, capabilities }) => {
-                const selected = platformUpdateConnectionIds.includes(connection.id)
-                const writable = capabilities.writable && connection.status.trim().toUpperCase() === 'ACTIVE'
-                return <label className={`platform-update-target${selected ? ' is-selected' : ''}${!writable ? ' is-disabled' : ''}`} key={connection.id}>
-                  <input type="checkbox" checked={selected} disabled={!writable} onChange={() => setPlatformUpdateConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} />
-                  <span className="platform-update-target-copy"><strong>{connection.displayName}</strong><small>{connection.platformCode} · Mağaza {connection.externalStoreId || '—'}</small></span>
-                </label>
-              }) : <p className="platform-update-empty">Aktif ürün yazma bağlantısı bulunamadı.</p>}
-            </fieldset>
-            <label className="platform-update-content-toggle"><input type="checkbox" checked={platformUpdateProductInformation} disabled={!platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.content))} onChange={event => setPlatformUpdateProductInformation(event.target.checked)} /><span><strong>Ürün bilgilerini de güncelle</strong><small>Açıkken ad, açıklama, kategori özellikleri, desi/teslimat bilgileri ve görseller seçilen platformun desteklediği alanlarla gönderilir. Kapalıyken yalnız fiyat ve stok gönderilir.</small></span></label>
-            <p className="platform-update-scope"><strong>{platformUpdateConnectionIds.filter(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE')).length}</strong> platform seçili · Değişiklikler önce kaydedilir, sonra kuyruğa alınır.</p>
-            {platformUpdateProductInformation && <p className="platform-update-capability-note">Kategori özellikleri yalnız ilgili platform destekliyorsa gönderilir. Shopify şu anda salt okunur olduğundan seçilemez.</p>}
-          </div>
-          <footer><button type="button" className="secondary" onClick={() => setPlatformUpdateDialogOpen(false)}>Vazgeç</button><button type="button" onClick={confirmPlatformUpdate} disabled={submitting || !platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'))}>{submitting ? 'Güncelleniyor…' : 'Güncelle'}</button></footer>
-        </DialogSurface>
-      </div>,
-      document.querySelector('main') ?? document.body
-    )}
+    {platformUpdateDialogOpen && <PlatformUpdateDialog
+      targets={productUpdateTargets}
+      selectedIds={platformUpdateConnectionIds}
+      onToggle={connectionId => setPlatformUpdateConnectionIds(ids => ids.includes(connectionId) ? ids.filter(id => id !== connectionId) : [...ids, connectionId])}
+      productInformation={platformUpdateProductInformation}
+      onProductInformationChange={setPlatformUpdateProductInformation}
+      submitting={submitting}
+      onClose={() => setPlatformUpdateDialogOpen(false)}
+      onConfirm={confirmPlatformUpdate} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
     {variantMediaModal && <VariantMediaPickerModal
       mode={variantMediaModal.mode}
