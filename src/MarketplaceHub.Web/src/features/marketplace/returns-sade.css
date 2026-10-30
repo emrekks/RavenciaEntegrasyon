@@ -715,7 +715,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td { background: var(--rr-hover); }
 }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small { white-space: nowrap; overflow: visible; text-overflow: clip; }
+/* A fact stays whole; a value longer than the column (a merged Hepsiburada barcode) wraps onto the next line instead of running into the price column. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline .rr-card-only { display: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices { display: grid; width: 100%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices .rr-pr { display: grid; align-content: center; justify-items: center; gap: 2px; }
