@@ -802,6 +802,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
+        // KDV Oranı and KDV Dahil mi are required on a new card: a marketplace offer starts from them, never from a guess.
+        if (command.VatRate is null) return Invalid<ProductView>("vatRate", VatRateRequired);
+        if (string.IsNullOrWhiteSpace(command.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
         if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<ProductView>(vatError.Field, vatError.Message);
         if (command.TrendyolWebColorValueId is Guid webColorValueId && webColorValueId != Guid.Empty && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == webColorValueId && x.IsActive, cancellationToken)) return Invalid<ProductView>("trendyolWebColorValueId", "Trendyol Web Color değeri bulunamadı.");
         if (command.DefaultListPrice is decimal listPrice && command.DefaultSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
@@ -1252,6 +1255,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var effectiveSalePrice = command.DefaultSalePrice ?? product.DefaultSalePrice;
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
+        // A card with no VAT yet must get one on this save; a card that has one keeps it when the rate is left out.
+        if (command.VatRate is null && product.VatRate is null) return Invalid<ProductView>("vatRate", VatRateRequired);
+        if (command.VatRate is not null && string.IsNullOrWhiteSpace(command.VatInclusion) && string.IsNullOrWhiteSpace(product.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
         if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<ProductView>(vatError.Field, vatError.Message);
         if (command.TrendyolWebColorValueId is Guid webColorValueId && webColorValueId != Guid.Empty && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == webColorValueId && x.IsActive, cancellationToken)) return Invalid<ProductView>("trendyolWebColorValueId", "Trendyol Web Color değeri bulunamadı.");
         if (effectiveListPrice is decimal listPrice && effectiveSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
@@ -2508,6 +2514,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;
     private static decimal? NonNegativeOrNull(decimal? value) => value is >= 0 ? value : null;
+    private const string VatRateRequired = "KDV oranı zorunludur.";
+    private const string VatInclusionRequired = "KDV dahil bilgisi zorunludur.";
     // The product card's VAT: a rate 0-100 and, when given, INCLUDED or EXCLUDED.
     private static (string Field, string Message)? ValidateProductVat(decimal? vatRate, string? vatInclusion)
     {

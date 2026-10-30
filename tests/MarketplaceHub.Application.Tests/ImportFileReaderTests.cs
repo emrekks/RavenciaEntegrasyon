@@ -182,4 +182,33 @@ public sealed class ImportFileReaderTests
     [InlineData("not json", null)]
     public void ConnectionDefaultVatRate_IsReadFromSettings(string json, string? expected) =>
         Assert.Equal(expected is null ? null : decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ConnectionDefaults.VatRate(json));
+
+    // An imported card takes the file's own KDV column; an empty or nonsense rate leaves the card's VAT unknown.
+    [Theory]
+    [InlineData("20", "20")]
+    [InlineData("10,0", "10")]
+    [InlineData("0", "0")]
+    [InlineData("120", null)]
+    [InlineData("-1", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void ImportedCardVat_IsTheFilesKdvColumnOrUnknown(string? cell, string? expected)
+    {
+        var values = cell is null ? new Dictionary<string, string>() : new Dictionary<string, string> { ["vatRate"] = cell };
+        Assert.Equal(expected is null ? null : decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ImportJobProcessor.FileVatRate(values));
+    }
+
+    // A card opened from a marketplace listing takes the rate most of its variants carry; a listing without one
+    // leaves the card's VAT unknown instead of the offers' 0.
+    [Fact]
+    public void ImportedListingVat_IsTheVariantsRateOrUnknown()
+    {
+        static RemoteCatalogVariant Variant(string id, decimal? vatRate) => new(id, id, null, null, new Dictionary<string, string>(), false, 100m, 120m, vatRate, 1m, "TRY", "{}");
+        static RemoteCatalogProduct Listing(params RemoteCatalogVariant[] variants) => new("p", null, "Ürün", "", null, null, null, null, [], variants, "{}");
+
+        Assert.Equal(20m, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing(Variant("a", 20m), Variant("b", null), Variant("c", 20m), Variant("d", 10m))));
+        Assert.Equal(10m, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing(Variant("a", null), Variant("b", 10m))));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing(Variant("a", null), Variant("b", 150m))));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing()));
+    }
 }

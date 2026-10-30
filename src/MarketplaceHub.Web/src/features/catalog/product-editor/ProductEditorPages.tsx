@@ -35,7 +35,7 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, type EditorFieldErrors } from '../product-editor-state'
+import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
@@ -1151,7 +1151,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
+  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [bulkOptionSyncOpen, setBulkOptionSyncOpen] = useState(false)
@@ -1332,7 +1332,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
     initialEditDesi.current = Number(primary?.desi ?? 1)
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', vatRate: String(product.vatRate ?? primary?.vatRate ?? 10), vatIncluded: (product.vatRate != null ? product.vatInclusion : null) ?? primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     if (!editProductId && duplicateProductId) setChannelPricing(Object.fromEntries((primary?.platformStatuses ?? []).flatMap(platform => platform.connectionId ? [[platform.connectionId, { listPrice: String(platform.listPrice ?? initialListPrice), salePrice: String(platform.salePrice ?? initialSalePrice) }] as const] : [])))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
@@ -1407,6 +1407,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }, [allRequirements, duplicateProductId, editProductId, optionRequirements, requirements.isLoading, seedProduct])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
+  // A marketplace offer keeps the VAT it has; a new one takes the card's KDV Oranı, and with that field empty it is
+  // refused (never priced at 0 %).
+  function offerVatRate(known: number | null | undefined): number {
+    if (known != null) return known
+    const issue = editorVatRateIssue(form.vatRate)
+    if (issue) {
+      setFieldErrors(current => ({ ...current, vatRate: issue }))
+      throw new Error(issue)
+    }
+    return Number(form.vatRate)
+  }
   function toggleAttributeValue(attributeId: string, valueId: string) {
     const requirement = mappedRequirements.find(item => item.attributeId === attributeId)
     const alreadySelected = (attributeSelections[attributeId] ?? []).includes(valueId)
@@ -1871,7 +1882,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           listPrice,
           salePrice,
           currency: platform.currency ?? selectedPlatform.currency ?? form.currency ?? 'TRY',
-          vatRate: platform.vatRate ?? selectedPlatform.vatRate ?? Number(form.vatRate || 0),
+          vatRate: offerVatRate(platform.vatRate ?? selectedPlatform.vatRate),
           vatInclusion: platform.vatInclusion ?? selectedPlatform.vatInclusion ?? form.vatIncluded,
           roundingMode: platform.roundingMode ?? selectedPlatform.roundingMode ?? 'HALF_EVEN',
           safetyStock: platform.safetyStock ?? selectedPlatform.safetyStock ?? Number(form.safetyStock || 0),
@@ -1926,7 +1937,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         listPrice,
         salePrice,
         currency: platform.currency ?? targetPlatform.currency ?? form.currency ?? 'TRY',
-        vatRate: platform.vatRate ?? targetPlatform.vatRate ?? Number(form.vatRate || 0),
+        vatRate: offerVatRate(platform.vatRate ?? targetPlatform.vatRate),
         vatInclusion: platform.vatInclusion ?? targetPlatform.vatInclusion ?? form.vatIncluded,
         roundingMode: platform.roundingMode ?? targetPlatform.roundingMode ?? 'HALF_EVEN',
         safetyStock: platform.safetyStock ?? targetPlatform.safetyStock ?? Number(form.safetyStock || 0),
@@ -1997,7 +2008,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           listPrice,
           salePrice,
           currency: target.platform.currency ?? form.currency ?? 'TRY',
-          vatRate: target.platform.vatRate ?? Number(form.vatRate || 0),
+          vatRate: offerVatRate(target.platform.vatRate),
           vatInclusion: target.platform.vatInclusion ?? form.vatIncluded,
           roundingMode: target.platform.roundingMode ?? 'HALF_EVEN',
           safetyStock: target.platform.safetyStock ?? Number(form.safetyStock || 0),
@@ -2359,6 +2370,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const createOnly = !editProductId && (submitter?.getAttribute('data-submit-intent') === 'create'
       || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'create'))
     const requireCompleteCatalog = !editProductId || !saveAndStay
+    // KDV Oranı is required on every card (the server refuses a card without one): stop here, on the first step where
+    // the field is, with its message under it.
+    const vatRateIssue = editorVatRateIssue(form.vatRate)
+    if (vatRateIssue) {
+      setFieldErrors(current => ({ ...current, vatRate: vatRateIssue }))
+      if (!publishOnly) setWizardStep(1)
+      setError(new Error(vatRateIssue)); setNotice(vatRateIssue)
+      showFeedback('Zorunlu Alan Eksik', vatRateIssue, 'error')
+      return
+    }
     if (wizardStep !== 2 && !saveAndStay && !createOnly && !platformUpdate) {
       setWizardStep(2)
       return
@@ -2903,7 +2924,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             <label>Satış Fiyatı<input value={form.salePrice} disabled={variantRows.length > 1} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /><EditorFieldError message={fieldErrors.prices} /></label>
             {variantRows.length <= 1 && <label>Maliyet<input value={form.costPrice} onChange={event => { updateField('costPrice', event.target.value); if (variantRows.length === 1) updateVariantRow(variantRows[0].key, 'costPrice', event.target.value) }} type="number" min="0" step="0.01" /></label>}
             <label>Para Birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label>
-            <label>KDV Oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}>{!['1', '10', '20'].includes(form.vatRate) && <option value={form.vatRate}>%{form.vatRate}</option>}<option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label>
+            <label><span>KDV Oranı<b className="required-marker" aria-hidden="true">*</b></span><select value={form.vatRate} required aria-required="true" aria-invalid={fieldErrors.vatRate ? true : undefined} onChange={event => { updateField('vatRate', event.target.value); if (event.target.value) setFieldErrors(current => ({ ...current, vatRate: undefined })) }}>{form.vatRate === '' && <option value="" disabled>Seçin</option>}{form.vatRate !== '' && !['1', '10', '20'].includes(form.vatRate) && <option value={form.vatRate}>%{form.vatRate}</option>}<option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select><EditorFieldError message={fieldErrors.vatRate} /></label>
             <label>KDV Dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label>
             <label title={showVariantStockTotal || variantRows.length > 1 ? 'Varyantların toplam stoğu' : undefined}>{showVariantStockTotal || variantRows.length > 1 ? 'Toplam Stok' : 'Stok'}<input value={showVariantStockTotal || variantRows.length > 1 ? String(variantStockTotal) : form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" readOnly={showVariantStockTotal || variantRows.length > 1} /></label>
             <label>Güvenlik Stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate } from './product-editor-state'
+import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, VAT_RATE_REQUIRED_MESSAGE } from './product-editor-state'
 
 describe('product editor state', () => {
   it('builds one seed key for the seed and for a version bump made by the editor itself', () => {
@@ -50,5 +50,27 @@ describe('product editor state', () => {
     const error = new ApiRequestError('Doğrulama hatası', 422, 'VALIDATION_FAILED', { title: ['Başlık zorunludur.'], variantUpdates: ['Stok kodları tekrarlı.'], 'variants[0].sku': ['SKU boş.'], categoryId: ['Kategori yaprak olmalı.'], unknown: ['x'] })
     expect(editorFieldErrors(error)).toEqual({ title: 'Başlık zorunludur.', variants: 'Stok kodları tekrarlı. SKU boş.', categoryId: 'Kategori yaprak olmalı.' })
     expect(editorFieldErrors(new Error('x'))).toEqual({})
+  })
+
+  it('shows the server KDV refusal under KDV Oranı', () => {
+    const error = new ApiRequestError('Doğrulama hatası', 422, 'VALIDATION_FAILED', { vatRate: ['KDV oranı zorunludur.'] })
+    expect(editorFieldErrors(error)).toEqual({ vatRate: 'KDV oranı zorunludur.' })
+  })
+
+  it('opens KDV from the card, then the primary offer, and empty when neither knows it', () => {
+    expect(editorVat({ vatRate: 20, vatInclusion: 'EXCLUDED' }, { vatRate: 10, vatInclusion: 'INCLUDED' })).toEqual({ vatRate: '20', vatIncluded: 'EXCLUDED' })
+    expect(editorVat({ vatRate: null, vatInclusion: null }, { vatRate: 1, vatInclusion: 'INCLUDED' })).toEqual({ vatRate: '1', vatIncluded: 'INCLUDED' })
+    expect(editorVat({ vatRate: 0, vatInclusion: 'INCLUDED' }, { vatRate: 10, vatInclusion: 'INCLUDED' })).toEqual({ vatRate: '0', vatIncluded: 'INCLUDED' })
+    expect(editorVat({ vatRate: null }, { vatRate: null })).toEqual({ vatRate: '', vatIncluded: 'INCLUDED' })
+    expect(editorVat(undefined, undefined)).toEqual({ vatRate: '', vatIncluded: 'INCLUDED' })
+  })
+
+  it('requires a KDV Oranı between 0 and 100', () => {
+    expect(editorVatRateIssue('')).toBe(VAT_RATE_REQUIRED_MESSAGE)
+    expect(editorVatRateIssue('  ')).toBe(VAT_RATE_REQUIRED_MESSAGE)
+    expect(editorVatRateIssue('120')).toBe(VAT_RATE_REQUIRED_MESSAGE)
+    expect(editorVatRateIssue('abc')).toBe(VAT_RATE_REQUIRED_MESSAGE)
+    expect(editorVatRateIssue('0')).toBeUndefined()
+    expect(editorVatRateIssue('10')).toBeUndefined()
   })
 })

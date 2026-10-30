@@ -176,6 +176,7 @@ public sealed class ImportJobProcessor(
             var appliedSkus = new HashSet<string>(StringComparer.Ordinal);
             var appliedBarcodes = new HashSet<string>(StringComparer.Ordinal);
             var productsByGroup = new Dictionary<string, Guid>(StringComparer.Ordinal);
+            var productsWithoutVat = new HashSet<Guid>();
             var optionsByProduct = new Dictionary<(Guid ProductId, string Key), ProductOption>();
             var optionValuesByOption = new Dictionary<(Guid OptionId, string Key), ProductOptionValue>();
             if (!await db.InventoryLocations.AnyAsync(x => x.TenantId == tenantId && x.Code == "MAIN", cancellationToken))
@@ -216,6 +217,9 @@ public sealed class ImportJobProcessor(
                     var salePrice = ParsePrice(Value(values, "salePrice"));
                     if (listPrice is decimal list && salePrice is decimal sale && list < sale) listPrice = sale;
                     var groupKey = Normalize(Value(values, "variantGroupKey")) ?? row.staging.RowHash;
+                    // The card's VAT is the file's own KDV column (the rate the offer below is priced with); a file
+                    // without one leaves the card's VAT unknown, never the connection default or a guess.
+                    var fileVatRate = FileVatRate(values);
                     if (!productsByGroup.TryGetValue(groupKey, out var productId))
                     {
                         var product = new Product
@@ -228,12 +232,24 @@ public sealed class ImportJobProcessor(
                             CategoryId = categories.Resolve(Value(values, "category")),
                             DefaultListPrice = listPrice,
                             DefaultSalePrice = salePrice,
+                            VatRate = fileVatRate,
+                            VatInclusion = fileVatRate is null ? null : "INCLUDED",
                             CreatedAt = now,
                             UpdatedAt = now
                         };
                         productId = product.Id;
                         productsByGroup.Add(groupKey, productId);
+                        if (fileVatRate is null) productsWithoutVat.Add(productId);
                         db.Products.Add(product);
+                    }
+                    else if (fileVatRate is not null && productsWithoutVat.Remove(productId))
+                    {
+                        // A later row of the group names the KDV the first row left empty. The card may already be
+                        // saved and detached by a batch: update it by id.
+                        var product = db.Products.Local.FirstOrDefault(x => x.Id == productId)
+                            ?? await db.Products.SingleAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+                        product.VatRate = fileVatRate;
+                        product.VatInclusion = "INCLUDED";
                     }
                     var options = ImportOptions(values);
                     var variant = new ProductVariant
@@ -513,7 +529,7 @@ public sealed class ImportJobProcessor(
     private void AddOffer(Guid tenantId, PlatformConnection? connection, Guid variantId, IReadOnlyDictionary<string, string> values, decimal? listPrice, decimal? salePrice, DateTimeOffset now)
     {
         if (connection is null || salePrice is not > 0) return;
-        var vatRate = ParsePrice(Value(values, "vatRate")) ?? ConnectionDefaults.VatRate(connection.SettingsJson);
+        var vatRate = FileVatRate(values) ?? ConnectionDefaults.VatRate(connection.SettingsJson);
         if (vatRate is null) return;
         var currency = Value(values, "currency")?.ToUpperInvariant() is { Length: 3 } code ? code : "TRY";
         var offer = new ChannelOffer
@@ -568,6 +584,8 @@ public sealed class ImportJobProcessor(
     }
 
     private static decimal ParseNonNegative(string? value) => ParseDecimal(value) is decimal parsed ? Math.Max(0, decimal.Round(parsed, 4)) : 0;
+    // The row's KDV column: a rate 0-100, else unknown.
+    internal static decimal? FileVatRate(IReadOnlyDictionary<string, string> values) => ParsePrice(Value(values, "vatRate")) is decimal rate && rate <= 100 ? rate : null;
     private static decimal? ParsePrice(string? value) => ParseDecimal(value) is decimal parsed && parsed >= 0 ? decimal.Round(parsed, 4) : null;
 
     // Accepts "1234.5", "1234,5", "1.234,50" and "1,234.50". A CSV "1.250" never gets here: ImportFileReader refuses

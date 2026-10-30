@@ -937,6 +937,9 @@
 .product-field-error { display: block; margin-top: 4px; color: var(--rv-color-danger); font-size: 12px; font-weight: 500; }
 .product-field-error-list { margin: 0 0 12px; padding: 10px 12px; border-radius: 7px; background: var(--rv-color-danger-soft); color: var(--rv-color-danger); font-size: 13px; }
 .product-field-error-list p { margin: 0; }
+/* A required editor field (KDV Oranı): a red asterisk after its label, a red border while it is missing. */
+.product-pricing-card .required-marker { margin-left: 2px; color: var(--rv-color-danger); font-weight: 900; }
+.product-pricing-card select[aria-invalid="true"] { border-color: var(--rv-color-danger); }
 .product-stale-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--rv-color-danger); border-radius: 12px; background: var(--rv-color-danger-soft); }
 
 /* Stock code and barcode of a variant product are written on the variant rows: the field is grey and not clickable. */

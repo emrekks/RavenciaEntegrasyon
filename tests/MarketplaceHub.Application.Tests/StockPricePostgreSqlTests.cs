@@ -1465,8 +1465,15 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var service = NewCatalogService(db);
         var sku = $"VAT-{Guid.NewGuid():N}"[..16];
 
-        var refused = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("KDV Bluz", "Açıklama", null, null, [new CreateVariantCommand(sku, null, null)], VatRate: 120m), CancellationToken.None);
+        var refused = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("KDV Bluz", "Açıklama", null, null, [new CreateVariantCommand(sku, null, null)], VatRate: 120m, VatInclusion: "INCLUDED"), CancellationToken.None);
         Assert.False(refused.Succeeded);
+
+        // KDV Oranı and KDV Dahil mi are required on a new card.
+        var withoutRate = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("KDV Bluz", "Açıklama", null, null, [new CreateVariantCommand(sku, null, null)], VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.Equal((422, "KDV oranı zorunludur."), (withoutRate.Error!.Status, withoutRate.Error.FieldErrors!["vatRate"][0]));
+        var withoutInclusion = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("KDV Bluz", "Açıklama", null, null, [new CreateVariantCommand(sku, null, null)], VatRate: 10m), CancellationToken.None);
+        Assert.Equal(422, withoutInclusion.Error!.Status);
+        Assert.True(withoutInclusion.Error.FieldErrors!.ContainsKey("vatInclusion"));
 
         var created = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("KDV Bluz", "Açıklama", null, null, [new CreateVariantCommand(sku, null, null)], VatRate: 20m, VatInclusion: "excluded"), CancellationToken.None);
         Assert.True(created.Succeeded, created.Error?.Message);
@@ -1481,6 +1488,20 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var changed = await service.UpdateProductAsync(tenant.Id, created.Value.Id, kept.Value.Version, new UpdateProductCommand("KDV Bluz", "Açıklama", null, null, VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
         Assert.True(changed.Succeeded, changed.Error?.Message);
         Assert.Equal((10m, "INCLUDED"), (changed.Value!.VatRate, changed.Value.VatInclusion));
+
+        // A card with no VAT yet (an import that read none) cannot be saved until one is chosen; then it keeps it.
+        db.ChangeTracker.Clear();
+        await db.Products.Where(x => x.Id == created.Value.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, (decimal?)null).SetProperty(p => p.VatInclusion, (string?)null));
+        var unknown = await db.Products.AsNoTracking().SingleAsync(x => x.Id == created.Value.Id);
+        var blocked = await service.UpdateProductAsync(tenant.Id, unknown.Id, unknown.Version, new UpdateProductCommand("KDV Bluz", "Açıklama", null, null), CancellationToken.None);
+        Assert.Equal((422, "KDV oranı zorunludur."), (blocked.Error!.Status, blocked.Error.FieldErrors!["vatRate"][0]));
+        db.ChangeTracker.Clear();
+        var noInclusion = await service.UpdateProductAsync(tenant.Id, unknown.Id, unknown.Version, new UpdateProductCommand("KDV Bluz", "Açıklama", null, null, VatRate: 20m), CancellationToken.None);
+        Assert.True(noInclusion.Error!.FieldErrors!.ContainsKey("vatInclusion"));
+        db.ChangeTracker.Clear();
+        var chosen = await service.UpdateProductAsync(tenant.Id, unknown.Id, unknown.Version, new UpdateProductCommand("KDV Bluz", "Açıklama", null, null, VatRate: 1m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(chosen.Succeeded, chosen.Error?.Message);
+        Assert.Equal((1m, "INCLUDED"), (chosen.Value!.VatRate, chosen.Value.VatInclusion));
     }
 
     // A colour card no marketplace has priced takes the VAT of its family's other card instead of asking for one, and a

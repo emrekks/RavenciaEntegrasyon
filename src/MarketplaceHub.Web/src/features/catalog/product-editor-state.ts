@@ -65,9 +65,11 @@ export function editorVariantDesiUpdate(desi: number, openedDesi: number, loaded
 }
 
 // Field messages the server attached to a refused save (422 fieldErrors), keyed the way the editor shows them.
-export type EditorFieldErrors = Partial<Record<'title' | 'description' | 'categoryId' | 'brandId' | 'prices' | 'variants' | 'attributes' | 'stock', string>>
+export type EditorFieldErrors = Partial<Record<'title' | 'description' | 'categoryId' | 'brandId' | 'prices' | 'variants' | 'attributes' | 'stock' | 'vatRate', string>>
 const serverFieldToEditorField: Record<string, keyof EditorFieldErrors> = {
   title: 'title',
+  vatrate: 'vatRate',
+  vatinclusion: 'vatRate',
   description: 'description',
   categoryid: 'categoryId',
   brandid: 'brandId',
@@ -94,4 +96,19 @@ export function editorFieldErrors(error: unknown): EditorFieldErrors {
     result[target] = result[target] ? `${result[target]} ${message}` : message
   }
   return result
+}
+
+type VatSource = { vatRate?: number | null; vatInclusion?: string | null }
+// KDV Oranı and KDV Dahil mi as the editor opens them: the product card's own VAT, else its primary offer's. A card
+// with neither opens with KDV Oranı empty: the field asks for a rate instead of defaulting to one.
+export function editorVat(product: VatSource | undefined, primaryOffer: VatSource | undefined): { vatRate: string; vatIncluded: string } {
+  const source = product?.vatRate != null ? product : primaryOffer?.vatRate != null ? primaryOffer : undefined
+  return { vatRate: source?.vatRate == null ? '' : String(source.vatRate), vatIncluded: source?.vatInclusion === 'EXCLUDED' ? 'EXCLUDED' : 'INCLUDED' }
+}
+
+export const VAT_RATE_REQUIRED_MESSAGE = 'KDV oranı zorunludur.'
+// KDV Oranı is required on every product card: a save without a rate 0-100 is stopped before it reaches the server.
+export function editorVatRateIssue(vatRate: string): string | undefined {
+  const value = vatRate.trim()
+  return value === '' || !Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100 ? VAT_RATE_REQUIRED_MESSAGE : undefined
 }

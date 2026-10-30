@@ -7542,12 +7542,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (product is null)
         {
             isNewProduct = true;
+            var listingVatRate = ListingVatRate(snapshot);
             product = new Product
             {
                 Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 Title = ProductTitle(snapshot.Title, externalProductId),
                 Description = snapshot.Description ?? "",
+                // The card's VAT is the listing's own (the rate its offers below are priced with); a listing that
+                // carries none leaves it unknown.
+                VatRate = listingVatRate,
+                VatInclusion = listingVatRate is null ? null : "INCLUDED",
                 Status = ProductStatus.Active,
                 CreatedAt = createdAt ?? now,
                 UpdatedAt = now,
@@ -8790,6 +8795,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
         }
     }
+
+    // A new card's VAT from the listing: the rate most of its variants carry (0-100), else null. A variant the
+    // marketplace sent without a rate counts for nothing: unknown stays unknown.
+    internal static decimal? ListingVatRate(RemoteCatalogProduct snapshot) => snapshot.Variants
+        .Select(variant => variant.VatRate)
+        .OfType<decimal>()
+        .Where(rate => rate is >= 0 and <= 100)
+        .Select(rate => decimal.Round(rate, 4, MidpointRounding.ToEven))
+        .GroupBy(rate => rate)
+        .OrderByDescending(group => group.Count())
+        .Select(group => (decimal?)group.Key)
+        .FirstOrDefault();
 
     private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Pazar yeri ürünü {externalId}" : title.Trim(), 320);
     private static string CleanCatalogOptionValue(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Trim('"', '“', '”').Trim();
