@@ -35,31 +35,48 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
 
-    public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    // sections: the requests of an approved Trendyol product that go (content, variant, delivery); null is all of them.
+    // A product Trendyol has not approved yet, and a Hepsiburada product, take one full update whatever was picked.
+    public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, ProductUpdateSections? sections = null)
     {
+        sections ??= ProductUpdateSections.All;
+        if (!sections.Any) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_REQUIRED", "Gönderilecek en az bir ürün bilgisi alanı seçin.", 422);
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
+        {
+            // Hepsiburada takes no origin and no delivery information: a pick of those alone has nothing to send there.
+            if (!sections.Hepsiburada) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Hepsiburada'ya gönderilemiyor.", 422);
             return await new HepsiburadaProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        }
         var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
-        var mode = productLink is null ? "UNAPPROVED" : "APPROVED";
+        var publication = Split(productId, productLink?.ExternalId, draft.PayloadJson, sections);
+        if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status);
+        return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, publication.Value!, draft.Variants));
+    }
 
-        using var source = JsonDocument.Parse(draft.PayloadJson);
+    // The Trendyol create payload split into the update requests. contentIdText: the product link's id once Trendyol has
+    // approved the product (null before: then the create payload goes whole to the unapproved update).
+    internal static ServiceResult<ProductUpdatePublication> Split(Guid productId, string? contentIdText, string createPayloadJson, ProductUpdateSections sections)
+    {
+        var mode = contentIdText is null ? "UNAPPROVED" : "APPROVED";
+        using var source = JsonDocument.Parse(createPayloadJson);
         if (!source.RootElement.TryGetProperty("items", out var sourceItems) || sourceItems.ValueKind != JsonValueKind.Array || sourceItems.GetArrayLength() == 0)
-            return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme payload'ı oluşturulamadı.", 422);
+            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme payload'ı oluşturulamadı.", 422);
 
-        var unapprovedPayload = draft.PayloadJson;
+        var unapprovedPayload = createPayloadJson;
         var contentItems = new List<Dictionary<string, object?>>();
         var variantItems = new List<Dictionary<string, object?>>();
         var deliveryItems = new List<Dictionary<string, object?>>();
 
         if (mode == "APPROVED")
         {
-            if (!long.TryParse(productLink!.ExternalId, out var contentId)) return ServiceResult<ProductUpdateDraft>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol contentId sayısal değil; otomatik güncelleme güvenli biçimde durduruldu.", 409);
+            if (!long.TryParse(contentIdText, out var contentId)) return ServiceResult<ProductUpdatePublication>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol contentId sayısal değil; otomatik güncelleme güvenli biçimde durduruldu.", 409);
             var first = sourceItems[0];
-            contentItems.Add(new Dictionary<string, object?>
+            // A request whose fields were not picked goes empty; the job skips an empty phase without a call.
+            if (sections.Content) contentItems.Add(new Dictionary<string, object?>
             {
                 ["contentId"] = contentId,
                 ["title"] = Clone(first, "title"),
@@ -70,7 +87,7 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
             foreach (var item in sourceItems.EnumerateArray())
             {
-                variantItems.Add(new Dictionary<string, object?>
+                if (sections.Variants) variantItems.Add(new Dictionary<string, object?>
                 {
                     ["barcode"] = Text(item, "barcode"),
                     ["stockCode"] = Text(item, "stockCode"),
@@ -78,7 +95,7 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
                     ["origin"] = Clone(item, "origin"),
                     ["vatRate"] = Clone(item, "vatRate"),
                 });
-                if (item.TryGetProperty("deliveryOption", out var delivery) && delivery.ValueKind == JsonValueKind.Object)
+                if (sections.Delivery && item.TryGetProperty("deliveryOption", out var delivery) && delivery.ValueKind == JsonValueKind.Object)
                 {
                     deliveryItems.Add(new Dictionary<string, object?>
                     {
@@ -89,12 +106,15 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
             }
         }
 
+        // A pick with nothing behind it (the delivery alone on a product with no delivery time) makes no job.
+        if (mode == "APPROVED" && contentItems.Count == 0 && variantItems.Count == 0 && deliveryItems.Count == 0)
+            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_NOTHING_TO_SEND", "Seçilen ürün bilgileri için Trendyol'a gönderilecek değer yok.", 422);
         var contentPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = contentItems }, JsonOptions);
         var variantPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = variantItems }, JsonOptions);
         var deliveryPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = deliveryItems }, JsonOptions);
         var canonical = string.Join("\n", mode, unapprovedPayload, contentPayload, variantPayload, deliveryPayload);
         var hash = Hash(canonical);
-        return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, new(productId, mode, hash, unapprovedPayload, contentPayload, variantPayload, deliveryPayload), draft.Variants));
+        return ServiceResult<ProductUpdatePublication>.Ok(new(productId, mode, hash, unapprovedPayload, contentPayload, variantPayload, deliveryPayload));
     }
 
     private static object? Clone(JsonElement source, string name) => source.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.Clone() : null;
@@ -129,15 +149,18 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     // automatic: a send the system starts on its own (a stock or price change, the reconcile scan). It leaves out a code
     // the marketplace refused twice (REJECTED) even for one variant, as a bulk send does (only a send started from the
     // panel tries such a code again), and it reports an offer it cannot send instead of failing the whole batch.
-    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null, Guid? productId = null, bool automatic = false)
+    // holdPrice/holdStock: "Platformlarda Güncelle" sent only the stock or only the price (Trendyol, Hepsiburada and
+    // Shopify lines can leave either out); the part left out is held, not recorded as sent.
+    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null, Guid? productId = null, bool automatic = false, bool holdPrice = false, bool holdStock = false)
     {
+        if (holdPrice && holdStock) return ServiceResult<PriceInventoryDraft>.Fail("PRICE_INVENTORY_FIELDS_REQUIRED", "Fiyat veya stoktan en az biri seçilmelidir.", 422);
         var connection = await db.PlatformConnections.AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.Id == connectionId)
             .Select(item => new { item.PlatformCode, item.ExternalStoreId })
             .SingleOrDefaultAsync(cancellationToken);
         if (connection is null) return ServiceResult<PriceInventoryDraft>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
         var invalid = new List<InvalidPriceInventoryOffer>();
-        var result = await BuildForPlatformAsync(connection.PlatformCode, connection.ExternalStoreId, tenantId, connectionId, cancellationToken, variantId, productId, automatic, invalid);
+        var result = await BuildForPlatformAsync(connection.PlatformCode, connection.ExternalStoreId, tenantId, connectionId, cancellationToken, variantId, productId, automatic, invalid, holdPrice, holdStock);
         InvalidOffers = invalid;
         return WithInvalidOffers(result, invalid);
     }
@@ -164,11 +187,16 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         return null;
     }
 
-    private async Task<ServiceResult<PriceInventoryDraft>> BuildForPlatformAsync(string platformCode, string externalStoreId, Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool automatic, List<InvalidPriceInventoryOffer> invalid)
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildForPlatformAsync(string platformCode, string externalStoreId, Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool automatic, List<InvalidPriceInventoryOffer> invalid, bool holdPrice, bool holdStock)
     {
         var connection = new { PlatformCode = platformCode, ExternalStoreId = externalStoreId };
         // Only a send from the panel for one variant tries a twice-refused code again.
         var variantScoped = variantId is not null && !automatic;
+        // n11, Pazarama and PTT AVM are not offered a partial send (their requests are built whole), and a Shopify line
+        // always sets the stock.
+        var code = platformCode.ToUpperInvariant();
+        if ((holdPrice || holdStock) && code is "N11" or "PAZARAMA" or "PTTAVM" || holdStock && code == "SHOPIFY")
+            return ServiceResult<PriceInventoryDraft>.Fail("PRICE_INVENTORY_FIELDS_UNSUPPORTED", "Bu pazaryeri fiyatı ve stoğu ayrı ayrı göndermeyi desteklemiyor.", 422);
         if (string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase))
             return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productId, variantScoped, automatic, invalid);
         if (string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
@@ -281,7 +309,13 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             }
             // Hepsiburada and Shopify: a stock change alone carries the stock only; the price goes when it changed.
             else priceOmitted = row.Offer.LastPriceHash == priceHash;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted, row.Offer.SafetyStock));
+            // A part the user did not pick is held: left out of the request and not settled, so it still goes later.
+            var priceHeld = holdPrice && !priceOmitted;
+            var stockHeld = holdStock && !quantityOmitted;
+            if (priceHeld) priceOmitted = true;
+            if (stockHeld) quantityOmitted = true;
+            if (priceOmitted && quantityOmitted) continue;
+            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted, row.Offer.SafetyStock, priceHeld, stockHeld));
         }
         await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);

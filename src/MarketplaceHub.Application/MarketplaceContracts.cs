@@ -462,6 +462,45 @@ public sealed record ProductPublication(Guid ProductId, string PayloadHash, stri
 public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
 public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string? ExternalOperationId = null);
 public sealed record ProductUpdatePublication(Guid ProductId, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson);
+// The product information "Platformlarda Güncelle" sends, as the requests a marketplace takes it in. Trendyol updates an
+// approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate,
+// origin) and delivery; each goes only when one of its fields was picked, and always whole. A product Trendyol has not
+// approved yet, and every Hepsiburada product, takes one full update carrying all of it.
+// Hepsiburada: whether a field its single update carries was picked (it takes no origin and no delivery).
+public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true)
+{
+    public static readonly ProductUpdateSections All = new(true, true, true);
+    public bool Any => Content || Variants || Delivery;
+}
+
+public static class ProductUpdateFields
+{
+    public const string Title = "TITLE";
+    public const string Description = "DESCRIPTION";
+    public const string Images = "IMAGES";
+    public const string Attributes = "ATTRIBUTES";
+    public const string Desi = "DESI";
+    public const string VatRate = "VAT_RATE";
+    public const string Origin = "ORIGIN";
+    public const string Delivery = "DELIVERY";
+
+    private static readonly string[] ContentFields = [Title, Description, Images, Attributes];
+    private static readonly string[] VariantFields = [Desi, VatRate, Origin];
+    private static readonly string[] HepsiburadaFields = [Title, Description, Images, Attributes, Desi, VatRate];
+    public static readonly IReadOnlySet<string> Known = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery], StringComparer.Ordinal);
+
+    // No list (an older client) is every section, as before; an unknown code is refused rather than ignored.
+    public static ServiceResult<ProductUpdateSections> Sections(IReadOnlyCollection<string>? fields)
+    {
+        if (fields is null) return ServiceResult<ProductUpdateSections>.Ok(ProductUpdateSections.All);
+        var codes = fields.Select(field => field?.Trim().ToUpperInvariant() ?? "").ToHashSet(StringComparer.Ordinal);
+        var unknown = codes.Where(code => !Known.Contains(code)).ToList();
+        if (unknown.Count > 0) return ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELD_UNKNOWN", $"Tanınmayan ürün bilgisi alanı: {string.Join(", ", unknown.Take(5))}.", 422);
+        var sections = new ProductUpdateSections(ContentFields.Any(codes.Contains), VariantFields.Any(codes.Contains), codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains));
+        return sections.Any ? ServiceResult<ProductUpdateSections>.Ok(sections) : ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELDS_REQUIRED", "Gönderilecek en az bir ürün bilgisi alanı seçin.", 422);
+    }
+}
+
 public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
 // Pazarama sale open/close by barcode; it travels in a PRODUCT_ARCHIVE job and is told apart by SaleStatusBarcodes.
 public sealed record PazaramaSaleStatusJobPayload(Guid JobId, IReadOnlyList<string> SaleStatusBarcodes, bool Close, DateTimeOffset StartedAt);
@@ -548,11 +587,14 @@ public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string
     // marketplace keeps the stock itself (n11depom, Hepsiburada fulfilment). Both false is a full line.
     bool QuantityOmitted = false, bool PriceOmitted = false,
     // The offer's safety stock the quantity was computed with; null on lines queued before it was carried.
-    decimal? SafetyStock = null);
+    decimal? SafetyStock = null,
+    // Left out because the user did not pick it ("Platformlarda Güncelle" with only the price or only the stock): the
+    // value may still differ from the marketplace's, so its mark stays and a later send still carries it.
+    bool PriceHeld = false, bool StockHeld = false);
 // Automatic: the job was built by the system on its own (a stock or price change, the reconcile scan); its values are
 // rebuilt the same way before the send (PriceInventoryComposer automatic mode). Trigger: why it was queued
 // (PriceStockSendTriggers), recorded in the send log; null on jobs queued before it was carried.
-public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false, bool Automatic = false, string? Trigger = null);
+public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false, bool Automatic = false, string? Trigger = null, bool HoldPrice = false, bool HoldStock = false);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);

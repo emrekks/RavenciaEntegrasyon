@@ -32,6 +32,8 @@ export type MarketplacePublishOutcome = {
 export type MarketplaceUpdateOutcome = {
   platformName: string
   queued: { productInformation: boolean; priceInventory: boolean }
+  /** The price/stock parts the pick sent; both when missing. */
+  priceInventoryParts?: { price: boolean; stock: boolean }
   error?: string
 }
 
@@ -106,9 +108,11 @@ export function marketplacePublishLines(outcome: MarketplacePublishOutcome) {
 }
 
 function marketplaceUpdateLine(outcome: MarketplaceUpdateOutcome) {
-  const queued = [outcome.queued.productInformation && 'ürün bilgisi', outcome.queued.priceInventory && 'fiyat-stok'].filter(Boolean).join(' ve ')
+  const parts = outcome.priceInventoryParts
+  const priceInventory = !parts || parts.price && parts.stock ? 'fiyat-stok' : parts.price ? 'fiyat' : 'stok'
+  const queued = [outcome.queued.productInformation && 'ürün bilgisi', outcome.queued.priceInventory && priceInventory].filter(Boolean).join(' ve ')
   const queuedText = queued ? `${queued} güncelleme işi kuyruğa alındı` : ''
-  if (!outcome.error) return `${outcome.platformName}: ${queuedText}.`
+  if (!outcome.error) return queuedText ? `${outcome.platformName}: ${queuedText}.` : `${outcome.platformName}: seçilen bilgilerden bu platforma gidecek olan yok; iş açılmadı.`
   return `${outcome.platformName}: ${queuedText ? `${queuedText}; ardından ` : ''}güncelleme başlatılamadı — ${outcome.error}`
 }
 

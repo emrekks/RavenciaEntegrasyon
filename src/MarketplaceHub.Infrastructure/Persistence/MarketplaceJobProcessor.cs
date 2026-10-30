@@ -2035,7 +2035,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             var current = hepsiburadaStageManual
                 ? await new PriceInventoryComposer(db).BuildHepsiburadaStageAsync(tenantId, connectionId, cancellationToken, payload.VariantId)
-                : await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId, payload.Automatic);
+                : await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId, payload.Automatic, payload.HoldPrice, payload.HoldStock);
             if (!current.Succeeded)
             {
                 if (current.Error!.Code == "NO_EXTERNAL_CHANGES") return JobExecutionResult.Success();
@@ -2199,8 +2199,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // still name the versions the line was built from, so a newer price or stock is still sent.
                 var stockCurrent = StockCurrent(line);
                 var priceCurrent = PriceCurrent(line);
-                if (priceCurrent) offer.LastPriceHash = line.PriceHash;
-                if (stockCurrent) offer.LastStockProjectionVersion = line.ProjectionVersion;
+                // A part held back by the user's pick was not sent: its mark stays, so a later send still carries it.
+                if (priceCurrent && !line.PriceHeld) offer.LastPriceHash = line.PriceHash;
+                if (stockCurrent && !line.StockHeld) offer.LastStockProjectionVersion = line.ProjectionVersion;
                 PriceInventorySendPolicy.RecordSent(offer, line, payload.SubmittedAt ?? timeProvider.GetUtcNow());
                 offer.Version++; success++;
                 if (!stockCurrent || !priceCurrent)
@@ -2520,8 +2521,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var line in lines)
         {
             var offer = offers[line.OfferId];
-            offer.LastPriceHash = line.PriceHash;
-            offer.LastStockProjectionVersion = line.ProjectionVersion;
+            if (!line.PriceHeld) offer.LastPriceHash = line.PriceHash;
+            if (!line.StockHeld) offer.LastStockProjectionVersion = line.ProjectionVersion;
             offer.Version++;
         }
         await db.SaveChangesAsync(cancellationToken);

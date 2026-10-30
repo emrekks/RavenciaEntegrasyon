@@ -128,7 +128,7 @@ public static class CatalogEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-            return Accepted(await service.EnqueueProductUpdateAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
+            return Accepted(await service.EnqueueProductUpdateAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Fields));
         });
         api.MapPost("/connections/{connectionId:guid}/sale-status-jobs", async (Guid connectionId, PazaramaSaleStatusRequest command, HttpContext http, ICatalogService service) =>
         {
@@ -263,8 +263,9 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "PRICE_SYNC", http.RequestAborted)) : MissingContext(http));
         api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, string? stockCode, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, stockCode)) : MissingContext(http));
-        api.MapPost("/products/{productId:guid}/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid productId, Guid connectionId, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductPriceInventorySyncAsync(tenant.TenantId, productId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
+        // The body may name the parts to send ({"price": true, "stock": false}); an empty body sends both, as before.
+        api.MapPost("/products/{productId:guid}/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid productId, Guid connectionId, PriceInventoryFieldsRequest? command, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductPriceInventorySyncAsync(tenant.TenantId, productId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command?.Price ?? true, command?.Stock ?? true)) : MissingContext(http));
 
         MapReferenceEndpoints(api);
         return endpoints;
@@ -1032,7 +1033,9 @@ public static class CatalogEndpoints
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
-    public sealed record PublicationRequest(Guid ConnectionId);
+    // Fields: "Platformlarda Güncelle" picks (ProductUpdateFields codes); omitted on a publication and by older clients.
+    public sealed record PublicationRequest(Guid ConnectionId, IReadOnlyList<string>? Fields = null);
+    public sealed record PriceInventoryFieldsRequest(bool? Price = null, bool? Stock = null);
     public sealed record ProductArchiveRequest(Guid ConnectionId, bool Archived);
     public sealed record PazaramaSaleStatusRequest(IReadOnlyList<string>? Barcodes, bool Close);
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
