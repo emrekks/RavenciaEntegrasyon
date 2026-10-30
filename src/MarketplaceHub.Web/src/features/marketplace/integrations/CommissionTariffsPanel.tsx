@@ -98,6 +98,15 @@ export function priceRange(values: number[]) {
   const low = Math.min(...values), high = Math.max(...values)
   return low === high ? money(low) : `${amount(low)} – ${money(high)}`
 }
+// A band's limit as the marketplace states it: the top band from its lower limit up ("464,63 ₺ ve üzeri"), every
+// other band up to its upper limit ("464,62 ₺ ve altı"); over a model's variants the limits as a range.
+export function bandLimitText(bands: Array<CommissionBand | undefined>) {
+  const found = bands.filter((band): band is CommissionBand => band != null)
+  if (!found.length) return null
+  const top = found[0].max === null
+  const limits = found.flatMap(band => { const limit = top ? band.min : band.max; return limit === null ? [] : [limit] })
+  return limits.length ? `${priceRange(limits)} ${top ? 've üzeri' : 've altı'}` : top ? 'Tüm fiyatlar' : null
+}
 // What a model's variants leave, with its sign: "266,09 – 375,71 ₺".
 export function amountRange(values: number[]) {
   const signed = (value: number) => `${value < 0 ? '− ' : ''}${amount(Math.abs(value))}`
@@ -517,7 +526,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
               return <td key={tier}>
                 <div className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
                   <strong>{money(choice.price)}</strong>
-                  <small>{band?.max === null ? 've üzeri' : 've altı'}{row.currentTier === tier ? ' · şu an' : ''}</small>
+                  <small className="commission-band-limit">{bandLimitText([band])}{row.currentTier === tier ? ' · şu an' : ''}</small>
                   <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
                   <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''} · ${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
                   <button type="button" className="commission-switch" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
@@ -560,6 +569,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
               return <td key={tier}>
                 <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
                   <strong>{priceRange(choices.map(item => item.price))}</strong>
+                  <small className="commission-band-limit">{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier)))}{owners.some(row => row.currentTier === tier) ? ' · şu an' : ''}</small>
                   <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
                   <ProfitBadge price={least ?? choices[0]} label={ranged ? `${amountRange(lefts)} Kâr` : undefined}
                     title={`${first.productName ?? first.barcode} · ${tier}. Fiyat Aralığı${ranged ? ` · en az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}` : ''}`} missing="Maliyet girilmemiş" />
