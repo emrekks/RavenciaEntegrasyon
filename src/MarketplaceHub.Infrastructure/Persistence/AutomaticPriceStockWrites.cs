@@ -54,15 +54,15 @@ internal static class AutomaticPriceStockWrites
     // only what changes after this moment goes out. The offers are changed in the caller's unit of work.
     public static async Task<int> MarkCurrentValuesSentAsync(AppDbContext db, Guid tenantId, Guid connectionId, string platformCode, CancellationToken cancellationToken)
     {
-        var rows = await (from offer in db.ChannelOffers
-                          join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN")
-                              on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
-                          from inventory in inventories.DefaultIfEmpty()
-                          where offer.TenantId == tenantId && offer.ConnectionId == connectionId
-                          select new { Offer = offer, ProjectionVersion = (long?)inventory.ProjectionVersion })
-            .ToListAsync(cancellationToken);
+        // Two queries: an AsNoTracking anywhere in one query would leave the offers untracked and the marks unsaved.
+        var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).ToListAsync(cancellationToken);
+        var variantIds = offers.Select(x => x.VariantId).Distinct().ToArray();
+        var stockVersions = await db.InventoryItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+            .Select(x => new { x.VariantId, x.ProjectionVersion })
+            .ToDictionaryAsync(x => x.VariantId, x => x.ProjectionVersion, cancellationToken);
         var changed = 0;
-        foreach (var row in rows)
+        foreach (var row in offers.Select(offer => new { Offer = offer, ProjectionVersion = stockVersions.TryGetValue(offer.VariantId, out var version) ? version : (long?)null }))
         {
             var priceHash = PriceInventoryComposer.CurrentPriceHash(platformCode, row.Offer);
             var stockVersion = row.ProjectionVersion ?? row.Offer.LastStockProjectionVersion;
