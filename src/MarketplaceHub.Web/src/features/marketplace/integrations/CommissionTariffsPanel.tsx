@@ -324,12 +324,13 @@ function SortHeader({ label, sort, filter, onFilter }: { label: string; sort: Ta
 
 const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. Fiyat Aralığı` : bulk.kind === 'amount' ? 'En Yüksek Kâr Tutarı' : 'En Yüksek Kâr Oranı'
 
-// Toplu Seçim: a column (a band, or the band leaving the most money or share), then a criterion on its profit (its share
+// Toplu Seçim: a column (a price band), then a criterion on its profit (its share
 // of the cost or its amount) above or below a value, and the buttons that apply it, take that column's picks back or
 // take every pick back.
 function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: TariffBulk; onApply: (bulk: TariffBulk) => void; onClearColumn: (column: string) => void; onClearAll: () => void }) {
   const [open, setOpen] = useState(false)
-  const [column, setColumn] = useState(bulk.kind === 'tier' ? String(bulk.tier) : bulk.kind)
+  // Only the price bands can be picked as a column.
+  const [column, setColumn] = useState(bulk.kind === 'tier' ? String(bulk.tier) : '')
   // There is no unconditional choice: a bulk pick always filters on profit, by share (%) unless the saved pick used an amount.
   const [criterion, setCriterion] = useState<'rate' | 'amount'>(bulk.minAmount != null || bulk.maxAmount != null ? 'amount' : 'rate')
   const [above, setAbove] = useState(bulk.maxRate == null && bulk.maxAmount == null)
@@ -356,7 +357,6 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
         <select value={column} onChange={event => setColumn(event.target.value)}>
           <option value="">Kolon Seçimi</option>
           {tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
-          <option value="amount">En Yüksek Kâr Tutarı</option><option value="rate">En Yüksek Kâr Oranı</option>
         </select>
       </label>
       {column !== '' && <>
