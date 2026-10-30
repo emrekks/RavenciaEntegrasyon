@@ -7116,3 +7116,19 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear) { display: inline-flex; align-items: center; justify-content: center; height: 36px; min-height: 0; padding: 0 12px; white-space: nowrap; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500; }
 html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-raised)); }
 html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):disabled { background: var(--rv-color-surface); opacity: .5; cursor: default; }
+
+/* Bulk invoice status: its notes share one compact box instead of two full-size callouts. */
+.shopify-invoice-status-form > .invoice-status-notes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 14px 10px 30px;
+  color: var(--rv-color-warning);
+  background: var(--rv-color-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-warning) 38%, transparent);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.shopify-invoice-status-form > .invoice-status-notes > li { padding-left: 2px; }
+.shopify-invoice-status-form > .invoice-status-notes > li::marker { color: currentcolor; }
