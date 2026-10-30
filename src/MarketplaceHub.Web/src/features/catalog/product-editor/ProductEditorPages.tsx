@@ -225,6 +225,7 @@ function VariantMediaPickerModal({
   selectedValueId,
   matchedVariantCount,
   matchedGroupVariantCount,
+  assignedValueIds,
   onRefsChange,
   onGroupChange,
   onValueChange,
@@ -239,6 +240,7 @@ function VariantMediaPickerModal({
   selectedValueId?: string
   matchedVariantCount?: number
   matchedGroupVariantCount?: number
+  assignedValueIds?: ReadonlySet<string>
   onRefsChange: (values: string[]) => void
   onGroupChange?: (value: string) => void
   onValueChange?: (value: string) => void
@@ -253,7 +255,7 @@ function VariantMediaPickerModal({
         <div><p className="eyebrow">Varyant Görselleri</p><h2 id="variant-media-picker-title">{mode === 'bulk' ? 'Seçeneklere Görsel Ata' : 'Varyant Görsellerini Seç'}</h2><p>{mode === 'bulk' ? 'Bir seçenek değerine görselleri atayın. Diğer değerlere geçince seçimleriniz korunur; eşlemeler tek seferde kaydedilir.' : 'Ürün görsellerinden bu varyanta ait birden fazla görsel seçin. Sıra, ürün panelindeki görsel sırasına göre kaydedilir.'}</p></div>
         <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button>
       </header>
-      {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><label>Seçenek Grubu<select value={selectedGroupId} onChange={event => onGroupChange?.(event.target.value)}><option value="">Seçenek Grubu Seçin</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><label>Seçenek Değeri<select value={selectedValueId} onChange={event => onValueChange?.(event.target.value)} disabled={!selectedGroup}><option value="">Değer Seçin</option>{selectedGroup?.values.map(value => <option key={value.id} value={value.id}>{value.value}</option>)}</select></label></div>{selectedValue && <div className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`} role="status"><strong>{selectedGroup?.name}: {selectedValue.value}</strong><span>{matchedVariantCount ? `${matchedVariantCount} varyant eşleşti` : 'Bu değerle eşleşen varyant bulunamadı'}</span></div>}</> : null}
+      {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><label>Seçenek Grubu<select value={selectedGroupId} onChange={event => onGroupChange?.(event.target.value)}><option value="">Seçenek Grubu Seçin</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><label>Seçenek Değeri<select value={selectedValueId} onChange={event => onValueChange?.(event.target.value)} disabled={!selectedGroup}><option value="">Değer Seçin</option>{selectedGroup?.values.map(value => <option key={value.id} value={value.id}>{assignedValueIds?.has(value.id) ? `${value.value} ✓` : value.value}</option>)}</select></label></div>{selectedValue && <div className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`} role="status"><strong>{selectedGroup?.name}: {selectedValue.value}</strong><span>{matchedVariantCount ? `${matchedVariantCount} varyant eşleşti` : 'Bu değerle eşleşen varyant bulunamadı'}</span></div>}</> : null}
       <div className="variant-media-picker-grid">
         {options.length ? options.map(option => <MediaOptionThumb key={option.value} option={option} selected={selectedRefs.includes(option.value)} onClick={() => {
            const next = selectedRefs.includes(option.value)
@@ -3276,6 +3278,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       selectedValueId={variantMediaModal.mode === 'bulk' ? variantMediaModal.valueId : undefined}
       matchedVariantCount={variantMediaModal.mode === 'bulk' ? selectedBulkMediaMatchCount : undefined}
       matchedGroupVariantCount={variantMediaModal.mode === 'bulk' ? selectedBulkMediaGroupMatchCount : undefined}
+      assignedValueIds={variantMediaModal.mode === 'bulk' ? new Set((bulkMediaGroups.find(group => group.id === variantMediaModal.groupId)?.values ?? []).filter(value => (readVariantMediaAssignmentDraft(variantMediaModal.draftsBySelection, variantMediaAssignmentKey(variantMediaModal.groupId, value.id)) ?? []).length > 0).map(value => value.id)) : undefined}
       onRefsChange={values => setVariantMediaModal(current => {
         if (!current) return current
         if (current.mode === 'variant') return { ...current, draftRefs: values }

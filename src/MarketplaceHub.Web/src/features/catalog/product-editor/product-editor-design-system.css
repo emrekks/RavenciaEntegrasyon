@@ -219,6 +219,8 @@
 @layer features {
   .variant-marketplace-codes-button { margin-left: auto; }
   .marketplace-codes-modal { width: min(760px, 100%); }
+  /* Product editor dialog footers: compact 34 px buttons. */
+  :is(.marketplace-codes-modal, .variant-code-confirm-modal, .variant-bulk-edit-modal, .variant-media-picker-modal, .variant-option-edit-modal) > footer button { min-height: 0; height: 34px; padding-block: 0; }
   /* Variant option text: read only, changed through the pencil (Varyant Düzenleme). */
   .variant-option-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .variant-option-cell > .variant-option-text { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
@@ -318,6 +320,8 @@
 
 @layer features {
   .option-chip-list { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
+  /* A long value group (Renk) stops at five chip rows and scrolls inside, so it stands as tall as Beden beside it. */
+  .attribute-builder-values .option-chip-list { max-height: 252px; overflow-y: auto; align-content: flex-start; padding: 2px; margin: -2px; }
 }
 
 @layer features {
@@ -922,6 +926,12 @@
   .marketplace-pricing-open { align-items: flex-start; flex-direction: column; }
 }
 .variant-platform-pricing-modal { width: min(1180px, calc(100vw - 32px)); }
+/* Dense price matrix: shorter rows and tighter spacing so more variants fit on screen at once. */
+.variant-platform-pricing-modal .variant-platform-pricing-body { max-height: min(78vh, 800px); gap: var(--rv-space-3); padding-block: var(--rv-space-3); }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix { gap: var(--rv-space-2); }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix-scroll { max-height: min(62vh, 640px); }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix-cell:not(.variant-platform-pricing-matrix-head) { gap: 1px; padding-block: 4px; }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix-cell > input { height: 32px; min-height: 0; padding-block: 0; }
 .product-options-card .product-options-toolbar .product-options-sync-button { min-height: 36px; margin: 0; padding: 0 12px; font-size: 13px; }
 @media (max-width: 760px) {
   .product-options-card .attribute-builder-list + .attribute-variant-action,
