@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addBulkPublicationResult, bulkPublishChunks, bulkPublishFailureDetails, bulkPublishResultMessage, bulkPublishVatNeed, type BulkPublicationFailure } from './bulk-publish-run'
+import { addBulkPublicationResult, bulkPublishChunks, bulkPublishFailureDetails, bulkPublishMissingVat, bulkPublishRequestBody, bulkPublishResultMessage, type BulkPublicationFailure } from './bulk-publish-run'
 
 const record = (id: string, modelCode: string | null, offerIds: Array<string | null> = ['offer']) => ({ id, title: `Bluz ${id}`, modelCode, variants: offerIds.map(offerId => ({ modelCode, offerId })) }) as never
 
@@ -20,11 +20,19 @@ describe('bulk publish slices', () => {
   })
 })
 
-describe('bulk publish VAT need', () => {
-  it('counts records priced nowhere and records the list does not hold', () => {
-    expect(bulkPublishVatNeed([record('a', 'M', ['o1', null]), record('b', 'M', [null, null]), null])).toEqual({ unpriced: 1, unknown: 1 })
-    expect(bulkPublishVatNeed([record('a', 'M')])).toEqual({ unpriced: 0, unknown: 0 })
-    expect(bulkPublishVatNeed(null)).toEqual({ unpriced: 0, unknown: 1 })
+describe('bulk publish VAT', () => {
+  const withVat = (base: object, vatRate: number | null) => ({ ...base, vatRate }) as never
+
+  it('counts records whose card has no KDV Oranı and no marketplace offer to take one from', () => {
+    expect(bulkPublishMissingVat([withVat(record('a', 'M', [null, null]), null), withVat(record('b', 'M', [null]), 10), withVat(record('c', 'M', ['o1', null]), null), null])).toBe(1)
+    expect(bulkPublishMissingVat([withVat(record('a', 'M', [null]), 20)])).toBe(0)
+    expect(bulkPublishMissingVat(null)).toBe(0)
+  })
+
+  it('never sends a VAT rate: the server takes it from the product card', () => {
+    const body = JSON.parse(bulkPublishRequestBody(['p1', 'p2'], ['c1']))
+    expect(body).toEqual({ productIds: ['p1', 'p2'], connectionIds: ['c1'] })
+    expect(body).not.toHaveProperty('vatRate')
   })
 })
 

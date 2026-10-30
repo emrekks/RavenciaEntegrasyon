@@ -18,6 +18,10 @@ public sealed class Product
     // The panel colour value sent as Trendyol Web Color for every variant; null = each variant's own Renk (automatic).
     // Trendyol only: the other marketplaces never read it.
     public Guid? TrendyolWebColorValueId { get; set; }
+    // The card's VAT (KDV Oranı, 0-100) and whether its prices include it ("INCLUDED"/"EXCLUDED"). A new marketplace
+    // offer starts from them; null = not set on the card (unknown, never guessed).
+    public decimal? VatRate { get; set; }
+    public string? VatInclusion { get; set; }
     public ProductStatus Status { get; set; } = ProductStatus.Active;
     public long SourcePolicyVersion { get; set; } = 1;
     public DateTimeOffset? ArchivedAt { get; set; }

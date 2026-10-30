@@ -1,5 +1,5 @@
-// What the bulk "Platformlarda Yayınla" popup sends and reports: the slices it posts, the cards that need the popup's
-// KDV Oranı, and the notification that names every refused card with its reason.
+// What the bulk "Platformlarda Yayınla" popup sends and reports: the slices it posts, the cards with no KDV Oranı on
+// their product card, and the notification that names every refused card with its reason.
 import type { NotificationDetail } from '../../../shared/notifications'
 import type { MarketplaceConnection, Product } from '../shared'
 import { bulkPublishPlatformName } from './bulk-publish-status'
@@ -36,16 +36,20 @@ export function bulkPublishChunks(productIds: readonly string[], records: readon
   return chunks
 }
 
-// How many selected records no marketplace has priced yet (no offer anywhere, so no VAT to copy), and how many the list
-// does not hold, whose prices are unknown here. Either asks for the popup's KDV Oranı.
-export function bulkPublishVatNeed(records: ReadonlyArray<Pick<Product, 'variants'> | null> | null) {
-  if (!records) return { unpriced: 0, unknown: 1 }
-  let unpriced = 0; let unknown = 0
-  for (const record of records) {
-    if (!record) unknown++
-    else if (record.variants.length && record.variants.every(variant => !variant.offerId)) unpriced++
+// How many selected records have no KDV Oranı on their product card and no marketplace offer to take one from: the
+// server refuses them (VAT_RATE_REQUIRED) unless the store has a default VAT. A record the list does not hold is not
+// counted; its card is unknown here.
+export function bulkPublishMissingVat(records: ReadonlyArray<Pick<Product, 'variants' | 'vatRate'> | null> | null) {
+  let missing = 0
+  for (const record of records ?? []) {
+    if (record && record.vatRate == null && record.variants.length && record.variants.every(variant => !variant.offerId)) missing++
   }
-  return { unpriced, unknown }
+  return missing
+}
+
+// One slice's request: the VAT is never sent, the server takes it from each product card.
+export function bulkPublishRequestBody(productIds: readonly string[], connectionIds: readonly string[]) {
+  return JSON.stringify({ productIds, connectionIds })
 }
 
 export function addBulkPublicationResult(total: BulkPublicationResult, part: BulkPublicationResult): BulkPublicationResult {
