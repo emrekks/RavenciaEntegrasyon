@@ -499,7 +499,10 @@ public sealed record RemoteCatalogVariant(
     IReadOnlyList<string>? ImageUrls = null,
     IReadOnlyList<RemoteInventoryLevel>? InventoryLevels = null,
     // The marketplace's desi (volumetric weight) when it carries one; ImportedDesi drops 0 and nonsense.
-    decimal? Desi = null);
+    decimal? Desi = null,
+    // The marketplace keeps and ships this variant's stock (n11depom, isFulfilledByHB): the stock is not the seller's to
+    // send. Null when the marketplace answer does not say.
+    bool? FulfilledByMarketplace = null);
 
 // A desi read from a marketplace or an import file counts only when it is a real measurement: Trendyol
 // answers 0 for a product whose desi was never entered.
@@ -540,7 +543,10 @@ public static class ImportedDesi
 }
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false, bool CatalogStructure = false);
-public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash, string? MerchantSku = null, string? HepsiburadaSku = null, string? ExternalVariantId = null);
+public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash, string? MerchantSku = null, string? HepsiburadaSku = null, string? ExternalVariantId = null,
+    // Fields left out of the request: the value equals the one the marketplace confirmed last (Trendyol), or the
+    // marketplace keeps the stock itself (n11depom, Hepsiburada fulfilment). Both false is a full line.
+    bool QuantityOmitted = false, bool PriceOmitted = false);
 public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);

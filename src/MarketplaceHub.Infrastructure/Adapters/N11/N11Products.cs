@@ -173,7 +173,8 @@ public static class N11ProductMapper
             currency,
             item.GetRawText(),
             images,
-            Desi: item.TryGetProperty("desi", out var desiElement) ? ImportedDesi.FromJson(desiElement) : null);
+            Desi: item.TryGetProperty("desi", out var desiElement) ? ImportedDesi.FromJson(desiElement) : null,
+            FulfilledByMarketplace: Depot(Text(item, "sender")));
         return new(
             externalProductId,
             productMainId,
@@ -221,6 +222,15 @@ public static class N11ProductMapper
         var externalProductId = productMainId is not null ? $"main:{productMainId}" : n11ProductId is not null ? $"n11:{n11ProductId}" : null;
         return new(stockCode, mappedStatus, externalProductId, Text(item, "stockCode"), rejectionCode, item.GetRawText());
     }
+
+    // The seller product query names who ships each SKU: "SELLER" the seller, "N11" n11depom, which keeps the stock and
+    // takes price updates only. Another value or none is not known.
+    internal static bool? Depot(string? sender) => sender?.Trim().ToUpperInvariant() switch
+    {
+        "N11" or "N11DEPOM" or "N11 DEPOM" => true,
+        "SELLER" => false,
+        _ => null
+    };
 
     private sealed record Attribute(string? Id, string Name, string Value);
 

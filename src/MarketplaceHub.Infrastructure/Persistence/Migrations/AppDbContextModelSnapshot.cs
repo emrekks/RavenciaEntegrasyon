@@ -866,6 +866,25 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("LastPriceHash")
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastSentCode")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<decimal?>("LastSentListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("LastSentQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("LastSentSalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<long?>("LastStockProjectionVersion")
                         .HasColumnType("bigint");
 
@@ -3815,6 +3834,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ExternalSku")
                         .HasColumnType("text");
+
+                    b.Property<bool?>("FulfilledByMarketplace")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset?>("HealthChangedAt")
                         .HasColumnType("timestamp with time zone");

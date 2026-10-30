@@ -1,3 +1,4 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
@@ -68,9 +69,11 @@ internal static class ChannelOfferSendMarks
 
     internal static bool Reset(ChannelOffer offer)
     {
-        if (offer.LastPriceHash is null && offer.LastStockProjectionVersion is null) return false;
+        if (offer.LastPriceHash is null && offer.LastStockProjectionVersion is null && offer.LastSentCode is null) return false;
         offer.LastPriceHash = null;
         offer.LastStockProjectionVersion = null;
+        // The values confirmed at the old address say nothing of the new one.
+        PriceInventorySendPolicy.ClearSent(offer);
         offer.Version++;
         return true;
     }

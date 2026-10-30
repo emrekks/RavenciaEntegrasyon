@@ -45,6 +45,17 @@ internal static class TrendyolErrorMapper
         };
     }
 
+    // A refused request (4xx, not an auth answer) whose text is Trendyol's 15-minute repeat refusal: the request did not
+    // run and the same body may go again after the window. Not a quota of the connection, so other jobs keep going.
+    public static AdapterError? RepeatRequest(HttpStatusCode status, string? responseBody, string? remoteRequestId)
+    {
+        var code = (int)status;
+        if (code is < 400 or >= 500 || status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) return null;
+        if (string.IsNullOrEmpty(responseBody) || responseBody.Length > 16_384 || !TrendyolStockRules.IsRepeatRequestRefusal(responseBody)) return null;
+        return new(AdapterErrorClass.RateLimit, TrendyolStockRules.RepeatRequestWaitCode,
+            "Trendyol aynı fiyat-stok isteğini 15 dakika dolmadan yeniden almıyor; istek işlenmedi ve süre dolunca yeniden denenecek.", code, TrendyolStockRules.RepeatRequestWait, remoteRequestId);
+    }
+
     public static string? SafeVendorCode(string responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody) || responseBody.Length > 16_384) return null;

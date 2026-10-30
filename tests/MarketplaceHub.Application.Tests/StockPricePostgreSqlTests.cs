@@ -1476,6 +1476,126 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.False(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile));
     }
 
+    // Trendyol refuses an identical request for 15 minutes and allows 30 price requests a minute per barcode: a line
+    // carries only what differs from the values Trendyol last confirmed, and a new version with the same values is
+    // recorded as sent without a request.
+    [PostgreSqlFact]
+    public async Task Trendyol_SendsOnlyTheValuesThatDifferFromTheLastConfirmed()
+    {
+        var tenant = NewTenant("trendyol-last-sent");
+        var trendyol = NewConnection(tenant, "TRENDYOL", writesEnabled: true);
+        var (product, same) = NewVariant(tenant, "LS-A", "8690000000301");
+        var stockOnly = NewVariant(tenant, "LS-B", "8690000000302", product.Id).Variant;
+        var priceOnly = NewVariant(tenant, "LS-C", "8690000000303", product.Id).Variant;
+        var never = NewVariant(tenant, "LS-D", "8690000000304", product.Id).Variant;
+        var offers = new[] { same, stockOnly, priceOnly, never }.ToDictionary(x => x.Id, x => NewOffer(tenant, trendyol, x));
+        var currentHash = PriceInventoryComposer.StandardPriceHash(offers[same.Id]);
+        void Confirmed(Guid variantId, string? priceHash, long? projection, string code, decimal quantity, decimal sale)
+        {
+            var offer = offers[variantId];
+            (offer.LastPriceHash, offer.LastStockProjectionVersion) = (priceHash, projection);
+            (offer.LastSentCode, offer.LastSentQuantity, offer.LastSentSalePrice, offer.LastSentListPrice, offer.LastSentAt) = (code, quantity, sale, 150m, DateTimeOffset.UtcNow);
+        }
+        Confirmed(same.Id, currentHash, 1, "TY-A", 3m, 120m);
+        Confirmed(stockOnly.Id, currentHash, 1, "TY-B", 1m, 120m);
+        Confirmed(priceOnly.Id, "OLD-PRICE", 2, "TY-C", 3m, 100m);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(same, stockOnly, priceOnly, never);
+            foreach (var variant in new[] { same, stockOnly, priceOnly, never })
+            {
+                var inventory = NewInventory(tenant, variant, 3m);
+                inventory.ProjectionVersion = 2;
+                seed.InventoryItems.Add(inventory);
+            }
+            seed.ChannelOffers.AddRange(offers.Values);
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = same.Id, ExternalId = "ty-ls-a", ExternalBarcode = "TY-A" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = stockOnly.Id, ExternalId = "ty-ls-b", ExternalBarcode = "TY-B" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = priceOnly.Id, ExternalId = "ty-ls-c", ExternalBarcode = "TY-C" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = never.Id, ExternalId = "ty-ls-d", ExternalBarcode = "TY-D" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var draft = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, trendyol.Id, CancellationToken.None);
+
+            Assert.True(draft.Succeeded, draft.Error?.Message);
+            var lines = draft.Value!.Lines.ToDictionary(x => x.VariantId);
+            Assert.False(lines.ContainsKey(same.Id));
+            Assert.Equal((false, true), (lines[stockOnly.Id].QuantityOmitted, lines[stockOnly.Id].PriceOmitted));
+            Assert.Equal((true, false), (lines[priceOnly.Id].QuantityOmitted, lines[priceOnly.Id].PriceOmitted));
+            Assert.Equal((false, false), (lines[never.Id].QuantityOmitted, lines[never.Id].PriceOmitted));
+            using var payload = System.Text.Json.JsonDocument.Parse(draft.Value.PayloadJson);
+            var items = payload.RootElement.GetProperty("items").EnumerateArray().ToDictionary(x => x.GetProperty("barcode").GetString()!);
+            Assert.False(items.ContainsKey("TY-A"));
+            Assert.False(items["TY-B"].TryGetProperty("salePrice", out _));
+            Assert.False(items["TY-C"].TryGetProperty("quantity", out _));
+            Assert.True(items["TY-D"].TryGetProperty("quantity", out _) && items["TY-D"].TryGetProperty("salePrice", out _));
+        }
+
+        await using var check = fixture.CreateContext();
+        var settled = await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == same.Id);
+        Assert.Equal((currentHash, (long?)2), (settled.LastPriceHash, settled.LastStockProjectionVersion));
+        // The next send finds nothing left to say about it.
+        var again = await new PriceInventoryComposer(check).BuildAsync(tenant.Id, trendyol.Id, CancellationToken.None, same.Id);
+        Assert.Equal("NO_EXTERNAL_CHANGES", again.Error?.Code);
+    }
+
+    // n11depom keeps the stock of the SKUs it stores: n11 takes their price only.
+    [PostgreSqlFact]
+    public async Task N11DepotSku_GoesWithoutQuantityAndAStockChangeAloneSendsNothing()
+    {
+        var tenant = NewTenant("n11-depot");
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var (product, depotPriced) = NewVariant(tenant, "N11-D1", "8690000000401");
+        var depotStockOnly = NewVariant(tenant, "N11-D2", "8690000000402", product.Id).Variant;
+        var seller = NewVariant(tenant, "N11-S1", "8690000000403", product.Id).Variant;
+        var stockOnlyOffer = NewOffer(tenant, n11, depotStockOnly);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(depotPriced, depotStockOnly, seller);
+            seed.InventoryItems.AddRange(NewInventory(tenant, depotPriced, 4m), NewInventory(tenant, depotStockOnly, 4m), NewInventory(tenant, seller, 4m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, n11, depotPriced), stockOnlyOffer, NewOffer(tenant, n11, seller));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = depotPriced.Id, ExternalId = "N11-D1", FulfilledByMarketplace = true },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = depotStockOnly.Id, ExternalId = "N11-D2", FulfilledByMarketplace = true },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = seller.Id, ExternalId = "N11-S1", FulfilledByMarketplace = false });
+            await seed.SaveChangesAsync();
+        }
+        // The stock-only depot SKU already has its current price at n11.
+        await using (var mark = fixture.CreateContext())
+        {
+            var offer = await mark.ChannelOffers.SingleAsync(x => x.Id == stockOnlyOffer.Id);
+            var sale = N11PriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer));
+            var list = Math.Max(N11PriceInventoryRules.Price(PriceInventoryComposer.OutboundListPrice(offer)), sale);
+            offer.LastPriceHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{list:0.00}|{sale:0.00}|TRY|{offer.PriceVersion}")));
+            await mark.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var draft = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, n11.Id, CancellationToken.None);
+
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        var lines = draft.Value!.Lines.ToDictionary(x => x.VariantId);
+        Assert.True(lines[depotPriced.Id].QuantityOmitted);
+        Assert.False(lines[seller.Id].QuantityOmitted);
+        Assert.False(lines.ContainsKey(depotStockOnly.Id));
+        using var payload = System.Text.Json.JsonDocument.Parse(draft.Value.PayloadJson);
+        var skus = payload.RootElement.GetProperty("payload").GetProperty("skus").EnumerateArray().ToDictionary(x => x.GetProperty("stockCode").GetString()!);
+        Assert.False(skus["N11-D1"].TryGetProperty("quantity", out _));
+        Assert.Equal(4, skus["N11-S1"].GetProperty("quantity").GetInt32());
+        var settled = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == stockOnlyOffer.Id);
+        Assert.Equal(1, settled.LastStockProjectionVersion);
+    }
+
     private static IConfiguration WritesOnConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
 

@@ -164,7 +164,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var rows = published.Select(row => new GenericPriceInventoryRow(row.Offer, row.Variant, row.Inventory,
                 isHepsiburada ? row.ListingBarcode : row.Link?.ExternalBarcode ?? row.ListingBarcode,
                 row.Link?.ExternalSku ?? row.ListingSku, row.Link?.ExternalId, row.Link?.ExternalSku is not null,
-                isShopify ? MarketplaceVariantLinkHealth.RemoteVariantId(row.Link?.ExternalId) : null))
+                isShopify ? MarketplaceVariantLinkHealth.RemoteVariantId(row.Link?.ExternalId) : null, row.Link?.FulfilledByMarketplace))
             .ToList();
         // An imported variant has no listing rows: it goes by the marketplace codes its link carries.
         var publishedVariantIds = published.Select(row => row.Variant.Id).ToHashSet();
@@ -189,7 +189,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             if (isHepsiburada && !HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.Link.ExternalId)) continue;
             if (MarketplaceVariantLinkHealth.SkipsPush(row.Link.HealthStatus, variantScoped: variantId is not null)) { skippedByHealth++; continue; }
             rows.Add(new(row.Offer, row.Variant, row.Inventory, row.Link.ExternalBarcode ?? (isShopify ? row.Link.ExternalId : row.Link.ExternalSku!), row.Link.ExternalSku, row.Link.ExternalId, true,
-                isShopify ? row.Link.ExternalId : null));
+                isShopify ? row.Link.ExternalId : null, row.Link.FulfilledByMarketplace));
         }
         if (rows.Count == 0 && skippedByHealth > 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş ya da pazar yerinden içe aktarılmış varyant ve ACTIVE teklif gerekir.", 422);
@@ -197,6 +197,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
 
         var lines = new List<PriceInventoryPushLine>();
+        var settled = new List<SettledOffer>();
         foreach (var row in rows)
         {
             if (row.Inventory is not { } inventory) continue;
@@ -212,26 +213,90 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var quantity = isTrendyol ? TrendyolStockRules.Quantity(publishable) : decimal.Floor(publishable);
             var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == inventory.ProjectionVersion) continue;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim()));
+            var barcode = row.Barcode.Trim();
+            var quantityOmitted = false;
+            var priceOmitted = false;
+            if (isTrendyol)
+            {
+                // Trendyol: only what differs from the values it last confirmed for this barcode goes; a new version
+                // carrying the same values is recorded as sent without a request.
+                var fields = PriceInventorySendPolicy.TrendyolFields(row.Offer, barcode, quantity, salePrice, listPrice, priceHash, inventory.ProjectionVersion);
+                if (!fields.Any) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
+                quantityOmitted = !fields.Quantity;
+                priceOmitted = !fields.Price;
+            }
+            else if (isHepsiburada && row.FulfilledByMarketplace == true)
+            {
+                // A listing Hepsiburada fulfils (isFulfilledByHB) keeps its stock at Hepsiburada: only the price goes, and a
+                // stock change alone has nothing to send.
+                if (row.Offer.LastPriceHash == priceHash) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
+                quantityOmitted = true;
+            }
+            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted));
         }
+        await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);
         // Dirty filtering must happen before the provider batch limit. A large
         // catalog with only a few changed offers is a valid request, while a
         // larger dirty set is drained deterministically in follow-up passes.
         lines = lines.Take(isHepsiburada ? HepsiburadaHttpClient.MaxInventoryUploadItems : MaximumBatchSize).ToList();
         var payload = isHepsiburada
-            ? JsonSerializer.Serialize(new
-            {
-                merchantId = connection.ExternalStoreId,
-                items = lines.Select(x => new { hepsiburadaSku = x.HepsiburadaSku, merchantSku = x.MerchantSku, price = x.SalePrice, availableStock = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)) }).ToArray()
-            })
+            ? HepsiburadaPayload(connection.ExternalStoreId, lines)
             : isShopify
                 ? JsonSerializer.Serialize(new { items = lines.Select(x => new { barcode = x.Barcode, variantId = x.ExternalVariantId, quantity = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)), salePrice = x.SalePrice, listPrice = x.ListPrice }).ToArray() })
-                : JsonSerializer.Serialize(new { items = lines.Select(x => new { barcode = x.Barcode, quantity = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)), salePrice = x.SalePrice, listPrice = x.ListPrice }).ToArray() });
+                : TrendyolPayload(lines);
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines) { MissingInventorySkus = missingInventory });
     }
 
-    private sealed record GenericPriceInventoryRow(ChannelOffer Offer, ProductVariant Variant, InventoryItem? Inventory, string Barcode, string? MerchantSku, string? HepsiburadaSku, bool MarketplaceCodes, string? ExternalVariantId = null);
+    // Trendyol: {"items":[{barcode, quantity?, salePrice?, listPrice?}]}. The document allows a line with only the stock
+    // or only the prices; the prices always go together.
+    internal static string TrendyolPayload(IReadOnlyList<PriceInventoryPushLine> lines)
+    {
+        var items = new JsonArray();
+        foreach (var line in lines)
+        {
+            var item = new JsonObject { ["barcode"] = line.Barcode };
+            if (!line.QuantityOmitted) item["quantity"] = checked((int)Math.Min((decimal)int.MaxValue, line.Quantity));
+            if (!line.PriceOmitted)
+            {
+                item["salePrice"] = line.SalePrice;
+                item["listPrice"] = line.ListPrice;
+            }
+            items.Add(item);
+        }
+        return new JsonObject { ["items"] = items }.ToJsonString();
+    }
+
+    // Hepsiburada: {"merchantId", "items":[{hepsiburadaSku, merchantSku, price, availableStock?}]}; a listing Hepsiburada
+    // fulfils carries no stock.
+    internal static string HepsiburadaPayload(string merchantId, IReadOnlyList<PriceInventoryPushLine> lines)
+    {
+        var items = new JsonArray();
+        foreach (var line in lines)
+        {
+            var item = new JsonObject { ["hepsiburadaSku"] = line.HepsiburadaSku, ["merchantSku"] = line.MerchantSku, ["price"] = line.SalePrice };
+            if (!line.QuantityOmitted) item["availableStock"] = checked((int)Math.Min((decimal)int.MaxValue, line.Quantity));
+            items.Add(item);
+        }
+        return new JsonObject { ["merchantId"] = merchantId, ["items"] = items }.ToJsonString();
+    }
+
+    // An offer whose new version carries the values the marketplace already holds: its marks move on without a request.
+    // Only the row as it was read is moved (its concurrency version); a row changed meanwhile is judged again next time.
+    private sealed record SettledOffer(Guid OfferId, long Version, string PriceHash, long ProjectionVersion);
+
+    private async Task SettleAsync(Guid tenantId, IReadOnlyList<SettledOffer> settled, CancellationToken cancellationToken)
+    {
+        foreach (var offer in settled.Take(MaximumBatchSize))
+            await db.ChannelOffers
+                .Where(x => x.TenantId == tenantId && x.Id == offer.OfferId && x.Version == offer.Version)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.LastPriceHash, offer.PriceHash)
+                    .SetProperty(x => x.LastStockProjectionVersion, offer.ProjectionVersion)
+                    .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+    }
+
+    private sealed record GenericPriceInventoryRow(ChannelOffer Offer, ProductVariant Variant, InventoryItem? Inventory, string Barcode, string? MerchantSku, string? HepsiburadaSku, bool MarketplaceCodes, string? ExternalVariantId = null, bool? FulfilledByMarketplace = null);
 
     // Hepsiburada SIT certification (STAGE connection, manual send from the panel only). The inventory
     // products Hepsiburada loads into the SIT account reach the panel through the product import (a
@@ -304,7 +369,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                                && (variantId == null || offer.VariantId == variantId)
                                && (productId == null || variant.ProductId == productId)
                           orderby variant.Id
-                          select new { Offer = offer, Variant = variant, Inventory = inventory, StockCode = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, StockCode = remoteLink.ExternalId, Health = remoteLink.HealthStatus, Depot = remoteLink.FulfilledByMarketplace })
             .ToListAsync(cancellationToken);
         if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped: variantId is not null)) > 0 && rows.Count == 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "N11 fiyat-stok gönderimi için N11 stok koduna bağlı varyant ve ACTIVE N11 teklifi gerekir.", 422);
@@ -312,6 +377,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
 
         var lines = new List<PriceInventoryPushLine>();
+        var settled = new List<SettledOffer>();
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
             var salePrice = N11PriceInventoryRules.Price(OutboundSalePrice(row.Offer));
@@ -324,8 +390,13 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var quantity = N11PriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
             var priceHash = Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{row.Offer.PriceVersion}");
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash));
+            // n11depom keeps and ships the stock of a SKU it stores: n11 takes the price only, so a stock change alone has
+            // nothing to send.
+            var depot = row.Depot == true;
+            if (depot && row.Offer.LastPriceHash == priceHash) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, row.Inventory.ProjectionVersion)); continue; }
+            lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: depot));
         }
+        await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);
         lines = lines.Take(N11PriceInventoryRules.MaxSkusPerRequest).ToList();
         var payload = N11PriceInventoryRules.Payload(lines);
@@ -554,14 +625,18 @@ internal static class N11PriceInventoryRules
     {
         var skus = new JsonArray();
         foreach (var line in lines)
-            skus.Add(new JsonObject
+        {
+            var sku = new JsonObject
             {
                 ["stockCode"] = line.Barcode,
                 ["listPrice"] = TwoDecimals(line.ListPrice),
-                ["salePrice"] = TwoDecimals(line.SalePrice),
-                ["quantity"] = (int)Quantity(line.Quantity),
-                ["currencyType"] = "TL"
-            });
+                ["salePrice"] = TwoDecimals(line.SalePrice)
+            };
+            // n11depom SKUs take a price update only ("yalnızca fiyat güncellemesi yapılabilir"): no quantity at all.
+            if (!line.QuantityOmitted) sku["quantity"] = (int)Quantity(line.Quantity);
+            sku["currencyType"] = "TL";
+            skus.Add(sku);
+        }
         return new JsonObject { ["payload"] = new JsonObject { ["integrator"] = Integrator, ["skus"] = skus } }.ToJsonString();
     }
 
