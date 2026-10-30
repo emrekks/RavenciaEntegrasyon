@@ -408,7 +408,7 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
           <footer><button type="button" className="secondary" onClick={() => setMatrixBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyMatrixBulkEdit} disabled={!matchingRows.length}>Uygula</button></footer>
         </DialogSurface>
       </div>,
-      document.body
+      document.querySelector('main') ?? document.body
     )}
   </>
 }
@@ -3191,8 +3191,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           </footer>
         </DialogSurface>
       </div>,
-      document.body
+      document.querySelector('main') ?? document.body
     )}
+    {/* The editor's dialogs portal into main: the panel's button and field styles are scoped to main, so one portaled
+        into body showed bare browser buttons (live 2026-10-30, Stok Kodlarını Model Kodundan Üret). */}
     {pendingVariantCodeGeneration && createPortal(
       <div className="workspace-modal-backdrop variant-code-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPendingVariantCodeGeneration(null) }}>
         <DialogSurface as="section" onClose={() => { setPendingVariantCodeGeneration(null) }} className="workspace-modal variant-code-confirm-modal" role="alertdialog" aria-labelledby="variant-code-confirm-title" aria-describedby="variant-code-confirm-description" onMouseDown={event => event.stopPropagation()}>
@@ -3215,7 +3217,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           </footer>
         </DialogSurface>
       </div>,
-      document.body
+      document.querySelector('main') ?? document.body
     )}
     {platformUpdateDialogOpen && createPortal(
       <div className="workspace-modal-backdrop platform-update-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPlatformUpdateDialogOpen(false) }}>
@@ -3239,7 +3241,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           <footer><button type="button" className="secondary" onClick={() => setPlatformUpdateDialogOpen(false)}>Vazgeç</button><button type="button" onClick={confirmPlatformUpdate} disabled={submitting || !platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'))}>{submitting ? 'Güncelleniyor…' : 'Güncelle'}</button></footer>
         </DialogSurface>
       </div>,
-      document.body
+      document.querySelector('main') ?? document.body
     )}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
     {variantMediaModal && <VariantMediaPickerModal
