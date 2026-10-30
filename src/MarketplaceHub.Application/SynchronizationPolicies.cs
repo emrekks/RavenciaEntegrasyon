@@ -615,14 +615,23 @@ public enum OrderFreshnessDecision { Send, SendAfterTimeout, Wait }
 // an order read of that connection started after the change has finished: the order is taken off the panel first and
 // the number sent already lacks it (panel 10, order on the marketplace, user sets 15, the read takes 1 off: 14 is sent).
 // The wait is bounded; a connection whose order read is late or failing is sent to after the bound.
+// Webhook first: a connection whose order notifications are healthy brings an order into the panel through its
+// notification within seconds, while its scheduled read is only an eight-minute safety net. For it the change is
+// covered once the notifications have had time to arrive (WebhookDeliveryGrace) and every notification received so far
+// has been ingested; the scheduled read still covers it too, whichever comes first.
 // Residual window: an order placed on the marketplace after that read started and before the send arrives is not in the
 // sent number. The marketplace already took it off its own stock, so it shows one unit too many until the next read
-// takes it off the panel and the following send corrects it (one order-read interval, 2-3 minutes; 8 with webhooks).
+// (or its notification) takes it off the panel and the following send corrects it (one order-read interval, 2-3
+// minutes; seconds with webhooks).
 public static class OrderFreshnessGatePolicy
 {
     public const string OrderReadCursor = "ORDERS_HOT";
     public static readonly TimeSpan DefaultMaxWait = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan RecheckDelay = TimeSpan.FromSeconds(30);
+    // How long a marketplace takes to notify an order: measured on 30 Oct 2026 over the week's 32 Trendyol orders that
+    // came by notification, order placed to order in the panel was 33 s at the median, 84 s at p90 and 97 s at most
+    // (Hepsiburada: 2 s). Ingesting a received notification took 0.4 s at the median and 8 s at p95.
+    public static readonly TimeSpan WebhookDeliveryGrace = TimeSpan.FromMinutes(2);
     public const string WaitCode = "ORDER_READ_PENDING";
     public const string WaitMessage = "Değişiklikten sonra başlayan sipariş okuması bekleniyor; araya düşen sipariş önce stoktan düşülecek, sonra gönderilecek.";
 
@@ -630,10 +639,22 @@ public static class OrderFreshnessGatePolicy
     public static bool OrdersReadAfter(DateTimeOffset changedAt, DateTimeOffset? lastAttemptAt, DateTimeOffset? lastSuccessAt) =>
         lastAttemptAt is { } attempt && attempt >= changedAt && lastSuccessAt is { } success && success >= attempt;
 
-    public static OrderFreshnessDecision Decide(bool readsOrders, DateTimeOffset? changedAt, DateTimeOffset? lastAttemptAt, DateTimeOffset? lastSuccessAt, DateTimeOffset now, TimeSpan maxWait)
+    // With healthy notifications, an order placed before the change has been notified once the grace has passed, and
+    // it is in the panel once no received notification still waits to be ingested.
+    public static bool NotificationsCover(DateTimeOffset changedAt, DateTimeOffset now, bool webhookHealthy, bool notificationsPending) =>
+        webhookHealthy && !notificationsPending && now - changedAt >= WebhookDeliveryGrace;
+
+    // Whether the notification rule can apply yet: before the grace has passed only the order read can satisfy the gate,
+    // so the webhook state need not be looked up.
+    public static bool NotificationGraceElapsed(DateTimeOffset? changedAt, DateTimeOffset now) =>
+        changedAt is { } changed && now - changed >= WebhookDeliveryGrace;
+
+    public static OrderFreshnessDecision Decide(bool readsOrders, DateTimeOffset? changedAt, DateTimeOffset? lastAttemptAt, DateTimeOffset? lastSuccessAt, DateTimeOffset now, TimeSpan maxWait,
+        bool webhookHealthy = false, bool notificationsPending = false)
     {
         if (!readsOrders || changedAt is not { } changed) return OrderFreshnessDecision.Send;
         if (OrdersReadAfter(changed, lastAttemptAt, lastSuccessAt)) return OrderFreshnessDecision.Send;
+        if (NotificationsCover(changed, now, webhookHealthy, notificationsPending)) return OrderFreshnessDecision.Send;
         return now - changed >= maxWait ? OrderFreshnessDecision.SendAfterTimeout : OrderFreshnessDecision.Wait;
     }
 }
@@ -915,6 +936,21 @@ public static class WebhookPollingPolicy
         "ORDER_LIFECYCLE" when !string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) => 3600,
         _ => null
     };
+
+    // Where a connection's new orders come from, as the price/stock monitor shows it: notifications (the scheduled read
+    // is a safety net), the scheduled read because the notifications are not healthy (it runs at its own short
+    // cadence again), or the scheduled read alone (no notifications set up).
+    public const string OrderSourceWebhook = "WEBHOOK";
+    public const string OrderSourceWebhookFallback = "WEBHOOK_FALLBACK";
+    public const string OrderSourcePolling = "POLLING";
+
+    public static string OrderSource(bool hasSubscription, bool healthy) =>
+        !hasSubscription ? OrderSourcePolling : healthy ? OrderSourceWebhook : OrderSourceWebhookFallback;
+
+    // The cadence the scheduler actually reads new orders at: the policy's, stretched to the safety net while the
+    // notifications are healthy.
+    public static int EffectiveOrderIntervalSeconds(string? platformCode, int policyIntervalSeconds, bool healthy) =>
+        healthy && StretchedIntervalSeconds(platformCode, "ORDERS") is { } stretched ? Math.Max(policyIntervalSeconds, stretched) : policyIntervalSeconds;
 
     // Silence alone says nothing: a store without orders has a quiet webhook, not a broken one. An order the
     // panel has held for a while with no notification since shows that orders come and notifications do not;

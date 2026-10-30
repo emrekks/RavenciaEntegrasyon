@@ -21,7 +21,16 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     [InlineData("TRENDYOL", "ORDER_RECONCILE_SHORT", 900, 30, 3600, 30)]
     [InlineData("TRENDYOL", "ORDER_RECONCILE_MEDIUM", 3600, 120, 21_600, 120)]
     [InlineData("TRENDYOL", "ORDER_RECONCILE_DAILY", 86_400, 900, 86_400, 900)]
-    [InlineData("SHOPIFY", "ORDERS", 60, 5, 180, 30)]
+    [InlineData("SHOPIFY", "ORDERS", 60, 5, 120, 30)]
+    [InlineData("SHOPIFY", "ORDERS", 180, 5, 120, 30)]
+    // Owner decision 30 Oct 2026: new orders without notifications every two minutes; Trendyol keeps three (quota).
+    [InlineData("TRENDYOL", "ORDERS", 180, 5, 180, 5)]
+    [InlineData("HEPSIBURADA", "ORDERS", 180, 5, 120, 5)]
+    [InlineData("N11", "ORDERS", 180, 5, 120, 5)]
+    [InlineData("PAZARAMA", "ORDERS", 180, 5, 120, 5)]
+    [InlineData("PTTAVM", "ORDERS", 180, 5, 120, 5)]
+    [InlineData("PAZARAMA", "ORDER_LIFECYCLE", 180, 10, 120, 10)]
+    [InlineData("PTTAVM", "ORDER_LIFECYCLE", 180, 10, 900, 10)]
     [InlineData("SHOPIFY", "ORDER_LIFECYCLE", 180, 10, 1800, 10)]
     [InlineData("TRENDYOL", "RETURN_LIFECYCLE", 180, 10, 1800, 10)]
     [InlineData("TRENDYOL", "RETURN_RECONCILE_SHORT", 900, 30, 3600, 30)]
@@ -32,7 +41,7 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     [InlineData("SHOPIFY", "ORDER_RECONCILE_MEDIUM", 3600, 120, 10800, 120)]
     [InlineData("SHOPIFY", "ORDER_RECONCILE_DAILY", 86400, 900, 259200, 900)]
     [InlineData("HEPSIBURADA", "ORDER_RECOVERY", 900, 30, 900, 30)]
-    [InlineData("HEPSIBURADA", "ORDER_LIFECYCLE", 180, 10, 180, 10)]
+    [InlineData("HEPSIBURADA", "ORDER_LIFECYCLE", 180, 10, 120, 10)]
     [InlineData("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION", 900, 30, 1800, 10)]
     [InlineData("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION", 300, 10, 1800, 10)]
     [InlineData("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION", 1800, 30, 1800, 30)]
@@ -72,4 +81,28 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
 
         Assert.Equal((intervalSeconds, jitterSeconds), result);
     }
+
+    // The live policy rows still at an application default move to the new cadence on the worker's defaults pass
+    // (startup and hourly); a policy the user saved keeps its values.
+    [Theory]
+    [InlineData("HEPSIBURADA", "ORDERS", 180, 600, 5, 120, 5)]
+    [InlineData("N11", "ORDERS", 180, 600, 5, 120, 5)]
+    [InlineData("PAZARAMA", "ORDERS", 180, 600, 5, 120, 5)]
+    [InlineData("SHOPIFY", "ORDERS", 180, 600, 30, 120, 30)]
+    [InlineData("HEPSIBURADA", "ORDER_LIFECYCLE", 180, 0, 10, 120, 10)]
+    [InlineData("PAZARAMA", "ORDER_LIFECYCLE", 180, 0, 10, 120, 10)]
+    public void LivePoliciesAtTheOldDefaultMoveToTwoMinutes(string platformCode, string resourceType, int interval, int overlap, int jitter, int expectedInterval, int expectedJitter)
+    {
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var current = new MarketplaceHub.Domain.ConnectionSyncPolicy { ResourceType = resourceType, IntervalSeconds = interval, OverlapSeconds = overlap, JitterSeconds = jitter };
+        Assert.True(ScheduledJobProducer.ShouldUpgradeToDefault(current, platformCode));
+        Assert.Equal((expectedInterval, overlap, expectedJitter), ScheduledJobProducer.DefaultPolicyValues(configuration, platformCode, resourceType));
+        Assert.False(ScheduledJobProducer.ShouldUpgradeToDefault(new MarketplaceHub.Domain.ConnectionSyncPolicy { ResourceType = resourceType, IntervalSeconds = interval, OverlapSeconds = overlap, JitterSeconds = jitter, UserDefined = true }, platformCode));
+        // The new default is itself a known default, so a later change can move it again.
+        Assert.True(ScheduledJobProducer.IsKnownDefault(new MarketplaceHub.Domain.ConnectionSyncPolicy { ResourceType = resourceType, IntervalSeconds = expectedInterval, OverlapSeconds = overlap, JitterSeconds = expectedJitter }, platformCode));
+    }
+
+    [Fact]
+    public void TrendyolKeepsItsThreeMinuteOrderReadDefault() =>
+        Assert.Equal((180, 600, 5), ScheduledJobProducer.DefaultPolicyValues(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TRENDYOL", "ORDERS"));
 }

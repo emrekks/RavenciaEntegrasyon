@@ -434,7 +434,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
       </ul>
     </RrModal>}
     {confirm === 'off' && <RrModal title="Webhook’u Kapat" desc={hepsiburada ? "Paneldeki adres ve giriş bilgileri geçersiz olacak; Hepsiburada’dan tanımı kaldırmasını da isteyin." : `${marketplaceName}’daki bildirim kaydı silinecek.`} size="sm" locked={change.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={change.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={change.isPending} onClick={() => change.mutate(false)}>{change.isPending ? 'Kapatılıyor…' : 'Bildirimleri Kapat'}</button></>}>
-      <p>Siparişler ve durum değişiklikleri düzenli kontrolle (3 dakikada bir) gelmeye devam eder.</p>
+      <p>Siparişler ve durum değişiklikleri düzenli kontrolle ({hepsiburada || shopify ? 2 : 3} dakikada bir) gelmeye devam eder.</p>
     </RrModal>}
     {confirm === 'restore' && data?.previousPreparedAt && <RrModal title="Önceki Tanımı Geri Yükle" desc={`${time(data.previousPreparedAt)} tarihinde hazırlanan adres ve şifre yeniden geçerli olur.`} size="sm" locked={restore.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={restore.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn pri" disabled={restore.isPending} onClick={() => restore.mutate()}>{restore.isPending ? 'Geri Yükleniyor…' : 'Geri Yükle'}</button></>}>
       <ul className="instant-notifications-terms">

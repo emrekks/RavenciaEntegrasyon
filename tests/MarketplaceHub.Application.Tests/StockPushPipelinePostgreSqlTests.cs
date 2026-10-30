@@ -230,6 +230,65 @@ public sealed class StockPushPipelinePostgreSqlTests(PostgreSqlTenantIsolationFi
         Assert.True(await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync));
     }
 
+    // C, webhook first: with healthy order notifications the send does not wait for the (eight-minute) scheduled read;
+    // once the notifications have had time to arrive and the received ones are ingested, it goes.
+    [PostgreSqlFact]
+    public async Task StockSend_WithHealthyNotificationsGoesOnceTheyAreIngested()
+    {
+        var tenant = NewTenant("order-freshness-webhook");
+        var connection = NewConnection(tenant, "N11");
+        var (product, variant) = NewVariant(tenant, "OFW-1");
+        var now = DateTimeOffset.UtcNow;
+        var changedAt = now.AddMinutes(-3);
+        var dispatchId = Guid.CreateVersion7();
+        var ingestId = Guid.CreateVersion7();
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            seed.ConnectionSyncPolicies.AddRange(WritePolicies(tenant, connection, true));
+            seed.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "ORDERS", IntervalSeconds = 120, Enabled = true, Version = 1 });
+            // The last scheduled read ran before the change; the notifications are healthy (delivered, no unnotified order).
+            seed.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = OrderFreshnessGatePolicy.OrderReadCursor, LastAttemptAt = changedAt.AddMinutes(-4), LastSuccessAt = changedAt.AddMinutes(-4), Version = 1 });
+            seed.WebhookSubscriptions.Add(new WebhookSubscription { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, RouteTokenHash = $"ofw-{Guid.NewGuid():N}", AuthenticationType = "BASIC_AUTH", ProtectedVerifierSecret = "secret", ExternalSubscriptionId = "wh-1", Status = "ACTIVE", VerifiedAt = now.AddDays(-2), LastReceivedAt = now.AddSeconds(-20) });
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.InventoryItems.Add(NewInventory(tenant, variant, 4m));
+            seed.ChannelOffers.Add(NewOffer(tenant, connection, variant));
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = "OFW-1" });
+            seed.IntegrationJobs.Add(DispatchJob(tenant, connection, variant, dispatchId, changedAt));
+            // A notification received seconds ago is still waiting to be ingested.
+            var ingest = DispatchJob(tenant, connection, variant, ingestId, now.AddSeconds(-20));
+            ingest.JobType = MarketplaceJobTypes.WebhookIngest;
+            ingest.Status = JobStatus.Pending;
+            seed.IntegrationJobs.Add(ingest);
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<JobExecutionResult> DispatchAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, WritesOn(), fixture.TimeProvider);
+            return await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.StockProjectionDispatch, JsonSerializer.Serialize(new { variantId = variant.Id }), "order-freshness-webhook", CancellationToken.None, dispatchId);
+        }
+
+        Assert.Equal(OrderFreshnessGatePolicy.WaitCode, (await DispatchAsync()).ErrorCode);
+
+        await using (var ingested = fixture.CreateContext())
+        {
+            var job = await ingested.IntegrationJobs.SingleAsync(x => x.Id == ingestId);
+            job.Status = JobStatus.Succeeded;
+            job.CompletedAt = DateTimeOffset.UtcNow;
+            job.Version++;
+            await ingested.SaveChangesAsync();
+        }
+
+        var sent = await DispatchAsync();
+        Assert.True(sent.Succeeded, sent.ErrorSummary);
+        await using var check = fixture.CreateContext();
+        Assert.True(await check.IntegrationJobs.AnyAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync));
+    }
+
     // I: an automatic send leaves out a code the marketplace no longer knows (NOT_FOUND) and one it refused twice
     // (REJECTED), also for a single variant; only a send started from the panel tries a REJECTED code again. A link a
     // scan saw again (healed) is sent once more.

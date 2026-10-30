@@ -693,7 +693,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         {
             "ORDERS" => current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2
                 || current.IntervalSeconds == 60 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5)
-                || current.IntervalSeconds == 180 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5)
+                // Two minutes since 30 Oct 2026 (ScheduledOrderPollingCadencePolicy.UnnotifiedOrderIntervalSeconds); Shopify's jitter is 30.
+                || current.IntervalSeconds == 120 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5 || current.JitterSeconds == 30)
+                || current.IntervalSeconds == 180 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5 || current.JitterSeconds == 30)
                 || current.IntervalSeconds == 480 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
                 || current.IntervalSeconds == 540 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
                 || current.IntervalSeconds == 900 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
@@ -701,7 +703,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "QUESTIONS" => (current.IntervalSeconds == 60 || current.IntervalSeconds == 120) && current.OverlapSeconds == 0 && current.JitterSeconds == 0,
             "RETURNS" => current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5
                 || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
-            "ORDER_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
+            "ORDER_LIFECYCLE" => (current.IntervalSeconds == 120 || current.IntervalSeconds == 180) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
                 || (current.IntervalSeconds == 480 || current.IntervalSeconds == 540 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_CARGO_INFO" => (current.IntervalSeconds == 300 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 15),
             "RETURN_LIFECYCLE" => (current.IntervalSeconds == 180 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),

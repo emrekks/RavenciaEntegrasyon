@@ -27,6 +27,24 @@ export type PriceStockConnectionMonitor = {
   rejectedLinks: number
   latestFailure: { jobId: string; errorCode: string | null; errorSummary: string | null; status: string; at: string | null } | null
   invalidOfferSamples: Array<{ code: string; summary: string; lastSeenAt: string }>
+  /** Where new orders come from: WEBHOOK (notifications), WEBHOOK_FALLBACK (notifications unhealthy, read on the short cadence) or POLLING. */
+  orderSource?: 'WEBHOOK' | 'WEBHOOK_FALLBACK' | 'POLLING' | string
+  lastNotificationAt?: string | null
+  /** The cadence the scheduled order read actually runs at; null when the order read is off. */
+  orderReadIntervalSeconds?: number | null
+}
+
+function cadenceText(seconds: number | null | undefined) {
+  if (seconds == null) return null
+  return seconds % 60 === 0 ? `${seconds / 60} dk` : `${seconds} sn`
+}
+
+/** How the connection's new orders reach the panel, in words, with a warning tone while notifications are unhealthy. */
+export function orderSourceState(row: Pick<PriceStockConnectionMonitor, 'orderSource' | 'orderReadIntervalSeconds'>): { label: string; detail: string | null; tone: 'on' | 'partial' | 'off' } {
+  const cadence = cadenceText(row.orderReadIntervalSeconds)
+  if (row.orderSource === 'WEBHOOK') return { label: 'Webhook', detail: cadence ? `Yedek okuma ${cadence}` : null, tone: 'on' }
+  if (row.orderSource === 'WEBHOOK_FALLBACK') return { label: 'Webhook Sorunlu', detail: cadence ? `Sık okuma ${cadence}` : 'Sipariş okuması kapalı', tone: 'partial' }
+  return { label: 'Düzenli Okuma', detail: cadence ? `Her ${cadence}` : 'Sipariş okuması kapalı', tone: 'off' }
 }
 
 export type PriceStockMonitor = { generatedAt: string; connections: PriceStockConnectionMonitor[] }
