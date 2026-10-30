@@ -524,6 +524,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                     if (usage > 0) logger.LogInformation("Job retention removed {Count} old quota usage rows", usage);
                     var effects = await retention.PurgeCompletedEffectRecordsAsync(effectRecordRetention, maximumBatches: 25, stoppingToken);
                     if (effects > 0) logger.LogInformation("Job retention removed {Count} settled marketplace action records", effects);
+                    var sendLog = await retention.PurgePriceStockSendLogAsync(PriceStockSendLogPolicy.Retention, maximumBatches: 25, stoppingToken);
+                    if (sendLog > 0) logger.LogInformation("Job retention removed {Count} old price/stock send log rows", sendLog);
                     var references = await retention.PurgeStaleReferenceSnapshotsAsync(maximumBatches: 50, stoppingToken);
                     if (references > 0) logger.LogInformation("Job retention removed {Count} rows of old marketplace reference lists", references);
                 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readJobsViewState, writeJobsViewState } from './jobs-url-state'
+import { jobsLogsTabOpen, readJobsViewState, withJobsLogsTab, writeJobsViewState } from './jobs-url-state'
 
 describe('İşlem Takibi address state (W16)', () => {
   it('reads the defaults from an empty address', () => {
@@ -25,5 +25,16 @@ describe('İşlem Takibi address state (W16)', () => {
     expect(writeJobsViewState(current, { category: 'INVOICES' }).toString()).toBe('platform=n11&kategori=fatura')
     expect(writeJobsViewState(current, { page: 5 }).toString()).toBe('platform=n11&sayfa=5')
     expect(writeJobsViewState(new URLSearchParams('kategori=fatura'), { category: 'ALL', pageSize: 100 }).toString()).toBe('adet=100')
+  })
+
+  it('opens and closes the Loglar tab without touching the job filters', () => {
+    const opened = withJobsLogsTab(new URLSearchParams('kategori=fatura&platform=n11'), true)
+    expect(opened.toString()).toBe('kategori=fatura&platform=n11&sekme=loglar')
+    expect(jobsLogsTabOpen(opened)).toBe(true)
+    expect(readJobsViewState(opened).category).toBe('INVOICES')
+    const closed = withJobsLogsTab(opened, false)
+    expect(closed.toString()).toBe('kategori=fatura&platform=n11')
+    expect(jobsLogsTabOpen(closed)).toBe(false)
+    expect(jobsLogsTabOpen(new URLSearchParams('sekme=x'))).toBe(false)
   })
 })

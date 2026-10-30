@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
@@ -16,7 +16,11 @@ import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visi
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
 import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
-import { jobPageSizes, readJobsViewState, writeJobsViewState, type JobStatusChip, type JobsViewState } from './jobs-url-state'
+import { jobPageSizes, jobsLogsTabOpen, readJobsViewState, withJobsLogsTab, writeJobsViewState, type JobStatusChip, type JobsViewState } from './jobs-url-state'
+
+// The send log (Loglar tab) loads with its own chunk the first time the tab opens.
+const PriceStockSendLog = lazy(() => import('./PriceStockSendLog'))
+const logsTabValue = 'LOGS'
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
@@ -378,7 +382,11 @@ export function JobsPage({ me }: { me: Me }) {
   const statusChips = view.chips
   const platform = jobPlatformFromSearch(searchParams.get('platform'))
   const updateView = (patch: Partial<JobsViewState>) => setSearchParams(current => writeJobsViewState(current, patch), { replace: true })
-  const setCategory = (next: JobCategory) => updateView({ category: next })
+  // Loglar (the price/stock send log) is a tab of its own; picking a category closes it.
+  const logsOpen = jobsLogsTabOpen(searchParams)
+  const setTab = (next: string) => setSearchParams(current => next === logsTabValue
+    ? withJobsLogsTab(current, true)
+    : withJobsLogsTab(writeJobsViewState(current, { category: next as JobCategory }), false), { replace: true })
   const setStatus = (next: '' | JobStatus) => updateView({ status: next })
   const setSearch = (next: string) => updateView({ search: next })
   const setTimeRange = (next: JobTimeRange) => updateView({ timeRange: next })
@@ -422,6 +430,8 @@ export function JobsPage({ me }: { me: Me }) {
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
+    // The job list is not read while the Loglar tab shows the send log.
+    enabled: !logsOpen,
     refetchInterval: query => jobListPollInterval(query.state.data?.pages.length ?? 0)
   })
   // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
@@ -429,7 +439,7 @@ export function JobsPage({ me }: { me: Me }) {
   const listHead = useQuery({
     queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, platform],
     queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`),
-    enabled: loadedServerPages > 1,
+    enabled: loadedServerPages > 1 && !logsOpen,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
   useEffect(() => {
@@ -505,8 +515,8 @@ export function JobsPage({ me }: { me: Me }) {
   const moreOnServer = Boolean(list.hasNextPage)
   // A ?sayfa=N link: read server pages until page N has rows (or the server has no more).
   useEffect(() => {
-    if (shouldLoadTowardsPage(pageNumber, totalPages, moreOnServer, loadedServerPages, list.isFetching)) void list.fetchNextPage()
-  }, [pageNumber, totalPages, moreOnServer, loadedServerPages, list])
+    if (!logsOpen && shouldLoadTowardsPage(pageNumber, totalPages, moreOnServer, loadedServerPages, list.isFetching)) void list.fetchNextPage()
+  }, [logsOpen, pageNumber, totalPages, moreOnServer, loadedServerPages, list])
   // Reads the next server page; from the last screen page the view moves on to the newly loaded rows.
   const loadMoreJobs = async () => {
     if (!moreOnServer || list.isFetchingNextPage) return
@@ -545,7 +555,7 @@ export function JobsPage({ me }: { me: Me }) {
         <h1>İşlem Takibi</h1>
         <p className="rv-page-lead">Arka plan işlemlerinin durumunu, hatalarını ve kuyruk performansını izleyin.</p>
       </div>
-      <div className="jobs-reference-heading-actions">
+      {!logsOpen && <div className="jobs-reference-heading-actions">
         <div className="jobs-reference-range-wrap">
           <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><JobsIcon name="calendar" />{timeRangeLabel(timeRange)}<JobsIcon name="chevron-down" /></button>
           {timeRangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
@@ -560,11 +570,12 @@ export function JobsPage({ me }: { me: Me }) {
             <label>Sayfa Başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{jobPageSizes.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
           </div>}
         </div>
-      </div>
+      </div>}
     </div>
-    <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => `${jobTitle(jobType)} · ${jobPresentation(jobType).action}`} platform={platform} />
+    {!logsOpen && <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => `${jobTitle(jobType)} · ${jobPresentation(jobType).action}`} platform={platform} />}
     <div className="jobs-reference-canvas">
-      <ViewTabsWithMore more={[]} className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />
+      <ViewTabsWithMore more={[]} className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={logsOpen ? logsTabValue : category} onChange={setTab} items={[...jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 })), { value: logsTabValue, label: viewTabLabel('log', 'Loglar') }]} />
+      {logsOpen ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense> : <>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
           <span {...statusChipProps('success')}><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>
@@ -596,6 +607,7 @@ export function JobsPage({ me }: { me: Me }) {
           {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</td></tr>}
         </tbody></table></div>
         {(filtered.length > 0 || moreOnServer) && <div className="jobs-reference-pagination"><strong>{moreOnServer ? `${filtered.length.toLocaleString('tr-TR')} kayıt yüklendi, daha eskileri var` : `Toplam ${filtered.length.toLocaleString('tr-TR')} kayıt`}</strong><div className="jobs-reference-pagination-actions">{moreOnServer && <Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void loadMoreJobs()}>Daha Fazla Yükle</Button>}<Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages || moreOnServer} disabled={list.isFetchingNextPage} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} /></div></div>}
+      </>}
       </>}
     </div>
      {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}

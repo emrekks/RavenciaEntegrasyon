@@ -135,6 +135,7 @@ app.MapCatalogEndpoints();
 app.MapDashboardEndpoints();
 app.MapReportsEndpoints();
 app.MapJobEndpoints();
+app.MapPriceStockSendLogEndpoints();
 app.MapMarketplaceEndpoints();
 app.MapQuestionEndpoints();
 app.MapInvoicingEndpoints();

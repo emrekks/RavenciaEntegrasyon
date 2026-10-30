@@ -548,8 +548,9 @@ public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string
     // marketplace keeps the stock itself (n11depom, Hepsiburada fulfilment). Both false is a full line.
     bool QuantityOmitted = false, bool PriceOmitted = false);
 // Automatic: the job was built by the system on its own (a stock or price change, the reconcile scan); its values are
-// rebuilt the same way before the send (PriceInventoryComposer automatic mode).
-public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false, bool Automatic = false);
+// rebuilt the same way before the send (PriceInventoryComposer automatic mode). Trigger: why it was queued
+// (PriceStockSendTriggers), recorded in the send log; null on jobs queued before it was carried.
+public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false, bool Automatic = false, string? Trigger = null);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);

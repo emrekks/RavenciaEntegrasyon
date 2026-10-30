@@ -179,6 +179,7 @@ public sealed partial class OperationalDataMaintenanceService
             DELETE FROM integration.reconciliation_differences d USING integration.reconciliation_runs r WHERE d."TenantId"={{tenantId}} AND d."RunId"=r."Id" AND r."TenantId"={{tenantId}} AND r."ConnectionId"={{connectionId}};
             DELETE FROM integration.reconciliation_runs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM integration.external_effect_records WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM integration.price_stock_send_log WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM integration.connection_backoffs WHERE "ConnectionId"={{connectionId}};
             DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             -- The open problems about the connection, its orders or its invoices have nothing left to point at.

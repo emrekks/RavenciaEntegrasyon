@@ -199,6 +199,31 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
         return deleted;
     }
 
+    // The price/stock send log keeps 90 days. Each tenant's oldest rows are read through its (TenantId, CreatedAt) index,
+    // so a batch never scans the table.
+    public async Task<int> PurgePriceStockSendLogAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow() - retention;
+        var deleted = 0;
+        for (var batch = 0; batch < maximumBatches; batch++)
+        {
+            var count = await db.Database.ExecuteSqlInterpolatedAsync($"""
+                WITH doomed AS (
+                    SELECT old."Id" FROM iam.tenants tenant
+                    CROSS JOIN LATERAL (
+                        SELECT log."Id" FROM integration.price_stock_send_log log
+                        WHERE log."TenantId" = tenant."Id" AND log."CreatedAt" < {cutoff}
+                        ORDER BY log."CreatedAt", log."Id"
+                        LIMIT {BatchSize}) old
+                    LIMIT {BatchSize})
+                DELETE FROM integration.price_stock_send_log log USING doomed WHERE log."Id" = doomed."Id"
+                """, cancellationToken);
+            deleted += count;
+            if (count < BatchSize) break;
+        }
+        return deleted;
+    }
+
     // A settled marketplace-action record (applied or closed unresolved) is history once its retention passed.
     // Open records are never removed: they still block a second send of the same action.
     public async Task<int> PurgeCompletedEffectRecordsAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)

@@ -1,0 +1,113 @@
+/* İşlem Takibi › Loglar: the price/stock send log as a dense API-log table (44px rows), the filters in one bar,
+   cards on phones like the job list. */
+.app-shell.stitch-shell main .jobs-reference-page .psl { display: grid; gap: 12px; min-width: 0; }
+
+/* Filters bar */
+.app-shell.stitch-shell main .jobs-reference-page .psl-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filters .psl-search { flex: 1 1 280px; width: auto; min-width: 220px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-control { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400; text-transform: none; }
+.app-shell.stitch-shell main .jobs-reference-page select.psl-control { padding-right: 30px; }
+.app-shell.stitch-shell main .jobs-reference-page button.psl-control { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.app-shell.stitch-shell main .jobs-reference-page button.psl-control:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-clear:disabled { color: var(--rv-color-muted); cursor: default; opacity: .6; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-date { display: inline-flex; align-items: center; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-date input { width: 148px; padding: 0 10px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-platform-wrap { position: relative; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-platform-toggle svg { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-platform-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: grid; gap: 2px; width: 230px; padding: 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-platform-option { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px; color: var(--rv-color-ink); border-radius: 7px; font-size: 13px; cursor: pointer; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-platform-option:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-platform-option input { width: 16px; height: 16px; min-height: 0; margin: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-platform-empty { margin: 0; padding: 8px; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.psl-platform-wrap, .psl-platform, .psl-platform-option) .platform-square-mark { flex: none; width: 20px; height: 20px; border-radius: 7px; overflow: hidden; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.psl-platform-wrap, .psl-platform, .psl-platform-option) .platform-square-mark img { width: 100%; height: 100%; object-fit: contain; }
+
+/* Table */
+.app-shell.stitch-shell main .jobs-reference-page .psl-table-scroll { overflow: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-table { width: 100%; min-width: 1040px; border-collapse: collapse; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-table th { height: 36px; padding: 0 12px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 0; border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 500; letter-spacing: 0; text-align: left; text-transform: none; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-table td { height: 44px; padding: 6px 12px; vertical-align: middle; background: none; border: 0; border-top: 1px solid var(--rv-color-border); font-size: 13px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-table tbody tr:first-child td { border-top: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-row:hover td { background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-time strong { display: block; font-weight: 500; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-time small { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .jobs-reference-page td.psl-platform { max-width: 180px; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page td.psl-platform .platform-square-mark { display: inline-grid; place-items: center; vertical-align: middle; }
+.app-shell.stitch-shell main .jobs-reference-page td.psl-platform > span:last-child { display: inline-block; max-width: 130px; margin-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-product { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 340px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-product img,
+.app-shell.stitch-shell main .jobs-reference-page .psl-product-placeholder { flex: none; width: 32px; height: 32px; border: 1px solid var(--rv-color-border); border-radius: 7px; object-fit: cover; background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-product-placeholder { display: grid; place-items: center; color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-product-text { display: grid; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-product-text strong { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-product-text small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-change { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-change.is-same { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-change.is-omitted { color: var(--rv-color-subtle); font-size: 12px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-list-price { display: block; color: var(--rv-color-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-trigger { color: var(--rv-color-muted); white-space: nowrap; }
+
+/* Result pill: green applied, amber waiting/uncertain, red refused. */
+.app-shell.stitch-shell main .jobs-reference-page .psl-result { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: default; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-result i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-result.is-success { background: var(--rv-color-accent-soft); border-color: color-mix(in srgb, var(--rv-color-accent) 35%, transparent); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-result.is-success i { background: var(--rv-color-accent); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-result.is-warning { background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 35%, transparent); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-result.is-warning i { background: var(--rv-color-warning); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-result.is-danger { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 35%, transparent); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-result.is-danger i { background: var(--rv-color-danger); }
+
+.app-shell.stitch-shell main .jobs-reference-page .psl-job { width: 1%; text-align: right; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-job-link { display: inline-flex; align-items: center; gap: 4px; height: 28px; min-height: 0; padding: 0 8px; color: var(--rv-color-primary); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 12px; font-weight: 500; text-transform: none; white-space: nowrap; cursor: pointer; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-job-link:hover { background: var(--rv-color-primary-soft); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-empty { height: auto !important; padding: 40px 16px !important; color: var(--rv-color-muted); text-align: center; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-empty strong { display: block; margin-bottom: 6px; color: var(--rv-color-ink); font-weight: 500; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-empty span { display: block; max-width: 560px; margin: 0 auto; line-height: 1.5; }
+
+/* Phones: each line is a card — product and result on top, stock and price, then time, platform and trigger. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-page .psl-filters { flex-direction: column; align-items: stretch; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-filters .psl-search { flex: none; min-width: 0; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-filters > :is(select, button.psl-control, .psl-platform-wrap) { width: 100%; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-platform-toggle { width: 100%; justify-content: space-between; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-platform-menu { width: 100%; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-date { justify-content: space-between; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-date input { flex: 1; width: auto; max-width: 70%; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-refresh { align-self: flex-end; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table-scroll { overflow: visible; background: transparent; border: 0; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table,
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody { display: block; width: 100%; min-width: 0; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > thead { display: none; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "product product"
+      "stock price"
+      "result job"
+      "time platform"
+      "trigger trigger";
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 10px;
+    padding: 12px;
+    background: var(--rv-color-surface);
+    border: 1px solid var(--rv-color-border-strong);
+    border-radius: 12px;
+  }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td { display: block; width: auto; height: auto; min-width: 0; padding: 0; border: 0; background: none; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-product-cell { grid-area: product; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-stock { grid-area: stock; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-price { grid-area: price; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-result-cell { grid-area: result; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-job { grid-area: job; width: auto; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-time { grid-area: time; display: flex; gap: 6px; align-items: baseline; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-platform { grid-area: platform; max-width: none; padding-top: 8px; border-top: 1px solid var(--rv-color-border); text-align: right; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-trigger { grid-area: trigger; font-size: 12px; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td:is(.psl-stock, .psl-price, .psl-trigger)::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td.psl-trigger::before { display: inline; margin-right: 6px; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr > td[colspan] { grid-column: 1 / -1; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody > tr:has(> td[colspan]) { display: block; }
+  .app-shell.stitch-shell main .jobs-reference-page .psl-product { max-width: none; }
+}

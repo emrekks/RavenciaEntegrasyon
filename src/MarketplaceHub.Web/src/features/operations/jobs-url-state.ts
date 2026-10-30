@@ -65,3 +65,19 @@ export function writeJobsViewState(current: URLSearchParams, patch: Partial<Jobs
   set('adet', next.pageSize !== defaultPageSize ? String(next.pageSize) : '')
   return params
 }
+
+// The Loglar tab (the price/stock send log) is a view of its own beside the job categories: ?sekme=loglar. The job
+// filters stay in the address while it is open, so going back to a category finds them as they were.
+const logsTabParam = 'sekme'
+const logsTabSlug = 'loglar'
+
+export function jobsLogsTabOpen(params: URLSearchParams) {
+  return params.get(logsTabParam) === logsTabSlug
+}
+
+export function withJobsLogsTab(current: URLSearchParams, open: boolean): URLSearchParams {
+  const params = new URLSearchParams(current)
+  if (open) params.set(logsTabParam, logsTabSlug)
+  else params.delete(logsTabParam)
+  return params
+}

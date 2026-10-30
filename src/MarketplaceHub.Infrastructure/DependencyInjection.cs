@@ -64,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<JobRetentionService>();
         services.AddScoped<OperationalIssueRetentionService>();
         services.AddScoped<IJobOperationsService, JobOperationsService>();
+        services.AddScoped<IPriceStockSendLogService, PriceStockSendLogService>();
         services.AddScoped<IDashboardReadService, DashboardReadService>();
         services.AddScoped<IReportsService, ReportsService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();

@@ -29,6 +29,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<JobAttempt> JobAttempts => Set<JobAttempt>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<ExternalEffectRecord> ExternalEffectRecords => Set<ExternalEffectRecord>();
+    public DbSet<PriceStockSendLog> PriceStockSendLogs => Set<PriceStockSendLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OperationalIssue> OperationalIssues => Set<OperationalIssue>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
@@ -403,6 +404,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd();
             entity.HasIndex(x => new { x.PublishedAt, x.NextAttemptAt, x.CreatedAt });
             entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<PriceStockSendLog>(entity =>
+        {
+            entity.ToTable("price_stock_send_log", "integration"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlatformCode).HasMaxLength(32); entity.Property(x => x.Barcode).HasMaxLength(256); entity.Property(x => x.StockCode).HasMaxLength(256);
+            entity.Property(x => x.PreviousQuantity).HasPrecision(19, 4); entity.Property(x => x.NewQuantity).HasPrecision(19, 4);
+            entity.Property(x => x.PreviousSalePrice).HasPrecision(19, 4); entity.Property(x => x.NewSalePrice).HasPrecision(19, 4);
+            entity.Property(x => x.PreviousListPrice).HasPrecision(19, 4); entity.Property(x => x.NewListPrice).HasPrecision(19, 4);
+            entity.Property(x => x.Currency).HasMaxLength(3); entity.Property(x => x.Trigger).HasMaxLength(32); entity.Property(x => x.Result).HasMaxLength(24);
+            entity.Property(x => x.ExternalRequestId).HasMaxLength(256); entity.Property(x => x.ErrorCode).HasMaxLength(100); entity.Property(x => x.ErrorMessage).HasMaxLength(500);
+            // The log page reads a tenant's rows newest first (also the retention's per-tenant walk); a product's history
+            // and a store's rows the same way; the poll finds its job's rows.
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt, x.Id }).IsDescending(false, true, true);
+            entity.HasIndex(x => new { x.TenantId, x.VariantId, x.CreatedAt }).IsDescending(false, false, true);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.CreatedAt }).IsDescending(false, false, true);
+            entity.HasIndex(x => x.JobId);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
     }

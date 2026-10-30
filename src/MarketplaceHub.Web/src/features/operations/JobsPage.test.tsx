@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Me } from '../../shared/api'
 
-const apiState = vi.hoisted(() => ({ calls: [] as string[], failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }> }))
+const apiState = vi.hoisted(() => ({ calls: [] as string[], failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false } }))
 
 // The page shows the last 24 hours by default, so the fixture's jobs are dated relative to the run.
 function hoursAgo(hours: number) {
@@ -38,6 +38,8 @@ vi.mock('../../shared/api', () => {
       ...apiState.extraCountRows
     ]
     if (path.startsWith('/jobs/metrics')) return []
+    if (path.startsWith('/price-stock-send-log?')) return apiState.sendLog
+    if (path === '/jobs/job-sent') return { job: job('job-sent', 'PRICE_INVENTORY_SYNC', 'SUCCEEDED', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] }
     if (path.startsWith('/jobs/page?')) {
       const params = new URLSearchParams(path.slice(path.indexOf('?') + 1))
       if (params.get('after') === 'cursor-1') {
@@ -100,6 +102,7 @@ beforeEach(() => {
   apiState.calls = []
   apiState.failNextPage = false
   apiState.extraCountRows = []
+  apiState.sendLog = { items: [], nextCursor: null, hasMore: false }
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -258,6 +261,71 @@ describe('JobsPage platform filter', () => {
     await settle()
     expect(currentSearch).toBe('')
     expect(pageRequests().at(-1)!.get('platform')).toBeNull()
+  })
+})
+
+describe('JobsPage Loglar tab (price/stock send log)', () => {
+  function logRequests() {
+    return apiState.calls.filter(path => path.startsWith('/price-stock-send-log?')).map(path => new URLSearchParams(path.slice(path.indexOf('?') + 1)))
+  }
+
+  it('opens from the tab, keeps the job list unread and explains the empty log', async () => {
+    await renderPage()
+    const jobReads = pageRequests().length
+    await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent?.includes('Loglar'))!.click() })
+    await settle()
+    await settle()
+    await settle()
+
+    expect(currentSearch).toBe('?sekme=loglar')
+    expect(logRequests().at(-1)!.get('limit')).toBe('50')
+    expect(pageRequests().length).toBe(jobReads)
+    expect(container.textContent).toContain('Henüz gönderim kaydı yok.')
+    expect(container.textContent).toContain('Otomatik fiyat-stok yazması şu an kapalı')
+    expect(container.querySelector('.jobs-reference-status-summary')).toBeNull()
+  })
+
+  it('shows a sent line and opens its job', async () => {
+    apiState.sendLog = {
+      items: [{
+        id: 'log-1', createdAt: '2026-10-30T09:15:00Z', completedAt: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol',
+        jobId: 'job-sent', variantId: 'v-1', productId: 'p-1', productTitle: 'Keten Gömlek', imageUrl: null, barcode: '8680001', stockCode: 'KG-1', modelCode: 'KG',
+        previousQuantity: 5, newQuantity: 4, previousSalePrice: 799, newSalePrice: 749, previousListPrice: 999, newListPrice: 999, currency: 'TRY',
+        trigger: 'ORDER', result: 'REJECTED', errorCode: 'TY-400', errorMessage: 'Fiyat aralık dışı', externalRequestId: 'batch-1'
+      }],
+      nextCursor: null,
+      hasMore: false
+    }
+    await renderPage('/jobs?sekme=loglar')
+    await settle()
+
+    const row = container.querySelector('.psl-row')!
+    expect(row.textContent).toContain('12:15:00')
+    expect(row.textContent).toContain('Ravencia Trendyol')
+    expect(row.textContent).toContain('Keten Gömlek')
+    expect(row.textContent).toContain('5 → 4')
+    expect(row.textContent).toContain('₺799 → ₺749')
+    expect(row.textContent).not.toContain('Liste:')
+    expect(row.textContent).toContain('Sipariş')
+    expect(row.querySelector('.psl-result')!.getAttribute('title')).toBe('Pazaryeri satırı reddetti. — TY-400: Fiyat aralık dışı')
+
+    await act(async () => { button('İşi Aç')!.click() })
+    await settle()
+    expect(apiState.calls).toContain('/jobs/job-sent')
+  })
+
+  it('sends the result filter and clears it with Temizle', async () => {
+    await renderPage('/jobs?sekme=loglar')
+    await settle()
+    const select = container.querySelector<HTMLSelectElement>('select[aria-label="Sonuç"]')!
+    await act(async () => { select.value = 'FAILED'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await settle()
+    expect(logRequests().at(-1)!.get('results')).toBe('FAILED')
+    expect(container.textContent).toContain('Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.')
+
+    await act(async () => { button('Temizle')!.click() })
+    await settle()
+    expect(logRequests().at(-1)!.get('results')).toBeNull()
   })
 })
 

@@ -20,7 +20,7 @@ public static class ConnectionDataInventory
         "catalog.commission_tariffs", "catalog.promotion_offer_files",
         "catalog.import_sessions", "catalog.product_import_sessions", "catalog.product_import_staging_records", "catalog.catalog_structure_runs",
         "inventory.channel_offers", "inventory.channel_inventory_observations",
-        "integration.jobs", "integration.external_effect_records", "integration.reconciliation_runs",
+        "integration.jobs", "integration.external_effect_records", "integration.reconciliation_runs", "integration.price_stock_send_log",
         "integration.sync_cursors", "integration.connection_backoffs",
         "integration.reference_snapshots", "integration.reference_items",
         "integration.marketplace_question_sync_states", "integration.marketplace_finance_sync_states",

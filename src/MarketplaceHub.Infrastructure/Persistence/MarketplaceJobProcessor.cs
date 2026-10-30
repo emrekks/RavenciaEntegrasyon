@@ -2069,35 +2069,52 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 TrackResultFailure(submit.Error);
                 // PTT AVM refuses the same request again within five minutes, so its resend waits past that window.
                 if (IsAmbiguous(submit.Error!)) return JobExecutionResult.Retry("PRICE_INVENTORY_OUTCOME_UNKNOWN", "Fiyat-stok çağrısının sonucu kesinleşmedi; aynı değerler yeniden gönderilecek.", connection.PlatformCode == "PTTAVM" ? TimeSpan.FromMinutes(6) : TimeSpan.FromSeconds(30), submit.Error!.RemoteRequestId);
-                db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
+                db.ExternalEffectRecords.Remove(effect);
+                // A refused request is logged once the refusal is final; one to be sent again is logged by the send that follows.
+                var refusal = JobExecutionResult.FromAdapterError(submit.Error!);
+                if (!IsRepeatRequestRefusal(submit.Error!) && refusal.Kind != JobCompletionKind.Retry)
+                    await PriceStockSendLogRecorder.AddAsync(db, tenantId, connectionId, connection.PlatformCode, job, payload, submit.Error!.RemoteRequestId, timeProvider.GetUtcNow(), PriceStockSendResults.Failed, submit.Error.Code, submit.Error.SafeMessage, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
                 // Trendyol (15 minutes) and PTT AVM (five) refuse a request identical to one they took a moment ago. When
                 // every value equals the one the marketplace last confirmed, it already holds them; otherwise the same
                 // request goes again once the window has passed (the earlier one's outcome is not known here).
                 if (IsRepeatRequestRefusal(submit.Error!))
                 {
                     if (await SettleRepeatedPriceInventoryAsync(tenantId, connectionId, payload.Lines, cancellationToken))
-                        return JobExecutionResult.SuccessWithNote(submit.Error!.Code, "Pazar yeri aynı isteği kısa süre önce almıştı; değerler son onaylanan değerlerle aynı olduğu için gönderilmiş sayıldı.");
-                    return JobExecutionResult.FromAdapterError(submit.Error!) with { BackOffConnection = false };
+                    {
+                        const string heldNote = "Pazar yeri aynı isteği kısa süre önce almıştı; değerler son onaylanan değerlerle aynı olduğu için gönderilmiş sayıldı.";
+                        await PriceStockSendLogRecorder.AddAsync(db, tenantId, connectionId, connection.PlatformCode, job, payload, submit.Error!.RemoteRequestId, timeProvider.GetUtcNow(), PriceStockSendResults.Unchanged, submit.Error.Code, heldNote, cancellationToken);
+                        await db.SaveChangesAsync(cancellationToken);
+                        return JobExecutionResult.SuccessWithNote(submit.Error!.Code, heldNote);
+                    }
+                    return refusal with { BackOffConnection = false };
                 }
-                return JobExecutionResult.FromAdapterError(submit.Error!);
+                return refusal;
             }
             effect.CompletedAt = timeProvider.GetUtcNow(); var op = submit.Value!;
             var next = payload with { Phase = "POLL", ExternalOperationId = op.ExternalOperationId, SubmittedAt = op.SubmittedAt };
-            job.PayloadJson = JsonSerializer.Serialize(next); job.PayloadHash = Hash(job.PayloadJson); await db.SaveChangesAsync(cancellationToken);
+            job.PayloadJson = JsonSerializer.Serialize(next); job.PayloadHash = Hash(job.PayloadJson);
+            await PriceStockSendLogRecorder.AddAsync(db, tenantId, connectionId, connection.PlatformCode, job, payload, op.ExternalOperationId, timeProvider.GetUtcNow(), PriceStockSendResults.Submitted, null, null, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
             return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), op.ExternalOperationId);
         }
         if (phase != "POLL" || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRICE_INVENTORY_PHASE_INVALID", "Fiyat-stok işi bilinmeyen bir fazda.");
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         // Pazarama may answer a batch up to four hours late, so it is waited for eight; the others for four.
         var pollDeadline = PriceInventorySendPolicy.PollDeadline(platformCode);
-        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > pollDeadline) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_EXPIRED", $"Fiyat-stok batch sonucu {pollDeadline.TotalHours:0} saatlik pencerede alınamadı.", payload.ExternalOperationId);
+        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > pollDeadline) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_EXPIRED", $"Fiyat-stok batch sonucu {pollDeadline.TotalHours:0} saatlik pencerede alınamadı.", payload.ExternalOperationId), cancellationToken);
         TrackRequest();
         var operation = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
-        if (!operation.IsSuccess) { TrackResultFailure(operation.Error); return JobExecutionResult.FromAdapterError(operation.Error!); }
+        if (!operation.IsSuccess)
+        {
+            TrackResultFailure(operation.Error);
+            var readFailure = JobExecutionResult.FromAdapterError(operation.Error!);
+            return readFailure.Kind == JobCompletionKind.Retry ? readFailure : await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, readFailure, cancellationToken);
+        }
         TrackReceived();
         if (operation.Value!.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(20), payload.ExternalOperationId);
-        if (operation.Value.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok isteğini satır sonucu vermeden tamamen reddetti; fiyat ve stok değerlerini kontrol edin.", payload.ExternalOperationId);
-        if (!operation.Value.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_STATUS_UNKNOWN", "Fiyat-stok batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId);
+        if (operation.Value.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase)) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Rejected, JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok isteğini satır sonucu vermeden tamamen reddetti; fiyat ve stok değerlerini kontrol edin.", payload.ExternalOperationId), cancellationToken);
+        if (!operation.Value.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_STATUS_UNKNOWN", "Fiyat-stok batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId), cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isPttAvm = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
         var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
@@ -2107,27 +2124,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             ? payload.Lines.Select(x => x.MerchantSku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count()
             : payload.Lines.Select(x => x.Barcode).Distinct(StringComparer.OrdinalIgnoreCase).Count();
         if (payload.Lines.Count == 0 || payload.Lines.Count > maximumLineCount || duplicateKeys != payload.Lines.Count)
-            return JobExecutionResult.ManualReview("PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok job satırları eksik, yinelenen veya limit dışı.");
+            return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok job satırları eksik, yinelenen veya limit dışı."), cancellationToken);
         var offerIds = payload.Lines.Select(x => x.OfferId).ToArray();
         var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && offerIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
-        if (offers.Count != payload.Lines.Count) return JobExecutionResult.ManualReview("PRICE_INVENTORY_STATE_INCOMPLETE", "Fiyat-stok uzlaştırmasında teklif kayıtları eksik.");
+        if (offers.Count != payload.Lines.Count) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_STATE_INCOMPLETE", "Fiyat-stok uzlaştırmasında teklif kayıtları eksik."), cancellationToken);
         var variantIds = payload.Lines.Select(x => x.VariantId).Distinct().ToArray();
         var inventory = await db.InventoryItems.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
             .ToDictionaryAsync(x => x.VariantId, cancellationToken);
-        if (inventory.Count != variantIds.Length) return JobExecutionResult.ManualReview("PRICE_INVENTORY_STATE_INCOMPLETE", "Fiyat-stok uzlaştırmasında MAIN stok projection kayıtları eksik.");
+        if (inventory.Count != variantIds.Length) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_STATE_INCOMPLETE", "Fiyat-stok uzlaştırmasında MAIN stok projection kayıtları eksik."), cancellationToken);
         foreach (var line in payload.Lines)
         {
             if (!PriceInventoryOutboxPolicy.IsCurrent(line, inventory[line.VariantId].ProjectionVersion, offers[line.OfferId].PriceVersion))
-                return JobExecutionResult.Blocked("PRICE_INVENTORY_SUPERSEDED", "Batch sonucu alınırken fiyat veya stok daha yeni bir sürüme geçti; eski sonuç güncel kayda uygulanmadı.");
+                return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Superseded, JobExecutionResult.Blocked("PRICE_INVENTORY_SUPERSEDED", "Batch sonucu alınırken fiyat veya stok daha yeni bir sürüme geçti; eski sonuç güncel kayda uygulanmadı."), cancellationToken);
         }
         var lineByBarcode = operation.Value.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
         if (isHepsiburada && operation.Value.Lines.Any(remoteLine => !payload.Lines.Any(localLine =>
                 string.Equals(localLine.MerchantSku, remoteLine.ExternalKey, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(localLine.HepsiburadaSku, remoteLine.ExternalKey, StringComparison.OrdinalIgnoreCase))))
-            return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Hepsiburada fiyat-stok sonucu gönderilmeyen bir merchantSku/hbSku içeriyor.", payload.ExternalOperationId);
+            return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Hepsiburada fiyat-stok sonucu gönderilmeyen bir merchantSku/hbSku içeriyor.", payload.ExternalOperationId), cancellationToken);
+        // The request's log rows, settled line by line below and saved with the offers.
+        var sendLog = await PriceStockSendLogRecorder.PendingAsync(db, tenantId, job.Id, payload.ExternalOperationId, timeProvider.GetUtcNow(), cancellationToken);
         if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
-            return await RecordPazaramaPriceInventory(tenantId, connectionId, payload, offers, lineByBarcode, cancellationToken);
+            return await RecordPazaramaPriceInventory(tenantId, connectionId, job.Id, payload, offers, lineByBarcode, sendLog, cancellationToken);
         var success = 0; var failed = 0;
         var unknownCodes = new Dictionary<Guid, string>();
         var confirmedCodes = new List<Guid>();
@@ -2147,16 +2166,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (!found.Found && isPttAvm)
             {
                 failed++;
-                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.ExternalVariantId ?? line.Barcode}:PTTAVM_TRACKING_LINE_MISSING", "PTTAVM_TRACKING_LINE_MISSING", $"PTT AVM fiyat-stok sonucu {line.ExternalVariantId ?? line.Barcode} ürününü içermiyor; {line.Barcode} gönderilmiş sayılmadı.", cancellationToken);
+                var missing = $"PTT AVM fiyat-stok sonucu {line.ExternalVariantId ?? line.Barcode} ürününü içermiyor; {line.Barcode} gönderilmiş sayılmadı.";
+                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.ExternalVariantId ?? line.Barcode}:PTTAVM_TRACKING_LINE_MISSING", "PTTAVM_TRACKING_LINE_MISSING", missing, cancellationToken);
+                sendLog.Settle(line, PriceStockSendResults.Failed, "PTTAVM_TRACKING_LINE_MISSING", missing);
                 continue;
             }
-            if (!found.Found && !isHepsiburada) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
+            if (!found.Found && !isHepsiburada) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
             // A Hepsiburada upload that failed as a whole proves nothing of the lines it leaves out: they are not recorded
             // as sent, so the same values go again with the next send.
             if (!found.Found && operation.Value.UnlistedLinesUnconfirmed)
             {
                 failed++;
-                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:PRICE_INVENTORY_UPLOAD_FAILED", "PRICE_INVENTORY_UPLOAD_FAILED", $"Pazar yeri fiyat-stok yüklemesi başarısız döndü ve {line.Barcode} için satır sonucu vermedi; gönderilmiş sayılmadı.", cancellationToken);
+                var unconfirmed = $"Pazar yeri fiyat-stok yüklemesi başarısız döndü ve {line.Barcode} için satır sonucu vermedi; gönderilmiş sayılmadı.";
+                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:PRICE_INVENTORY_UPLOAD_FAILED", "PRICE_INVENTORY_UPLOAD_FAILED", unconfirmed, cancellationToken);
+                sendLog.Settle(line, PriceStockSendResults.Failed, "PRICE_INVENTORY_UPLOAD_FAILED", unconfirmed);
                 continue;
             }
             var offer = offers[line.OfferId];
@@ -2175,8 +2198,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 offer.LastPriceHash = line.PriceHash; offer.LastStockProjectionVersion = line.ProjectionVersion;
                 PriceInventorySendPolicy.RecordSent(offer, line, payload.SubmittedAt ?? timeProvider.GetUtcNow());
                 offer.Version++; success++;
+                sendLog.Settle(line, repeatOfConfirmed ? PriceStockSendResults.Unchanged : PriceStockSendResults.Applied, repeatOfConfirmed ? SafeCode(found.Remote!.ErrorCode) : null);
             }
-            else { failed++; await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{SafeCode(found.Remote!.ErrorCode)}", SafeCode(found.Remote.ErrorCode) ?? "PRICE_INVENTORY_LINE_REJECTED", $"Pazar yeri fiyat-stok satırı reddedildi: {line.Barcode}{(found.Remote.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.", cancellationToken); }
+            else
+            {
+                sendLog.Settle(line, PriceStockSendResults.Rejected, SafeCode(found.Remote!.ErrorCode) ?? "PRICE_INVENTORY_LINE_REJECTED", RemoteRefusalReason(found.Remote));
+                failed++; await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{SafeCode(found.Remote!.ErrorCode)}", SafeCode(found.Remote.ErrorCode) ?? "PRICE_INVENTORY_LINE_REJECTED", $"Pazar yeri fiyat-stok satırı reddedildi: {line.Barcode}{(found.Remote.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.", cancellationToken);
+            }
         }
         await db.SaveChangesAsync(cancellationToken);
         if (unknownCodes.Count > 0 || confirmedCodes.Count > 0)
@@ -2387,7 +2415,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Pazarama takes price and stock in separate requests, so each is recorded on its own: a barcode whose
     // stock was accepted keeps that even when its price was refused, and the next send carries only what
     // is still due (Pazarama refuses a value it already holds).
-    private async Task<JobExecutionResult> RecordPazaramaPriceInventory(Guid tenantId, Guid connectionId, PriceInventoryJobPayload payload, IReadOnlyDictionary<Guid, ChannelOffer> offers, IReadOnlyDictionary<string, RemoteOperationLine> lineByBarcode, CancellationToken cancellationToken)
+    private async Task<JobExecutionResult> RecordPazaramaPriceInventory(Guid tenantId, Guid connectionId, Guid jobId, PriceInventoryJobPayload payload, IReadOnlyDictionary<Guid, ChannelOffer> offers, IReadOnlyDictionary<string, RemoteOperationLine> lineByBarcode, PendingSendLog sendLog, CancellationToken cancellationToken)
     {
         // A value Pazarama refused because it already holds it is recorded as sent. A list split after such a refusal
         // carries one part per piece, so each barcode is judged by the part that carried it.
@@ -2400,7 +2428,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             lineByBarcode.TryGetValue(line.Barcode, out var remote);
             var (priceOk, stockOk, notSentCode, missingResult) = outcomeOf(line.Barcode, remote);
             if (missingResult)
-                return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
+                return await SettleSendLogAsync(tenantId, jobId, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
             var code = remote?.ErrorCode;
             var offer = offers[line.OfferId];
             if (priceOk) offer.LastPriceHash = line.PriceHash;
@@ -2411,11 +2439,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (priceOk && stockOk && remote is { Succeeded: true }) confirmedCodes.Add(line.VariantId);
             else if (remote is { Succeeded: false, Retryable: false, Status: { Length: > 0 } } && MarketplaceVariantLinkHealth.MeansUnknownCode(null, remote.Status))
                 unknownCodes[line.VariantId] = remote.Status!;
-            if (priceOk && stockOk) { success++; continue; }
+            if (priceOk && stockOk) { success++; sendLog.Settle(line, PriceStockSendResults.Applied); continue; }
             failed++;
             var issueCode = SafeCode(code ?? notSentCode) ?? "PRICE_INVENTORY_LINE_REJECTED";
             var what = !priceOk && !stockOk ? "fiyat ve stok" : !priceOk ? "fiyat" : "stok";
-            await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{issueCode}", issueCode, $"Pazarama {what} güncellemesini almadı: {line.Barcode}{(remote?.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.", cancellationToken);
+            var refusal = $"Pazarama {what} güncellemesini almadı: {line.Barcode}{(remote?.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.";
+            await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{issueCode}", issueCode, refusal, cancellationToken);
+            sendLog.Settle(line, PriceStockSendResults.Rejected, issueCode, refusal);
         }
         await db.SaveChangesAsync(cancellationToken);
         if (unknownCodes.Count > 0 || confirmedCodes.Count > 0)
@@ -2433,6 +2463,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         $"Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi. Pazaryeri yanıtı: {error.Code}: {error.SafeMessage}";
     private static bool IsRepeatRequestRefusal(AdapterError error) =>
         error.Code is TrendyolStockRules.RepeatRequestWaitCode or PttAvmProductPayloadRules.RepeatRequestWaitCode;
+
+    // A poll that ends the same way for every line of its request writes that outcome to the request's send log rows.
+    private async Task<JobExecutionResult> SettleSendLogAsync(Guid tenantId, Guid jobId, PriceInventoryJobPayload payload, string outcome, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        await PriceStockSendLogRecorder.SettleAllAsync(db, tenantId, jobId, payload.ExternalOperationId, outcome, result.ErrorCode, result.ErrorSummary, timeProvider.GetUtcNow(), cancellationToken);
+        return result;
+    }
+
+    // The marketplace's own words for a refused line; a bare FAIL/REJECTED says nothing more than the result.
+    private static string? RemoteRefusalReason(RemoteOperationLine remote) =>
+        remote.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) && !string.Equals(reason, "REJECTED", StringComparison.OrdinalIgnoreCase) ? reason : null;
 
     // A price/stock request refused as a repeat: when every line still carries the current versions and the values the
     // marketplace last confirmed for its code, the marks move on and nothing is sent. Otherwise nothing changes.
@@ -10565,15 +10606,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<JobExecutionResult> DispatchStockProjection(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
-        Guid variantId;
-        try { using var payload = JsonDocument.Parse(payloadJson); variantId = payload.RootElement.GetProperty("variantId").GetGuid(); }
+        Guid variantId; string trigger;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            variantId = payload.RootElement.GetProperty("variantId").GetGuid();
+            // The change that queued the dispatch names why the send goes (the send log's trigger).
+            trigger = PriceStockSendTriggers.FromSourceEvent(payload.RootElement.TryGetProperty("sourceEventId", out var source) && source.ValueKind == JsonValueKind.String ? source.GetString() : null);
+        }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return JobExecutionResult.Blocked("STOCK_PROJECTION_PAYLOAD_INVALID", "Stok projection işi geçersiz payload içeriyor."); }
         var (blocked, decision) = await StockProjectionGateAsync(tenantId, connectionId, cancellationToken);
         if (blocked is not null) return blocked;
         if (decision == StockProjectionDispatchDecision.Skip) return JobExecutionResult.SuccessWithNote("AUTOMATIC_WRITES_OFF", "Otomatik fiyat-stok yazması kapalı; pazaryerine gönderilmedi.");
         if (!await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && x.Status == "ACTIVE", cancellationToken)) return JobExecutionResult.Success();
         if (decision == StockProjectionDispatchDecision.Dispatch && await OrderFreshnessWaitAsync(tenantId, connectionId, jobId, cancellationToken) is { } wait) return wait;
-        return await DispatchStockProjectionVariant(tenantId, connectionId, variantId, decision, correlationId, cancellationToken);
+        return await DispatchStockProjectionVariant(tenantId, connectionId, variantId, decision, correlationId, trigger, cancellationToken);
     }
 
     // Owner decision C: an automatic send waits (bounded) for an order read of the connection that started after the
@@ -10610,7 +10657,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await StrictWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Price, cancellationToken)));
     }
 
-    private async Task<JobExecutionResult> DispatchStockProjectionVariant(Guid tenantId, Guid connectionId, Guid variantId, StockProjectionDispatchDecision decision, string correlationId, CancellationToken cancellationToken)
+    private async Task<JobExecutionResult> DispatchStockProjectionVariant(Guid tenantId, Guid connectionId, Guid variantId, StockProjectionDispatchDecision decision, string correlationId, string trigger, CancellationToken cancellationToken)
     {
         if (decision == StockProjectionDispatchDecision.HoldForPricePolicy)
         {
@@ -10643,12 +10690,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // Already sent or not live on this connection: nothing to send now.
             return JobExecutionResult.Success();
         }
-        return await QueueAutomaticPushAsync(tenantId, connectionId, build.Value!, variantId, correlationId, cancellationToken);
+        return await QueueAutomaticPushAsync(tenantId, connectionId, build.Value!, variantId, correlationId, trigger, cancellationToken);
     }
 
     // One automatic PRICE_INVENTORY_SYNC job for a built draft (one variant's change or a reconcile batch). Offers the
     // build left out are reported; the offers it carries are fine again, so their offer issues close.
-    private async Task<JobExecutionResult> QueueAutomaticPushAsync(Guid tenantId, Guid connectionId, PriceInventoryDraft draft, Guid? variantId, string correlationId, CancellationToken cancellationToken)
+    private async Task<JobExecutionResult> QueueAutomaticPushAsync(Guid tenantId, Guid connectionId, PriceInventoryDraft draft, Guid? variantId, string correlationId, string trigger, CancellationToken cancellationToken)
     {
         foreach (var invalid in draft.InvalidOffers)
             await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, invalid.VariantId), invalid.Code, invalid.Message, cancellationToken);
@@ -10667,7 +10714,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             existing.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, existing.Id); existing.Version++;
         }
         var id = Guid.CreateVersion7();
-        var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, Automatic: true));
+        var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, Automatic: true, Trigger: trigger));
         var writeDelay = await ExternalWriteDelaySecondsAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken);
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
@@ -11501,7 +11548,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var held = await db.ChannelOffers.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE")
                 .OrderBy(x => x.VariantId).Select(x => (Guid?)x.VariantId).FirstOrDefaultAsync(cancellationToken);
-            if (held is { } heldVariant) await DispatchStockProjectionVariant(tenantId, connectionId, heldVariant, decision, correlationId, cancellationToken);
+            if (held is { } heldVariant) await DispatchStockProjectionVariant(tenantId, connectionId, heldVariant, decision, correlationId, PriceStockSendTriggers.Reconcile, cancellationToken);
             return JobExecutionResult.Success();
         }
         if (await AutomaticPushInFlightAsync(tenantId, connectionId, cancellationToken))
@@ -11526,7 +11573,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", "INVENTORY_REQUIRED", PriceInventoryComposer.MissingInventoryMessage(build.Value.MissingInventorySkus), cancellationToken);
         // ReconciledAt is an observation watermark, not an enqueue timestamp. It is updated only when a remote catalog
         // read observes stock; a disabled, blocked, or merely queued write remains visible as stale until then.
-        return await QueueAutomaticPushAsync(tenantId, connectionId, build.Value, null, correlationId, cancellationToken);
+        return await QueueAutomaticPushAsync(tenantId, connectionId, build.Value, null, correlationId, PriceStockSendTriggers.Reconcile, cancellationToken);
     }
 
     // An automatic price/stock push of the connection that is queued, running or retrying.

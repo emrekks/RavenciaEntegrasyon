@@ -413,4 +413,6 @@ export const catalog = [
   ['GET /jobs/metrics/lanes', laneMetrics],
   ['GET /jobs/metrics/quota', quotaUsage],
   ['^/jobs/([^/]+)$', jobDetail],
+  // İşlem Takibi › Loglar: no price/stock line has been sent yet (automatic writes are off).
+  ['GET /price-stock-send-log', { items: [], nextCursor: null, hasMore: false }],
 ]
