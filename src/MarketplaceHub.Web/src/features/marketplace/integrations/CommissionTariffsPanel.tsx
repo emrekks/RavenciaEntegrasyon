@@ -615,8 +615,8 @@ function TariffPlanBody({ connectionId, tariff, rows, loading, error, onRetry, f
               const picked = chosen === tier
               return <td key={tier}>
                 <div className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
-                  <strong>{money(choice.price)}</strong>
-                  <small className="commission-band-limit">{bandLimitText([band])}{row.currentTier === tier ? ' · şu an' : ''}</small>
+                  {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
+                  <strong>{bandLimitText([band]) ?? money(choice.price)}{row.currentTier === tier && <small className="commission-now"> · şu an</small>}</strong>
                   <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
                   <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''} · ${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
                   <button type="button" className="commission-switch" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
@@ -658,8 +658,7 @@ function TariffPlanBody({ connectionId, tariff, rows, loading, error, onRetry, f
               const ranged = lefts.length > 0 && Math.min(...lefts) !== Math.max(...lefts)
               return <td key={tier}>
                 <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
-                  <strong>{priceRange(choices.map(item => item.price))}</strong>
-                  <small className="commission-band-limit">{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier)))}{owners.some(row => row.currentTier === tier) ? ' · şu an' : ''}</small>
+                  <strong>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}{owners.some(row => row.currentTier === tier) && <small className="commission-now"> · şu an</small>}</strong>
                   <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
                   <ProfitBadge price={least ?? choices[0]} label={ranged ? `${amountRange(lefts)} Kâr` : undefined}
                     title={`${first.productName ?? first.barcode} · ${tier}. Fiyat Aralığı${ranged ? ` · en az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}` : ''}`} missing="Maliyet girilmemiş" />
