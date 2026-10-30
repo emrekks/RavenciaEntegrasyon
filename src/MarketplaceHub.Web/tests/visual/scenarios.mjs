@@ -29,6 +29,13 @@ export const scenarios = [
     },
   },
   {
+    name: 'product-media-clear', path: '/products/p1', widths: [1280],
+    act: async page => {
+      await page.locator('.product-media-clear-all-button').click()
+      await page.locator('.product-media-clear-all-button').waitFor({ state: 'detached' })
+    },
+  },
+  {
     name: 'product-platform-update', path: '/products/p1', widths: [375, 1280],
     act: async page => {
       await page.locator('.platform-update-settings').click()

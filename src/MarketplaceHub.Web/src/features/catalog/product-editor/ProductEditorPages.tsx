@@ -2690,11 +2690,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))))]
   const familyMediaUrls = productToEdit.data?.familyMediaUrls ?? []
   const familyMediaItems = productToEdit.data?.familyMediaItems ?? familyMediaUrls.map(url => ({ url, mediaIds: [], sourceProductTitles: [] }))
-  const familyOnlyMediaItems = familyMediaItems.filter(item => !mediaUrls.some(current => mediaImageKey(current) === mediaImageKey(item.url)))
+  // The card's own saved pictures the draft no longer holds ("Tümünü Temizle", a removed tile) go on the next save; the
+  // family list still carries them until then, so they leave the gallery now instead of after Kaydet.
+  const draftMediaKeys = new Set(mediaUrls.map(mediaImageKey))
+  const pendingRemovalMediaKeys = new Set(editProductId ? (productToEdit.data?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)) : [])
+  const familyOnlyMediaItems = familyMediaItems.filter(item => !draftMediaKeys.has(mediaImageKey(item.url)) && !pendingRemovalMediaKeys.has(mediaImageKey(item.url)))
   const defaultFamilyOrder = productToEdit.data?.familyOrderedMediaUrls?.length
     ? productToEdit.data.familyOrderedMediaUrls
     : [...mediaUrls, ...familyMediaItems.map(item => item.url)]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
+    .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url)))
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen Görsel · ${item.file.name}`, file: item.file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
