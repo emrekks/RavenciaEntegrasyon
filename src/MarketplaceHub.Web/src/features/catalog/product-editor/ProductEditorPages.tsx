@@ -345,19 +345,11 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
       setMatrixBulkEdit(current => current ? { ...current, error: 'Sıfır veya daha büyük geçerli bir fiyat girin.' } : current)
       return
     }
-    const pairedField = matrixBulkEdit.field === 'listPrice' ? 'salePrice' : 'listPrice'
     if (!matchingRows.length) {
       setMatrixBulkEdit(current => current ? { ...current, error: 'Seçili renk ve bedenlerle eşleşen varyant bulunamadı.' } : current)
       return
     }
-    const violatesPriceOrder = matchingRows.some(item => {
-      const pairedValue = Number(matrixDraft(item, matrixBulkEdit.platform)[pairedField])
-      return Number.isFinite(pairedValue) && (matrixBulkEdit.field === 'listPrice' ? value < pairedValue : value > pairedValue)
-    })
-    if (violatesPriceOrder) {
-      setMatrixBulkEdit(current => current ? { ...current, error: matrixBulkEdit.field === 'listPrice' ? 'Liste fiyatı hiçbir varyantta satış fiyatından düşük olamaz.' : 'Satış fiyatı hiçbir varyantta liste fiyatından yüksek olamaz.' } : current)
-      return
-    }
+    // List and sale price are compared when the matrix is saved, so either one can be filled first.
     setMatrixDrafts(current => {
       const next = { ...current }
       for (const item of matchingRows) {
@@ -427,6 +419,9 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
   const [promptAddress, addressDialog] = usePromptDialog()
   const visualEditor = useRef<HTMLDivElement>(null)
   const lastValue = useRef(value)
+  // The canvas gets its HTML once; later changes are written by the effects below. A new HTML string on every
+  // keystroke made React rewrite the canvas and threw the caret back to the start (Enter on the last line).
+  const [initialVisualHtml] = useState(() => sanitizeRichText(value))
   const [htmlMode, setHtmlMode] = useState(false)
   const plainTextLength = value.replace(/<[^>]*>/g, '').trim().length
 
@@ -439,9 +434,10 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
   const showVisualValue = useEffectEvent(() => { if (!htmlMode && visualEditor.current) visualEditor.current.innerHTML = sanitizeRichText(value) })
   useEffect(() => showVisualValue(), [htmlMode])
 
-  function syncVisualValue() {
+  // Typing only reports the cleaned value; the canvas is rewritten only after a toolbar command, never mid-typing.
+  function syncVisualValue(rewrite = false) {
     const next = sanitizeRichText(visualEditor.current?.innerHTML ?? '')
-    if (visualEditor.current && visualEditor.current.innerHTML !== next) visualEditor.current.innerHTML = next
+    if (rewrite && visualEditor.current && visualEditor.current.innerHTML !== next) visualEditor.current.innerHTML = next
     lastValue.current = next
     onChange(next === '<br>' ? '' : next)
   }
@@ -450,7 +446,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
     if (htmlMode || !visualEditor.current) return
     visualEditor.current.focus()
     document.execCommand(command, false, argument)
-    syncVisualValue()
+    syncVisualValue(true)
   }
 
   // The address window takes focus away from the editor: the selection is kept and put back before the command runs.
@@ -488,7 +484,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
       <div className="rich-text-tool-group" aria-label="İçerik ekle"><select aria-label="Yazı Boyutu" defaultValue="" disabled={htmlMode} onChange={event => { const map: Record<string, string> = { '12': '2', '15': '3', '19': '5' }; runCommand('fontSize', map[event.target.value] ?? '3'); event.currentTarget.value = '' }}><option value="" disabled>Yazı Boyutu</option><option value="12">Küçük</option><option value="15">Normal</option><option value="19">Büyük</option></select><RichTextTool icon="list" label="Madde Listesi" onClick={() => runCommand('insertUnorderedList')} disabled={htmlMode} /><RichTextTool icon="paragraph" label="Paragraf" onClick={() => runCommand('formatBlock', 'p')} disabled={htmlMode} /><RichTextTool icon="textColor" label="Metin Rengi" onClick={() => runCommand('foreColor', '#7652e8')} disabled={htmlMode} /><RichTextTool icon="link" label="Bağlantı Ekle" onClick={insertLink} disabled={htmlMode} /><RichTextTool icon="image" label="Görsel Ekle" onClick={insertImage} disabled={htmlMode} /></div>
       <div className="rich-text-tool-group" aria-label="Düzenleme"><RichTextTool icon="undo" label="Geri Al" onClick={() => runCommand('undo')} disabled={htmlMode} /><RichTextTool icon="redo" label="Yinele" onClick={() => runCommand('redo')} disabled={htmlMode} /><RichTextTool icon="clearFormatting" label="Biçimi Temizle" onClick={clearFormatting} disabled={htmlMode} /></div>
     </div>
-    {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: sanitizeRichText(value) }} onInput={syncVisualValue} />}
+    {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: initialVisualHtml }} onFocus={() => document.execCommand("defaultParagraphSeparator", false, "p")} onInput={() => syncVisualValue()} />}
   </div>
 }
 function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number | null, initialStock: number, automaticBarcodes = false, modelCode = '') {
@@ -2074,7 +2070,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return
     }
     const value = Number(variantBulkEdit.value)
-    const issue = variantBulkEditIssue(variantBulkEdit.field, value, targetRows)
+    const issue = variantBulkEditIssue(variantBulkEdit.field, value)
     if (issue) {
       setVariantBulkEdit(current => current ? { ...current, error: issue } : current)
       return

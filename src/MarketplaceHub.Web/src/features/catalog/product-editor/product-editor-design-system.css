@@ -1085,3 +1085,4 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 @keyframes field-error-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 .field-error-shake { animation: field-error-shake 0.4s ease-in-out 2; }
 @media (prefers-reduced-motion: reduce) { .field-error-shake { animation: none; } }
+.variant-platform-pricing-modal > footer button { box-sizing: border-box; height: 34px; min-height: 0; padding-block: 0; }
