@@ -56,8 +56,8 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-grid line { stroke: var(--rr-line); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart text { fill: var(--rr-subtle); font-size: 11px; font-family: inherit; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-area { fill: color-mix(in srgb, var(--rr-primary) 14%, transparent); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-cur { fill: none; stroke: var(--rr-violet); stroke-width: 2; stroke-linejoin: round; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-prev { fill: none; stroke: var(--rr-subtle); stroke-width: 1.5; stroke-dasharray: 4 4; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-cur { fill: none; stroke: var(--rr-violet); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; shape-rendering: geometricPrecision; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-prev { fill: none; stroke: var(--rr-subtle); stroke-width: 1.25; stroke-dasharray: 4 4; stroke-linecap: round; vector-effect: non-scaling-stroke; shape-rendering: geometricPrecision; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hl { stroke: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hp { fill: var(--rr-surface); stroke: var(--rr-violet); stroke-width: 2; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hp.rr-hp-prev { stroke: var(--rr-muted); stroke-dasharray: 2 2; }
