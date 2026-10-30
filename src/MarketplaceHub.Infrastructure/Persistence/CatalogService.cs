@@ -802,6 +802,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
+        if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<ProductView>(vatError.Field, vatError.Message);
         if (command.TrendyolWebColorValueId is Guid webColorValueId && webColorValueId != Guid.Empty && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == webColorValueId && x.IsActive, cancellationToken)) return Invalid<ProductView>("trendyolWebColorValueId", "Trendyol Web Color değeri bulunamadı.");
         if (command.DefaultListPrice is decimal listPrice && command.DefaultSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
         if (command.Variants.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0)) return Invalid<ProductView>("variants", "Varyant fiyatı negatif olamaz.");
@@ -845,7 +846,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
 
         var now = timeProvider.GetUtcNow();
-        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths is > 0 ? command.WarrantyMonths : null, TrendyolWebColorValueId = command.TrendyolWebColorValueId is Guid createWebColor && createWebColor != Guid.Empty ? createWebColor : null, Status = productStatus, CreatedAt = now, UpdatedAt = now };
+        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths is > 0 ? command.WarrantyMonths : null, TrendyolWebColorValueId = command.TrendyolWebColorValueId is Guid createWebColor && createWebColor != Guid.Empty ? createWebColor : null, VatRate = command.VatRate, VatInclusion = command.VatRate is null ? null : NormalizeVatInclusion(command.VatInclusion), Status = productStatus, CreatedAt = now, UpdatedAt = now };
         if (command.Variants.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
         var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
         db.Products.Add(product);
@@ -920,6 +921,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 CategoryId = sourceProduct.CategoryId,
                 DefaultListPrice = sourceProduct.DefaultListPrice,
                 DefaultSalePrice = sourceProduct.DefaultSalePrice,
+                VatRate = sourceProduct.VatRate,
+                VatInclusion = sourceProduct.VatInclusion,
                 Status = ProductStatus.Draft,
                 SourcePolicyVersion = sourceProduct.SourcePolicyVersion,
                 CreatedAt = now,
@@ -1249,6 +1252,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var effectiveSalePrice = command.DefaultSalePrice ?? product.DefaultSalePrice;
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
+        if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<ProductView>(vatError.Field, vatError.Message);
         if (command.TrendyolWebColorValueId is Guid webColorValueId && webColorValueId != Guid.Empty && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == webColorValueId && x.IsActive, cancellationToken)) return Invalid<ProductView>("trendyolWebColorValueId", "Trendyol Web Color değeri bulunamadı.");
         if (effectiveListPrice is decimal listPrice && effectiveSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
         var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken); if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
@@ -1507,6 +1511,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (command.WarrantyMonths is int warrantyMonths) product.WarrantyMonths = warrantyMonths > 0 ? warrantyMonths : null;
         // Sent only by the editor: Guid.Empty = automatic (each variant's own Renk), a value = that colour on Trendyol.
         if (command.TrendyolWebColorValueId is Guid trendyolWebColor) product.TrendyolWebColorValueId = trendyolWebColor == Guid.Empty ? null : trendyolWebColor;
+        // Sent only by the editor (KDV Oranı / KDV Dahil mi): a caller that leaves the rate out keeps the card's VAT.
+        if (command.VatRate is decimal vatRate) { product.VatRate = vatRate; product.VatInclusion = NormalizeVatInclusion(command.VatInclusion ?? product.VatInclusion); }
         product.Version++; product.UpdatedAt = timeProvider.GetUtcNow();
         if (command.Status != null)
         {
@@ -1573,7 +1579,6 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var connectionIds = (command.ConnectionIds ?? []).Distinct().ToList();
         if (productIds.Count == 0 || connectionIds.Count == 0) return Invalid<BulkPublicationResult>("productIds", "En az bir ürün ve bir platform seçin.");
         if (productIds.Count > 1000) return Invalid<BulkPublicationResult>("productIds", "Tek seferde en fazla 1000 ürün kartı yayınlanabilir.");
-        if (command.VatRate is < 0 or > 100) return Invalid<BulkPublicationResult>("vatRate", "KDV oranı 0 ile 100 arasında olmalıdır.");
         var selected = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).Select(x => new { x.Id, x.PlatformCode, x.SettingsJson }).ToListAsync(cancellationToken);
         if (connections.Count != connectionIds.Count) return Invalid<BulkPublicationResult>("connectionIds", "Seçilen platform bulunamadı.");
@@ -1630,11 +1635,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                     if (selectedIds.Contains(product.Id)) skipped++;
                     continue;
                 }
-                // The marketplace price follows the general price, as in the editor. The product holds no VAT of its own:
-                // it comes from the variant's offer on another marketplace, else from an offer of another variant of the
-                // card or of its model family (same brand and model code), else from the popup's KDV Oranı (the editor's
-                // own choice for a card with no price anywhere, live 2026-10-30: MZ036YNC and MZ050YNC, priced in general
-                // but on no marketplace, were refused on all six), else from the connection's DefaultVatRate.
+                // The marketplace price follows the general price, as in the editor. The VAT comes from the product card
+                // (KDV Oranı and KDV Dahil mi, saved in the editor), else from the variant's offer on another marketplace,
+                // else from an offer of another variant of the card or of its model family (same brand and model code),
+                // else from the connection's DefaultVatRate. Unknown stays unknown: the card is refused, never guessed.
                 (string Code, string Message)? priceError = null;
                 var newOffers = new List<ChannelOffer>();
                 var connectionDefaultVat = ConnectionDefaults.VatRate(connections.Single(x => x.Id == connectionId).SettingsJson);
@@ -1651,13 +1655,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                         break;
                     }
                     var vatSource = cardOffer ?? FamilyOffer(variant, product.BrandId);
-                    var vatRate = vatSource?.VatRate ?? command.VatRate ?? connectionDefaultVat;
+                    var vatRate = product.VatRate ?? vatSource?.VatRate ?? connectionDefaultVat;
+                    var vatInclusion = (product.VatRate is not null ? product.VatInclusion : vatSource?.VatInclusion) ?? "INCLUDED";
                     if (vatRate is null)
                     {
-                        priceError = ("VAT_RATE_REQUIRED", $"'{variant.Sku}' için KDV oranı bilinmiyor: kart hiçbir pazaryerinde fiyatlanmamış. Yayın penceresinde KDV oranını seçin veya ürünü editörden yayınlayın.");
+                        priceError = ("VAT_RATE_REQUIRED", "Ürün kartında KDV oranı yok; ürünü açıp KDV Oranı seçip kaydedin.");
                         break;
                     }
-                    newOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ListPrice = listPrice.Value, SalePrice = salePrice.Value, Currency = vatSource?.Currency ?? "TRY", VatRate = vatRate.Value, VatInclusion = vatSource?.VatInclusion ?? "INCLUDED", RoundingMode = vatSource?.RoundingMode ?? "HALF_EVEN", SafetyStock = vatSource?.SafetyStock ?? 0, Status = "ACTIVE", PriceVersion = 1, Version = 1 });
+                    newOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ListPrice = listPrice.Value, SalePrice = salePrice.Value, Currency = vatSource?.Currency ?? "TRY", VatRate = vatRate.Value, VatInclusion = vatInclusion, RoundingMode = vatSource?.RoundingMode ?? "HALF_EVEN", SafetyStock = vatSource?.SafetyStock ?? 0, Status = "ACTIVE", PriceVersion = 1, Version = 1 });
                 }
                 if (priceError is { } refusal)
                 {
@@ -2457,7 +2462,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion);
         }).ToList();
 
     }
@@ -2503,6 +2508,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;
     private static decimal? NonNegativeOrNull(decimal? value) => value is >= 0 ? value : null;
+    // The product card's VAT: a rate 0-100 and, when given, INCLUDED or EXCLUDED.
+    private static (string Field, string Message)? ValidateProductVat(decimal? vatRate, string? vatInclusion)
+    {
+        if (vatRate is < 0 or > 100) return ("vatRate", "KDV oranı 0 ile 100 arasında olmalıdır.");
+        if (!string.IsNullOrWhiteSpace(vatInclusion) && vatInclusion.Trim().ToUpperInvariant() is not ("INCLUDED" or "EXCLUDED")) return ("vatInclusion", "KDV dahil bilgisi INCLUDED veya EXCLUDED olmalıdır.");
+        return null;
+    }
+    private static string NormalizeVatInclusion(string? vatInclusion) => vatInclusion?.Trim().ToUpperInvariant() == "EXCLUDED" ? "EXCLUDED" : "INCLUDED";
 
     // O15: whether an editor row carries a change to the stored variant's sale data (codes, model
     // code, prices, options, variant attributes). The row order alone is not a marketplace change.

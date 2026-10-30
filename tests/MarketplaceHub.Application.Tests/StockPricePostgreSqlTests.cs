@@ -1403,29 +1403,84 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
     // Live 2026-10-30: MZ036YNC and MZ050YNC held a general price (1099) but no marketplace had priced them, so no offer
     // carried a VAT and the bulk send refused both on all six marketplaces ("genel fiyat veya KDV bilgisi yok") while the
-    // editor sent them with its KDV Oranı. Without a VAT the refusal now says so; with the popup's KDV Oranı they go out
-    // at the general price, VAT included.
+    // editor sent them with its KDV Oranı. The VAT now comes from the product card: without one the refusal says to set
+    // it on the card (a VatRate an older caller still sends is ignored); with the card's KDV Oranı and KDV Dahil mi they
+    // go out at the general price with that VAT.
     [PostgreSqlFact]
-    public async Task BulkPublication_OfCardsPricedNowhereUsesThePopupsVatRate()
+    public async Task BulkPublication_OfCardsPricedNowhereUsesTheProductCardsVat()
     {
         var (tenant, pttAvm, black, brown, variants) = await SeedPttAvmFamilyAsync("pttavm-bulk-unpriced", tradedElsewhere: false);
 
         await using var db = fixture.CreateContext();
-        var refused = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+        var refused = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id], VatRate: 10m), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
         Assert.True(refused.Succeeded, refused.Error?.Message);
         Assert.Equal(0, refused.Value!.Queued);
         Assert.Equal(2, refused.Value.Failed.Count);
-        Assert.All(refused.Value.Failed, failure => Assert.Equal("VAT_RATE_REQUIRED", failure.Code));
+        Assert.All(refused.Value.Failed, failure => Assert.Equal(("VAT_RATE_REQUIRED", "Ürün kartında KDV oranı yok; ürünü açıp KDV Oranı seçip kaydedin."), (failure.Code, failure.Message)));
         Assert.False(await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
 
+        await db.Products.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, 10m).SetProperty(p => p.VatInclusion, "EXCLUDED"));
         db.ChangeTracker.Clear();
-        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id], VatRate: 10m), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
         Assert.True(result.Succeeded, result.Error?.Message);
         Assert.Empty(result.Value!.Failed);
         Assert.Equal(2, result.Value.Queued);
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
         Assert.Equal(variants.Select(x => x.Id).Order(), offers.Select(x => x.VariantId).Order());
-        Assert.All(offers, offer => Assert.Equal((pttAvm.Id, 499m, 599m, 10m, "INCLUDED", "TRY"), (offer.ConnectionId, offer.SalePrice, offer.ListPrice, offer.VatRate, offer.VatInclusion, offer.Currency)));
+        Assert.All(offers, offer => Assert.Equal((pttAvm.Id, 499m, 599m, 10m, "EXCLUDED", "TRY"), (offer.ConnectionId, offer.SalePrice, offer.ListPrice, offer.VatRate, offer.VatInclusion, offer.Currency)));
+    }
+
+    // The product card's KDV Oranı comes before the VAT of the card's offer on another marketplace (Trendyol, 20%), and
+    // that existing offer is left as it was.
+    [PostgreSqlFact]
+    public async Task BulkPublication_PrefersTheProductCardsVatOverAnotherMarketplacesOffer()
+    {
+        var (tenant, pttAvm, black, brown, variants) = await SeedPttAvmFamilyAsync("pttavm-bulk-card-vat");
+        await using (var setup = fixture.CreateContext())
+            await setup.Products.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, 10m).SetProperty(p => p.VatInclusion, "INCLUDED"));
+
+        await using var db = fixture.CreateContext();
+        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Empty(result.Value!.Failed);
+        var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.All(offers.Where(x => x.ConnectionId == pttAvm.Id), offer => Assert.Equal((10m, "INCLUDED", 120m, 150m), (offer.VatRate, offer.VatInclusion, offer.SalePrice, offer.ListPrice)));
+        Assert.Equal(variants.Length, offers.Count(x => x.ConnectionId == pttAvm.Id));
+        Assert.All(offers.Where(x => x.ConnectionId != pttAvm.Id), offer => Assert.Equal(20m, offer.VatRate));
+    }
+
+    // The editor saves KDV Oranı and KDV Dahil mi on the product card; an update that leaves them out keeps them, and a
+    // rate outside 0-100 is refused.
+    [PostgreSqlFact]
+    public async Task Product_CarriesItsVatThroughCreateAndUpdate()
+    {
+        var tenant = NewTenant("product-card-vat");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var service = NewCatalogService(db);
+        var sku = $"VAT-{Guid.NewGuid():N}"[..16];
+
+        var refused = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("KDV Bluz", "Açıklama", null, null, [new CreateVariantCommand(sku, null, null)], VatRate: 120m), CancellationToken.None);
+        Assert.False(refused.Succeeded);
+
+        var created = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("KDV Bluz", "Açıklama", null, null, [new CreateVariantCommand(sku, null, null)], VatRate: 20m, VatInclusion: "excluded"), CancellationToken.None);
+        Assert.True(created.Succeeded, created.Error?.Message);
+        Assert.Equal((20m, "EXCLUDED"), (created.Value!.VatRate, created.Value.VatInclusion));
+
+        db.ChangeTracker.Clear();
+        var kept = await service.UpdateProductAsync(tenant.Id, created.Value.Id, created.Value.Version, new UpdateProductCommand("KDV Bluz", "Açıklama", null, null), CancellationToken.None);
+        Assert.True(kept.Succeeded, kept.Error?.Message);
+        Assert.Equal((20m, "EXCLUDED"), (kept.Value!.VatRate, kept.Value.VatInclusion));
+
+        db.ChangeTracker.Clear();
+        var changed = await service.UpdateProductAsync(tenant.Id, created.Value.Id, kept.Value.Version, new UpdateProductCommand("KDV Bluz", "Açıklama", null, null, VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(changed.Succeeded, changed.Error?.Message);
+        Assert.Equal((10m, "INCLUDED"), (changed.Value!.VatRate, changed.Value.VatInclusion));
     }
 
     // A colour card no marketplace has priced takes the VAT of its family's other card instead of asking for one, and a

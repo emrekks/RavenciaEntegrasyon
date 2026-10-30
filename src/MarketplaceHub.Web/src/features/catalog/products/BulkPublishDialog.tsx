@@ -7,7 +7,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import type { NotificationDetail } from '../../../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import type { MarketplaceConnection, Product } from '../shared'
-import { addBulkPublicationResult, bulkPublishChunks, bulkPublishFailureDetails, bulkPublishResultMessage, bulkPublishVatNeed, type BulkPublicationResult } from './bulk-publish-run'
+import { addBulkPublicationResult, bulkPublishChunks, bulkPublishFailureDetails, bulkPublishMissingVat, bulkPublishRequestBody, bulkPublishResultMessage, type BulkPublicationResult } from './bulk-publish-run'
 import { bulkPublishModelTooltip, bulkPublishPlatformName, summarizeBulkPublishModels, summarizeBulkPublishStatus, type BulkPublishModelTooltip, type BulkPublishStatusSummary } from './bulk-publish-status'
 import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
@@ -31,9 +31,10 @@ export function bulkPublishCardState(summary: BulkPublishStatusSummary | null): 
 // Product list "Platformlara Yayınla" for several cards: the same popup as a single product's "Platformlarda Yayınla"
 // (the editor's publish step), one card per connection with an on/off switch. Cards already on a marketplace (matched,
 // live or still in progress) are skipped by the server; a missing marketplace price is filled from the general price, as
-// the editor does, with the VAT of the record's offer elsewhere, or the popup's KDV Oranı for a record priced nowhere.
-// `products` (the selected records the list holds) feeds each card's "Yayın Durumu" summary, keeps a model family in
-// one slice and tells whether the KDV Oranı is needed. Refused records reach the notification center with their reason.
+// the editor does, with the VAT of the product card (its KDV Oranı), else of the record's offer elsewhere; the popup
+// asks for no VAT. `products` (the selected records the list holds) feeds each card's "Yayın Durumu" summary, keeps a
+// model family in one slice and counts the records with no VAT anywhere. Refused records reach the notification center
+// with their reason.
 export function BulkPublishDialog({ productIds, cardCount, connections, products, onClose, onDone }: {
   productIds: string[]
   cardCount: number
@@ -48,9 +49,8 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<BulkPublicationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [vatRate, setVatRate] = useState('10')
   // The slices of the run and the first one not sent yet: a run cut short (network, server) goes on from there.
-  const planRef = useRef<{ chunks: string[][]; vatRate: number | null } | null>(null)
+  const planRef = useRef<{ chunks: string[][] } | null>(null)
   const [resumeAt, setResumeAt] = useState<number | null>(null)
   // A selected id the list no longer holds counts as unknown in the summary instead of being dropped from the total.
   const selectedRecords = useMemo(() => {
@@ -60,9 +60,8 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }, [productIds, products])
   const summaries = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords ? summarizeBulkPublishStatus(selectedRecords, connection) : null])), [connections, selectedRecords])
   const modelTips = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords?.length ? bulkPublishModelTooltip(summarizeBulkPublishModels(selectedRecords, connection)) : null])), [connections, selectedRecords])
-  // Records no marketplace has priced carry no VAT to copy: the popup asks for it, as the editor's KDV Oranı does.
-  const vatNeed = useMemo(() => bulkPublishVatNeed(selectedRecords), [selectedRecords])
-  const asksVat = vatNeed.unpriced + vatNeed.unknown > 0
+  // Records with no KDV Oranı on the card and no offer to take one from: the server refuses them, so the popup says so.
+  const missingVat = useMemo(() => bulkPublishMissingVat(selectedRecords), [selectedRecords])
   const knownRecords = useMemo(() => (selectedRecords ?? []).filter((record): record is Product => record !== null), [selectedRecords])
   const resumable = resumeAt !== null
   const locked = running || Boolean(result) || resumable
@@ -73,7 +72,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }
 
   async function publish(resume: boolean) {
-    const plan = resume && planRef.current ? planRef.current : { chunks: bulkPublishChunks(productIds, knownRecords, CHUNK_SIZE), vatRate: asksVat ? Number(vatRate) : null }
+    const plan = resume && planRef.current ? planRef.current : { chunks: bulkPublishChunks(productIds, knownRecords, CHUNK_SIZE) }
     planRef.current = plan
     const first = resume ? resumeAt ?? 0 : 0
     let index = first
@@ -84,7 +83,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     if (!resume) { setResult(null); setProgress(0) }
     try {
       for (; index < plan.chunks.length; index++) {
-        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: JSON.stringify({ productIds: plan.chunks[index], connectionIds, ...(plan.vatRate === null ? {} : { vatRate: plan.vatRate }) }) })
+        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(plan.chunks[index], connectionIds) })
         total = addBulkPublicationResult(total, part); sent = addBulkPublicationResult(sent, part)
         setResult(total)
         setProgress(plan.chunks.slice(0, index + 1).reduce((count, chunk) => count + chunk.length, 0))
@@ -123,9 +122,9 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
             ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} modelTip={modelTips.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}</div>
             : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p></div>}
           {error && <div className="publish-platform-warning" role="alert"><UiIcon name="alert" /><div><strong>Yayın İşleri Oluşturulamadı</strong><p>{error}</p></div></div>}
-          {asksVat && (!result || running || resumable) && <div className="bulk-publish-vat">
-            <label>KDV Oranı<select value={vatRate} disabled={locked} onChange={event => setVatRate(event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label>
-            <small>{vatNeed.unpriced ? `${vatNeed.unpriced.toLocaleString('tr-TR')} kayıt hiçbir pazaryerinde fiyatlanmamış; genel fiyatı bu KDV oranıyla (KDV dahil) gönderilir.` : 'Hiçbir pazaryerinde fiyatı olmayan kayıtlar bu KDV oranıyla (KDV dahil) gönderilir.'} Fiyatı olan kayıtlar kendi KDV oranını korur.</small>
+          {missingVat > 0 && !result && <div className="bulk-publish-vat" role="note">
+            <UiIcon name="alert" />
+            <small>{missingVat.toLocaleString('tr-TR')} kaydın ürün kartında KDV oranı yok; mağazanın varsayılan KDV oranı yoksa gönderilmez. Ürünü açıp KDV Oranı seçip kaydedin.</small>
           </div>}
           <div className="publish-selection-footer">
             <div><strong>{result ? `${result.queued} kuyruğa alındı · ${result.skipped} atlandı · ${result.failed.length} gönderilemedi` : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : resumable ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt gönderildi; kalanları yeniden gönderebilirsiniz.` : result ? (result.failed.length ? 'Gönderilemeyenler ve nedenleri bildirimlerde.' : 'Sonuçlar ürün listesinde güncellenir.') : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>

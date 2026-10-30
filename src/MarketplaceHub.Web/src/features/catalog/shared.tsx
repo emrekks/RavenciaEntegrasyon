@@ -47,6 +47,9 @@ export type VariantPlatformStatus = {
 export type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   defaultListPrice?: number | null; defaultSalePrice?: number | null; warrantyMonths?: number | null
+  // The card's KDV Oranı and KDV Dahil mi ("INCLUDED"/"EXCLUDED"); null = not set on the card. A new marketplace offer
+  // (bulk publish) takes its VAT from here.
+  vatRate?: number | null; vatInclusion?: string | null
   // Trendyol Web Color chosen by hand (panel colour value id); null = automatic from each variant's Renk.
   trendyolWebColorValueId?: string | null
   familyProductIds?: string[] | null
