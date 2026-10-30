@@ -18,7 +18,8 @@
 .psm-detail { grid-column: 1 / -1; display: grid; gap: 4px; padding-top: 6px; border-top: 1px dashed var(--rv-color-border); font-size: 12px; color: var(--rv-color-muted); }
 .psm-detail strong { color: var(--rv-color-ink); }
 .psm-empty { font-size: 13px; color: var(--rv-color-muted); }
-@media (max-width: 900px) {
+/* Eight columns need about 860 px of panel; below that (a laptop with the sidebar open included) each row is a two-column card. */
+@media (max-width: 1180px) {
   .psm-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .psm-row.is-head { display: none; }
   .psm-row [data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--rv-color-muted); }
