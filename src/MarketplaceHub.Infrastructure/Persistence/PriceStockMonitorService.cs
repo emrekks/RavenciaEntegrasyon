@@ -21,13 +21,23 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         var connections = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Status != "DELETED" && MarketplacePlatforms.Contains(x.PlatformCode))
             .OrderBy(x => x.PlatformCode).ThenBy(x => x.DisplayName)
-            .Select(x => new { x.Id, x.PlatformCode, x.DisplayName, x.Status, x.SettingsJson })
+            .Select(x => new { x.Id, x.PlatformCode, x.DisplayName, x.Status, x.SettingsJson, x.Environment })
             .ToListAsync(cancellationToken);
         var ids = connections.Select(x => x.Id).ToArray();
         var policies = await db.ConnectionSyncPolicies.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && (x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock))
-            .Select(x => new { x.ConnectionId, x.ResourceType, x.Enabled })
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && (x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == "ORDERS"))
+            .Select(x => new { x.ConnectionId, x.ResourceType, x.Enabled, x.IntervalSeconds })
             .ToListAsync(cancellationToken);
+        // Webhook first: whether each connection's new orders come by notification or, its notifications being unhealthy
+        // or absent, by the scheduled read, judged by the scheduler's own rule.
+        var subscriptions = await db.WebhookSubscriptions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+            .GroupBy(x => x.ConnectionId)
+            .Select(group => new { ConnectionId = group.Key, LastReceivedAt = group.Max(x => x.LastReceivedAt) })
+            .ToDictionaryAsync(x => x.ConnectionId, x => x.LastReceivedAt, cancellationToken);
+        var webhookHealthy = new HashSet<Guid>();
+        foreach (var connectionId in subscriptions.Keys)
+            if (await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, connectionId, now, cancellationToken)) webhookHealthy.Add(connectionId);
         var lastSuccess = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId != null && ids.Contains(x.ConnectionId.Value) && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.Status == JobStatus.Succeeded)
             .GroupBy(x => x.ConnectionId!.Value)
@@ -64,6 +74,11 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
             var failures = failed.Where(x => x.ConnectionId == connection.Id).ToList();
             var latest = failures.OrderByDescending(x => x.CompletedAt ?? DateTimeOffset.MinValue).FirstOrDefault();
             queued.TryGetValue(connection.Id, out var queue);
+            var healthy = webhookHealthy.Contains(connection.Id);
+            var orderRead = policies.FirstOrDefault(x => x.ConnectionId == connection.Id && x.ResourceType == "ORDERS" && x.Enabled);
+            int? orderReadInterval = orderRead is null ? null : ScheduledOrderPollingCadencePolicy.ForEnvironment(
+                WebhookPollingPolicy.EffectiveOrderIntervalSeconds(connection.PlatformCode, Math.Clamp(orderRead.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds), healthy),
+                connection.Environment);
             return new PriceStockConnectionMonitorView(
                 connection.Id,
                 connection.PlatformCode,
@@ -82,7 +97,10 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
                 linkHealth.Where(x => x.ConnectionId == connection.Id && x.HealthStatus == MarketplaceVariantLinkHealth.NotFound).Sum(x => x.Count),
                 linkHealth.Where(x => x.ConnectionId == connection.Id && x.HealthStatus == MarketplaceVariantLinkHealth.Rejected).Sum(x => x.Count),
                 latest is null ? null : new PriceStockPushFailureView(latest.Id, latest.LastErrorCode, latest.LastErrorSummary, latest.Status.ToString(), latest.CompletedAt),
-                issues.Take(10).Select(x => new PriceStockOfferIssueView(x.Code, x.Summary, x.LastSeenAt)).ToList());
+                issues.Take(10).Select(x => new PriceStockOfferIssueView(x.Code, x.Summary, x.LastSeenAt)).ToList(),
+                WebhookPollingPolicy.OrderSource(subscriptions.ContainsKey(connection.Id), healthy),
+                subscriptions.GetValueOrDefault(connection.Id),
+                orderReadInterval);
         }).ToList();
         return new PriceStockMonitorView(now, rows);
     }

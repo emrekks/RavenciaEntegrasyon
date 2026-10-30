@@ -6,7 +6,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { appendNotification, failureNotice, notificationPlatformName } from '../../../shared/notifications'
 import { scopedStorageKey } from '../../../shared/storage-scope'
 import { DateText, type IntegrationFeedback } from '../shared'
-import { priceStockProblemSignature, priceStockWriteState, type PriceStockConnectionMonitor, type PriceStockMonitor } from './integration-helpers'
+import { orderSourceState, priceStockProblemSignature, priceStockWriteState, type PriceStockConnectionMonitor, type PriceStockMonitor } from './integration-helpers'
 import './price-stock-monitor.css'
 
 const notifiedKey = 'price-stock-monitor-notified'
@@ -68,17 +68,19 @@ export function PriceStockMonitorPanel({ onFeedback }: { onFeedback: (feedback: 
     if (accepted) stop.mutate()
   }
   return <section className="psm-panel" aria-labelledby="psm-title">{confirmDialog}
-    <div className="psm-head"><div><h2 id="psm-title">Fiyat ve Stok Gönderimi</h2><p>Panel ana stoktur. Otomatik gönderim yalnız ana anahtar ile fiyat ve stok yazma akışları açıkken çalışır; değişiklik, bağlantının sipariş okuması tamamlandıktan sonra gönderilir.</p></div>
+    <div className="psm-head"><div><h2 id="psm-title">Fiyat ve Stok Gönderimi</h2><p>Panel ana stoktur. Otomatik gönderim yalnız ana anahtar ile fiyat ve stok yazma akışları açıkken çalışır; değişiklik, bağlantının sipariş okuması tamamlandıktan (webhook sağlıklıysa bildirimler alındıktan) sonra gönderilir.</p></div>
       <button type="button" className="psm-stop" disabled={stop.isPending || !anyOpen} title={anyOpen ? undefined : 'Açık otomatik yazma yok.'} onClick={() => void confirmStop()}>{stop.isPending ? 'Durduruluyor…' : 'Tüm Otomatik Yazmaları Durdur'}</button>
     </div>
     {monitor.isLoading ? <Busy text="Gönderim durumu yükleniyor…" /> : monitor.isError ? <ErrorBox error={monitor.error} onRetry={() => void monitor.refetch()} /> : !rows?.length ? <p className="psm-empty">İzlenecek pazaryeri bağlantısı yok.</p> : <div className="psm-table" role="table" aria-label="Bağlantı bazında fiyat ve stok gönderimi">
-      <div className="psm-row is-head" role="row"><span role="columnheader">Bağlantı</span><span role="columnheader">Otomatik Yazma</span><span role="columnheader">Son Başarılı</span><span role="columnheader">Kuyruk</span><span role="columnheader">Başarısız</span><span role="columnheader">Gönderilemeyen Teklif</span><span role="columnheader">Kayıp İlan</span></div>
+      <div className="psm-row is-head" role="row"><span role="columnheader">Bağlantı</span><span role="columnheader">Otomatik Yazma</span><span role="columnheader">Sipariş Kaynağı</span><span role="columnheader">Son Başarılı</span><span role="columnheader">Kuyruk</span><span role="columnheader">Başarısız</span><span role="columnheader">Gönderilemeyen Teklif</span><span role="columnheader">Kayıp İlan</span></div>
       {rows.map(row => {
         const state = priceStockWriteState(row)
+        const source = orderSourceState(row)
         const problems = row.failedPushes7d + row.manualReviewPushes
         return <div className="psm-row" role="row" key={row.connectionId}>
           <span role="cell"><b>{row.displayName}</b><small>{notificationPlatformName(row.platformCode) ?? row.platformCode}</small></span>
           <span role="cell" data-label="Otomatik Yazma"><span className={`psm-state is-${state.tone}`}><i aria-hidden="true" />{state.label}</span></span>
+          <span role="cell" data-label="Sipariş Kaynağı"><span className={`psm-state is-${source.tone}`}><i aria-hidden="true" />{source.label}</span>{source.detail ? <small>{source.detail}</small> : null}{row.lastNotificationAt ? <small>Son bildirim <DateText value={row.lastNotificationAt} /></small> : null}</span>
           <span role="cell" data-label="Son Başarılı"><DateText value={row.lastSuccessfulPushAt} /></span>
           <span role="cell" data-label="Kuyruk">{row.queuedJobs}{row.waitingForOrderRead ? <small>{row.waitingForOrderRead} sipariş okuması bekliyor</small> : null}</span>
           <span role="cell" data-label="Başarısız" className={`psm-num${problems ? ' is-warn' : ''}`}>{problems}{row.manualReviewPushes ? <small>{row.manualReviewPushes} kısmi / inceleme</small> : null}</span>

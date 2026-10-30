@@ -1064,7 +1064,12 @@ public sealed record PriceStockConnectionMonitorView(
     int NotFoundLinks,
     int RejectedLinks,
     PriceStockPushFailureView? LatestFailure,
-    IReadOnlyList<PriceStockOfferIssueView> InvalidOfferSamples);
+    IReadOnlyList<PriceStockOfferIssueView> InvalidOfferSamples,
+    // Where new orders come from (WebhookPollingPolicy.OrderSource*), the last notification received and the cadence
+    // the scheduled order read actually runs at (null when the connection's order read is off).
+    string OrderSource,
+    DateTimeOffset? LastNotificationAt,
+    int? OrderReadIntervalSeconds);
 public sealed record PriceStockMonitorView(DateTimeOffset GeneratedAt, IReadOnlyList<PriceStockConnectionMonitorView> Connections);
 public sealed record PriceStockEmergencyStopView(int ConnectionsStopped, int PoliciesDisabled, int JobsCancelled);
 

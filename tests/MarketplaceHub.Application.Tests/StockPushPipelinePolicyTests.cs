@@ -34,6 +34,42 @@ public sealed class StockPushPipelinePolicyTests
     }
 
     [Fact]
+    public void OrderFreshness_HealthyNotificationsCoverTheChangeOnceTheyHadTimeToArrive()
+    {
+        var maxWait = TimeSpan.FromMinutes(10);
+        var lastAttempt = ChangedAt.AddSeconds(-30);
+        var lastSuccess = ChangedAt.AddSeconds(-20);
+        // Within the delivery grace an order placed just before the change may still be on its way.
+        Assert.Equal(OrderFreshnessDecision.Wait, OrderFreshnessGatePolicy.Decide(true, ChangedAt, lastAttempt, lastSuccess, ChangedAt.AddSeconds(90), maxWait, webhookHealthy: true));
+        Assert.False(OrderFreshnessGatePolicy.NotificationGraceElapsed(ChangedAt, ChangedAt.AddSeconds(90)));
+        // After it, healthy notifications with nothing left to ingest cover the change without the (eight-minute) read.
+        Assert.True(OrderFreshnessGatePolicy.NotificationGraceElapsed(ChangedAt, ChangedAt.AddMinutes(2)));
+        Assert.Equal(OrderFreshnessDecision.Send, OrderFreshnessGatePolicy.Decide(true, ChangedAt, lastAttempt, lastSuccess, ChangedAt.AddMinutes(2), maxWait, webhookHealthy: true));
+        // A received notification still waiting to be ingested holds the send.
+        Assert.Equal(OrderFreshnessDecision.Wait, OrderFreshnessGatePolicy.Decide(true, ChangedAt, lastAttempt, lastSuccess, ChangedAt.AddMinutes(3), maxWait, webhookHealthy: true, notificationsPending: true));
+        // Unhealthy notifications leave the scheduled read as the only cover.
+        Assert.Equal(OrderFreshnessDecision.Wait, OrderFreshnessGatePolicy.Decide(true, ChangedAt, lastAttempt, lastSuccess, ChangedAt.AddMinutes(3), maxWait, webhookHealthy: false));
+        Assert.Equal(OrderFreshnessDecision.SendAfterTimeout, OrderFreshnessGatePolicy.Decide(true, ChangedAt, lastAttempt, lastSuccess, ChangedAt.AddMinutes(10), maxWait, webhookHealthy: true, notificationsPending: true));
+    }
+
+    [Theory]
+    [InlineData(false, false, "POLLING")]
+    [InlineData(false, true, "POLLING")]
+    [InlineData(true, true, "WEBHOOK")]
+    [InlineData(true, false, "WEBHOOK_FALLBACK")]
+    public void OrderSource_IsTheWebhookOnlyWhileItIsHealthy(bool hasSubscription, bool healthy, string expected) =>
+        Assert.Equal(expected, WebhookPollingPolicy.OrderSource(hasSubscription, healthy));
+
+    [Theory]
+    [InlineData("TRENDYOL", 180, true, 480)]
+    [InlineData("TRENDYOL", 180, false, 180)]
+    [InlineData("HEPSIBURADA", 120, true, 480)]
+    [InlineData("SHOPIFY", 120, false, 120)]
+    [InlineData("N11", 120, false, 120)]
+    public void OrderSource_ShowsTheCadenceTheSchedulerActuallyReadsAt(string platform, int policyInterval, bool healthy, int expected) =>
+        Assert.Equal(expected, WebhookPollingPolicy.EffectiveOrderIntervalSeconds(platform, policyInterval, healthy));
+
+    [Fact]
     public void OrderFreshness_SendsAfterTheBoundOrWhenNoOrdersAreRead()
     {
         var maxWait = TimeSpan.FromMinutes(10);

@@ -7,6 +7,15 @@ public static class ScheduledOrderPollingCadencePolicy
     // spends the marketplace's test quota nor takes the worker lane from the production connection.
     public const int StageMinimumIntervalSeconds = 600;
 
+    // Owner decision (30 Oct 2026): the order reads that no notification replaces run every two minutes at most, so a
+    // new order takes its stock off the panel within about two minutes. Measured per pass on live: Hepsiburada 2 requests
+    // for new orders and 22 for the open-order scan (limit 600/min), N11 1 (600/min), Pazarama 1 (60/min), Shopify 1
+    // (2/s). Trendyol too (owner, same day: "2 yapalım onu da diğerleri gibi"): its order endpoints share 30 requests a
+    // minute, 40% (12) kept for new-order reads and user actions; a new-order pass takes 4 requests, so two minutes is
+    // 2 a minute, and the week before showed no rate-limit refusal. Trendyol, Hepsiburada and Shopify read at this pace
+    // only while their notifications are unhealthy; healthy notifications stretch the read to the 8-minute safety net.
+    public const int UnnotifiedOrderIntervalSeconds = 120;
+
     public static int ForEnvironment(int intervalSeconds, string? environment) =>
         string.Equals(environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? Math.Max(intervalSeconds, StageMinimumIntervalSeconds) : intervalSeconds;
 
@@ -47,11 +56,11 @@ public static class ScheduledOrderPollingCadencePolicy
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
             && IsShopifyReadPolicy(resourceType))
         {
-            // New and changed orders every three minutes (read by updated_at); the open-order scan
+            // New and changed orders every two minutes (read by updated_at); the open-order scan
             // half-hourly; recovery hourly and incremental; reconciliation daily.
             var interval = resourceType switch
             {
-                "ORDERS" => 180,
+                "ORDERS" => UnnotifiedOrderIntervalSeconds,
                 "ORDER_LIFECYCLE" => 1800,
                 "ORDER_RECOVERY" => 3600,
                 _ => Math.Clamp(intervalSeconds, 30, MaximumIntervalSeconds / 3) * 3
@@ -65,6 +74,15 @@ public static class ScheduledOrderPollingCadencePolicy
         if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) && resourceType is "ORDERS" or "ORDER_LIFECYCLE")
         {
             return (resourceType == "ORDERS" ? 120 : 900, Math.Min(jitterSeconds, 30));
+        }
+
+        // New orders of Trendyol, Hepsiburada, N11 and Pazarama every two minutes at most; Hepsiburada's and Pazarama's
+        // open-order scans bring cancellations (stock back to the panel) and keep the same pace. A shorter configured
+        // cadence stays.
+        if (platformCode?.ToUpperInvariant() is "TRENDYOL" or "HEPSIBURADA" or "N11" or "PAZARAMA" && resourceType == "ORDERS"
+            || platformCode?.ToUpperInvariant() is "HEPSIBURADA" or "PAZARAMA" && resourceType == "ORDER_LIFECYCLE")
+        {
+            return (Math.Min(intervalSeconds, UnnotifiedOrderIntervalSeconds), jitterSeconds);
         }
 
         // Hepsiburada invoice state is read from order details and the missing-invoice list. The

@@ -87,10 +87,20 @@ public sealed class InstantNotificationService(
             "PASSIVE" => connection.PlatformCode == "SHOPIFY"
                 ? "Shopify bildirim aboneliklerinin bir kısmını kaldırmış; panel bir saat içinde yeniden oluşturur."
                 : "Trendyol bildirimleri durdurmuş; panel bir saat içinde yeniden açar.",
-            _ when !healthy => "Son siparişin bildirimi gelmedi; sipariş kontrolü 3 dakikada bir sürüyor.",
+            _ when !healthy => $"Son siparişin bildirimi gelmedi; sipariş kontrolü {await OrderReadMinutesAsync(tenantId, connectionId, cancellationToken)} dakikada bir sürüyor.",
             _ => "Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak 8 dakikada bir yapılıyor."
         };
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, message, cancellationToken));
+    }
+
+    // The cadence of the connection's own order read (the fallback while notifications are not coming), in whole minutes.
+    private async Task<int> OrderReadMinutesAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var seconds = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS")
+            .Select(x => (int?)x.IntervalSeconds)
+            .FirstOrDefaultAsync(cancellationToken) ?? ScheduledOrderPollingCadencePolicy.UnnotifiedOrderIntervalSeconds;
+        return Math.Max(1, (int)Math.Round(Math.Clamp(seconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds) / 60d));
     }
 
     public async Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken, string? clientSecret = null)
