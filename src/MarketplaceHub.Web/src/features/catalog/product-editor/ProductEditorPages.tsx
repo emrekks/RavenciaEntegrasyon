@@ -1667,6 +1667,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setMediaFiles(next)
     showFeedback('Görsel Sırası Değişti', 'Yüklenen görsel sırası güncellendi. Kalıcı olması için ürünü kaydedin.', 'info')
   }
+  // An uploaded image not saved yet leaves the variants that were given it too; their image count kept it before.
+  function removeUploadedMedia(id: string) {
+    setMediaFiles(files => files.filter(file => file.id !== id))
+    setVariantRows(rows => rows.map(row => row.mediaRefs.includes(`file|${id}`) ? { ...row, mediaRefs: row.mediaRefs.filter(reference => reference !== `file|${id}`) } : row))
+  }
   function clearAllMedia() {
     setMediaFiles([])
     updateField('mediaUrls', '')
@@ -1751,6 +1756,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         body: JSON.stringify({ mediaIds: item.mediaIds })
       })
       setFamilyMediaOrder(current => current.filter(url => mediaImageKey(url) !== mediaImageKey(item.url)))
+      // The variants that showed the image drop it too: the rows are not seeded again, so their count stayed.
+      const removeVariantReference = (reference: string) => !reference.startsWith('url|') || mediaImageKey(reference.slice(4)) !== mediaImageKey(item.url)
+      initialEditVariantMediaRefs.current = Object.fromEntries(Object.entries(initialEditVariantMediaRefs.current).map(([variantId, references]) => [variantId, references.filter(removeVariantReference)]))
+      setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
       await productToEdit.refetch()
       await client.invalidateQueries({ queryKey: ['products'] })
       showFeedback('Aile Görseli Kaldırıldı', 'Renk ailesi görseli kaldırıldı.', 'success')
@@ -2965,7 +2974,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               <figcaption>{isProductMedia ? `${ownIndex === 0 ? 'Ana görsel' : `${ownIndex + 1}. görsel`} · sürükle` : 'Renk varyantı görseli · sürükle'}</figcaption>
             </figure>
           })}
-          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} mediaIndex={index} mediaCount={mediaFiles.length} onMove={target => reorderUploadedMedia(index, target)} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => setMediaFiles(files => files.filter(file => file.id !== item.id))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
+          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} mediaIndex={index} mediaCount={mediaFiles.length} onMove={target => reorderUploadedMedia(index, target)} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
         </div>}
       </section>
 
