@@ -1841,14 +1841,17 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         }
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    // fields: the product information "Platformlarda Güncelle" picked (ProductUpdateFields); null sends all of it.
+    public async Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
     {
+        var sections = ProductUpdateFields.Sections(fields);
+        if (!sections.Succeeded) return ServiceResult<Guid>.Fail(sections.Error!.Code, sections.Error.Message, sections.Error.Status);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Güncelleme yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        var build = await new ProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        var build = await new ProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, sections.Value);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;
         var dedup = $"product-update:{connectionId:N}:{productId:N}:{draft.Publication.PayloadHash}";

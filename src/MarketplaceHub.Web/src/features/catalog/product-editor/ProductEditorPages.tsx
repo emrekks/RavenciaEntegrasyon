@@ -28,6 +28,7 @@ import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-ti
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
+import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, writePlatformUpdatePreferences, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
 import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
@@ -109,7 +110,7 @@ function sortVariantsAlphabetically<T extends { optionSignature?: string | null;
   })
 }
 type ChannelPricingDraft = { listPrice: string; salePrice: string }
-type ProductUpdateRequest = { connectionIds: string[]; includeProductInformation: boolean }
+type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[] }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 type PublicationJobDetail = { job: { id: string; jobType?: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
 const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
@@ -1165,7 +1166,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [wizardStep, setWizardStep] = useState<1 | 2>(() => publishOnly || routeState?.wizardStep === 2 ? 2 : 1)
   const [platformUpdateDialogOpen, setPlatformUpdateDialogOpen] = useState(false)
   const [platformUpdateConnectionIds, setPlatformUpdateConnectionIds] = useState<string[]>([])
-  const [platformUpdateProductInformation, setPlatformUpdateProductInformation] = useState(true)
+  // The fields picked in "Platformlarda Güncelle" stay as they were left, for every product (this browser).
+  const [platformUpdatePreferences, setPlatformUpdatePreferences] = useState<PlatformUpdatePreferences>(() => readPlatformUpdatePreferences())
   const pendingPlatformUpdate = useRef<ProductUpdateRequest | null>(null)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [variantMediaModal, setVariantMediaModal] = useState<VariantMediaModalState | null>(null)
@@ -1807,10 +1809,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const updateableIds = updateableProductConnectionIds()
     const currentSelection = selectedChannelIds.filter(id => updateableIds.includes(id))
     setPlatformUpdateConnectionIds(currentSelection.length ? currentSelection : updateableIds)
-    setPlatformUpdateProductInformation(true)
+    setPlatformUpdatePreferences(readPlatformUpdatePreferences())
     setPlatformUpdateDialogOpen(true)
   }
-  function queuePlatformUpdate(connectionIds: string[], includeProductInformation: boolean) {
+  function changePlatformUpdatePreferences(next: PlatformUpdatePreferences) {
+    setPlatformUpdatePreferences(next)
+    writePlatformUpdatePreferences(next)
+  }
+  function queuePlatformUpdate(connectionIds: string[], fields: PlatformUpdateField[]) {
     const updateableIds = new Set(updateableProductConnectionIds())
     const safeConnectionIds = [...new Set(connectionIds)].filter(id => updateableIds.has(id))
     if (!safeConnectionIds.length) {
@@ -1822,12 +1828,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       showFeedback('Güncelleme Başlatılamadı', 'Ürün formu bulunamadı; güncelleme başlatılamadı.', 'error')
       return
     }
-    pendingPlatformUpdate.current = { connectionIds: safeConnectionIds, includeProductInformation }
+    pendingPlatformUpdate.current = { connectionIds: safeConnectionIds, fields }
     setPlatformUpdateDialogOpen(false)
     formElement.requestSubmit()
   }
   function confirmPlatformUpdate() {
-    queuePlatformUpdate(platformUpdateConnectionIds, platformUpdateProductInformation)
+    queuePlatformUpdate(platformUpdateConnectionIds, platformUpdatePreferences.fields)
   }
   function startQuickPlatformUpdate() {
     const connectionIds = quickPlatformUpdateTargets(selectedChannelIds, updateableProductConnectionIds())
@@ -1836,7 +1842,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       showFeedback('Platform Seçin', 'Hızlı güncelleme için önce güncellenecek platformu seçin.', 'info')
       return
     }
-    queuePlatformUpdate(connectionIds, false)
+    queuePlatformUpdate(connectionIds, priceStockPlatformUpdateFields)
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
     return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
@@ -2573,12 +2579,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         try {
           if (platformUpdate) {
             updates.push(update)
-            if (platformUpdate.includeProductInformation) {
-              await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
+            // Only what this marketplace takes of the pick goes: the product fields it carries, and the price and/or stock.
+            const plan = platformUpdatePlan(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? '', platformUpdate.fields)
+            if (plan.productFields.length) {
+              await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields }) })
               update.queued.productInformation = true
             }
-            await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
-            update.queued.priceInventory = true
+            if (plan.price || plan.stock) {
+              await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: plan.price, stock: plan.stock }) })
+              update.queued.priceInventory = true
+              update.priceInventoryParts = { price: plan.price, stock: plan.stock }
+            }
             await client.invalidateQueries({ queryKey: ['publication-status', product.id, connectionId] })
             continue
           }
@@ -3269,8 +3280,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       targets={productUpdateTargets}
       selectedIds={platformUpdateConnectionIds}
       onToggle={connectionId => setPlatformUpdateConnectionIds(ids => ids.includes(connectionId) ? ids.filter(id => id !== connectionId) : [...ids, connectionId])}
-      productInformation={platformUpdateProductInformation}
-      onProductInformationChange={setPlatformUpdateProductInformation}
+      fields={platformUpdatePreferences.fields}
+      onFieldsChange={fields => changePlatformUpdatePreferences({ ...platformUpdatePreferences, fields })}
+      openGroups={platformUpdatePreferences.openGroups}
+      onOpenGroupsChange={openGroups => changePlatformUpdatePreferences({ ...platformUpdatePreferences, openGroups })}
       submitting={submitting}
       onClose={() => setPlatformUpdateDialogOpen(false)}
       onConfirm={confirmPlatformUpdate} />}
