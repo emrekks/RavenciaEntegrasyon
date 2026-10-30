@@ -926,6 +926,12 @@
   .marketplace-pricing-open { align-items: flex-start; flex-direction: column; }
 }
 .variant-platform-pricing-modal { width: min(1180px, calc(100vw - 32px)); }
+/* Dense price matrix: shorter rows and tighter spacing so more variants fit on screen at once. */
+.variant-platform-pricing-modal .variant-platform-pricing-body { max-height: min(78vh, 800px); gap: var(--rv-space-3); padding-block: var(--rv-space-3); }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix { gap: var(--rv-space-2); }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix-scroll { max-height: min(62vh, 640px); }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix-cell:not(.variant-platform-pricing-matrix-head) { gap: 1px; padding-block: 4px; }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix-cell > input { height: 32px; min-height: 0; padding-block: 0; }
 .product-options-card .product-options-toolbar .product-options-sync-button { min-height: 36px; margin: 0; padding: 0 12px; font-size: 13px; }
 @media (max-width: 760px) {
   .product-options-card .attribute-builder-list + .attribute-variant-action,
