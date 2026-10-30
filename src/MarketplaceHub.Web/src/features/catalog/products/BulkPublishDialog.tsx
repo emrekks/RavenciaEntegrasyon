@@ -44,7 +44,6 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<BulkPublicationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const connectionName = (id: string) => connections.find(connection => connection.id === id)?.displayName ?? 'Platform'
   // A selected id the list no longer holds counts as unknown in the summary instead of being dropped from the total.
   const selectedRecords = useMemo(() => {
     if (!products) return null
@@ -96,9 +95,8 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
             ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} modelTip={modelTips.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}</div>
             : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p></div>}
           {error && <div className="publish-platform-warning" role="alert"><UiIcon name="alert" /><div><strong>Yayın İşleri Oluşturulamadı</strong><p>{error}</p></div></div>}
-          {result && <div className="publish-platform-warning" role="status" aria-live="polite"><UiIcon name="check" /><div><strong>{result.queued} kuyruğa alındı · {result.skipped} atlandı · {result.failed.length} gönderilemedi</strong>{result.failed.length > 0 && <ul>{result.failed.map(item => <li key={`${item.productId}:${item.connectionId}`}><b>{item.productTitle}</b> · {connectionName(item.connectionId)}: {item.message}</li>)}</ul>}</div></div>}
           <div className="publish-selection-footer">
-            <div><strong>{result ? 'Yayın işleri kuyruğa alındı' : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : result ? 'Sonuçlar ürün listesinde güncellenir.' : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
+            <div><strong>{result ? `${result.queued} kuyruğa alındı · ${result.skipped} atlandı · ${result.failed.length} gönderilemedi` : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : result ? (result.failed.length ? 'Gönderilemeyenlerin nedeni bildirimlerde.' : 'Sonuçlar ürün listesinde güncellenir.') : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
             {!selectedCount && !result && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
             {!result && selectableIds.length > 0 && <button type="button" className="secondary publish-select-all" disabled={locked} onClick={toggleAll}>{allSelectableSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>}
             {result ? <button type="button" onClick={onClose}>Kapat</button> : <button type="button" disabled={running || !selectedCount} onClick={() => void publish()}>{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
