@@ -604,7 +604,7 @@ public static class AutomaticPriceStockWriteGate
     // connection is marked as sent at its current values, so only the changes made after enabling go out.
     public static bool Opens(bool wasOpen, bool isOpen) => !wasOpen && isOpen;
 
-    public const string BaselineWarning = "Kapalıyken yapılan değişiklikler pazaryerine gönderilmedi; stok ve fiyatları elle kontrol edin.";
+    public const string BaselineWarning = "Kapalıyken yapılan değişiklikler pazaryerine gönderilmedi. Açmadan önce pazaryerlerindeki stok ve fiyatları güncellemenizi öneririz.";
 }
 
 public enum OrderFreshnessDecision { Send, SendAfterTimeout, Wait }
