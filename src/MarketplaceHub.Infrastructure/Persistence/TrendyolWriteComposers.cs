@@ -20,7 +20,12 @@ internal sealed record PriceInventoryDraft(string PayloadHash, string PayloadJso
 {
     // Active offers left out because their variant has no MAIN stock row.
     public IReadOnlyList<string> MissingInventorySkus { get; init; } = [];
+    // Automatic sends only: offers left out because their values cannot be sent (price 0, another currency, a code the
+    // marketplace cannot take). Each is reported as an issue instead of holding back every other offer of the batch.
+    public IReadOnlyList<InvalidPriceInventoryOffer> InvalidOffers { get; init; } = [];
 }
+
+internal sealed record InvalidPriceInventoryOffer(Guid VariantId, string Sku, string Code, string Message);
 
 internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration configuration)
 {
@@ -121,19 +126,55 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
 {
     private const int MaximumBatchSize = 1000;
 
-    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null, Guid? productId = null)
+    // automatic: a send the system starts on its own (a stock or price change, the reconcile scan). It leaves out a code
+    // the marketplace refused twice (REJECTED) even for one variant, as a bulk send does (only a send started from the
+    // panel tries such a code again), and it reports an offer it cannot send instead of failing the whole batch.
+    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null, Guid? productId = null, bool automatic = false)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.Id == connectionId)
             .Select(item => new { item.PlatformCode, item.ExternalStoreId })
             .SingleOrDefaultAsync(cancellationToken);
         if (connection is null) return ServiceResult<PriceInventoryDraft>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
+        var invalid = new List<InvalidPriceInventoryOffer>();
+        var result = await BuildForPlatformAsync(connection.PlatformCode, connection.ExternalStoreId, tenantId, connectionId, cancellationToken, variantId, productId, automatic, invalid);
+        InvalidOffers = invalid;
+        return WithInvalidOffers(result, invalid);
+    }
+
+    // The offers the last automatic build left out, also when it had nothing else to send.
+    public IReadOnlyList<InvalidPriceInventoryOffer> InvalidOffers { get; private set; } = [];
+
+    // An automatic build that left offers out: with other lines to send they ride along on the draft; with none, the
+    // first one is the build's outcome (the dispatch reports it as an issue, as before).
+    private static ServiceResult<PriceInventoryDraft> WithInvalidOffers(ServiceResult<PriceInventoryDraft> result, List<InvalidPriceInventoryOffer> invalid)
+    {
+        if (invalid.Count == 0) return result;
+        if (result.Succeeded) return ServiceResult<PriceInventoryDraft>.Ok(result.Value! with { InvalidOffers = invalid });
+        if (result.Error!.Code is "NO_EXTERNAL_CHANGES" or "LIVE_OFFER_REQUIRED")
+            return ServiceResult<PriceInventoryDraft>.Fail(invalid[0].Code, invalid[0].Message, 422);
+        return result;
+    }
+
+    // A row the marketplace cannot take: a send from the panel fails as before, an automatic one leaves it out.
+    private static ServiceResult<PriceInventoryDraft>? Refuse(bool automatic, List<InvalidPriceInventoryOffer> invalid, Guid variantId, string sku, string code, string message, int status = 422)
+    {
+        if (!automatic) return ServiceResult<PriceInventoryDraft>.Fail(code, message, status);
+        invalid.Add(new(variantId, sku, code, message));
+        return null;
+    }
+
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildForPlatformAsync(string platformCode, string? externalStoreId, Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool automatic, List<InvalidPriceInventoryOffer> invalid)
+    {
+        var connection = new { PlatformCode = platformCode, ExternalStoreId = externalStoreId };
+        // Only a send from the panel for one variant tries a twice-refused code again.
+        var variantScoped = variantId is not null && !automatic;
         if (string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase))
-            return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productId);
+            return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productId, variantScoped, automatic, invalid);
         if (string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
-            return await BuildPazaramaAsync(tenantId, connectionId, cancellationToken, variantId, productId);
+            return await BuildPazaramaAsync(tenantId, connectionId, cancellationToken, variantId, productId, variantScoped, automatic, invalid);
         if (string.Equals(connection.PlatformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
-            return await BuildPttAvmAsync(tenantId, connectionId, cancellationToken, variantId, productId);
+            return await BuildPttAvmAsync(tenantId, connectionId, cancellationToken, variantId, productId, variantScoped, automatic, invalid);
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isTrendyol = string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         // Shopify addresses a variant by its own id (the link id an import stored); the barcode is only the fallback
@@ -160,7 +201,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         // A link the marketplace refused twice as an unknown code is left out of a bulk or product send: it would only
         // be refused again. A send for that one variant still goes; a code a scan missed is still sent.
         // A code the marketplace no longer knows (NOT_FOUND) gets no send at all, a variant-scoped one included.
-        var skippedByHealth = published.RemoveAll(row => row.Link is not null && MarketplaceVariantLinkHealth.SkipsPush(row.Link.HealthStatus, variantScoped: variantId is not null));
+        var skippedByHealth = published.RemoveAll(row => row.Link is not null && MarketplaceVariantLinkHealth.SkipsPush(row.Link.HealthStatus, variantScoped));
         var rows = published.Select(row => new GenericPriceInventoryRow(row.Offer, row.Variant, row.Inventory,
                 isHepsiburada ? row.ListingBarcode : row.Link?.ExternalBarcode ?? row.ListingBarcode,
                 row.Link?.ExternalSku ?? row.ListingSku, row.Link?.ExternalId, row.Link?.ExternalSku is not null,
@@ -187,7 +228,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         {
             // Hepsiburada needs the hbSku beside the merchant SKU; a link that holds the merchant SKU instead stays out.
             if (isHepsiburada && !HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.Link.ExternalId)) continue;
-            if (MarketplaceVariantLinkHealth.SkipsPush(row.Link.HealthStatus, variantScoped: variantId is not null)) { skippedByHealth++; continue; }
+            if (MarketplaceVariantLinkHealth.SkipsPush(row.Link.HealthStatus, variantScoped)) { skippedByHealth++; continue; }
             rows.Add(new(row.Offer, row.Variant, row.Inventory, row.Link.ExternalBarcode ?? (isShopify ? row.Link.ExternalId : row.Link.ExternalSku!), row.Link.ExternalSku, row.Link.ExternalId, true,
                 isShopify ? row.Link.ExternalId : null));
         }
@@ -203,10 +244,16 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var salePrice = OutboundSalePrice(row.Offer);
             var listPrice = OutboundListPrice(row.Offer);
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice)
-                return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.", 422);
+            {
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.") is { } refused) return refused;
+                continue;
+            }
             // The merchant SKU is the panel SKU unless Hepsiburada itself reported it (an import read it back).
             if (isHepsiburada && (string.IsNullOrWhiteSpace(row.MerchantSku) || !row.MarketplaceCodes && !string.Equals(row.MerchantSku, row.Variant.Sku, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(row.HepsiburadaSku)))
-                return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_LISTING_LINK_REQUIRED", $"'{row.Variant.Sku}' için doğrulanmış merchantSku ve hbSku eşleştirmesi gerekir.", 409);
+            {
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "HEPSIBURADA_LISTING_LINK_REQUIRED", $"'{row.Variant.Sku}' için doğrulanmış merchantSku ve hbSku eşleştirmesi gerekir.", 409) is { } refused) return refused;
+                continue;
+            }
             var publishable = Math.Max(0, inventory.Available - row.Offer.SafetyStock);
             // C10: Trendyol stock is capped at 20,000; the capped quantity is what the payload (and its hash) carries.
             var quantity = isTrendyol ? TrendyolStockRules.Quantity(publishable) : decimal.Floor(publishable);
@@ -293,7 +340,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     // n11 has no listing profile in the panel: an n11 offer is sent when its
     // variant is linked to an n11 stock code. Prices go with two decimals and
     // listPrice >= salePrice, stock is capped at n11's 999,999.
-    private async Task<ServiceResult<PriceInventoryDraft>> BuildN11Async(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId)
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildN11Async(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool variantScoped, bool automatic, List<InvalidPriceInventoryOffer> invalid)
     {
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -306,7 +353,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           orderby variant.Id
                           select new { Offer = offer, Variant = variant, Inventory = inventory, StockCode = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
             .ToListAsync(cancellationToken);
-        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped: variantId is not null)) > 0 && rows.Count == 0) return NoChanges([]);
+        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped)) > 0 && rows.Count == 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "N11 fiyat-stok gönderimi için N11 stok koduna bağlı varyant ve ACTIVE N11 teklifi gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
@@ -314,15 +361,17 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var lines = new List<PriceInventoryPushLine>();
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
-            var salePrice = N11PriceInventoryRules.Price(OutboundSalePrice(row.Offer));
-            var listPrice = Math.Max(N11PriceInventoryRules.Price(OutboundListPrice(row.Offer)), salePrice);
+            var (listPrice, salePrice) = N11Prices(row.Offer);
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
-                return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.", 422);
+            {
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
+                continue;
+            }
             // An n11 product read without a stock code is linked as "n11:{productId}"; n11 takes price and stock by
             // stock code only, so it cannot be addressed and stays out.
             if (row.StockCode.StartsWith("n11:", StringComparison.Ordinal)) continue;
             var quantity = N11PriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
-            var priceHash = Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{row.Offer.PriceVersion}");
+            var priceHash = N11PriceHash(row.Offer);
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
             lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash));
         }
@@ -335,7 +384,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     // Pazarama has no listing profile in the panel either: an offer is sent when its variant is linked
     // to a Pazarama barcode (the variant link carries it). Price and stock go as two requests built
     // from the same lines; prices keep two decimals with listPrice >= salePrice.
-    private async Task<ServiceResult<PriceInventoryDraft>> BuildPazaramaAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId)
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildPazaramaAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool variantScoped, bool automatic, List<InvalidPriceInventoryOffer> invalid)
     {
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -348,7 +397,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           orderby variant.Id
                           select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
             .ToListAsync(cancellationToken);
-        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped: variantId is not null)) > 0 && rows.Count == 0) return NoChanges([]);
+        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped)) > 0 && rows.Count == 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Pazarama fiyat-stok gönderimi için Pazarama barkoduna bağlı varyant ve ACTIVE Pazarama teklifi gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
@@ -356,13 +405,18 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var lines = new List<(PriceInventoryPushLine Line, bool Price, bool Stock)>();
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
-            var salePrice = PazaramaPriceInventoryRules.Price(OutboundSalePrice(row.Offer));
-            var listPrice = Math.Max(PazaramaPriceInventoryRules.Price(OutboundListPrice(row.Offer)), salePrice);
+            var (listPrice, salePrice) = PazaramaPrices(row.Offer);
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
-                return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.", 422);
+            {
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
+                continue;
+            }
             var barcode = row.Barcode.Trim();
             if (barcode.Length == 0 || barcode.Length > PazaramaPriceInventoryRules.MaxCodeLength)
-                return ServiceResult<PriceInventoryDraft>.Fail("PAZARAMA_BARCODE_INVALID", $"'{row.Variant.Sku}' için Pazarama barkodu boş veya {PazaramaPriceInventoryRules.MaxCodeLength} karakterden uzun.", 422);
+            {
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "PAZARAMA_BARCODE_INVALID", $"'{row.Variant.Sku}' için Pazarama barkodu boş veya {PazaramaPriceInventoryRules.MaxCodeLength} karakterden uzun.") is { } refused) return refused;
+                continue;
+            }
             var quantity = PazaramaPriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
             var priceHash = PazaramaPriceInventoryRules.PriceHash(listPrice, salePrice, row.Offer.PriceVersion);
             var priceChanged = row.Offer.LastPriceHash != priceHash;
@@ -384,7 +438,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     // that changed, each named by its colour and size: the product price is the lowest variant price and each variant
     // carries its difference. PTT AVM keeps the difference of a variant not sent, so when any price of the product
     // changed every variant goes, and a stock-only change sends just the changed variants.
-    private async Task<ServiceResult<PriceInventoryDraft>> BuildPttAvmAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId)
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildPttAvmAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool variantScoped, bool automatic, List<InvalidPriceInventoryOffer> invalid)
     {
         // One variant is priced against its whole product, so a single-variant send reads the product's offers.
         if (variantId is { } onlyVariant)
@@ -411,7 +465,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           select new { Offer = offer, Variant = variant, Inventory = inventory, Code = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
             .ToListAsync(cancellationToken);
         // A code PTT AVM no longer knows is left out; one twice refused stays out of product and bulk sends.
-        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped: variantId is not null)) > 0 && rows.Count == 0) return NoChanges([]);
+        if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped)) > 0 && rows.Count == 0) return NoChanges([]);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PTT AVM fiyat-stok gönderimi için PTT AVM'ye bağlı varyant ve ACTIVE PTT AVM teklifi gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
@@ -442,23 +496,34 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         foreach (var group in rows.Where(row => row.Inventory is not null).GroupBy(row => PttProductCode(row.Variant.ProductId, row.Variant.ModelCode) ?? $"panel:{row.Variant.ProductId:N}"))
         {
             var priced = new List<(PriceInventoryPushLine Line, decimal? VatRate, bool PriceChanged, bool Changed, string? OptionSignature)>();
+            // An automatic send leaves a product with an offer it cannot send out whole: its variants are priced
+            // against each other, so a product sent without one of them would carry wrong differences.
+            var productRefused = false;
             foreach (var row in group)
             {
                 var salePrice = PttAvmPriceInventoryRules.Price(OutboundSalePrice(row.Offer));
                 // PTT AVM refuses a price of 1 or less.
                 if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
-                    return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.", 422);
+                {
+                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.") is { } refused) return refused;
+                    productRefused = true;
+                    continue;
+                }
                 var code = row.Code.Trim();
                 if (code.Length == 0 || code.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
-                    return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM kodu boş veya {PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.", 422);
+                {
+                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM kodu boş veya {PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.") is { } refused) return refused;
+                    productRefused = true;
+                    continue;
+                }
                 var vatRate = PttAvmPriceInventoryRules.VatRate(row.Offer.VatRate);
                 var quantity = PttAvmPriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
-                var priceHash = PttAvmPriceInventoryRules.PriceHash(salePrice, vatRate, row.Offer.PriceVersion);
+                var priceHash = PttAvmPriceHash(row.Offer);
                 var priceChanged = row.Offer.LastPriceHash != priceHash;
                 var changed = priceChanged || row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion;
                 priced.Add((new(row.Variant.Id, row.Offer.Id, code, quantity, salePrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash), vatRate, priceChanged, changed, row.Variant.OptionSignature));
             }
-            if (!priced.Any(x => x.Changed)) continue;
+            if (productRefused || !priced.Any(x => x.Changed)) continue;
             var productCode = group.Key.StartsWith("panel:", StringComparison.Ordinal) ? null : group.Key;
             var only = priced.Count == 1 ? priced[0] : default;
             // A product without variants: PTT AVM keeps it by the variant's own code. An old option-id link
@@ -525,6 +590,37 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
 
     internal static string StandardPriceHash(ChannelOffer offer) =>
         StandardPriceHash(OutboundListPrice(offer), OutboundSalePrice(offer), offer.PriceVersion);
+
+    internal static (decimal ListPrice, decimal SalePrice) N11Prices(ChannelOffer offer)
+    {
+        var salePrice = N11PriceInventoryRules.Price(OutboundSalePrice(offer));
+        return (Math.Max(N11PriceInventoryRules.Price(OutboundListPrice(offer)), salePrice), salePrice);
+    }
+
+    internal static string N11PriceHash(ChannelOffer offer)
+    {
+        var (listPrice, salePrice) = N11Prices(offer);
+        return Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{offer.PriceVersion}");
+    }
+
+    internal static (decimal ListPrice, decimal SalePrice) PazaramaPrices(ChannelOffer offer)
+    {
+        var salePrice = PazaramaPriceInventoryRules.Price(OutboundSalePrice(offer));
+        return (Math.Max(PazaramaPriceInventoryRules.Price(OutboundListPrice(offer)), salePrice), salePrice);
+    }
+
+    internal static string PttAvmPriceHash(ChannelOffer offer) =>
+        PttAvmPriceInventoryRules.PriceHash(PttAvmPriceInventoryRules.Price(OutboundSalePrice(offer)), PttAvmPriceInventoryRules.VatRate(offer.VatRate), offer.PriceVersion);
+
+    // The price mark a send of the offer's current values leaves behind (LastPriceHash), as each platform's build
+    // computes it. The baseline taken when automatic writes are switched on (owner decision B) writes it.
+    internal static string CurrentPriceHash(string platformCode, ChannelOffer offer) => platformCode.Trim().ToUpperInvariant() switch
+    {
+        "N11" => N11PriceHash(offer),
+        "PAZARAMA" => PazaramaPriceInventoryRules.PriceHash(PazaramaPrices(offer).ListPrice, PazaramaPrices(offer).SalePrice, offer.PriceVersion),
+        "PTTAVM" => PttAvmPriceHash(offer),
+        _ => StandardPriceHash(offer)
+    };
 
     internal static string MissingInventoryMessage(IReadOnlyList<string> skus) =>
         $"MAIN stok kaydı olmayan {skus.Count} aktif teklif fiyat-stok gönderimine alınmadı: {string.Join(", ", skus.Take(10))}{(skus.Count > 10 ? ", …" : "")}. Bu varyantlar için stok kaydı oluşturun.";

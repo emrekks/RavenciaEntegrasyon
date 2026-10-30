@@ -541,7 +541,9 @@ public static class ImportedDesi
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false, bool CatalogStructure = false);
 public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash, string? MerchantSku = null, string? HepsiburadaSku = null, string? ExternalVariantId = null);
-public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false);
+// Automatic: the job was built by the system on its own (a stock or price change, the reconcile scan); its values are
+// rebuilt the same way before the send (PriceInventoryComposer automatic mode).
+public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false, bool Automatic = false);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);
@@ -1032,6 +1034,39 @@ public interface IOperationalDataMaintenanceService
     Task<ServiceResult<OperationalDataResetView>> ResetConnectionDataAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> SetDataVisibilityAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, bool hidden, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<OperationalDataResetView>> ResetAsync(Guid tenantId, Guid actorUserId, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken);
+}
+
+// G: the automatic price/stock pipeline of each marketplace connection, as the monitor panel shows it.
+public sealed record PriceStockPushFailureView(Guid JobId, string? ErrorCode, string? ErrorSummary, string Status, DateTimeOffset? At);
+public sealed record PriceStockOfferIssueView(string Code, string Summary, DateTimeOffset LastSeenAt);
+public sealed record PriceStockConnectionMonitorView(
+    Guid ConnectionId,
+    string PlatformCode,
+    string DisplayName,
+    string Status,
+    bool MasterSwitchOn,
+    bool PriceWriteEnabled,
+    bool StockWriteEnabled,
+    bool AutomaticWritesOpen,
+    DateTimeOffset? LastSuccessfulPushAt,
+    int QueuedJobs,
+    int WaitingForOrderRead,
+    int FailedPushes7d,
+    int ManualReviewPushes,
+    int InvalidOffers,
+    int NotFoundLinks,
+    int RejectedLinks,
+    PriceStockPushFailureView? LatestFailure,
+    IReadOnlyList<PriceStockOfferIssueView> InvalidOfferSamples);
+public sealed record PriceStockMonitorView(DateTimeOffset GeneratedAt, IReadOnlyList<PriceStockConnectionMonitorView> Connections);
+public sealed record PriceStockEmergencyStopView(int ConnectionsStopped, int PoliciesDisabled, int JobsCancelled);
+
+public interface IPriceStockMonitorService
+{
+    Task<PriceStockMonitorView> MonitorAsync(Guid tenantId, CancellationToken cancellationToken);
+    // "Tüm Otomatik Yazmaları Durdur": every connection's PRICE_WRITE and STOCK_WRITE off and every queued price/stock
+    // job cancelled, in one save. Switching them on again takes a new baseline (decision B).
+    Task<PriceStockEmergencyStopView> StopAllAutomaticWritesAsync(Guid tenantId, Guid actorUserId, string correlationId, CancellationToken cancellationToken);
 }
 
 public interface IMarketplaceConnectionService

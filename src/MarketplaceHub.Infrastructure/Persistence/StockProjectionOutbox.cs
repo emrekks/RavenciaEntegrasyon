@@ -7,8 +7,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// Queues a STOCK_PROJECTION_DISPATCH for every connection with an ACTIVE offer of a changed variant.
-// The jobs are added to the caller's unit of work, so they commit together with the stock change.
+// Queues a STOCK_PROJECTION_DISPATCH for every connection with an ACTIVE offer of a changed variant whose automatic
+// price/stock writes are open. The jobs are added to the caller's unit of work, so they commit together with the
+// stock (or price) change, and the job's creation time is the change's time (the order freshness gate, decision C).
 internal static class StockProjectionOutbox
 {
     public static async Task EnqueueAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<StockProjectionChange> changes, DateTimeOffset now, CancellationToken cancellationToken)
@@ -23,12 +24,37 @@ internal static class StockProjectionOutbox
                                       && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                                   select new { offer.ConnectionId, offer.VariantId, connection.SettingsJson })
             .ToListAsync(cancellationToken);
-        // A connection whose external writes are off would only finish the dispatch without sending, yet the
-        // job (an effect guard) stayed in the table; it gets none. The stock reconcile scan catches it up once
-        // writes are on again. The maintenance pass clears the stored switch when the global switch is off.
+        // Owner decision A: a connection whose master switch or automatic price/stock policies are off gets no
+        // dispatch at all (it would only finish without sending). What changes meanwhile is never sent: switching
+        // the writes on marks every offer as sent at its values then (decision B). The worker checks the gate again.
+        var open = await AutomaticPriceStockWrites.OpenConnectionIdsAsync(db, tenantId, activeOffers.Select(offer => offer.ConnectionId).Distinct().ToArray(), cancellationToken);
         var targets = StockProjectionOutboxPolicy.FanOut(changes, activeOffers
-            .Where(offer => StoredExternalWritesEnabled(offer.SettingsJson))
+            .Where(offer => open.Contains(offer.ConnectionId))
             .Select(offer => (offer.ConnectionId, offer.VariantId)));
+        await AddDispatchesAsync(db, tenantId, targets, now, cancellationToken);
+    }
+
+    // E: a price edit of offers (from the panel or a product file) is sent like a stock change, to the offer's own
+    // connection only; the dispatch sends the offer's current values and only the offers whose price changed go out.
+    public static async Task EnqueuePriceChangesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<ChannelOffer> offers, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var changed = offers.Where(offer => offer.Status == "ACTIVE").ToList();
+        if (changed.Count == 0) return;
+        var connectionIds = changed.Select(offer => offer.ConnectionId).Distinct().ToArray();
+        var activeConnections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id) && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var open = await AutomaticPriceStockWrites.OpenConnectionIdsAsync(db, tenantId, activeConnections, cancellationToken);
+        var targets = changed
+            .Where(offer => open.Contains(offer.ConnectionId))
+            .Select(offer => new StockProjectionTarget(offer.ConnectionId, offer.VariantId, $"price:{offer.Id:N}:p{offer.PriceVersion}", StockProjectionOutboxPolicy.PriceChangeDedupKey(offer.ConnectionId, offer.VariantId, offer.PriceVersion)))
+            .ToList();
+        await AddDispatchesAsync(db, tenantId, targets, now, cancellationToken);
+    }
+
+    private static async Task AddDispatchesAsync(AppDbContext db, Guid tenantId, IReadOnlyList<StockProjectionTarget> targets, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         if (targets.Count == 0) return;
         var dedupKeys = targets.Select(target => target.DedupKey).ToArray();
         var existing = await db.IntegrationJobs.AsNoTracking()

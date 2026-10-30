@@ -585,6 +585,57 @@ public static class StockProjectionOutboxPolicy
         !stockWriteEnabled ? StockProjectionDispatchDecision.Skip
         : !priceWriteEnabled ? StockProjectionDispatchDecision.HoldForPricePolicy
         : StockProjectionDispatchDecision.Dispatch;
+
+    // A price edit of an offer queues the same dispatch as a stock change; its key is the offer's price version, so a
+    // later stock change of the variant (its own projection version) never takes the place of the price edit.
+    public static string PriceChangeDedupKey(Guid connectionId, Guid variantId, long priceVersion) =>
+        $"price-change:{connectionId:N}:{variantId:N}:p{priceVersion}";
+}
+
+// Owner decision A (30 Oct 2026): an automatic price/stock send needs the connection's master switch and both
+// automatic write policies (PRICE_WRITE and STOCK_WRITE). While any of them is off no dispatch, reconcile or push job
+// is created at all. A policy row that does not exist counts as off: a gate is opened only by a switch someone set.
+public static class AutomaticPriceStockWriteGate
+{
+    public static bool IsOpen(bool masterSwitchOn, bool? priceWriteEnabled, bool? stockWriteEnabled) =>
+        masterSwitchOn && priceWriteEnabled == true && stockWriteEnabled == true;
+
+    // Owner decision B: whatever changed while the gate was closed is never sent. When it opens, every offer of the
+    // connection is marked as sent at its current values, so only the changes made after enabling go out.
+    public static bool Opens(bool wasOpen, bool isOpen) => !wasOpen && isOpen;
+
+    public const string BaselineWarning = "Kapalıyken yapılan değişiklikler pazaryerine gönderilmedi; stok ve fiyatları elle kontrol edin.";
+}
+
+public enum OrderFreshnessDecision { Send, SendAfterTimeout, Wait }
+
+// Owner decision C: the panel is the absolute stock master and every marketplace takes absolute numbers. A stock change
+// made in the panel while an order of the connection is not read yet would overwrite the marketplace (which already
+// took the order off) with a number that still counts the ordered unit. So an automatic send to a connection waits until
+// an order read of that connection started after the change has finished: the order is taken off the panel first and
+// the number sent already lacks it (panel 10, order on the marketplace, user sets 15, the read takes 1 off: 14 is sent).
+// The wait is bounded; a connection whose order read is late or failing is sent to after the bound.
+// Residual window: an order placed on the marketplace after that read started and before the send arrives is not in the
+// sent number. The marketplace already took it off its own stock, so it shows one unit too many until the next read
+// takes it off the panel and the following send corrects it (one order-read interval, 2-3 minutes; 8 with webhooks).
+public static class OrderFreshnessGatePolicy
+{
+    public const string OrderReadCursor = "ORDERS_HOT";
+    public static readonly TimeSpan DefaultMaxWait = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan RecheckDelay = TimeSpan.FromSeconds(30);
+    public const string WaitCode = "ORDER_READ_PENDING";
+    public const string WaitMessage = "Değişiklikten sonra başlayan sipariş okuması bekleniyor; araya düşen sipariş önce stoktan düşülecek, sonra gönderilecek.";
+
+    // An order read that started at or after the change and has finished successfully.
+    public static bool OrdersReadAfter(DateTimeOffset changedAt, DateTimeOffset? lastAttemptAt, DateTimeOffset? lastSuccessAt) =>
+        lastAttemptAt is { } attempt && attempt >= changedAt && lastSuccessAt is { } success && success >= attempt;
+
+    public static OrderFreshnessDecision Decide(bool readsOrders, DateTimeOffset? changedAt, DateTimeOffset? lastAttemptAt, DateTimeOffset? lastSuccessAt, DateTimeOffset now, TimeSpan maxWait)
+    {
+        if (!readsOrders || changedAt is not { } changed) return OrderFreshnessDecision.Send;
+        if (OrdersReadAfter(changed, lastAttemptAt, lastSuccessAt)) return OrderFreshnessDecision.Send;
+        return now - changed >= maxWait ? OrderFreshnessDecision.SendAfterTimeout : OrderFreshnessDecision.Wait;
+    }
 }
 
 public static class PriceInventoryOutboxPolicy

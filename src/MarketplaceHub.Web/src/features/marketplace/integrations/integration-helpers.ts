@@ -1,5 +1,50 @@
 // Small pure pieces of the integrations pages, kept here so they can be tested on their own.
 
+/** Owner decision B: what switching the automatic writes (or the master switch) on means for the changes made while off. */
+export const automaticWritesBaselineWarning = 'Kapalıyken yapılan değişiklikler pazaryerine gönderilmedi; stok ve fiyatları elle kontrol edin.'
+
+export function automaticWritesBaselineMessage(externalWriteTo: string) {
+  return `${automaticWritesBaselineWarning} Açıldığı andaki fiyat ve stoklar gönderilmiş sayılır; bundan sonraki değişiklikler ${externalWriteTo} otomatik gönderilir.`
+}
+
+/** One connection of GET /price-stock-monitor (PriceStockConnectionMonitorView). */
+export type PriceStockConnectionMonitor = {
+  connectionId: string
+  platformCode: string
+  displayName: string
+  status: string
+  masterSwitchOn: boolean
+  priceWriteEnabled: boolean
+  stockWriteEnabled: boolean
+  automaticWritesOpen: boolean
+  lastSuccessfulPushAt: string | null
+  queuedJobs: number
+  waitingForOrderRead: number
+  failedPushes7d: number
+  manualReviewPushes: number
+  invalidOffers: number
+  notFoundLinks: number
+  rejectedLinks: number
+  latestFailure: { jobId: string; errorCode: string | null; errorSummary: string | null; status: string; at: string | null } | null
+  invalidOfferSamples: Array<{ code: string; summary: string; lastSeenAt: string }>
+}
+
+export type PriceStockMonitor = { generatedAt: string; connections: PriceStockConnectionMonitor[] }
+
+/** The automatic write state of a connection in words: open, held (one policy on) or off, and why. */
+export function priceStockWriteState(row: Pick<PriceStockConnectionMonitor, 'masterSwitchOn' | 'priceWriteEnabled' | 'stockWriteEnabled' | 'automaticWritesOpen'>): { label: string; tone: 'on' | 'partial' | 'off' } {
+  if (row.automaticWritesOpen) return { label: 'Açık', tone: 'on' }
+  if (!row.masterSwitchOn) return { label: 'Kapalı · Ana Anahtar', tone: 'off' }
+  if (row.priceWriteEnabled !== row.stockWriteEnabled) return { label: row.stockWriteEnabled ? 'Bekletiliyor · Fiyat Kapalı' : 'Bekletiliyor · Stok Kapalı', tone: 'partial' }
+  return { label: 'Kapalı', tone: 'off' }
+}
+
+/** Problems the monitor reports for a connection; a notification is raised when this signature changes. */
+export function priceStockProblemSignature(row: Pick<PriceStockConnectionMonitor, 'connectionId' | 'failedPushes7d' | 'manualReviewPushes' | 'invalidOffers' | 'latestFailure'>) {
+  if (row.failedPushes7d + row.manualReviewPushes + row.invalidOffers === 0) return null
+  return `${row.connectionId}:${row.latestFailure?.jobId ?? '-'}:${row.failedPushes7d}:${row.manualReviewPushes}:${row.invalidOffers}`
+}
+
 /** The body of PUT /connections/{id}/credential for the platform's credential form. */
 export function credentialRequestBody(platformCode: string, data: FormData) {
   if (platformCode === 'TRENDYOL_EFATURAM') return { email: data.get('email') || null, password: data.get('password') || null }

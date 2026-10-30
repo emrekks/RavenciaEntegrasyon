@@ -188,6 +188,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         };
         db.ChannelOffers.Add(offer);
         db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OfferId = offer.Id, PriceVersion = 1, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = command.Reason.Trim(), ActorSource = $"USER:{userId:D}", EffectiveAt = timeProvider.GetUtcNow() });
+        // E: the new price goes to the offer's connection when its automatic writes are on, committed with the edit.
+        await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, [offer], timeProvider.GetUtcNow(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<ChannelOfferView>.Ok(Map(offer));
     }
@@ -228,6 +230,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
             ActorSource = $"USER:{userId:D}",
             EffectiveAt = timeProvider.GetUtcNow()
         });
+        // E: the edited price goes to the offer's connection when its automatic writes are on, committed with the edit.
+        await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, [offer], timeProvider.GetUtcNow(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<ChannelOfferView>.Ok(Map(offer));
     }

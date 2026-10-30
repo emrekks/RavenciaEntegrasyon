@@ -23,18 +23,21 @@ const hepsiburadaReadSyncPolicies = new Set([
   'STOCK_WRITE',
   'SHIPMENT_WRITE',
   'RETURN_WRITE',
-  'LISTING_VERIFY'
+  'LISTING_VERIFY',
+  'STOCK_RECONCILE_SHORT',
+  'STOCK_RECONCILE_MEDIUM',
+  'STOCK_RECONCILE_DAILY'
 ])
 
 // n11 flows join phase by phase.
 const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_RECONCILE_SHORT', 'ORDER_RECONCILE_MEDIUM', 'ORDER_RECONCILE_DAILY', 'RETURNS', 'QUESTIONS', 'REFERENCE_DATA', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY'])
 
 // Pazarama: the order reads (new orders, history, open-order status scan); its write flows join with their phases.
-const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'RETURNS', 'QUESTIONS', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY'])
+const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'RETURNS', 'QUESTIONS', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY'])
 
 // PTT AVM: the order reads (new orders, history, open-order status scan), the category tree and the returned lines; its write flows join with their phases.
 // MANUAL_WRITE is PTT AVM's own "Manuel Dış Yazmalar" switch (panel-started price-stock and product sends).
-const pttAvmReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'RETURNS', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'MANUAL_WRITE', 'LISTING_VERIFY'])
+const pttAvmReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'RETURNS', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'MANUAL_WRITE', 'LISTING_VERIFY', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
   return orderMarketplacePlatformCodes.includes(normalizeMarketplacePlatformCode(platformCode) as typeof orderMarketplacePlatformCodes[number])

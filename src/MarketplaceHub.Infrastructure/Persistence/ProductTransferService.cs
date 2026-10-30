@@ -246,6 +246,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var written = new HashSet<Guid>();
         var products = new HashSet<Guid>();
         var projections = new List<StockProjectionChange>();
+        var repricedOffers = new List<ChannelOffer>();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var reservedByItem = await ReservedAsync(tenantId, items.Select(item => item.Id).ToArray(), cancellationToken);
         foreach (var change in changes)
@@ -307,6 +308,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 offer.PriceVersion++;
                 offer.Version++;
                 db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OfferId = offer.Id, PriceVersion = offer.PriceVersion, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = ImportReason, ActorSource = $"USER:{userId:D}", EffectiveAt = now });
+                repricedOffers.Add(offer);
                 pricesUpdated++;
                 Written(variant);
             }
@@ -314,6 +316,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         if (written.Count == 0) return ServiceResult<ProductTransferApplyResult>.Ok(new ProductTransferApplyResult(0, 0, 0, 0, 0, 0, 0, 0));
 
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, projections, now, cancellationToken);
+        // E: file prices are sent like panel edits: only the offers whose price changed, to their own connection.
+        await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, repricedOffers, now, cancellationToken);
         db.AuditLogs.Add(new AuditLog
         {
             TenantId = tenantId,

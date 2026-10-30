@@ -302,7 +302,8 @@ public sealed class PazaramaOrderMapperTests
         Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("QUESTIONS"));
         Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("RETURNS"));
         Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("REFERENCE_DATA"));
-        Assert.False(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("STOCK_RECONCILE_SHORT"));
+        // F: the stock catch-up runs for every marketplace (queued only while the automatic writes are open).
+        Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("STOCK_RECONCILE_SHORT"));
         Assert.False(ScheduledJobProducer.DefaultPolicyEnabled("PAZARAMA", MarketplaceExternalWritePolicies.Price));
         Assert.True(ScheduledJobProducer.DefaultPolicyEnabled("PAZARAMA", "ORDERS"));
     }

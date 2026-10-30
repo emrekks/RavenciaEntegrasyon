@@ -118,7 +118,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 else if (jobType == MarketplaceJobTypes.ProductUpdate) directResult = await UpdateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.ProductArchive) directResult = await ArchiveProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.PriceInventorySync) directResult = await SyncPriceInventory(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-                else if (jobType == MarketplaceJobTypes.StockProjectionDispatch) directResult = await DispatchStockProjection(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+                else if (jobType == MarketplaceJobTypes.StockProjectionDispatch) directResult = await DispatchStockProjection(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken);
+                else if (jobType == MarketplaceJobTypes.StockReconciliation) directResult = await ReconcileStock(tenantId, connectionId.Value, correlationId, jobId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.CommonLabel) directResult = await CommonLabel(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.CapabilityProbe) directResult = await LabelCapabilityProbe(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.StageTestOrder) directResult = await CreateStageTestOrder(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
@@ -134,7 +135,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     // A finished slice of a long job is progress, not a failure; it is recorded as a slice, and
                     // only the run's last slice moves the last success and resets the failure count.
-                    if (directResult.Continues)
+                    // Waiting for the connection's order read (decision C) is not a failure either.
+                    if (directResult.Continues || directResult.ErrorCode == OrderFreshnessGatePolicy.WaitCode)
                     {
                         if (telemetryResource is not null) await RecordSyncSlice(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, cancellationToken);
                         return directResult;
@@ -165,7 +167,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync => await SyncReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.CatalogStructureImport => await ImportCatalogStructure(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -2007,12 +2008,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         return JobExecutionResult.Blocked(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage);
                     continue;
                 }
-                if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
+                // An automatic send needs a policy someone switched on; a missing row is off (owner decision A).
+                var policyOpen = payload.Automatic
+                    ? await StrictWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken)
+                    : await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken);
+                if (!policyOpen)
                     return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; pazar yeri isteği gönderilmedi." : "Fiyat dış yazma akışı kapalı; pazar yeri isteği gönderilmedi.");
             }
             var current = hepsiburadaStageManual
                 ? await new PriceInventoryComposer(db).BuildHepsiburadaStageAsync(tenantId, connectionId, cancellationToken, payload.VariantId)
-                : await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);
+                : await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId, payload.Automatic);
             if (!current.Succeeded)
             {
                 if (current.Error!.Code == "NO_EXTERNAL_CHANGES") return JobExecutionResult.Success();
@@ -10242,7 +10247,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 }
                 else if (reservation is not null)
                 {
-                    if (desired == 0) { reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; reservation.ExpiresAt = null; }
+                    if (desired == 0)
+                    {
+                        reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; reservation.ExpiresAt = null;
+                        // J: the shortfall the issue reported is no longer held, so the issue closes with it.
+                        await ResolveIssue(tenantId, $"stock-order-consumption:{line.Id:N}", cancellationToken);
+                    }
                     else { reservation.Quantity = desired; reservation.Status = ReservationStatus.Active; reservation.ReleasedAt = null; reservation.ExpiresAt = OrderInventoryReservationPolicy.ExpiresAt(now); }
                     reservation.Version++;
                 }
@@ -10337,20 +10347,40 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
     }
 
-    private async Task<JobExecutionResult> DispatchStockProjection(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    private async Task<JobExecutionResult> DispatchStockProjection(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         Guid variantId;
         try { using var payload = JsonDocument.Parse(payloadJson); variantId = payload.RootElement.GetProperty("variantId").GetGuid(); }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return JobExecutionResult.Blocked("STOCK_PROJECTION_PAYLOAD_INVALID", "Stok projection işi geçersiz payload içeriyor."); }
         var (blocked, decision) = await StockProjectionGateAsync(tenantId, connectionId, cancellationToken);
         if (blocked is not null) return blocked;
-        if (decision == StockProjectionDispatchDecision.Skip) return JobExecutionResult.Success();
+        if (decision == StockProjectionDispatchDecision.Skip) return JobExecutionResult.SuccessWithNote("AUTOMATIC_WRITES_OFF", "Otomatik fiyat-stok yazması kapalı; pazaryerine gönderilmedi.");
         if (!await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && x.Status == "ACTIVE", cancellationToken)) return JobExecutionResult.Success();
+        if (decision == StockProjectionDispatchDecision.Dispatch && await OrderFreshnessWaitAsync(tenantId, connectionId, jobId, cancellationToken) is { } wait) return wait;
         return await DispatchStockProjectionVariant(tenantId, connectionId, variantId, decision, correlationId, cancellationToken);
     }
 
+    // Owner decision C: an automatic send waits (bounded) for an order read of the connection that started after the
+    // change was queued, so an order placed before the change is taken off the panel before the absolute number goes out.
+    // The job's own creation time is the change's time: the outbox queues it in the same save as the change.
+    private async Task<JobExecutionResult?> OrderFreshnessWaitAsync(Guid tenantId, Guid connectionId, Guid? jobId, CancellationToken cancellationToken)
+    {
+        if (jobId is not { } id) return null;
+        var changedAt = await db.IntegrationJobs.AsNoTracking().Where(x => x.Id == id).Select(x => (DateTimeOffset?)x.CreatedAt).SingleOrDefaultAsync(cancellationToken);
+        var readsOrders = await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS" && x.Enabled, cancellationToken);
+        var cursor = await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == OrderFreshnessGatePolicy.OrderReadCursor)
+            .Select(x => new { x.LastAttemptAt, x.LastSuccessAt })
+            .SingleOrDefaultAsync(cancellationToken);
+        var maxWait = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:StockPush:OrderFreshnessMaxWaitSeconds", (int)OrderFreshnessGatePolicy.DefaultMaxWait.TotalSeconds), 0, 3_600));
+        var decision = OrderFreshnessGatePolicy.Decide(readsOrders && cursor is not null, changedAt, cursor?.LastAttemptAt, cursor?.LastSuccessAt, timeProvider.GetUtcNow(), maxWait);
+        return decision == OrderFreshnessDecision.Wait
+            ? JobExecutionResult.Deferred(OrderFreshnessGatePolicy.WaitCode, OrderFreshnessGatePolicy.WaitMessage, OrderFreshnessGatePolicy.RecheckDelay)
+            : null;
+    }
+
     // Whether an automatic stock write may go out on the connection at all; read once per reconcile pass
-    // instead of once per candidate.
+    // instead of once per candidate. A write policy without a row is off (owner decision A).
     private async Task<(JobExecutionResult? Blocked, StockProjectionDispatchDecision Decision)> StockProjectionGateAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
@@ -10360,8 +10390,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // while the explicit external-write switch is off.
         if (!WritesEnabled(connection.SettingsJson)) return (null, StockProjectionDispatchDecision.Skip);
         return (null, StockProjectionOutboxPolicy.Decide(
-            await ExternalWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken),
-            await ExternalWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Price, cancellationToken)));
+            await StrictWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken),
+            await StrictWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Price, cancellationToken)));
     }
 
     private async Task<JobExecutionResult> DispatchStockProjectionVariant(Guid tenantId, Guid connectionId, Guid variantId, StockProjectionDispatchDecision decision, string correlationId, CancellationToken cancellationToken)
@@ -10374,7 +10404,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await db.SaveChangesAsync(cancellationToken);
             return JobExecutionResult.Success();
         }
-        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
+        var composer = new PriceInventoryComposer(db);
+        var build = await composer.BuildAsync(tenantId, connectionId, cancellationToken, variantId, automatic: true);
         if (!build.Succeeded)
         {
             var code = build.Error!.Code;
@@ -10383,32 +10414,60 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", code, build.Error.Message, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
             }
-            if (!StockProjectionOutboxPolicy.IsSettledBuildFailure(code)) return JobExecutionResult.Blocked(code, build.Error.Message);
-            // Already sent, not live on this connection, or an offer the user has to fix: nothing to
-            // send now. An invalid offer stays visible as an issue instead of a blocked job.
-            if (code == "CHANNEL_OFFER_INVALID")
+            // An offer the user has to fix stays visible as an issue instead of a blocked job (G: no silent freeze).
+            if (PriceInventoryOfferIssues.IsOfferProblem(code))
             {
-                await RecordIssue(tenantId, $"stock-projection-offer-invalid:{connectionId:N}:{variantId:N}", code, build.Error.Message, cancellationToken);
+                foreach (var invalid in composer.InvalidOffers)
+                    await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, invalid.VariantId), invalid.Code, invalid.Message, cancellationToken);
+                if (composer.InvalidOffers.Count == 0) await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, variantId), code, build.Error.Message, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
+                return JobExecutionResult.Success();
             }
+            if (!StockProjectionOutboxPolicy.IsSettledBuildFailure(code)) return JobExecutionResult.Blocked(code, build.Error.Message);
+            // Already sent or not live on this connection: nothing to send now.
             return JobExecutionResult.Success();
         }
-        var draft = build.Value!;
+        return await QueueAutomaticPushAsync(tenantId, connectionId, build.Value!, variantId, correlationId, cancellationToken);
+    }
+
+    // One automatic PRICE_INVENTORY_SYNC job for a built draft (one variant's change or a reconcile batch). Offers the
+    // build left out are reported; the offers it carries are fine again, so their offer issues close.
+    private async Task<JobExecutionResult> QueueAutomaticPushAsync(Guid tenantId, Guid connectionId, PriceInventoryDraft draft, Guid? variantId, string correlationId, CancellationToken cancellationToken)
+    {
+        foreach (var invalid in draft.InvalidOffers)
+            await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, invalid.VariantId), invalid.Code, invalid.Message, cancellationToken);
+        await ResolveOfferIssuesAsync(tenantId, connectionId, draft.Lines.Select(line => line.VariantId).Distinct().ToArray(), cancellationToken);
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
         var now = timeProvider.GetUtcNow();
         // A failed job of the same values gives up its key in the same save as the new job (Q-1/K-1).
         var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
         if (existing is not null)
         {
-            if (!PriceInventoryOutboxPolicy.AutomaticSendMayRetire(existing.Status, existing.LastErrorCode, existing.CompletedAt, now)) return JobExecutionResult.Success();
+            if (!PriceInventoryOutboxPolicy.AutomaticSendMayRetire(existing.Status, existing.LastErrorCode, existing.CompletedAt, now))
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return JobExecutionResult.Success();
+            }
             existing.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, existing.Id); existing.Version++;
         }
         var id = Guid.CreateVersion7();
-        var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId));
+        var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, Automatic: true));
         var writeDelay = await ExternalWriteDelaySecondsAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken);
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
+    }
+
+    private async Task ResolveOfferIssuesAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken)
+    {
+        if (variantIds.Count == 0) return;
+        var keys = variantIds.Select(variantId => PriceInventoryOfferIssues.Key(connectionId, variantId)).ToArray();
+        var now = timeProvider.GetUtcNow();
+        foreach (var issue in await db.OperationalIssues.Where(x => x.TenantId == tenantId && keys.Contains(x.DedupeKey) && x.Status != IssueStatus.Resolved).ToListAsync(cancellationToken))
+        {
+            issue.Status = IssueStatus.Resolved;
+            issue.ResolvedAt = now;
+        }
     }
 
     private bool WritesEnabled(string settingsJson)
@@ -10469,6 +10528,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType, cancellationToken);
         return policy is null || policy.Enabled;
     }
+
+    private async Task<bool> StrictWritePolicyEnabledAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) =>
+        await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.Enabled, cancellationToken);
 
     private async Task<int> ExternalWriteDelaySecondsAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
     {
@@ -11207,102 +11269,55 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    // Q-3: every ACTIVE offer of the connection is looked at over the passes, not the same 500 each time. A pass
-    // takes the offers whose stock was not sent yet (LastStockProjectionVersion behind) first, up to half its
-    // budget, then walks the whole catalog by variant id from where the last pass stopped; both walks keep their
-    // place in the STOCK_RECONCILIATION cursor and start over at the end. A connection that cannot write passes
-    // without reading a candidate. ReconciledAt is left alone: it records a remote observation, not this scan.
-    internal const string StockReconcileCursorResource = "STOCK_RECONCILIATION";
-    internal const string StockReconcileStateVersion = "stock-reconcile-v1";
-    internal sealed record StockReconcileScanState(string Version, Guid? Lagging, Guid? All);
-
-    internal static StockReconcileScanState ReadStockReconcileState(string? opaqueCursor)
-    {
-        if (!string.IsNullOrWhiteSpace(opaqueCursor))
-        {
-            try
-            {
-                var state = JsonSerializer.Deserialize<StockReconcileScanState>(opaqueCursor);
-                if (state is { Version: StockReconcileStateVersion }) return state;
-            }
-            catch (JsonException) { }
-        }
-        return new(StockReconcileStateVersion, null, null);
-    }
-
-    private async Task<bool> ReconcileStock(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    // F: the catch-up for every platform. One pass builds one batch of the offers whose price or stock was not sent
+    // (the platform's own batch limit: Trendyol 1,000, N11 and Pazarama their request caps, Hepsiburada its upload
+    // limit, PTT AVM 1,000 products) and queues one push, so the platform's request rate is one request per pass.
+    // A pass waits while an automatic push of the connection is still on its way, and (decision C) until an order read
+    // started after the pass was queued has finished. Offers it cannot send are reported, not a reason to stop.
+    private async Task<JobExecutionResult> ReconcileStock(Guid tenantId, Guid connectionId, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var (blocked, decision) = await StockProjectionGateAsync(tenantId, connectionId, cancellationToken);
-        if (blocked is not null || decision == StockProjectionDispatchDecision.Skip) return true;
+        if (blocked is not null || decision == StockProjectionDispatchDecision.Skip)
+            return JobExecutionResult.SuccessWithNote("AUTOMATIC_WRITES_OFF", "Otomatik fiyat-stok yazması kapalı; stok uzlaştırması gönderim yapmadı.");
         if (decision == StockProjectionDispatchDecision.HoldForPricePolicy)
         {
             // Nothing goes out while the price policy is off: one held candidate is enough to show the issue.
-            var held = await ReadStockReconcileBatchAsync(tenantId, connectionId, null, laggingOnly: true, 1, [], cancellationToken);
-            if (held.Count > 0) await DispatchStockProjectionVariant(tenantId, connectionId, held[0], decision, correlationId, cancellationToken);
-            return true;
+            var held = await db.ChannelOffers.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE")
+                .OrderBy(x => x.VariantId).Select(x => (Guid?)x.VariantId).FirstOrDefaultAsync(cancellationToken);
+            if (held is { } heldVariant) await DispatchStockProjectionVariant(tenantId, connectionId, heldVariant, decision, correlationId, cancellationToken);
+            return JobExecutionResult.Success();
         }
+        if (await AutomaticPushInFlightAsync(tenantId, connectionId, cancellationToken))
+            return JobExecutionResult.SuccessWithNote("PRICE_INVENTORY_PUSH_IN_FLIGHT", "Bağlantının önceki fiyat-stok gönderimi sürüyor; uzlaştırma bir sonraki turda devam edecek.");
+        if (await OrderFreshnessWaitAsync(tenantId, connectionId, jobId, cancellationToken) is { } wait) return wait;
 
-        var budget = Math.Clamp(configuration.GetValue("MarketplaceSync:StockReconciliation:BatchSize", 500), 2, 5_000);
-        var cursor = await Cursor(tenantId, connectionId, StockReconcileCursorResource, cancellationToken);
-        var state = ReadStockReconcileState(cursor.OpaqueCursor);
-        var lagging = await ReadStockReconcileBatchAsync(tenantId, connectionId, state.Lagging, laggingOnly: true, budget / 2, [], cancellationToken);
-        var all = await ReadStockReconcileBatchAsync(tenantId, connectionId, state.All, laggingOnly: false, budget - lagging.Count, lagging, cancellationToken);
-
-        var processedLagging = state.Lagging;
-        var processedAll = state.All;
-        async Task SaveProgressAsync()
+        var composer = new PriceInventoryComposer(db);
+        var build = await composer.BuildAsync(tenantId, connectionId, cancellationToken, automatic: true);
+        if (!build.Succeeded)
         {
-            var next = new StockReconcileScanState(StockReconcileStateVersion, processedLagging, processedAll);
-            if (next == state) return;
-            cursor.OpaqueCursor = JsonSerializer.Serialize(next);
-            cursor.Version++;
+            var code = build.Error!.Code;
+            if (code == "INVENTORY_REQUIRED")
+                await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", code, build.Error.Message, cancellationToken);
+            // Every offer the pass could send is one the user has to fix: each is reported by itself.
+            foreach (var invalid in composer.InvalidOffers)
+                await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, invalid.VariantId), invalid.Code, invalid.Message, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
+            if (StockProjectionOutboxPolicy.IsSettledBuildFailure(code) || code == "INVENTORY_REQUIRED" || PriceInventoryOfferIssues.IsOfferProblem(code)) return JobExecutionResult.Success();
+            return JobExecutionResult.Blocked(code, build.Error.Message);
         }
-
-        foreach (var (variantId, isLagging) in lagging.Select(id => (Id: id, Lagging: true)).Concat(all.Select(id => (Id: id, Lagging: false))))
-        {
-            var result = await DispatchStockProjectionVariant(tenantId, connectionId, variantId, decision, correlationId, cancellationToken);
-            // One candidate that cannot be sent must not stop the scan: the same candidate leads
-            // every pass, so stopping here left the rest of the catalog unreconciled.
-            if (!result.Succeeded && result.Kind == JobCompletionKind.Retry)
-            {
-                await SaveProgressAsync();
-                throw new JobProcessingException(result);
-            }
-            if (isLagging) processedLagging = variantId;
-            else processedAll = variantId;
-        }
-        // A walk that found nothing starts over next pass; one that ended on the last offer wraps by itself.
-        if (lagging.Count == 0) processedLagging = null;
-        if (all.Count == 0) processedAll = null;
-        await SaveProgressAsync();
-
-        // ReconciledAt is an observation watermark, not an enqueue
-        // timestamp. It is updated only when a remote catalog read
-        // observes stock; a disabled, blocked, or merely queued write must
-        // remain visible as stale until that observation exists.
-        return true;
+        if (build.Value!.MissingInventorySkus.Count > 0)
+            await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", "INVENTORY_REQUIRED", PriceInventoryComposer.MissingInventoryMessage(build.Value.MissingInventorySkus), cancellationToken);
+        // ReconciledAt is an observation watermark, not an enqueue timestamp. It is updated only when a remote catalog
+        // read observes stock; a disabled, blocked, or merely queued write remains visible as stale until then.
+        return await QueueAutomaticPushAsync(tenantId, connectionId, build.Value, null, correlationId, cancellationToken);
     }
 
-    // The next ACTIVE offers (with a MAIN stock row) after the variant id, wrapping to the start of the catalog.
-    private async Task<IReadOnlyList<Guid>> ReadStockReconcileBatchAsync(Guid tenantId, Guid connectionId, Guid? after, bool laggingOnly, int take, IReadOnlyCollection<Guid> exclude, CancellationToken cancellationToken)
-    {
-        if (take <= 0) return [];
-        var candidates = from offer in db.ChannelOffers.AsNoTracking()
-                         join item in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN")
-                             on new { offer.TenantId, offer.VariantId } equals new { item.TenantId, item.VariantId }
-                         where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
-                             && (!laggingOnly || offer.LastStockProjectionVersion == null || offer.LastStockProjectionVersion != item.ProjectionVersion)
-                         select offer.VariantId;
-        var excluded = exclude.ToArray();
-        if (excluded.Length > 0) candidates = candidates.Where(id => !excluded.Contains(id));
-        var page = after is { } start
-            ? await candidates.Where(id => id.CompareTo(start) > 0).OrderBy(id => id).Take(take).ToListAsync(cancellationToken)
-            : await candidates.OrderBy(id => id).Take(take).ToListAsync(cancellationToken);
-        if (after is not { } wrapAt || page.Count >= take) return page;
-        var wrapped = await candidates.Where(id => id.CompareTo(wrapAt) <= 0).OrderBy(id => id).Take(take - page.Count).ToListAsync(cancellationToken);
-        return page.Concat(wrapped.Where(id => !page.Contains(id))).ToList();
-    }
+    // An automatic price/stock push of the connection that is queued, running or retrying.
+    private Task<bool> AutomaticPushInFlightAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+            && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.TriggerType != "user"
+            && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
 
     private static int ReadBoundedInt(string payloadJson, string propertyName, int fallback, int minimum, int maximum)
     {

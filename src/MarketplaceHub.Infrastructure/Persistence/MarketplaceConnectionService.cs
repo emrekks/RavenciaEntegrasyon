@@ -414,6 +414,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
         if ((connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM") && currentExternalWrites && !requestedExternalWrites)
             await DisableExternalWriteAutomationAsync(tenantId, id, cancellationToken);
+        // B: switching the master on never sends what changed while it was off.
+        if ((connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM" or "SHOPIFY") && requestedExternalWrites && !currentExternalWrites)
+            await AutomaticPriceStockWrites.MarkCurrentValuesSentAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
 
         connection.Version++;
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
@@ -734,7 +737,13 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var saved = command.ResetToDefault && defaults is { } reset ? reset : (cadence.IntervalSeconds, command.OverlapSeconds, cadence.JitterSeconds);
         var current = isNew ? defaults : (policy.IntervalSeconds, policy.OverlapSeconds, policy.JitterSeconds);
         policy.UserDefined = !command.ResetToDefault && ScheduledJobProducer.MarksUserDefined(!isNew && policy.UserDefined, current, saved);
-        policy.IntervalSeconds = saved.Item1; policy.OverlapSeconds = saved.Item2; policy.JitterSeconds = saved.Item3; policy.Enabled = command.Enabled; await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
+        var switchedOn = command.Enabled && (isNew || !policy.Enabled);
+        policy.IntervalSeconds = saved.Item1; policy.OverlapSeconds = saved.Item2; policy.JitterSeconds = saved.Item3; policy.Enabled = command.Enabled;
+        // B: an automatic price or stock write switched on never sends what changed while it was off; every offer of
+        // the connection counts as sent at its current values, committed with the switch.
+        if (switchedOn && (normalized is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock))
+            await AutomaticPriceStockWrites.MarkCurrentValuesSentAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
     }
 
     public async Task<ServiceResult<IReadOnlyList<WebhookSubscriptionView>>> WebhooksAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -818,8 +827,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var policies = await db.ConnectionSyncPolicies
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Enabled)
             .ToListAsync(cancellationToken);
-        foreach (var policy in policies.Where(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
-            || MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)))
+        // The stock reconcile schedule stays as it is: the scheduler queues it only while the automatic writes are open.
+        foreach (var policy in policies.Where(x => MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)))
         {
             policy.Enabled = false;
             policy.Version++;

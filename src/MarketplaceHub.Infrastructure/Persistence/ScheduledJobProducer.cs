@@ -53,7 +53,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                                where policy.Enabled && policy.ResourceType != "PRODUCTS" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA" || connection.PlatformCode == "PTTAVM")
                                select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken))
-            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || row.Connection.PlatformCode == "SHOPIFY" && IsShopifyReadPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "HEPSIBURADA" && SupportsHepsiburadaScheduledPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "N11" && SupportsN11ScheduledPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "PAZARAMA" && SupportsPazaramaScheduledPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "PTTAVM" && SupportsPttAvmScheduledPolicy(row.Policy.ResourceType))
+            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || row.Connection.PlatformCode == "SHOPIFY" && (IsShopifyReadPolicy(row.Policy.ResourceType) || IsStockReconcilePolicy(row.Policy.ResourceType)) || row.Connection.PlatformCode == "HEPSIBURADA" && SupportsHepsiburadaScheduledPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "N11" && SupportsN11ScheduledPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "PAZARAMA" && SupportsPazaramaScheduledPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "PTTAVM" && SupportsPttAvmScheduledPolicy(row.Policy.ResourceType))
             // Keep the hot order stream ahead of lifecycle and reconciliation
             // scans. The query has no guaranteed row order, so an incidental
             // database order could otherwise enqueue a long lifecycle scan
@@ -69,6 +69,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .Distinct()
             .ToListAsync(cancellationToken)).ToHashSet();
         HashSet<Guid>? webhookHealthy = null;
+        // Decision A: a stock reconcile pass is queued only for a connection whose automatic price/stock writes are open.
+        var openPriceStockConnections = new HashSet<Guid>();
+        foreach (var tenantGroup in policies.Where(row => IsStockReconcilePolicy(row.Policy.ResourceType) && WritesEnabled(row.Connection.SettingsJson)).GroupBy(row => row.Policy.TenantId))
+            openPriceStockConnections.UnionWith(await AutomaticPriceStockWrites.OpenConnectionIdsAsync(db, tenantGroup.Key, tenantGroup.Select(row => row.Connection.Id).Distinct().ToArray(), cancellationToken));
         var reservedExecutionGroups = new HashSet<string>(StringComparer.Ordinal);
         var backgroundOrderReservations = new HashSet<Guid>();
         var activeJobTypesByConnection = new Dictionary<Guid, List<string>>();
@@ -77,6 +81,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         foreach (var row in policies)
         {
             if (bootstrapConnections.Contains(row.Connection.Id)) continue;
+            if (IsStockReconcilePolicy(row.Policy.ResourceType) && !openPriceStockConnections.Contains(row.Connection.Id)) continue;
             // A test store has no real money movements to read.
             if (row.Policy.ResourceType == "FINANCE" && !string.Equals(row.Connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) continue;
             var definition = Definition(row.Policy.ResourceType, row.Connection.Id, row.Connection.PlatformCode);
@@ -414,8 +419,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var policies = await db.ConnectionSyncPolicies
             .Where(x => connectionIds.Contains(x.ConnectionId) && x.Enabled)
             .ToListAsync(cancellationToken);
-        foreach (var policy in policies.Where(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
-            || MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)))
+        // The stock reconcile schedule is left on: it is queued only while the automatic writes are open (decision A).
+        var disabledPolicies = policies.Where(x => MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)).ToList();
+        foreach (var policy in disabledPolicies)
         {
             policy.Enabled = false;
             policy.Version++;
@@ -437,8 +443,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             job.Version++;
         }
 
-        if (connectionSettingsChanged || policies.Any(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
-            || MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)) || jobs.Count > 0)
+        if (connectionSettingsChanged || disabledPolicies.Count > 0 || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -772,9 +777,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or ListingVerificationPolicy.ResourceType;
 
     internal static bool SupportsShopifyPolicy(string resourceType) =>
-        IsShopifyReadPolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
+        IsShopifyReadPolicy(resourceType) || IsStockReconcilePolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS" or ListingVerificationPolicy.ResourceType
+        || IsStockReconcilePolicy(resourceType)
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // n11 flows join as their integration phases go live. Stock reconciliation carries
@@ -791,6 +797,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // category/attribute/brand references and the daily money movements of the recent orders (FINANCE, production
     // stores only). The write flows are listed so the policies exist (and stay off) for the later phases.
     internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or "QUESTIONS" or "FINANCE" or ListingVerificationPolicy.ResourceType
+        || IsStockReconcilePolicy(resourceType)
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // PTT AVM runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the open-order
@@ -798,6 +805,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // (REFERENCE_DATA) and the returned order lines (RETURNS, read only). The write flows are listed so the
     // policies exist (and stay off) for the later phases.
     internal static bool SupportsPttAvmScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or ListingVerificationPolicy.ResourceType
+        || IsStockReconcilePolicy(resourceType)
         || MarketplaceExternalWritePolicies.IsPermissionPolicy(resourceType);
 
     // The reference lists the REFERENCE_DATA policy keeps fresh. Trendyol and Pazarama products name a brand from
@@ -817,12 +825,19 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     }
 
     // PTT AVM's manual switch starts on: before it existed, its manual sends were gated by the master switch alone.
+    // The automatic price and stock writes start off on every marketplace (owner decision A): someone switches them on.
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == MarketplaceExternalWritePolicies.Manual
             ? platformCode == "PTTAVM"
             : resourceType == "ORDER_CARGO_INFO"
             ? platformCode == "TRENDYOL"
+            : resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock
+            ? false
             : !((platformCode is "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") && MarketplaceExternalWritePolicies.IsPolicy(resourceType));
+
+    // F: the stock reconcile schedule runs for every marketplace; it is queued only while the connection's automatic
+    // price/stock writes are open, so a closed connection gets no reconcile job at all.
+    internal static bool IsStockReconcilePolicy(string resourceType) => resourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY";
 
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId, string platformCode) => resourceType switch
     {
@@ -864,6 +879,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             return ServiceResult<Guid>.Fail("SYNC_FLOW_NOT_RUNNABLE", "Bu akış elle başlatılamaz.", 422);
         if (type.StartsWith("STOCK_RECONCILE", StringComparison.Ordinal) && !WritesEnabled(connection.SettingsJson))
             return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Pazaryerine yazma kapalı olduğu için stok eşitlemesi başlatılamaz.", 409);
+        if (IsStockReconcilePolicy(type) && !await AutomaticPriceStockWrites.IsOpenAsync(db, tenantId, connectionId, cancellationToken))
+            return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Otomatik fiyat ve stok yazması kapalı olduğu için stok eşitlemesi başlatılamaz.", 409);
 
         var now = timeProvider.GetUtcNow();
         var manualPrefix = $"manual:{definition.DedupPrefix}";

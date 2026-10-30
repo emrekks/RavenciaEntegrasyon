@@ -84,6 +84,13 @@ public static class MarketplaceEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null
                 ? Accepted(await producer.RunNowAsync(tenant.TenantId, id, resourceType, OperationCorrelation(http), http.RequestAborted))
                 : MissingContext(http));
+        // G: the automatic price/stock pipeline of every connection, and the kill switch that turns it off everywhere.
+        api.MapGet("/price-stock-monitor", async (HttpContext http, IPriceStockMonitorService service) => Tenant(http) is { } tenant ? Results.Ok(await service.MonitorAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapPost("/price-stock-monitor/emergency-stop", async (HttpContext http, IPriceStockMonitorService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            return Results.Ok(await service.StopAllAutomaticWritesAsync(tenant.TenantId, tenant.UserId, OperationCorrelation(http), http.RequestAborted));
+        });
         api.MapGet("/connections/{id:guid}/sync-policies", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.SyncPoliciesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/connections/{id:guid}/sync-policies/{resourceType}", async (Guid id, string resourceType, UpdateSyncPolicyCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {

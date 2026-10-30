@@ -77,6 +77,7 @@ public static class DependencyInjection
         services.AddScoped<IPromotionOfferService, PromotionOfferService>();
         services.AddScoped<IProductTransferService, ProductTransferService>();
         services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IPriceStockMonitorService, PriceStockMonitorService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.Configure<TrendyolOptions>(configuration.GetSection(TrendyolOptions.SectionName));
         services.Configure<ShopifyOptions>(configuration.GetSection(ShopifyOptions.SectionName));

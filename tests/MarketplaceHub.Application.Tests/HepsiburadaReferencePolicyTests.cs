@@ -23,7 +23,9 @@ public sealed class HepsiburadaReferencePolicyTests
     public void Hepsiburada_external_write_policies_are_off_by_default(string resourceType)
     {
         Assert.False(ScheduledJobProducer.DefaultPolicyEnabled("HEPSIBURADA", resourceType));
-        Assert.True(ScheduledJobProducer.DefaultPolicyEnabled("TRENDYOL", resourceType));
+        // Owner decision A (30 Oct 2026): the automatic price and stock writes start off on every marketplace,
+        // Trendyol's too; Trendyol's shipment and return writes keep starting on.
+        Assert.Equal(resourceType is "SHIPMENT_WRITE" or "RETURN_WRITE", ScheduledJobProducer.DefaultPolicyEnabled("TRENDYOL", resourceType));
     }
 
     [Fact]
