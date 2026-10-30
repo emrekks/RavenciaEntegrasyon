@@ -1079,3 +1079,4 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
    refresh and stop buttons beside it; those keep their size. */
 .app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status { flex: 0 1 auto; min-width: 0; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; text-align: left; }
 .app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-tracking-action { flex: none; }
+.variant-platform-pricing-modal > footer button { box-sizing: border-box; height: 34px; min-height: 0; padding-block: 0; }
