@@ -344,19 +344,11 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
       setMatrixBulkEdit(current => current ? { ...current, error: 'Sıfır veya daha büyük geçerli bir fiyat girin.' } : current)
       return
     }
-    const pairedField = matrixBulkEdit.field === 'listPrice' ? 'salePrice' : 'listPrice'
     if (!matchingRows.length) {
       setMatrixBulkEdit(current => current ? { ...current, error: 'Seçili renk ve bedenlerle eşleşen varyant bulunamadı.' } : current)
       return
     }
-    const violatesPriceOrder = matchingRows.some(item => {
-      const pairedValue = Number(matrixDraft(item, matrixBulkEdit.platform)[pairedField])
-      return Number.isFinite(pairedValue) && (matrixBulkEdit.field === 'listPrice' ? value < pairedValue : value > pairedValue)
-    })
-    if (violatesPriceOrder) {
-      setMatrixBulkEdit(current => current ? { ...current, error: matrixBulkEdit.field === 'listPrice' ? 'Liste fiyatı hiçbir varyantta satış fiyatından düşük olamaz.' : 'Satış fiyatı hiçbir varyantta liste fiyatından yüksek olamaz.' } : current)
-      return
-    }
+    // List and sale price are compared when the matrix is saved, so either one can be filled first.
     setMatrixDrafts(current => {
       const next = { ...current }
       for (const item of matchingRows) {
@@ -2066,7 +2058,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return
     }
     const value = Number(variantBulkEdit.value)
-    const issue = variantBulkEditIssue(variantBulkEdit.field, value, targetRows)
+    const issue = variantBulkEditIssue(variantBulkEdit.field, value)
     if (issue) {
       setVariantBulkEdit(current => current ? { ...current, error: issue } : current)
       return
