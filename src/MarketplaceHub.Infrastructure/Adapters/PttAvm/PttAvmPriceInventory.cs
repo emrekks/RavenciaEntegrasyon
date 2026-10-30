@@ -33,11 +33,21 @@ public sealed partial class PttAvmHttpClient : IInventoryPricePort
 
         var result = await SendSoapAsync(load.Account, StockPriceUpdate, [new("items", PttAvmPriceInventoryRules.ItemsXml(items), Raw: true)], cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
-        var trackingId = ContractValue(result.Value!, "TrackingId");
-        if (!string.Equals(ContractValue(result.Value!, "Success"), "true", StringComparison.OrdinalIgnoreCase) || trackingId is null)
-            // A refusal is final for this payload (the same request may not come again within five minutes).
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRICE_STOCK_REJECTED", $"PTT AVM fiyat-stok isteğini kabul etmedi: {ContractValue(result.Value!, "Message") ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity);
-        return AdapterResult<RemoteOperationRef>.Success(new(TrackingOperationPrefix + trackingId, "PRICE_STOCK_UPDATE", timeProvider.GetUtcNow()), result.RateLimit);
+        return StockPriceAnswer(result.Value!, timeProvider.GetUtcNow(), result.RateLimit);
+    }
+
+    // UpdateProductsStockPrice's answer: a tracking id, or a refusal. "Aynı isteği ancak 5 dakika sonra tekrardan
+    // gönderebilirsiniz" is not a refusal of the values: the request did not run and may go again after the window
+    // (the job decides whether PTT AVM already holds the values). Any other refusal is final for this payload.
+    internal static AdapterResult<RemoteOperationRef> StockPriceAnswer(XElement answer, DateTimeOffset now, RateLimitMetadata? rateLimit)
+    {
+        var trackingId = ContractValue(answer, "TrackingId");
+        if (string.Equals(ContractValue(answer, "Success"), "true", StringComparison.OrdinalIgnoreCase) && trackingId is not null)
+            return AdapterResult<RemoteOperationRef>.Success(new(TrackingOperationPrefix + trackingId, "PRICE_STOCK_UPDATE", now), rateLimit);
+        var message = ContractValue(answer, "Message");
+        if (PttAvmProductPayloadRules.IsRepeatRequestRefusal(message))
+            return AdapterResult<RemoteOperationRef>.Failure(PttAvmProductPayloadRules.RepeatRequestError((int)HttpStatusCode.TooManyRequests), new RateLimitMetadata(null, null, PttAvmProductPayloadRules.RepeatRequestWait));
+        return AdapterResult<RemoteOperationRef>.Failure(new(AdapterErrorClass.Validation, "PTTAVM_PRICE_STOCK_REJECTED", $"PTT AVM fiyat-stok isteğini kabul etmedi: {message ?? "gerekçe verilmedi"}.", (int)HttpStatusCode.UnprocessableEntity, null, null), rateLimit);
     }
 
     // Serves the price/stock tracking ids ("t:{trackingId}"); product writes open with phase 7.

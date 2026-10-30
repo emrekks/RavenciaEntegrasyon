@@ -1228,7 +1228,8 @@ public sealed partial class HepsiburadaHttpClient(
                 if (string.IsNullOrWhiteSpace(merchantSku) || merchantSku != merchantSku.Trim() || merchantSku.Any(char.IsWhiteSpace)
                     || string.IsNullOrWhiteSpace(hbSku) || hbSku != hbSku.Trim() || hbSku.Any(char.IsWhiteSpace)
                     || !merchantSkus.Add(merchantSku) || !hbSkus.Add(hbSku)) return false;
-                if (!item.TryGetProperty("availableStock", out var stockValue) || !stockValue.TryGetInt32(out var stock) || stock < 0) return false;
+                // A listing Hepsiburada fulfils (isFulfilledByHB) goes without a stock: its stock is Hepsiburada's.
+                if (item.TryGetProperty("availableStock", out var stockValue) && (!stockValue.TryGetInt32(out var stock) || stock < 0)) return false;
                 if (!item.TryGetProperty("price", out var priceValue) || !priceValue.TryGetDecimal(out var price) || price <= 0 || decimal.Round(price, 2) != price) return false;
             }
             return true;
@@ -1242,7 +1243,7 @@ public sealed partial class HepsiburadaHttpClient(
             new XElement("HepsiburadaSku", item.GetProperty("hepsiburadaSku").GetString()),
             new XElement("MerchantSku", item.GetProperty("merchantSku").GetString()),
             new XElement("Price", item.GetProperty("price").GetDecimal().ToString("0.00", CultureInfo.GetCultureInfo("tr-TR"))),
-            new XElement("AvailableStock", item.GetProperty("availableStock").GetInt32().ToString(CultureInfo.InvariantCulture))));
+            item.TryGetProperty("availableStock", out var stock) ? new XElement("AvailableStock", stock.GetInt32().ToString(CultureInfo.InvariantCulture)) : null));
         return new XDocument(new XElement("listings", items)).ToString(SaveOptions.DisableFormatting);
     }
     private static string? Text(JsonElement element, params string[] names)

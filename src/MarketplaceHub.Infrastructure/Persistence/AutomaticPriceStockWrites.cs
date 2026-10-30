@@ -66,9 +66,14 @@ internal static class AutomaticPriceStockWrites
         {
             var priceHash = PriceInventoryComposer.CurrentPriceHash(platformCode, row.Offer);
             var stockVersion = row.ProjectionVersion ?? row.Offer.LastStockProjectionVersion;
-            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == stockVersion) continue;
+            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == stockVersion && row.Offer.LastSentCode is null) continue;
             row.Offer.LastPriceHash = priceHash;
             row.Offer.LastStockProjectionVersion = stockVersion;
+            // The values the marketplace last confirmed are unknown from here on: the baseline is a decision not to send,
+            // not a confirmation. Cleared, the first change after enabling is sent for every field it changed (Trendyol
+            // compares a changed field with the confirmed value, PriceInventorySendPolicy.TrendyolFields), and a value
+            // equal to an old confirmation is never taken as already held by the marketplace.
+            PriceInventorySendPolicy.ClearSent(row.Offer);
             row.Offer.Version++;
             changed++;
         }

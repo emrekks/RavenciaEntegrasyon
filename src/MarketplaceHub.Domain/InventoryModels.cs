@@ -118,6 +118,15 @@ public sealed class ChannelOffer
     public long PriceVersion { get; set; } = 1;
     public string? LastPriceHash { get; set; }
     public long? LastStockProjectionVersion { get; set; }
+    // The values the marketplace confirmed for this offer's last send, and the code they went to. The version marks
+    // above move on every reservation or price edit; these say whether the marketplace already holds the values, so a
+    // new version carrying the same values is not sent again (Trendyol refuses an identical request for 15 minutes).
+    // A field not sent keeps the value of the send before; a null value was never confirmed.
+    public string? LastSentCode { get; set; }
+    public decimal? LastSentQuantity { get; set; }
+    public decimal? LastSentSalePrice { get; set; }
+    public decimal? LastSentListPrice { get; set; }
+    public DateTimeOffset? LastSentAt { get; set; }
     public long Version { get; set; } = 1;
 }
 

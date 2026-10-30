@@ -1648,6 +1648,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var externalIds = remotes.Keys.ToArray();
         var links = await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId)).ToListAsync(cancellationToken);
         links.AddRange(db.MarketplaceVariantLinks.Local.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && remotes.ContainsKey(x.ExternalId) && !links.Contains(x)));
+        var handedBack = new HashSet<Guid>();
         foreach (var link in links)
         {
             // A link the mapping of this batch re-keyed in memory (an old id replaced by the variant's code) is loaded
@@ -1658,10 +1659,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             MarketplaceVariantLinkHealth.MarkSeen(link, timeProvider.GetUtcNow());
             var barcode = string.IsNullOrWhiteSpace(remote.Barcode) ? null : Short(remote.Barcode.Trim(), 160);
             var sku = string.IsNullOrWhiteSpace(remote.Sku) ? null : Short(remote.Sku.Trim(), 160);
-            if (link.ExternalBarcode == barcode && link.ExternalSku == sku && !wasBroken) continue;
+            // Who keeps the stock (n11depom, Hepsiburada fulfilment) is taken only from an answer that says it.
+            var fulfilled = remote.FulfilledByMarketplace ?? link.FulfilledByMarketplace;
+            if (link.ExternalBarcode == barcode && link.ExternalSku == sku && link.FulfilledByMarketplace == fulfilled && !wasBroken) continue;
+            // A variant the marketplace stops keeping stock for goes back to the seller's stock: the stock is sent again,
+            // since the composer moved its mark on without sending while the marketplace kept it.
+            if (link.FulfilledByMarketplace == true && fulfilled == false) handedBack.Add(link.VariantId);
             link.ExternalBarcode = barcode;
             link.ExternalSku = sku;
+            link.FulfilledByMarketplace = fulfilled;
             if (db.Entry(link).State != EntityState.Added) link.Version++;
+        }
+        if (handedBack.Count == 0) return;
+        var offers = db.ChannelOffers.Local.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && handedBack.Contains(x.VariantId)).ToList();
+        var loaded = offers.Select(x => x.VariantId).ToHashSet();
+        var missing = handedBack.Where(variantId => !loaded.Contains(variantId)).ToArray();
+        if (missing.Length > 0)
+            offers.AddRange(await db.ChannelOffers.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && missing.Contains(x.VariantId)).ToListAsync(cancellationToken));
+        foreach (var offer in offers.Where(x => x.LastStockProjectionVersion is not null))
+        {
+            offer.LastStockProjectionVersion = null;
+            if (db.Entry(offer).State != EntityState.Added) offer.Version++;
         }
     }
 
@@ -2050,8 +2068,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 TrackResultFailure(submit.Error);
                 // PTT AVM refuses the same request again within five minutes, so its resend waits past that window.
-                if (IsAmbiguous(submit.Error!)) return JobExecutionResult.Retry("PRICE_INVENTORY_OUTCOME_UNKNOWN", "Fiyat-stok çağrısının sonucu kesinleşmedi; aynı değerler yeniden gönderilecek.", await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken) == "PTTAVM" ? TimeSpan.FromMinutes(6) : TimeSpan.FromSeconds(30), submit.Error!.RemoteRequestId);
-                db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(submit.Error!);
+                if (IsAmbiguous(submit.Error!)) return JobExecutionResult.Retry("PRICE_INVENTORY_OUTCOME_UNKNOWN", "Fiyat-stok çağrısının sonucu kesinleşmedi; aynı değerler yeniden gönderilecek.", connection.PlatformCode == "PTTAVM" ? TimeSpan.FromMinutes(6) : TimeSpan.FromSeconds(30), submit.Error!.RemoteRequestId);
+                db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
+                // Trendyol (15 minutes) and PTT AVM (five) refuse a request identical to one they took a moment ago. When
+                // every value equals the one the marketplace last confirmed, it already holds them; otherwise the same
+                // request goes again once the window has passed (the earlier one's outcome is not known here).
+                if (IsRepeatRequestRefusal(submit.Error!))
+                {
+                    if (await SettleRepeatedPriceInventoryAsync(tenantId, connectionId, payload.Lines, cancellationToken))
+                        return JobExecutionResult.SuccessWithNote(submit.Error!.Code, "Pazar yeri aynı isteği kısa süre önce almıştı; değerler son onaylanan değerlerle aynı olduğu için gönderilmiş sayıldı.");
+                    return JobExecutionResult.FromAdapterError(submit.Error!) with { BackOffConnection = false };
+                }
+                return JobExecutionResult.FromAdapterError(submit.Error!);
             }
             effect.CompletedAt = timeProvider.GetUtcNow(); var op = submit.Value!;
             var next = payload with { Phase = "POLL", ExternalOperationId = op.ExternalOperationId, SubmittedAt = op.SubmittedAt };
@@ -2059,7 +2087,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), op.ExternalOperationId);
         }
         if (phase != "POLL" || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRICE_INVENTORY_PHASE_INVALID", "Fiyat-stok işi bilinmeyen bir fazda.");
-        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_EXPIRED", "Fiyat-stok batch sonucu dört saatlik pencerede alınamadı.", payload.ExternalOperationId);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        // Pazarama may answer a batch up to four hours late, so it is waited for eight; the others for four.
+        var pollDeadline = PriceInventorySendPolicy.PollDeadline(platformCode);
+        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > pollDeadline) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_EXPIRED", $"Fiyat-stok batch sonucu {pollDeadline.TotalHours:0} saatlik pencerede alınamadı.", payload.ExternalOperationId);
         TrackRequest();
         var operation = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
         if (!operation.IsSuccess) { TrackResultFailure(operation.Error); return JobExecutionResult.FromAdapterError(operation.Error!); }
@@ -2067,9 +2098,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (operation.Value!.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(20), payload.ExternalOperationId);
         if (operation.Value.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok isteğini satır sonucu vermeden tamamen reddetti; fiyat ve stok değerlerini kontrol edin.", payload.ExternalOperationId);
         if (!operation.Value.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_STATUS_UNKNOWN", "Fiyat-stok batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId);
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isPttAvm = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
+        var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         // PTT AVM lines are the variants sent: up to 1000 products of up to 100 variants each.
         var maximumLineCount = isHepsiburada ? 4000 : isPttAvm ? PttAvmPriceInventoryRules.MaxItemsPerRequest * PttAvmPriceInventoryRules.MaxVariantsPerProduct : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? PazaramaPriceInventoryRules.MaxItemsPerRequest : 1000;
         var duplicateKeys = isHepsiburada
@@ -2128,14 +2159,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:PRICE_INVENTORY_UPLOAD_FAILED", "PRICE_INVENTORY_UPLOAD_FAILED", $"Pazar yeri fiyat-stok yüklemesi başarısız döndü ve {line.Barcode} için satır sonucu vermedi; gönderilmiş sayılmadı.", cancellationToken);
                 continue;
             }
-            var lineSucceeded = !found.Found || found.Remote!.Succeeded;
+            var offer = offers[line.OfferId];
+            // Trendyol refuses a line it took with the same values within 15 minutes; values it last confirmed are held.
+            var repeatOfConfirmed = found.Found && !found.Remote!.Succeeded && isTrendyol
+                && (TrendyolStockRules.IsRepeatRequestRefusal(found.Remote.ErrorCode) || TrendyolStockRules.IsRepeatRequestRefusal(found.Remote.Status))
+                && PriceInventorySendPolicy.MatchesLastSent(offer, line);
+            var lineSucceeded = !found.Found || found.Remote!.Succeeded || repeatOfConfirmed;
             // Only an answered line speaks for the code: Hepsiburada lists the refused ones alone, so a line it leaves
             // out is accepted but proves nothing about the code.
             if (found.Found && found.Remote!.Succeeded) confirmedCodes.Add(line.VariantId);
-            else if (found.Found && !found.Remote!.Retryable && MarketplaceVariantLinkHealth.MeansUnknownCode(found.Remote.ErrorCode, found.Remote.Status))
+            else if (found.Found && !repeatOfConfirmed && !found.Remote!.Retryable && MarketplaceVariantLinkHealth.MeansUnknownCode(found.Remote.ErrorCode, found.Remote.Status))
                 unknownCodes[line.VariantId] = found.Remote.Status is { Length: > 0 } refusal && !string.Equals(refusal, "REJECTED", StringComparison.OrdinalIgnoreCase) ? refusal : found.Remote.ErrorCode ?? "Pazaryeri kodu tanımadı.";
-            var offer = offers[line.OfferId];
-            if (lineSucceeded) { offer.LastPriceHash = line.PriceHash; offer.LastStockProjectionVersion = line.ProjectionVersion; offer.Version++; success++; }
+            if (lineSucceeded)
+            {
+                offer.LastPriceHash = line.PriceHash; offer.LastStockProjectionVersion = line.ProjectionVersion;
+                PriceInventorySendPolicy.RecordSent(offer, line, payload.SubmittedAt ?? timeProvider.GetUtcNow());
+                offer.Version++; success++;
+            }
             else { failed++; await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{SafeCode(found.Remote!.ErrorCode)}", SafeCode(found.Remote.ErrorCode) ?? "PRICE_INVENTORY_LINE_REJECTED", $"Pazar yeri fiyat-stok satırı reddedildi: {line.Barcode}{(found.Remote.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.", cancellationToken); }
         }
         await db.SaveChangesAsync(cancellationToken);
@@ -2391,6 +2431,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // The adapter's own code and message stay in the summary, so the cause of an uncertain create can be read.
     internal static string AmbiguousCreateSummary(AdapterError error) =>
         $"Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi. Pazaryeri yanıtı: {error.Code}: {error.SafeMessage}";
+    private static bool IsRepeatRequestRefusal(AdapterError error) =>
+        error.Code is TrendyolStockRules.RepeatRequestWaitCode or PttAvmProductPayloadRules.RepeatRequestWaitCode;
+
+    // A price/stock request refused as a repeat: when every line still carries the current versions and the values the
+    // marketplace last confirmed for its code, the marks move on and nothing is sent. Otherwise nothing changes.
+    private async Task<bool> SettleRepeatedPriceInventoryAsync(Guid tenantId, Guid connectionId, IReadOnlyList<PriceInventoryPushLine> lines, CancellationToken cancellationToken)
+    {
+        if (lines.Count == 0) return false;
+        var offerIds = lines.Select(x => x.OfferId).Distinct().ToArray();
+        var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && offerIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var variantIds = lines.Select(x => x.VariantId).Distinct().ToArray();
+        var projections = await db.InventoryItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+            .ToDictionaryAsync(x => x.VariantId, x => x.ProjectionVersion, cancellationToken);
+        foreach (var line in lines)
+            if (!offers.TryGetValue(line.OfferId, out var offer) || !projections.TryGetValue(line.VariantId, out var projection)
+                || !PriceInventoryOutboxPolicy.IsCurrent(line, projection, offer.PriceVersion) || !PriceInventorySendPolicy.MatchesLastSent(offer, line))
+                return false;
+        foreach (var line in lines)
+        {
+            var offer = offers[line.OfferId];
+            offer.LastPriceHash = line.PriceHash;
+            offer.LastStockProjectionVersion = line.ProjectionVersion;
+            offer.Version++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static bool HasItems(string payloadJson) { try { using var doc = JsonDocument.Parse(payloadJson); var root = doc.RootElement; return root.ValueKind == JsonValueKind.Array ? root.GetArrayLength() > 0 : root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > 0; } catch (JsonException) { return false; } }
     private static string UpdatePayload(ProductUpdateJobPayload payload, string phase) => phase switch { "SUBMIT_UNAPPROVED" or "POLL_UNAPPROVED" => payload.UnapprovedPayloadJson, "SUBMIT_CONTENT" or "POLL_CONTENT" => payload.ApprovedContentPayloadJson, "SUBMIT_VARIANTS" or "POLL_VARIANTS" => payload.ApprovedVariantPayloadJson, "SUBMIT_DELIVERY" or "POLL_DELIVERY" => payload.ApprovedDeliveryPayloadJson, _ => "{}" };

@@ -682,7 +682,7 @@ public static class TrendyolJsonMapper
 
     public static RemoteOperationStatus Batch(string json, string requestedId)
     {
-        using var document = JsonDocument.Parse(json); var root = document.RootElement; var lines = new List<RemoteOperationLine>();
+        using var document = JsonDocument.Parse(json); var root = document.RootElement; var lines = new List<RemoteOperationLine>(); var itemStatuses = new List<string>();
         if (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
             foreach (var item in items.EnumerateArray())
             {
@@ -692,8 +692,24 @@ public static class TrendyolJsonMapper
                 if (string.IsNullOrWhiteSpace(key)) key = Text(item, "barcode", "contentId", "stockCode");
                 var status = Text(item, "status"); var succeeded = string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase); var failure = item.TryGetProperty("failureReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array ? reasons.EnumerateArray().Select(x => x.ToString()).FirstOrDefault() : null;
                 lines.Add(new(key, succeeded, null, failure, !succeeded && !string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase)));
+                itemStatuses.Add(status);
             }
-        return new(NullText(root, "batchRequestId") ?? requestedId, Text(root, "status"), lines);
+        var batchStatus = Text(root, "status");
+        if (string.IsNullOrWhiteSpace(batchStatus)) batchStatus = PriceInventoryBatchStatus(root, itemStatuses);
+        return new(NullText(root, "batchRequestId") ?? requestedId, batchStatus, lines);
+    }
+
+    // toplu-işlem-kontrolü: a price-and-inventory batch answers no batch-level status ("Batch status alanı tarafınıza
+    // dönmeyecektir"); its items do, SUCCESS or FAILED. The batch is complete once every item has one of them and as many
+    // items are listed as itemCount says; until then it is still running. A batch with no items yet is running too.
+    internal static string PriceInventoryBatchStatus(JsonElement root, IReadOnlyList<string> itemStatuses)
+    {
+        if (itemStatuses.Count == 0) return "IN_PROGRESS";
+        if (itemStatuses.Any(status => !string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase) && !string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase)))
+            return "IN_PROGRESS";
+        if (root.TryGetProperty("itemCount", out var count) && count.ValueKind == JsonValueKind.Number && count.TryGetInt64(out var itemCount) && itemCount > itemStatuses.Count)
+            return "IN_PROGRESS";
+        return "COMPLETED";
     }
 
     public static AdapterPageResult<RemoteReturnClaim> Returns(string json)

@@ -374,6 +374,9 @@ public sealed class MarketplaceVariantLink
     // missed the code) and what it answered (MarketplaceListingLookupOutcome); one lookup per variant every few hours.
     public DateTimeOffset? LastLookupAt { get; set; }
     public string? LastLookupOutcome { get; set; }
+    // The marketplace keeps and ships the stock itself (n11depom: sender N11; Hepsiburada: isFulfilledByHB), so the
+    // panel may send the price only. Null until an import read the field: an absent field says nothing.
+    public bool? FulfilledByMarketplace { get; set; }
     public long Version { get; set; } = 1;
 }
 

@@ -195,7 +195,9 @@ internal static class HepsiburadaJsonMapper
             item.GetRawText(),
             images,
             // Hepsiburada names the desi "kg" in its catalog attributes (the publication sends it so).
-            Desi: Desi(item));
+            Desi: Desi(item),
+            // A listing Hepsiburada stocks and ships itself: the panel sends its price only. Absent stays unknown.
+            FulfilledByMarketplace: Boolean(item, "isFulfilledByHB"));
         return new(
             simple.ExternalProductId,
             Text(item, "productMainId", "ProductMainId", "productId", "ProductId"),
