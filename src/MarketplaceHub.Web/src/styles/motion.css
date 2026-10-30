@@ -112,3 +112,38 @@
   :is(.rr-metrics, .invoice-reference-metrics) > article::after { animation: none; }
   :where(.app-shell main > .content) tbody > tr { animation: none; }
 }
+
+/* Theme switch from the light/dark button (features/settings/visual-theme.ts sets html.theme-transitioning for about
+   0.8s): the registered colour tokens (styles/tokens.css) ease together on the root and every colour built from them
+   follows. Element transitions are held off meanwhile so nothing lags behind the root; outside a switch nothing here
+   applies, so page loads, route changes and hovers keep their own timing. Reduced motion switches at once. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transitioning {
+    transition-property:
+      --rv-color-bg,
+      --rv-color-surface,
+      --rv-color-surface-raised,
+      --rv-color-surface-soft,
+      --rv-color-border,
+      --rv-color-border-strong,
+      --rv-color-ink,
+      --rv-color-muted,
+      --rv-color-subtle,
+      --rv-color-primary,
+      --rv-color-primary-hover,
+      --rv-color-primary-fill,
+      --rv-color-primary-fill-hover,
+      --rv-color-primary-soft,
+      --rv-color-accent,
+      --rv-color-accent-soft,
+      --rv-color-warning,
+      --rv-color-warning-soft,
+      --rv-color-danger,
+      --rv-color-danger-soft,
+      --rv-color-info,
+      --rv-color-sidebar;
+    transition-duration: .7s;
+    transition-timing-function: ease;
+  }
+  html.theme-transitioning :is(*, *::before, *::after) { transition: none !important; }
+}
