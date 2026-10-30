@@ -279,7 +279,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 if (row.Offer.LastPriceHash == priceHash) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
                 quantityOmitted = true;
             }
-            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted));
+            // Hepsiburada and Shopify: a stock change alone carries the stock only; the price goes when it changed.
+            else priceOmitted = row.Offer.LastPriceHash == priceHash;
+            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted, row.Offer.SafetyStock));
         }
         await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);
@@ -290,7 +292,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var payload = isHepsiburada
             ? HepsiburadaPayload(connection.ExternalStoreId, lines)
             : isShopify
-                ? JsonSerializer.Serialize(new { items = lines.Select(x => new { barcode = x.Barcode, variantId = x.ExternalVariantId, quantity = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)), salePrice = x.SalePrice, listPrice = x.ListPrice }).ToArray() })
+                ? ShopifyPayload(lines)
                 : TrendyolPayload(lines);
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines) { MissingInventorySkus = missingInventory });
     }
@@ -314,18 +316,38 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         return new JsonObject { ["items"] = items }.ToJsonString();
     }
 
-    // Hepsiburada: {"merchantId", "items":[{hepsiburadaSku, merchantSku, price, availableStock?}]}; a listing Hepsiburada
-    // fulfils carries no stock.
+    // Hepsiburada: {"merchantId", "items":[{hepsiburadaSku, merchantSku, price?, availableStock?}]}; a listing Hepsiburada
+    // fulfils carries no stock, and a stock change alone carries no price (the listing upload updates the fields it is
+    // given).
     internal static string HepsiburadaPayload(string merchantId, IReadOnlyList<PriceInventoryPushLine> lines)
     {
         var items = new JsonArray();
         foreach (var line in lines)
         {
-            var item = new JsonObject { ["hepsiburadaSku"] = line.HepsiburadaSku, ["merchantSku"] = line.MerchantSku, ["price"] = line.SalePrice };
+            var item = new JsonObject { ["hepsiburadaSku"] = line.HepsiburadaSku, ["merchantSku"] = line.MerchantSku };
+            if (!line.PriceOmitted) item["price"] = line.SalePrice;
             if (!line.QuantityOmitted) item["availableStock"] = checked((int)Math.Min((decimal)int.MaxValue, line.Quantity));
             items.Add(item);
         }
         return new JsonObject { ["merchantId"] = merchantId, ["items"] = items }.ToJsonString();
+    }
+
+    // Shopify: {"items":[{barcode, variantId, quantity, salePrice?, listPrice?}]}; a stock change alone carries no price,
+    // so the variant's price is not written again (productVariantsBulkUpdate is skipped).
+    internal static string ShopifyPayload(IReadOnlyList<PriceInventoryPushLine> lines)
+    {
+        var items = new JsonArray();
+        foreach (var line in lines)
+        {
+            var item = new JsonObject { ["barcode"] = line.Barcode, ["variantId"] = line.ExternalVariantId, ["quantity"] = checked((int)Math.Min((decimal)int.MaxValue, line.Quantity)) };
+            if (!line.PriceOmitted)
+            {
+                item["salePrice"] = line.SalePrice;
+                item["listPrice"] = line.ListPrice;
+            }
+            items.Add(item);
+        }
+        return new JsonObject { ["items"] = items }.ToJsonString();
     }
 
     // An offer whose new version carries the values the marketplace already holds: its marks move on without a request.
@@ -390,7 +412,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var quantity = decimal.Floor(Math.Max(0, row.Inventory!.Available - row.Offer.SafetyStock));
             var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
             var barcode = string.IsNullOrWhiteSpace(row.Variant.Barcode) ? merchantSku : row.Variant.Barcode.Trim();
-            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, merchantSku, hepsiburadaSku));
+            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, merchantSku, hepsiburadaSku, SafetyStock: row.Offer.SafetyStock));
         }
         if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", "SIT fiyat-stok yüklemesine uygun teklif yok: TRY, sıfırdan büyük fiyat ve boşluksuz, tekil merchantSku/hbSku gerekir.", 422);
         lines = lines.Take(HepsiburadaHttpClient.MaxInventoryUploadItems).ToList();
@@ -443,7 +465,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             // nothing to send.
             var depot = row.Depot == true;
             if (depot && row.Offer.LastPriceHash == priceHash) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, row.Inventory.ProjectionVersion)); continue; }
-            lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: depot));
+            // A stock change alone carries the stock only: n11 updates the fields a SKU carries.
+            lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: depot, PriceOmitted: !depot && row.Offer.LastPriceHash == priceHash, SafetyStock: row.Offer.SafetyStock));
         }
         await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);
@@ -493,7 +516,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var priceChanged = row.Offer.LastPriceHash != priceHash;
             var stockChanged = row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion;
             if (!priceChanged && !stockChanged) continue;
-            lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash), priceChanged, stockChanged));
+            lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: !stockChanged, PriceOmitted: !priceChanged, SafetyStock: row.Offer.SafetyStock), priceChanged, stockChanged));
         }
         if (lines.Count == 0) return NoChanges(missingInventory);
         // A barcode may be linked to two variants only by mistake; one request must not carry it twice.
@@ -592,9 +615,18 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 var priceHash = PttAvmPriceHash(row.Offer);
                 var priceChanged = row.Offer.LastPriceHash != priceHash;
                 var changed = priceChanged || row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion;
-                priced.Add((new(row.Variant.Id, row.Offer.Id, code, quantity, salePrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash), vatRate, priceChanged, changed, row.Variant.OptionSignature));
+                // UpdateProductsStockPrice takes no stock without a price (PriceWithVAT is required). A stock change alone
+                // therefore carries the price PTT AVM last confirmed for the code, not the panel price; only where none is
+                // known (never confirmed, or cleared by a new address or by switching the automatic writes on) does the
+                // panel price go, as before.
+                var sentPrice = priceChanged ? salePrice : PttAvmConfirmedPrice(row.Offer, code) ?? salePrice;
+                priced.Add((new(row.Variant.Id, row.Offer.Id, code, quantity, sentPrice, sentPrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, SafetyStock: row.Offer.SafetyStock), vatRate, priceChanged, changed, row.Variant.OptionSignature));
             }
             if (productRefused || !priced.Any(x => x.Changed)) continue;
+            // A product whose price changed anywhere goes with every variant at its panel price (the differences are priced
+            // against each other).
+            if (priced.Any(x => x.PriceChanged))
+                priced = priced.Select(x => x with { Line = x.Line with { SalePrice = PttAvmPriceInventoryRules.Price(OutboundSalePrice(group.First(row => row.Offer.Id == x.Line.OfferId).Offer)), ListPrice = PttAvmPriceInventoryRules.Price(OutboundSalePrice(group.First(row => row.Offer.Id == x.Line.OfferId).Offer)) } }).ToList();
             var productCode = group.Key.StartsWith("panel:", StringComparison.Ordinal) ? null : group.Key;
             var only = priced.Count == 1 ? priced[0] : default;
             // A product without variants: PTT AVM keeps it by the variant's own code. An old option-id link
@@ -634,6 +666,12 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var payload = PttAvmPriceInventoryRules.Payload(items);
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines) { MissingInventorySkus = missingInventory });
     }
+
+    // The price PTT AVM last confirmed for the code (a price it would take: more than 1), or null when none is known.
+    internal static decimal? PttAvmConfirmedPrice(ChannelOffer offer, string code) =>
+        offer.LastSentCode is not null && string.Equals(offer.LastSentCode, code, StringComparison.Ordinal) && offer.LastSentSalePrice is decimal price && price > 1m
+            ? PttAvmPriceInventoryRules.Price(price)
+            : null;
 
     // A panel variant's colour and size as PTT AVM names its variant attributes ("Renk", "Beden").
     internal static IReadOnlyList<PttAvmPriceInventoryRules.VariantAttribute> PttAvmVariantAttributes(string? optionSignature)
@@ -722,12 +760,13 @@ internal static class N11PriceInventoryRules
         var skus = new JsonArray();
         foreach (var line in lines)
         {
-            var sku = new JsonObject
+            var sku = new JsonObject { ["stockCode"] = line.Barcode };
+            // A stock change alone carries no price: n11 updates only the fields a SKU carries.
+            if (!line.PriceOmitted)
             {
-                ["stockCode"] = line.Barcode,
-                ["listPrice"] = TwoDecimals(line.ListPrice),
-                ["salePrice"] = TwoDecimals(line.SalePrice)
-            };
+                sku["listPrice"] = TwoDecimals(line.ListPrice);
+                sku["salePrice"] = TwoDecimals(line.SalePrice);
+            }
             // n11depom SKUs take a price update only ("yalnızca fiyat güncellemesi yapılabilir"): no quantity at all.
             if (!line.QuantityOmitted) sku["quantity"] = (int)Quantity(line.Quantity);
             sku["currencyType"] = "TL";

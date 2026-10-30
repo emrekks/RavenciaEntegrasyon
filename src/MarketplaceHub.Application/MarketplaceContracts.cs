@@ -546,7 +546,9 @@ public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Ba
 public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash, string? MerchantSku = null, string? HepsiburadaSku = null, string? ExternalVariantId = null,
     // Fields left out of the request: the value equals the one the marketplace confirmed last (Trendyol), or the
     // marketplace keeps the stock itself (n11depom, Hepsiburada fulfilment). Both false is a full line.
-    bool QuantityOmitted = false, bool PriceOmitted = false);
+    bool QuantityOmitted = false, bool PriceOmitted = false,
+    // The offer's safety stock the quantity was computed with; null on lines queued before it was carried.
+    decimal? SafetyStock = null);
 // Automatic: the job was built by the system on its own (a stock or price change, the reconcile scan); its values are
 // rebuilt the same way before the send (PriceInventoryComposer automatic mode). Trigger: why it was queued
 // (PriceStockSendTriggers), recorded in the send log; null on jobs queued before it was carried.

@@ -1070,10 +1070,11 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(panelMatch.Id, (await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == panelLine.Id)).VariantId);
     }
 
-    // K6: an order line that cannot take its units from physical stock keeps them reserved, also under a
-    // DISABLED or missing connection inventory policy (the policy fields are not applied).
+    // Owner decision (30 Oct 2026), no reservations: an order line that cannot take its units from physical stock leaves
+    // stock at zero, holds no reservation and keeps the units as its shortfall (an informational issue), whatever the
+    // connection's inventory policy says.
     [PostgreSqlFact]
-    public async Task OrderShortfall_IsReservedUnderADisabledOrMissingInventoryPolicy()
+    public async Task OrderShortfall_IsNotReservedUnderADisabledOrMissingInventoryPolicy()
     {
         var tenant = NewTenant("reservation-unconditional");
         var withDisabledPolicy = NewConnection(tenant, "TRENDYOL");
@@ -1105,12 +1106,55 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
         foreach (var inventory in new[] { disabledInventory, missingInventory })
         {
-            var reservation = await db.StockReservations.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == inventory.Id);
-            Assert.Equal(ReservationStatus.Active, reservation.Status);
-            Assert.Equal(2m, reservation.Quantity);
-            Assert.NotNull(reservation.ExpiresAt);
-            Assert.Equal(2m, (await db.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == inventory.Id)).Reserved);
+            Assert.False(await db.StockReservations.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == inventory.Id));
+            var item = await db.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == inventory.Id);
+            Assert.Equal((0m, 0m, 0m), (item.OnHand, item.Reserved, item.Available));
+            Assert.Equal(2m, await db.StockLedgerEntries.AsNoTracking().Where(x => x.InventoryItemId == inventory.Id && x.MovementType == OrderInventoryStockPolicy.ShortfallMovementType).SumAsync(x => x.QuantityDelta));
+            Assert.False(await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.InventoryItemId == inventory.Id && x.MovementType == "ORDER_RECEIVED"));
         }
+        Assert.Equal(2, await db.OperationalIssues.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id && x.Code == "STOCK_ORDER_CONSUMPTION_BLOCKED" && x.Status != IssueStatus.Resolved));
+    }
+
+    // Owner decision (30 Oct 2026): an order line takes its units from stock the first time it is read, also when the
+    // order is already shipped or delivered by then (before, its shipped units became the baseline and stock never
+    // moved). Read again it takes nothing more; a cancellation gives back what it took. A line of the time before
+    // order-time deduction (an ORDER_SHIPPED row) keeps that shipment as its baseline.
+    [PostgreSqlFact]
+    public async Task OrderLineFirstReadShipped_TakesItsUnitsFromStockOnce()
+    {
+        var tenant = NewTenant("first-read-shipped");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (product, variant) = NewVariant(tenant, "FRS-1", "8690000000097");
+        var legacyVariant = NewVariant(tenant, "FRS-2", "8690000000103", product.Id).Variant;
+        var inventory = NewInventory(tenant, variant, 3m);
+        var legacyInventory = NewInventory(tenant, legacyVariant, 3m);
+        var legacyLineId = Guid.CreateVersion7();
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(variant, legacyVariant);
+            seed.InventoryItems.AddRange(inventory, legacyInventory);
+            seed.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = legacyInventory.Id, MovementType = "ORDER_SHIPPED", QuantityDelta = -1m, SourceType = "ORDER_LINE", SourceId = legacyLineId.ToString("D"), SourceEventId = "legacy", IdempotencyKey = $"legacy:{legacyLineId:N}", OccurredAt = fixture.Now, RecordedAt = fixture.Now, CorrelationId = "legacy" });
+            await seed.SaveChangesAsync();
+        }
+
+        var project = typeof(MarketplaceJobProcessor).GetMethod("ProjectOrderReservations", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = Guid.CreateVersion7(), VariantId = variant.Id, ExternalLineId = "shipped-line", Sku = variant.Sku, TitleSnapshot = variant.Sku, OrderedQuantity = 1m, ShippedQuantity = 1m, RawStatus = "Shipped" };
+        var legacyLine = new OrderLine { Id = legacyLineId, TenantId = tenant.Id, OrderId = Guid.CreateVersion7(), VariantId = legacyVariant.Id, ExternalLineId = "legacy-line", Sku = legacyVariant.Sku, TitleSnapshot = legacyVariant.Sku, OrderedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, RawStatus = "Delivered" };
+        for (var read = 0; read < 2; read++)
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            await (Task)project.Invoke(processor, [tenant.Id, trendyol.Id, new List<(OrderLine, DateTimeOffset)> { (line, fixture.Now.AddMinutes(read)), (legacyLine, fixture.Now.AddMinutes(read)) }, CancellationToken.None])!;
+            await db.SaveChangesAsync();
+        }
+        await using var check = fixture.CreateContext();
+        var item = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == inventory.Id);
+        Assert.Equal((2m, 2m), (item.OnHand, item.Available));
+        Assert.Equal(-1m, await check.StockLedgerEntries.AsNoTracking().Where(x => x.InventoryItemId == inventory.Id && x.MovementType == "ORDER_RECEIVED").SumAsync(x => x.QuantityDelta));
+        Assert.Equal(3m, (await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == legacyInventory.Id)).OnHand);
     }
 
     // K10: a barcode another product already lists on the same connection is refused before create.

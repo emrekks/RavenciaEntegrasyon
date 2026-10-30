@@ -2133,11 +2133,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
             .ToDictionaryAsync(x => x.VariantId, cancellationToken);
         if (inventory.Count != variantIds.Length) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_STATE_INCOMPLETE", "Fiyat-stok uzlaştırmasında MAIN stok projection kayıtları eksik."), cancellationToken);
-        foreach (var line in payload.Lines)
-        {
-            if (!PriceInventoryOutboxPolicy.IsCurrent(line, inventory[line.VariantId].ProjectionVersion, offers[line.OfferId].PriceVersion))
-                return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Superseded, JobExecutionResult.Blocked("PRICE_INVENTORY_SUPERSEDED", "Batch sonucu alınırken fiyat veya stok daha yeni bir sürüme geçti; eski sonuç güncel kayda uygulanmadı."), cancellationToken);
-        }
+        // Each line is judged on its own: a line whose price or stock changed while the batch was polled keeps the
+        // marketplace's answer for what it sent (LastSent*), while only the marks still naming its versions move on; the
+        // other lines are recorded as usual. Before, one changed line threw away the answer of the whole batch.
+        bool StockCurrent(PriceInventoryPushLine line) => PriceInventorySendPolicy.StockCurrent(line, inventory[line.VariantId].ProjectionVersion, offers[line.OfferId].SafetyStock);
+        bool PriceCurrent(PriceInventoryPushLine line) => PriceInventorySendPolicy.PriceCurrent(line, offers[line.OfferId].PriceVersion);
         var lineByBarcode = operation.Value.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
         if (isHepsiburada && operation.Value.Lines.Any(remoteLine => !payload.Lines.Any(localLine =>
                 string.Equals(localLine.MerchantSku, remoteLine.ExternalKey, StringComparison.OrdinalIgnoreCase)
@@ -2146,8 +2146,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The request's log rows, settled line by line below and saved with the offers.
         var sendLog = await PriceStockSendLogRecorder.PendingAsync(db, tenantId, job.Id, payload.ExternalOperationId, timeProvider.GetUtcNow(), cancellationToken);
         if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
-            return await RecordPazaramaPriceInventory(tenantId, connectionId, job.Id, payload, offers, lineByBarcode, sendLog, cancellationToken);
-        var success = 0; var failed = 0;
+            return await RecordPazaramaPriceInventory(tenantId, connectionId, job.Id, payload, offers, lineByBarcode, sendLog, StockCurrent, PriceCurrent, cancellationToken);
+        var success = 0; var failed = 0; var superseded = 0;
         var unknownCodes = new Dictionary<Guid, string>();
         var confirmedCodes = new List<Guid>();
         foreach (var line in payload.Lines)
@@ -2195,10 +2195,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 unknownCodes[line.VariantId] = found.Remote.Status is { Length: > 0 } refusal && !string.Equals(refusal, "REJECTED", StringComparison.OrdinalIgnoreCase) ? refusal : found.Remote.ErrorCode ?? "Pazaryeri kodu tanımadı.";
             if (lineSucceeded)
             {
-                offer.LastPriceHash = line.PriceHash; offer.LastStockProjectionVersion = line.ProjectionVersion;
+                // The marketplace holds what the line carried, whatever changed since; the marks move on only where they
+                // still name the versions the line was built from, so a newer price or stock is still sent.
+                var stockCurrent = StockCurrent(line);
+                var priceCurrent = PriceCurrent(line);
+                if (priceCurrent) offer.LastPriceHash = line.PriceHash;
+                if (stockCurrent) offer.LastStockProjectionVersion = line.ProjectionVersion;
                 PriceInventorySendPolicy.RecordSent(offer, line, payload.SubmittedAt ?? timeProvider.GetUtcNow());
                 offer.Version++; success++;
-                sendLog.Settle(line, repeatOfConfirmed ? PriceStockSendResults.Unchanged : PriceStockSendResults.Applied, repeatOfConfirmed ? SafeCode(found.Remote!.ErrorCode) : null);
+                if (!stockCurrent || !priceCurrent)
+                {
+                    superseded++;
+                    sendLog.Settle(line, PriceStockSendResults.Superseded, null, "Pazar yeri satırı aldı; sonuç gelene kadar fiyat veya stok yeni bir değere geçti, yeni değer ayrıca gönderilecek.");
+                }
+                else sendLog.Settle(line, repeatOfConfirmed ? PriceStockSendResults.Unchanged : PriceStockSendResults.Applied, repeatOfConfirmed ? SafeCode(found.Remote!.ErrorCode) : null);
             }
             else
             {
@@ -2215,9 +2225,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A code refused as unknown is looked up at the marketplace by itself: a well-formed answer without it breaks
         // the link at once, one with it heals the link, and anything else leaves the strikes above to decide.
         await QueueListingLookupsForRefusedCodes(tenantId, connectionId, unknownCodes.Keys.ToArray(), cancellationToken);
-        if (failed == 0) return JobExecutionResult.Success();
+        if (failed == 0) return SupersededNote(superseded) ?? JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
+
+    // A batch the marketplace took whole, some of whose lines changed while it was polled: done, with a note.
+    private static JobExecutionResult? SupersededNote(int superseded) => superseded == 0 ? null
+        : JobExecutionResult.SuccessWithNote("PRICE_INVENTORY_LINES_SUPERSEDED", $"Pazar yeri tüm satırları aldı; {superseded} satırın fiyatı veya stoğu sonuç gelene kadar değişti, yeni değerleri ayrıca gönderilecek.");
 
     private async Task<JobExecutionResult> LabelCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
@@ -2415,12 +2429,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Pazarama takes price and stock in separate requests, so each is recorded on its own: a barcode whose
     // stock was accepted keeps that even when its price was refused, and the next send carries only what
     // is still due (Pazarama refuses a value it already holds).
-    private async Task<JobExecutionResult> RecordPazaramaPriceInventory(Guid tenantId, Guid connectionId, Guid jobId, PriceInventoryJobPayload payload, IReadOnlyDictionary<Guid, ChannelOffer> offers, IReadOnlyDictionary<string, RemoteOperationLine> lineByBarcode, PendingSendLog sendLog, CancellationToken cancellationToken)
+    private async Task<JobExecutionResult> RecordPazaramaPriceInventory(Guid tenantId, Guid connectionId, Guid jobId, PriceInventoryJobPayload payload, IReadOnlyDictionary<Guid, ChannelOffer> offers, IReadOnlyDictionary<string, RemoteOperationLine> lineByBarcode, PendingSendLog sendLog, Func<PriceInventoryPushLine, bool> stockCurrent, Func<PriceInventoryPushLine, bool> priceCurrent, CancellationToken cancellationToken)
     {
         // A value Pazarama refused because it already holds it is recorded as sent. A list split after such a refusal
         // carries one part per piece, so each barcode is judged by the part that carried it.
         var outcomeOf = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.LineOutcomes(payload.ExternalOperationId!, payload.PayloadJson);
-        var success = 0; var failed = 0;
+        var success = 0; var failed = 0; var superseded = 0;
         var unknownCodes = new Dictionary<Guid, string>();
         var confirmedCodes = new List<Guid>();
         foreach (var line in payload.Lines)
@@ -2431,14 +2445,26 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 return await SettleSendLogAsync(tenantId, jobId, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
             var code = remote?.ErrorCode;
             var offer = offers[line.OfferId];
-            if (priceOk) offer.LastPriceHash = line.PriceHash;
-            if (stockOk) offer.LastStockProjectionVersion = line.ProjectionVersion;
+            // Per line, as on the other marketplaces: what Pazarama took is its confirmed value, and a mark moves on only
+            // while it still names the version the line was built from.
+            var priceStill = priceCurrent(line);
+            var stockStill = stockCurrent(line);
+            if (priceOk && priceStill) offer.LastPriceHash = line.PriceHash;
+            if (stockOk && stockStill) offer.LastStockProjectionVersion = line.ProjectionVersion;
             if (priceOk || stockOk) offer.Version++;
+            var taken = line with { PriceOmitted = line.PriceOmitted || !priceOk, QuantityOmitted = line.QuantityOmitted || !stockOk };
+            if (!taken.PriceOmitted || !taken.QuantityOmitted) PriceInventorySendPolicy.RecordSent(offer, taken, payload.SubmittedAt ?? timeProvider.GetUtcNow());
             // Only Pazarama's own answer for the barcode speaks for the code, as on the other marketplaces. Its error code
             // only names the request that refused (PAZARAMA_PRICE_REJECTED, …), so Pazarama's message alone is judged.
             if (priceOk && stockOk && remote is { Succeeded: true }) confirmedCodes.Add(line.VariantId);
             else if (remote is { Succeeded: false, Retryable: false, Status: { Length: > 0 } } && MarketplaceVariantLinkHealth.MeansUnknownCode(null, remote.Status))
                 unknownCodes[line.VariantId] = remote.Status!;
+            if (priceOk && stockOk && (!priceStill || !stockStill))
+            {
+                success++; superseded++;
+                sendLog.Settle(line, PriceStockSendResults.Superseded, null, "Pazar yeri satırı aldı; sonuç gelene kadar fiyat veya stok yeni bir değere geçti, yeni değer ayrıca gönderilecek.");
+                continue;
+            }
             if (priceOk && stockOk) { success++; sendLog.Settle(line, PriceStockSendResults.Applied); continue; }
             failed++;
             var issueCode = SafeCode(code ?? notSentCode) ?? "PRICE_INVENTORY_LINE_REJECTED";
@@ -2454,7 +2480,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await db.SaveChangesAsync(cancellationToken);
         }
         await QueueListingLookupsForRefusedCodes(tenantId, connectionId, unknownCodes.Keys.ToArray(), cancellationToken);
-        if (failed == 0) return JobExecutionResult.Success();
+        if (failed == 0) return SupersededNote(superseded) ?? JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
 
@@ -2488,7 +2514,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .ToDictionaryAsync(x => x.VariantId, x => x.ProjectionVersion, cancellationToken);
         foreach (var line in lines)
             if (!offers.TryGetValue(line.OfferId, out var offer) || !projections.TryGetValue(line.VariantId, out var projection)
-                || !PriceInventoryOutboxPolicy.IsCurrent(line, projection, offer.PriceVersion) || !PriceInventorySendPolicy.MatchesLastSent(offer, line))
+                || !PriceInventorySendPolicy.StockCurrent(line, projection, offer.SafetyStock) || !PriceInventorySendPolicy.PriceCurrent(line, offer.PriceVersion)
+                || !PriceInventorySendPolicy.MatchesLastSent(offer, line))
                 return false;
         foreach (var line in lines)
         {
@@ -10380,13 +10407,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     && (x.MovementType == "ORDER_SHIPPED"
                         || x.MovementType == "ORDER_SHIPMENT_PROGRESS"
                         || x.MovementType == "ORDER_RECEIVED"
-                        || x.MovementType == "ORDER_STOCK_BASELINE"))
+                        || x.MovementType == "ORDER_STOCK_BASELINE"
+                        || x.MovementType == OrderInventoryStockPolicy.ShortfallMovementType))
                 .ToListAsync(cancellationToken);
         var persistedLedgerIds = orderLedgerRows.Select(x => x.Id).ToHashSet();
         orderLedgerRows.AddRange(db.StockLedgerEntries.Local.Where(x => x.TenantId == tenantId
             && itemIds.Contains(x.InventoryItemId) && sourceIds.Contains(x.SourceId) && persistedLedgerIds.Add(x.Id)
             && (x.MovementType == "ORDER_SHIPPED" || x.MovementType == "ORDER_SHIPMENT_PROGRESS"
-                || x.MovementType == "ORDER_RECEIVED" || x.MovementType == "ORDER_STOCK_BASELINE")));
+                || x.MovementType == "ORDER_RECEIVED" || x.MovementType == "ORDER_STOCK_BASELINE"
+                || x.MovementType == OrderInventoryStockPolicy.ShortfallMovementType)));
         await AdoptResetOrderLineStock(tenantId, connectionId, lines, itemsByVariant, orderLedgerRows, reservationsByKey, cancellationToken);
         var legacyShippedLedger = orderLedgerRows
             .Where(x => x.MovementType == "ORDER_SHIPPED")
@@ -10404,6 +10433,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(x => x.MovementType == "ORDER_STOCK_BASELINE")
             .GroupBy(x => x.SourceId)
             .ToDictionary(group => group.Key, group => group.Sum(x => x.QuantityDelta), StringComparer.Ordinal);
+        var shortfalls = orderLedgerRows
+            .Where(x => x.MovementType == OrderInventoryStockPolicy.ShortfallMovementType)
+            .GroupBy(x => x.SourceId)
+            .ToDictionary(group => group.Key, group => group.Sum(x => x.QuantityDelta), StringComparer.Ordinal);
         var now = timeProvider.GetUtcNow();
         var outbox = new List<StockProjectionChange>();
         foreach (var line in lines)
@@ -10412,7 +10445,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (!itemsByVariant.TryGetValue(variantId, out var item)) continue;
             var sourceId = line.Id.ToString("D");
             reservationsByKey.TryGetValue((item.Id, sourceId), out var reservation);
-            var current = reservation is { Status: ReservationStatus.Active } ? reservation.Quantity : 0m;
             var targetShipped = Math.Min(
                 Math.Max(0m, line.OrderedQuantity),
                 Math.Max(line.ShippedQuantity, line.DeliveredQuantity));
@@ -10420,11 +10452,31 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var shipmentDelta = Math.Max(0m, targetShipped - consumedShipped);
             var eventId = $"{line.Id:N}:{modifiedAtByLine[line.Id].ToUnixTimeMilliseconds()}";
 
+            // Owner decision (30 Oct 2026): the panel holds no reservations. A reservation an earlier projection left (the
+            // units an order could not take from stock) is released and kept as the line's shortfall instead, without
+            // touching on-hand stock, so the units are neither taken later nor held from what the marketplaces are sent.
+            if (reservation is { Status: ReservationStatus.Active } held)
+            {
+                var heldQuantity = held.Quantity;
+                held.Status = ReservationStatus.Released; held.ReleasedAt = now; held.ExpiresAt = null; held.Version++;
+                item.Reserved = Math.Max(0m, item.Reserved - heldQuantity);
+                item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
+                item.ProjectionVersion++;
+                item.Version++;
+                var releaseEventId = $"{eventId}:reservation-to-shortfall:{held.Id:N}";
+                db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "ORDER_RESERVATION_RELEASED", QuantityDelta = heldQuantity, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = releaseEventId, IdempotencyKey = $"order-reservation:{releaseEventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
+                db.StockLedgerEntries.Add(ShortfallEntry(tenantId, item.Id, sourceId, line.OrderId, heldQuantity, releaseEventId, modifiedAtByLine[line.Id], now));
+                shortfalls[sourceId] = shortfalls.GetValueOrDefault(sourceId) + heldQuantity;
+                outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, releaseEventId));
+            }
+
             if (!stockBaselines.TryGetValue(sourceId, out var baselineQuantity))
             {
-                baselineQuantity = OrderInventoryStockPolicy.InitialBaselineQuantity(
-                    legacyShippedLedger.GetValueOrDefault(sourceId),
-                    targetShipped);
+                // A line read for the first time takes its units from stock whatever its status, shipped and delivered
+                // included (owner decision, 30 Oct 2026). Only units a shipment of the time before order-time deduction
+                // already took (ORDER_SHIPPED rows) are its opening baseline; a line of a reset or a late match brings its
+                // own baseline (AdoptResetOrderLineStock, AdoptLateMatchedLineStock).
+                baselineQuantity = OrderInventoryStockPolicy.InitialBaselineQuantity(legacyShippedLedger.GetValueOrDefault(sourceId));
                 stockBaselines[sourceId] = baselineQuantity;
                 db.StockLedgerEntries.Add(new StockLedgerEntry
                 {
@@ -10447,20 +10499,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 OrderInventoryStockPolicy.TargetCommittedQuantity(line.OrderedQuantity, line.CancelledQuantity, targetShipped),
                 consumedShipped);
             var receivedLedgerDelta = receivedLedgerDeltas.GetValueOrDefault(sourceId);
-            // Physical stock leaves OnHand as soon as the order is ingested.
-            // Shipment progress is tracked separately so a later fulfillment
-            // update cannot deduct the same unit for a second time.
-            var onHandDelta = OrderInventoryStockPolicy.OnHandDelta(baselineQuantity, receivedLedgerDelta, targetCommitted);
-            var actualOnHandDelta = OrderInventoryStockPolicy.LimitToAvailableStock(
-                item.OnHand, item.Available, current, onHandDelta, inventoryPolicy?.NegativeStockAllowed == true);
-            if (actualOnHandDelta != 0)
+            var shortfall = shortfalls.GetValueOrDefault(sourceId);
+            // Physical stock leaves OnHand as soon as the order is ingested; never below zero unless the connection allows
+            // negative stock. What stock could not give is the line's shortfall: reported, not reserved, never taken later.
+            // A cancellation gives back what the line took (its shortfall first, which took nothing). Shipment progress is
+            // tracked separately so a later fulfillment update cannot deduct the same unit for a second time.
+            var movement = OrderInventoryStockPolicy.Plan(baselineQuantity, shortfall, receivedLedgerDelta, targetCommitted, item.OnHand, inventoryPolicy?.NegativeStockAllowed == true);
+            var committedBeforeMovement = OrderInventoryStockPolicy.Committed(baselineQuantity, shortfall, receivedLedgerDelta);
+            if (movement.OnHandDelta != 0)
             {
-                item.OnHand = decimal.Round(item.OnHand + actualOnHandDelta, 4, MidpointRounding.ToEven);
+                item.OnHand = decimal.Round(item.OnHand + movement.OnHandDelta, 4, MidpointRounding.ToEven);
                 item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
                 item.ProjectionVersion++;
                 item.Version++;
-                var committedBeforeMovement = Math.Max(0m, baselineQuantity - receivedLedgerDelta);
-                var committedAfterStockDelta = Math.Max(0m, committedBeforeMovement - actualOnHandDelta);
+                var committedAfterStockDelta = Math.Max(0m, committedBeforeMovement - movement.OnHandDelta);
                 var stockEventId = $"{eventId}:committed:{committedBeforeMovement.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}:{committedAfterStockDelta.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
                 db.StockLedgerEntries.Add(new StockLedgerEntry
                 {
@@ -10468,7 +10520,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     TenantId = tenantId,
                     InventoryItemId = item.Id,
                     MovementType = "ORDER_RECEIVED",
-                    QuantityDelta = actualOnHandDelta,
+                    QuantityDelta = movement.OnHandDelta,
                     SourceType = "ORDER_LINE",
                     SourceId = sourceId,
                     SourceEventId = stockEventId,
@@ -10477,50 +10529,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     RecordedAt = now,
                     CorrelationId = $"order:{line.OrderId:N}"
                 });
-                receivedLedgerDeltas[sourceId] = receivedLedgerDelta + actualOnHandDelta;
+                receivedLedgerDeltas[sourceId] = receivedLedgerDelta + movement.OnHandDelta;
                 outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, stockEventId));
             }
-            var committedAfterMovement = Math.Max(0m, baselineQuantity - receivedLedgerDeltas.GetValueOrDefault(sourceId));
-            // The units the order could not take from physical stock are always held as a reservation,
-            // whatever the connection's inventory policy says (see OrderInventoryReservationPolicy).
-            var desired = OrderInventoryReservationPolicy.ReservedQuantity(Math.Max(0m, targetCommitted - committedAfterMovement));
-            if (desired > 0 && actualOnHandDelta != onHandDelta)
+            if (movement.ShortfallDelta != 0)
             {
-                await RecordIssue(
-                    tenantId,
-                    $"stock-order-consumption:{line.Id:N}",
-                    "STOCK_ORDER_CONSUMPTION_BLOCKED",
-                    "Sipariş stoğu kısmen düşürüldü; kalan miktar rezervasyonda tutuluyor çünkü fiziksel stok yetersiz.",
-                    cancellationToken);
-            }
-
-            if (current != desired)
-            {
-                if (reservation is null && desired > 0)
-                {
-                    reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = sourceId, Quantity = desired, Status = ReservationStatus.Active, ExpiresAt = OrderInventoryReservationPolicy.ExpiresAt(now), Version = 1 };
-                    db.StockReservations.Add(reservation);
-                    reservationsByKey[(item.Id, sourceId)] = reservation;
-                }
-                else if (reservation is not null)
-                {
-                    if (desired == 0)
-                    {
-                        reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; reservation.ExpiresAt = null;
-                        // J: the shortfall the issue reported is no longer held, so the issue closes with it.
-                        await ResolveIssue(tenantId, $"stock-order-consumption:{line.Id:N}", cancellationToken);
-                    }
-                    else { reservation.Quantity = desired; reservation.Status = ReservationStatus.Active; reservation.ReleasedAt = null; reservation.ExpiresAt = OrderInventoryReservationPolicy.ExpiresAt(now); }
-                    reservation.Version++;
-                }
-                var delta = desired - current;
-                item.Reserved = Math.Max(0, item.Reserved + delta);
-                item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
-                item.ProjectionVersion++;
-                item.Version++;
-                var reservationEventId = $"{eventId}:{desired.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
-                db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = reservationEventId, IdempotencyKey = $"order-reservation:{reservationEventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
-                outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, reservationEventId));
+                var shortfallAfter = shortfall + movement.ShortfallDelta;
+                var shortfallEventId = $"{eventId}:shortfall:{shortfall.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}:{shortfallAfter.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
+                db.StockLedgerEntries.Add(ShortfallEntry(tenantId, item.Id, sourceId, line.OrderId, movement.ShortfallDelta, shortfallEventId, modifiedAtByLine[line.Id], now));
+                shortfalls[sourceId] = shortfallAfter;
+                if (movement.ShortfallDelta > 0)
+                    await RecordIssue(
+                        tenantId,
+                        $"stock-order-consumption:{line.Id:N}",
+                        "STOCK_ORDER_CONSUMPTION_BLOCKED",
+                        $"Sipariş stoğu kısmen düşürüldü: fiziksel stok yetersizdi, {shortfallAfter.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)} adet stoktan düşülemedi. Rezervasyon tutulmaz; stok sıfırın altına inmedi (bilgi amaçlı).",
+                        cancellationToken);
+                // The units that could not be taken are no longer ordered (a cancellation), so the notice closes.
+                else if (shortfallAfter <= 0) await ResolveIssue(tenantId, $"stock-order-consumption:{line.Id:N}", cancellationToken);
             }
 
             if (shipmentDelta > 0)
@@ -10547,6 +10573,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // Every connection selling the variant gets the new stock, not only the one that sold it.
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, outbox, now, cancellationToken);
     }
+
+    // The units of an order line that stock could not give (positive) or that are no longer owed (negative). A marker, not
+    // a stock movement: on-hand does not change with it, and the panel's ledger view leaves it out.
+    private static StockLedgerEntry ShortfallEntry(Guid tenantId, Guid itemId, string sourceId, Guid orderId, decimal quantity, string eventId, DateTimeOffset occurredAt, DateTimeOffset now) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        InventoryItemId = itemId,
+        MovementType = OrderInventoryStockPolicy.ShortfallMovementType,
+        QuantityDelta = quantity,
+        SourceType = "ORDER_LINE",
+        SourceId = sourceId,
+        SourceEventId = eventId,
+        IdempotencyKey = $"order-stock-shortfall:{itemId:N}:{eventId}",
+        OccurredAt = occurredAt,
+        RecordedAt = now,
+        CorrelationId = $"order:{orderId:N}"
+    };
 
     // A connection's order reset leaves the stock movements and reservation of a deleted line under a carry key
     // (OrderInventoryStockPolicy.ResetCarryKey). The line a later sync imports under the same marketplace order and

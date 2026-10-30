@@ -34,6 +34,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
             .Where(x => x.TenantId == tenantId
                 && x.MovementType != "ORDER_STOCK_BASELINE"
                 && x.MovementType != "ORDER_SHIPMENT_PROGRESS"
+                && x.MovementType != OrderInventoryStockPolicy.ShortfallMovementType
                 && itemIds.Contains(x.InventoryItemId) && (afterId == Guid.Empty || x.Id.CompareTo(afterId) > 0))
             .OrderBy(x => x.Id).Take(limit + 1)
             .Select(x => new LedgerEntryView(x.Id, x.MovementType, x.QuantityDelta, x.SourceType, x.SourceId, x.OccurredAt, x.CorrelationId))
@@ -207,31 +208,49 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.VatInclusion) || string.IsNullOrWhiteSpace(command.RoundingMode) || string.IsNullOrWhiteSpace(command.Status)) return Invalid<ChannelOfferView>("reason", "Fiyat değişikliği nedeni ve teklif politikası alanları zorunludur.");
         if (ValidatePricing(command.VatInclusion, command.RoundingMode, command.VatRate) is { } pricingError) return pricingError;
 
-        offer.ListPrice = decimal.Round(command.ListPrice, 4, MidpointRounding.ToEven);
-        offer.SalePrice = decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven);
+        var listPrice = decimal.Round(command.ListPrice, 4, MidpointRounding.ToEven);
+        var salePrice = decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven);
+        var vatRate = decimal.Round(command.VatRate, 4, MidpointRounding.ToEven);
+        var vatInclusion = command.VatInclusion.Trim().ToUpperInvariant();
+        var roundingMode = command.RoundingMode.Trim().ToUpperInvariant();
+        var safetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven);
+        var status = command.Status.Trim();
+        var change = ChannelOfferChangePolicy.Classify(offer, listPrice, salePrice, currency, vatRate, vatInclusion, roundingMode, safetyStock, status);
+        if (!change.Any) return ServiceResult<ChannelOfferView>.Ok(Map(offer));
+        offer.ListPrice = listPrice;
+        offer.SalePrice = salePrice;
         offer.Currency = currency;
-        offer.VatRate = decimal.Round(command.VatRate, 4, MidpointRounding.ToEven);
-        offer.VatInclusion = command.VatInclusion.Trim().ToUpperInvariant();
-        offer.RoundingMode = command.RoundingMode.Trim().ToUpperInvariant();
-        offer.SafetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven);
-        offer.Status = command.Status.Trim();
-        offer.PriceVersion++;
+        offer.VatRate = vatRate;
+        offer.VatInclusion = vatInclusion;
+        offer.RoundingMode = roundingMode;
+        offer.SafetyStock = safetyStock;
+        offer.Status = status;
         offer.Version++;
-        db.ChannelPriceHistory.Add(new ChannelPriceHistory
+        // Only a change of the values the outbound price is made of is a new price version: a save that leaves them as they
+        // were (a safety stock or status edit, a save without changes) sends no price to any marketplace.
+        if (change.Price)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            OfferId = offer.Id,
-            PriceVersion = offer.PriceVersion,
-            ListPrice = offer.ListPrice,
-            SalePrice = offer.SalePrice,
-            Currency = offer.Currency,
-            Reason = command.Reason.Trim(),
-            ActorSource = $"USER:{userId:D}",
-            EffectiveAt = timeProvider.GetUtcNow()
-        });
-        // E: the edited price goes to the offer's connection when its automatic writes are on, committed with the edit.
-        await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, [offer], timeProvider.GetUtcNow(), cancellationToken);
+            offer.PriceVersion++;
+            db.ChannelPriceHistory.Add(new ChannelPriceHistory
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                OfferId = offer.Id,
+                PriceVersion = offer.PriceVersion,
+                ListPrice = offer.ListPrice,
+                SalePrice = offer.SalePrice,
+                Currency = offer.Currency,
+                Reason = command.Reason.Trim(),
+                ActorSource = $"USER:{userId:D}",
+                EffectiveAt = timeProvider.GetUtcNow()
+            });
+        }
+        // The quantity sent is the available stock less the safety stock (1 kept of 3 sends 2), so a new safety stock is a
+        // stock change of this offer: its stock mark is cleared and the next send carries the new quantity on every platform.
+        if (change.SafetyStock) offer.LastStockProjectionVersion = null;
+        // E: the edited price or quantity goes to the offer's connection when its automatic writes are on, committed with the edit.
+        if (change.Price || change.SafetyStock || change.Status)
+            await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, [offer], timeProvider.GetUtcNow(), cancellationToken, _ => change.Price);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<ChannelOfferView>.Ok(Map(offer));
     }

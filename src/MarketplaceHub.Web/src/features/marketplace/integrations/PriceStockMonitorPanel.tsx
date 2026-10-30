@@ -57,7 +57,7 @@ export function PriceStockMonitorPanel({ onFeedback }: { onFeedback: (feedback: 
   const stop = useMutation({
     mutationFn: () => hubApi<{ connectionsStopped: number; policiesDisabled: number; jobsCancelled: number }>('/price-stock-monitor/emergency-stop', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
     onSuccess: async result => {
-      onFeedback({ kind: 'success', title: 'Otomatik Yazmalar Durduruldu', message: `${result.connectionsStopped} bağlantıda otomatik fiyat-stok gönderimi kapatıldı; ${result.jobsCancelled} bekleyen iş iptal edildi.` })
+      onFeedback({ kind: 'success', title: 'Otomatik Yazmalar Durduruldu', message: `${result.connectionsStopped} bağlantıda otomatik fiyat-stok gönderimi kapatıldı; ${result.jobsCancelled} gönderilmemiş otomatik iş iptal edildi. Panelden başlatılan gönderimler ve sonucu beklenen istekler sürer.` })
       await Promise.all([client.invalidateQueries({ queryKey: ['price-stock-monitor'] }), client.invalidateQueries({ queryKey: ['sync-policies'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: reason => onFeedback(failureNotice(reason, 'Otomatik yazmalar durdurulamadı.'))

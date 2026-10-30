@@ -36,7 +36,9 @@ internal static class StockProjectionOutbox
 
     // E: a price edit of offers (from the panel or a product file) is sent like a stock change, to the offer's own
     // connection only; the dispatch sends the offer's current values and only the offers whose price changed go out.
-    public static async Task EnqueuePriceChangesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<ChannelOffer> offers, DateTimeOffset now, CancellationToken cancellationToken)
+    // priceChanged: whether an offer's save changed its price (a PRICE_EDIT send) or only its safety stock or status (a
+    // stock send); null when every offer given was repriced.
+    public static async Task EnqueuePriceChangesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<ChannelOffer> offers, DateTimeOffset now, CancellationToken cancellationToken, Func<ChannelOffer, bool>? priceChanged = null)
     {
         var changed = offers.Where(offer => offer.Status == "ACTIVE").ToList();
         if (changed.Count == 0) return;
@@ -48,7 +50,9 @@ internal static class StockProjectionOutbox
         var open = await AutomaticPriceStockWrites.OpenConnectionIdsAsync(db, tenantId, activeConnections, cancellationToken);
         var targets = changed
             .Where(offer => open.Contains(offer.ConnectionId))
-            .Select(offer => new StockProjectionTarget(offer.ConnectionId, offer.VariantId, $"price:{offer.Id:N}:p{offer.PriceVersion}", StockProjectionOutboxPolicy.PriceChangeDedupKey(offer.ConnectionId, offer.VariantId, offer.PriceVersion)))
+            .Select(offer => new StockProjectionTarget(offer.ConnectionId, offer.VariantId,
+                priceChanged is null || priceChanged(offer) ? $"price:{offer.Id:N}:p{offer.PriceVersion}" : $"offer:{offer.Id:N}:v{offer.Version}",
+                StockProjectionOutboxPolicy.PriceChangeDedupKey(offer.ConnectionId, offer.VariantId, offer.PriceVersion, offer.Version)))
             .ToList();
         await AddDispatchesAsync(db, tenantId, targets, now, cancellationToken);
     }
