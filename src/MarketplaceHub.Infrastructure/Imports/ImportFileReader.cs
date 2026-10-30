@@ -166,7 +166,7 @@ public static class ImportFileReader
         return true;
     }
 
-    private static void ValidateArchive(ZipArchive archive, long maximumBytes)
+    internal static void ValidateArchive(ZipArchive archive, long maximumBytes)
     {
         long expanded = 0;
         foreach (var entry in archive.Entries)

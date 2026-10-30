@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitText, bandRange, commissionTariffPlatforms, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitText, bandRange, commissionTariffPlatforms, exportMessage, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -153,5 +153,33 @@ describe('bandLimitText', () => {
     expect(bandLimitText([{ tier: 2, min: 432.27, max: 464.62, rate: 15.8 }])).toBe('464,62 ₺ ve altı')
     expect(bandLimitText([{ tier: 1, min: 463.13, max: null, rate: 21.5 }, { tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('463,13 – 464,63 ₺ ve üzeri')
     expect(bandLimitText([undefined])).toBeNull()
+  })
+})
+
+describe('saved tariff picks', () => {
+  it('sends the picks in row order and reads them back as they were', () => {
+    const picks = new Map<string, TariffPick>([['b', { tier: 2, price: null }], ['a', { tier: null, price: 400.1 }], ['c', { tier: null, price: null }]])
+    const bulk: TariffBulk = { kind: 'tier', tier: 4, minRate: 20, minAmount: null, maxRate: null, maxAmount: null }
+    const body = selectionBody(picks, bulk)
+    expect(body).toEqual({ bulk: 'tier', tier: 4, minRate: 20, minAmount: null, maxRate: null, maxAmount: null,
+      choices: [{ rowId: 'a', tier: null, price: 400.1 }, { rowId: 'b', tier: 2, price: null }, { rowId: 'c', tier: null, price: null }] })
+    const state = selectionState(body)
+    expect(state.bulk).toEqual(bulk)
+    expect([...state.picks].sort()).toEqual([...picks].sort())
+    // The same picks in another order read the same, so an unchanged page sends nothing.
+    expect(JSON.stringify(selectionBody(state.picks, state.bulk))).toBe(JSON.stringify(body))
+  })
+
+  it('keeps no condition without a pick for every row and reads nothing saved as no pick', () => {
+    expect(selectionBody(new Map(), { ...noBulk, minRate: 5 })).toEqual({ bulk: null, tier: null, minRate: null, minAmount: null, maxRate: null, maxAmount: null, choices: [] })
+    expect(selectionState(undefined)).toEqual({ picks: new Map(), bulk: noBulk })
+    expect(selectionState({ bulk: 'other', tier: 3, minRate: 1, minAmount: null, maxRate: null, maxAmount: null, choices: [] }).bulk).toEqual(noBulk)
+    expect(selectionState({ bulk: 'amount', tier: null, minRate: null, minAmount: 50, maxRate: null, maxAmount: null, choices: [] }).bulk).toEqual({ kind: 'amount', tier: 1, minRate: null, minAmount: 50, maxRate: null, maxAmount: null })
+  })
+
+  it('tells how many prices the Trendyol file carries and when it was written again', () => {
+    expect(exportMessage(12, false)).toMatch(/^12 ürünün fiyatı Trendyol tarife dosyasına yazıldı/)
+    expect(exportMessage(Number.NaN, false)).toMatch(/^Seçilen ürünlerin fiyatı/)
+    expect(exportMessage(1, true)).toContain('aynı tarife dosyasını bir kez daha yükleyin')
   })
 })

@@ -660,6 +660,100 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // The seller's picks are saved per tariff and replaced as a whole, the Excel is the uploaded Trendyol workbook with the
+    // saved picks' prices in YENİ TSF and the period in Tarife Seçimi (written again from the rows when the file is not
+    // kept, kept again when the same file is uploaded), and the picks go with the tariff.
+    [PostgreSqlFact]
+    public async Task CommissionTariff_PicksAreSavedAndTheExcelIsTrendyolsFileWithThem()
+    {
+        var tenant = NewTenant("commission-picks");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            await seed.SaveChangesAsync();
+        }
+        var file = TrendyolTariffWorkbookTests.Workbook(("Bluz M", "RYP00101", TrendyolTariffWorkbookTests.Period3, null), ("Bluz XL", "RYP00103", TrendyolTariffWorkbookTests.Period3, "999"),
+            ("Etek", "ETK001", TrendyolTariffWorkbookTests.Period3, null));
+        var clock = new FixedClock(TrendyolTariffWorkbookTests.Now);
+        Guid tariffId;
+        Dictionary<string, Guid> rowIds;
+        await using (var db = fixture.CreateContext())
+        {
+            var uploaded = await new CommissionTariffService(db, clock).UploadAsync(tenant.Id, null, trendyol.Id, "930112.xlsx", new MemoryStream(file), "test", CancellationToken.None);
+            Assert.True(uploaded.Succeeded, uploaded.Error?.Message);
+            tariffId = Assert.Single(uploaded.Value!.Tariffs).Id;
+            rowIds = await db.CommissionTariffRows.Where(x => x.TariffId == tariffId).ToDictionaryAsync(x => x.Barcode, x => x.Id);
+            Assert.True(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TariffId == tariffId));
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CommissionTariffService(db, clock);
+            var empty = (await service.SelectionAsync(tenant.Id, trendyol.Id, tariffId, CancellationToken.None)).Value!;
+            Assert.Null(empty.Bulk);
+            Assert.Empty(empty.Choices);
+            Assert.Null(empty.UpdatedAt);
+
+            // First a band for one row, then the whole state again: band 4 for every row, a price of the seller's own for
+            // RYP00101 and RYP00103 left out; a row of no tariff is dropped.
+            Assert.True((await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new("", null, [new(rowIds["ETK001"], 2, null)]), CancellationToken.None)).Succeeded);
+            var saved = await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new("tier", 4,
+                [new(rowIds["RYP00101"], null, 401.004m), new(rowIds["RYP00103"], null, null), new(Guid.NewGuid(), 1, null)]), CancellationToken.None);
+            Assert.True(saved.Succeeded, saved.Error?.Message);
+            Assert.Equal(("tier", 4), (saved.Value!.Bulk, saved.Value.Tier));
+            Assert.Equal(2, saved.Value.Choices.Count);
+            Assert.Equal(401m, saved.Value.Choices.Single(x => x.RowId == rowIds["RYP00101"]).Price);
+            Assert.Equal(TrendyolTariffWorkbookTests.Now, saved.Value.UpdatedAt);
+            Assert.Equal("COMMISSION_TARIFF_EXPORT_INVALID", (await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new("tier", 9, []), CancellationToken.None)).Error?.Code);
+            Assert.Equal("RESOURCE_NOT_FOUND", (await service.SaveSelectionAsync(tenant.Id, null, Guid.NewGuid(), tariffId, new(null, null, []), CancellationToken.None)).Error?.Code);
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CommissionTariffService(db, clock);
+            var loaded = (await service.SelectionAsync(tenant.Id, trendyol.Id, tariffId, CancellationToken.None)).Value!;
+            Assert.Equal(("tier", 4, 2), (loaded.Bulk, loaded.Tier, loaded.Choices.Count));
+            Assert.DoesNotContain(loaded.Choices, x => x.RowId == rowIds["ETK001"]);
+
+            // No picks in the request: the saved ones are written into the uploaded workbook.
+            var export = (await service.ExportAsync(tenant.Id, trendyol.Id, tariffId, new(null, null, null), CancellationToken.None)).Value!;
+            Assert.True(export.FromSourceFile);
+            Assert.Equal(2, export.Rows);
+            var table = Infrastructure.Imports.ImportFileReader.ReadXlsxTable(new MemoryStream(export.Content), 10_000_000);
+            var price = table.Headers.ToList().IndexOf("YENİ TSF (FİYAT GÜNCELLE)");
+            var choice = table.Headers.ToList().IndexOf("Tarife Seçimi");
+            (string, string) Picked(string barcode) { var cells = table.Rows.Single(x => x.Cells[1] == barcode).Cells; return (cells.ElementAtOrDefault(price) ?? "", cells.ElementAtOrDefault(choice) ?? ""); }
+            Assert.Equal(("401.00", "3 Günlük Fiyat"), Picked("RYP00101"));
+            Assert.Equal(("", ""), Picked("RYP00103"));
+            Assert.Equal(("400.10", "3 Günlük Fiyat"), Picked("ETK001"));
+
+            // A tariff stored before files were kept: the workbook is written again from its rows, and the same file
+            // uploaded again is kept.
+            await db.CommissionTariffSourceFiles.Where(x => x.TariffId == tariffId).ExecuteDeleteAsync();
+            var rebuilt = (await service.ExportAsync(tenant.Id, trendyol.Id, tariffId, new(null, null, null), CancellationToken.None)).Value!;
+            Assert.False(rebuilt.FromSourceFile);
+            Assert.Equal(2, rebuilt.Rows);
+            Assert.Contains("KomisyonTarifeleriÜrünleri", TrendyolTariffWorkbookTests.Part(rebuilt.Content, "xl/workbook.xml"), StringComparison.Ordinal);
+            Assert.True((await service.UploadAsync(tenant.Id, null, trendyol.Id, "930112.xlsx", new MemoryStream(file), "test", CancellationToken.None)).Value!.AlreadyUploaded);
+            Assert.True(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TariffId == tariffId));
+
+            // Taking every pick back leaves nothing to write.
+            await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new(null, null, []), CancellationToken.None);
+            Assert.Equal(0, (await service.ExportAsync(tenant.Id, trendyol.Id, tariffId, new(null, null, null), CancellationToken.None)).Value!.Rows);
+            await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new("amount", null, [new(rowIds["ETK001"], 1, null)]), CancellationToken.None);
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.True((await new CommissionTariffService(db, clock).DeleteAsync(tenant.Id, null, trendyol.Id, tariffId, "test", CancellationToken.None)).Succeeded);
+            Assert.False(await db.CommissionTariffPicks.AnyAsync(x => x.TariffId == tariffId));
+            Assert.False(await db.CommissionTariffSelections.AnyAsync(x => x.TariffId == tariffId));
+            Assert.False(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TariffId == tariffId));
+        }
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

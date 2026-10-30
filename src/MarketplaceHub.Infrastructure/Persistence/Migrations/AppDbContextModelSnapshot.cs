@@ -1047,6 +1047,33 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("commission_tariffs", "catalog");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffPick", b =>
+                {
+                    b.Property<Guid>("TariffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Tier")
+                        .HasColumnType("integer");
+
+                    b.HasKey("TariffId", "RowId");
+
+                    b.HasIndex("RowId");
+
+                    b.HasIndex("TenantId", "TariffId");
+
+                    b.ToTable("commission_tariff_picks", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffRow", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1157,6 +1184,71 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "TariffId");
 
                     b.ToTable("commission_tariff_rows", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffSelection", b =>
+                {
+                    b.Property<Guid>("TariffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BulkKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("BulkTier")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("MaxAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("MaxRate")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("MinAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("MinRate")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TariffId");
+
+                    b.HasIndex("TenantId", "TariffId")
+                        .IsUnique();
+
+                    b.ToTable("commission_tariff_selections", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffSourceFile", b =>
+                {
+                    b.Property<Guid>("TariffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TariffId");
+
+                    b.HasIndex("TenantId", "TariffId")
+                        .IsUnique();
+
+                    b.ToTable("commission_tariff_source_files", "catalog");
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.ConnectionAttributeDefault", b =>
@@ -6863,12 +6955,48 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffPick", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.CommissionTariffRow", null)
+                        .WithMany()
+                        .HasForeignKey("RowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.CommissionTariff", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TariffId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffRow", b =>
                 {
                     b.HasOne("MarketplaceHub.Domain.CommissionTariff", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "TariffId")
                         .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffSelection", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.CommissionTariff", null)
+                        .WithOne()
+                        .HasForeignKey("MarketplaceHub.Domain.CommissionTariffSelection", "TenantId", "TariffId")
+                        .HasPrincipalKey("MarketplaceHub.Domain.CommissionTariff", "TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CommissionTariffSourceFile", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.CommissionTariff", null)
+                        .WithOne()
+                        .HasForeignKey("MarketplaceHub.Domain.CommissionTariffSourceFile", "TenantId", "TariffId")
+                        .HasPrincipalKey("MarketplaceHub.Domain.CommissionTariff", "TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

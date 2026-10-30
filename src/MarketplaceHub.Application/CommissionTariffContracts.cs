@@ -85,7 +85,14 @@ public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost, string?
 // The categories and brands a tariff's rows carry, for the list's filters.
 public sealed record CommissionTariffFacets(IReadOnlyList<string> Categories, IReadOnlyList<string> Brands);
 public sealed record CommissionTariffChoice(Guid RowId, int? Tier, decimal? Price);
-public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows);
+// The Excel of the picks: Trendyol's own tariff workbook with each picked row's price in "YENİ TSF (FİYAT GÜNCELLE)" and
+// its period in "Tarife Seçimi". FromSourceFile: false when the uploaded file is not kept (a tariff uploaded before
+// files were kept) and the workbook is written again from the stored rows.
+public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows, bool FromSourceFile = true);
+
+// The seller's saved picks on a tariff (as the export request carries them) and when they were last saved.
+public sealed record CommissionTariffSelectionView(string? Bulk, int? Tier, decimal? MinRate, decimal? MinAmount, decimal? MaxRate, decimal? MaxAmount,
+    IReadOnlyList<CommissionTariffChoice> Choices, DateTimeOffset? UpdatedAt);
 
 // A page of models: Items are every variant of the page's models; TotalCount and PageSize count models.
 public sealed record CommissionTariffRowPage(IReadOnlyList<CommissionTariffRowView> Items, int TotalCount, int Page, int PageSize);
@@ -100,7 +107,11 @@ public interface ICommissionTariffService
     Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CommissionTariffRowFilter filter, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffFacets>> FacetsAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken);
+    // Without picks in the request (no Bulk and no Choices) the saved picks are written.
     Task<ServiceResult<CommissionTariffExportFile>> ExportAsync(Guid tenantId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult<CommissionTariffSelectionView>> SelectionAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken);
+    // Replaces the saved picks with the request's (rows not in the tariff are dropped); no Bulk and no Choices clears them.
+    Task<ServiceResult<CommissionTariffSelectionView>> SaveSelectionAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken);
 }
 
 public interface ICommissionTariffLookup

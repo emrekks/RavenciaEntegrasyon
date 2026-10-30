@@ -50,6 +50,42 @@ public sealed class CommissionTariffRow
     public decimal? Stock { get; set; }
 }
 
+// The tariff file exactly as the seller uploaded it, so the Excel of the seller's picks is Trendyol's own workbook with
+// only the price and tariff choice cells filled in. Kept apart from the tariff so listing tariffs never reads it.
+public sealed class CommissionTariffSourceFile
+{
+    public Guid TariffId { get; set; }
+    public Guid TenantId { get; set; }
+    public required byte[] Content { get; set; }
+}
+
+// The seller's picks on a tariff, kept until they are taken back or the tariff is deleted: the pick for every row
+// (BulkKind "tier" with BulkTier, "amount" or "rate", with its profit limits; null for none) and the row by row picks.
+public sealed class CommissionTariffSelection
+{
+    public Guid TariffId { get; set; }
+    public Guid TenantId { get; set; }
+    public string? BulkKind { get; set; }
+    public int? BulkTier { get; set; }
+    public decimal? MinRate { get; set; }
+    public decimal? MinAmount { get; set; }
+    public decimal? MaxRate { get; set; }
+    public decimal? MaxAmount { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public Guid? UpdatedBy { get; set; }
+}
+
+// One row's own pick: a band (Tier), a price of the seller's own (Price), or neither (the row left out on purpose
+// while a pick for every row is on).
+public sealed class CommissionTariffPick
+{
+    public Guid TariffId { get; set; }
+    public Guid RowId { get; set; }
+    public Guid TenantId { get; set; }
+    public int? Tier { get; set; }
+    public decimal? Price { get; set; }
+}
+
 public sealed record CommissionBand(int Tier, decimal? Min, decimal? Max, decimal Rate);
 
 public static class CommissionTariffBands

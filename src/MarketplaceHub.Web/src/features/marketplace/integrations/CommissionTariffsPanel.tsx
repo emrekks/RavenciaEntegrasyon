@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
@@ -39,6 +39,37 @@ export type TariffPick = { tier: number | null; price: number | null }
 // most share or amount one whose pick leaves more.
 export type TariffBulk = { kind: '' | 'tier' | 'amount' | 'rate'; tier: number; minRate: number | null; minAmount: number | null; maxRate?: number | null; maxAmount?: number | null }
 export const noBulk: TariffBulk = { kind: '', tier: 1, minRate: null, minAmount: null, maxRate: null, maxAmount: null }
+
+// A tariff's picks as the server keeps them (GET and PUT …/selection): the pick for every row and each row's own pick.
+export type TariffSelection = {
+  bulk: string | null; tier: number | null; minRate: number | null; minAmount: number | null; maxRate: number | null; maxAmount: number | null
+  choices: Array<{ rowId: string; tier: number | null; price: number | null }>; updatedAt?: string | null
+}
+
+// The page's picks as the server keeps them, rows in id order so the same picks always read the same.
+export function selectionBody(picks: Map<string, TariffPick>, bulk: TariffBulk): TariffSelection {
+  const on = bulk.kind !== ''
+  return {
+    bulk: on ? bulk.kind : null, tier: bulk.kind === 'tier' ? bulk.tier : null,
+    minRate: on ? bulk.minRate : null, minAmount: on ? bulk.minAmount : null, maxRate: on ? bulk.maxRate ?? null : null, maxAmount: on ? bulk.maxAmount ?? null : null,
+    choices: [...picks].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([rowId, pick]) => ({ rowId, tier: pick.price !== null ? null : pick.tier, price: pick.price }))
+  }
+}
+
+// The saved picks as the page holds them; nothing saved is no pick at all.
+export function selectionState(saved: TariffSelection | undefined): { picks: Map<string, TariffPick>; bulk: TariffBulk } {
+  const kind = saved?.bulk === 'tier' || saved?.bulk === 'amount' || saved?.bulk === 'rate' ? saved.bulk : ''
+  const bulk: TariffBulk = kind === '' ? noBulk : { kind, tier: kind === 'tier' && saved?.tier ? saved.tier : 1, minRate: saved?.minRate ?? null, minAmount: saved?.minAmount ?? null, maxRate: saved?.maxRate ?? null, maxAmount: saved?.maxAmount ?? null }
+  return { picks: new Map((saved?.choices ?? []).map(choice => [choice.rowId, { tier: choice.price !== null ? null : choice.tier, price: choice.price }])), bulk }
+}
+
+// What the download says: how many products the Trendyol file carries a price for, and when the file had to be written
+// again from the stored rows (a tariff uploaded before files were kept).
+export function exportMessage(rows: number, rebuilt: boolean) {
+  const count = Number.isFinite(rows) ? `${rows.toLocaleString('tr-TR')} ürünün` : 'Seçilen ürünlerin'
+  const text = `${count} fiyatı Trendyol tarife dosyasına yazıldı (YENİ TSF ve Tarife Seçimi sütunları). Dosyayı Trendyol'da Ürün Komisyon Tarifeleri sayfasından yükleyin.`
+  return rebuilt ? `${text} Bu tarifenin yüklenen dosyası saklanmadığı için dosya kayıtlı satırlardan yeniden yazıldı; Trendyol'un kendi dosyası için aynı tarife dosyasını bir kez daha yükleyin.` : text
+}
 
 // The profit as a share of the cost, per cent (Kâr Oranı, the server's CommissionTariffChoices.OnCost).
 const share = (choice: CommissionChoice) => choice.remaining === null ? null : onCost(choice.remaining, choice.costs)
@@ -204,7 +235,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   }
   const onDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }
   const askDelete = async (tariff: CommissionTariff) => {
-    if (!(await confirm({ title: 'Tarife Silinsin mi?', message: `${tariff.periodText} dönemine ait tarife ve ${tariff.rowCount.toLocaleString('tr-TR')} ürün satırı silinecek. Bu dönemin satışlarında komisyon bu tarifeden okunamaz.`, confirmLabel: 'Tarifeyi Sil', destructive: true }))) return
+    if (!(await confirm({ title: 'Tarife Silinsin mi?', message: `${tariff.periodText} dönemine ait tarife, ${tariff.rowCount.toLocaleString('tr-TR')} ürün satırı ve kaydedilen seçimler silinecek. Bu dönemin satışlarında komisyon bu tarifeden okunamaz.`, confirmLabel: 'Tarifeyi Sil', destructive: true }))) return
     remove.mutate(tariff)
   }
   const pageCount = rows.data ? Math.max(1, Math.ceil(rows.data.totalCount / rows.data.pageSize)) : 1
@@ -408,19 +439,75 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
   </div>
 }
 
-// One period's products with each band as a price to pick: the band's price, its commission and what the price leaves
-// after the commission and the product cost, the one that leaves the most marked "Önerilen". A pick is made row by row
-// (a band, or a price of the seller's own) or for every row at once; the picks go out as an Excel sheet the server
-// writes. Picks are kept across pages and searches until the period changes.
-function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage }: {
+// Keeps a tariff's picks saved on the server: a change is sent 600 ms after the last one, one save at a time and the
+// latest state winning; flush() sends what is waiting and resolves once the server holds it. Leaving the tariff sends
+// what is still waiting.
+function useSavedSelection(save: (body: string) => Promise<unknown>, serialized: string) {
+  const latest = useRef(serialized)
+  const saved = useRef(serialized)
+  const queue = useRef<Promise<void>>(Promise.resolve())
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [status, setStatus] = useState<'saved' | 'saving' | 'error'>('saved')
+  const flush = useCallback(() => {
+    clearTimeout(timer.current)
+    const next = queue.current.catch(() => undefined).then(async () => {
+      const sending = latest.current
+      if (sending === saved.current) return
+      setStatus('saving')
+      try {
+        await save(sending)
+        saved.current = sending
+        setStatus(latest.current === sending ? 'saved' : 'saving')
+      } catch (reason) {
+        setStatus('error')
+        throw reason
+      }
+    })
+    queue.current = next
+    return next
+  }, [save])
+  useEffect(() => {
+    latest.current = serialized
+    if (serialized === saved.current) return
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => { void flush().catch(() => undefined) }, 600)
+  }, [serialized, flush])
+  useEffect(() => () => { void flush().catch(() => undefined) }, [flush])
+  return { status, flush }
+}
+
+// One period's products with each band as a price to pick. The picks are saved on the server, so they are there again
+// when the tariff is opened later; the plan waits for them before it shows.
+function TariffPlan(props: TariffPlanProps) {
+  const selection = useQuery({
+    queryKey: ['commission-tariff-selection', props.connectionId, props.tariff.id],
+    queryFn: () => hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`),
+    gcTime: 0, refetchOnWindowFocus: false
+  })
+  if (selection.isPending) return <Busy />
+  if (selection.isError) return <ErrorBox error={selection.error} onRetry={() => void selection.refetch()} />
+  return <TariffPlanBody {...props} saved={selection.data} />
+}
+
+type TariffPlanProps = {
   connectionId: string; tariff: CommissionTariff; rows: RowPage | undefined; loading: boolean; error: unknown; onRetry: () => void
   filter: TariffFilter; onFilter: (filter: TariffFilter) => void
   page: number; pageCount: number; onPage: (page: number) => void; onMessage: (message: PanelMessage | null) => void
-}) {
-  const [picks, setPicks] = useState<Map<string, TariffPick>>(() => new Map())
+}
+
+// One period's products with each band as a price to pick: the band's price, its commission and what the price leaves
+// after the commission and the product cost. A pick is made row by row (a band, or a price of the seller's own) or for
+// every row at once; the picks are saved as they change and go out as Trendyol's own tariff file with the picked prices
+// filled in. Picks are kept across pages, searches and visits.
+function TariffPlanBody({ connectionId, tariff, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage, saved }: TariffPlanProps & { saved: TariffSelection }) {
+  const [picks, setPicks] = useState<Map<string, TariffPick>>(() => selectionState(saved).picks)
   // The pick for every row, set in the Toplu Seçim popover.
-  const [bulk, setBulk] = useState<TariffBulk>(noBulk)
+  const [bulk, setBulk] = useState<TariffBulk>(() => selectionState(saved).bulk)
   const applied = bulk
+  const save = useCallback((body: string) => hubApi<TariffSelection>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/selection`, {
+    method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-selection') }, body
+  }), [connectionId, tariff.id])
+  const saving = useSavedSelection(save, useMemo(() => JSON.stringify(selectionBody(picks, bulk)), [picks, bulk]))
   // A column's picks taken back: the pick for every row when it is that column, and the rows picked for that band.
   const clearColumn = (column: string) => {
     const tier = /^[1-4]$/.test(column) ? Number(column) : null
@@ -451,19 +538,22 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
   const facets = useQuery({ queryKey: ['commission-tariff-facets', connectionId, tariff.id], queryFn: () => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`) })
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   const download = useMutation({
-    mutationFn: () => hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
-      method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-export') },
-      body: JSON.stringify({ bulk: applied.kind || null, tier: applied.kind === 'tier' ? applied.tier : null, minRate: applied.minRate, minAmount: applied.minAmount, maxRate: applied.maxRate ?? null, maxAmount: applied.maxAmount ?? null,
-        choices: [...picks].map(([rowId, pick]) => ({ rowId, tier: pick.tier, price: pick.price })) })
-    }),
-    onSuccess: ({ blob, fileName }) => {
+    // The picks are saved first; the server writes the saved picks, so the file holds what the page shows.
+    mutationFn: async () => {
+      await saving.flush()
+      return hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
+        method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-export') }, body: '{}'
+      })
+    },
+    onSuccess: ({ blob, fileName, headers }) => {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.download = fileName ?? 'komisyon-tarifesi-secimler.xlsx'
       link.click()
       setTimeout(() => URL.revokeObjectURL(url), 0)
-      onMessage({ kind: 'success', text: 'Seçimler Excel olarak indirildi.' })
+      const rebuilt = headers.get('X-Tariff-File') === 'rebuilt'
+      onMessage({ kind: rebuilt ? 'info' : 'success', text: exportMessage(Number(headers.get('X-Picked-Rows') ?? Number.NaN), rebuilt) })
     },
     onError: reason => onMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Excel hazırlanamadı.' })
   })
@@ -479,7 +569,7 @@ function TariffPlan({ connectionId, tariff, rows, loading, error, onRetry, filte
     <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
-      <span className="commission-plan-count" role="status">{summary}</span>
+      <span className="commission-plan-count" role="status">{summary}{saving.status === 'saving' ? <small> · Kaydediliyor…</small> : saving.status === 'error' ? <small className="commission-warn"> · Seçimler kaydedilemedi</small> : null}</span>
       <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
       <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0) || download.isPending} onClick={() => download.mutate()}>
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}

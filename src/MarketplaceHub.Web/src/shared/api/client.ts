@@ -160,7 +160,7 @@ export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // A file the server writes (an Excel export), refused the way hubApi refuses: its bytes and the name it gives.
-export async function hubFile(path: string, init?: RequestInit): Promise<{ blob: Blob; fileName: string | null }> {
+export async function hubFile(path: string, init?: RequestInit): Promise<{ blob: Blob; fileName: string | null; headers: Headers }> {
   const response = await fetchWithCsrf(`/api/v1${path}`, automaticReadInit(init))
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as ApiProblem
@@ -169,7 +169,7 @@ export async function hubFile(path: string, init?: RequestInit): Promise<{ blob:
   }
   const disposition = response.headers.get('Content-Disposition') ?? ''
   const name = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] ?? /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null
-  return { blob: await response.blob(), fileName: name ? decodeURIComponent(name) : null }
+  return { blob: await response.blob(), fileName: name ? decodeURIComponent(name) : null, headers: response.headers }
 }
 
 // Settings answer with the strong ETag "v{version}" and the same version in their envelope; a save sends it back so a
