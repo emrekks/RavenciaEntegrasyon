@@ -8,7 +8,7 @@ import { NoticeToast, type NoticeToastKind } from '../../shared/components/Notic
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../shipping'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearancePalette, type AppearanceSettings } from './appearance-settings'
 import { SettingsNotice, type SettingsNoticeState } from './SettingsNotifications'
-import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeEvent, type VisualTheme } from './visual-theme'
+import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from './visual-theme'
 import { shippingLabelBlockParts } from './shipping-label-preview'
 import { useRememberedTabCounts } from '../../shared/tab-counts'
 import './settings-sade.css'
@@ -534,7 +534,7 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
   }
 
   function applyColorTheme(theme: typeof appearance.draft.colorThemes[number]) {
-    setVisualThemePreference('dark')
+    switchVisualThemeSmoothly('dark')
     setSelectedThemeId(theme.id)
     appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { ...appearance.draft.colors, dark: { ...theme.palette } } })
     note(`${theme.name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`)
@@ -546,7 +546,7 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
       colors: { dark: { ...defaultAppearanceSettings.colors.dark }, light: { ...defaultAppearanceSettings.colors.light } },
       colorThemes: appearance.draft.colorThemes.map(theme => ({ ...theme, palette: { ...theme.palette } }))
     }
-    setVisualThemePreference('dark')
+    switchVisualThemeSmoothly('dark')
     setSelectedThemeId(defaultAppearanceColorTheme.id)
     appearance.setDraft(defaults)
     note('Varsayılan görünüm önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.')
@@ -559,7 +559,7 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
 
   function applyLightTheme() {
     setSelectedThemeId('default-light')
-    setVisualThemePreference('light')
+    switchVisualThemeSmoothly('light')
     note('Ravencia — Aydınlık önizlemeye uygulandı.')
   }
 
