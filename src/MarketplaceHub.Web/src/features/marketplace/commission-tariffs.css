@@ -218,3 +218,4 @@
   .app-shell.stitch-shell main .commission-tariffs .commission-bulk { position: static; }
   .app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover { right: 0; left: 0; width: auto; }
 }
+.app-shell.stitch-shell main .commission-tariffs .commission-choice > strong > .commission-now { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
