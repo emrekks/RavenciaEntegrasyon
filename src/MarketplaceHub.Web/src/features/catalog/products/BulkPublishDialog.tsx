@@ -83,6 +83,10 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }
 
   const selectedCount = connectionIds.length
+  // "Tümünü Seç" picks every platform a card can be selected on: one where the selected records are not all live yet.
+  const selectableIds = connections.filter(connection => !summaries.get(connection.id)?.allLive).map(connection => connection.id)
+  const allSelectableSelected = selectableIds.length > 0 && selectableIds.every(id => connectionIds.includes(id))
+  const toggleAll = () => setConnectionIds(allSelectableSelected ? [] : selectableIds)
   return createPortal(
     <div className="workspace-modal-backdrop product-publish-popup-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
       <DialogSurface as="section" onClose={close} className="workspace-modal product-publish-popup-modal" aria-labelledby="bulk-publish-title" onMouseDown={event => event.stopPropagation()}>
@@ -96,6 +100,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
           <div className="publish-selection-footer">
             <div><strong>{result ? 'Yayın işleri kuyruğa alındı' : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : result ? 'Sonuçlar ürün listesinde güncellenir.' : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
             {!selectedCount && !result && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
+            {!result && selectableIds.length > 0 && <button type="button" className="secondary publish-select-all" disabled={locked} onClick={toggleAll}>{allSelectableSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>}
             {result ? <button type="button" onClick={onClose}>Kapat</button> : <button type="button" disabled={running || !selectedCount} onClick={() => void publish()}>{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
           </div>
         </div></div></section></div></div>
