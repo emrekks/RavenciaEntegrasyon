@@ -330,16 +330,17 @@ const bulkLabel = (bulk: TariffBulk) => bulk.kind === 'tier' ? `${bulk.tier}. Fi
 function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: TariffBulk; onApply: (bulk: TariffBulk) => void; onClearColumn: (column: string) => void; onClearAll: () => void }) {
   const [open, setOpen] = useState(false)
   const [column, setColumn] = useState(bulk.kind === 'tier' ? String(bulk.tier) : bulk.kind)
-  const [criterion, setCriterion] = useState<'' | 'rate' | 'amount'>(bulk.minRate != null || bulk.maxRate != null ? 'rate' : bulk.minAmount != null || bulk.maxAmount != null ? 'amount' : '')
+  // There is no unconditional choice: a bulk pick always filters on profit, by share (%) unless the saved pick used an amount.
+  const [criterion, setCriterion] = useState<'rate' | 'amount'>(bulk.minAmount != null || bulk.maxAmount != null ? 'amount' : 'rate')
   const [above, setAbove] = useState(bulk.maxRate == null && bulk.maxAmount == null)
   const [value, setValue] = useState(String(bulk.minRate ?? bulk.minAmount ?? bulk.maxRate ?? bulk.maxAmount ?? ''))
   const ref = useRef<HTMLDivElement>(null)
   useDismissable(open, [ref], () => setOpen(false))
   const limit = Number(value.replace(',', '.'))
-  const valid = column !== '' && (!criterion || (value.trim() !== '' && Number.isFinite(limit)))
+  const valid = column !== '' && value.trim() !== '' && Number.isFinite(limit)
   const apply = () => {
     const tierColumn = /^[1-4]$/.test(column)
-    const at = criterion && valid ? limit : null
+    const at = valid ? limit : null
     onApply({ kind: tierColumn ? 'tier' : column as TariffBulk['kind'], tier: tierColumn ? Number(column) : 1,
       minRate: criterion === 'rate' && above ? at : null, minAmount: criterion === 'amount' && above ? at : null,
       maxRate: criterion === 'rate' && !above ? at : null, maxAmount: criterion === 'amount' && !above ? at : null })
@@ -361,24 +362,24 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
       {column !== '' && <>
       <hr />
       <label><span>Ölçüt</span>
-        <select value={criterion} onChange={event => setCriterion(event.target.value as '' | 'rate' | 'amount')}>
-          <option value="">Koşulsuz, Tüm Ürünler</option><option value="rate">Kâr / Zarar Oranına Göre (%)</option><option value="amount">Kâr / Zarar Tutarına Göre (₺)</option>
+        <select value={criterion} onChange={event => setCriterion(event.target.value as 'rate' | 'amount')}>
+          <option value="rate">Kâr / Zarar Oranına Göre (%)</option><option value="amount">Kâr / Zarar Tutarına Göre (₺)</option>
         </select>
       </label>
       <label><span>Karşılaştırma</span>
-        <select value={above ? 'above' : 'below'} disabled={!criterion} onChange={event => setAbove(event.target.value === 'above')}>
+        <select value={above ? 'above' : 'below'} onChange={event => setAbove(event.target.value === 'above')}>
           <option value="above">Verilenden Büyük Değerler</option><option value="below">Verilenden Küçük Değerler</option>
         </select>
       </label>
       <label><span>Değer</span>
-        <input type="text" inputMode="decimal" value={value} disabled={!criterion} onChange={event => setValue(event.target.value)} placeholder={criterion === 'rate' ? 'ör. 30' : criterion === 'amount' ? 'ör. 100' : 'Ölçüt seçin'} />
+        <input type="text" inputMode="decimal" value={value} onChange={event => setValue(event.target.value)} placeholder={criterion === 'rate' ? 'ör. 30' : 'ör. 100'} />
       </label>
       <hr />
       <button type="button" className="rv-button-primary" disabled={!valid} onClick={apply}>Belirlenen Kriterlere Göre Seçimleri Yap</button>
       <button type="button" className="secondary is-danger" onClick={() => { onClearColumn(column); setOpen(false) }}>Yapılan Seçimleri Kaldır</button>
       </>}
       <hr />
-      <button type="button" className="secondary" onClick={() => { onClearAll(); setColumn(''); setCriterion(''); setValue(''); setOpen(false) }}>Tüm Kolonlardan Seçimleri Kaldır</button>
+      <button type="button" className="secondary" onClick={() => { onClearAll(); setColumn(''); setCriterion('rate'); setValue(''); setOpen(false) }}>Tüm Kolonlardan Seçimleri Kaldır</button>
     </div>}
   </div>
 }
