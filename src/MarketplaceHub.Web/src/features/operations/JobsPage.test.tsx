@@ -269,13 +269,18 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     return apiState.calls.filter(path => path.startsWith('/price-stock-send-log?')).map(path => new URLSearchParams(path.slice(path.indexOf('?') + 1)))
   }
 
+  // The log view is a lazy chunk: under a full parallel run its import takes longer than a few ticks, so the test waits
+  // for its first read and its rendered state instead.
+  async function logViewLoaded() {
+    for (let tick = 0; tick < 200 && (logRequests().length === 0 || !container.querySelector('.psl-empty, .psl-row')); tick++) await settle()
+    await settle()
+  }
+
   it('opens from the tab, keeps the job list unread and explains the empty log', async () => {
     await renderPage()
     const jobReads = pageRequests().length
     await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent?.includes('Loglar'))!.click() })
-    await settle()
-    await settle()
-    await settle()
+    await logViewLoaded()
 
     expect(currentSearch).toBe('?sekme=loglar')
     expect(logRequests().at(-1)!.get('limit')).toBe('50')
@@ -297,7 +302,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
       hasMore: false
     }
     await renderPage('/jobs?sekme=loglar')
-    await settle()
+    await logViewLoaded()
 
     const row = container.querySelector('.psl-row')!
     expect(row.textContent).toContain('12:15:00')
@@ -316,7 +321,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
 
   it('sends the result filter and clears it with Temizle', async () => {
     await renderPage('/jobs?sekme=loglar')
-    await settle()
+    await logViewLoaded()
     const select = container.querySelector<HTMLSelectElement>('select[aria-label="Sonuç"]')!
     await act(async () => { select.value = 'FAILED'; select.dispatchEvent(new Event('change', { bubbles: true })) })
     await settle()
