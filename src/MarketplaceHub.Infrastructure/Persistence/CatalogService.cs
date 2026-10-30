@@ -1573,10 +1573,16 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var connectionIds = (command.ConnectionIds ?? []).Distinct().ToList();
         if (productIds.Count == 0 || connectionIds.Count == 0) return Invalid<BulkPublicationResult>("productIds", "En az bir ürün ve bir platform seçin.");
         if (productIds.Count > 1000) return Invalid<BulkPublicationResult>("productIds", "Tek seferde en fazla 1000 ürün kartı yayınlanabilir.");
-        var selectedIds = productIds.ToHashSet();
+        if (command.VatRate is < 0 or > 100) return Invalid<BulkPublicationResult>("vatRate", "KDV oranı 0 ile 100 arasında olmalıdır.");
         var selected = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
-        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).Select(x => new { x.Id, x.PlatformCode }).ToListAsync(cancellationToken);
-        if (selected.Count != productIds.Count || connections.Count != connectionIds.Count) return Invalid<BulkPublicationResult>("productIds", "Seçilen ürün veya platform bulunamadı.");
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).Select(x => new { x.Id, x.PlatformCode, x.SettingsJson }).ToListAsync(cancellationToken);
+        if (connections.Count != connectionIds.Count) return Invalid<BulkPublicationResult>("connectionIds", "Seçilen platform bulunamadı.");
+        var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>();
+        // A card deleted since the list loaded it is reported on its own instead of refusing every other card of the slice.
+        foreach (var missingId in productIds.Where(id => selected.All(product => product.Id != id)))
+            foreach (var connectionId in connectionIds)
+                failed.Add(new(missingId, "", connectionId, "PRODUCT_NOT_FOUND", "Ürün kartı bulunamadı; silinmiş olabilir. Listeyi yenileyip yeniden seçin."));
+        var selectedIds = selected.Select(x => x.Id).ToHashSet();
         // PTT AVM and Shopify send a model family as one product that carries every colour card, so a selected card goes
         // with the cards of its family, as in the editor: each card gets a job of its own that follows the family's send.
         var familyIds = new HashSet<Guid>();
@@ -1592,7 +1598,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
         var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus }).ToListAsync(cancellationToken);
         var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId) && connectionIds.Contains(x.ConnectionId)).ToListAsync(cancellationToken);
-        var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>();
+        var brandOf = products.ToDictionary(x => x.Id, x => x.BrandId);
+        // An offer of another colour card of the variant's model family (same brand and model code) among this request's cards.
+        ChannelOffer? FamilyOffer(ProductVariant variant, Guid? brandId)
+        {
+            var modelCode = variant.ModelCode?.Trim();
+            if (string.IsNullOrEmpty(modelCode)) return null;
+            return offers.FirstOrDefault(offer => variants.Any(item => item.Id == offer.VariantId && item.ProductId != variant.ProductId
+                && string.Equals(item.ModelCode?.Trim(), modelCode, StringComparison.OrdinalIgnoreCase) && brandOf.GetValueOrDefault(item.ProductId) == brandId));
+        }
         // Every card is priced and given its listing profile before any is queued: a PTT AVM or Shopify family request
         // needs the price of every card of the family, so a card queued before its siblings were priced was refused
         // (live 2026-10-29: MZ053TCD, eight cards; seven refused with CHANNEL_OFFER_REQUIRED, only the last went out).
@@ -1616,21 +1630,38 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                     if (selectedIds.Contains(product.Id)) skipped++;
                     continue;
                 }
-                // The marketplace price follows the general price, as in the editor; VAT and its policy come from the
-                // variant's offer on another marketplace, since the product holds none of its own.
-                string? priceError = null;
+                // The marketplace price follows the general price, as in the editor. The product holds no VAT of its own:
+                // it comes from the variant's offer on another marketplace, else from an offer of another variant of the
+                // card or of its model family (same brand and model code), else from the popup's KDV Oranı (the editor's
+                // own choice for a card with no price anywhere, live 2026-10-30: MZ036YNC and MZ050YNC, priced in general
+                // but on no marketplace, were refused on all six), else from the connection's DefaultVatRate.
+                (string Code, string Message)? priceError = null;
                 var newOffers = new List<ChannelOffer>();
+                var connectionDefaultVat = ConnectionDefaults.VatRate(connections.Single(x => x.Id == connectionId).SettingsJson);
                 foreach (var variant in productVariants.Where(variant => !offers.Any(offer => offer.VariantId == variant.Id && offer.ConnectionId == connectionId)))
                 {
-                    var template = offers.FirstOrDefault(offer => offer.VariantId == variant.Id) ?? offers.FirstOrDefault(offer => productVariants.Any(item => item.Id == offer.VariantId));
-                    var salePrice = variant.DefaultSalePrice ?? product.DefaultSalePrice ?? template?.SalePrice;
-                    var listPrice = variant.DefaultListPrice ?? product.DefaultListPrice ?? template?.ListPrice ?? salePrice;
-                    if (template is null || salePrice is not > 0 || listPrice is null || listPrice < salePrice) { priceError = $"'{variant.Sku}' için genel fiyat veya KDV bilgisi yok; ürünü editörde açıp fiyatını kaydedin."; break; }
-                    newOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ListPrice = listPrice.Value, SalePrice = salePrice.Value, Currency = template.Currency, VatRate = template.VatRate, VatInclusion = template.VatInclusion, RoundingMode = template.RoundingMode, SafetyStock = template.SafetyStock, Status = "ACTIVE", PriceVersion = 1, Version = 1 });
+                    var cardOffer = offers.FirstOrDefault(offer => offer.VariantId == variant.Id) ?? offers.FirstOrDefault(offer => productVariants.Any(item => item.Id == offer.VariantId));
+                    var salePrice = variant.DefaultSalePrice ?? product.DefaultSalePrice ?? cardOffer?.SalePrice;
+                    var listPrice = variant.DefaultListPrice ?? product.DefaultListPrice ?? cardOffer?.ListPrice ?? salePrice;
+                    if (salePrice is not > 0 || listPrice is null || listPrice < salePrice)
+                    {
+                        priceError = ("CHANNEL_OFFER_REQUIRED", salePrice is not > 0
+                            ? $"'{variant.Sku}' için genel satış fiyatı yok; ürünü editörde açıp fiyatını kaydedin."
+                            : $"'{variant.Sku}' için liste fiyatı satış fiyatından düşük; ürünü editörde açıp fiyatını düzeltin.");
+                        break;
+                    }
+                    var vatSource = cardOffer ?? FamilyOffer(variant, product.BrandId);
+                    var vatRate = vatSource?.VatRate ?? command.VatRate ?? connectionDefaultVat;
+                    if (vatRate is null)
+                    {
+                        priceError = ("VAT_RATE_REQUIRED", $"'{variant.Sku}' için KDV oranı bilinmiyor: kart hiçbir pazaryerinde fiyatlanmamış. Yayın penceresinde KDV oranını seçin veya ürünü editörden yayınlayın.");
+                        break;
+                    }
+                    newOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ListPrice = listPrice.Value, SalePrice = salePrice.Value, Currency = vatSource?.Currency ?? "TRY", VatRate = vatRate.Value, VatInclusion = vatSource?.VatInclusion ?? "INCLUDED", RoundingMode = vatSource?.RoundingMode ?? "HALF_EVEN", SafetyStock = vatSource?.SafetyStock ?? 0, Status = "ACTIVE", PriceVersion = 1, Version = 1 });
                 }
-                if (priceError is not null)
+                if (priceError is { } refusal)
                 {
-                    failed.Add(new(product.Id, product.Title, connectionId, "CHANNEL_OFFER_REQUIRED", priceError));
+                    failed.Add(new(product.Id, product.Title, connectionId, refusal.Code, refusal.Message));
                     continue;
                 }
                 foreach (var offer in newOffers)

@@ -1247,8 +1247,9 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
     // A PTT AVM model family of two colour cards (Siyah, Kahverengi) with two sizes each, ready to send but without a
     // PTT AVM price: the price comes from the cards' Trendyol offers, as in a bulk publication.
-    // The connection's "Manuel Dış Yazmalar" switch (MANUAL_WRITE) is on unless the test says otherwise.
-    private async Task<(Tenant Tenant, PlatformConnection PttAvm, Product Black, Product Brown, ProductVariant[] Variants)> SeedPttAvmFamilyAsync(string code, bool manualWritesEnabled = true)
+    // The connection's "Manuel Dış Yazmalar" switch (MANUAL_WRITE) is on unless the test says otherwise. Without
+    // `tradedElsewhere` no marketplace has priced the cards: they hold a general price (499, list 599) and nothing else.
+    private async Task<(Tenant Tenant, PlatformConnection PttAvm, Product Black, Product Brown, ProductVariant[] Variants)> SeedPttAvmFamilyAsync(string code, bool manualWritesEnabled = true, bool tradedElsewhere = true)
     {
         var tenant = NewTenant(code);
         var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
@@ -1262,7 +1263,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var variants = new List<ProductVariant>();
         Product Card(string colour, string prefix, DateTimeOffset createdAt)
         {
-            var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Yonca Bluz", Description = "Penye bluz", CategoryId = category.Id, Status = ProductStatus.Active, CreatedAt = createdAt, UpdatedAt = createdAt };
+            var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Yonca Bluz", Description = "Penye bluz", CategoryId = category.Id, Status = ProductStatus.Active, CreatedAt = createdAt, UpdatedAt = createdAt, DefaultSalePrice = tradedElsewhere ? null : 499m, DefaultListPrice = tradedElsewhere ? null : 599m };
             foreach (var (size, index) in new[] { ("L", 0), ("XL", 1) })
             {
                 var sku = $"{prefix}-{size}-{Guid.NewGuid():N}"[..20];
@@ -1287,7 +1288,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         seed.ProductVariants.AddRange(variants);
         seed.AddRange(rows);
         seed.InventoryItems.AddRange(variants.Select(variant => NewInventory(tenant, variant, 3m)));
-        seed.ChannelOffers.AddRange(variants.Select(variant => NewOffer(tenant, trendyol, variant)));
+        if (tradedElsewhere) seed.ChannelOffers.AddRange(variants.Select(variant => NewOffer(tenant, trendyol, variant)));
         await seed.SaveChangesAsync();
         return (tenant, pttAvm, black, brown, [.. variants]);
     }
@@ -1354,6 +1355,59 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id).ToListAsync();
         Assert.Equal(new[] { black.Id, brown.Id }.Order(), profiles.Select(x => x.ProductId).Order());
         Assert.All(profiles, profile => Assert.Equal("QUEUED", profile.ActualStatus));
+    }
+
+    // Live 2026-10-30: MZ036YNC and MZ050YNC held a general price (1099) but no marketplace had priced them, so no offer
+    // carried a VAT and the bulk send refused both on all six marketplaces ("genel fiyat veya KDV bilgisi yok") while the
+    // editor sent them with its KDV Oranı. Without a VAT the refusal now says so; with the popup's KDV Oranı they go out
+    // at the general price, VAT included.
+    [PostgreSqlFact]
+    public async Task BulkPublication_OfCardsPricedNowhereUsesThePopupsVatRate()
+    {
+        var (tenant, pttAvm, black, brown, variants) = await SeedPttAvmFamilyAsync("pttavm-bulk-unpriced", tradedElsewhere: false);
+
+        await using var db = fixture.CreateContext();
+        var refused = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+        Assert.True(refused.Succeeded, refused.Error?.Message);
+        Assert.Equal(0, refused.Value!.Queued);
+        Assert.Equal(2, refused.Value.Failed.Count);
+        Assert.All(refused.Value.Failed, failure => Assert.Equal("VAT_RATE_REQUIRED", failure.Code));
+        Assert.False(await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
+
+        db.ChangeTracker.Clear();
+        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id], VatRate: 10m), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Empty(result.Value!.Failed);
+        Assert.Equal(2, result.Value.Queued);
+        var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.Equal(variants.Select(x => x.Id).Order(), offers.Select(x => x.VariantId).Order());
+        Assert.All(offers, offer => Assert.Equal((pttAvm.Id, 499m, 599m, 10m, "INCLUDED", "TRY"), (offer.ConnectionId, offer.SalePrice, offer.ListPrice, offer.VatRate, offer.VatInclusion, offer.Currency)));
+    }
+
+    // A colour card no marketplace has priced takes the VAT of its family's other card instead of asking for one, and a
+    // card deleted since the list loaded it is reported on its own while the rest still goes out.
+    [PostgreSqlFact]
+    public async Task BulkPublication_TakesTheFamilysVatAndReportsADeletedCardWithoutRefusingTheOthers()
+    {
+        var (tenant, pttAvm, black, _, variants) = await SeedPttAvmFamilyAsync("pttavm-bulk-family-vat");
+        var blackVariantIds = variants.Where(x => x.ProductId == black.Id).Select(x => x.Id).ToList();
+        await using (var setup = fixture.CreateContext())
+        {
+            await setup.ChannelOffers.Where(x => x.TenantId == tenant.Id && blackVariantIds.Contains(x.VariantId)).ExecuteDeleteAsync();
+            await setup.Products.Where(x => x.Id == black.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.DefaultSalePrice, 300m).SetProperty(p => p.DefaultListPrice, 300m));
+        }
+        var deletedId = Guid.CreateVersion7();
+
+        await using var db = fixture.CreateContext();
+        var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, deletedId], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        var failure = Assert.Single(result.Value!.Failed);
+        Assert.Equal((deletedId, "PRODUCT_NOT_FOUND"), (failure.ProductId, failure.Code));
+        Assert.Equal(2, result.Value.Queued);
+        var blackOffers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id && blackVariantIds.Contains(x.VariantId)).ToListAsync();
+        Assert.Equal(2, blackOffers.Count);
+        Assert.All(blackOffers, offer => Assert.Equal((300m, 20m), (offer.SalePrice, offer.VatRate)));
     }
 
     // A card the family's finished send carried without a job of its own (the MZ053TCD state on live) is taken into

@@ -152,8 +152,10 @@ public sealed record CreateProductCommand(string Title, string Description, Guid
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
 public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
-// Product list "Platformlara Yayınla": every selected card to every selected marketplace.
-public sealed record BulkPublicationCommand(IReadOnlyList<Guid> ProductIds, IReadOnlyList<Guid> ConnectionIds);
+// Product list "Platformlara Yayınla": every selected card to every selected marketplace. VatRate is the VAT the popup's
+// "KDV Oranı" names (VAT included in the price, as in the editor) for a card no marketplace has priced yet, so none of
+// its offers carries a VAT; a card with an offer anywhere keeps that offer's VAT.
+public sealed record BulkPublicationCommand(IReadOnlyList<Guid> ProductIds, IReadOnlyList<Guid> ConnectionIds, decimal? VatRate = null);
 public sealed record BulkPublicationFailure(Guid ProductId, string ProductTitle, Guid ConnectionId, string Code, string Message);
 public sealed record BulkPublicationResult(int Queued, int Skipped, IReadOnlyList<BulkPublicationFailure> Failed);
 public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null);
